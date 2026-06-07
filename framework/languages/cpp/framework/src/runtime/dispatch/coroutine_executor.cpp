@@ -45,7 +45,8 @@ std::size_t default_worker_count ()
 
 } // namespace
 
-coroutine_executor_t::coroutine_executor_t (std::size_t worker_count) : _pool (worker_count == 0 ? 1 : worker_count)
+coroutine_executor_t::coroutine_executor_t (std::size_t worker_count) :
+    _pool (worker_count == 0 ? 1 : worker_count)
 {
 }
 
@@ -69,7 +70,8 @@ coroutine_executor_t &handler_coroutine_executor ()
     std::lock_guard lock (executor_mutex ());
     auto &executor = executor_instance ();
     if (!executor) {
-        const auto workers = configured_worker_count () == 0 ? default_worker_count () : configured_worker_count ();
+        const auto workers =
+          configured_worker_count () == 0 ? default_worker_count () : configured_worker_count ();
         executor = std::make_unique<coroutine_executor_t> (workers);
         executor_fast_path ().store (executor.get (), std::memory_order_release);
     }

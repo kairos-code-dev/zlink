@@ -38,7 +38,8 @@ int main ()
     const std::string received = echoed.parts ()[0].to_string ();
     assert (received == detail::k_dealer_router_reply);
     echoed.close ();
-    std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n", sent.c_str (), received.c_str ());
+    std::printf ("[dealer-router/recv] send: \"%s\" → recv: \"%s\"\n", sent.c_str (),
+                 received.c_str ());
     return 0;
     // --8<-- [end:doc]
 }

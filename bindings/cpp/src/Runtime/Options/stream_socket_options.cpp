@@ -13,8 +13,8 @@ bool stream_socket_options_t::notify () const
 
 void stream_socket_options_t::notify (bool value)
 {
-    detail::set_stream_option_value<int> (detail::native_option_handle (_socket), detail::stream_option_id::notify,
-                                          value ? 1 : 0);
+    detail::set_stream_option_value<int> (detail::native_option_handle (_socket),
+                                          detail::stream_option_id::notify, value ? 1 : 0);
 }
 
 } // namespace zlink

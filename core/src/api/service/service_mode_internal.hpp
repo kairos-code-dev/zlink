@@ -22,11 +22,9 @@ int spot_node_require_recv_model (zlink::spot_node_t *node_);
 int spot_require_recv_model (spot_handle_t *spot_);
 bool in_spot_dispatch_event_callback (void *spot_);
 int spot_install_dispatch_event_sub_handler (spot_handle_t *spot_);
-int spot_activate_send_ready_mode (spot_handle_t *spot_,
-                                   bool *already_active_out_);
+int spot_activate_send_ready_mode (spot_handle_t *spot_, bool *already_active_out_);
 void spot_revert_send_ready_mode (spot_handle_t *spot_);
-int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_,
-                                        bool *already_active_out_);
+int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_, bool *already_active_out_);
 void spot_node_revert_send_ready_mode (zlink::spot_node_t *node_);
 int increment_spot_node_poller_ref (zlink::spot_node_t *node_);
 int increment_spot_node_poller_ref (zlink::spot_node_t *node_, short events_);

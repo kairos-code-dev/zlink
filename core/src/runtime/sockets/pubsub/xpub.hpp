@@ -29,9 +29,7 @@ class xpub_t : public socket_base_t
         send_all_data_option = 0x7f010001
     };
 
-    xpub_t (zlink::ctx_t *parent_,
-            uint32_t tid_,
-            int sid_);
+    xpub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~xpub_t () ZLINK_OVERRIDE;
 
     //  Implementations of virtual functions from socket_base_t.
@@ -48,8 +46,7 @@ class xpub_t : public socket_base_t
     bool xpub_dispatch_active () const ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     uint32_t monitor_ready_count () const ZLINK_OVERRIDE;
@@ -57,9 +54,7 @@ class xpub_t : public socket_base_t
   private:
     //  Function to be applied to the trie to send all the subscriptions
     //  upstream.
-    static void send_unsubscription (zlink::mtrie_t::prefix_t data_,
-                                     size_t size_,
-                                     xpub_t *self_);
+    static void send_unsubscription (zlink::mtrie_t::prefix_t data_, size_t size_, xpub_t *self_);
 
     //  Function to be applied to each matching pipes.
     static void mark_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
@@ -130,12 +125,10 @@ class xpub_t : public socket_base_t
     int dispatch_ready_messages ();
     int dispatch_message (zlink::msg_t *msg_);
     void notify_dispatch_stopped ();
-    void refresh_delivery_ready_state (
-      const endpoint_uri_pair_t &endpoint_uri_pair_);
+    void refresh_delivery_ready_state (const endpoint_uri_pair_t &endpoint_uri_pair_);
     uint32_t compute_delivery_ready_count () const;
     bool compute_delivery_ready_state () const;
-    static void collect_ready_pipe (zlink::pipe_t *pipe_,
-                                    std::set<zlink::pipe_t *> *out_);
+    static void collect_ready_pipe (zlink::pipe_t *pipe_, std::set<zlink::pipe_t *> *out_);
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };

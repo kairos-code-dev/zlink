@@ -88,8 +88,7 @@ static inline poller_handle_t *as_poller_handle (void *poller_)
     return poller;
 }
 
-int validate_socket_callback_poller_events (socket_handle_t handle_,
-                                            short events_);
+int validate_socket_callback_poller_events (socket_handle_t handle_, short events_);
 void release_poller_registration (const poller_registration_t &registration_);
 int poller_add_registration (poller_handle_t *poller_,
                              zlink::socket_base_t *socket_,
@@ -103,13 +102,12 @@ int poller_add_fd_registration (poller_handle_t *poller_,
                                 short events_,
                                 void *subject_,
                                 poller_subject_kind_t subject_kind_);
-int poller_add_hidden_completion_registration (
-  poller_handle_t *poller_,
-  zlink::socket_base_t *signal_socket_,
-  void *subject_,
-  poller_subject_kind_t subject_kind_,
-  zlink::request_completion::queue_state_t *queue_,
-  const std::shared_ptr<void> &state_ref_);
+int poller_add_hidden_completion_registration (poller_handle_t *poller_,
+                                               zlink::socket_base_t *signal_socket_,
+                                               void *subject_,
+                                               poller_subject_kind_t subject_kind_,
+                                               zlink::request_completion::queue_state_t *queue_,
+                                               const std::shared_ptr<void> &state_ref_);
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_);
 int poller_find_registration_index (poller_handle_t *poller_,
                                     void *subject_,
@@ -118,7 +116,6 @@ int poller_find_fd_registration_index (poller_handle_t *poller_,
                                        zlink_fd_t fd_,
                                        poller_subject_kind_t subject_kind_);
 int poller_remove_registration_at (poller_handle_t *poller_, int index_);
-int poller_remove_all_registrations_for_subject (poller_handle_t *poller_,
-                                                 void *subject_);
+int poller_remove_all_registrations_for_subject (poller_handle_t *poller_, void *subject_);
 
 #endif

@@ -248,7 +248,8 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &va
 
 inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 {
-    json = {{"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
+    json = {
+      {"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
 }
 
 inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
@@ -324,7 +325,8 @@ inline void from_json (const nlohmann::json &json, allocate_bingo_room_res_t &va
 
 inline void to_json (nlohmann::json &json, const bingo_room_join_req_t &value)
 {
-    json = {{"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name}};
+    json = {
+      {"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name}};
 }
 
 inline void from_json (const nlohmann::json &json, bingo_room_join_req_t &value)
@@ -456,8 +458,9 @@ inline void from_json (const nlohmann::json &json, leave_room_res_t &value)
 
 inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
 {
-    json = {{"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name},
-            {"seat", value.seat},      {"host", value.host},        {"state", value.state}};
+    json = {
+      {"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name},
+      {"seat", value.seat},      {"host", value.host},        {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, player_joined_notify_t &value)
@@ -492,7 +495,10 @@ inline void from_json (const nlohmann::json &json, state_notify_t &value)
 
 inline void to_json (nlohmann::json &json, const number_drawn_notify_t &value)
 {
-    json = {{"roomId", value.room_id}, {"drawSeq", value.draw_seq}, {"number", value.number}, {"state", value.state}};
+    json = {{"roomId", value.room_id},
+            {"drawSeq", value.draw_seq},
+            {"number", value.number},
+            {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, number_drawn_notify_t &value)

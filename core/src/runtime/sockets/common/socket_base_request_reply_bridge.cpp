@@ -11,8 +11,7 @@ zlink::socket_base_t::router_spot_request_reply_state () const
 }
 
 void zlink::socket_base_t::set_router_spot_request_reply_state (
-  const std::shared_ptr<
-    zlink::spot_reqrep_internal::router_spot_request_reply_state_t> &state_)
+  const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> &state_)
 {
     _request_reply_bridge.router_spot_request_reply_state = state_;
 }
@@ -29,8 +28,7 @@ zlink::socket_base_t::request_reply_state () const
 }
 
 void zlink::socket_base_t::set_request_reply_state (
-  const std::shared_ptr<
-    zlink::socket_reqrep_internal::socket_request_reply_state_t> &state_)
+  const std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> &state_)
 {
     _request_reply_bridge.request_reply_state = state_;
 }
@@ -82,10 +80,9 @@ int zlink::socket_base_t::set_channel_name_metadata (const char *channel_name_)
     return 0;
 }
 
-int zlink::socket_base_t::get_channel_name_metadata (
-  char *channel_name_buf_,
-  size_t channel_name_capacity_,
-  size_t *channel_name_len_out_) const
+int zlink::socket_base_t::get_channel_name_metadata (char *channel_name_buf_,
+                                                     size_t channel_name_capacity_,
+                                                     size_t *channel_name_len_out_) const
 {
     socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
     socket_public_api_scope_t admission (lifecycle);

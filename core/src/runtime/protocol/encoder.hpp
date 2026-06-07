@@ -111,8 +111,7 @@ template <typename T> class encoder_base_t : public i_encoder
         if (new_size_ == 0 || new_size_ == _buf_size)
             return;
 
-        unsigned char *resized =
-          static_cast<unsigned char *> (realloc (_buf, new_size_));
+        unsigned char *resized = static_cast<unsigned char *> (realloc (_buf, new_size_));
         alloc_assert (resized);
 
         if (_write_pos && _write_pos >= _buf && _write_pos <= _buf + _buf_size) {
@@ -130,10 +129,7 @@ template <typename T> class encoder_base_t : public i_encoder
 
     //  This function should be called from derived class to write the data
     //  to the buffer and schedule next state machine action.
-    void next_step (void *write_pos_,
-                    size_t to_write_,
-                    step_t next_,
-                    bool new_msg_flag_)
+    void next_step (void *write_pos_, size_t to_write_, step_t next_, bool new_msg_flag_)
     {
         _write_pos = static_cast<unsigned char *> (write_pos_);
         _to_write = to_write_;

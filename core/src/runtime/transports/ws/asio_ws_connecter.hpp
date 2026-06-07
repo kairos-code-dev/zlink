@@ -113,8 +113,8 @@ class asio_ws_connecter_t ZLINK_FINAL : public own_t, public io_object_t
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_connecter_t)
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZLINK_ASIO_WS_CONNECTER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_WS_CONNECTER_HPP_INCLUDED__

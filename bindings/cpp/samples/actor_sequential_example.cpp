@@ -36,7 +36,8 @@ int main ()
     // dispatch 핸들러: join을 수락하고, STREAM이 relay한 메시지를 모은다.
     std::mutex mutex;
     std::vector<std::string> processed;
-    room.set_dispatch_handler ([&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
+    room.set_dispatch_handler ([&] (zlink::service::spot_t &s,
+                                    const zlink::spot_dispatch_info_t &info) {
         if (info.event == zlink::spot_dispatch_event_t::actor_join_readable) {
             auto request = s.recv_actor_join (zlink::recv_flags_t::dontwait);
             if (!request.has_value ())
@@ -81,7 +82,8 @@ int main ()
     }
     {
         std::lock_guard<std::mutex> lock (mutex);
-        assert (processed.size () == 3 && processed[0] == "move" && processed[1] == "attack" && processed[2] == "loot");
+        assert (processed.size () == 3 && processed[0] == "move" && processed[1] == "attack"
+                && processed[2] == "loot");
     }
 
     (void) player.leave (room).submit_async ().get ();

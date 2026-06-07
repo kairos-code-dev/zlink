@@ -60,8 +60,7 @@ inline const char *zmp_error_reason (uint8_t code_)
     }
 }
 
-inline uint16_t zmp_effective_ttl_ds (uint16_t local_ttl_ds_,
-                                      uint16_t remote_ttl_ds_)
+inline uint16_t zmp_effective_ttl_ds (uint16_t local_ttl_ds_, uint16_t remote_ttl_ds_)
 {
     if (local_ttl_ds_ == 0)
         return remote_ttl_ds_;

@@ -112,15 +112,13 @@ class radix_tree_t
     bool check (const unsigned char *key_, size_t key_size_) const;
 
     //  Apply the function supplied to each key in the tree.
-    void apply (void (*func_) (unsigned char *data, size_t size, void *arg),
-                void *arg_) const;
+    void apply (void (*func_) (unsigned char *data, size_t size, void *arg), void *arg_) const;
 
     //  Retrieve size of the radix tree. Note this is a multithread safe function.
     size_t size () const;
 
   private:
-    match_result_t
-    match (const unsigned char *key_, size_t key_size_, bool is_lookup_) const;
+    match_result_t match (const unsigned char *key_, size_t key_size_, bool is_lookup_) const;
 
     node_t _root;
     atomic_counter_t _size;

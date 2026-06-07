@@ -7,7 +7,8 @@
 namespace zlink::framework::runtime
 {
 
-framework_runtime_t::framework_runtime_t () : _context (std::make_unique<zlink::context_t> ()), _offload (1)
+framework_runtime_t::framework_runtime_t () :
+    _context (std::make_unique<zlink::context_t> ()), _offload (1)
 {
 }
 
@@ -48,8 +49,8 @@ zlink::stream_socket_t &framework_runtime_t::stream_socket ()
 zlink::service::discovery_t &framework_runtime_t::discovery ()
 {
     if (!_discovery) {
-        _discovery =
-          std::make_unique<zlink::service::discovery_t> (*_context, zlink::auto_connect_type::route_mesh, "framework");
+        _discovery = std::make_unique<zlink::service::discovery_t> (
+          *_context, zlink::auto_connect_type::route_mesh, "framework");
     }
     return *_discovery;
 }

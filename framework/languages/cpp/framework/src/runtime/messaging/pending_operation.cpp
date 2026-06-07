@@ -9,7 +9,8 @@ namespace zlink::framework
 
 pending_operation_t::pending_operation_t () noexcept = default;
 
-pending_operation_t::pending_operation_t (std::shared_ptr<detail::pending_operation_state_t> state) noexcept :
+pending_operation_t::pending_operation_t (
+  std::shared_ptr<detail::pending_operation_state_t> state) noexcept :
     _state (std::move (state))
 {
 }
@@ -61,7 +62,8 @@ bool fail_pending_operation (pending_operation_t &operation, std::exception_ptr 
     return operation._state != nullptr && operation._state->try_fail (std::move (error));
 }
 
-bool same_pending_operation (const pending_operation_t &left, const pending_operation_t &right) noexcept
+bool same_pending_operation (const pending_operation_t &left,
+                             const pending_operation_t &right) noexcept
 {
     return left._state == right._state;
 }

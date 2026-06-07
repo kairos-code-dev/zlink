@@ -28,9 +28,7 @@ int spot_node_t::set_tls_server (const char *cert_, const char *key_)
     return 0;
 }
 
-int spot_node_t::set_tls_client (const char *ca_cert_,
-                                 const char *hostname_,
-                                 int trust_system_)
+int spot_node_t::set_tls_client (const char *ca_cert_, const char *hostname_, int trust_system_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())

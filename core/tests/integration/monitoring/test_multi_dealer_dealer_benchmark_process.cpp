@@ -89,9 +89,7 @@ void cleanup_child (process_capture_t *proc_)
     close_process_capture (proc_);
 }
 
-void reader_loop (FILE *stream_,
-                  process_capture_t *proc_,
-                  bool stdout_stream_)
+void reader_loop (FILE *stream_, process_capture_t *proc_, bool stdout_stream_)
 {
     char buffer[512];
     while (stream_ && fgets (buffer, sizeof (buffer), stream_)) {
@@ -160,8 +158,7 @@ bool start_process (const std::string &path_,
         std::vector<std::string> env_storage;
         for (char **it = environ; it && *it; ++it)
             env_storage.push_back (*it);
-        env_storage.insert (
-          env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
+        env_storage.insert (env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
 
         std::vector<char *> envp;
         for (size_t i = 0; i < env_storage.size (); ++i)
@@ -191,10 +188,8 @@ bool start_process (const std::string &path_,
         return false;
     }
 
-    out_->stdout_thread =
-      std::thread (&reader_loop, out_->stdout_file, out_, true);
-    out_->stderr_thread =
-      std::thread (&reader_loop, out_->stderr_file, out_, false);
+    out_->stdout_thread = std::thread (&reader_loop, out_->stdout_file, out_, true);
+    out_->stderr_thread = std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
 }
 
@@ -213,9 +208,7 @@ bool wait_for_stdout_prefix (process_capture_t *proc_,
 
     while (std::chrono::steady_clock::now () < deadline) {
         for (size_t i = 0; i < proc_->stdout_lines.size (); ++i) {
-            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_),
-                                                prefix_)
-                == 0) {
+            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_), prefix_) == 0) {
                 if (line_out_)
                     *line_out_ = proc_->stdout_lines[i];
                 return true;
@@ -291,8 +284,7 @@ std::string capture_debug_text (process_capture_t *proc_)
     return text;
 }
 
-std::string capture_case_debug_text (process_capture_t *server_,
-                                     process_capture_t *client_)
+std::string capture_case_debug_text (process_capture_t *server_, process_capture_t *client_)
 {
     std::string text;
     const std::string server_text = capture_debug_text (server_);
@@ -342,13 +334,11 @@ void run_multi_dealer_dealer_tls_sequence_case ()
     std::vector<std::string> server_args;
     server_args.push_back ("zlink");
     server_args.push_back ("tls");
-    TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, common_env, server));
+    TEST_ASSERT_TRUE (start_process (server_path, server_args, common_env, server));
 
     std::string ready_line;
-    TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_stdout_prefix (server, "READY,", 15000, &ready_line),
-      capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (wait_for_stdout_prefix (server, "READY,", 15000, &ready_line),
+                              capture_case_debug_text (server, client).c_str ());
     std::string endpoint = ready_line.substr (strlen ("READY,"));
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
@@ -359,56 +349,42 @@ void run_multi_dealer_dealer_tls_sequence_case ()
     client_args.push_back ("64");
     client_args.push_back ("--endpoint");
     client_args.push_back (endpoint);
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, common_env, client));
+    TEST_ASSERT_TRUE (start_process (client_path, client_args, common_env, client));
 
     const char *sizes[] = {"64", "256", "1024", "65536", "131072", "262144"};
     for (size_t i = 0; i < sizeof (sizes) / sizeof (*sizes); ++i) {
-        const std::string ready_line =
-          std::string ("CLIENT_READY,") + sizes[i];
+        const std::string ready_line = std::string ("CLIENT_READY,") + sizes[i];
+        TEST_ASSERT_TRUE_MESSAGE (wait_for_stdout_prefix (client, ready_line.c_str (), 30000, NULL),
+                                  capture_case_debug_text (server, client).c_str ());
         TEST_ASSERT_TRUE_MESSAGE (
-          wait_for_stdout_prefix (client, ready_line.c_str (), 30000, NULL),
+          write_stdin_line (server, (std::string ("START,") + sizes[i] + "\n").c_str ()),
           capture_case_debug_text (server, client).c_str ());
         TEST_ASSERT_TRUE_MESSAGE (
-          write_stdin_line (
-            server, (std::string ("START,") + sizes[i] + "\n").c_str ()),
+          write_stdin_line (client, (std::string ("START,") + sizes[i] + "\n").c_str ()),
           capture_case_debug_text (server, client).c_str ());
-        TEST_ASSERT_TRUE_MESSAGE (
-          write_stdin_line (
-            client, (std::string ("START,") + sizes[i] + "\n").c_str ()),
-          capture_case_debug_text (server, client).c_str ());
-        const std::string done_line =
-          std::string ("CLIENT_DONE,") + sizes[i];
-        TEST_ASSERT_TRUE_MESSAGE (
-          wait_for_stdout_prefix (client, done_line.c_str (), 120000, NULL),
-          capture_case_debug_text (server, client).c_str ());
+        const std::string done_line = std::string ("CLIENT_DONE,") + sizes[i];
+        TEST_ASSERT_TRUE_MESSAGE (wait_for_stdout_prefix (client, done_line.c_str (), 120000, NULL),
+                                  capture_case_debug_text (server, client).c_str ());
         const std::string server_done_prefix =
-          std::string ("RESULT,zlink,MULTI_DEALER_DEALER,tls,") + sizes[i]
-          + ",throughput,";
+          std::string ("RESULT,zlink,MULTI_DEALER_DEALER,tls,") + sizes[i] + ",throughput,";
         TEST_ASSERT_TRUE_MESSAGE (
-          wait_for_stdout_prefix (
-            server, server_done_prefix.c_str (), 120000, NULL),
+          wait_for_stdout_prefix (server, server_done_prefix.c_str (), 120000, NULL),
           capture_case_debug_text (server, client).c_str ());
     }
-    TEST_ASSERT_TRUE_MESSAGE (
-      write_stdin_line (server, "STOP\n"),
-      capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (write_stdin_line (server, "STOP\n"),
+                              capture_case_debug_text (server, client).c_str ());
 
     int client_rc = INT_MIN;
-    TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_exit_code (client, 120000, &client_rc),
-      capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (wait_for_exit_code (client, 120000, &client_rc),
+                              capture_case_debug_text (server, client).c_str ());
     close_process_capture (client);
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      0, client_rc, capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc, capture_case_debug_text (server, client).c_str ());
 
     int server_rc = INT_MIN;
-    TEST_ASSERT_TRUE_MESSAGE (
-      wait_for_exit_code (server, 120000, &server_rc),
-      capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (wait_for_exit_code (server, 120000, &server_rc),
+                              capture_case_debug_text (server, client).c_str ());
     close_process_capture (server);
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      0, server_rc, capture_case_debug_text (server, client).c_str ());
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, server_rc, capture_case_debug_text (server, client).c_str ());
 
     destroy_process_capture (client);
     destroy_process_capture (server);

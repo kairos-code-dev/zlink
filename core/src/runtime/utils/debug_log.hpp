@@ -14,10 +14,7 @@ inline bool debug_env_enabled (const char *name_)
     return name_ && std::getenv (name_) != NULL;
 }
 
-inline void debug_vfprintf (const char *env_,
-                            const char *prefix_,
-                            const char *fmt_,
-                            va_list args_)
+inline void debug_vfprintf (const char *env_, const char *prefix_, const char *fmt_, va_list args_)
 {
     if (env_ && !debug_env_enabled (env_))
         return;
@@ -28,9 +25,7 @@ inline void debug_vfprintf (const char *env_,
     std::fflush (stderr);
 }
 
-inline void debug_vfprintf_file (const char *path_,
-                                 const char *fmt_,
-                                 va_list args_)
+inline void debug_vfprintf_file (const char *path_, const char *fmt_, va_list args_)
 {
     if (!path_ || path_[0] == '\0')
         return;
@@ -47,11 +42,8 @@ inline void debug_vfprintf_file (const char *path_,
     std::fclose (fp);
 }
 
-inline void debug_vfprintf_with_file (const char *env_,
-                                      const char *prefix_,
-                                      const char *path_,
-                                      const char *fmt_,
-                                      va_list args_)
+inline void debug_vfprintf_with_file (
+  const char *env_, const char *prefix_, const char *path_, const char *fmt_, va_list args_)
 {
     if (env_ && !debug_env_enabled (env_))
         return;
@@ -68,10 +60,7 @@ inline void debug_vfprintf_with_file (const char *env_,
     debug_vfprintf_file (path_, fmt_, args_);
 }
 
-inline void debug_fprintf (const char *env_,
-                           const char *prefix_,
-                           const char *fmt_,
-                           ...)
+inline void debug_fprintf (const char *env_, const char *prefix_, const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
@@ -79,11 +68,8 @@ inline void debug_fprintf (const char *env_,
     va_end (args);
 }
 
-inline void debug_fprintf_with_file (const char *env_,
-                                     const char *prefix_,
-                                     const char *path_,
-                                     const char *fmt_,
-                                     ...)
+inline void debug_fprintf_with_file (
+  const char *env_, const char *prefix_, const char *path_, const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);

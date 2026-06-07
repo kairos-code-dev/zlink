@@ -17,33 +17,27 @@ static int sockopt_invalid ()
     return -1;
 }
 
-int zlink::do_getsockopt (void *const optval_,
-                        size_t *const optvallen_,
-                        const std::string &value_)
+int zlink::do_getsockopt (void *const optval_, size_t *const optvallen_, const std::string &value_)
 {
-    return do_getsockopt (optval_, optvallen_, value_.c_str (),
-                          value_.size () + 1);
+    return do_getsockopt (optval_, optvallen_, value_.c_str (), value_.size () + 1);
 }
 
 int zlink::do_getsockopt (void *const optval_,
-                        size_t *const optvallen_,
-                        const void *value_,
-                        const size_t value_len_)
+                          size_t *const optvallen_,
+                          const void *value_,
+                          const size_t value_len_)
 {
     if (*optvallen_ < value_len_) {
         return sockopt_invalid ();
     }
     memcpy (optval_, value_, value_len_);
-    memset (static_cast<char *> (optval_) + value_len_, 0,
-            *optvallen_ - value_len_);
+    memset (static_cast<char *> (optval_) + value_len_, 0, *optvallen_ - value_len_);
     *optvallen_ = value_len_;
     return 0;
 }
 
 template <typename T>
-static int do_setsockopt (const void *const optval_,
-                          const size_t optvallen_,
-                          T *const out_value_)
+static int do_setsockopt (const void *const optval_, const size_t optvallen_, T *const out_value_)
 {
     if (optvallen_ == sizeof (T)) {
         memcpy (out_value_, optval_, sizeof (T));
@@ -53,8 +47,8 @@ static int do_setsockopt (const void *const optval_,
 }
 
 int zlink::do_setsockopt_int_as_bool_strict (const void *const optval_,
-                                           const size_t optvallen_,
-                                           bool *const out_value_)
+                                             const size_t optvallen_,
+                                             bool *const out_value_)
 {
     int value = -1;
     if (do_setsockopt (optval_, optvallen_, &value) == -1)
@@ -67,8 +61,8 @@ int zlink::do_setsockopt_int_as_bool_strict (const void *const optval_,
 }
 
 int zlink::do_setsockopt_int_as_bool_relaxed (const void *const optval_,
-                                            const size_t optvallen_,
-                                            bool *const out_value_)
+                                              const size_t optvallen_,
+                                              bool *const out_value_)
 {
     int value = -1;
     if (do_setsockopt (optval_, optvallen_, &value) == -1)
@@ -77,11 +71,10 @@ int zlink::do_setsockopt_int_as_bool_relaxed (const void *const optval_,
     return 0;
 }
 
-static int
-do_setsockopt_string_allow_empty_strict (const void *const optval_,
-                                         const size_t optvallen_,
-                                         std::string *const out_value_,
-                                         const size_t max_len_)
+static int do_setsockopt_string_allow_empty_strict (const void *const optval_,
+                                                    const size_t optvallen_,
+                                                    std::string *const out_value_,
+                                                    const size_t max_len_)
 {
     if (optval_ == NULL && optvallen_ == 0) {
         out_value_->clear ();
@@ -95,7 +88,7 @@ do_setsockopt_string_allow_empty_strict (const void *const optval_,
 }
 
 const int default_hwm = 1000;
-const int default_batch_size = 8192; // 32768;// //16384; 
+const int default_batch_size = 8192; // 32768;// //16384;
 
 zlink::options_t::options_t () :
     sndhwm (default_hwm),

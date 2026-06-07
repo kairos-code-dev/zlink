@@ -37,7 +37,10 @@ class received_t
     const std::vector<message_t> &parts () const;
     std::vector<message_t> &parts ();
 
-    bool is_single_part () const noexcept { return _single_part.has_value () || _parts.size () == 1u; }
+    bool is_single_part () const noexcept
+    {
+        return _single_part.has_value () || _parts.size () == 1u;
+    }
     message_t &first_part ();
     message_t single_part_or_throw ();
     /// Send context (routing_id / spot_rid) is encapsulated. Returns an

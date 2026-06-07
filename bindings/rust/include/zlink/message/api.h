@@ -16,12 +16,11 @@ extern "C" {
 typedef struct zlink_msg_t
 {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
-    __declspec(align (8)) unsigned char _[64];
-#elif defined(_MSC_VER)                                                        \
-  && (defined(_M_IX86) || defined(_M_ARM_ARMV7VE) || defined(_M_ARM))
-    __declspec(align (4)) unsigned char _[64];
-#elif defined(__GNUC__) || defined(__INTEL_COMPILER)                           \
-  || (defined(__SUNPRO_C) && __SUNPRO_C >= 0x590)                              \
+    __declspec (align (8)) unsigned char _[64];
+#elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_ARM_ARMV7VE) || defined(_M_ARM))
+    __declspec (align (4)) unsigned char _[64];
+#elif defined(__GNUC__) || defined(__INTEL_COMPILER)                                               \
+  || (defined(__SUNPRO_C) && __SUNPRO_C >= 0x590)                                                  \
   || (defined(__SUNPRO_CC) && __SUNPRO_CC >= 0x590)
     unsigned char _[64] __attribute__ ((aligned (sizeof (void *))));
 #else
@@ -114,12 +113,10 @@ ZLINK_EXPORT size_t zlink_msg_size (const zlink_msg_t *msg_);
  * reference count. Message kinds that are not managed by internal reference
  * counting (for example inline or borrowed-constant storage) return 1.
  */
-ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_,
-                                   zlink_config_result_t *error_out_);
+ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_, zlink_config_result_t *error_out_);
 
 /** @brief Get a string message property (e.g. metadata). */
-ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
-                                     const char *property_);
+ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 
 
 /** @brief Close all parts in a multipart message array. */

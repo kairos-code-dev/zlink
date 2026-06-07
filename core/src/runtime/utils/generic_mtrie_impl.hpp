@@ -37,8 +37,7 @@ template <typename T> generic_mtrie_t<T>::~generic_mtrie_t ()
     }
 }
 
-template <typename T>
-bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
+template <typename T> bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
 {
     generic_mtrie_t<value_t> *it = this;
 
@@ -67,8 +66,8 @@ bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
                 //  The new character is above the current character range.
                 const unsigned short old_count = it->_count;
                 it->_count = c - it->_min + 1;
-                it->_next.table = static_cast<generic_mtrie_t **> (realloc (
-                  it->_next.table, sizeof (generic_mtrie_t *) * it->_count));
+                it->_next.table = static_cast<generic_mtrie_t **> (
+                  realloc (it->_next.table, sizeof (generic_mtrie_t *) * it->_count));
                 alloc_assert (it->_next.table);
                 for (unsigned short i = old_count; i != it->_count; i++)
                     it->_next.table[i] = NULL;
@@ -76,8 +75,8 @@ bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
                 //  The new character is below the current character range.
                 const unsigned short old_count = it->_count;
                 it->_count = (it->_min + old_count) - c;
-                it->_next.table = static_cast<generic_mtrie_t **> (realloc (
-                  it->_next.table, sizeof (generic_mtrie_t *) * it->_count));
+                it->_next.table = static_cast<generic_mtrie_t **> (
+                  realloc (it->_next.table, sizeof (generic_mtrie_t *) * it->_count));
                 alloc_assert (it->_next.table);
                 memmove (it->_next.table + it->_min - c, it->_next.table,
                          old_count * sizeof (generic_mtrie_t *));
@@ -100,8 +99,7 @@ bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
             it = it->_next.node;
         } else {
             if (!it->_next.table[c - it->_min]) {
-                it->_next.table[c - it->_min] =
-                  new (std::nothrow) generic_mtrie_t;
+                it->_next.table[c - it->_min] = new (std::nothrow) generic_mtrie_t;
                 alloc_assert (it->_next.table[c - it->_min]);
                 ++(it->_live_nodes);
             }
@@ -128,9 +126,7 @@ bool generic_mtrie_t<T>::add (prefix_t prefix_, size_t size_, value_t *pipe_)
 template <typename T>
 template <typename Arg>
 void generic_mtrie_t<T>::rm (value_t *pipe_,
-                             void (*func_) (prefix_t data_,
-                                            size_t size_,
-                                            Arg arg_),
+                             void (*func_) (prefix_t data_, size_t size_, Arg arg_),
                              Arg arg_,
                              bool call_on_uniq_)
 {
@@ -169,8 +165,7 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
             //  Adjust the buffer.
             if (it.size >= maxbuffsize) {
                 maxbuffsize = it.size + 256;
-                buff =
-                  static_cast<unsigned char *> (realloc (buff, maxbuffsize));
+                buff = static_cast<unsigned char *> (realloc (buff, maxbuffsize));
                 alloc_assert (buff);
             }
 
@@ -187,14 +182,7 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                     //  visit after the operation on the child can do the removals.
                     it.processed_for_removal = true;
                     stack.push_back (it);
-                    struct iter next = {it.node->_next.node,
-                                        NULL,
-                                        NULL,
-                                        ++it.size,
-                                        0,
-                                        0,
-                                        0,
-                                        false};
+                    struct iter next = {it.node->_next.node, NULL, NULL, ++it.size, 0, 0, 0, false};
                     stack.push_back (next);
                     break;
                 }
@@ -216,15 +204,14 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                     it.processed_for_removal = true;
                     stack.push_back (it);
                     if (it.node->_next.table[it.current_child]) {
-                        struct iter next = {
-                          it.node->_next.table[it.current_child],
-                          NULL,
-                          NULL,
-                          it.size + 1,
-                          0,
-                          0,
-                          0,
-                          false};
+                        struct iter next = {it.node->_next.table[it.current_child],
+                                            NULL,
+                                            NULL,
+                                            it.size + 1,
+                                            0,
+                                            0,
+                                            0,
+                                            false};
                         stack.push_back (next);
                     }
                 }
@@ -255,10 +242,8 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                     {
                         if (it.node->_next.table[it.current_child]) {
                             //  Prune redundant nodes from the mtrie
-                            if (it.node->_next.table[it.current_child]
-                                  ->is_redundant ()) {
-                                LIBZLINK_DELETE (
-                                  it.node->_next.table[it.current_child]);
+                            if (it.node->_next.table[it.current_child]->is_redundant ()) {
+                                LIBZLINK_DELETE (it.node->_next.table[it.current_child]);
 
                                 zlink_assert (it.node->_live_nodes > 0);
                                 --it.node->_live_nodes;
@@ -270,14 +255,10 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                                 //  first non-null, non-redundant node encountered is the new
                                 //  minimum index. Conversely, the last non-redundant, non-null
                                 //  node encountered is the new maximum index.
-                                if (it.current_child + it.node->_min
-                                    < it.new_min)
-                                    it.new_min =
-                                      it.current_child + it.node->_min;
-                                if (it.current_child + it.node->_min
-                                    > it.new_max)
-                                    it.new_max =
-                                      it.current_child + it.node->_min;
+                                if (it.current_child + it.node->_min < it.new_min)
+                                    it.new_min = it.current_child + it.node->_min;
+                                if (it.current_child + it.node->_min > it.new_max)
+                                    it.new_max = it.current_child + it.node->_min;
                             }
                         }
 
@@ -313,12 +294,10 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                                 //  representation
                                 zlink_assert (it.new_min == it.new_max);
                                 zlink_assert (it.new_min >= it.node->_min);
-                                zlink_assert (it.new_min
-                                            < it.node->_min + it.node->_count);
+                                zlink_assert (it.new_min < it.node->_min + it.node->_count);
                                 {
                                     generic_mtrie_t *node =
-                                      it.node->_next
-                                        .table[it.new_min - it.node->_min];
+                                      it.node->_next.table[it.new_min - it.node->_min];
                                     zlink_assert (node);
                                     free (it.node->_next.table);
                                     it.node->_next.node = node;
@@ -328,37 +307,26 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                                 break;
                             default:
                                 if (it.new_min > it.node->_min
-                                    || it.new_max < it.node->_min
-                                                      + it.node->_count - 1) {
-                                    zlink_assert (it.new_max - it.new_min + 1
-                                                > 1);
+                                    || it.new_max < it.node->_min + it.node->_count - 1) {
+                                    zlink_assert (it.new_max - it.new_min + 1 > 1);
 
-                                    generic_mtrie_t **old_table =
-                                      it.node->_next.table;
+                                    generic_mtrie_t **old_table = it.node->_next.table;
                                     zlink_assert (it.new_min > it.node->_min
-                                                || it.new_max
-                                                     < it.node->_min
-                                                         + it.node->_count - 1);
+                                                  || it.new_max
+                                                       < it.node->_min + it.node->_count - 1);
                                     zlink_assert (it.new_min >= it.node->_min);
                                     zlink_assert (it.new_max
-                                                <= it.node->_min
-                                                     + it.node->_count - 1);
-                                    zlink_assert (it.new_max - it.new_min + 1
-                                                < it.node->_count);
+                                                  <= it.node->_min + it.node->_count - 1);
+                                    zlink_assert (it.new_max - it.new_min + 1 < it.node->_count);
 
-                                    it.node->_count =
-                                      it.new_max - it.new_min + 1;
-                                    it.node->_next.table =
-                                      static_cast<generic_mtrie_t **> (
-                                        malloc (sizeof (generic_mtrie_t *)
-                                                * it.node->_count));
+                                    it.node->_count = it.new_max - it.new_min + 1;
+                                    it.node->_next.table = static_cast<generic_mtrie_t **> (
+                                      malloc (sizeof (generic_mtrie_t *) * it.node->_count));
                                     alloc_assert (it.node->_next.table);
 
                                     memmove (it.node->_next.table,
-                                             old_table
-                                               + (it.new_min - it.node->_min),
-                                             sizeof (generic_mtrie_t *)
-                                               * it.node->_count);
+                                             old_table + (it.new_min - it.node->_min),
+                                             sizeof (generic_mtrie_t *) * it.node->_count);
                                     free (old_table);
 
                                     it.node->_min = it.new_min;
@@ -400,8 +368,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                     continue;
                 }
 
-                typename pipes_t::size_type erased =
-                  it.node->_pipes->erase (pipe_);
+                typename pipes_t::size_type erased = it.node->_pipes->erase (pipe_);
                 if (it.node->_pipes->empty ()) {
                     zlink_assert (erased == 1);
                     LIBZLINK_DELETE (it.node->_pipes);
@@ -420,10 +387,9 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                 continue;
             }
 
-            it.next_node =
-              it.node->_count == 1
-                ? it.node->_next.node
-                : it.node->_next.table[it.current_child - it.node->_min];
+            it.next_node = it.node->_count == 1
+                             ? it.node->_next.node
+                             : it.node->_next.table[it.current_child - it.node->_min];
             if (!it.next_node) {
                 ret = not_found;
                 continue;
@@ -431,8 +397,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
 
             it.processed_for_removal = true;
             stack.push_back (it);
-            struct iter next = {
-              it.next_node, NULL, it.prefix + 1, it.size - 1, 0, 0, 0, false};
+            struct iter next = {it.next_node, NULL, it.prefix + 1, it.size - 1, 0, 0, 0, false};
             stack.push_back (next);
         } else {
             it.processed_for_removal = false;
@@ -479,15 +444,13 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                         it.node->_min += i;
                         it.node->_count -= i;
                         generic_mtrie_t **old_table = it.node->_next.table;
-                        it.node->_next.table =
-                          static_cast<generic_mtrie_t **> (malloc (
-                            sizeof (generic_mtrie_t *) * it.node->_count));
+                        it.node->_next.table = static_cast<generic_mtrie_t **> (
+                          malloc (sizeof (generic_mtrie_t *) * it.node->_count));
                         alloc_assert (it.node->_next.table);
                         memmove (it.node->_next.table, old_table + i,
                                  sizeof (generic_mtrie_t *) * it.node->_count);
                         free (old_table);
-                    } else if (it.current_child
-                               == it.node->_min + it.node->_count - 1) {
+                    } else if (it.current_child == it.node->_min + it.node->_count - 1) {
                         //  We can compact the table "from the right"
                         unsigned short i;
                         for (i = 1; i < it.node->_count; ++i)
@@ -497,9 +460,8 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                         zlink_assert (i < it.node->_count);
                         it.node->_count -= i;
                         generic_mtrie_t **old_table = it.node->_next.table;
-                        it.node->_next.table =
-                          static_cast<generic_mtrie_t **> (malloc (
-                            sizeof (generic_mtrie_t *) * it.node->_count));
+                        it.node->_next.table = static_cast<generic_mtrie_t **> (
+                          malloc (sizeof (generic_mtrie_t *) * it.node->_count));
                         alloc_assert (it.node->_next.table);
                         memmove (it.node->_next.table, old_table,
                                  sizeof (generic_mtrie_t *) * it.node->_count);
@@ -551,8 +513,7 @@ void generic_mtrie_t<T>::match (prefix_t data_,
             current = current->_next.node;
         } else {
             //  If there are multiple subnodes.
-            if (data_[0] < current->_min
-                || data_[0] >= current->_min + current->_count) {
+            if (data_[0] < current->_min || data_[0] >= current->_min + current->_count) {
                 break;
             }
             current = current->_next.table[data_[0] - current->_min];
@@ -562,12 +523,10 @@ void generic_mtrie_t<T>::match (prefix_t data_,
 
 template <typename T>
 template <typename Arg>
-void generic_mtrie_t<T>::visit_values (void (*func_) (value_t *value_, Arg arg_),
-                                       Arg arg_) const
+void generic_mtrie_t<T>::visit_values (void (*func_) (value_t *value_, Arg arg_), Arg arg_) const
 {
     if (_pipes) {
-        for (typename pipes_t::const_iterator it = _pipes->begin (),
-                                              end = _pipes->end ();
+        for (typename pipes_t::const_iterator it = _pipes->begin (), end = _pipes->end ();
              it != end; ++it)
             func_ (*it, arg_);
     }

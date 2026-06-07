@@ -15,9 +15,7 @@
 
 namespace
 {
-int recv_monitor_frame (void *monitor_socket_,
-                        zlink::scoped_msg_t *frame_,
-                        int flags_)
+int recv_monitor_frame (void *monitor_socket_, zlink::scoped_msg_t *frame_, int flags_)
 {
     if (!frame_) {
         errno = EFAULT;
@@ -34,17 +32,14 @@ bool copy_u64_frame (const zlink::scoped_msg_t &frame_, uint64_t *out_)
         return false;
     }
 
-    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (frame_.get ())),
-            sizeof (*out_));
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (frame_.get ())), sizeof (*out_));
     return true;
 }
 }
 
-int socket_monitor_snapshot_provider (void *subject_,
-                                      zlink_monitor_status_t *out_)
+int socket_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_)
 {
-    zlink::socket_base_t *socket =
-      static_cast<zlink::socket_base_t *> (subject_);
+    zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (subject_);
     if (!socket || !out_) {
         errno = EINVAL;
         return -1;
@@ -81,8 +76,7 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
     uint64_t value_count = 0;
     {
         zlink::scoped_msg_t value_count_frame;
-        rc = recv_monitor_frame (monitor_socket_, &value_count_frame,
-                                 follow_flags);
+        rc = recv_monitor_frame (monitor_socket_, &value_count_frame, follow_flags);
         if (rc == -1)
             return -1;
         if (!copy_u64_frame (value_count_frame, &value_count))
@@ -95,42 +89,35 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         if (rc == -1)
             return -1;
         if (i == 0 && zlink_msg_size (value_frame.get ()) >= sizeof (uint64_t))
-            memcpy (&event_->value, zlink_msg_data (value_frame.get ()),
-                    sizeof (uint64_t));
+            memcpy (&event_->value, zlink_msg_data (value_frame.get ()), sizeof (uint64_t));
     }
 
     {
         zlink::scoped_msg_t routing_id_frame;
-        rc = recv_monitor_frame (monitor_socket_, &routing_id_frame,
-                                 follow_flags);
+        rc = recv_monitor_frame (monitor_socket_, &routing_id_frame, follow_flags);
         if (rc == -1)
             return -1;
-        zlink::copy_routing_id_from_msg (routing_id_frame.ref (),
-                                         &event_->routing_id);
+        zlink::copy_routing_id_from_msg (routing_id_frame.ref (), &event_->routing_id);
     }
 
     {
         zlink::scoped_msg_t local_addr_frame;
-        rc = recv_monitor_frame (monitor_socket_, &local_addr_frame,
-                                 follow_flags);
+        rc = recv_monitor_frame (monitor_socket_, &local_addr_frame, follow_flags);
         if (rc == -1)
             return -1;
-        zlink::copy_fixed_c_string_from_bytes (
-          event_->local_addr, sizeof (event_->local_addr),
-          zlink_msg_data (local_addr_frame.get ()),
-          zlink_msg_size (local_addr_frame.get ()));
+        zlink::copy_fixed_c_string_from_bytes (event_->local_addr, sizeof (event_->local_addr),
+                                               zlink_msg_data (local_addr_frame.get ()),
+                                               zlink_msg_size (local_addr_frame.get ()));
     }
 
     {
         zlink::scoped_msg_t remote_addr_frame;
-        rc = recv_monitor_frame (monitor_socket_, &remote_addr_frame,
-                                 follow_flags);
+        rc = recv_monitor_frame (monitor_socket_, &remote_addr_frame, follow_flags);
         if (rc == -1)
             return -1;
-        zlink::copy_fixed_c_string_from_bytes (
-          event_->remote_addr, sizeof (event_->remote_addr),
-          zlink_msg_data (remote_addr_frame.get ()),
-          zlink_msg_size (remote_addr_frame.get ()));
+        zlink::copy_fixed_c_string_from_bytes (event_->remote_addr, sizeof (event_->remote_addr),
+                                               zlink_msg_data (remote_addr_frame.get ()),
+                                               zlink_msg_size (remote_addr_frame.get ()));
     }
 
     return 0;
@@ -143,12 +130,10 @@ zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
     if (require_monitor_recv_model (monitor_) != 0)
         return zlink::recv_result_internal::from_errno (errno);
     return zlink::recv_result_internal::from_rc (
-      recv_socket_monitor_event_unchecked (monitor_, out_,
-                                           static_cast<int> (flags_)));
+      recv_socket_monitor_event_unchecked (monitor_, out_, static_cast<int> (flags_)));
 }
 
-zlink_config_result_t zlink_monitor_status (void *monitor_,
-                                              zlink_monitor_status_t *out_)
+zlink_config_result_t zlink_monitor_status (void *monitor_, zlink_monitor_status_t *out_)
 {
     if (!out_) {
         errno = EINVAL;

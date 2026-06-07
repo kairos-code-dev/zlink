@@ -16,9 +16,10 @@ int main ()
     zlink::actor_ref_t concrete = play_actor.ref ();
 
     actor_sample_dispatch_state_t state{&play_spot, &play_node, &play_actor, &capture};
-    play_spot.set_dispatch_handler ([&state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
-        actor_sample_dispatch (state, info);
-    });
+    play_spot.set_dispatch_handler (
+      [&state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
+          actor_sample_dispatch (state, info);
+      });
 
     actor_sample_stream_session_t stream_session (ctx);
     stream_session.stream.attach_actor_gateway (gateway_node);
@@ -33,7 +34,8 @@ int main ()
               .message (join)
               .flags (zlink::recv_flags_t::dontwait)
               .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result, std::vector<zlink::message_t> parts) {
+              .submit ([&] (const zlink::actor_join_result_t &result,
+                            std::vector<zlink::message_t> parts) {
                   actor_sample_join_reply (capture, result, std::move (parts));
               }));
     assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
@@ -52,7 +54,11 @@ int main ()
       .timeout (std::chrono::milliseconds (1000))
       .submit_async ()
       .get ();
-    (void) gateway_node.destroy_actor (concrete).timeout (std::chrono::milliseconds (1000)).submit_async ().get ();
-    std::printf ("[actor/gateway] stream payload: \"client-input\" -> actor: \"%s\"\n", capture.payload.c_str ());
+    (void) gateway_node.destroy_actor (concrete)
+      .timeout (std::chrono::milliseconds (1000))
+      .submit_async ()
+      .get ();
+    std::printf ("[actor/gateway] stream payload: \"client-input\" -> actor: \"%s\"\n",
+                 capture.payload.c_str ());
     return 0;
 }

@@ -18,13 +18,11 @@ namespace
 // and queuing cost on 64B-class traffic. Keep the initial batch modest and let
 // the ASIO stream encoder grow dynamically when the socket sustains larger
 // bursts.
-const int stream_batch_size_min =
-  zlink::stream_batch_policy::minimum_send_batch_size ();
+const int stream_batch_size_min = zlink::stream_batch_policy::minimum_send_batch_size ();
 
 // Keep a small read headroom so framed application protocols are less likely
 // to split at the exact payload boundary.
-const int stream_batch_read_headroom =
-  zlink::stream_batch_policy::read_headroom_bytes ();
+const int stream_batch_read_headroom = zlink::stream_batch_policy::read_headroom_bytes ();
 
 bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 {
@@ -35,15 +33,13 @@ bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 uint32_t claim_next_routing_id (std::atomic<uint32_t> &next_)
 {
     while (true) {
-        const uint32_t candidate =
-          next_.fetch_add (1, std::memory_order_relaxed);
+        const uint32_t candidate = next_.fetch_add (1, std::memory_order_relaxed);
         if (candidate != 0)
             return candidate;
     }
 }
 
-uint32_t resolve_dispatch_routing_id (const zlink::msg_t *msg_,
-                                      zlink::pipe_t *pipe_)
+uint32_t resolve_dispatch_routing_id (const zlink::msg_t *msg_, zlink::pipe_t *pipe_)
 {
     if (msg_) {
         const uint32_t msg_routing_id = msg_->get_routing_id ();
@@ -88,9 +84,8 @@ zlink::pipe_t *resolve_connect_event_owner (zlink::pipe_t *pipe_)
     return owner;
 }
 
-zlink::pipe_t *resolve_direct_dispatch_output_pipe (
-  const zlink::stream_t *socket_,
-  uint32_t routing_id_)
+zlink::pipe_t *resolve_direct_dispatch_output_pipe (const zlink::stream_t *socket_,
+                                                    uint32_t routing_id_)
 {
     if (!socket_ || !zlink::stream_dispatch_owns_socket (socket_))
         return NULL;
@@ -98,8 +93,7 @@ zlink::pipe_t *resolve_direct_dispatch_output_pipe (
     if (zlink::stream_dispatch_context_t::current_routing_id () != routing_id_)
         return NULL;
 
-    zlink::pipe_t *dispatch_pipe =
-      zlink::stream_dispatch_context_t::current_pipe ();
+    zlink::pipe_t *dispatch_pipe = zlink::stream_dispatch_context_t::current_pipe ();
     if (!dispatch_pipe)
         return NULL;
 
@@ -113,8 +107,8 @@ void reset_dispatched_msg (zlink::msg_t *msg_)
         return;
 
     if (msg_->check ()) {
-        if (msg_->size () == 0 && msg_->flags () == 0
-            && msg_->get_routing_id () == 0 && msg_->group ()[0] == '\0') {
+        if (msg_->size () == 0 && msg_->flags () == 0 && msg_->get_routing_id () == 0
+            && msg_->group ()[0] == '\0') {
             return;
         }
 
@@ -155,9 +149,8 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
         options.rcvbuf = 262144;
 
     const int stream_batch_size = stream_batch_size_min;
-    const int stream_read_batch_size =
-      zlink::stream_batch_policy::apply_read_headroom (
-        stream_batch_size, stream_batch_read_headroom);
+    const int stream_read_batch_size = zlink::stream_batch_policy::apply_read_headroom (
+      stream_batch_size, stream_batch_read_headroom);
     options.in_batch_size = stream_read_batch_size;
     options.out_batch_size = stream_batch_size;
 
@@ -171,15 +164,12 @@ zlink::stream_t::~stream_t ()
     _prefetched_msg.close ();
 }
 
-zlink::stream_t::route_shard_t &
-zlink::stream_t::route_shard_for (uint32_t routing_id_)
+zlink::stream_t::route_shard_t &zlink::stream_t::route_shard_for (uint32_t routing_id_)
 {
     return _route_shards[routing_id_ % route_shard_count];
 }
 
-void zlink::stream_t::xattach_pipe (pipe_t *pipe_,
-                                    bool subscribe_to_all_,
-                                    bool locally_initiated_)
+void zlink::stream_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
     zlink_assert (pipe_);
@@ -203,8 +193,7 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     if (server_routing_id != 0) {
         route_shard_t &shard = route_shard_for (server_routing_id);
         scoped_fast_lock_t shard_lock (shard.sync);
-        route_shard_t::routes_t::iterator it = shard.routes.find (
-          server_routing_id);
+        route_shard_t::routes_t::iterator it = shard.routes.find (server_routing_id);
         if (it != shard.routes.end () && it->second == pipe_)
             shard.routes.erase (it);
     }
@@ -228,8 +217,7 @@ void zlink::stream_t::xread_activated (pipe_t *pipe_)
 
 int zlink::stream_t::xsend (msg_t *msg_)
 {
-    if (!_more_out && !(msg_->flags () & msg_t::more)
-        && msg_->get_routing_id () != 0) {
+    if (!_more_out && !(msg_->flags () & msg_t::more) && msg_->get_routing_id () != 0) {
         const uint32_t routing_id = msg_->get_routing_id ();
         route_shard_t &shard = route_shard_for (routing_id);
         scoped_fast_lock_t shard_lock (shard.sync);
@@ -244,9 +232,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
         if (msg_->size () == 0) {
             out->terminate (false);
         } else {
-            const bool ok =
-              out->write_single_message_and_flush_no_recursive_hwm_check (
-                msg_);
+            const bool ok = out->write_single_message_and_flush_no_recursive_hwm_check (msg_);
             if (unlikely (!ok)) {
                 errno = EAGAIN;
                 return -1;
@@ -269,20 +255,17 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 return -1;
             }
 
-            const uint32_t routing_id =
-              get_uint32 (static_cast<unsigned char *> (msg_->data ()));
+            const uint32_t routing_id = get_uint32 (static_cast<unsigned char *> (msg_->data ()));
             route_shard_t &shard = route_shard_for (routing_id);
             scoped_fast_lock_t shard_lock (shard.sync);
-            route_shard_t::routes_t::iterator it = shard.routes.find (
-              routing_id);
+            route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
             if (it == shard.routes.end () || !it->second) {
                 errno = EHOSTUNREACH;
                 return -1;
             }
 
             _current_out = it->second;
-            if (_current_out->check_write_status ()
-                != pipe_write_ready) {
+            if (_current_out->check_write_status () != pipe_write_ready) {
                 _current_out = NULL;
                 errno = EAGAIN;
                 return -1;
@@ -302,26 +285,24 @@ int zlink::stream_t::xsend (msg_t *msg_)
     _more_out = false;
 
     if (_current_out) {
-            if (msg_->size () == 0) {
-                _current_out->terminate (false);
-                int rc = msg_->close ();
-                errno_assert (rc == 0);
-                rc = msg_->init ();
+        if (msg_->size () == 0) {
+            _current_out->terminate (false);
+            int rc = msg_->close ();
+            errno_assert (rc == 0);
+            rc = msg_->init ();
             errno_assert (rc == 0);
             _current_out = NULL;
             return 0;
-            }
+        }
 
-            const bool ok =
-              _current_out->write_single_message_and_flush_no_recursive_hwm_check (
-                msg_);
-            if (likely (ok)) {
-            } else {
-                _current_out = NULL;
-                const int rc = msg_->close ();
-                errno_assert (rc == 0);
-                errno = EAGAIN;
-                return -1;
+        const bool ok = _current_out->write_single_message_and_flush_no_recursive_hwm_check (msg_);
+        if (likely (ok)) {
+        } else {
+            _current_out = NULL;
+            const int rc = msg_->close ();
+            errno_assert (rc == 0);
+            errno = EAGAIN;
+            return -1;
         }
         _current_out = NULL;
     } else {
@@ -399,9 +380,7 @@ int zlink::stream_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
     return 0;
 }
 
-int zlink::stream_t::xsetsockopt (int option_,
-                                  const void *optval_,
-                                  size_t optvallen_)
+int zlink::stream_t::xsetsockopt (int option_, const void *optval_, size_t optvallen_)
 {
     if (option_ == ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID) {
         LIBZLINK_UNUSED (optval_);
@@ -437,8 +416,8 @@ int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_
     return 0;
 }
 
-int zlink::stream_t::stream_set_msg_handler_with_userdata (
-  zlink_socket_msg_handler_fn handler_, void *userdata_)
+int zlink::stream_t::stream_set_msg_handler_with_userdata (zlink_socket_msg_handler_fn handler_,
+                                                           void *userdata_)
 {
     std::lock_guard<std::recursive_mutex> lock (_api_mutex);
 
@@ -482,8 +461,7 @@ int zlink::stream_t::stream_set_packet_msg_handler_with_userdata (
     _dispatch_msg_handler.store (NULL, std::memory_order_release);
     _dispatch_msg_handler_userdata.store (NULL, std::memory_order_release);
     _dispatch_packet_handler.store (handler_, std::memory_order_release);
-    _dispatch_packet_handler_userdata.store (userdata_,
-                                             std::memory_order_release);
+    _dispatch_packet_handler_userdata.store (userdata_, std::memory_order_release);
     _dispatch_active.store (true, std::memory_order_release);
     return 0;
 }
@@ -510,8 +488,7 @@ int zlink::stream_t::stream_dispatch_stop ()
 
 bool zlink::stream_t::stream_dispatch_active () const
 {
-    return _dispatch_mode.load (std::memory_order_acquire)
-           != dispatch_mode_none;
+    return _dispatch_mode.load (std::memory_order_acquire) != dispatch_mode_none;
 }
 
 bool zlink::stream_t::stream_dispatch_in_callback () const
@@ -541,8 +518,7 @@ void zlink::stream_t::stop_dispatch_from_callback ()
     _dispatch_packet_handler_userdata.store (NULL, std::memory_order_release);
 }
 
-uint32_t zlink::stream_t::resolve_dispatch_routing_id_fast (const msg_t *msg_,
-                                                            pipe_t *pipe_)
+uint32_t zlink::stream_t::resolve_dispatch_routing_id_fast (const msg_t *msg_, pipe_t *pipe_)
 {
     if (pipe_) {
         const uint32_t pipe_routing_id = pipe_->get_server_socket_routing_id ();
@@ -566,8 +542,7 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     if (!msg_ || !pipe_)
         return 1;
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (msg_->data ());
+    const unsigned char *payload = static_cast<const unsigned char *> (msg_->data ());
     const size_t payload_size = msg_->size ();
     if (is_stream_control_event (payload, payload_size))
         return 1;
@@ -595,8 +570,7 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     rid.size = 4;
     put_uint32 (rid.data, routing_id_value);
 
-    const stream_dispatch_context_t dispatch_scope (this, pipe_,
-                                                    routing_id_value);
+    const stream_dispatch_context_t dispatch_scope (this, pipe_, routing_id_value);
     switch (_dispatch_mode.load (std::memory_order_acquire)) {
         case dispatch_mode_raw:
             return stream_dispatch_raw_msg_from_io (&rid, msg_);
@@ -625,14 +599,10 @@ void zlink::stream_t::clear_packet_dispatch_state ()
     }
 }
 
-int zlink::stream_t::stream_dispatch_raw_msg_from_io (
-  const zlink_routing_id_t *rid_,
-  msg_t *msg_)
+int zlink::stream_t::stream_dispatch_raw_msg_from_io (const zlink_routing_id_t *rid_, msg_t *msg_)
 {
-    zlink_stream_on_raw_fn raw_callback =
-      _dispatch_raw_callback.load (std::memory_order_acquire);
-    zlink_socket_msg_handler_fn handler =
-      _dispatch_msg_handler.load (std::memory_order_acquire);
+    zlink_stream_on_raw_fn raw_callback = _dispatch_raw_callback.load (std::memory_order_acquire);
+    zlink_socket_msg_handler_fn handler = _dispatch_msg_handler.load (std::memory_order_acquire);
 
     _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
 
@@ -657,10 +627,9 @@ int zlink::stream_t::stream_dispatch_raw_msg_from_io (
     return 1;
 }
 
-int zlink::stream_t::stream_dispatch_packet_msg_from_io (
-  const zlink_routing_id_t *rid_,
-  msg_t *msg_,
-  pipe_t *pipe_)
+int zlink::stream_t::stream_dispatch_packet_msg_from_io (const zlink_routing_id_t *rid_,
+                                                         msg_t *msg_,
+                                                         pipe_t *pipe_)
 {
     zlink_stream_packet_handler_fn handler =
       _dispatch_packet_handler.load (std::memory_order_acquire);
@@ -671,20 +640,17 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
     pipe_t::stream_packet_state_t &state = pipe_->stream_packet_state ();
     scoped_fast_lock_t packet_lock (pipe_->stream_packet_dispatch_sync ());
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (msg_->data ());
+    const unsigned char *payload = static_cast<const unsigned char *> (msg_->data ());
     const size_t payload_size = msg_->size ();
     size_t offset = 0;
 
     while (offset < payload_size) {
         if (state.stage == pipe_t::stream_packet_state_t::prefix_stage) {
             const size_t remaining_prefix = sizeof (state.prefix) - state.prefix_used;
-            const size_t to_copy = payload_size - offset < remaining_prefix
-                                     ? payload_size - offset
-                                     : remaining_prefix;
+            const size_t to_copy =
+              payload_size - offset < remaining_prefix ? payload_size - offset : remaining_prefix;
             if (to_copy > 0) {
-                memcpy (state.prefix + state.prefix_used, payload + offset,
-                        to_copy);
+                memcpy (state.prefix + state.prefix_used, payload + offset, to_copy);
                 state.prefix_used += to_copy;
                 offset += to_copy;
             }
@@ -702,10 +668,8 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
                     state.reset ();
                     reset_dispatched_msg (msg_);
                     if (pipe_) {
-                        event_disconnected (pipe_->get_endpoint_pair (),
-                                            EMSGSIZE,
-                                            rid_ ? rid_->data : NULL,
-                                            rid_ ? rid_->size : 0);
+                        event_disconnected (pipe_->get_endpoint_pair (), EMSGSIZE,
+                                            rid_ ? rid_->data : NULL, rid_ ? rid_->size : 0);
                         pipe_->terminate (false);
                     }
                     errno = EMSGSIZE;
@@ -719,8 +683,7 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
                 reset_dispatched_msg (msg_);
                 if (pipe_) {
                     event_disconnected (pipe_->get_endpoint_pair (), EMSGSIZE,
-                                        rid_ ? rid_->data : NULL,
-                                        rid_ ? rid_->size : 0);
+                                        rid_ ? rid_->data : NULL, rid_ ? rid_->size : 0);
                     pipe_->terminate (false);
                 }
                 return -1;
@@ -736,12 +699,10 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
 
         if (state.stage == pipe_t::stream_packet_state_t::header_stage) {
             const size_t remaining_header = state.header_size - state.header_used;
-            const size_t to_copy = payload_size - offset < remaining_header
-                                     ? payload_size - offset
-                                     : remaining_header;
+            const size_t to_copy =
+              payload_size - offset < remaining_header ? payload_size - offset : remaining_header;
             if (to_copy > 0) {
-                memcpy (static_cast<unsigned char *> (state.header.data ())
-                          + state.header_used,
+                memcpy (static_cast<unsigned char *> (state.header.data ()) + state.header_used,
                         payload + offset, to_copy);
                 state.header_used += to_copy;
                 offset += to_copy;
@@ -755,12 +716,10 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
 
         if (state.stage == pipe_t::stream_packet_state_t::body_stage) {
             const size_t remaining_body = state.body_size - state.body_used;
-            const size_t to_copy = payload_size - offset < remaining_body
-                                     ? payload_size - offset
-                                     : remaining_body;
+            const size_t to_copy =
+              payload_size - offset < remaining_body ? payload_size - offset : remaining_body;
             if (to_copy > 0) {
-                memcpy (static_cast<unsigned char *> (state.body.data ())
-                          + state.body_used,
+                memcpy (static_cast<unsigned char *> (state.body.data ()) + state.body_used,
                         payload + offset, to_copy);
                 state.body_used += to_copy;
                 offset += to_copy;
@@ -785,8 +744,7 @@ int zlink::stream_t::stream_dispatch_packet_msg_from_io (
             _dispatch_inflight.fetch_add (1, std::memory_order_acq_rel);
             handler (this, rid_, reinterpret_cast<zlink_msg_t *> (&header_out),
                      reinterpret_cast<zlink_msg_t *> (&body_out),
-                     _dispatch_packet_handler_userdata.load (
-                       std::memory_order_acquire));
+                     _dispatch_packet_handler_userdata.load (std::memory_order_acquire));
             reset_dispatched_msg (&header_out);
             reset_dispatched_msg (&body_out);
             _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel);
@@ -854,8 +812,7 @@ void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         add_out_pipe (ZLINK_MOVE (routing_id), pipe_, locally_initiated_);
 }
 
-void zlink::stream_t::maybe_emit_connect_event (pipe_t *pipe_,
-                                                uint32_t routing_id_value_)
+void zlink::stream_t::maybe_emit_connect_event (pipe_t *pipe_, uint32_t routing_id_value_)
 {
     zlink_assert (pipe_);
 
@@ -871,6 +828,6 @@ void zlink::stream_t::maybe_emit_connect_event (pipe_t *pipe_,
 
     unsigned char routing_id_data[4];
     put_uint32 (routing_id_data, resolved_routing_id);
-    event_connection_ready_changed(pipe_->get_endpoint_pair (), routing_id_data,
-                            sizeof (routing_id_data));
+    event_connection_ready_changed (pipe_->get_endpoint_pair (), routing_id_data,
+                                    sizeof (routing_id_data));
 }

@@ -39,7 +39,8 @@
 #define ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL "https://localhost:18444"
 #endif
 
-static_assert (std::is_same_v<decltype (zlink::framework::app_t::create ()), zlink::framework::app_t>);
+static_assert (
+  std::is_same_v<decltype (zlink::framework::app_t::create ()), zlink::framework::app_t>);
 
 namespace
 {
@@ -70,7 +71,8 @@ std::uint16_t process_unique_port (std::uint16_t base_port, std::uint16_t salt)
         address.sin_family = AF_INET;
         address.sin_port = htons (candidate);
         address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-        const bool bindable = ::bind (descriptor, reinterpret_cast<sockaddr *> (&address), sizeof (address)) == 0;
+        const bool bindable =
+          ::bind (descriptor, reinterpret_cast<sockaddr *> (&address), sizeof (address)) == 0;
         ::close (descriptor);
         if (bindable) {
             return candidate;
@@ -85,8 +87,8 @@ std::uint16_t port_from_endpoint (const std::string &endpoint)
     const auto scheme = endpoint.find ("://");
     const auto authority_start = scheme == std::string::npos ? 0 : scheme + 3;
     const auto slash = endpoint.find ('/', authority_start);
-    const auto authority =
-      endpoint.substr (authority_start, slash == std::string::npos ? std::string::npos : slash - authority_start);
+    const auto authority = endpoint.substr (
+      authority_start, slash == std::string::npos ? std::string::npos : slash - authority_start);
     const auto colon = authority.rfind (':');
     if (colon == std::string::npos || colon + 1 >= authority.size ()) {
         return 0;
@@ -156,12 +158,14 @@ bool http_keep_alive_round_trip (const std::string &endpoint)
         return true;
     };
     std::string response;
-    if (!send_all ("GET /numbers/11?page=1 HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")
+    if (!send_all (
+          "GET /numbers/11?page=1 HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")
         || !recv_until (response, R"("id":11)")) {
         ::close (descriptor);
         return false;
     }
-    if (!send_all ("GET /numbers/12?page=2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    if (!send_all (
+          "GET /numbers/12?page=2 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
         || !recv_until (response, R"("id":12)")) {
         ::close (descriptor);
         return false;
@@ -173,7 +177,9 @@ bool http_keep_alive_round_trip (const std::string &endpoint)
 #endif
 }
 
-bool http_raw_request_contains (const std::string &endpoint, const std::string &request, const std::string &needle)
+bool http_raw_request_contains (const std::string &endpoint,
+                                const std::string &request,
+                                const std::string &needle)
 {
 #ifdef _WIN32
     (void) endpoint;
@@ -232,11 +238,13 @@ struct create_game_http_handler_t
         {
             if (context.method == zlink::framework::http_method_t::post && name.empty ()) {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error, "name is required");
+                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  "name is required");
             }
             if (name == "invalid") {
                 throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::request_protocol_error, "name is invalid");
+                  zlink::framework::framework_error_kind_t::request_protocol_error,
+                  "name is invalid");
             }
         }
     };
@@ -252,23 +260,26 @@ struct create_game_http_handler_t
     reply_type handle (const request_type &request, zlink::framework::http_context_t &context)
     {
         if (request.name == "timeout") {
-            throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::timeout,
-                                                           "handler timeout");
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::timeout, "handler timeout");
         }
         if (request.name == "shutdown") {
-            throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::shutdown,
-                                                           "handler shutdown");
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::shutdown, "handler shutdown");
         }
         if (request.name == "protocol") {
             throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error, "handler protocol error");
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "handler protocol error");
         }
         if (request.name == "failed") {
-            throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_failed,
-                                                           "handler failure");
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed, "handler failure");
         }
-        return {
-          .id = request.id, .name = request.name, .filter = request.filter, .correlationId = context.correlation_id};
+        return {.id = request.id,
+                .name = request.name,
+                .filter = request.filter,
+                .correlationId = context.correlation_id};
     }
 };
 
@@ -277,14 +288,17 @@ struct async_game_http_handler_t
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
 
-    zlink::framework::task_t<reply_type> handle (const request_type &request, zlink::framework::http_context_t &context)
+    zlink::framework::task_t<reply_type> handle (const request_type &request,
+                                                 zlink::framework::http_context_t &context)
     {
         if (request.name == "async-timeout") {
             co_return zlink::framework::result_t<reply_type>::failure (
               zlink::framework::framework_error_kind_t::timeout, "async handler timeout");
         }
-        co_return reply_type{
-          .id = request.id, .name = request.name, .filter = request.filter, .correlationId = context.correlation_id};
+        co_return reply_type{.id = request.id,
+                             .name = request.name,
+                             .filter = request.filter,
+                             .correlationId = context.correlation_id};
     }
 };
 
@@ -321,9 +335,11 @@ struct injected_game_http_handler_t
 {
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
-    using dependency_types = zlink::framework::dependency_list_t<http_name_prefix_t, scoped_http_counter_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<http_name_prefix_t, scoped_http_counter_t>;
 
-    explicit injected_game_http_handler_t (http_name_prefix_t &prefix, scoped_http_counter_t &counter) :
+    explicit injected_game_http_handler_t (http_name_prefix_t &prefix,
+                                           scoped_http_counter_t &counter) :
         _prefix (&prefix), _counter (&counter)
     {
     }
@@ -355,7 +371,10 @@ struct number_http_handler_t
         int page = 0;
     };
 
-    reply_type handle (const request_type &request) { return {.id = request.id, .page = request.page}; }
+    reply_type handle (const request_type &request)
+    {
+        return {.id = request.id, .page = request.page};
+    }
 };
 
 struct response_game_http_handler_t
@@ -363,17 +382,18 @@ struct response_game_http_handler_t
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
 
-    zlink::framework::http_response_t
-    handle (const request_type &request, const zlink::framework::http_request_t &http, zlink::framework::http_context_t &)
+    zlink::framework::http_response_t handle (const request_type &request,
+                                              const zlink::framework::http_request_t &http,
+                                              zlink::framework::http_context_t &)
     {
         zlink::framework::http_response_t response;
         response.status = 202;
-        response.body = zlink::message_t::from_json (
-                          reply_type{.id = request.id,
-                                     .name = "response:" + request.name,
-                                     .filter = request.filter,
-                                     .correlationId = http.correlation_id})
-                          .to_string ();
+        response.body =
+          zlink::message_t::from_json (reply_type{.id = request.id,
+                                                  .name = "response:" + request.name,
+                                                  .filter = request.filter,
+                                                  .correlationId = http.correlation_id})
+            .to_string ();
         response.header ("X-Http-Target", http.target);
         return response;
     }
@@ -384,18 +404,19 @@ struct response_context_http_handler_t
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
 
-    zlink::framework::http_response_t
-    handle (const request_type &request, zlink::framework::http_context_t &context)
+    zlink::framework::http_response_t handle (const request_type &request,
+                                              zlink::framework::http_context_t &context)
     {
-        context.json_response (299, R"({"id":"context","name":"context","filter":"","correlationId":"context"})");
+        context.json_response (
+          299, R"({"id":"context","name":"context","filter":"","correlationId":"context"})");
         zlink::framework::http_response_t response;
         response.status = 207;
-        response.body = zlink::message_t::from_json (
-                          reply_type{.id = request.id,
-                                     .name = "response-context:" + request.name,
-                                     .filter = request.filter,
-                                     .correlationId = context.correlation_id})
-                          .to_string ();
+        response.body =
+          zlink::message_t::from_json (reply_type{.id = request.id,
+                                                  .name = "response-context:" + request.name,
+                                                  .filter = request.filter,
+                                                  .correlationId = context.correlation_id})
+            .to_string ();
         response.header ("X-Response-Wins", "true");
         return response;
     }
@@ -406,8 +427,8 @@ struct request_async_http_handler_t
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
 
-    zlink::framework::task_t<reply_type>
-    handle (const request_type &request, const zlink::framework::http_request_t &http)
+    zlink::framework::task_t<reply_type> handle (const request_type &request,
+                                                 const zlink::framework::http_request_t &http)
     {
         co_return reply_type{.id = http.route_values.at ("id"),
                              .name = "request-async:" + request.name,
@@ -423,8 +444,8 @@ struct raw_echo_http_handler_t
         zlink::framework::http_response_t response;
         response.status = 206;
         response.content_type = "text/plain";
-        response.body = request.route_values.at ("id") + "|" + request.query_values.at ("mode") + "|"
-                        + request.content_type + "|" + request.body;
+        response.body = request.route_values.at ("id") + "|" + request.query_values.at ("mode")
+                        + "|" + request.content_type + "|" + request.body;
         response.header ("X-Raw-Path", request.path);
         return response;
     }
@@ -438,7 +459,8 @@ struct raw_async_http_handler_t
         zlink::framework::http_response_t response;
         response.status = 208;
         response.content_type = "text/plain";
-        response.body = "raw-async|" + request.route_values.at ("id") + "|" + request.query_values.at ("mode");
+        response.body =
+          "raw-async|" + request.route_values.at ("id") + "|" + request.query_values.at ("mode");
         co_return response;
     }
 };
@@ -455,14 +477,16 @@ int parse_required_int_field (const nlohmann::json &json, const char *field, con
     }
     catch (const std::exception &) {
     }
-    throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::payload_decode_failed,
-                                                   message);
+    throw zlink::framework::framework_exception_t (
+      zlink::framework::framework_error_kind_t::payload_decode_failed, message);
 }
 
 void to_json (nlohmann::json &json, const create_game_http_handler_t::request_type &value)
 {
-    json = nlohmann::json{
-      {"id", value.id}, {"name", value.name}, {"filter", value.filter}, {"correlationId", value.correlationId}};
+    json = nlohmann::json{{"id", value.id},
+                          {"name", value.name},
+                          {"filter", value.filter},
+                          {"correlationId", value.correlationId}};
 }
 
 void from_json (const nlohmann::json &json, create_game_http_handler_t::request_type &value)
@@ -483,8 +507,10 @@ void from_json (const nlohmann::json &json, create_game_http_handler_t::request_
 
 void to_json (nlohmann::json &json, const create_game_http_handler_t::reply_type &value)
 {
-    json = nlohmann::json{
-      {"id", value.id}, {"name", value.name}, {"filter", value.filter}, {"correlationId", value.correlationId}};
+    json = nlohmann::json{{"id", value.id},
+                          {"name", value.name},
+                          {"filter", value.filter},
+                          {"correlationId", value.correlationId}};
 }
 
 void from_json (const nlohmann::json &json, create_game_http_handler_t::reply_type &value)
@@ -529,8 +555,9 @@ struct correlation_middleware_t
             context.response_header ("X-Middleware-Before", "seen");
         }
         if (context.path == "/games/blocked") {
-            context.json_response (202,
-                                   R"({"id":"blocked","name":"short","filter":"","correlationId":"short-circuit"})");
+            context.json_response (
+              202,
+              R"({"id":"blocked","name":"short","filter":"","correlationId":"short-circuit"})");
         }
     }
 
@@ -567,7 +594,8 @@ struct auth_middleware_t
         }
         const auto found = context.request_headers.find ("authorization");
         if (found == context.request_headers.end () || found->second != _policy->token) {
-            context.json_response (401, R"({"error":"unauthorized","message":"missing or invalid token"})");
+            context.json_response (
+              401, R"({"error":"unauthorized","message":"missing or invalid token"})");
         }
     }
 
@@ -590,7 +618,8 @@ void from_json (const nlohmann::json &json, health_http_reply_t &value)
 }
 
 zlink::http_client::client_t
-make_app_host_test_client (std::string base_url, std::optional<std::string> trust_certificate_file = std::nullopt)
+make_app_host_test_client (std::string base_url,
+                           std::optional<std::string> trust_certificate_file = std::nullopt)
 {
     auto builder = zlink::http_client::client_t::create ()
                      .base_url (std::move (base_url))
@@ -633,15 +662,17 @@ int main ()
     bool duplicate_route_rejected = false;
     try {
         auto duplicate_app = zlink::framework::app_t::create ();
-        duplicate_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &options) {
-            options.http ()
-              .listen ("http://127.0.0.1:18081")
-              .map_get<create_game_http_handler_t> ("/duplicate")
-              .map_get<create_game_http_handler_t> ("/duplicate");
-        });
+        duplicate_app.add_zlink_framework (
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.http ()
+                .listen ("http://127.0.0.1:18081")
+                .map_get<create_game_http_handler_t> ("/duplicate")
+                .map_get<create_game_http_handler_t> ("/duplicate");
+          });
     }
     catch (const zlink::framework::framework_exception_t &ex) {
-        duplicate_route_rejected = ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        duplicate_route_rejected =
+          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!duplicate_route_rejected) {
         return 31;
@@ -650,15 +681,17 @@ int main ()
     bool system_route_conflict_rejected = false;
     try {
         auto conflict_app = zlink::framework::app_t::create ();
-        conflict_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &options) {
-            options.http ()
-              .listen ("http://127.0.0.1:18082")
-              .map_readiness ("/ready")
-              .map_get<create_game_http_handler_t> ("/ready");
-        });
+        conflict_app.add_zlink_framework (
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.http ()
+                .listen ("http://127.0.0.1:18082")
+                .map_readiness ("/ready")
+                .map_get<create_game_http_handler_t> ("/ready");
+          });
     }
     catch (const zlink::framework::framework_exception_t &ex) {
-        system_route_conflict_rejected = ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        system_route_conflict_rejected =
+          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!system_route_conflict_rejected) {
         return 32;
@@ -667,9 +700,13 @@ int main ()
     bool duplicate_system_route_rejected = false;
     try {
         auto duplicate_system_app = zlink::framework::app_t::create ();
-        duplicate_system_app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &options) {
-            options.http ().listen ("http://127.0.0.1:18083").map_health ("/status").map_readiness ("/status");
-        });
+        duplicate_system_app.add_zlink_framework (
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.http ()
+                .listen ("http://127.0.0.1:18083")
+                .map_health ("/status")
+                .map_readiness ("/status");
+          });
     }
     catch (const zlink::framework::framework_exception_t &ex) {
         duplicate_system_route_rejected =
@@ -680,35 +717,43 @@ int main ()
     }
 
     auto app = zlink::framework::app_t::create ();
-    const auto config_path = std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.json";
+    const auto config_path =
+      std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.json";
     {
         std::ofstream config (config_path);
-        config << R"({"node":"json-node","server":{"endpoint":"tcp://json:7100","queue":42,"enabled":true}})";
+        config
+          << R"({"node":"json-node","server":{"endpoint":"tcp://json:7100","queue":42,"enabled":true}})";
     }
     setenv ("ZLINK_REGION", "local", 1);
     setenv ("ZLINK_server__queue", "64", 1);
 
-    app.config ().use_environment ("development").load_json (config_path.string ()).load_env ("ZLINK_");
+    app.config ()
+      .use_environment ("development")
+      .load_json (config_path.string ())
+      .load_env ("ZLINK_");
     auto default_environment_config = zlink::framework::config_builder_t{};
     if (default_environment_config.environment () != "production"
         || !default_environment_config.is_environment ("Production")) {
         return 41;
     }
     auto optional_config = zlink::framework::config_builder_t{};
-    optional_config.load_json ("missing.optional.appsettings.json", zlink::framework::optional_t::yes);
+    optional_config.load_json ("missing.optional.appsettings.json",
+                               zlink::framework::optional_t::yes);
     bool missing_required_json_rejected = false;
     try {
         auto required_config = zlink::framework::config_builder_t{};
         required_config.load_json ("missing.required.appsettings.json");
     }
     catch (const zlink::framework::framework_exception_t &ex) {
-        missing_required_json_rejected = ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        missing_required_json_rejected =
+          ex.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!missing_required_json_rejected) {
         return 40;
     }
     const auto log_path = std::filesystem::temp_directory_path () / "zlink_cpp_framework_app.log";
-    const auto rotating_log_path = std::filesystem::temp_directory_path () / "zlink_cpp_framework_app_rotating.log";
+    const auto rotating_log_path =
+      std::filesystem::temp_directory_path () / "zlink_cpp_framework_app_rotating.log";
     {
         std::ofstream existing_rotating_log (rotating_log_path);
         existing_rotating_log << "old";
@@ -718,7 +763,8 @@ int main ()
       .use_console ()
       .use_file (log_path.string ())
       .use_rotating_file (rotating_log_path.string (), {.max_file_size = 1, .max_files = 2})
-      .use_callback_sink ([&] (const zlink::framework::log_record_t &record) { observed_logs.push_back (record); })
+      .use_callback_sink (
+        [&] (const zlink::framework::log_record_t &record) { observed_logs.push_back (record); })
       .use_async ({.queue_capacity = 128})
       .use_backend (zlink::framework::logging_backend_t::structured)
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -730,12 +776,18 @@ int main ()
     correlation_middleware_t::before_count = 0;
     correlation_middleware_t::after_count = 0;
     const auto http_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 0);
-    const auto https_invalid_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT, 1);
-    const auto https_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT, 2);
-    const auto https_client_base_url =
-      endpoint_with_port (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL, port_from_endpoint (https_endpoint));
-    app.advanced ().use_zlink ([&] (zlink::framework::zlink_builder_t &) { zlink_configured = true; });
-    app.health ().add_zlink_runtime_check ().add_channel_check ("games.channel").add_hosted_service_check ("http.host");
+    const auto https_invalid_endpoint =
+      process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_INVALID_ENDPOINT, 1);
+    const auto https_endpoint =
+      process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_ENDPOINT, 2);
+    const auto https_client_base_url = endpoint_with_port (
+      ZLINK_FRAMEWORK_HTTP_TEST_HTTPS_CLIENT_BASE_URL, port_from_endpoint (https_endpoint));
+    app.advanced ().use_zlink (
+      [&] (zlink::framework::zlink_builder_t &) { zlink_configured = true; });
+    app.health ()
+      .add_zlink_runtime_check ()
+      .add_channel_check ("games.channel")
+      .add_hosted_service_check ("http.host");
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.services ().add_singleton<http_name_prefix_t> ();
         options.services ().add_singleton<auth_policy_t> ();
@@ -775,7 +827,8 @@ int main ()
           .use<auth_middleware_t> ();
     });
 
-    const char *argv_raw[] = {"app", "--node=alpha", "--server.endpoint=tcp://cli:7100", "--dry-run"};
+    const char *argv_raw[] = {"app", "--node=alpha", "--server.endpoint=tcp://cli:7100",
+                              "--dry-run"};
     auto **argv = const_cast<char **> (argv_raw);
     int exit_code = -1;
     std::thread app_thread ([&] { exit_code = app.run (4, argv); });
@@ -791,19 +844,23 @@ int main ()
                                .body (create_game_http_handler_t::request_type{.name = "post"})
                                .submit<create_game_http_handler_t::reply_type> ()
                                .result ();
-    const auto get_result =
-      http_client.get ("/games/1?filter=active").submit<create_game_http_handler_t::reply_type> ().result ();
+    const auto get_result = http_client.get ("/games/1?filter=active")
+                              .submit<create_game_http_handler_t::reply_type> ()
+                              .result ();
     const auto number_get_result =
       http_client.get ("/numbers/41?page=2").submit<number_http_handler_t::reply_type> ().result ();
     const auto response_object_result =
-      http_client.get ("/response-games/9?filter=direct&name=object").submit<create_game_http_handler_t::reply_type> ()
+      http_client.get ("/response-games/9?filter=direct&name=object")
+        .submit<create_game_http_handler_t::reply_type> ()
         .result ();
-    const auto response_context_result = http_client.get ("/response-context-games/10?filter=context&name=object")
-                                           .submit<create_game_http_handler_t::reply_type> ()
-                                           .result ();
-    const auto request_async_result = http_client.get ("/request-async-games/13?filter=request&name=async")
-                                        .submit<create_game_http_handler_t::reply_type> ()
-                                        .result ();
+    const auto response_context_result =
+      http_client.get ("/response-context-games/10?filter=context&name=object")
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
+    const auto request_async_result =
+      http_client.get ("/request-async-games/13?filter=request&name=async")
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
     const auto raw_result = http_client.post ("/raw/42?mode=echo")
                               .header ("content-type", "text/plain")
                               .body (std::string ("raw body"))
@@ -818,84 +875,101 @@ int main ()
                                      .header ("authorization", "Bearer test-token")
                                      .submit<create_game_http_handler_t::reply_type> ()
                                      .result ();
-    const auto unauthorized_get_result = http_client.get ("/secure-games/7").submit_raw ().result ();
-    const auto put_result =
-      http_client.put ("/games/1")
-        .body (create_game_http_handler_t::request_type{.id = "body-id", .name = "put", .filter = "body-filter"})
-        .submit<create_game_http_handler_t::reply_type> ()
-        .result ();
+    const auto unauthorized_get_result =
+      http_client.get ("/secure-games/7").submit_raw ().result ();
+    const auto put_result = http_client.put ("/games/1")
+                              .body (create_game_http_handler_t::request_type{
+                                .id = "body-id", .name = "put", .filter = "body-filter"})
+                              .submit<create_game_http_handler_t::reply_type> ()
+                              .result ();
     const auto query_overrides_body_result =
       http_client.put ("/games/1?filter=query-filter")
-        .body (create_game_http_handler_t::request_type{.id = "body-id", .name = "put", .filter = "body-filter"})
+        .body (create_game_http_handler_t::request_type{
+          .id = "body-id", .name = "put", .filter = "body-filter"})
         .submit<create_game_http_handler_t::reply_type> ()
         .result ();
     const auto delete_result =
       http_client.delete_ ("/games/1").submit<create_game_http_handler_t::reply_type> ().result ();
-    const auto method_mismatch_result = http_client.post ("/games/1")
-                                          .body (create_game_http_handler_t::request_type{.name = "wrong-method"})
-                                          .submit_raw ()
-                                          .result ();
+    const auto method_mismatch_result =
+      http_client.post ("/games/1")
+        .body (create_game_http_handler_t::request_type{.name = "wrong-method"})
+        .submit_raw ()
+        .result ();
     const auto missing_route_result = http_client.get ("/missing-route").submit_raw ().result ();
     const auto invalid_json_shape_result = http_client.post ("/games")
                                              .header ("X-Correlation-Id", "corr-invalid-json")
                                              .body (std::string ("not-an-object"))
                                              .submit_raw ()
                                              .result ();
-    const auto route_parse_failure_result = http_client.get ("/numbers/not-a-number?page=2").submit_raw ().result ();
-    const auto query_parse_failure_result = http_client.get ("/numbers/41?page=bad").submit_raw ().result ();
-    const auto missing_required_field_result =
-      http_client.post ("/games").body (create_game_http_handler_t::request_type{}).submit_raw ().result ();
-    const auto dto_validation_result = http_client.post ("/games")
-                                         .body (create_game_http_handler_t::request_type{.name = "invalid"})
-                                         .submit_raw ()
-                                         .result ();
-    const auto unsupported_content_type_result = http_client.post ("/games")
-                                                   .body (create_game_http_handler_t::request_type{.name = "plain"})
-                                                   .header ("content-type", "text/plain")
-                                                   .submit_raw ()
-                                                   .result ();
+    const auto route_parse_failure_result =
+      http_client.get ("/numbers/not-a-number?page=2").submit_raw ().result ();
+    const auto query_parse_failure_result =
+      http_client.get ("/numbers/41?page=bad").submit_raw ().result ();
+    const auto missing_required_field_result = http_client.post ("/games")
+                                                 .body (create_game_http_handler_t::request_type{})
+                                                 .submit_raw ()
+                                                 .result ();
+    const auto dto_validation_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "invalid"})
+        .submit_raw ()
+        .result ();
+    const auto unsupported_content_type_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "plain"})
+        .header ("content-type", "text/plain")
+        .submit_raw ()
+        .result ();
     const auto system_method_mismatch_result =
       http_client.post ("/ready")
         .body (create_game_http_handler_t::request_type{.name = "wrong-method"})
         .submit_raw ()
         .result ();
-    const auto timeout_mapping_result = http_client.post ("/games")
-                                          .header ("X-Correlation-Id", "corr-timeout")
-                                          .body (create_game_http_handler_t::request_type{.name = "timeout"})
-                                          .submit_raw ()
-                                          .result ();
-    const auto shutdown_mapping_result = http_client.post ("/games")
-                                           .body (create_game_http_handler_t::request_type{.name = "shutdown"})
-                                           .submit_raw ()
-                                           .result ();
-    const auto protocol_mapping_result = http_client.post ("/games")
-                                           .body (create_game_http_handler_t::request_type{.name = "protocol"})
-                                           .submit_raw ()
-                                           .result ();
-    const auto failed_mapping_result = http_client.post ("/games")
-                                         .body (create_game_http_handler_t::request_type{.name = "failed"})
-                                         .submit_raw ()
-                                         .result ();
-    const auto async_post_result = http_client.post ("/async-games")
-                                     .header ("X-Correlation-Id", "corr-async")
-                                     .body (create_game_http_handler_t::request_type{.name = "async"})
-                                     .submit<create_game_http_handler_t::reply_type> ()
-                                     .result ();
+    const auto timeout_mapping_result =
+      http_client.post ("/games")
+        .header ("X-Correlation-Id", "corr-timeout")
+        .body (create_game_http_handler_t::request_type{.name = "timeout"})
+        .submit_raw ()
+        .result ();
+    const auto shutdown_mapping_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "shutdown"})
+        .submit_raw ()
+        .result ();
+    const auto protocol_mapping_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "protocol"})
+        .submit_raw ()
+        .result ();
+    const auto failed_mapping_result =
+      http_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "failed"})
+        .submit_raw ()
+        .result ();
+    const auto async_post_result =
+      http_client.post ("/async-games")
+        .header ("X-Correlation-Id", "corr-async")
+        .body (create_game_http_handler_t::request_type{.name = "async"})
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
     const auto async_timeout_mapping_result =
       http_client.post ("/async-games")
         .body (create_game_http_handler_t::request_type{.name = "async-timeout"})
         .submit_raw ()
         .result ();
-    const auto injected_post_result = http_client.post ("/injected-games")
-                                        .body (create_game_http_handler_t::request_type{.name = "handler"})
+    const auto injected_post_result =
+      http_client.post ("/injected-games")
+        .body (create_game_http_handler_t::request_type{.name = "handler"})
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
+    const auto injected_second_post_result =
+      http_client.post ("/injected-games")
+        .body (create_game_http_handler_t::request_type{.name = "handler"})
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
+    const auto short_circuit_result = http_client.get ("/games/blocked")
                                         .submit<create_game_http_handler_t::reply_type> ()
                                         .result ();
-    const auto injected_second_post_result = http_client.post ("/injected-games")
-                                               .body (create_game_http_handler_t::request_type{.name = "handler"})
-                                               .submit<create_game_http_handler_t::reply_type> ()
-                                               .result ();
-    const auto short_circuit_result =
-      http_client.get ("/games/blocked").submit<create_game_http_handler_t::reply_type> ().result ();
     const auto health_result = http_client.get ("/health").submit<health_http_reply_t> ().result ();
     const auto liveness_result = http_client.get ("/live").submit<health_http_reply_t> ().result ();
     const bool keep_alive_ok = http_keep_alive_round_trip (http_endpoint);
@@ -915,13 +989,16 @@ int main ()
         || get_result.value ().headers.at ("X-Context-Path") != "/games/1") {
         return 18;
     }
-    if (!number_get_result || number_get_result.value ().body.id != 41 || number_get_result.value ().body.page != 2) {
+    if (!number_get_result || number_get_result.value ().body.id != 41
+        || number_get_result.value ().body.page != 2) {
         return 46;
     }
     if (!response_object_result || response_object_result.value ().status != 202
-        || response_object_result.value ().body.id != "9" || response_object_result.value ().body.name != "response:object"
+        || response_object_result.value ().body.id != "9"
+        || response_object_result.value ().body.name != "response:object"
         || response_object_result.value ().body.filter != "direct"
-        || response_object_result.value ().headers.at ("X-Http-Target") != "/response-games/9?filter=direct&name=object") {
+        || response_object_result.value ().headers.at ("X-Http-Target")
+             != "/response-games/9?filter=direct&name=object") {
         return 57;
     }
     if (!response_context_result || response_context_result.value ().status != 207
@@ -936,7 +1013,8 @@ int main ()
         || request_async_result.value ().body.filter != "request") {
         return 62;
     }
-    if (!raw_result || raw_result.value ().status != 206 || raw_result.value ().headers.at ("X-Raw-Path") != "/raw/42"
+    if (!raw_result || raw_result.value ().status != 206
+        || raw_result.value ().headers.at ("X-Raw-Path") != "/raw/42"
         || raw_result.value ().body.find ("42|echo|text/plain|") == std::string::npos) {
         return 58;
     }
@@ -944,7 +1022,8 @@ int main ()
         || raw_async_result.value ().body.find ("raw-async|43|echo") == std::string::npos) {
         return 63;
     }
-    if (!secure_get_result || secure_get_result.value ().status != 200 || secure_get_result.value ().body.id != "7") {
+    if (!secure_get_result || secure_get_result.value ().status != 200
+        || secure_get_result.value ().body.id != "7") {
         return 49;
     }
     if (!unauthorized_get_result || unauthorized_get_result.value ().status != 401
@@ -970,23 +1049,29 @@ int main ()
         return 26;
     }
     if (!invalid_json_shape_result || invalid_json_shape_result.value ().status != 400
-        || invalid_json_shape_result.value ().body.find ("payload_decode_failed") == std::string::npos
+        || invalid_json_shape_result.value ().body.find ("payload_decode_failed")
+             == std::string::npos
         || invalid_json_shape_result.value ().body.find ("corr-invalid-json") == std::string::npos
         || invalid_json_shape_result.value ().headers.at ("X-Middleware-After") != "seen") {
         return 22;
     }
     if (!route_parse_failure_result || route_parse_failure_result.value ().status != 400
-        || route_parse_failure_result.value ().body.find ("payload_decode_failed") == std::string::npos
-        || route_parse_failure_result.value ().body.find ("invalid route id") == std::string::npos) {
+        || route_parse_failure_result.value ().body.find ("payload_decode_failed")
+             == std::string::npos
+        || route_parse_failure_result.value ().body.find ("invalid route id")
+             == std::string::npos) {
         return 47;
     }
     if (!query_parse_failure_result || query_parse_failure_result.value ().status != 400
-        || query_parse_failure_result.value ().body.find ("payload_decode_failed") == std::string::npos
-        || query_parse_failure_result.value ().body.find ("invalid query page") == std::string::npos) {
+        || query_parse_failure_result.value ().body.find ("payload_decode_failed")
+             == std::string::npos
+        || query_parse_failure_result.value ().body.find ("invalid query page")
+             == std::string::npos) {
         return 48;
     }
     if (!missing_required_field_result || missing_required_field_result.value ().status != 400
-        || missing_required_field_result.value ().body.find ("name is required") == std::string::npos) {
+        || missing_required_field_result.value ().body.find ("name is required")
+             == std::string::npos) {
         return 43;
     }
     if (!dto_validation_result || dto_validation_result.value ().status != 400
@@ -994,7 +1079,8 @@ int main ()
         return 44;
     }
     if (!unsupported_content_type_result || unsupported_content_type_result.value ().status != 400
-        || unsupported_content_type_result.value ().body.find ("unsupported content type") == std::string::npos) {
+        || unsupported_content_type_result.value ().body.find ("unsupported content type")
+             == std::string::npos) {
         return 45;
     }
     if (!system_method_mismatch_result || system_method_mismatch_result.value ().status != 405) {
@@ -1011,7 +1097,8 @@ int main ()
         return 28;
     }
     if (!protocol_mapping_result || protocol_mapping_result.value ().status != 400
-        || protocol_mapping_result.value ().body.find ("request_protocol_error") == std::string::npos) {
+        || protocol_mapping_result.value ().body.find ("request_protocol_error")
+             == std::string::npos) {
         return 29;
     }
     if (!failed_mapping_result || failed_mapping_result.value ().status != 500
@@ -1057,7 +1144,8 @@ int main ()
     if (app.config ().model ().get ("config.env.prefix") != "ZLINK_") {
         return 3;
     }
-    if (app.config ().environment () != "development" || !app.config ().is_environment ("Development")
+    if (app.config ().environment () != "development"
+        || !app.config ().is_environment ("Development")
         || app.config ().is_environment ("production")) {
         return 42;
     }
@@ -1077,7 +1165,8 @@ int main ()
         return 10;
     }
     const auto server_options = app.config ().bind_required<app_host_config_options_t> ("server");
-    if (server_options.endpoint != "tcp://cli:7100" || server_options.queue_limit != 64 || !server_options.enabled) {
+    if (server_options.endpoint != "tcp://cli:7100" || server_options.queue_limit != 64
+        || !server_options.enabled) {
         return 38;
     }
     bool missing_required_value_rejected = false;
@@ -1095,9 +1184,11 @@ int main ()
     if (!app.logging ().console_enabled () || app.logging ().level () != "debug") {
         return 6;
     }
-    if (!app.logging ().async_enabled () || app.logging ().backend () != zlink::framework::logging_backend_t::structured
+    if (!app.logging ().async_enabled ()
+        || app.logging ().backend () != zlink::framework::logging_backend_t::structured
         || app.logging ().file_paths ().empty () || observed_logs.size () != 1
-        || observed_logs.front ().category != "app-host-test" || observed_logs.front ().fields.front ().key != "node"
+        || observed_logs.front ().category != "app-host-test"
+        || observed_logs.front ().fields.front ().key != "node"
         || app.logging ().captured_records ().size () != 1) {
         return 7;
     }
@@ -1105,7 +1196,8 @@ int main ()
         std::ifstream log_file (log_path);
         std::string line;
         std::getline (log_file, line);
-        if (line.find ("startup") == std::string::npos || line.find ("node=alpha") == std::string::npos) {
+        if (line.find ("startup") == std::string::npos
+            || line.find ("node=alpha") == std::string::npos) {
             return 11;
         }
     }
@@ -1138,7 +1230,9 @@ int main ()
     if (provider.get_required<singleton_service_t> ().value != 7) {
         return 8;
     }
-    provider.get_required<zlink::framework::logger_factory_t> ().create ("app-default-logger").info ("resolved");
+    provider.get_required<zlink::framework::logger_factory_t> ()
+      .create ("app-default-logger")
+      .info ("resolved");
     if (app.logging ().captured_records ().size () != 2
         || app.logging ().captured_records ().back ().category != "app-default-logger") {
         return 42;
@@ -1151,10 +1245,12 @@ int main ()
     }
 
     auto unhealthy_app = zlink::framework::app_t::create ();
-    const auto unhealthy_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 3);
+    const auto unhealthy_endpoint =
+      process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 3);
     unhealthy_app.health ()
       .add_channel_check ("games.channel")
-      .set_status ("games.channel", zlink::framework::health_status_t::unhealthy, "channel unavailable");
+      .set_status ("games.channel", zlink::framework::health_status_t::unhealthy,
+                   "channel unavailable");
     unhealthy_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.http ().listen (unhealthy_endpoint).map_readiness ("/ready").map_liveness ("/live");
     });
@@ -1178,10 +1274,12 @@ int main ()
     }
 
     auto not_live_app = zlink::framework::app_t::create ();
-    const auto not_live_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 4);
+    const auto not_live_endpoint =
+      process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 4);
     not_live_app.health ()
       .add_hosted_service_check ("games.service")
-      .set_status ("games.service", zlink::framework::health_status_t::unhealthy, "hosted service unavailable");
+      .set_status ("games.service", zlink::framework::health_status_t::unhealthy,
+                   "hosted service unavailable");
     not_live_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.http ().listen (not_live_endpoint).map_readiness ("/ready").map_liveness ("/live");
     });
@@ -1205,7 +1303,8 @@ int main ()
     }
 
     auto limited_app = zlink::framework::app_t::create ();
-    const auto limited_endpoint = process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 5);
+    const auto limited_endpoint =
+      process_unique_endpoint (ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT, 5);
     limited_app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.http ()
           .configure_server ([] (zlink::framework::http_server_options_builder_t &server) {
@@ -1219,16 +1318,20 @@ int main ()
     std::thread limited_thread ([&] { limited_exit_code = limited_app.run (1, argv); });
     auto limited_client = make_app_host_test_client (limited_endpoint);
     const bool limited_ready = wait_for_ready (limited_client);
-    const bool limited_rejected = limited_ready && http_raw_request_contains (
-      limited_endpoint,
-      "POST /raw/1?mode=echo HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: "
-      "9\r\nConnection: close\r\n\r\ntoo-large",
-      "413 Payload Too Large");
+    const bool limited_rejected =
+      limited_ready
+      && http_raw_request_contains (limited_endpoint,
+                                    "POST /raw/1?mode=echo HTTP/1.1\r\nHost: "
+                                    "localhost\r\nContent-Type: text/plain\r\nContent-Length: "
+                                    "9\r\nConnection: close\r\n\r\ntoo-large",
+                                    "413 Payload Too Large");
     const std::string large_header_request =
       "POST /raw/1?mode=echo HTTP/1.1\r\nHost: localhost\r\nX-Large: " + std::string (2048, 'x')
       + "\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
-    const bool large_header_rejected = limited_ready && http_raw_request_contains (
-      limited_endpoint, large_header_request, "431 Request Header Fields Too Large");
+    const bool large_header_rejected =
+      limited_ready
+      && http_raw_request_contains (limited_endpoint, large_header_request,
+                                    "431 Request Header Fields Too Large");
     limited_app.stop ();
     limited_thread.join ();
     if (!limited_rejected || !large_header_rejected || limited_exit_code != 0) {
@@ -1240,38 +1343,49 @@ int main ()
         try {
             auto invalid = zlink::framework::app_t::create ();
             invalid.add_zlink_framework (
-              [&] (zlink::framework::zlink_framework_options_t &options) { configure_http (options.http ()); });
+              [&] (zlink::framework::zlink_framework_options_t &options) {
+                  configure_http (options.http ());
+              });
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            rejected = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+            rejected =
+              error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
         }
         return rejected;
     };
 
     if (!expect_https_tls_validation_rejected (
-          [&] (zlink::framework::http_options_builder_t &http) { http.listen (https_invalid_endpoint); })) {
+          [&] (zlink::framework::http_options_builder_t &http) {
+              http.listen (https_invalid_endpoint);
+          })) {
         return 12;
     }
 
-    if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint)
-              .configure_tls (
-                [] (zlink::framework::http_tls_options_builder_t &tls) { tls.private_key_file ("server.key"); });
-        })) {
+    if (!expect_https_tls_validation_rejected (
+          [&] (zlink::framework::http_options_builder_t &http) {
+              http.listen (https_invalid_endpoint)
+                .configure_tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
+                    tls.private_key_file ("server.key");
+                });
+          })) {
         return 41;
     }
 
-    if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint)
-              .configure_tls (
-                [] (zlink::framework::http_tls_options_builder_t &tls) { tls.certificate_file ("server.crt"); });
-        })) {
+    if (!expect_https_tls_validation_rejected (
+          [&] (zlink::framework::http_options_builder_t &http) {
+              http.listen (https_invalid_endpoint)
+                .configure_tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
+                    tls.certificate_file ("server.crt");
+                });
+          })) {
         return 42;
     }
 
-    if (!expect_https_tls_validation_rejected ([&] (zlink::framework::http_options_builder_t &http) {
-            http.listen (https_invalid_endpoint).configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
-        })) {
+    if (!expect_https_tls_validation_rejected (
+          [&] (zlink::framework::http_options_builder_t &http) {
+              http.listen (https_invalid_endpoint)
+                .configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
+          })) {
         return 43;
     }
 
@@ -1279,7 +1393,9 @@ int main ()
     try {
         auto invalid = zlink::framework::app_t::create ();
         invalid.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.http ().listen (http_endpoint).configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
+            options.http ()
+              .listen (http_endpoint)
+              .configure_tls ([] (zlink::framework::http_tls_options_builder_t &) {});
         });
     }
     catch (const zlink::framework::framework_exception_t &) {
@@ -1305,7 +1421,8 @@ int main ()
         options.http ()
           .listen (https_endpoint)
           .configure_tls ([] (zlink::framework::http_tls_options_builder_t &tls) {
-              tls.certificate_file (ZLINK_FRAMEWORK_HTTP_TEST_CERT).private_key_file (ZLINK_FRAMEWORK_HTTP_TEST_KEY);
+              tls.certificate_file (ZLINK_FRAMEWORK_HTTP_TEST_CERT)
+                .private_key_file (ZLINK_FRAMEWORK_HTTP_TEST_KEY);
           })
           .map_readiness ("/ready")
           .map_get<create_game_http_handler_t> ("/games/{id}")
@@ -1313,20 +1430,22 @@ int main ()
     });
     int secure_exit_code = -1;
     std::thread secure_thread ([&] { secure_exit_code = secure_host.run (3, argv); });
-    auto secure_client =
-      make_app_host_test_client (https_client_base_url, std::string (ZLINK_FRAMEWORK_HTTP_TEST_CERT));
+    auto secure_client = make_app_host_test_client (https_client_base_url,
+                                                    std::string (ZLINK_FRAMEWORK_HTTP_TEST_CERT));
     if (!wait_for_ready (secure_client)) {
         secure_host.stop ();
         secure_thread.join ();
         return 15;
     }
-    const auto secure_post_result = secure_client.post ("/games")
-                                      .body (create_game_http_handler_t::request_type{.name = "secure"})
-                                      .submit<create_game_http_handler_t::reply_type> ()
-                                      .result ();
+    const auto secure_post_result =
+      secure_client.post ("/games")
+        .body (create_game_http_handler_t::request_type{.name = "secure"})
+        .submit<create_game_http_handler_t::reply_type> ()
+        .result ();
     secure_host.stop ();
     secure_thread.join ();
-    if (secure_exit_code != 0 || !secure_post_result || secure_post_result.value ().body.name != "secure") {
+    if (secure_exit_code != 0 || !secure_post_result
+        || secure_post_result.value ().body.name != "secure") {
         return 16;
     }
 #endif

@@ -33,13 +33,10 @@ int spot_subject_publish (void *subject_,
         zlink::service_public_api_scope_t admission (spot->public_api);
         if (!admission.acquired ())
             return -1;
-        zlink::spot_runtime_t *runtime =
-          zlink::spot_node_access_t::runtime (spot->node);
-        const int publish_rc =
-          zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
-            runtime, topic_id_, parts_, part_count_,
-            static_cast<zlink_send_flags_t> (flags_),
-            resolve_spot_send_timeout_ms (spot));
+        zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (spot->node);
+        const int publish_rc = zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
+          runtime, topic_id_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_),
+          resolve_spot_send_timeout_ms (spot));
         const int publish_errno = errno;
         if (publish_rc != 0) {
             errno = publish_errno;

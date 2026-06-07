@@ -25,10 +25,13 @@ class api_server_host_factory_t
         auto app = zlink::framework::app_t::create ();
         app.logging ().use_file (sample_log_file);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.services ().add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology));
+            options.services ().add_singleton<sample_topology_t> (
+              std::make_unique<sample_topology_t> (topology));
             options.services ().add_singleton<create_match_room_handler_t> ();
 
-            options.handlers ().add<authenticate_actor_handler_t> ("api").add<create_match_handler_t> ("api");
+            options.handlers ()
+              .add<authenticate_actor_handler_t> ("api")
+              .add<create_match_handler_t> ("api");
 
             options.codecs ().add_json ();
 
@@ -38,7 +41,9 @@ class api_server_host_factory_t
               .enable_server (topology.api_endpoint)
               .use_handler_group ("api");
 
-            options.http ().listen (topology.api_http_endpoint).map_post<create_match_handler_t> ("/games");
+            options.http ()
+              .listen (topology.api_http_endpoint)
+              .map_post<create_match_handler_t> ("/games");
 
             options.add_client_server_channel (sample_names_t::play_channel).enable_client ();
         });

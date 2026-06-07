@@ -9,20 +9,18 @@
 
 namespace zlink
 {
-int spot_node_t::apply_pub_defaults (spot_pub_t *pub_,
-                                     const pub_defaults_t &defaults_)
+int spot_node_t::apply_pub_defaults (spot_pub_t *pub_, const pub_defaults_t &defaults_)
 {
     return zlink::apply_spot_pub_defaults (pub_, defaults_);
 }
 
-int spot_node_t::apply_sub_defaults (spot_sub_t *sub_,
-                                     const sub_defaults_t &defaults_)
+int spot_node_t::apply_sub_defaults (spot_sub_t *sub_, const sub_defaults_t &defaults_)
 {
     return zlink::apply_spot_sub_defaults (sub_, defaults_);
 }
 
-spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
-  const pub_defaults_t &defaults_, bool node_owned_default_)
+spot_pub_t *spot_node_t::create_spot_pub_with_defaults (const pub_defaults_t &defaults_,
+                                                        bool node_owned_default_)
 {
     LIBZLINK_UNUSED (node_owned_default_);
     if (!pubsub_enabled ()) {
@@ -34,8 +32,7 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     if (!_runtime)
         return NULL;
 
-    spot_pub_t *pub = new (std::nothrow)
-      spot_pub_t (this, NULL, 0, false);
+    spot_pub_t *pub = new (std::nothrow) spot_pub_t (this, NULL, 0, false);
     if (!pub) {
         errno = ENOMEM;
         return NULL;
@@ -62,8 +59,8 @@ spot_pub_t *spot_node_t::create_spot_pub_with_defaults (
     return pub;
 }
 
-spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
-  const sub_defaults_t &defaults_, bool node_owned_default_)
+spot_sub_t *spot_node_t::create_spot_sub_with_defaults (const sub_defaults_t &defaults_,
+                                                        bool node_owned_default_)
 {
     if (!pubsub_enabled ()) {
         errno = ENOTSUP;
@@ -74,8 +71,7 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
     uint64_t attachment_id = 0;
     socket_base_t *attachment_socket = NULL;
     if (!_runtime
-        || _runtime->create_attachment (spot_attachment_sub,
-                                        sub_fanout_endpoint ().c_str (),
+        || _runtime->create_attachment (spot_attachment_sub, sub_fanout_endpoint ().c_str (),
                                         &attachment_id)
              != 0)
         return NULL;
@@ -87,8 +83,8 @@ spot_sub_t *spot_node_t::create_spot_sub_with_defaults (
         return NULL;
     }
 
-    spot_sub_t *sub = new (std::nothrow)
-      spot_sub_t (this, attachment_socket, attachment_id, node_owned_default_);
+    spot_sub_t *sub =
+      new (std::nothrow) spot_sub_t (this, attachment_socket, attachment_id, node_owned_default_);
     if (!sub) {
         (void) _runtime->destroy_attachment (attachment_id);
         errno = ENOMEM;

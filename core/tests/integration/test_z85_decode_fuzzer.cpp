@@ -35,15 +35,13 @@ void test_z85_decode_fuzzer ()
 {
     uint8_t **data;
     size_t *len, num_cases = 0;
-    if (fuzzer_corpus_encode (
-          "tests/libzlink-fuzz-corpora/test_z85_decode_fuzzer_seed_corpus", &data,
-          &len, &num_cases)
+    if (fuzzer_corpus_encode ("tests/libzlink-fuzz-corpora/test_z85_decode_fuzzer_seed_corpus",
+                              &data, &len, &num_cases)
         != 0)
         exit (77);
 
     while (num_cases-- > 0) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
+        TEST_ASSERT_SUCCESS_ERRNO (LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
         free (data[num_cases]);
     }
 

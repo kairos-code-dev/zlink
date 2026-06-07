@@ -37,7 +37,8 @@ inline int send_single_no_wait_result (send_result_t &result_, message_t &part_,
     return -1;
 }
 
-template <typename NativeSend> inline int submit_single_message_part_restore (message_t &part_, NativeSend send_)
+template <typename NativeSend>
+inline int submit_single_message_part_restore (message_t &part_, NativeSend send_)
 {
     if (!part_.valid ()) {
         errno = EINVAL;
@@ -59,7 +60,9 @@ template <typename NativeSend> inline int submit_single_message_part_restore (me
 }
 
 template <typename NativeSend>
-inline int submit_single_message_part_no_wait_result (send_result_t &result_, message_t &part_, NativeSend send_)
+inline int submit_single_message_part_no_wait_result (send_result_t &result_,
+                                                      message_t &part_,
+                                                      NativeSend send_)
 {
     if (!part_.valid ()) {
         errno = EINVAL;
@@ -97,15 +100,18 @@ inline int submit_single_message_part_no_wait_result (send_result_t &result_, me
 }
 
 template <typename NativeSend>
-inline int send_parts_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_, NativeSend send_)
+inline int
+send_parts_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_, NativeSend send_)
 {
     return detail::submit_message_parts_no_wait (
-      result_, parts_,
-      [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) { return send_ (part_out_, part_flag_); });
+      result_, parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          return send_ (part_out_, part_flag_);
+      });
 }
 
 template <typename NativeSubmit>
-inline submit_result_t submit_received_parts_restore (std::vector<message_t> &parts_, NativeSubmit submit_)
+inline submit_result_t submit_received_parts_restore (std::vector<message_t> &parts_,
+                                                      NativeSubmit submit_)
 {
     if (parts_.size () <= native_part_stack_capacity) {
         std::array<zlink_msg_t, native_part_stack_capacity> native_parts;
@@ -113,13 +119,14 @@ inline submit_result_t submit_received_parts_restore (std::vector<message_t> &pa
             throw last_error ();
 
         size_t failed_index = 0;
-        const submit_result_t result = static_cast<submit_result_t> (
-          detail::submit_native_parts (native_parts.data (), parts_.size (), failed_index,
-                                       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-                                           return submit_ (part_out_, part_flag_, part_flag_ == ZLINK_PART_FINAL);
-                                       }));
+        const submit_result_t result = static_cast<submit_result_t> (detail::submit_native_parts (
+          native_parts.data (), parts_.size (), failed_index,
+          [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+              return submit_ (part_out_, part_flag_, part_flag_ == ZLINK_PART_FINAL);
+          }));
         if (result != submit_result_t::ok)
-            detail::restore_parts_from_native (parts_, native_parts.data (), parts_.size (), failed_index);
+            detail::restore_parts_from_native (parts_, native_parts.data (), parts_.size (),
+                                               failed_index);
         return result;
     }
 
@@ -138,11 +145,14 @@ inline submit_result_t submit_received_parts_restore (std::vector<message_t> &pa
 }
 
 template <typename NativeSubmit>
-inline bool submit_received_send_parts (std::vector<message_t> &send_parts_, send_flags_t flags_, NativeSubmit submit_)
+inline bool submit_received_send_parts (std::vector<message_t> &send_parts_,
+                                        send_flags_t flags_,
+                                        NativeSubmit submit_)
 {
-    const submit_result_t result =
-      detail::submit_received_parts_restore (send_parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                                                               bool) { return submit_ (part_out_, part_flag_); });
+    const submit_result_t result = detail::submit_received_parts_restore (
+      send_parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          return submit_ (part_out_, part_flag_);
+      });
     if (result == submit_result_t::ok)
         return true;
 
@@ -152,13 +162,15 @@ inline bool submit_received_send_parts (std::vector<message_t> &send_parts_, sen
 }
 
 template <typename NativeSubmit>
-inline void
-submit_received_reply_parts (std::vector<message_t> &reply_parts_, send_flags_t flags_, NativeSubmit submit_)
+inline void submit_received_reply_parts (std::vector<message_t> &reply_parts_,
+                                         send_flags_t flags_,
+                                         NativeSubmit submit_)
 {
     detail::throw_if_reply_flags_unsupported (flags_);
-    const submit_result_t result =
-      detail::submit_received_parts_restore (reply_parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_,
-                                                                bool) { return submit_ (part_out_, part_flag_); });
+    const submit_result_t result = detail::submit_received_parts_restore (
+      reply_parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
+          return submit_ (part_out_, part_flag_);
+      });
     if (result != submit_result_t::ok)
         throw submit_error_t (result, zlink_errno ());
 }

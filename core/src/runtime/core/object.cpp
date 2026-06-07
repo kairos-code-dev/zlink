@@ -16,8 +16,7 @@ zlink::object_t::object_t (ctx_t *ctx_, uint32_t tid_) : _ctx (ctx_), _tid (tid_
 {
 }
 
-zlink::object_t::object_t (object_t *parent_) :
-    _ctx (parent_->_ctx), _tid (parent_->_tid)
+zlink::object_t::object_t (object_t *parent_) : _ctx (parent_->_ctx), _tid (parent_->_tid)
 {
 }
 
@@ -88,8 +87,7 @@ void zlink::object_t::process_command (const command_t &cmd_)
             break;
 
         case command_t::pipe_hwm:
-            process_pipe_hwm (cmd_.args.pipe_hwm.inhwm,
-                              cmd_.args.pipe_hwm.outhwm);
+            process_pipe_hwm (cmd_.args.pipe_hwm.inhwm, cmd_.args.pipe_hwm.outhwm);
             break;
 
         case command_t::term_req:
@@ -126,24 +124,20 @@ void zlink::object_t::process_command (const command_t &cmd_)
 
         case command_t::done:
         default:
-            fprintf (stderr,
-                     "[object-cmd] unexpected command type=%d this=%p tid=%u dest=%p\n",
+            fprintf (stderr, "[object-cmd] unexpected command type=%d this=%p tid=%u dest=%p\n",
                      static_cast<int> (cmd_.type), static_cast<void *> (this),
-                     static_cast<unsigned int> (_tid),
-                     static_cast<void *> (cmd_.destination));
+                     static_cast<unsigned int> (_tid), static_cast<void *> (cmd_.destination));
             fflush (stderr);
             zlink_assert (false);
     }
 }
 
-int zlink::object_t::register_endpoint (const char *addr_,
-                                      const endpoint_t &endpoint_)
+int zlink::object_t::register_endpoint (const char *addr_, const endpoint_t &endpoint_)
 {
     return _ctx->register_endpoint (addr_, endpoint_);
 }
 
-int zlink::object_t::unregister_endpoint (const std::string &addr_,
-                                        socket_base_t *socket_)
+int zlink::object_t::unregister_endpoint (const std::string &addr_, socket_base_t *socket_)
 {
     return _ctx->unregister_endpoint (addr_, socket_);
 }
@@ -159,14 +153,13 @@ zlink::endpoint_t zlink::object_t::find_endpoint (const char *addr_) const
 }
 
 bool zlink::object_t::pend_connection (const std::string &addr_,
-                                     const endpoint_t &endpoint_,
-                                     pipe_t **pipes_)
+                                       const endpoint_t &endpoint_,
+                                       pipe_t **pipes_)
 {
     return _ctx->pend_connection (addr_, endpoint_, pipes_);
 }
 
-void zlink::object_t::connect_pending (const char *addr_,
-                                     zlink::socket_base_t *bind_socket_)
+void zlink::object_t::connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_)
 {
     return _ctx->connect_pending (addr_, bind_socket_);
 }
@@ -181,8 +174,7 @@ zlink::io_thread_t *zlink::object_t::choose_io_thread (uint64_t affinity_) const
     return _ctx->choose_io_thread (affinity_);
 }
 
-zlink::io_thread_t *
-zlink::object_t::choose_io_thread_stream (uint64_t affinity_) const
+zlink::io_thread_t *zlink::object_t::choose_io_thread_stream (uint64_t affinity_) const
 {
     return _ctx->choose_io_thread_stream (affinity_);
 }
@@ -219,8 +211,8 @@ void zlink::object_t::send_own (own_t *destination_, own_t *object_)
 }
 
 void zlink::object_t::send_attach (session_base_t *destination_,
-                                 i_engine *engine_,
-                                 bool inc_seqnum_)
+                                   i_engine *engine_,
+                                   bool inc_seqnum_)
 {
     if (inc_seqnum_)
         destination_->inc_seqnum ();
@@ -240,9 +232,7 @@ void zlink::object_t::send_conn_failed (session_base_t *destination_)
     send_command (cmd);
 }
 
-void zlink::object_t::send_bind (own_t *destination_,
-                               pipe_t *pipe_,
-                               bool inc_seqnum_)
+void zlink::object_t::send_bind (own_t *destination_, pipe_t *pipe_, bool inc_seqnum_)
 {
     if (inc_seqnum_)
         destination_->inc_seqnum ();
@@ -262,8 +252,7 @@ void zlink::object_t::send_activate_read (pipe_t *destination_)
     send_command (cmd);
 }
 
-void zlink::object_t::send_activate_write (pipe_t *destination_,
-                                         uint64_t msgs_read_)
+void zlink::object_t::send_activate_write (pipe_t *destination_, uint64_t msgs_read_)
 {
     command_t cmd;
     cmd.destination = destination_;
@@ -300,9 +289,7 @@ void zlink::object_t::send_pipe_term_ack (pipe_t *destination_)
     send_command (cmd);
 }
 
-void zlink::object_t::send_pipe_hwm (pipe_t *destination_,
-                                   int inhwm_,
-                                   int outhwm_)
+void zlink::object_t::send_pipe_hwm (pipe_t *destination_, int inhwm_, int outhwm_)
 {
     command_t cmd;
     cmd.destination = destination_;
@@ -338,8 +325,7 @@ void zlink::object_t::send_term_ack (own_t *destination_)
     send_command (cmd);
 }
 
-void zlink::object_t::send_term_endpoint (own_t *destination_,
-                                        std::string *endpoint_)
+void zlink::object_t::send_term_endpoint (own_t *destination_, std::string *endpoint_)
 {
     command_t cmd;
     cmd.destination = destination_;

@@ -79,8 +79,7 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
 
     //  i_engine interface implementation
     bool has_handshake_stage () ZLINK_OVERRIDE { return true; }
-    void plug (zlink::io_thread_t *io_thread_,
-               zlink::session_base_t *session_) ZLINK_OVERRIDE;
+    void plug (zlink::io_thread_t *io_thread_, zlink::session_base_t *session_) ZLINK_OVERRIDE;
     void terminate () ZLINK_OVERRIDE;
     bool restart_input () ZLINK_OVERRIDE;
     void restart_output () ZLINK_OVERRIDE;
@@ -154,10 +153,8 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     //  Returns true if data is available in _outpos/_outsize.
     bool prepare_output_buffer ();
 
-    void on_read_complete (const boost::system::error_code &ec,
-                           std::size_t bytes_transferred);
-    void on_write_complete (const boost::system::error_code &ec,
-                            std::size_t bytes_transferred);
+    void on_read_complete (const boost::system::error_code &ec, std::size_t bytes_transferred);
+    void on_write_complete (const boost::system::error_code &ec, std::size_t bytes_transferred);
 
     //  Internal data processing
     bool process_input ();
@@ -304,8 +301,8 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_engine_t)
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZLINK_ASIO_WS_ENGINE_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_WS_ENGINE_HPP_INCLUDED__

@@ -47,13 +47,14 @@ int main ()
 
     std::promise<callback_result_t> result_promise;
     std::future<callback_result_t> result_future = result_promise.get_future ();
-    server.set_packet_handler (
-      [&result_promise] (const zlink::routing_id_t &source_rid_, zlink::message_t header_, zlink::message_t body_) {
-          callback_result_t result;
-          result.routing_id = source_rid_;
-          result.payload = packet_payload (header_, body_);
-          result_promise.set_value (result);
-      });
+    server.set_packet_handler ([&result_promise] (const zlink::routing_id_t &source_rid_,
+                                                  zlink::message_t header_,
+                                                  zlink::message_t body_) {
+        callback_result_t result;
+        result.routing_id = source_rid_;
+        result.payload = packet_payload (header_, body_);
+        result_promise.set_value (result);
+    });
 
     detail::raw_tcp_client_t client (endpoint);
     assert (detail::wait_stream_connected (server_monitor));
@@ -73,7 +74,8 @@ int main ()
     const int received = client.recv_exact (response, request.size ());
     assert (received == static_cast<int> (std::strlen (detail::k_stream_payload)));
     assert (std::memcmp (response, detail::k_stream_payload, received) == 0);
-    std::printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n", request.c_str (), received, response);
+    std::printf ("[stream/packet-callback] send: \"%s\" → recv: \"%.*s\"\n", request.c_str (),
+                 received, response);
 
     client.close ();
     return 0;

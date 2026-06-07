@@ -26,11 +26,10 @@ class spot_data_plane_t
     static int initialize_runtime (spot_node_t *node_,
                                    spot_runtime_t *runtime_,
                                    spot_data_plane_runtime_state_t *state_out_);
-    static void teardown_runtime (
-      spot_node_t *node_,
-      spot_runtime_t *runtime_,
-      spot_data_plane_runtime_state_t *state_,
-      spot_data_plane_protocol_state_t *protocol_state_);
+    static void teardown_runtime (spot_node_t *node_,
+                                  spot_runtime_t *runtime_,
+                                  spot_data_plane_runtime_state_t *state_,
+                                  spot_data_plane_protocol_state_t *protocol_state_);
 
   private:
     static void run (spot_node_t *node_);

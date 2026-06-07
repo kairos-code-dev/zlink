@@ -35,8 +35,10 @@ channel_bundle_factory_t::create_subscriber_bundle (const std::string &channel_n
     return create_bundle (channel_name, channel.subscriber, true);
 }
 
-std::shared_ptr<channel_runtime_bundle_t> channel_bundle_factory_t::create_bundle (
-  const std::string &channel_name, const channel_capability_snapshot_t &capability, bool attach_bind_endpoints)
+std::shared_ptr<channel_runtime_bundle_t>
+channel_bundle_factory_t::create_bundle (const std::string &channel_name,
+                                         const channel_capability_snapshot_t &capability,
+                                         bool attach_bind_endpoints)
 {
     if (!capability.enabled) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,

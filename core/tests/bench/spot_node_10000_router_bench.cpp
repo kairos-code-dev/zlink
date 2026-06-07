@@ -81,10 +81,8 @@ bool set_zero_linger (void *handle_)
 
 bool set_ctx_socket_limit (void *ctx_, int total_spots_)
 {
-    const int desired_limit =
-      total_spots_ > 12000 ? total_spots_ * 8 : 100000;
-    return zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, desired_limit)
-           == ZLINK_CONFIG_OK;
+    const int desired_limit = total_spots_ > 12000 ? total_spots_ * 8 : 100000;
+    return zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, desired_limit) == ZLINK_CONFIG_OK;
 }
 
 bool raise_nofile_limit_for_bench (int total_spots_)
@@ -93,8 +91,7 @@ bool raise_nofile_limit_for_bench (int total_spots_)
     (void) total_spots_;
     return true;
 #else
-    const rlim_t desired =
-      static_cast<rlim_t> (total_spots_ > 12000 ? total_spots_ * 16 : 100000);
+    const rlim_t desired = static_cast<rlim_t> (total_spots_ > 12000 ? total_spots_ * 16 : 100000);
 
     struct rlimit current;
     if (getrlimit (RLIMIT_NOFILE, &current) != 0)
@@ -119,8 +116,7 @@ bool send_one_routed (void *router_,
                       const char *payload_)
 {
     zlink_msg_t part;
-    if (zlink_msg_init_size (&part, payload_ ? strlen (payload_) : 0)
-        != ZLINK_CONFIG_OK) {
+    if (zlink_msg_init_size (&part, payload_ ? strlen (payload_) : 0) != ZLINK_CONFIG_OK) {
         return false;
     }
 
@@ -128,8 +124,7 @@ bool send_one_routed (void *router_,
         memcpy (zlink_msg_data (&part), payload_, strlen (payload_));
 
     const zlink_submit_result_t rc = zlink_router_send_spot_part (
-      router_, node_rid_, spot_rid_, &part, static_cast<zlink_send_flags_t> (0),
-      ZLINK_PART_FINAL);
+      router_, node_rid_, spot_rid_, &part, static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL);
     if (rc != ZLINK_SUBMIT_OK) {
         const int saved_errno = errno;
         zlink_msg_close (&part);
@@ -152,9 +147,9 @@ bool try_recv_one_routed (void *spot_,
     zlink_msg_init (&part);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    const zlink_recv_result_t rc = zlink_spot_recv_part (
-      spot_, &source_node_rid, &source_spot_rid, &request_seq, &part, &has_more,
-      static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+    const zlink_recv_result_t rc =
+      zlink_spot_recv_part (spot_, &source_node_rid, &source_spot_rid, &request_seq, &part,
+                            &has_more, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
 
     if (rc == ZLINK_RECV_NO_DATA) {
         errno = 0;
@@ -168,18 +163,12 @@ bool try_recv_one_routed (void *spot_,
     }
 
     const bool source_matches =
-      expected_source_rid_ && source_node_rid
-      && expected_source_rid_->size == source_node_rid->size
-      && memcmp (expected_source_rid_->data, source_node_rid->data,
-                 source_node_rid->size)
-           == 0;
+      expected_source_rid_ && source_node_rid && expected_source_rid_->size == source_node_rid->size
+      && memcmp (expected_source_rid_->data, source_node_rid->data, source_node_rid->size) == 0;
     const bool shape_ok =
-      source_matches && (!source_spot_rid || source_spot_rid->size == 0)
-      && request_seq == 0 && has_more == ZLINK_PART_FINAL
-      && zlink_msg_size (&part) == strlen (expected_payload_)
-      && memcmp (zlink_msg_data (&part), expected_payload_,
-                 strlen (expected_payload_))
-           == 0;
+      source_matches && (!source_spot_rid || source_spot_rid->size == 0) && request_seq == 0
+      && has_more == ZLINK_PART_FINAL && zlink_msg_size (&part) == strlen (expected_payload_)
+      && memcmp (zlink_msg_data (&part), expected_payload_, strlen (expected_payload_)) == 0;
 
     zlink_msg_close (&part);
 
@@ -191,12 +180,10 @@ bool try_recv_one_routed (void *spot_,
     return shape_ok;
 }
 
-recv_prepare_result_t prepare_all_receivers_for_routed_recv (
-  const std::vector<void *> &receivers_)
+recv_prepare_result_t prepare_all_receivers_for_routed_recv (const std::vector<void *> &receivers_)
 {
     recv_prepare_result_t result = {false, 0.0, 0};
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
 
     for (size_t i = 0; i < receivers_.size (); ++i) {
         errno = 0;
@@ -207,9 +194,9 @@ recv_prepare_result_t prepare_all_receivers_for_routed_recv (
         zlink_msg_init (&part);
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-        const zlink_recv_result_t rc = zlink_spot_recv_part (
-          receivers_[i], &source_node_rid, &source_spot_rid, &request_seq, &part,
-          &has_more, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+        const zlink_recv_result_t rc =
+          zlink_spot_recv_part (receivers_[i], &source_node_rid, &source_spot_rid, &request_seq,
+                                &part, &has_more, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
         zlink_msg_close (&part);
 
         if (rc == ZLINK_RECV_NO_DATA && errno == EAGAIN) {
@@ -223,15 +210,13 @@ recv_prepare_result_t prepare_all_receivers_for_routed_recv (
         }
 
         result.elapsed_ms =
-          std::chrono::duration<double, std::milli> (
-            std::chrono::steady_clock::now () - start)
+          std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start)
             .count ();
         return result;
     }
 
     result.elapsed_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start)
         .count ();
     result.ok = true;
     return result;
@@ -245,8 +230,7 @@ recv_run_result_t recv_all_routed (const std::vector<void *> &receivers_,
     recv_run_result_t result = {false, 0.0, 0};
     std::vector<unsigned char> delivered (receivers_.size (), 0);
     size_t remaining = receivers_.size ();
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
     const std::chrono::steady_clock::time_point deadline =
       start + std::chrono::milliseconds (timeout_ms_);
 
@@ -256,8 +240,7 @@ recv_run_result_t recv_all_routed (const std::vector<void *> &receivers_,
             if (delivered[i])
                 continue;
 
-            if (try_recv_one_routed (receivers_[i], expected_source_rid_,
-                                     payload_)) {
+            if (try_recv_one_routed (receivers_[i], expected_source_rid_, payload_)) {
                 delivered[i] = 1;
                 --remaining;
                 ++result.delivered;
@@ -272,8 +255,7 @@ recv_run_result_t recv_all_routed (const std::vector<void *> &receivers_,
     }
 
     result.elapsed_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start)
         .count ();
     result.ok = remaining == 0;
     return result;
@@ -300,8 +282,7 @@ int main (int, char **)
     setup_test_environment (0);
 
     const int total_spots = env_int_or_default ("ZLINK_SPOT_BENCH_SPOTS", 10000);
-    const int timeout_ms =
-      env_int_or_default ("ZLINK_SPOT_BENCH_TIMEOUT_MS", 30000);
+    const int timeout_ms = env_int_or_default ("ZLINK_SPOT_BENCH_TIMEOUT_MS", 30000);
 
     if (total_spots < 2) {
         fprintf (stderr, "need at least 2 spots\n");
@@ -310,16 +291,15 @@ int main (int, char **)
 
     void *ctx = zlink_ctx_new ();
     if (!ctx) {
-        fprintf (stderr, "zlink_ctx_new failed errno=%d (%s)\n", errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "zlink_ctx_new failed errno=%d (%s)\n", errno, zlink_strerror (errno));
         return 1;
     }
 
     (void) raise_nofile_limit_for_bench (total_spots);
 
     if (!set_ctx_socket_limit (ctx, total_spots)) {
-        fprintf (stderr, "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed errno=%d (%s)\n",
-                 errno, zlink_strerror (errno));
+        fprintf (stderr, "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed errno=%d (%s)\n", errno,
+                 zlink_strerror (errno));
         zlink_ctx_term (ctx);
         return 1;
     }
@@ -344,14 +324,12 @@ int main (int, char **)
     std::vector<void *> receivers;
     receivers.reserve (receiver_count);
 
-    const std::chrono::steady_clock::time_point create_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point create_start = std::chrono::steady_clock::now ();
     for (size_t i = 0; i < receiver_count; ++i) {
         void *spot = zlink_spot_new (node);
         if (!spot) {
-            fprintf (stderr,
-                     "zlink_spot_new(receiver %zu) failed errno=%d (%s)\n", i,
-                     errno, zlink_strerror (errno));
+            fprintf (stderr, "zlink_spot_new(receiver %zu) failed errno=%d (%s)\n", i, errno,
+                     zlink_strerror (errno));
             destroy_spots (&receivers);
             zlink_close (router);
             zlink_spot_node_destroy (&node);
@@ -362,8 +340,7 @@ int main (int, char **)
         receivers.push_back (spot);
     }
     const double create_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - create_start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - create_start)
         .count ();
     const size_t rss_after_create_kb = read_rss_kb ();
 
@@ -376,8 +353,7 @@ int main (int, char **)
     if (zlink_get_routing_id (node, &node_rid) != ZLINK_CONFIG_OK
         || zlink_set_routing_id (router, "bench-router", 12) != ZLINK_CONFIG_OK
         || zlink_get_routing_id (router, &router_rid) != ZLINK_CONFIG_OK) {
-        fprintf (stderr, "routing id setup failed errno=%d (%s)\n", errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "routing id setup failed errno=%d (%s)\n", errno, zlink_strerror (errno));
         destroy_spots (&receivers);
         zlink_close (router);
         zlink_spot_node_destroy (&node);
@@ -388,11 +364,9 @@ int main (int, char **)
     std::vector<zlink_routing_id_t> receiver_rids (receiver_count);
     for (size_t i = 0; i < receivers.size (); ++i) {
         memset (&receiver_rids[i], 0, sizeof (receiver_rids[i]));
-        if (zlink_get_routing_id (receivers[i], &receiver_rids[i])
-            != ZLINK_CONFIG_OK) {
-            fprintf (stderr,
-                     "receiver routing id fetch failed index=%zu errno=%d (%s)\n",
-                     i, errno, zlink_strerror (errno));
+        if (zlink_get_routing_id (receivers[i], &receiver_rids[i]) != ZLINK_CONFIG_OK) {
+            fprintf (stderr, "receiver routing id fetch failed index=%zu errno=%d (%s)\n", i, errno,
+                     zlink_strerror (errno));
             destroy_spots (&receivers);
             zlink_close (router);
             zlink_spot_node_destroy (&node);
@@ -400,19 +374,15 @@ int main (int, char **)
             return 1;
         }
     }
-    const double routing_id_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - routing_id_start)
-        .count ();
+    const double routing_id_ms = std::chrono::duration<double, std::milli> (
+                                   std::chrono::steady_clock::now () - routing_id_start)
+                                   .count ();
     const size_t rss_after_routing_id_kb = read_rss_kb ();
 
-    const recv_prepare_result_t recv_prepare =
-      prepare_all_receivers_for_routed_recv (receivers);
+    const recv_prepare_result_t recv_prepare = prepare_all_receivers_for_routed_recv (receivers);
     if (!recv_prepare.ok) {
-        fprintf (
-          stderr,
-          "routed recv prepare failed prepared=%zu/%zu errno=%d (%s)\n",
-          recv_prepare.prepared, receivers.size (), errno, zlink_strerror (errno));
+        fprintf (stderr, "routed recv prepare failed prepared=%zu/%zu errno=%d (%s)\n",
+                 recv_prepare.prepared, receivers.size (), errno, zlink_strerror (errno));
         destroy_spots (&receivers);
         zlink_close (router);
         zlink_spot_node_destroy (&node);
@@ -421,12 +391,11 @@ int main (int, char **)
     }
     const size_t rss_after_recv_prepare_kb = read_rss_kb ();
 
-    const std::chrono::steady_clock::time_point send_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point send_start = std::chrono::steady_clock::now ();
     for (size_t i = 0; i < receivers.size (); ++i) {
         if (!send_one_routed (router, &node_rid, &receiver_rids[i], kPayload)) {
-            fprintf (stderr, "router send failed index=%zu errno=%d (%s)\n", i,
-                     errno, zlink_strerror (errno));
+            fprintf (stderr, "router send failed index=%zu errno=%d (%s)\n", i, errno,
+                     zlink_strerror (errno));
             destroy_spots (&receivers);
             zlink_close (router);
             zlink_spot_node_destroy (&node);
@@ -435,17 +404,14 @@ int main (int, char **)
         }
     }
     const double send_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - send_start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - send_start)
         .count ();
 
     const recv_run_result_t recv_result =
       recv_all_routed (receivers, &router_rid, kPayload, timeout_ms);
     if (!recv_result.ok) {
-        fprintf (stderr,
-                 "routed recv timed out delivered=%zu/%zu errno=%d (%s)\n",
-                 recv_result.delivered, receivers.size (), errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "routed recv timed out delivered=%zu/%zu errno=%d (%s)\n",
+                 recv_result.delivered, receivers.size (), errno, zlink_strerror (errno));
         destroy_spots (&receivers);
         zlink_close (router);
         zlink_spot_node_destroy (&node);
@@ -455,21 +421,18 @@ int main (int, char **)
 
     const size_t rss_after_recv_kb = read_rss_kb ();
 
-    const std::chrono::steady_clock::time_point destroy_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point destroy_start = std::chrono::steady_clock::now ();
     destroy_spots (&receivers);
     zlink_close (router);
     zlink_spot_node_destroy (&node);
     zlink_ctx_term (ctx);
     const double destroy_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - destroy_start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - destroy_start)
         .count ();
 
     printf ("spot_total=%d\n", total_spots);
     printf ("receiver_spots=%zu\n", receiver_count);
-    printf ("ctx_max_sockets=%d\n",
-            total_spots > 12000 ? total_spots * 4 : 50000);
+    printf ("ctx_max_sockets=%d\n", total_spots > 12000 ? total_spots * 4 : 50000);
     printf ("create_ms=%.3f\n", create_ms);
     printf ("rss_after_create_kb=%zu\n", rss_after_create_kb);
     printf ("routing_id_ms=%.3f\n", routing_id_ms);

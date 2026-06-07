@@ -14,15 +14,14 @@ class socket_base_t;
 
 namespace spot_reqrep_internal
 {
-zlink_submit_result_t start_spot_channel_request_bridge (
-  void *spot_,
-  socket_base_t *router_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
+zlink_submit_result_t start_spot_channel_request_bridge (void *spot_,
+                                                         socket_base_t *router_,
+                                                         zlink_msg_t *parts_,
+                                                         size_t part_count_,
+                                                         zlink_reply_handler_fn handler_,
+                                                         void *userdata_,
+                                                         zlink_send_flags_t flags_,
+                                                         uint32_t timeout_ms_);
 }
 }
 

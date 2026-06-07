@@ -192,7 +192,8 @@ struct connect_monitor_t
 typedef ::perf::latency_sampler_stats_t bench_latency_stats_t;
 typedef ::perf::latency_sampler_t bench_latency_sampler_t;
 
-template <typename SocketLike> inline void apply_benchmark_hwm (SocketLike &socket, int sndhwm, int rcvhwm)
+template <typename SocketLike>
+inline void apply_benchmark_hwm (SocketLike &socket, int sndhwm, int rcvhwm)
 {
     if (!manual_socket_overrides_enabled ())
         return;
@@ -202,11 +203,14 @@ template <typename SocketLike> inline void apply_benchmark_hwm (SocketLike &sock
     (void) set_common_socket_option (socket, perf::options::socket_options::rcvhwm, rcv_value);
 }
 
-template <typename SocketLike> inline void apply_debug_timeouts (SocketLike &socket, const std::string &)
+template <typename SocketLike>
+inline void apply_debug_timeouts (SocketLike &socket, const std::string &)
 {
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    (void) set_common_socket_option (socket, perf::options::socket_options::sndtimeo, settings.sndtimeo_ms);
-    (void) set_common_socket_option (socket, perf::options::socket_options::rcvtimeo, settings.rcvtimeo_ms);
+    (void) set_common_socket_option (socket, perf::options::socket_options::sndtimeo,
+                                     settings.sndtimeo_ms);
+    (void) set_common_socket_option (socket, perf::options::socket_options::rcvtimeo,
+                                     settings.rcvtimeo_ms);
     (void) set_common_socket_option (socket, perf::options::socket_options::linger, 0);
 }
 
@@ -216,7 +220,8 @@ inline bool apply_benchmark_auto_hwm_msg_unit (ctx_guard_t &ctx, size_t msg_size
         return true;
     try {
         zlink::context_options_t options = ctx.ctx ().options ();
-        options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)));
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -377,13 +382,15 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
             effective_sndbuf = 0;
     }
 
-    const std::string key =
-      pattern + "|" + transport_value + "|" + component + "|" + label + "|" + std::to_string (msg_size) + "|"
-      + socket_type_value + "|" + std::to_string (snapshot.auto_hwm_role) + "|"
-      + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|" + std::to_string (snapshot.auto_hwm_applied_rcvhwm)
-      + "|" + std::to_string (snapshot.auto_hwm_unit_budget_bytes) + "|"
-      + std::to_string (snapshot.auto_hwm_effective_message_bytes) + "|" + std::to_string (effective_sndbuf) + "|"
-      + std::to_string (effective_rcvbuf);
+    const std::string key = pattern + "|" + transport_value + "|" + component + "|" + label + "|"
+                            + std::to_string (msg_size) + "|" + socket_type_value + "|"
+                            + std::to_string (snapshot.auto_hwm_role) + "|"
+                            + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|"
+                            + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
+                            + std::to_string (snapshot.auto_hwm_unit_budget_bytes) + "|"
+                            + std::to_string (snapshot.auto_hwm_effective_message_bytes) + "|"
+                            + std::to_string (effective_sndbuf) + "|"
+                            + std::to_string (effective_rcvbuf);
 
     static std::mutex mutex;
     static std::set<std::string> emitted;
@@ -395,22 +402,25 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
     }
 
     std::cout << "AUTO_HWM_DETAIL" << ",pattern=" << pattern << ",transport=" << transport_value
-              << ",component=" << component << ",label=" << label << ",socket_type=" << socket_type_value
-              << ",msg_size=" << msg_size << ",source=monitor_snapshot"
-              << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
-              << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role) << ",role_id=" << snapshot.auto_hwm_role
+              << ",component=" << component << ",label=" << label
+              << ",socket_type=" << socket_type_value << ",msg_size=" << msg_size
+              << ",source=monitor_snapshot" << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
+              << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+              << ",role_id=" << snapshot.auto_hwm_role
               << ",profile=" << auto_hwm_profile_name (snapshot.auto_hwm_profile)
               << ",profile_id=" << snapshot.auto_hwm_profile
               << ",policy_class=" << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
               << ",policy_class_id=" << snapshot.auto_hwm_policy_class
               << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
-              << ",size_cap=" << snapshot.auto_hwm_size_cap << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+              << ",size_cap=" << snapshot.auto_hwm_size_cap
+              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
               << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
               << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
               << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
-              << ",effective_sndbuf=" << effective_sndbuf << ",effective_rcvbuf=" << effective_rcvbuf
-              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms
-              << ",last_recalc_reason=" << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
+              << ",effective_sndbuf=" << effective_sndbuf
+              << ",effective_rcvbuf=" << effective_rcvbuf
+              << ",last_recalc_ms=" << snapshot.auto_hwm_last_recalc_ms << ",last_recalc_reason="
+              << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
               << ",send_blocked_ratio_ppm=" << snapshot.auto_hwm_send_blocked_ratio_ppm
               << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
               << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm << std::endl;
@@ -452,8 +462,9 @@ inline const char *spot_socket_owner_name (zlink::spot_node_socket_owner_t owner
     }
 }
 
-inline void
-emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node, const std::string &transport, size_t msg_size)
+inline void emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node,
+                                              const std::string &transport,
+                                              size_t msg_size)
 {
     if (!auto_hwm_detail_enabled ())
         return;
@@ -489,10 +500,12 @@ emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node, const std::
             effective_sndbuf = 0;
         const std::string key =
           pattern + "|" + transport_value + "|" + socket + "|" + std::to_string (msg_size) + "|"
-          + std::to_string (static_cast<int> (entry.owner ())) + "|" + std::to_string (entry.owner_id ()) + "|"
+          + std::to_string (static_cast<int> (entry.owner ())) + "|"
+          + std::to_string (entry.owner_id ()) + "|"
           + std::to_string (static_cast<int> (entry.socket_type ())) + "|"
-          + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|" + std::to_string (snapshot.auto_hwm_applied_rcvhwm)
-          + "|" + std::to_string (effective_sndbuf) + "|" + std::to_string (effective_rcvbuf);
+          + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|"
+          + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
+          + std::to_string (effective_sndbuf) + "|" + std::to_string (effective_rcvbuf);
         {
             std::lock_guard<std::mutex> lock (mutex);
             if (emitted.find (key) != emitted.end ())
@@ -502,21 +515,26 @@ emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node, const std::
 
         std::cout << "AUTO_HWM_DETAIL" << ",pattern=" << pattern << ",transport=" << transport_value
                   << ",component=spotnode" << ",label=" << socket
-                  << ",owner=" << spot_socket_owner_name (entry.owner ()) << ",owner_id=" << entry.owner_id ()
-                  << ",socket=" << socket << ",socket_type=" << socket_type << ",msg_size=" << msg_size
-                  << ",source=spotnode_snapshot" << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
-                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role) << ",role_id=" << snapshot.auto_hwm_role
+                  << ",owner=" << spot_socket_owner_name (entry.owner ())
+                  << ",owner_id=" << entry.owner_id () << ",socket=" << socket
+                  << ",socket_type=" << socket_type << ",msg_size=" << msg_size
+                  << ",source=spotnode_snapshot"
+                  << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
+                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
+                  << ",role_id=" << snapshot.auto_hwm_role
                   << ",profile=" << auto_hwm_profile_name (snapshot.auto_hwm_profile)
                   << ",profile_id=" << snapshot.auto_hwm_profile
                   << ",policy_class=" << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
                   << ",policy_class_id=" << snapshot.auto_hwm_policy_class
                   << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
                   << ",size_cap=" << snapshot.auto_hwm_size_cap << ",scope=shared"
-                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
                   << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
                   << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
-                  << ",effective_sndbuf=" << effective_sndbuf << ",effective_rcvbuf=" << effective_rcvbuf
-                  << ",last_recalc_reason=" << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
+                  << ",effective_sndbuf=" << effective_sndbuf
+                  << ",effective_rcvbuf=" << effective_rcvbuf << ",last_recalc_reason="
+                  << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
                   << std::endl;
     }
 }
@@ -533,7 +551,8 @@ inline void apply_benchmark_socket_options (SocketLike &socket,
 }
 
 template <typename SocketLike>
-inline bool open_socket_monitor (SocketLike &socket, zlink::monitor_event events, connect_monitor_t &out)
+inline bool
+open_socket_monitor (SocketLike &socket, zlink::monitor_event events, connect_monitor_t &out)
 {
     zlink::socket_monitor_t monitor (socket.monitor_open (events));
     if (!monitor.valid ())
@@ -543,7 +562,8 @@ inline bool open_socket_monitor (SocketLike &socket, zlink::monitor_event events
     return true;
 }
 
-template <typename SocketLike> inline bool open_connect_monitor (SocketLike &socket, connect_monitor_t &out)
+template <typename SocketLike>
+inline bool open_connect_monitor (SocketLike &socket, connect_monitor_t &out)
 {
     return open_socket_monitor (socket, zlink::monitor_event::connection_ready, out);
 }
@@ -563,7 +583,8 @@ inline int poll_connect_ready_count (connect_monitor_t &mon)
           mon.monitor->recv (static_cast<int> (zlink::send_flags_t::dontwait));
         if (!ev)
             break;
-        if (static_cast<uint64_t> (ev->event) == static_cast<uint64_t> (zlink::monitor_event::connection_ready)) {
+        if (static_cast<uint64_t> (ev->event)
+            == static_cast<uint64_t> (zlink::monitor_event::connection_ready)) {
             ++ready;
         }
     }
@@ -593,13 +614,15 @@ inline bool wait_connect_ready_count (connect_monitor_t &mon, size_t expected_re
         return false;
     }
 
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
     while (ready < expected_ready) {
         const auto now = std::chrono::steady_clock::now ();
         if (now >= deadline)
             break;
 
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+        long wait_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
         if (wait_ms < 1)
             wait_ms = 1;
 
@@ -653,17 +676,20 @@ inline bool wait_connect_ready_all (std::vector<connect_monitor_t> &monitors, in
         return false;
     }
 
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
     while (ready_count < monitors.size ()) {
         const auto now = std::chrono::steady_clock::now ();
         if (now >= deadline)
             break;
 
-        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+        long wait_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
         if (wait_ms < 1)
             wait_ms = 1;
 
-        const size_t rc = poller.wait (events.data (), events.size (), std::chrono::milliseconds (wait_ms));
+        const size_t rc =
+          poller.wait (events.data (), events.size (), std::chrono::milliseconds (wait_ms));
         if (rc == 0)
             continue;
 
@@ -692,7 +718,8 @@ inline void close_connect_monitor (connect_monitor_t &mon)
     mon.monitor.reset ();
 }
 
-inline std::string make_endpoint (const std::string &transport, const std::string &id, int fixed_port)
+inline std::string
+make_endpoint (const std::string &transport, const std::string &id, int fixed_port)
 {
     if (transport == "inproc")
         return std::string ("inproc://") + id;
@@ -734,8 +761,10 @@ inline std::string normalize_endpoint_host (const std::string &endpoint)
 }
 
 template <typename SocketLike>
-inline std::string
-bind_and_resolve_endpoint (SocketLike &socket, const std::string &transport, const std::string &id, int fixed_port)
+inline std::string bind_and_resolve_endpoint (SocketLike &socket,
+                                              const std::string &transport,
+                                              const std::string &id,
+                                              int fixed_port)
 {
     // For wildcard binds, normalize to loopback so clients always connect to 127.0.0.1.
     const std::string endpoint = make_endpoint (transport, id, fixed_port);
@@ -798,8 +827,8 @@ inline void debug_header_trace (const char *role,
 
     std::cerr << "HEADER_TRACE" << ",role=" << (role ? role : "") << ",pattern=" << pattern
               << ",transport=" << transport << ",size=" << size << ",stage=" << (stage ? stage : "")
-              << ",phase=" << phase << ",run_id=" << run_id << ",seq=" << seq << ",sent_ts_ns=" << sent_ts_ns
-              << ",observed_ts_ns=" << observed_ts_ns;
+              << ",phase=" << phase << ",run_id=" << run_id << ",seq=" << seq
+              << ",sent_ts_ns=" << sent_ts_ns << ",observed_ts_ns=" << observed_ts_ns;
     if (latency_ns >= 0.0) {
         std::cerr << ",latency_ns=" << std::fixed << std::setprecision (3) << latency_ns;
     }
@@ -835,16 +864,16 @@ inline void print_result (const std::string &lib,
     const double p95_ms = p95_ns / 1000000.0;
     const double p99_ms = p99_ns / 1000000.0;
 
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size << ",throughput," << std::fixed
-              << std::setprecision (3) << throughput << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size << ",bandwidth," << std::fixed
-              << std::setprecision (3) << bandwidth << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size << ",latency," << std::fixed
-              << std::setprecision (3) << latency_ms << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size << ",latency_p95," << std::fixed
-              << std::setprecision (3) << p95_ms << std::endl;
-    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size << ",latency_p99," << std::fixed
-              << std::setprecision (3) << p99_ms << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
+              << ",throughput," << std::fixed << std::setprecision (3) << throughput << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
+              << ",bandwidth," << std::fixed << std::setprecision (3) << bandwidth << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
+              << ",latency," << std::fixed << std::setprecision (3) << latency_ms << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
+              << ",latency_p95," << std::fixed << std::setprecision (3) << p95_ms << std::endl;
+    std::cout << "RESULT," << lib << "," << pattern << "," << transport << "," << size
+              << ",latency_p99," << std::fixed << std::setprecision (3) << p99_ms << std::endl;
 }
 
 inline void print_client_result_lines (const std::string &lib,
@@ -856,11 +885,13 @@ inline void print_client_result_lines (const std::string &lib,
                                        double bandwidth_multiplier,
                                        const bench_latency_stats_t &latency)
 {
-    const double throughput = static_cast<double> (active_count) / static_cast<double> (std::max (1, active_seconds));
-    const double bandwidth = throughput * static_cast<double> (size) * bandwidth_multiplier / 1000000.0;
+    const double throughput =
+      static_cast<double> (active_count) / static_cast<double> (std::max (1, active_seconds));
+    const double bandwidth =
+      throughput * static_cast<double> (size) * bandwidth_multiplier / 1000000.0;
 
-    print_result (lib, pattern, transport, size, throughput, bandwidth, latency.mean_ns, latency.p95_ns,
-                  latency.p99_ns);
+    print_result (lib, pattern, transport, size, throughput, bandwidth, latency.mean_ns,
+                  latency.p95_ns, latency.p99_ns);
 }
 
 inline void print_ready (const std::string &endpoint)

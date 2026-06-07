@@ -237,11 +237,9 @@ class condition_variable_t
                 timeout.tv_nsec -= 1000000000;
             }
 #ifdef ZLINK_HAVE_OSX
-            rc = pthread_cond_timedwait_relative_np (
-              &_cond, mutex_->get_mutex (), &timeout);
+            rc = pthread_cond_timedwait_relative_np (&_cond, mutex_->get_mutex (), &timeout);
 #else
-            rc =
-              pthread_cond_timedwait (&_cond, mutex_->get_mutex (), &timeout);
+            rc = pthread_cond_timedwait (&_cond, mutex_->get_mutex (), &timeout);
 #endif
         } else
             rc = pthread_cond_wait (&_cond, mutex_->get_mutex ());

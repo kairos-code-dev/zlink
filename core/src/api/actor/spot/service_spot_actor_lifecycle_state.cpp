@@ -15,20 +15,17 @@ void actor_lifecycle_state_t::clear (spot_logical_state_t *key_)
     queues.erase (key_);
 }
 
-void actor_lifecycle_state_t::enqueue (
-  spot_logical_state_t *key_, const lifecycle_event_t &event_)
+void actor_lifecycle_state_t::enqueue (spot_logical_state_t *key_, const lifecycle_event_t &event_)
 {
     queues[key_].push_back (event_);
 }
 
-bool actor_lifecycle_state_t::pop (
-  spot_logical_state_t *key_,
-  lifecycle_event_t *event_out_)
+bool actor_lifecycle_state_t::pop (spot_logical_state_t *key_, lifecycle_event_t *event_out_)
 {
     if (!key_ || !event_out_)
         return false;
-    std::map<spot_logical_state_t *, std::deque<lifecycle_event_t> >::iterator
-      queue_it = queues.find (key_);
+    std::map<spot_logical_state_t *, std::deque<lifecycle_event_t>>::iterator queue_it =
+      queues.find (key_);
     if (queue_it == queues.end () || queue_it->second.empty ())
         return false;
     *event_out_ = queue_it->second.front ();

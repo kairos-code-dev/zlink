@@ -20,28 +20,23 @@ const int term_and_reaper_threads_count = 2;
 }
 
 zlink::ctx_runtime_resources_t::ctx_runtime_resources_t () :
-    _reaper (NULL),
-    _service_control_runtime (NULL)
+    _reaper (NULL), _service_control_runtime (NULL)
 {
 }
 
-bool zlink::ctx_runtime_resources_t::start_locked (
-  ctx_t &ctx_,
-  ctx_socket_registry_t &socket_registry_,
-  mailbox_t &term_mailbox_,
-  int max_sockets_,
-  int io_thread_count_)
+bool zlink::ctx_runtime_resources_t::start_locked (ctx_t &ctx_,
+                                                   ctx_socket_registry_t &socket_registry_,
+                                                   mailbox_t &term_mailbox_,
+                                                   int max_sockets_,
+                                                   int io_thread_count_)
 {
-    const int slot_count =
-      max_sockets_ + io_thread_count_ + term_and_reaper_threads_count;
+    const int slot_count = max_sockets_ + io_thread_count_ + term_and_reaper_threads_count;
 
     if (!socket_registry_.initialize_slot_pool (
-          slot_count, io_thread_count_ + term_and_reaper_threads_count,
-          &term_mailbox_))
+          slot_count, io_thread_count_ + term_and_reaper_threads_count, &term_mailbox_))
         return false;
 
-    if (!start_reaper_locked (ctx_, socket_registry_)
-        || !start_service_runtime_locked (ctx_)
+    if (!start_reaper_locked (ctx_, socket_registry_) || !start_service_runtime_locked (ctx_)
         || !start_io_threads_locked (ctx_, socket_registry_, io_thread_count_)) {
         cleanup_failed_start_locked (ctx_, socket_registry_);
         return false;
@@ -50,9 +45,7 @@ bool zlink::ctx_runtime_resources_t::start_locked (
     return true;
 }
 
-void zlink::ctx_runtime_resources_t::teardown (
-  ctx_t &ctx_,
-  ctx_socket_registry_t &socket_registry_)
+void zlink::ctx_runtime_resources_t::teardown (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_)
 {
     LIBZLINK_UNUSED (ctx_);
 
@@ -69,8 +62,7 @@ void zlink::ctx_runtime_resources_t::teardown (
     socket_registry_.clear ();
 }
 
-zlink::service_control_runtime_t *
-zlink::ctx_runtime_resources_t::service_control_runtime () const
+zlink::service_control_runtime_t *zlink::ctx_runtime_resources_t::service_control_runtime () const
 {
     return _service_control_runtime;
 }
@@ -86,28 +78,24 @@ void zlink::ctx_runtime_resources_t::stop_reaper ()
         _reaper->stop ();
 }
 
-zlink::io_thread_t *
-zlink::ctx_runtime_resources_t::choose_io_thread (uint64_t affinity_)
+zlink::io_thread_t *zlink::ctx_runtime_resources_t::choose_io_thread (uint64_t affinity_)
 {
     return _io_thread_registry.choose (affinity_);
 }
 
-zlink::io_thread_t *
-zlink::ctx_runtime_resources_t::choose_io_thread_stream (uint64_t affinity_)
+zlink::io_thread_t *zlink::ctx_runtime_resources_t::choose_io_thread_stream (uint64_t affinity_)
 {
     return _io_thread_registry.choose_stream (affinity_);
 }
 
 void zlink::ctx_runtime_resources_t::cleanup_failed_start_locked (
-  ctx_t &ctx_,
-  ctx_socket_registry_t &socket_registry_)
+  ctx_t &ctx_, ctx_socket_registry_t &socket_registry_)
 {
     teardown (ctx_, socket_registry_);
 }
 
-bool zlink::ctx_runtime_resources_t::start_reaper_locked (
-  ctx_t &ctx_,
-  ctx_socket_registry_t &socket_registry_)
+bool zlink::ctx_runtime_resources_t::start_reaper_locked (ctx_t &ctx_,
+                                                          ctx_socket_registry_t &socket_registry_)
 {
     _reaper = new (std::nothrow) reaper_t (&ctx_, ctx_t::reaper_tid);
     if (!_reaper) {
@@ -124,8 +112,7 @@ bool zlink::ctx_runtime_resources_t::start_reaper_locked (
 
 bool zlink::ctx_runtime_resources_t::start_service_runtime_locked (ctx_t &ctx_)
 {
-    _service_control_runtime =
-      new (std::nothrow) service_control_runtime_t (&ctx_, "service-ctrl");
+    _service_control_runtime = new (std::nothrow) service_control_runtime_t (&ctx_, "service-ctrl");
     if (!_service_control_runtime) {
         errno = ENOMEM;
         return false;
@@ -135,9 +122,7 @@ bool zlink::ctx_runtime_resources_t::start_service_runtime_locked (ctx_t &ctx_)
 }
 
 bool zlink::ctx_runtime_resources_t::start_io_threads_locked (
-  ctx_t &ctx_,
-  ctx_socket_registry_t &socket_registry_,
-  int io_thread_count_)
+  ctx_t &ctx_, ctx_socket_registry_t &socket_registry_, int io_thread_count_)
 {
     for (int i = term_and_reaper_threads_count;
          i != io_thread_count_ + term_and_reaper_threads_count; ++i) {

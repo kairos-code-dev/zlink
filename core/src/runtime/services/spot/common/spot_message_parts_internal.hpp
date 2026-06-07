@@ -48,14 +48,12 @@ inline void spot_clear_msg_parts (spot_owned_msg_parts_t *parts_)
     if (!parts_)
         return;
 
-    for (spot_owned_msg_parts_t::iterator it = parts_->begin ();
-         it != parts_->end (); ++it)
+    for (spot_owned_msg_parts_t::iterator it = parts_->begin (); it != parts_->end (); ++it)
         spot_close_msg_frame (&(*it));
     parts_->clear ();
 }
 
-inline int spot_move_msg_parts (spot_owned_msg_parts_t *parts_,
-                                std::vector<zlink_msg_t> *out_)
+inline int spot_move_msg_parts (spot_owned_msg_parts_t *parts_, std::vector<zlink_msg_t> *out_)
 {
     if (!parts_ || !out_) {
         errno = EINVAL;
@@ -68,8 +66,8 @@ inline int spot_move_msg_parts (spot_owned_msg_parts_t *parts_,
         memset (&(*out_)[0], 0, out_->size () * sizeof (zlink_msg_t));
 
     size_t index = 0;
-    for (spot_owned_msg_parts_t::iterator it = parts_->begin ();
-         it != parts_->end (); ++it, ++index) {
+    for (spot_owned_msg_parts_t::iterator it = parts_->begin (); it != parts_->end ();
+         ++it, ++index) {
         spot_init_msg_frame (&(*out_)[index]);
         if (zlink_msg_move (&(*out_)[index], &(*it)) != 0) {
             const int err = errno;
@@ -92,22 +90,19 @@ inline std::string spot_msg_frame_to_string (const zlink_msg_t &frame_)
         return std::string ();
 
     return std::string (
-      static_cast<const char *> (
-        zlink_msg_data (const_cast<zlink_msg_t *> (&frame_))),
+      static_cast<const char *> (zlink_msg_data (const_cast<zlink_msg_t *> (&frame_))),
       zlink_msg_size (&frame_));
 }
 
-inline void spot_copy_msg_parts_to_strings (
-  const spot_owned_msg_parts_t &parts_,
-  std::vector<std::string> *out_)
+inline void spot_copy_msg_parts_to_strings (const spot_owned_msg_parts_t &parts_,
+                                            std::vector<std::string> *out_)
 {
     if (!out_)
         return;
 
     out_->clear ();
     out_->reserve (parts_.size ());
-    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
-         it != parts_.end (); ++it)
+    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin (); it != parts_.end (); ++it)
         out_->push_back (spot_msg_frame_to_string (*it));
 }
 
@@ -135,12 +130,10 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
     }
 
     size_t prepared = 0;
-    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
-         prepared < count; ++prepared, ++it) {
+    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin (); prepared < count;
+         ++prepared, ++it) {
         spot_init_msg_frame (&send_frames[prepared]);
-        if (zlink_msg_copy (&send_frames[prepared],
-                            const_cast<zlink_msg_t *> (&(*it)))
-            != 0) {
+        if (zlink_msg_copy (&send_frames[prepared], const_cast<zlink_msg_t *> (&(*it))) != 0) {
             const int err = errno;
             for (size_t i = 0; i <= prepared; ++i)
                 spot_close_msg_frame (&send_frames[i]);
@@ -150,12 +143,7 @@ inline int spot_publish_msg_parts (socket_base_t *socket_,
     }
 
     const int rc = logical_multipart_publish (
-      socket_,
-      topic_.c_str (),
-      count > 0 ? send_frames : NULL,
-      count,
-      ZLINK_DONTWAIT,
-      true);
+      socket_, topic_.c_str (), count > 0 ? send_frames : NULL, count, ZLINK_DONTWAIT, true);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);
@@ -185,8 +173,8 @@ inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
     }
 
     size_t prepared = 0;
-    for (spot_owned_msg_parts_t::iterator it = parts_->begin ();
-         prepared < count; ++prepared, ++it) {
+    for (spot_owned_msg_parts_t::iterator it = parts_->begin (); prepared < count;
+         ++prepared, ++it) {
         spot_init_msg_frame (&send_frames[prepared]);
         if (zlink_msg_move (&send_frames[prepared], &(*it)) != 0) {
             const int err = errno;
@@ -199,13 +187,8 @@ inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
     }
     spot_clear_msg_parts (parts_);
 
-    const int rc = logical_multipart_publish (
-      socket_,
-      topic_.c_str (),
-      count > 0 ? send_frames : NULL,
-      count,
-      0,
-      true);
+    const int rc = logical_multipart_publish (socket_, topic_.c_str (),
+                                              count > 0 ? send_frames : NULL, count, 0, true);
     const int saved_errno = rc == 0 ? 0 : errno;
     for (size_t i = 0; i < count; ++i)
         spot_close_msg_frame (&send_frames[i]);
@@ -219,8 +202,7 @@ inline int spot_publish_msg_parts_consume (socket_base_t *socket_,
 inline size_t spot_msg_parts_payload_bytes (const spot_owned_msg_parts_t &parts_)
 {
     size_t bytes = 0;
-    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
-         it != parts_.end (); ++it)
+    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin (); it != parts_.end (); ++it)
         bytes += zlink_msg_size (const_cast<zlink_msg_t *> (&(*it)));
     return bytes;
 }
@@ -228,12 +210,9 @@ inline size_t spot_msg_parts_payload_bytes (const spot_owned_msg_parts_t &parts_
 inline uint32_t spot_msg_parts_encoded_bytes (const spot_owned_msg_parts_t &parts_)
 {
     size_t bytes = sizeof (uint16_t);
-    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin ();
-         it != parts_.end (); ++it)
-        bytes += sizeof (uint32_t)
-                 + zlink_msg_size (const_cast<zlink_msg_t *> (&(*it)));
-    return static_cast<uint32_t> (
-      bytes > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (bytes));
+    for (spot_owned_msg_parts_t::const_iterator it = parts_.begin (); it != parts_.end (); ++it)
+        bytes += sizeof (uint32_t) + zlink_msg_size (const_cast<zlink_msg_t *> (&(*it)));
+    return static_cast<uint32_t> (bytes > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t> (bytes));
 }
 
 inline int spot_recv_logical_message_parts (socket_base_t *src_,
@@ -262,8 +241,7 @@ inline int spot_recv_logical_message_parts (socket_base_t *src_,
         return -1;
     }
 
-    *topic_out_ = std::string (static_cast<const char *> (topic_msg.data ()),
-                               topic_msg.size ());
+    *topic_out_ = std::string (static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
     *wire_bytes_out_ += topic_msg.size ();
     bool more = (topic_msg.flags () & msg_t::more) != 0;
     topic_msg.close ();
@@ -286,8 +264,7 @@ inline int spot_recv_logical_message_parts (socket_base_t *src_,
         parts_out_->push_back (zlink_msg_t ());
         zlink_msg_t &stored = parts_out_->back ();
         spot_init_msg_frame (&stored);
-        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame))
-            != 0) {
+        if (zlink_msg_move (&stored, reinterpret_cast<zlink_msg_t *> (&frame)) != 0) {
             const int err = errno;
             frame.close ();
             spot_close_msg_frame (&stored);

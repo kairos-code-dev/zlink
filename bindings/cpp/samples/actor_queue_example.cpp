@@ -33,7 +33,8 @@ int main ()
     // dispatch 핸들러: join 요청을 수락하고, actor에게 온 메시지를 모은다.
     std::mutex mutex;
     std::vector<std::string> payloads;
-    spot.set_dispatch_handler ([&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
+    spot.set_dispatch_handler ([&] (zlink::service::spot_t &s,
+                                    const zlink::spot_dispatch_info_t &info) {
         if (info.event == zlink::spot_dispatch_event_t::actor_join_readable) {
             auto request = s.recv_actor_join (zlink::recv_flags_t::dontwait);
             if (!request.has_value ())
@@ -55,9 +56,8 @@ int main ()
         actor.join (spot)
           .message (msg)
           .timeout (std::chrono::seconds (1))
-          .submit ([&done] (const zlink::actor_join_result_t &result, std::vector<zlink::message_t>) {
-              done.set_value (result.result);
-          });
+          .submit ([&done] (const zlink::actor_join_result_t &result,
+                            std::vector<zlink::message_t>) { done.set_value (result.result); });
         assert (future.get () == zlink::request_result_t::ok);
     };
     auto send = [&] (const char *payload) {
@@ -87,6 +87,7 @@ int main ()
 
     leave ();
     actor.close ();
-    std::printf ("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
+    std::printf (
+      "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
     return 0;
 }

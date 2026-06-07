@@ -2,7 +2,8 @@
 
 #include "actor_sample_common.hpp"
 
-static void join_only_dispatch (actor_sample_dispatch_state_t &state_, const zlink::spot_dispatch_info_t &info_)
+static void join_only_dispatch (actor_sample_dispatch_state_t &state_,
+                                const zlink::spot_dispatch_info_t &info_)
 {
     if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
         return;
@@ -39,7 +40,8 @@ int main ()
               .message (join_first)
               .flags (zlink::recv_flags_t::dontwait)
               .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result, std::vector<zlink::message_t> parts) {
+              .submit ([&] (const zlink::actor_join_result_t &result,
+                            std::vector<zlink::message_t> parts) {
                   actor_sample_join_reply (first_capture, result, std::move (parts));
               }));
     assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
@@ -69,7 +71,8 @@ int main ()
               .message (join_second)
               .flags (zlink::recv_flags_t::dontwait)
               .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result, std::vector<zlink::message_t> parts) {
+              .submit ([&] (const zlink::actor_join_result_t &result,
+                            std::vector<zlink::message_t> parts) {
                   actor_sample_join_reply (second_capture, result, std::move (parts));
               }));
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::joined));
@@ -79,6 +82,7 @@ int main ()
 
     (void) actor.leave (second_spot).submit_async ().get ();
     actor.close ();
-    std::printf ("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
+    std::printf (
+      "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
     return 0;
 }

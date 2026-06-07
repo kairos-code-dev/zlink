@@ -87,21 +87,17 @@ inline bool frame_is_single_byte_value (zlink_msg_t *part_, uint8_t value_)
     if (!msg->check () || msg->size () != 1)
         return false;
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (msg->data ());
+    const unsigned char *data = static_cast<const unsigned char *> (msg->data ());
     return data[0] == value_;
 }
 
-inline bool parse_envelope (zlink_msg_t *parts_,
-                            size_t part_count_,
-                            parsed_envelope_t *out_)
+inline bool parse_envelope (zlink_msg_t *parts_, size_t part_count_, parsed_envelope_t *out_)
 {
     if (!parts_ || !out_ || part_count_ < control_part_count)
         return false;
 
     zlink::msg_t *protocol_msg = reinterpret_cast<zlink::msg_t *> (&parts_[0]);
-    if (!protocol_msg->check ()
-        || !frame_is_single_byte_value (&parts_[0], protocol_id)
+    if (!protocol_msg->check () || !frame_is_single_byte_value (&parts_[0], protocol_id)
         || !frame_is_single_byte_value (&parts_[1], version)) {
         return false;
     }
@@ -113,16 +109,14 @@ inline bool parse_envelope (zlink_msg_t *parts_,
         return false;
     }
 
-    const unsigned char *type_data =
-      static_cast<const unsigned char *> (type_msg->data ());
+    const unsigned char *type_data = static_cast<const unsigned char *> (type_msg->data ());
     if (type_data[0] != request_type && type_data[0] != reply_type
         && type_data[0] != error_reply_type) {
         return false;
     }
 
     out_->message_type = type_data[0];
-    out_->request_seq =
-      decode_u64_be (static_cast<const unsigned char *> (seq_msg->data ()));
+    out_->request_seq = decode_u64_be (static_cast<const unsigned char *> (seq_msg->data ()));
     if (out_->request_seq == 0)
         return false;
 
@@ -138,8 +132,7 @@ inline int decode_reply_completion (uint8_t message_type_,
                                     zlink_msg_t **callback_parts_out_,
                                     size_t *callback_part_count_out_)
 {
-    if (!callback_errno_out_ || !callback_parts_out_
-        || !callback_part_count_out_) {
+    if (!callback_errno_out_ || !callback_parts_out_ || !callback_part_count_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -166,17 +159,14 @@ inline int decode_reply_completion (uint8_t message_type_,
         return 0;
     }
 
-    const unsigned char *errbuf =
-      static_cast<const unsigned char *> (errno_part->data ());
+    const unsigned char *errbuf = static_cast<const unsigned char *> (errno_part->data ());
     *callback_errno_out_ = static_cast<int> (decode_u32_be (errbuf));
     *callback_parts_out_ = part_count_ > 1 ? parts_ + 1 : NULL;
     *callback_part_count_out_ = part_count_ > 0 ? part_count_ - 1 : 0;
     return 0;
 }
 
-inline int init_control_part (zlink_msg_t *part_,
-                              const void *data_,
-                              size_t size_)
+inline int init_control_part (zlink_msg_t *part_, const void *data_, size_t size_)
 {
     if (!part_) {
         errno = EFAULT;
@@ -211,9 +201,7 @@ inline void consume_send_frame (zlink_msg_t *part_)
     errno_assert (init_rc == 0);
 }
 
-inline void consume_send_frames_from (zlink_msg_t *parts_,
-                                      size_t start_index_,
-                                      size_t part_count_)
+inline void consume_send_frames_from (zlink_msg_t *parts_, size_t start_index_, size_t part_count_)
 {
     if (!parts_)
         return;
@@ -254,8 +242,8 @@ inline void complete_reply_callback (zlink_reply_handler_fn handler_,
                                      void *userdata_)
 {
     if (handler_)
-        handler_ (zlink::request_result_internal::from_errno (errnum_), parts_,
-                  part_count_, userdata_);
+        handler_ (zlink::request_result_internal::from_errno (errnum_), parts_, part_count_,
+                  userdata_);
 }
 }
 }

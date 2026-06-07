@@ -4,6 +4,6 @@
 
 #include "addon_common_api.h"
 
-void define_core_exports(napi_env env, napi_value exports);
-void define_discovery_exports(napi_env env, napi_value exports);
-void define_spot_exports(napi_env env, napi_value exports);
+void define_core_exports (napi_env env, napi_value exports);
+void define_discovery_exports (napi_env env, napi_value exports);
+void define_spot_exports (napi_env env, napi_value exports);

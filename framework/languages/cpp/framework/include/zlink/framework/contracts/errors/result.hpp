@@ -14,7 +14,8 @@ template <typename T> class result_t
   public:
     static result_t success (T value) { return result_t (std::move (value)); }
 
-    static result_t failure (framework_error_kind_t kind, std::string message, bool retriable = false)
+    static result_t
+    failure (framework_error_kind_t kind, std::string message, bool retriable = false)
     {
         return result_t (framework_exception_t (kind, std::move (message), retriable));
     }
@@ -63,7 +64,8 @@ template <> class result_t<void>
   public:
     static result_t success () { return result_t (); }
 
-    static result_t failure (framework_error_kind_t kind, std::string message, bool retriable = false)
+    static result_t
+    failure (framework_error_kind_t kind, std::string message, bool retriable = false)
     {
         return result_t (framework_exception_t (kind, std::move (message), retriable));
     }

@@ -9,13 +9,12 @@
 #include "utils/err.hpp"
 #include "core/ctx.hpp"
 
-zlink::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
-    object_t (ctx_, tid_)
+zlink::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) : object_t (ctx_, tid_)
 {
     _poller = new (std::nothrow) poller_t (*ctx_);
     alloc_assert (_poller);
-    _mailbox.set_io_context (&_poller->get_io_context (),
-                             &io_thread_t::mailbox_handler, this, NULL);
+    _mailbox.set_io_context (&_poller->get_io_context (), &io_thread_t::mailbox_handler, this,
+                             NULL);
     _mailbox.schedule_if_needed ();
 }
 
@@ -27,8 +26,7 @@ zlink::io_thread_t::~io_thread_t ()
 void zlink::io_thread_t::start ()
 {
     char name[16] = "";
-    snprintf (name, sizeof (name), "IO/%u",
-              get_tid () - zlink::ctx_t::reaper_tid - 1);
+    snprintf (name, sizeof (name), "IO/%u", get_tid () - zlink::ctx_t::reaper_tid - 1);
     //  Start the underlying I/O thread.
     _poller->start (name);
 }

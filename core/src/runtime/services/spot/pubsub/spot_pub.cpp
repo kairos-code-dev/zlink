@@ -77,8 +77,7 @@ bool spot_pub_t::is_node_owned_default () const
     return _node_owned_default;
 }
 
-std::shared_ptr<part_helper_internal::handle_state_t>
-spot_pub_t::part_helper_state () const
+std::shared_ptr<part_helper_internal::handle_state_t> spot_pub_t::part_helper_state () const
 {
     scoped_lock_t lock (_sync);
     return _part_helper_state;
@@ -121,14 +120,10 @@ void spot_pub_t::lock_routing_id ()
 void spot_pub_t::submit_error_summary (int error_code_)
 {
     if (_node)
-        _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_ERROR,
-                                   error_code_);
+        _node->submit_pub_summary (this, ZLINK_TOPOLOGY_STATE_ERROR, error_code_);
 }
 
-int spot_pub_t::publish (const char *topic_,
-                         zlink_msg_t *parts_,
-                         size_t part_count_,
-                         int flags_)
+int spot_pub_t::publish (const char *topic_, zlink_msg_t *parts_, size_t part_count_, int flags_)
 {
     socket_base_t *socket = this->socket ();
     if (!_node) {
@@ -155,13 +150,10 @@ int spot_pub_t::publish (const char *topic_,
 
     scoped_lock_t publish_lock (_publish_sync);
     const int rc =
-      socket
-        ? zlink::logical_multipart_publish (socket, topic_, parts_, part_count_,
-                                            flags_, true)
-        : zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
-            _runtime, topic_, parts_, part_count_,
-            static_cast<zlink_send_flags_t> (flags_),
-            resolve_spot_send_timeout_ms (_node));
+      socket ? zlink::logical_multipart_publish (socket, topic_, parts_, part_count_, flags_, true)
+             : zlink::spot_data_plane_forwarder_t::enqueue_publish_ingress (
+                 _runtime, topic_, parts_, part_count_, static_cast<zlink_send_flags_t> (flags_),
+                 resolve_spot_send_timeout_ms (_node));
     const int saved_errno = rc == 0 ? 0 : errno;
 
     if (saved_errno != 0) {
@@ -174,9 +166,7 @@ int spot_pub_t::publish (const char *topic_,
     return 0;
 }
 
-int spot_pub_t::set_option (int option_,
-                            const void *optval_,
-                            size_t optvallen_)
+int spot_pub_t::set_option (int option_, const void *optval_, size_t optvallen_)
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {
@@ -257,9 +247,7 @@ int spot_pub_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
         return 0;
     }
 
-    if (socket->socket_set_send_ready_handler_ex (&spot_pub_send_ready_adapter,
-                                                  this)
-        != 0)
+    if (socket->socket_set_send_ready_handler_ex (&spot_pub_send_ready_adapter, this) != 0)
         return -1;
 
     _send_ready_userdata.store (userdata_, std::memory_order_release);
@@ -323,16 +311,13 @@ void spot_pub_t::dispatch_send_ready ()
         if (!admission.acquired ())
             return;
     }
-    zlink_send_ready_handler_fn handler =
-      _send_ready_handler.load (std::memory_order_acquire);
+    zlink_send_ready_handler_fn handler = _send_ready_handler.load (std::memory_order_acquire);
     void *subject = _send_ready_subject.load (std::memory_order_acquire);
     if (handler && subject)
-        handler (subject,
-                 _send_ready_userdata.load (std::memory_order_acquire));
+        handler (subject, _send_ready_userdata.load (std::memory_order_acquire));
 }
 
-int spot_pub_t::destroy_internal (bool allow_embedded_default_,
-                                  bool notify_node_)
+int spot_pub_t::destroy_internal (bool allow_embedded_default_, bool notify_node_)
 {
     if (_node_owned_default && !allow_embedded_default_) {
         errno = EINVAL;
@@ -352,11 +337,10 @@ int spot_pub_t::destroy_internal (bool allow_embedded_default_,
 
     if (socket) {
         if (_node)
-            preserve_first_error (
-              !node_shutting_down
-                ? _node->destroy_attachment (_attachment_id)
-                : _node->destroy_attachment_async (_attachment_id),
-              &first_error);
+            preserve_first_error (!node_shutting_down
+                                    ? _node->destroy_attachment (_attachment_id)
+                                    : _node->destroy_attachment_async (_attachment_id),
+                                  &first_error);
         else {
             socket->stop ();
             socket->close ();

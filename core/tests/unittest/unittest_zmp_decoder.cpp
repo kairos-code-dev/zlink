@@ -20,9 +20,7 @@ void tearDown ()
 {
 }
 
-static void build_header (unsigned char *buf_,
-                          unsigned char flags_,
-                          uint32_t body_len_)
+static void build_header (unsigned char *buf_, unsigned char flags_, uint32_t body_len_)
 {
     buf_[0] = zlink::zmp_magic;
     buf_[1] = zlink::zmp_version;
@@ -41,8 +39,7 @@ void test_invalid_magic ()
     const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EPROTO, errno);
-    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_invalid_magic,
-                             decoder.error_code ());
+    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_invalid_magic, decoder.error_code ());
 }
 
 void test_version_mismatch ()
@@ -55,8 +52,7 @@ void test_version_mismatch ()
     const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EPROTO, errno);
-    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_version_mismatch,
-                             decoder.error_code ());
+    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_version_mismatch, decoder.error_code ());
 }
 
 void test_flags_invalid ()
@@ -68,8 +64,7 @@ void test_flags_invalid ()
     const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EPROTO, errno);
-    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_flags_invalid,
-                             decoder.error_code ());
+    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_flags_invalid, decoder.error_code ());
 }
 
 void test_subscribe_cancel_invalid ()
@@ -81,8 +76,7 @@ void test_subscribe_cancel_invalid ()
     const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EPROTO, errno);
-    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_flags_invalid,
-                             decoder.error_code ());
+    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_flags_invalid, decoder.error_code ());
 }
 
 void test_body_too_large ()
@@ -94,8 +88,7 @@ void test_body_too_large ()
     const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
-    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_body_too_large,
-                             decoder.error_code ());
+    TEST_ASSERT_EQUAL_UINT8 (zlink::zmp_error_body_too_large, decoder.error_code ());
 }
 
 void test_more_identity_allowed ()

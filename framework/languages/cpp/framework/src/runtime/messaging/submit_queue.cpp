@@ -40,7 +40,8 @@ bool submit_queue_t::try_peek (pending_submit_t &pending) const
     return true;
 }
 
-bool submit_queue_t::try_dequeue_expected (const pending_operation_t &expected, pending_submit_t &pending)
+bool submit_queue_t::try_dequeue_expected (const pending_operation_t &expected,
+                                           pending_submit_t &pending)
 {
     std::lock_guard<std::mutex> lock (_gate);
     if (_pending.empty () || !_pending.front ().operation ().valid ()

@@ -20,20 +20,17 @@ void tearDown ()
 
 bool tree_add (zlink::radix_tree_t &tree_, const std::string &key_)
 {
-    return tree_.add (reinterpret_cast<const unsigned char *> (key_.data ()),
-                      key_.size ());
+    return tree_.add (reinterpret_cast<const unsigned char *> (key_.data ()), key_.size ());
 }
 
 bool tree_rm (zlink::radix_tree_t &tree_, const std::string &key_)
 {
-    return tree_.rm (reinterpret_cast<const unsigned char *> (key_.data ()),
-                     key_.size ());
+    return tree_.rm (reinterpret_cast<const unsigned char *> (key_.data ()), key_.size ());
 }
 
 bool tree_check (zlink::radix_tree_t &tree_, const std::string &key_)
 {
-    return tree_.check (reinterpret_cast<const unsigned char *> (key_.data ()),
-                        key_.size ());
+    return tree_.check (reinterpret_cast<const unsigned char *> (key_.data ()), key_.size ());
 }
 
 void test_empty ()
@@ -207,8 +204,7 @@ void test_size ()
 
 void return_key (unsigned char *data_, size_t size_, void *arg_)
 {
-    std::vector<std::string> *vec =
-      reinterpret_cast<std::vector<std::string> *> (arg_);
+    std::vector<std::string> *vec = reinterpret_cast<std::vector<std::string> *> (arg_);
     std::string key;
     for (size_t i = 0; i < size_; ++i)
         key.push_back (static_cast<char> (data_[i]));

@@ -17,7 +17,8 @@
 #include <string>
 #include <vector>
 
-namespace perf_stream_common {
+namespace perf_stream_common
+{
 
 // Payload size constraints enforced on both send and receive.
 inline constexpr size_t k_stream_min_chunk_size = 16;
@@ -26,20 +27,16 @@ inline constexpr size_t k_stream_max_chunk_size = 4 * 1024 * 1024;
 // Monotonic nanosecond timestamp for latency measurement.
 inline uint64_t perf_stream_now_ns ()
 {
-    const std::chrono::steady_clock::time_point now =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
     return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        now.time_since_epoch ())
-        .count ());
+      std::chrono::duration_cast<std::chrono::nanoseconds> (now.time_since_epoch ()).count ());
 }
 
 // Big-endian wire encoding helpers for the packet framing protocol.
 // Wire format: [2-byte BE header length][4-byte BE body length][header][body]
 inline uint16_t perf_stream_load_u16_be (const unsigned char *p)
 {
-    return (static_cast<uint16_t> (p[0]) << 8)
-           | static_cast<uint16_t> (p[1]);
+    return (static_cast<uint16_t> (p[0]) << 8) | static_cast<uint16_t> (p[1]);
 }
 
 inline void perf_stream_store_u16_be (unsigned char *p, uint16_t v)
@@ -50,10 +47,8 @@ inline void perf_stream_store_u16_be (unsigned char *p, uint16_t v)
 
 inline uint32_t perf_stream_load_u32_be (const unsigned char *p)
 {
-    return (static_cast<uint32_t> (p[0]) << 24)
-           | (static_cast<uint32_t> (p[1]) << 16)
-           | (static_cast<uint32_t> (p[2]) << 8)
-           | static_cast<uint32_t> (p[3]);
+    return (static_cast<uint32_t> (p[0]) << 24) | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8) | static_cast<uint32_t> (p[3]);
 }
 
 inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
@@ -66,15 +61,12 @@ inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
 
 inline constexpr size_t k_stream_packet_prefix_size = 6;
 inline constexpr char k_stream_msg_name[] = "stream.echo";
-inline constexpr size_t k_stream_msg_name_size =
-  sizeof (k_stream_msg_name) - 1;
+inline constexpr size_t k_stream_msg_name_size = sizeof (k_stream_msg_name) - 1;
 
-inline bool perf_stream_validate_frame_sizes (size_t header_size,
-                                              size_t body_size)
+inline bool perf_stream_validate_frame_sizes (size_t header_size, size_t body_size)
 {
     const size_t max_size = k_stream_max_chunk_size;
-    return header_size <= max_size && body_size <= max_size
-           && header_size <= max_size - body_size;
+    return header_size <= max_size && body_size <= max_size && header_size <= max_size - body_size;
 }
 
 inline bool perf_stream_is_msg_name (const unsigned char *data, size_t size)
@@ -86,9 +78,8 @@ inline bool perf_stream_is_msg_name (const unsigned char *data, size_t size)
 inline std::string lower_copy (const std::string &text)
 {
     std::string out = text;
-    std::transform (
-      out.begin (), out.end (), out.begin (),
-      [](unsigned char c) { return static_cast<char> (std::tolower (c)); });
+    std::transform (out.begin (), out.end (), out.begin (),
+                    [] (unsigned char c) { return static_cast<char> (std::tolower (c)); });
     return out;
 }
 
@@ -116,8 +107,7 @@ inline double percentile_from_sorted (const std::vector<double> &samples, double
 
 // Parse comma-separated size list (e.g. "64,1024,65536").
 // Each value must be within [k_stream_min_chunk_size, k_stream_max_chunk_size].
-inline bool perf_stream_parse_size_list (const std::string &text,
-                                         std::vector<size_t> &out)
+inline bool perf_stream_parse_size_list (const std::string &text, std::vector<size_t> &out)
 {
     out.clear ();
     std::stringstream ss (text);
@@ -163,8 +153,7 @@ inline bool perf_stream_parse_endpoint (const std::string &endpoint,
     std::string port_text;
     if (!rest.empty () && rest[0] == '[') {
         const size_t close = rest.find (']');
-        if (close == std::string::npos || close + 2 > rest.size ()
-            || rest[close + 1] != ':')
+        if (close == std::string::npos || close + 2 > rest.size () || rest[close + 1] != ':')
             return false;
         host = rest.substr (1, close - 1);
         port_text = rest.substr (close + 2);

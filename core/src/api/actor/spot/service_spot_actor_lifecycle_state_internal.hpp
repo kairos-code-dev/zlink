@@ -24,7 +24,7 @@ struct actor_lifecycle_state_t
     void enqueue (spot_logical_state_t *key_, const lifecycle_event_t &event_);
     bool pop (spot_logical_state_t *key_, lifecycle_event_t *event_out_);
 
-    std::map<spot_logical_state_t *, std::deque<lifecycle_event_t> > queues;
+    std::map<spot_logical_state_t *, std::deque<lifecycle_event_t>> queues;
 };
 
 }

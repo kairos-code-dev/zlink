@@ -132,8 +132,7 @@ void zlink::own_t::process_term (int linger_)
     zlink_assert (!_terminating);
 
     //  Send termination request to all owned objects.
-    for (owned_t::iterator it = _owned.begin (), end = _owned.end (); it != end;
-         ++it)
+    for (owned_t::iterator it = _owned.begin (), end = _owned.end (); it != end; ++it)
         send_term (*it, linger_);
     register_term_acks (static_cast<int> (_owned.size ()));
     _owned.clear ();
@@ -165,8 +164,7 @@ void zlink::own_t::process_term_ack ()
 
 void zlink::own_t::check_term_acks ()
 {
-    if (_terminating && _processed_seqnum == _sent_seqnum.get ()
-        && _term_acks == 0) {
+    if (_terminating && _processed_seqnum == _sent_seqnum.get () && _term_acks == 0) {
         //  Sanity check. There should be no active children at this point.
         zlink_assert (_owned.empty ());
 

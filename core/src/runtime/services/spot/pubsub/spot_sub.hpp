@@ -26,13 +26,12 @@ namespace part_helper_internal
 struct handle_state_t;
 }
 
-typedef void (*spot_sub_direct_handler_fn) (
-  const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
+typedef void (*spot_sub_direct_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                            const char *topic_,
+                                            size_t topic_len_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            void *userdata_);
 
 class spot_sub_t
 {
@@ -81,11 +80,10 @@ class spot_sub_t
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
-    void set_part_helper_state (
-      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
+    void
+    set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
-    int set_direct_handler (spot_sub_direct_handler_fn handler_,
-                            void *userdata_);
+    int set_direct_handler (spot_sub_direct_handler_fn handler_, void *userdata_);
     int recv (zlink_routing_id_t *source_rid_out_,
               zlink_msg_t **parts_,
               size_t *part_count_,
@@ -96,30 +94,24 @@ class spot_sub_t
     void append_raw_filters (std::set<std::string> *out_) const;
     void append_replay_raw_filters (std::set<std::string> *out_) const;
     void append_all_subjects (std::vector<subject_descriptor_t> *out_) const;
-    void append_subject_snapshots (
-      std::vector<subject_snapshot_t> *out_) const;
-    void append_subjects_for_raw_filter (
-      const std::string &raw_filter_,
-      std::vector<subject_descriptor_t> *out_) const;
-    void emit_filter_applied_event (const char *subject_,
-                                    uint32_t subject_kind_);
+    void append_subject_snapshots (std::vector<subject_snapshot_t> *out_) const;
+    void append_subjects_for_raw_filter (const std::string &raw_filter_,
+                                         std::vector<subject_descriptor_t> *out_) const;
+    void emit_filter_applied_event (const char *subject_, uint32_t subject_kind_);
     void mark_subject_subscription_ready (const subject_descriptor_t &subject_,
                                           const char *endpoint_);
-    void mark_subject_ready (const subject_descriptor_t &subject_,
-                             const char *endpoint_);
+    void mark_subject_ready (const subject_descriptor_t &subject_, const char *endpoint_);
     void backfill_subject_ready_endpoint (const subject_descriptor_t &subject_,
                                           const char *endpoint_);
-    void mark_subject_lost (const subject_descriptor_t &subject_,
-                            const char *endpoint_);
+    void mark_subject_lost (const subject_descriptor_t &subject_, const char *endpoint_);
     void mark_all_subjects_lost (const char *endpoint_);
     std::string first_ready_peer_endpoint () const;
     void send_ready_ack_lost_for_endpoint (const char *endpoint_);
     spot_node_t *node () const { return _node; }
 
     void emit_ready_event ();
-    int apply_aggregate_subscription (const std::string &raw_filter_,
-                                      bool pattern_,
-                                      bool subscribe_);
+    int
+    apply_aggregate_subscription (const std::string &raw_filter_, bool pattern_, bool subscribe_);
     int destroy ();
     int destroy_from_node ();
     int abort_create ();
@@ -147,13 +139,11 @@ class spot_sub_t
                                   zlink_msg_t *parts_,
                                   size_t part_count_);
     int destroy_internal (bool allow_embedded_default_, bool notify_node_);
-    void handle_ready_probe (const std::string &raw_filter_,
-                             const std::string &peer_endpoint_);
+    void handle_ready_probe (const std::string &raw_filter_, const std::string &peer_endpoint_);
     std::string ready_ack_source_id () const;
     void release_ready_ack_endpoints (const std::string &raw_filter_,
                                       std::vector<std::string> *out_);
-    void release_all_ready_ack_endpoints (
-      std::vector<std::pair<std::string, std::string> > *out_);
+    void release_all_ready_ack_endpoints (std::vector<std::pair<std::string, std::string>> *out_);
     void lock_routing_id ();
     socket_base_t *socket () const;
     spot_node_t *_node;
@@ -172,7 +162,7 @@ class spot_sub_t
     std::set<std::string> _delivery_ready_raw_filters;
     std::set<std::string> _ready_peer_endpoints;
     std::map<std::string, std::string> _ready_subject_endpoints;
-    std::map<std::string, std::set<std::string> > _ready_ack_endpoints;
+    std::map<std::string, std::set<std::string>> _ready_ack_endpoints;
 
     direct_handler_binding_t _direct_handler_bindings[2];
     unsigned int _direct_handler_binding_index;

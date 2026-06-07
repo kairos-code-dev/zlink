@@ -195,7 +195,10 @@ class socket_t
         return invoke_common_set (key_.option, value_);
     }
 
-    template <typename T> int set (socket_option_key_t<T> key_, const T &value_) { return set_option (key_, value_); }
+    template <typename T> int set (socket_option_key_t<T> key_, const T &value_)
+    {
+        return set_option (key_, value_);
+    }
 
     template <typename T> int set (router_option_key_t<T> key_, const T &value_)
     {
@@ -236,9 +239,15 @@ class socket_t
         return invoke_common_get (key_.option, value_);
     }
 
-    template <typename T> int get (socket_option_key_t<T> key_, T &value_) const { return get_option (key_, &value_); }
+    template <typename T> int get (socket_option_key_t<T> key_, T &value_) const
+    {
+        return get_option (key_, &value_);
+    }
 
-    int get (socket_option_key_t<std::string> key_, std::string &value_) const { return get_option (key_, value_); }
+    int get (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return get_option (key_, value_);
+    }
 
     template <typename T> int get (router_option_key_t<T> key_, T &value_) const
     {
@@ -253,7 +262,8 @@ class socket_t
     int set_routing_id (const void *data_, size_t size_)
     {
         try {
-            routing_id_t routing_id = routing_id_t::from (static_cast<const uint8_t *> (data_), size_);
+            routing_id_t routing_id =
+              routing_id_t::from (static_cast<const uint8_t *> (data_), size_);
             return invoke_routing_id_set (routing_id);
         }
         catch (const std::invalid_argument &) {
@@ -265,8 +275,8 @@ class socket_t
     int set_routing_id (const std::string &routing_id_)
     {
         try {
-            routing_id_t routing_id =
-              routing_id_t::from (reinterpret_cast<const uint8_t *> (routing_id_.data ()), routing_id_.size ());
+            routing_id_t routing_id = routing_id_t::from (
+              reinterpret_cast<const uint8_t *> (routing_id_.data ()), routing_id_.size ());
             return invoke_routing_id_set (routing_id);
         }
         catch (const std::invalid_argument &) {
@@ -275,14 +285,20 @@ class socket_t
         }
     }
 
-    int set_tls_server (const std::string &cert_, const std::string &key_, bool require_client_cert_ = false)
+    int set_tls_server (const std::string &cert_,
+                        const std::string &key_,
+                        bool require_client_cert_ = false)
     {
-        return invoke_void ([&] (auto &socket_) { socket_.set_tls_server (cert_, key_, require_client_cert_); });
+        return invoke_void (
+          [&] (auto &socket_) { socket_.set_tls_server (cert_, key_, require_client_cert_); });
     }
 
-    int set_tls_client (const std::string &ca_cert_, const std::string &hostname_, bool trust_system_ = false)
+    int set_tls_client (const std::string &ca_cert_,
+                        const std::string &hostname_,
+                        bool trust_system_ = false)
     {
-        return invoke_void ([&] (auto &socket_) { socket_.set_tls_client (ca_cert_, hostname_, trust_system_); });
+        return invoke_void (
+          [&] (auto &socket_) { socket_.set_tls_client (ca_cert_, hostname_, trust_system_); });
     }
 
     int send (message_t &part_, int flags_ = 0)
@@ -292,7 +308,8 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
                           || std::is_same<socket_type_t, dealer_socket_t>::value) {
                 try {
-                    const bool sent = std::move (socket_.send ()).message (part_).flags (flags_).submit ();
+                    const bool sent =
+                      std::move (socket_.send ()).message (part_).flags (flags_).submit ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const binding_error_t &err) {
@@ -313,7 +330,10 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, router_socket_t>::value
                           || std::is_same<socket_type_t, stream_socket_t>::value) {
                 try {
-                    const bool sent = std::move (socket_.send (routing_id_)).message (part_).flags (flags_).submit ();
+                    const bool sent = std::move (socket_.send (routing_id_))
+                                        .message (part_)
+                                        .flags (flags_)
+                                        .submit ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const binding_error_t &err) {
@@ -345,7 +365,10 @@ class socket_t
                         errno = EAGAIN;
                         return -1;
                     }
-                    const bool sent = std::move (socket_.publish (topic_id_)).message (part_).flags (flags_).submit ();
+                    const bool sent = std::move (socket_.publish (topic_id_))
+                                        .message (part_)
+                                        .flags (flags_)
+                                        .submit ();
                     return bool_result_to_errno (sent);
                 }
                 catch (const binding_error_t &err) {
@@ -403,11 +426,13 @@ class socket_t
         });
     }
 
-    int send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_)
+    int
+    send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_)
     {
         result_ = send_result_t::sent;
         try {
-            const int rc = send (target_rid_, part_, static_cast<int> (zlink::send_flags_t::dontwait));
+            const int rc =
+              send (target_rid_, part_, static_cast<int> (zlink::send_flags_t::dontwait));
             if (rc == 0)
                 return 0;
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ETIMEDOUT) {
@@ -418,7 +443,8 @@ class socket_t
         }
         catch (const submit_error_t &err) {
             errno = err.internal_errno ();
-            if (err.result () == submit_result_t::not_connected || err.result () == submit_result_t::not_found) {
+            if (err.result () == submit_result_t::not_connected
+                || err.result () == submit_result_t::not_found) {
                 result_ = send_result_t::not_ready;
                 return 0;
             }
@@ -430,7 +456,8 @@ class socket_t
         }
     }
 
-    int set_packet_handler (std::function<void (const routing_id_t &, message_t, message_t)> handler_)
+    int
+    set_packet_handler (std::function<void (const routing_id_t &, message_t, message_t)> handler_)
     {
         return visit ([&] (auto &socket_) -> int {
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
@@ -476,7 +503,8 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
                 try {
-                    const int rc = socket_.subscribe (topic_message_out_, static_cast<recv_flags_t> (flags_));
+                    const int rc =
+                      socket_.subscribe (topic_message_out_, static_cast<recv_flags_t> (flags_));
                     if (rc == static_cast<int> (recv_result_t::ok))
                         return 0;
                     if (rc == static_cast<int> (recv_result_t::no_data)) {
@@ -507,8 +535,9 @@ class socket_t
             using socket_type_t = typename std::decay<decltype (socket_)>::type;
             if constexpr (std::is_same<socket_type_t, sub_socket_t>::value) {
                 try {
-                    const int rc = socket_.subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_,
-                                                           static_cast<recv_flags_t> (flags_));
+                    const int rc =
+                      socket_.subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_,
+                                              static_cast<recv_flags_t> (flags_));
                     if (rc == static_cast<int> (recv_result_t::ok))
                         return 0;
                     if (rc == static_cast<int> (recv_result_t::no_data)) {
@@ -531,14 +560,15 @@ class socket_t
 
   private:
     template <typename Fn>
-    auto visit (Fn &&fn) -> decltype (std::visit (std::forward<Fn> (fn), std::declval<socket_variant_t &> ()))
+    auto visit (Fn &&fn) -> decltype (std::visit (std::forward<Fn> (fn),
+                                                  std::declval<socket_variant_t &> ()))
     {
         return std::visit (std::forward<Fn> (fn), _socket);
     }
 
     template <typename Fn>
-    auto visit_const (Fn &&fn) const -> decltype (std::visit (std::forward<Fn> (fn),
-                                                              std::declval<const socket_variant_t &> ()))
+    auto visit_const (Fn &&fn) const
+      -> decltype (std::visit (std::forward<Fn> (fn), std::declval<const socket_variant_t &> ()))
     {
         return std::visit (std::forward<Fn> (fn), _socket);
     }
@@ -584,16 +614,19 @@ class socket_t
                             options.recv_hwm (message_count_t::value (static_cast<int> (value_)));
                             return 0;
                         case socket_option::sndtimeo:
-                            options.send_timeout (std::chrono::milliseconds (static_cast<int> (value_)));
+                            options.send_timeout (
+                              std::chrono::milliseconds (static_cast<int> (value_)));
                             return 0;
                         case socket_option::rcvtimeo:
-                            options.recv_timeout (std::chrono::milliseconds (static_cast<int> (value_)));
+                            options.recv_timeout (
+                              std::chrono::milliseconds (static_cast<int> (value_)));
                             return 0;
                         case socket_option::tcp_nodelay:
                             options.tcp_no_delay (static_cast<int> (value_) != 0);
                             return 0;
                         case socket_option::connect_timeout:
-                            options.connect_timeout (std::chrono::milliseconds (static_cast<int> (value_)));
+                            options.connect_timeout (
+                              std::chrono::milliseconds (static_cast<int> (value_)));
                             return 0;
                         default:
                             errno = EOPNOTSUPP;
@@ -653,7 +686,8 @@ class socket_t
                 try {
                     switch (option_) {
                         case socket_option::last_endpoint:
-                            value_ = const_cast<socket_type_t &> (socket_).options ().last_endpoint ();
+                            value_ =
+                              const_cast<socket_type_t &> (socket_).options ().last_endpoint ();
                             return 0;
                         default:
                             errno = EOPNOTSUPP;
@@ -708,8 +742,8 @@ class socket_t
                         errno = EOPNOTSUPP;
                         return -1;
                     }
-                    routing_id_t routing_id =
-                      routing_id_t::from (reinterpret_cast<const uint8_t *> (value_.data ()), value_.size ());
+                    routing_id_t routing_id = routing_id_t::from (
+                      reinterpret_cast<const uint8_t *> (value_.data ()), value_.size ());
                     socket_.options ().connect_routing_id (routing_id);
                     return 0;
                 }
@@ -823,8 +857,9 @@ class socket_t
                 try {
                     switch (option_) {
                         case router_option::mandatory:
-                            value_ =
-                              static_cast<T> (const_cast<socket_type_t &> (socket_).options ().mandatory () ? 1 : 0);
+                            value_ = static_cast<T> (
+                              const_cast<socket_type_t &> (socket_).options ().mandatory () ? 1
+                                                                                            : 0);
                             return 0;
                         default:
                             errno = EOPNOTSUPP;
@@ -851,8 +886,8 @@ class socket_t
                 try {
                     switch (option_) {
                         case pub_option::nodrop:
-                            value_ =
-                              static_cast<T> (const_cast<socket_type_t &> (socket_).options ().no_drop () ? 1 : 0);
+                            value_ = static_cast<T> (
+                              const_cast<socket_type_t &> (socket_).options ().no_drop () ? 1 : 0);
                             return 0;
                         default:
                             errno = EOPNOTSUPP;
@@ -893,7 +928,8 @@ class socket_t
     }
 
     template <typename SocketLike>
-    static int recv_received_impl (SocketLike &socket_, received_t &received_out_, recv_flags_t flags_)
+    static int
+    recv_received_impl (SocketLike &socket_, received_t &received_out_, recv_flags_t flags_)
     {
         return socket_.recv (received_out_, flags_);
     }
@@ -951,15 +987,19 @@ class socket_t
 
 inline int send_socket (socket_t &socket_, zlink::message_t &part_, int flags_ = 0)
 {
-    return (socket_.*static_cast<int (socket_t::*) (zlink::message_t &, int)> (&socket_t::send)) (part_, flags_);
+    return (socket_.*static_cast<int (socket_t::*) (zlink::message_t &, int)> (&socket_t::send)) (
+      part_, flags_);
 }
 
-inline int
-send_socket (socket_t &socket_, const zlink::routing_id_t &routing_id_, zlink::message_t &part_, int flags_ = 0)
+inline int send_socket (socket_t &socket_,
+                        const zlink::routing_id_t &routing_id_,
+                        zlink::message_t &part_,
+                        int flags_ = 0)
 {
-    return (socket_
-            .*static_cast<int (socket_t::*) (const zlink::routing_id_t &, zlink::message_t &, int)> (&socket_t::send)) (
-      routing_id_, part_, flags_);
+    return (
+      socket_
+      .*static_cast<int (socket_t::*) (const zlink::routing_id_t &, zlink::message_t &, int)> (
+        &socket_t::send)) (routing_id_, part_, flags_);
 }
 
 class socket_guard_t

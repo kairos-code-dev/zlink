@@ -220,7 +220,10 @@ class registry_service_summary_filter_t
         return *this;
     }
 
-    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept { return auto_connect_type_; }
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
 
     const std::optional<service_role_t> &service_role () const noexcept { return service_role_; }
 
@@ -258,7 +261,10 @@ class registry_status_t
 
     uint32_t peer_registry_count () const noexcept { return peer_registry_count_; }
 
-    uint32_t connected_peer_registry_count () const noexcept { return connected_peer_registry_count_; }
+    uint32_t connected_peer_registry_count () const noexcept
+    {
+        return connected_peer_registry_count_;
+    }
 
     uint64_t list_seq () const noexcept { return list_seq_; }
 
@@ -329,7 +335,10 @@ class registry_topology_filter_t
         return *this;
     }
 
-    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept { return auto_connect_type_; }
+    const std::optional<auto_connect_type_t> &auto_connect_type () const noexcept
+    {
+        return auto_connect_type_;
+    }
 
     const std::optional<service_kind_t> &service_kind () const noexcept { return service_kind_; }
 

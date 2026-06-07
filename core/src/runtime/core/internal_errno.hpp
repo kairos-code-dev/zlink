@@ -198,8 +198,8 @@ inline domain classify_domain (int err_)
 /* Submit control-flow maps to retry/backpressure style public results. */
 inline bool is_submit_control_flow (int err_)
 {
-    return err_ == EAGAIN || err_ == ENOTCONN || err_ == EHOSTUNREACH
-           || err_ == ECONNREFUSED || err_ == ENOENT || err_ == EINTR
+    return err_ == EAGAIN || err_ == ENOTCONN || err_ == EHOSTUNREACH || err_ == ECONNREFUSED
+           || err_ == ENOENT || err_ == EINTR
 #if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
            || err_ == EWOULDBLOCK
 #endif
@@ -215,8 +215,8 @@ inline bool is_submit_runtime_failure (int err_)
 /* Contract failure covers invalid handles, invalid arguments, and bad state. */
 inline bool is_submit_contract_failure (int err_)
 {
-    return err_ == EFAULT || err_ == EINVAL || err_ == ENOTSUP
-           || err_ == EOPNOTSUPP || err_ == EFSM || err_ == EMTHREAD;
+    return err_ == EFAULT || err_ == EINVAL || err_ == ENOTSUP || err_ == EOPNOTSUPP || err_ == EFSM
+           || err_ == EMTHREAD;
 }
 
 /* Internal submit failure covers allocation or internal protocol preparation. */
@@ -252,9 +252,8 @@ inline bool is_interrupted (int err_)
 /* Connectivity captures peer/path unavailability and broken transport state. */
 inline bool is_connectivity (int err_)
 {
-    return err_ == ENOTCONN || err_ == EHOSTUNREACH || err_ == ENETUNREACH
-           || err_ == ECONNREFUSED || err_ == ECONNRESET
-           || err_ == ECONNABORTED || err_ == ENETDOWN || err_ == ENETRESET
+    return err_ == ENOTCONN || err_ == EHOSTUNREACH || err_ == ENETUNREACH || err_ == ECONNREFUSED
+           || err_ == ECONNRESET || err_ == ECONNABORTED || err_ == ENETDOWN || err_ == ENETRESET
            || err_ == EPIPE || err_ == ESHUTDOWN || err_ == EBADF;
 }
 
@@ -279,29 +278,26 @@ inline bool is_invalid_handle (int err_)
 /* Invalid-argument means the call shape or value contract is broken. */
 inline bool is_invalid_argument (int err_)
 {
-    return err_ == EINVAL || err_ == EMSGSIZE || err_ == EAFNOSUPPORT
-           || err_ == ENAMETOOLONG;
+    return err_ == EINVAL || err_ == EMSGSIZE || err_ == EAFNOSUPPORT || err_ == ENAMETOOLONG;
 }
 
 /* Unsupported means the stack recognized the request but cannot honor it. */
 inline bool is_unsupported (int err_)
 {
-    return err_ == ENOTSUP || err_ == EOPNOTSUPP || err_ == EPROTONOSUPPORT
-           || err_ == ENOPROTOOPT;
+    return err_ == ENOTSUP || err_ == EOPNOTSUPP || err_ == EPROTONOSUPPORT || err_ == ENOPROTOOPT;
 }
 
 /* Invalid-state means the object exists but is in the wrong lifecycle/state. */
 inline bool is_invalid_state (int err_)
 {
-    return err_ == EFSM || err_ == EBUSY || err_ == EDEADLK
-           || err_ == EISCONN;
+    return err_ == EFSM || err_ == EBUSY || err_ == EDEADLK || err_ == EISCONN;
 }
 
 /* Resource exhaustion captures memory, buffers, descriptors, and address slots. */
 inline bool is_resource_exhausted (int err_)
 {
-    return err_ == ENOMEM || err_ == ENOBUFS || err_ == EADDRINUSE
-           || err_ == EADDRNOTAVAIL || err_ == EMFILE || err_ == ENFILE;
+    return err_ == ENOMEM || err_ == ENOBUFS || err_ == EADDRINUSE || err_ == EADDRNOTAVAIL
+           || err_ == EMFILE || err_ == ENFILE;
 }
 
 /* Addressing is kept separate because transports often treat setup errors specially. */
@@ -331,15 +327,13 @@ inline bool is_transport_io (int err_)
 /* Internal failure is the coarse internal-only fallback for fatal core-side work. */
 inline bool is_internal_failure (int err_)
 {
-    return is_resource_exhausted (err_) || is_protocol (err_)
-           || is_transport_io (err_);
+    return is_resource_exhausted (err_) || is_protocol (err_) || is_transport_io (err_);
 }
 
 /* Request completion is intentionally narrower than the full internal catalog. */
 inline bool is_request_completion (int err_)
 {
-    return err_ == 0 || err_ == ETIMEDOUT || err_ == ENOENT || err_ == EPROTO
-           || err_ == ETERM;
+    return err_ == 0 || err_ == ETIMEDOUT || err_ == ENOENT || err_ == EPROTO || err_ == ETERM;
 }
 
 /* General internal classification used for cataloging and maintenance review. */

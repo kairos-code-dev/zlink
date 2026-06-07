@@ -7,7 +7,8 @@ int main ()
     // --8<-- [start:doc]
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
-    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::fanout, detail::k_spot_service);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::fanout,
+                                           detail::k_spot_service);
     zlink::service::registry_query_client_t query (ctx);
     zlink::pub_socket_t provider (ctx);
     assert (registry.valid ());

@@ -72,8 +72,7 @@ int registry_t::set_option (zlink_registry_option_t option_, uint32_t value_)
         case ZLINK_REGISTRY_OPT_ID:
             _coordination_state.registry_id = value_;
             _coordination_state.registry_id_set = true;
-            _coordination_state.summary_last_changed_ms =
-              zlink::clock_t ().now_ms ();
+            _coordination_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
             return 0;
         case ZLINK_REGISTRY_OPT_HEARTBEAT_INTERVAL_MS:
             _coordination_state.heartbeat_interval_ms = value_;
@@ -156,8 +155,7 @@ int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
 
 int registry_t::set_broadcast_interval (uint32_t interval_ms_)
 {
-    return set_option (ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS,
-                       interval_ms_);
+    return set_option (ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms_);
 }
 
 int registry_t::set_socket_option (int socket_role_,
@@ -195,9 +193,8 @@ int registry_t::set_socket_option (int socket_role_,
     }
     for (size_t i = 0; i < opts->size (); ++i) {
         if ((*opts)[i].option == option_) {
-            (*opts)[i].value.assign (
-              static_cast<const unsigned char *> (optval_),
-              static_cast<const unsigned char *> (optval_) + optvallen_);
+            (*opts)[i].value.assign (static_cast<const unsigned char *> (optval_),
+                                     static_cast<const unsigned char *> (optval_) + optvallen_);
             if (existing_socket)
                 static_cast<socket_base_t *> (existing_socket)
                   ->setsockopt (option_, optval_, optvallen_);
@@ -207,64 +204,48 @@ int registry_t::set_socket_option (int socket_role_,
     socket_opt_t opt;
     opt.option = option_;
     opt.value.assign (static_cast<const unsigned char *> (optval_),
-                      static_cast<const unsigned char *> (optval_)
-                        + optvallen_);
+                      static_cast<const unsigned char *> (optval_) + optvallen_);
     opts->push_back (opt);
     if (existing_socket)
-        static_cast<socket_base_t *> (existing_socket)
-          ->setsockopt (option_, optval_, optvallen_);
+        static_cast<socket_base_t *> (existing_socket)->setsockopt (option_, optval_, optvallen_);
     return 0;
 }
 
-int registry_t::set_tls_server (const char *cert_,
-                                const char *key_,
-                                int require_client_cert_)
+int registry_t::set_tls_server (const char *cert_, const char *key_, int require_client_cert_)
 {
     const int require_client_cert = require_client_cert_ ? 1 : 0;
-    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PUB,
-                           ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
+    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PUB, ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
                            strlen (cert_) + 1)
           != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB,
-                              ZLINK_INTERNAL_OPT_TLS_KEY, key_,
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB, ZLINK_INTERNAL_OPT_TLS_KEY, key_,
                               strlen (key_) + 1)
              != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB,
-                              ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
-                              &require_client_cert,
-                              sizeof (require_client_cert))
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PUB, ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
+                              &require_client_cert, sizeof (require_client_cert))
              != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER,
-                              ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER, ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
                               strlen (cert_) + 1)
              != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER,
-                              ZLINK_INTERNAL_OPT_TLS_KEY, key_,
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER, ZLINK_INTERNAL_OPT_TLS_KEY, key_,
                               strlen (key_) + 1)
              != 0
         || set_socket_option (ZLINK_REGISTRY_SOCKET_ROUTER,
-                              ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
-                              &require_client_cert,
+                              ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT, &require_client_cert,
                               sizeof (require_client_cert))
              != 0)
         return -1;
     return 0;
 }
 
-int registry_t::set_tls_client (const char *ca_cert_,
-                                const char *hostname_,
-                                int trust_system_)
+int registry_t::set_tls_client (const char *ca_cert_, const char *hostname_, int trust_system_)
 {
-    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB,
-                           ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_,
+    if (set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB, ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_,
                            strlen (ca_cert_) + 1)
           != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB,
-                              ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_,
-                              strlen (hostname_) + 1)
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB, ZLINK_INTERNAL_OPT_TLS_HOSTNAME,
+                              hostname_, strlen (hostname_) + 1)
              != 0
-        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB,
-                              ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM,
+        || set_socket_option (ZLINK_REGISTRY_SOCKET_PEER_SUB, ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM,
                               &trust_system_, sizeof (trust_system_))
              != 0)
         return -1;
@@ -286,8 +267,7 @@ int registry_t::status_snapshot (zlink_registry_status_t *out_)
     scoped_lock_t lock (_sync);
     out_->registry_id = _coordination_state.registry_id;
     if (!_endpoint_config.router_endpoint.empty ()) {
-        copy_fixed_c_string_from_cstr (out_->bind_endpoint,
-                                       sizeof (out_->bind_endpoint),
+        copy_fixed_c_string_from_cstr (out_->bind_endpoint, sizeof (out_->bind_endpoint),
                                        _endpoint_config.router_endpoint.c_str ());
     }
     out_->topology_entry_count = static_cast<uint32_t> (_projection_state.topology.size ());

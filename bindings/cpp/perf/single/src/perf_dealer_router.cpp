@@ -19,8 +19,8 @@ bool wait_dealer_router_monitor_event (zlink::socket_monitor_t &monitor_,
                                        uint64_t success_event_,
                                        int timeout_ms_)
 {
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
 
     zlink::poller_t poller;
     static const std::uintptr_t monitor_slot = 1;
@@ -35,8 +35,9 @@ bool wait_dealer_router_monitor_event (zlink::socket_monitor_t &monitor_,
     }
 
     while (std::chrono::steady_clock::now () < deadline) {
-        long wait_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - std::chrono::steady_clock::now ()).count ();
+        long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                         deadline - std::chrono::steady_clock::now ())
+                         .count ();
         if (wait_ms < 1)
             wait_ms = 1;
 
@@ -63,7 +64,8 @@ bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
                                   const std::string &transport_,
                                   const std::string &id_)
 {
-    if (!perf::setup_tls_server (router_, transport_) || !perf::setup_tls_client (dealer_, transport_)) {
+    if (!perf::setup_tls_server (router_, transport_)
+        || !perf::setup_tls_client (dealer_, transport_)) {
         return false;
     }
 
@@ -74,8 +76,10 @@ bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
     if (endpoint.empty ())
         return false;
 
-    zlink::socket_monitor_t router_monitor = router_.monitor_open (zlink::monitor_event::connection_ready);
-    zlink::socket_monitor_t dealer_monitor = dealer_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t router_monitor =
+      router_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t dealer_monitor =
+      dealer_.monitor_open (zlink::monitor_event::connection_ready);
     if (!router_monitor.valid () || !dealer_monitor.valid ())
         return false;
 
@@ -91,14 +95,18 @@ bool setup_dealer_router_session (perf::single::perf_socket_t &router_,
 
     const int ready_timeout_ms = perf::single::resolve_single_connect_ready_timeout_ms ();
     return wait_dealer_router_monitor_event (
-             router_monitor, &router_, static_cast<uint64_t> (zlink::monitor_event::connection_ready), ready_timeout_ms)
+             router_monitor, &router_,
+             static_cast<uint64_t> (zlink::monitor_event::connection_ready), ready_timeout_ms)
            && wait_dealer_router_monitor_event (
-             dealer_monitor, NULL, static_cast<uint64_t> (zlink::monitor_event::connection_ready), ready_timeout_ms);
+             dealer_monitor, NULL, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+             ready_timeout_ms);
 }
 
 } // namespace
 
-bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, const std::string &lib_name)
+bool run_pattern_dealer_router (const std::string &transport,
+                                size_t msg_size,
+                                const std::string &lib_name)
 {
     if (!perf::single::transport_available (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << ",DEALER_ROUTER," << transport << std::endl;
@@ -120,7 +128,8 @@ bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, c
         || !perf::single::recalculate_single_auto_hwm (ctx)) {
         return false;
     }
-    if (!setup_dealer_router_session (router.sock (), dealer.sock (), transport, lib_name + "_dealer_router")) {
+    if (!setup_dealer_router_session (router.sock (), dealer.sock (), transport,
+                                      lib_name + "_dealer_router")) {
         return false;
     }
 
@@ -131,8 +140,10 @@ bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, c
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
-    perf::single::latency_stats_builder_t latency_builder (perf::single::resolve_single_latency_sample_cap ());
-    const auto active_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+    perf::single::latency_stats_builder_t latency_builder (
+      perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread sender_thread ([&] () {
         uint64_t seq = 1;
@@ -140,8 +151,8 @@ bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, c
             zlink::message_t msg = zlink::message_t::allocate (payload_size);
             if (!msg.valid ()
                 || !perf_single_metric::stamp_payload (msg.data (), msg.size (), run_id,
-                                                       perf_single_metric::phase_active, msg_size, seq++,
-                                                       perf_single_metric::now_ns ())) {
+                                                       perf_single_metric::phase_active, msg_size,
+                                                       seq++, perf_single_metric::now_ns ())) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -206,7 +217,8 @@ bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, c
             perf_single_metric::header_t header;
             if (!perf_single_metric::decode_payload_header (part.data (), part.size (), &header))
                 continue;
-            if (!perf_single_metric::is_expected (header, run_id, perf_single_metric::phase_active, msg_size))
+            if (!perf_single_metric::is_expected (header, run_id, perf_single_metric::phase_active,
+                                                  msg_size))
                 continue;
             ++received_count;
             const uint64_t now = perf_single_metric::now_ns ();
@@ -217,23 +229,26 @@ bool run_pattern_dealer_router (const std::string &transport, size_t msg_size, c
     sender_thread.join ();
     (void) recv_timeout;
 
-    if (!sender_ok.load (std::memory_order_acquire) || received_count == 0 || latency_builder.count () == 0) {
+    if (!sender_ok.load (std::memory_order_acquire) || received_count == 0
+        || latency_builder.count () == 0) {
         if (perf_debug_enabled ())
-            std::cerr << "dealer_router: no active data sent=" << sent_count.load (std::memory_order_acquire)
+            std::cerr << "dealer_router: no active data sent="
+                      << sent_count.load (std::memory_order_acquire)
                       << " received=" << received_count << std::endl;
         return false;
     }
 
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
-    perf::single::emit_single_socket_hwm_detail (router.sock (), "DEALER_ROUTER", transport, "receiver", "router",
-                                                 msg_size);
-    perf::single::emit_single_socket_hwm_detail (dealer.sock (), "DEALER_ROUTER", transport, "sender", "dealer",
-                                                 msg_size);
+    perf::single::emit_single_socket_hwm_detail (router.sock (), "DEALER_ROUTER", transport,
+                                                 "receiver", "router", msg_size);
+    perf::single::emit_single_socket_hwm_detail (dealer.sock (), "DEALER_ROUTER", transport,
+                                                 "sender", "dealer", msg_size);
 
-    const double throughput = static_cast<double> (received_count) / static_cast<double> (duration_s);
-    perf::single::print_result (lib_name, "DEALER_ROUTER", transport, msg_size, throughput, latency.mean_ns,
-                                latency.p95_ns, latency.p99_ns);
+    const double throughput =
+      static_cast<double> (received_count) / static_cast<double> (duration_s);
+    perf::single::print_result (lib_name, "DEALER_ROUTER", transport, msg_size, throughput,
+                                latency.mean_ns, latency.p95_ns, latency.p99_ns);
     return true;
 }
 

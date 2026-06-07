@@ -15,8 +15,7 @@ zlink::ipc_address_t::ipc_address_t ()
     memset (&_address, 0, sizeof _address);
 }
 
-zlink::ipc_address_t::ipc_address_t (const sockaddr *sa_, socklen_t sa_len_) :
-    _addrlen (sa_len_)
+zlink::ipc_address_t::ipc_address_t (const sockaddr *sa_, socklen_t sa_len_) : _addrlen (sa_len_)
 {
     zlink_assert (sa_ && sa_len_ > 0);
 
@@ -47,8 +46,7 @@ int zlink::ipc_address_t::resolve (const char *path_)
     if (path_[0] == '@')
         *_address.sun_path = '\0';
 
-    _addrlen =
-      static_cast<socklen_t> (offsetof (sockaddr_un, sun_path) + path_len);
+    _addrlen = static_cast<socklen_t> (offsetof (sockaddr_un, sun_path) + path_len);
     return 0;
 }
 
@@ -72,9 +70,8 @@ int zlink::ipc_address_t::to_string (std::string &addr_) const
     // according to http://man7.org/linux/man-pages/man7/unix.7.html, NOTES
     // section, address.sun_path might not always be null-terminated; therefore,
     // we calculate the length based of addrlen
-    const size_t src_len =
-      strnlen (src_pos, _addrlen - offsetof (sockaddr_un, sun_path)
-                          - (src_pos - _address.sun_path));
+    const size_t src_len = strnlen (src_pos, _addrlen - offsetof (sockaddr_un, sun_path)
+                                               - (src_pos - _address.sun_path));
     memcpy (pos, src_pos, src_len);
     addr_.assign (buf, pos - buf + src_len);
     return 0;

@@ -12,17 +12,14 @@
 
 namespace
 {
-const bool router_debug_on =
-  zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+const bool router_debug_on = zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 
 bool router_debug_enabled ()
 {
     return router_debug_on;
 }
 
-void format_routing_id_debug (const zlink_routing_id_t *rid_,
-                              char *buf_,
-                              size_t buf_size_)
+void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t buf_size_)
 {
     if (!buf_ || buf_size_ == 0)
         return;
@@ -36,9 +33,7 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_,
     for (size_t i = 0; i < rid_->size && used + 4 < buf_size_; ++i) {
         const unsigned char c = rid_->data[i];
         const int rc = std::snprintf (buf_ + used, buf_size_ - used, "%c%02X",
-                                      (c >= 32 && c <= 126)
-                                        ? static_cast<char> (c)
-                                        : '.',
+                                      (c >= 32 && c <= 126) ? static_cast<char> (c) : '.',
                                       static_cast<unsigned> (c));
         if (rc <= 0)
             break;
@@ -60,9 +55,9 @@ int zlink::router_t::xsend (msg_t *msg_)
         if (msg_->flags () & msg_t::more) {
             _more_out = true;
 
-            out_pipe_t *out_pipe = lookup_out_pipe (
-              blob_t (static_cast<unsigned char *> (msg_->data ()),
-                      msg_->size (), zlink::reference_tag_t ()));
+            out_pipe_t *out_pipe =
+              lookup_out_pipe (blob_t (static_cast<unsigned char *> (msg_->data ()), msg_->size (),
+                                       zlink::reference_tag_t ()));
 
             if (out_pipe) {
                 if (out_pipe->weight == 0) {
@@ -72,8 +67,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                 }
                 _current_out = out_pipe->pipe;
 
-                const pipe_write_status_t write_status =
-                  _current_out->check_write_status ();
+                const pipe_write_status_t write_status = _current_out->check_write_status ();
                 if (write_status != pipe_write_ready) {
                     const bool pipe_full = write_status == pipe_write_hwm_full;
                     mark_out_pipe_inactive (out_pipe);
@@ -83,8 +77,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                         _more_out = false;
                         errno = pipe_full ? EAGAIN : EHOSTUNREACH;
                         if (router_debug_enabled ()) {
-                            fprintf (stderr,
-                                     "router xsend: pipe not writable size=%zu errno=%d\n",
+                            fprintf (stderr, "router xsend: pipe not writable size=%zu errno=%d\n",
                                      msg_->size (), errno);
                         }
                         return -1;
@@ -94,8 +87,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                 _more_out = false;
                 errno = EHOSTUNREACH;
                 if (router_debug_enabled ()) {
-                    fprintf (stderr,
-                             "router xsend: no out pipe rid_size=%zu errno=%d\n",
+                    fprintf (stderr, "router xsend: no out pipe rid_size=%zu errno=%d\n",
                              msg_->size (), errno);
                 }
                 return -1;
@@ -112,16 +104,14 @@ int zlink::router_t::xsend (msg_t *msg_)
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
     if (_current_out) {
-        const bool ok = _more_out ? _current_out->write (msg_)
-                                  : _current_out->write_and_flush (msg_);
+        const bool ok =
+          _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
             const blob_t &routing_id = _current_out->get_routing_id ();
             out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
             mark_out_pipe_inactive (current_out_pipe);
             if (router_debug_enabled ()) {
-                fprintf (stderr,
-                         "router xsend: drop message size=%zu\n",
-                         msg_->size ());
+                fprintf (stderr, "router xsend: drop message size=%zu\n", msg_->size ());
             }
             const int rc = msg_->close ();
             errno_assert (rc == 0);
@@ -132,9 +122,7 @@ int zlink::router_t::xsend (msg_t *msg_)
         }
     } else {
         if (router_debug_enabled ()) {
-            fprintf (stderr,
-                     "router xsend: no current out, drop size=%zu\n",
-                     msg_->size ());
+            fprintf (stderr, "router xsend: no current out, drop size=%zu\n", msg_->size ());
         }
         const int rc = msg_->close ();
         errno_assert (rc == 0);
@@ -145,32 +133,28 @@ int zlink::router_t::xsend (msg_t *msg_)
     return 0;
 }
 
-int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
-                                   msg_t *msg_)
+int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
 {
     zlink_assert (!_more_out);
     zlink_assert (!_current_out);
 
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
-    out_pipe_t *out_pipe = lookup_out_pipe (
-      blob_t (const_cast<unsigned char *> (target_rid_->data),
-              target_rid_->size, zlink::reference_tag_t ()));
+    out_pipe_t *out_pipe = lookup_out_pipe (blob_t (const_cast<unsigned char *> (target_rid_->data),
+                                                    target_rid_->size, zlink::reference_tag_t ()));
     if (out_pipe) {
         if (out_pipe->weight == 0) {
             _more_out = false;
             errno = ECONNREFUSED;
             if (router_debug_enabled ()) {
-                fprintf (stderr,
-                         "router xsend_routed: draining rid_size=%u\n",
+                fprintf (stderr, "router xsend_routed: draining rid_size=%u\n",
                          static_cast<unsigned> (target_rid_->size));
             }
             return -1;
         }
         _current_out = out_pipe->pipe;
 
-        const pipe_write_status_t write_status =
-          _current_out->check_write_status ();
+        const pipe_write_status_t write_status = _current_out->check_write_status ();
         if (write_status != pipe_write_ready) {
             const bool pipe_full = write_status == pipe_write_hwm_full;
             mark_out_pipe_inactive (out_pipe);
@@ -193,23 +177,21 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         if (router_debug_enabled ()) {
             char rid_text[160];
             format_routing_id_debug (target_rid_, rid_text, sizeof (rid_text));
-            fprintf (stderr,
-                     "router xsend_routed: no out pipe rid_size=%u rid=%s\n",
+            fprintf (stderr, "router xsend_routed: no out pipe rid_size=%u rid=%s\n",
                      static_cast<unsigned> (target_rid_->size), rid_text);
         }
         return -1;
     }
 
     if (_current_out) {
-        const bool ok = _more_out ? _current_out->write (msg_)
-                                  : _current_out->write_and_flush (msg_);
+        const bool ok =
+          _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
             const blob_t &routing_id = _current_out->get_routing_id ();
             out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
             mark_out_pipe_inactive (current_out_pipe);
             if (router_debug_enabled ()) {
-                fprintf (stderr,
-                         "router xsend_routed: write failed rid_size=%u\n",
+                fprintf (stderr, "router xsend_routed: write failed rid_size=%u\n",
                          static_cast<unsigned> (target_rid_->size));
             }
             const int rc = msg_->close ();

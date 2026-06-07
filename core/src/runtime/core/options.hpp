@@ -229,14 +229,14 @@ struct options_t
 
 #ifdef ZLINK_HAVE_TLS
     //  TLS protocol options
-    std::string tls_cert;              // Server certificate file path
-    std::string tls_key;               // Server private key file path
-    std::string tls_ca;                // CA certificate file path
-    int tls_verify;                    // Verify client certificate (default: 1)
-    int tls_require_client_cert;       // Require client certificate for mTLS (default: 0)
-    std::string tls_hostname;          // SNI + hostname verification
-    int tls_trust_system;              // Use system CA store (default: 1)
-    std::string tls_password;          // Private key password (optional)
+    std::string tls_cert;        // Server certificate file path
+    std::string tls_key;         // Server private key file path
+    std::string tls_ca;          // CA certificate file path
+    int tls_verify;              // Verify client certificate (default: 1)
+    int tls_require_client_cert; // Require client certificate for mTLS (default: 0)
+    std::string tls_hostname;    // SNI + hostname verification
+    int tls_trust_system;        // Use system CA store (default: 1)
+    std::string tls_password;    // Private key password (optional)
 #endif
 };
 
@@ -248,32 +248,21 @@ inline bool get_effective_conflate_option (const options_t &options)
                || options.type == ZLINK_CORE_SOCKET_SUB);
 }
 
-int do_getsockopt (void *optval_,
-                   size_t *optvallen_,
-                   const void *value_,
-                   size_t value_len_);
+int do_getsockopt (void *optval_, size_t *optvallen_, const void *value_, size_t value_len_);
 
-template <typename T>
-int do_getsockopt (void *const optval_, size_t *const optvallen_, T value_)
+template <typename T> int do_getsockopt (void *const optval_, size_t *const optvallen_, T value_)
 {
 #if __cplusplus >= 201103L && (!defined(__GNUC__) || __GNUC__ > 5)
-    static_assert (std::is_trivially_copyable<T>::value,
-                   "invalid use of do_getsockopt");
+    static_assert (std::is_trivially_copyable<T>::value, "invalid use of do_getsockopt");
 #endif
     return do_getsockopt (optval_, optvallen_, &value_, sizeof (T));
 }
 
-int do_getsockopt (void *optval_,
-                   size_t *optvallen_,
-                   const std::string &value_);
+int do_getsockopt (void *optval_, size_t *optvallen_, const std::string &value_);
 
-int do_setsockopt_int_as_bool_strict (const void *optval_,
-                                      size_t optvallen_,
-                                      bool *out_value_);
+int do_setsockopt_int_as_bool_strict (const void *optval_, size_t optvallen_, bool *out_value_);
 
-int do_setsockopt_int_as_bool_relaxed (const void *optval_,
-                                       size_t optvallen_,
-                                       bool *out_value_);
+int do_setsockopt_int_as_bool_relaxed (const void *optval_, size_t optvallen_, bool *out_value_);
 }
 
 #endif

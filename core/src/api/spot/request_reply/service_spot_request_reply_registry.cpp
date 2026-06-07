@@ -19,28 +19,27 @@
 
 namespace
 {
-using zlink::spot_reqrep_internal::router_state_identity_index;
-using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::has_valid_routing_id;
 using zlink::spot_reqrep_internal::resolve_spot_identity;
 using zlink::spot_reqrep_internal::resolve_spot_runtime;
-using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
+using zlink::spot_reqrep_internal::router_state_identity_index;
 using zlink::spot_reqrep_internal::router_state_identity_index_t;
 using zlink::spot_reqrep_internal::routing_id_key;
+using zlink::spot_reqrep_internal::routing_pair_t;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::spot_state_identity_index_t;
 using zlink::spot_reqrep_internal::spot_state_spot_index_t;
 
-std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >
-  g_spot_owner_states;
+std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>> g_spot_owner_states;
 
 } // namespace
 
 std::unordered_map<void *,
-                   std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> >
-  &zlink::spot_reqrep_internal::spot_owner_states ()
+                   std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>> &
+zlink::spot_reqrep_internal::spot_owner_states ()
 {
     return g_spot_owner_states;
 }

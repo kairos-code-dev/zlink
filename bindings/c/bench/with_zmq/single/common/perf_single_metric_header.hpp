@@ -5,7 +5,8 @@
 #include <cstring>
 #include <stdint.h>
 
-namespace perf_single_metric {
+namespace perf_single_metric
+{
 
 static const uint32_t k_magic = 0x53504631U; // "SPF1"
 
@@ -33,18 +34,13 @@ inline size_t header_size ()
 
 inline uint64_t now_us ()
 {
-    return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
+    return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::microseconds> (
+                                    std::chrono::system_clock::now ().time_since_epoch ())
+                                    .count ());
 }
 
-inline void init_header (header_t *out,
-                         uint32_t run_id,
-                         phase_t phase,
-                         size_t msg_size,
-                         uint64_t seq,
-                         uint64_t sent_ts_us)
+inline void init_header (
+  header_t *out, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, uint64_t sent_ts_us)
 {
     if (!out)
         return;
@@ -103,22 +99,16 @@ inline bool stamp_payload (void *payload,
     return encode_header (payload, payload_size, h);
 }
 
-inline bool decode_payload_header (const void *payload,
-                                   size_t payload_size,
-                                   header_t *out)
+inline bool decode_payload_header (const void *payload, size_t payload_size, header_t *out)
 {
     if (!decode_header (payload, payload_size, out))
         return false;
     return out->magic == k_magic;
 }
 
-inline bool is_expected (const header_t &h,
-                         uint32_t run_id,
-                         phase_t phase,
-                         size_t msg_size)
+inline bool is_expected (const header_t &h, uint32_t run_id, phase_t phase, size_t msg_size)
 {
-    return h.magic == k_magic && h.run_id == run_id
-           && h.phase == static_cast<uint32_t> (phase)
+    return h.magic == k_magic && h.run_id == run_id && h.phase == static_cast<uint32_t> (phase)
            && h.msg_size == static_cast<uint32_t> (msg_size);
 }
 

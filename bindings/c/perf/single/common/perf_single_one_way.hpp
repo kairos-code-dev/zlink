@@ -13,7 +13,8 @@
 #include <thread>
 #include <vector>
 
-namespace perf_single_one_way {
+namespace perf_single_one_way
+{
 
 struct state_t
 {
@@ -44,13 +45,12 @@ enum recv_result_t
     recv_result_stop = 2
 };
 
-inline int recv_single_part_header_flags (
-  void *socket_,
-  size_t expected_size_,
-  int flags_,
-  const char *trace_label_,
-  perf_single_metric::header_t *header_out_,
-  bool *header_ok_out_)
+inline int recv_single_part_header_flags (void *socket_,
+                                          size_t expected_size_,
+                                          int flags_,
+                                          const char *trace_label_,
+                                          perf_single_metric::header_t *header_out_,
+                                          bool *header_ok_out_)
 {
     if (!socket_)
         return recv_result_error;
@@ -63,12 +63,8 @@ inline int recv_single_part_header_flags (
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
         return recv_result_error;
-    const int rc = zlink_recv_part (
-      socket_,
-      &source_rid,
-      &part,
-      &has_more,
-      static_cast<zlink_recv_flags_t> (flags_));
+    const int rc = zlink_recv_part (socket_, &source_rid, &part, &has_more,
+                                    static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&part);
@@ -80,8 +76,8 @@ inline int recv_single_part_header_flags (
     if (source_rid || has_more != ZLINK_PART_FINAL) {
         if (bench_debug_enabled ()) {
             std::cerr << "[" << (trace_label_ ? trace_label_ : "perf-single")
-                      << "] unexpected recv metadata has_more="
-                      << static_cast<int> (has_more) << std::endl;
+                      << "] unexpected recv metadata has_more=" << static_cast<int> (has_more)
+                      << std::endl;
         }
         zlink_msg_close (&part);
         return recv_result_error;
@@ -95,8 +91,8 @@ inline int recv_single_part_header_flags (
     const bool size_ok = actual_size == expected_size_;
     bool header_ok = false;
     if (size_ok && header_out_) {
-        header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&part), actual_size, header_out_);
+        header_ok = perf_single_metric::decode_payload_header (zlink_msg_data (&part), actual_size,
+                                                               header_out_);
     }
     zlink_msg_close (&part);
     if (!size_ok) {
@@ -122,45 +118,34 @@ inline bool init_active_payload_part (zlink_msg_t *part_out_,
     if (!part_out_ || !payload_)
         return false;
 
-    if (!perf_single_metric::stamp_payload (
-          payload_->data (),
-          payload_->size (),
-          state_.run_id,
-          perf_single_metric::phase_active,
-          state_.msg_size,
-          seq_,
-          perf_single_metric::now_ns ())) {
+    if (!perf_single_metric::stamp_payload (payload_->data (), payload_->size (), state_.run_id,
+                                            perf_single_metric::phase_active, state_.msg_size, seq_,
+                                            perf_single_metric::now_ns ())) {
         return false;
     }
 
     if (zlink_msg_init_size (part_out_, payload_->size ()) != 0)
         return false;
     if (!payload_->empty ()) {
-        std::memcpy (
-          zlink_msg_data (part_out_), payload_->data (), payload_->size ());
+        std::memcpy (zlink_msg_data (part_out_), payload_->data (), payload_->size ());
     }
     return true;
 }
 
-inline send_step_t send_socket_active_message (void *sender_,
-                                               zlink_msg_t *part_,
-                                               int flags_,
-                                               bool retry_on_eagain_)
+inline send_step_t
+send_socket_active_message (void *sender_, zlink_msg_t *part_, int flags_, bool retry_on_eagain_)
 {
     if (!sender_ || !part_)
         return send_step_fatal;
 
-    if (perf_zlink_send_parts (
-          sender_, part_, 1, static_cast<zlink_send_flags_t> (flags_))
-        == 0) {
+    if (perf_zlink_send_parts (sender_, part_, 1, static_cast<zlink_send_flags_t> (flags_)) == 0) {
         return send_step_sent;
     }
 
     const int err = zlink_errno ();
     zlink_msg_close (part_);
     if (err == EINTR
-        || (retry_on_eagain_
-            && (err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)))
+        || (retry_on_eagain_ && (err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)))
         return send_step_retry;
     return send_step_fatal;
 }
@@ -177,12 +162,10 @@ inline bool send_active_samples (void *sender_,
         return false;
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (1, duration_s_));
+      std::chrono::steady_clock::now () + std::chrono::seconds (std::max (1, duration_s_));
     uint64_t seq = 1;
     while (std::chrono::steady_clock::now () < deadline) {
-        const send_step_t send_step =
-          send_step_fn_ (sender_, payload_, state_, seq);
+        const send_step_t send_step = send_step_fn_ (sender_, payload_, state_, seq);
         if (send_step == send_step_fatal)
             return false;
         if (send_step == send_step_retry)
@@ -228,14 +211,12 @@ inline int send_stop_token_socket (void *sender_)
         return 0;
     const int err = zlink_errno ();
     zlink_msg_close (&part);
-    if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK
-        || err == ETIMEDOUT)
+    if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK || err == ETIMEDOUT)
         return 1;
     return -1;
 }
 
-template <typename StateT, typename SendStepFn, typename RecvHeaderFn,
-          typename SendStopFn>
+template <typename StateT, typename SendStepFn, typename RecvHeaderFn, typename SendStopFn>
 inline bool run_active_phase (void *sender_,
                               void *receiver_,
                               std::vector<char> *payload_,
@@ -249,8 +230,7 @@ inline bool run_active_phase (void *sender_,
                               unsigned long long *received_out_,
                               latency_stats_t *latency_out_)
 {
-    if (!sender_ || !receiver_ || !payload_ || !state_ || !received_out_
-        || !latency_out_) {
+    if (!sender_ || !receiver_ || !payload_ || !state_ || !received_out_ || !latency_out_) {
         return false;
     }
 
@@ -258,8 +238,7 @@ inline bool run_active_phase (void *sender_,
     state_->latency = latency_stats_builder_t ();
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (1, duration_s_));
+      std::chrono::steady_clock::now () + std::chrono::seconds (std::max (1, duration_s_));
 
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<bool> sender_ok (true);
@@ -277,8 +256,8 @@ inline bool run_active_phase (void *sender_,
         while (true) {
             perf_single_metric::header_t header;
             bool header_ok = false;
-            const int recv_rc = recv_header_fn_ (
-              receiver_, state_->payload_size, 0, &header, &header_ok);
+            const int recv_rc =
+              recv_header_fn_ (receiver_, state_->payload_size, 0, &header, &header_ok);
             if (recv_rc == recv_result_payload) {
                 if (header_ok && single_header_matches_run (*state_, header)
                     && std::chrono::steady_clock::now () < deadline) {
@@ -289,20 +268,14 @@ inline bool run_active_phase (void *sender_,
                 for (;;) {
                     perf_single_metric::header_t burst_header;
                     bool burst_header_ok = false;
-                    const int burst_rc = recv_header_fn_ (
-                      receiver_,
-                      state_->payload_size,
-                      ZLINK_DONTWAIT,
-                      &burst_header,
-                      &burst_header_ok);
+                    const int burst_rc =
+                      recv_header_fn_ (receiver_, state_->payload_size, ZLINK_DONTWAIT,
+                                       &burst_header, &burst_header_ok);
                     if (burst_rc == recv_result_payload) {
-                        if (burst_header_ok
-                            && single_header_matches_run (
-                              *state_, burst_header)
+                        if (burst_header_ok && single_header_matches_run (*state_, burst_header)
                             && std::chrono::steady_clock::now () < deadline) {
                             received.fetch_add (1, std::memory_order_relaxed);
-                            latency_builder.add (
-                              single_latency_ns (burst_header));
+                            latency_builder.add (single_latency_ns (burst_header));
                         }
                         continue;
                     }
@@ -327,13 +300,12 @@ inline bool run_active_phase (void *sender_,
     });
 
     std::thread sender_thread ([&] () {
-        const bool active_ok = send_active_samples (
-          sender_, payload_, *state_, duration_s_, &sent_count, send_step_fn_);
+        const bool active_ok =
+          send_active_samples (sender_, payload_, *state_, duration_s_, &sent_count, send_step_fn_);
         // PERF_SINGLE_TEST_POLICY § 1.4: send wire-level stop token to
         // wake the receiver out of recv. Bounded retry through transient
         // backpressure so the terminator always reaches the peer.
-        const bool stop_ok =
-          send_stop_token_with_retry (sender_, send_stop_fn_);
+        const bool stop_ok = send_stop_token_with_retry (sender_, send_stop_fn_);
         sender_ok.store (active_ok && stop_ok, std::memory_order_release);
     });
 
@@ -344,9 +316,7 @@ inline bool run_active_phase (void *sender_,
             std::cerr << "[" << (trace_label_ ? trace_label_ : "perf-single")
                       << "] active phase failed sent="
                       << sent_count.load (std::memory_order_relaxed)
-                      << " received="
-                      << received.load (std::memory_order_relaxed)
-                      << std::endl;
+                      << " received=" << received.load (std::memory_order_relaxed) << std::endl;
         }
         return false;
     }

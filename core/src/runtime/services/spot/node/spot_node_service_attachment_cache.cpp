@@ -35,33 +35,28 @@ static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
 
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN",
-                    "[spot-shutdown] ", fmt_, args);
+    debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN", "[spot-shutdown] ", fmt_, args);
     va_end (args);
 }
 
 }
 
-spot_node_service_attachment_state_t::service_sub_recv_cache_t::
-  service_sub_recv_cache_t () :
+spot_node_service_attachment_state_t::service_sub_recv_cache_t::service_sub_recv_cache_t () :
     impl (new impl_t ())
 {
 }
 
-spot_node_service_attachment_state_t::service_sub_recv_cache_t::
-  ~service_sub_recv_cache_t ()
+spot_node_service_attachment_state_t::service_sub_recv_cache_t::~service_sub_recv_cache_t ()
 {
 }
 
-void spot_node_service_attachment_state_t::service_sub_recv_cache_t::reserve (
-  size_t capacity_)
+void spot_node_service_attachment_state_t::service_sub_recv_cache_t::reserve (size_t capacity_)
 {
     impl->entries.reserve (capacity_);
 }
 
 void spot_node_service_attachment_state_t::service_sub_recv_cache_t::add (
-  const std::string &channel_name_,
-  socket_base_t *socket_)
+  const std::string &channel_name_, socket_base_t *socket_)
 {
     if (!socket_)
         return;
@@ -70,16 +65,13 @@ void spot_node_service_attachment_state_t::service_sub_recv_cache_t::add (
     entry.channel_name = channel_name_;
     entry.socket = socket_;
     const size_t index = impl->entries.size ();
-    if (impl->poller.add (socket_, reinterpret_cast<void *> (index),
-                          ZLINK_POLLIN)
-        != 0)
+    if (impl->poller.add (socket_, reinterpret_cast<void *> (index), ZLINK_POLLIN) != 0)
         return;
     impl->entries.push_back (entry);
 }
 
-bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
-  wait_ready_socket (zlink_recv_flags_t flags_,
-                     socket_base_t **ready_socket_out_) const
+bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::wait_ready_socket (
+  zlink_recv_flags_t flags_, socket_base_t **ready_socket_out_) const
 {
     if (ready_socket_out_)
         *ready_socket_out_ = NULL;
@@ -90,16 +82,14 @@ bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
 
     zlink::socket_poller_t::event_t event;
     memset (&event, 0, sizeof (event));
-    const int rc = impl->poller.wait (&event, 1,
-                                      (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : -1);
+    const int rc = impl->poller.wait (&event, 1, (flags_ & ZLINK_DONTWAIT) != 0 ? 0 : -1);
     if (rc <= 0) {
         errno = rc < 0 ? errno : EAGAIN;
         return false;
     }
 
     const size_t index = reinterpret_cast<size_t> (event.user_data);
-    if (index >= impl->entries.size ()
-        || event.socket != impl->entries[index].socket) {
+    if (index >= impl->entries.size () || event.socket != impl->entries[index].socket) {
         errno = EAGAIN;
         return false;
     }
@@ -111,9 +101,8 @@ bool spot_node_service_attachment_state_t::service_sub_recv_cache_t::
 
 void spot_node_t::rebuild_service_attachment_caches_locked ()
 {
-    std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
-      sub_recv_cache (
-        new service_attachment_state_t::service_sub_recv_cache_t ());
+    std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t> sub_recv_cache (
+      new service_attachment_state_t::service_sub_recv_cache_t ());
 
     sub_recv_cache->reserve (_service_attachment_state.attachments.size () * 2);
     for (std::map<std::string, service_attachment_t>::iterator it =
@@ -169,8 +158,7 @@ void spot_node_t::remove_attachment_monitors_by_owner_locked (
 }
 
 bool spot_node_t::detach_discovered_service_locked (
-  discovery_t *discovery_,
-  std::vector<socket_base_t *> *sockets_to_close_out_)
+  discovery_t *discovery_, std::vector<socket_base_t *> *sockets_to_close_out_)
 {
     if (!sockets_to_close_out_)
         return false;
@@ -196,13 +184,11 @@ bool spot_node_t::detach_discovered_service_locked (
             }
             if (attach_it->second.discovered.pub) {
                 sockets_to_close_out_->push_back (attach_it->second.discovered.pub);
-                _service_attachment_state.socket_index.erase (
-                  attach_it->second.discovered.pub);
+                _service_attachment_state.socket_index.erase (attach_it->second.discovered.pub);
             }
             if (attach_it->second.discovered.sub) {
                 sockets_to_close_out_->push_back (attach_it->second.discovered.sub);
-                _service_attachment_state.socket_index.erase (
-                  attach_it->second.discovered.sub);
+                _service_attachment_state.socket_index.erase (attach_it->second.discovered.sub);
             }
 
             attach_it->second.discovered.routers.clear ();
@@ -221,9 +207,8 @@ bool spot_node_t::detach_discovered_service_locked (
         _service_attachment_state.discoveries.erase (it);
         _service_attachment_state.pending_refresh_services.erase (channel_name);
         rebuild_service_attachment_caches_locked ();
-        spot_shutdown_logf_local (
-          false, "step=detach_discovered_service node=%p sockets=%zu",
-          static_cast<void *> (this), sockets_to_close_out_->size ());
+        spot_shutdown_logf_local (false, "step=detach_discovered_service node=%p sockets=%zu",
+                                  static_cast<void *> (this), sockets_to_close_out_->size ());
         return true;
     }
     return false;

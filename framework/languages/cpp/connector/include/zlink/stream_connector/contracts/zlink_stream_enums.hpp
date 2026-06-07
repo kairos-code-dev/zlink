@@ -53,7 +53,8 @@ enum class header_flags_t : std::uint8_t
 
 constexpr header_flags_t operator| (header_flags_t lhs, header_flags_t rhs) noexcept
 {
-    return static_cast<header_flags_t> (static_cast<std::uint8_t> (lhs) | static_cast<std::uint8_t> (rhs));
+    return static_cast<header_flags_t> (static_cast<std::uint8_t> (lhs)
+                                        | static_cast<std::uint8_t> (rhs));
 }
 
 enum class error_code_t

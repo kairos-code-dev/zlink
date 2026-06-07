@@ -66,22 +66,19 @@ void test_ssl_certificate_loading ()
 
     //  Try to load the server certificate
     try {
-        server_ctx.use_certificate_chain (
-          net::buffer (zlink::test_certs::server_cert_pem,
-                       strlen (zlink::test_certs::server_cert_pem)));
+        server_ctx.use_certificate_chain (net::buffer (
+          zlink::test_certs::server_cert_pem, strlen (zlink::test_certs::server_cert_pem)));
 
-        server_ctx.use_private_key (
-          net::buffer (zlink::test_certs::server_key_pem,
-                       strlen (zlink::test_certs::server_key_pem)),
-          ssl::context::pem);
+        server_ctx.use_private_key (net::buffer (zlink::test_certs::server_key_pem,
+                                                 strlen (zlink::test_certs::server_key_pem)),
+                                    ssl::context::pem);
 
         TEST_PASS ();
     }
     catch (const boost::system::system_error &e) {
         //  If certificate loading failed, report it
         char msg[256];
-        snprintf (msg, sizeof (msg), "Certificate loading failed: %s",
-                  e.what ());
+        snprintf (msg, sizeof (msg), "Certificate loading failed: %s", e.what ());
         TEST_FAIL_MESSAGE (msg);
     }
 }
@@ -110,9 +107,7 @@ void test_tcp_connection_baseline ()
     auto work = net::make_work_guard (io_context);
 
     //  Create acceptor on ephemeral port
-    tcp::acceptor acceptor (
-      io_context,
-      tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server socket
@@ -127,24 +122,22 @@ void test_tcp_connection_baseline ()
     boost::system::error_code accept_ec, connect_ec;
 
     //  Async accept
-    acceptor.async_accept (server_socket,
-                           [&] (const boost::system::error_code &ec) {
-                               accept_ec = ec;
-                               if (++completed >= 2) {
-                                   all_done = true;
-                                   work.reset ();
-                               }
-                           });
+    acceptor.async_accept (server_socket, [&] (const boost::system::error_code &ec) {
+        accept_ec = ec;
+        if (++completed >= 2) {
+            all_done = true;
+            work.reset ();
+        }
+    });
 
     //  Async connect
-    client_socket.async_connect (endpoint,
-                                 [&] (const boost::system::error_code &ec) {
-                                     connect_ec = ec;
-                                     if (++completed >= 2) {
-                                         all_done = true;
-                                         work.reset ();
-                                     }
-                                 });
+    client_socket.async_connect (endpoint, [&] (const boost::system::error_code &ec) {
+        connect_ec = ec;
+        if (++completed >= 2) {
+            all_done = true;
+            work.reset ();
+        }
+    });
 
     //  Run io_context in a separate thread
     std::thread io_thread ([&] () { io_context.run (); });
@@ -181,18 +174,15 @@ void test_ssl_handshake ()
 
     //  Configure server context with test certificates
     try {
-        server_ssl_ctx.use_certificate_chain (
-          net::buffer (zlink::test_certs::server_cert_pem,
-                       strlen (zlink::test_certs::server_cert_pem)));
-        server_ssl_ctx.use_private_key (
-          net::buffer (zlink::test_certs::server_key_pem,
-                       strlen (zlink::test_certs::server_key_pem)),
-          ssl::context::pem);
+        server_ssl_ctx.use_certificate_chain (net::buffer (
+          zlink::test_certs::server_cert_pem, strlen (zlink::test_certs::server_cert_pem)));
+        server_ssl_ctx.use_private_key (net::buffer (zlink::test_certs::server_key_pem,
+                                                     strlen (zlink::test_certs::server_key_pem)),
+                                        ssl::context::pem);
     }
     catch (const std::exception &e) {
         char msg[256];
-        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s",
-                  e.what ());
+        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s", e.what ());
         TEST_FAIL_MESSAGE (msg);
         return;
     }
@@ -201,9 +191,7 @@ void test_ssl_handshake ()
     client_ssl_ctx.set_verify_mode (ssl::verify_none);
 
     //  Create acceptor
-    tcp::acceptor acceptor (
-      io_context,
-      tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server SSL stream
@@ -219,25 +207,24 @@ void test_ssl_handshake ()
 
     //  Set up the chain of operations
     //  1. Accept TCP connection
-    acceptor.async_accept (server_stream.lowest_layer (),
-                           [&] (const boost::system::error_code &ec) {
-                               if (ec) {
-                                   all_done = true;
-                                   work.reset ();
-                                   return;
-                               }
+    acceptor.async_accept (
+      server_stream.lowest_layer (), [&] (const boost::system::error_code &ec) {
+          if (ec) {
+              all_done = true;
+              work.reset ();
+              return;
+          }
 
-                               //  2. Server: SSL handshake
-                               server_stream.async_handshake (
-                                 ssl::stream_base::server,
-                                 [&] (const boost::system::error_code &ec) {
-                                     server_hs_ec = ec;
-                                     if (++stage >= 2) {
-                                         all_done = true;
-                                         work.reset ();
-                                     }
-                                 });
-                           });
+          //  2. Server: SSL handshake
+          server_stream.async_handshake (ssl::stream_base::server,
+                                         [&] (const boost::system::error_code &ec) {
+                                             server_hs_ec = ec;
+                                             if (++stage >= 2) {
+                                                 all_done = true;
+                                                 work.reset ();
+                                             }
+                                         });
+      });
 
     //  1. Client: TCP connect
     client_stream.lowest_layer ().async_connect (
@@ -249,15 +236,14 @@ void test_ssl_handshake ()
           }
 
           //  2. Client: SSL handshake
-          client_stream.async_handshake (
-            ssl::stream_base::client,
-            [&] (const boost::system::error_code &ec) {
-                client_hs_ec = ec;
-                if (++stage >= 2) {
-                    all_done = true;
-                    work.reset ();
-                }
-            });
+          client_stream.async_handshake (ssl::stream_base::client,
+                                         [&] (const boost::system::error_code &ec) {
+                                             client_hs_ec = ec;
+                                             if (++stage >= 2) {
+                                                 all_done = true;
+                                                 work.reset ();
+                                             }
+                                         });
       });
 
     //  Run io_context in a separate thread
@@ -275,10 +261,8 @@ void test_ssl_handshake ()
     io_thread.join ();
 
     TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "SSL handshake timed out");
-    TEST_ASSERT_FALSE_MESSAGE (server_hs_ec.failed (),
-                               server_hs_ec.message ().c_str ());
-    TEST_ASSERT_FALSE_MESSAGE (client_hs_ec.failed (),
-                               client_hs_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (server_hs_ec.failed (), server_hs_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (client_hs_ec.failed (), client_hs_ec.message ().c_str ());
 
     //  Note: Don't call sync shutdown - it can block
     //  Let the streams destruct naturally
@@ -295,26 +279,22 @@ void test_zlink_tls_pair ()
     void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (), files.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (),
-      files.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (),
-      files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (), files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     char endpoint[MAX_SOCKET_STRING];
     test_bind (server, "tls://127.0.0.1:*", endpoint, sizeof (endpoint));
@@ -382,18 +362,15 @@ void test_ssl_data_exchange ()
 
     //  Configure server context with test certificates
     try {
-        server_ssl_ctx.use_certificate_chain (
-          net::buffer (zlink::test_certs::server_cert_pem,
-                       strlen (zlink::test_certs::server_cert_pem)));
-        server_ssl_ctx.use_private_key (
-          net::buffer (zlink::test_certs::server_key_pem,
-                       strlen (zlink::test_certs::server_key_pem)),
-          ssl::context::pem);
+        server_ssl_ctx.use_certificate_chain (net::buffer (
+          zlink::test_certs::server_cert_pem, strlen (zlink::test_certs::server_cert_pem)));
+        server_ssl_ctx.use_private_key (net::buffer (zlink::test_certs::server_key_pem,
+                                                     strlen (zlink::test_certs::server_key_pem)),
+                                        ssl::context::pem);
     }
     catch (const std::exception &e) {
         char msg[256];
-        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s",
-                  e.what ());
+        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s", e.what ());
         TEST_FAIL_MESSAGE (msg);
         return;
     }
@@ -402,9 +379,7 @@ void test_ssl_data_exchange ()
     client_ssl_ctx.set_verify_mode (ssl::verify_none);
 
     //  Create acceptor
-    tcp::acceptor acceptor (
-      io_context,
-      tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server SSL stream
@@ -423,36 +398,34 @@ void test_ssl_data_exchange ()
     boost::system::error_code write_ec, read_ec;
 
     //  Set up the chain of operations
-    acceptor.async_accept (server_stream.lowest_layer (),
-                           [&] (const boost::system::error_code &ec) {
-                               if (ec) {
-                                   all_done = true;
-                                   work.reset ();
-                                   return;
-                               }
+    acceptor.async_accept (
+      server_stream.lowest_layer (), [&] (const boost::system::error_code &ec) {
+          if (ec) {
+              all_done = true;
+              work.reset ();
+              return;
+          }
 
-                               //  Server: SSL handshake, then read
-                               server_stream.async_handshake (
-                                 ssl::stream_base::server,
-                                 [&] (const boost::system::error_code &ec) {
-                                     if (ec) {
-                                         all_done = true;
-                                         work.reset ();
-                                         return;
-                                     }
+          //  Server: SSL handshake, then read
+          server_stream.async_handshake (
+            ssl::stream_base::server, [&] (const boost::system::error_code &ec) {
+                if (ec) {
+                    all_done = true;
+                    work.reset ();
+                    return;
+                }
 
-                                     //  Server reads data
-                                     server_stream.async_read_some (
-                                       net::buffer (recv_buf, sizeof (recv_buf)),
-                                       [&] (const boost::system::error_code &ec,
-                                            std::size_t n) {
-                                           read_ec = ec;
-                                           bytes_read = n;
-                                           all_done = true;
-                                           work.reset ();
-                                       });
-                                 });
-                           });
+                //  Server reads data
+                server_stream.async_read_some (
+                  net::buffer (recv_buf, sizeof (recv_buf)),
+                  [&] (const boost::system::error_code &ec, std::size_t n) {
+                      read_ec = ec;
+                      bytes_read = n;
+                      all_done = true;
+                      work.reset ();
+                  });
+            });
+      });
 
     //  Client: TCP connect, handshake, then write
     client_stream.lowest_layer ().async_connect (
@@ -464,8 +437,7 @@ void test_ssl_data_exchange ()
           }
 
           client_stream.async_handshake (
-            ssl::stream_base::client,
-            [&] (const boost::system::error_code &ec) {
+            ssl::stream_base::client, [&] (const boost::system::error_code &ec) {
                 if (ec) {
                     all_done = true;
                     work.reset ();
@@ -475,9 +447,7 @@ void test_ssl_data_exchange ()
                 //  Client writes data
                 net::async_write (
                   client_stream, net::buffer (test_msg, strlen (test_msg)),
-                  [&] (const boost::system::error_code &ec, std::size_t) {
-                      write_ec = ec;
-                  });
+                  [&] (const boost::system::error_code &ec, std::size_t) { write_ec = ec; });
             });
       });
 
@@ -505,7 +475,7 @@ void test_ssl_data_exchange ()
     //  Let the streams destruct naturally
 }
 
-#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_SSL
+#else // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_SSL
 
 void setUp ()
 {
@@ -521,7 +491,7 @@ void test_asio_ssl_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio SSL not enabled, skipping tests");
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
 int main ()
 {

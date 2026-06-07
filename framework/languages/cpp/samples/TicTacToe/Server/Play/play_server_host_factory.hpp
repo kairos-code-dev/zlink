@@ -20,7 +20,9 @@ class play_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.handlers ().add<create_match_room_handler_t> ("play").add<ensure_player_actor_handler_t> ("play");
+            options.handlers ()
+              .add<create_match_room_handler_t> ("play")
+              .add<ensure_player_actor_handler_t> ("play");
             options.codecs ().add_json ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::play_channel)

@@ -65,22 +65,17 @@ template <typename T, int ID = 0> class array_t
     void push_back (T *item_)
     {
         if (item_)
-            static_cast<item_t *> (item_)->set_array_index (
-              static_cast<int> (_items.size ()));
+            static_cast<item_t *> (item_)->set_array_index (static_cast<int> (_items.size ()));
         _items.push_back (item_);
     }
 
-    void erase (T *item_)
-    {
-        erase (static_cast<item_t *> (item_)->get_array_index ());
-    }
+    void erase (T *item_) { erase (static_cast<item_t *> (item_)->get_array_index ()); }
 
     void erase (size_type index_)
     {
         if (_items.empty ())
             return;
-        static_cast<item_t *> (_items.back ())
-          ->set_array_index (static_cast<int> (index_));
+        static_cast<item_t *> (_items.back ())->set_array_index (static_cast<int> (index_));
 
         _items[index_] = _items.back ();
         _items.pop_back ();
@@ -89,11 +84,9 @@ template <typename T, int ID = 0> class array_t
     void swap (size_type index1_, size_type index2_)
     {
         if (_items[index1_])
-            static_cast<item_t *> (_items[index1_])
-              ->set_array_index (static_cast<int> (index2_));
+            static_cast<item_t *> (_items[index1_])->set_array_index (static_cast<int> (index2_));
         if (_items[index2_])
-            static_cast<item_t *> (_items[index2_])
-              ->set_array_index (static_cast<int> (index1_));
+            static_cast<item_t *> (_items[index2_])->set_array_index (static_cast<int> (index1_));
         std::swap (_items[index1_], _items[index2_]);
     }
 
@@ -101,8 +94,7 @@ template <typename T, int ID = 0> class array_t
 
     static size_type index (T *item_)
     {
-        return static_cast<size_type> (
-          static_cast<item_t *> (item_)->get_array_index ());
+        return static_cast<size_type> (static_cast<item_t *> (item_)->get_array_index ());
     }
 
   private:

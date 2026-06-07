@@ -4,7 +4,7 @@
 #define __ZLINK_WSS_TRANSPORT_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS \
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS                           \
   && defined ZLINK_HAVE_ASIO_SSL
 
 #include <boost/asio.hpp>
@@ -68,20 +68,17 @@ class wss_transport_t : public i_asio_transport
                           std::size_t buffer_size,
                           completion_handler_t handler) ZLINK_OVERRIDE;
 
-    std::size_t read_some (std::uint8_t *buffer,
-                           std::size_t len) ZLINK_OVERRIDE;
+    std::size_t read_some (std::uint8_t *buffer, std::size_t len) ZLINK_OVERRIDE;
 
     void async_write_some (const unsigned char *buffer,
                            std::size_t buffer_size,
                            completion_handler_t handler) ZLINK_OVERRIDE;
 
-    std::size_t write_some (const std::uint8_t *data,
-                            std::size_t len) ZLINK_OVERRIDE;
+    std::size_t write_some (const std::uint8_t *data, std::size_t len) ZLINK_OVERRIDE;
 
     //  WSS-specific overrides
     bool requires_handshake () const ZLINK_OVERRIDE { return true; }
-    void async_handshake (int handshake_type,
-                          completion_handler_t handler) ZLINK_OVERRIDE;
+    void async_handshake (int handshake_type, completion_handler_t handler) ZLINK_OVERRIDE;
     bool supports_speculative_write () const ZLINK_OVERRIDE { return false; }
     bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
     void async_writev (const unsigned char *header,
@@ -92,10 +89,7 @@ class wss_transport_t : public i_asio_transport
     bool is_encrypted () const ZLINK_OVERRIDE { return true; }
     const char *name () const ZLINK_OVERRIDE { return "wss"; }
 
-    void set_tls_hostname (const std::string &hostname)
-    {
-        _tls_hostname = hostname;
-    }
+    void set_tls_hostname (const std::string &hostname) { _tls_hostname = hostname; }
 
     //  Set the host for client handshake
     void set_host (const std::string &host) { _host = host; }
@@ -143,8 +137,8 @@ class wss_transport_t : public i_asio_transport
     ZLINK_NON_COPYABLE_NOR_MOVABLE (wss_transport_t)
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZLINK_WSS_TRANSPORT_HPP_INCLUDED__
+#endif // __ZLINK_WSS_TRANSPORT_HPP_INCLUDED__

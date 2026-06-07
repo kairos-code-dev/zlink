@@ -18,8 +18,7 @@ uint32_t compute_blocked_ratio_ppm_local (uint64_t attempts_, uint64_t blocked_)
     if (attempts_ == 0 || blocked_ == 0)
         return 0u;
     const uint64_t scaled = (blocked_ * 1000000ull) / attempts_;
-    return scaled > 0xffffffffull ? 0xffffffffu
-                                  : static_cast<uint32_t> (scaled);
+    return scaled > 0xffffffffull ? 0xffffffffu : static_cast<uint32_t> (scaled);
 }
 
 }
@@ -35,35 +34,27 @@ int zlink::socket_base_t::monitor_snapshot (zlink_monitor_status_t *out_)
     memset (out_, 0, sizeof (*out_));
     out_->source_kind = ZLINK_MONITOR_SOURCE_SOCKET;
     out_->detail_flags =
-      ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS
-      | ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS
-      | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET
-      | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS;
+      ZLINK_MONITOR_STATUS_DETAIL_SND_PENDING_MSGS | ZLINK_MONITOR_STATUS_DETAIL_RCV_PENDING_MSGS
+      | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUDGET | ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         if (monitor_ready_count () > 0)
             out_->state_flags |= ZLINK_MONITOR_STATE_READY;
 
-        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-             i != size; ++i) {
+        for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
             pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
             out_->snd_pending_msgs += pipe->get_snd_pending_msgs ();
             out_->rcv_pending_msgs += pipe->get_rcv_pending_msgs_approx ();
         }
     }
     out_->auto_hwm_enabled = _auto_hwm_context_plan.enabled ? 1u : 0u;
-    out_->auto_hwm_profile =
-      static_cast<uint32_t> (_auto_hwm_context_plan.profile);
+    out_->auto_hwm_profile = static_cast<uint32_t> (_auto_hwm_context_plan.profile);
     out_->auto_hwm_role = static_cast<uint32_t> (_auto_hwm_socket_plan.role);
-    out_->auto_hwm_policy_class =
-      static_cast<uint32_t> (_auto_hwm_socket_plan.policy_class);
-    out_->auto_hwm_unit_budget_bytes =
-      _auto_hwm_socket_plan.unit_budget_bytes;
+    out_->auto_hwm_policy_class = static_cast<uint32_t> (_auto_hwm_socket_plan.policy_class);
+    out_->auto_hwm_unit_budget_bytes = _auto_hwm_socket_plan.unit_budget_bytes;
     out_->auto_hwm_size_cap = _auto_hwm_socket_plan.size_cap;
-    out_->auto_hwm_socket_message_slots =
-      _auto_hwm_socket_plan.socket_message_slots;
-    out_->auto_hwm_effective_message_bytes =
-      _auto_hwm_socket_plan.effective_message_bytes;
+    out_->auto_hwm_socket_message_slots = _auto_hwm_socket_plan.socket_message_slots;
+    out_->auto_hwm_effective_message_bytes = _auto_hwm_socket_plan.effective_message_bytes;
     out_->auto_hwm_applied_sndhwm = options.sndhwm;
     out_->auto_hwm_applied_rcvhwm = options.rcvhwm;
     out_->auto_hwm_effective_sndbuf = options.sndbuf;
@@ -95,8 +86,7 @@ bool zlink::socket_base_t::monitor_has_attached_pipes () const
     return has_attached_pipes ();
 }
 
-void zlink::socket_base_t::socket_peer_remote_endpoints (
-  std::vector<std::string> *out_)
+void zlink::socket_base_t::socket_peer_remote_endpoints (std::vector<std::string> *out_)
 {
     if (!out_)
         return;
@@ -105,8 +95,7 @@ void zlink::socket_base_t::socket_peer_remote_endpoints (
     out_->clear ();
     scoped_lock_t lock (monitor_runtime ().sync);
     out_->reserve (endpoint_runtime ().attached_pipe_count ());
-    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-         i != size; ++i) {
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
         pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
         const std::string &remote = pipe->get_endpoint_pair ().remote;
         if (!remote.empty ())
@@ -123,8 +112,7 @@ void zlink::socket_base_t::snapshot_attached_pipes (std::vector<pipe_t *> *out_)
     out_->clear ();
     scoped_lock_t lock (monitor_runtime ().sync);
     out_->reserve (endpoint_runtime ().attached_pipe_count ());
-    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-         i != size; ++i)
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i)
         out_->push_back (endpoint_runtime ().attached_pipe (i));
 }
 
@@ -186,8 +174,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     // if the peer disappears mid-send.
     const int sndtimeo = 0;
     rc = static_cast<socket_base_t *> (monitor.socket)
-           ->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo,
-                         sizeof (sndtimeo));
+           ->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
     if (rc == -1)
         stop_monitor (false);
 
@@ -198,8 +185,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         monitor.reset_worker_state ();
         service_control_runtime_t *runtime = get_ctx ()->service_control_runtime ();
         const uint64_t task_id =
-          runtime ? runtime->add_periodic_task (&socket_base_t::monitor_task_main,
-                                                this, 10, true)
+          runtime ? runtime->add_periodic_task (&socket_base_t::monitor_task_main, this, 10, true)
                   : 0;
         if (task_id == 0) {
             stop_monitor (false);
@@ -211,74 +197,73 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
     return rc;
 }
 
-void zlink::socket_base_t::event_connected (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_)
+void zlink::socket_base_t::event_connected (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                            zlink::fd_t fd_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (fd_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_CONNECTED);
 }
 
-void zlink::socket_base_t::event_connect_delayed (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
+void zlink::socket_base_t::event_connect_delayed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                                  int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_CONNECT_DELAYED);
 }
 
-void zlink::socket_base_t::event_connect_retried (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, int interval_)
+void zlink::socket_base_t::event_connect_retried (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                                  int interval_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (interval_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_CONNECT_RETRIED);
 }
 
-void zlink::socket_base_t::event_listening (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_)
+void zlink::socket_base_t::event_listening (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                            zlink::fd_t fd_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (fd_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_LISTENING);
 }
 
-void zlink::socket_base_t::event_bind_failed (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
+void zlink::socket_base_t::event_bind_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                              int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_BIND_FAILED);
 }
 
-void zlink::socket_base_t::event_accepted (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_)
+void zlink::socket_base_t::event_accepted (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                           zlink::fd_t fd_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (fd_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_ACCEPTED);
 }
 
-void zlink::socket_base_t::event_accept_failed (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
+void zlink::socket_base_t::event_accept_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                                int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_ACCEPT_FAILED);
 }
 
-void zlink::socket_base_t::event_closed (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_)
+void zlink::socket_base_t::event_closed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                         zlink::fd_t fd_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (fd_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_CLOSED);
 }
 
-void zlink::socket_base_t::event_close_failed (
-  const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
+void zlink::socket_base_t::event_close_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                               int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
     event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_CLOSE_FAILED);
 }
 
-void zlink::socket_base_t::event_disconnected (
-  const endpoint_uri_pair_t &endpoint_uri_pair_,
-  uint64_t reason_,
-  const unsigned char *routing_id_,
-  size_t routing_id_size_)
+void zlink::socket_base_t::event_disconnected (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                               uint64_t reason_,
+                                               const unsigned char *routing_id_,
+                                               size_t routing_id_size_)
 {
     if (monitor_runtime ().events_atomic.load (std::memory_order_acquire) == 0)
         return;
@@ -290,28 +275,23 @@ void zlink::socket_base_t::event_disconnected (
         if (monitor_runtime ().events & ZLINK_EVENT_DISCONNECTED) {
             uint64_t values[1] = {reason_};
             monitor_event_record_t record;
-            if (build_monitor_event_record (&record, ZLINK_EVENT_DISCONNECTED,
-                                            values, 1, routing_id_,
-                                            routing_id_size_,
-                                            endpoint_uri_pair_))
+            if (build_monitor_event_record (&record, ZLINK_EVENT_DISCONNECTED, values, 1,
+                                            routing_id_, routing_id_size_, endpoint_uri_pair_))
                 enqueue_monitor_event (record);
         }
 
-        changed = monitor_runtime ().erase_ready_connection (
-          endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
+        changed = monitor_runtime ().erase_ready_connection (endpoint_uri_pair_, routing_id_,
+                                                             routing_id_size_, &ready_count);
         if (!changed)
-            changed = monitor_runtime ().erase_ready_connection_for_endpoint (
-              endpoint_uri_pair_, &ready_count);
+            changed = monitor_runtime ().erase_ready_connection_for_endpoint (endpoint_uri_pair_,
+                                                                              &ready_count);
 
         LIBZLINK_UNUSED (changed);
         if (monitor_runtime ().events & ZLINK_EVENT_CONNECTION_READY) {
             uint64_t ready_values[1] = {ready_count};
             monitor_event_record_t record;
-            if (build_monitor_event_record (&record,
-                                            ZLINK_EVENT_CONNECTION_READY,
-                                            ready_values, 1, routing_id_,
-                                            routing_id_size_,
-                                            endpoint_uri_pair_))
+            if (build_monitor_event_record (&record, ZLINK_EVENT_CONNECTION_READY, ready_values, 1,
+                                            routing_id_, routing_id_size_, endpoint_uri_pair_))
                 enqueue_monitor_event (record);
         }
     }
@@ -321,24 +301,21 @@ void zlink::socket_base_t::event_handshake_failed_no_detail (
   const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
-    event (endpoint_uri_pair_, NULL, 0, values, 1,
-           ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL);
+    event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL);
 }
 
 void zlink::socket_base_t::event_handshake_failed_protocol (
   const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
-    event (endpoint_uri_pair_, NULL, 0, values, 1,
-           ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL);
+    event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL);
 }
 
 void zlink::socket_base_t::event_handshake_failed_auth (
   const endpoint_uri_pair_t &endpoint_uri_pair_, int err_)
 {
     uint64_t values[1] = {static_cast<uint64_t> (err_)};
-    event (endpoint_uri_pair_, NULL, 0, values, 1,
-           ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
+    event (endpoint_uri_pair_, NULL, 0, values, 1, ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
 }
 
 void zlink::socket_base_t::event_connection_ready_changed (
@@ -350,8 +327,8 @@ void zlink::socket_base_t::event_connection_ready_changed (
     bool changed = false;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        changed = monitor_runtime ().mark_ready_connection (
-          endpoint_uri_pair_, routing_id_, routing_id_size_, &ready_count);
+        changed = monitor_runtime ().mark_ready_connection (endpoint_uri_pair_, routing_id_,
+                                                            routing_id_size_, &ready_count);
     }
     if (!changed)
         return;
@@ -371,33 +348,27 @@ void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
 
     const endpoint_uri_pair_t &endpoint_pair = pipe_->get_endpoint_pair ();
     const blob_t &routing_id = pipe_->get_routing_id ();
-    const unsigned char *routing_id_data =
-      routing_id.size () > 0 ? routing_id.data () : NULL;
-    event_connection_ready_changed (endpoint_pair, routing_id_data,
-                                    routing_id.size ());
+    const unsigned char *routing_id_data = routing_id.size () > 0 ? routing_id.data () : NULL;
+    event_connection_ready_changed (endpoint_pair, routing_id_data, routing_id.size ());
 }
 
 void zlink::socket_base_t::emit_socket_monitor_value_event (
-  uint64_t event_,
-  uint64_t value_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_)
+  uint64_t event_, uint64_t value_, const endpoint_uri_pair_t &endpoint_uri_pair_)
 {
     uint64_t values[1] = {value_};
     event (endpoint_uri_pair_, NULL, 0, values, 1, event_);
 }
 
-void zlink::socket_base_t::emit_peer_weight_changed (pipe_t *pipe_,
-                                                     uint32_t weight_)
+void zlink::socket_base_t::emit_peer_weight_changed (pipe_t *pipe_, uint32_t weight_)
 {
     if (!pipe_)
         return;
 
     const blob_t &routing_id = pipe_->get_routing_id ();
-    const unsigned char *routing_id_data =
-      routing_id.size () > 0 ? routing_id.data () : NULL;
+    const unsigned char *routing_id_data = routing_id.size () > 0 ? routing_id.data () : NULL;
     uint64_t values[1] = {static_cast<uint64_t> (weight_)};
-    event (pipe_->get_endpoint_pair (), routing_id_data, routing_id.size (),
-           values, 1, ZLINK_EVENT_PEER_WEIGHT_CHANGED);
+    event (pipe_->get_endpoint_pair (), routing_id_data, routing_id.size (), values, 1,
+           ZLINK_EVENT_PEER_WEIGHT_CHANGED);
 }
 
 void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -413,9 +384,8 @@ void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
     scoped_lock_t lock (monitor_runtime ().sync);
     if (monitor_runtime ().events & type_) {
         monitor_event_record_t record;
-        if (build_monitor_event_record (&record, type_, values_, values_count_,
-                                        routing_id_, routing_id_size_,
-                                        endpoint_uri_pair_))
+        if (build_monitor_event_record (&record, type_, values_, values_count_, routing_id_,
+                                        routing_id_size_, endpoint_uri_pair_))
             enqueue_monitor_event (record);
     }
 }
@@ -443,11 +413,9 @@ void zlink::socket_base_t::pump_monitor_events ()
     }
 }
 
-void zlink::socket_base_t::enqueue_monitor_event (
-  const monitor_event_record_t &record_)
+void zlink::socket_base_t::enqueue_monitor_event (const monitor_event_record_t &record_)
 {
-    monitor_runtime ().enqueue_worker_event (
-      record_, static_cast<size_t> (monitor_queue_hwm));
+    monitor_runtime ().enqueue_worker_event (record_, static_cast<size_t> (monitor_queue_hwm));
 }
 
 bool zlink::socket_base_t::build_monitor_event_record (
@@ -476,9 +444,8 @@ bool zlink::socket_base_t::build_monitor_event_record (
     return true;
 }
 
-bool zlink::socket_base_t::dispatch_monitor_event (
-  void *monitor_socket_,
-  const monitor_event_record_t &record_) const
+bool zlink::socket_base_t::dispatch_monitor_event (void *monitor_socket_,
+                                                   const monitor_event_record_t &record_) const
 {
     if (!monitor_socket_)
         return false;
@@ -490,14 +457,12 @@ bool zlink::socket_base_t::dispatch_monitor_event (
         wire_event.value = record_.values[0];
     wire_event.routing_id = record_.routing_id;
 
-    zlink::copy_fixed_c_string_from_bytes (
-      wire_event.local_addr, sizeof (wire_event.local_addr),
-      record_.endpoint_uri_pair.local.data (),
-      record_.endpoint_uri_pair.local.size ());
-    zlink::copy_fixed_c_string_from_bytes (
-      wire_event.remote_addr, sizeof (wire_event.remote_addr),
-      record_.endpoint_uri_pair.remote.data (),
-      record_.endpoint_uri_pair.remote.size ());
+    zlink::copy_fixed_c_string_from_bytes (wire_event.local_addr, sizeof (wire_event.local_addr),
+                                           record_.endpoint_uri_pair.local.data (),
+                                           record_.endpoint_uri_pair.local.size ());
+    zlink::copy_fixed_c_string_from_bytes (wire_event.remote_addr, sizeof (wire_event.remote_addr),
+                                           record_.endpoint_uri_pair.remote.data (),
+                                           record_.endpoint_uri_pair.remote.size ());
 
     zlink_msg_t msg;
     zlink_msg_init_size (&msg, sizeof (wire_event));
@@ -515,25 +480,19 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
     monitor_runtime_t &monitor = monitor_runtime ();
     if (monitor.socket) {
         monitor.events_atomic.store (0, std::memory_order_release);
-        socket_base_t *monitor_socket =
-          static_cast<socket_base_t *> (monitor.socket);
+        socket_base_t *monitor_socket = static_cast<socket_base_t *> (monitor.socket);
         bool can_emit_monitor_stopped = false;
-        const bool stop_async_mailbox =
-          lifecycle_coordinator ().is_monitor_async_mailbox_owned ()
-          && !socket_msg_dispatch_active ()
-          && !sub_dispatch_active () && !xpub_dispatch_active ()
-          && !stream_dispatch_active ();
+        const bool stop_async_mailbox = lifecycle_coordinator ().is_monitor_async_mailbox_owned ()
+                                        && !socket_msg_dispatch_active () && !sub_dispatch_active ()
+                                        && !xpub_dispatch_active () && !stream_dispatch_active ();
 
-        if ((monitor.events & ZLINK_EVENT_MONITOR_STOPPED)
-            && send_monitor_stopped_event_) {
+        if ((monitor.events & ZLINK_EVENT_MONITOR_STOPPED) && send_monitor_stopped_event_) {
             monitor_socket->process_commands (0, false);
-            can_emit_monitor_stopped =
-              monitor_socket->endpoint_runtime ().has_attached_pipes ();
+            can_emit_monitor_stopped = monitor_socket->endpoint_runtime ().has_attached_pipes ();
         }
 
         if (monitor.task_id != 0) {
-            service_control_runtime_t *runtime =
-              get_ctx ()->service_control_runtime ();
+            service_control_runtime_t *runtime = get_ctx ()->service_control_runtime ();
             if (runtime)
                 (void) runtime->remove_task (monitor.task_id);
         }
@@ -542,9 +501,8 @@ void zlink::socket_base_t::stop_monitor (bool send_monitor_stopped_event_)
         if (can_emit_monitor_stopped) {
             uint64_t values[1] = {0};
             monitor_event_record_t record;
-            if (build_monitor_event_record (&record, ZLINK_EVENT_MONITOR_STOPPED,
-                                            values, 1, NULL, 0,
-                                            endpoint_uri_pair_t ()))
+            if (build_monitor_event_record (&record, ZLINK_EVENT_MONITOR_STOPPED, values, 1, NULL,
+                                            0, endpoint_uri_pair_t ()))
                 dispatch_monitor_event (monitor.socket, record);
         }
         zlink_close (monitor.socket);

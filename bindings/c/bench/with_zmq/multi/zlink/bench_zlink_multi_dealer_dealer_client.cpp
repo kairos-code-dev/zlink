@@ -17,7 +17,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const int k_client_socket_type = ZLINK_SOCKET_DEALER;
@@ -50,22 +51,15 @@ inline void install_signal_handlers ()
 #endif
 }
 
-inline bool create_client_sockets (
-  ctx_guard_t &ctx,
-  const std::string &transport,
-  const std::string &endpoint,
-  const multi_bench_settings_t &settings,
-  std::vector<void *> *sockets_out,
-  std::vector<ready_monitor_t> *monitors_out)
+inline bool create_client_sockets (ctx_guard_t &ctx,
+                                   const std::string &transport,
+                                   const std::string &endpoint,
+                                   const multi_bench_settings_t &settings,
+                                   std::vector<void *> *sockets_out,
+                                   std::vector<ready_monitor_t> *monitors_out)
 {
     return perf_multi_client::create_client_sockets (
-      ctx,
-      transport,
-      endpoint,
-      settings,
-      k_client_socket_type,
-      sockets_out,
-      monitors_out);
+      ctx, transport, endpoint, settings, k_client_socket_type, sockets_out, monitors_out);
 }
 
 inline send_status_t send_one_message (void *socket,
@@ -82,20 +76,14 @@ inline send_status_t send_one_message (void *socket,
     if (zlink_msg_init_size (&part, payload_size) != 0)
         return send_status_fatal;
 
-    if (!perf_multi_metric::stamp_payload (
-          static_cast<char *> (zlink_msg_data (&part)),
-          payload_size,
-          run_id,
-          phase,
-          msg_size,
-          seq,
-          perf_multi_metric::now_us ())) {
+    if (!perf_multi_metric::stamp_payload (static_cast<char *> (zlink_msg_data (&part)),
+                                           payload_size, run_id, phase, msg_size, seq,
+                                           perf_multi_metric::now_us ())) {
         zlink_msg_close (&part);
         return send_status_fatal;
     }
 
-    const zlink_submit_result_t rc =
-      ::zlink_std_compat_send (socket, &part, 1, ZLINK_DONTWAIT);
+    const zlink_submit_result_t rc = ::zlink_std_compat_send (socket, &part, 1, ZLINK_DONTWAIT);
     if (rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
     if (rc == ZLINK_SUBMIT_OK)
@@ -128,13 +116,11 @@ inline bool run_send_window (const std::vector<void *> &sockets,
     if (!send_active) {
         while (!g_stop_requested.load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            const long remaining_ms =
-              std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - std::chrono::steady_clock::now ())
-                .count ();
+            const long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                        deadline - std::chrono::steady_clock::now ())
+                                        .count ();
             const long wait_ms = remaining_ms > 0 ? remaining_ms : 0;
-            if (perf_socket_poll (NULL, 0, wait_ms) < 0
-                && zlink_errno () != EINTR) {
+            if (perf_socket_poll (NULL, 0, wait_ms) < 0 && zlink_errno () != EINTR) {
                 return false;
             }
         }
@@ -159,14 +145,11 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
-        const long remaining_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline - std::chrono::steady_clock::now ())
-            .count ();
-        const int poll_rc = perf_socket_poll (
-          &poll_items[0],
-          static_cast<int> (poll_items.size ()),
-          remaining_ms > 0 ? remaining_ms : 0);
+        const long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                    deadline - std::chrono::steady_clock::now ())
+                                    .count ();
+        const int poll_rc = perf_socket_poll (&poll_items[0], static_cast<int> (poll_items.size ()),
+                                              remaining_ms > 0 ? remaining_ms : 0);
         if (poll_rc < 0) {
             if (zlink_errno () == EINTR)
                 continue;
@@ -176,18 +159,12 @@ inline bool run_send_window (const std::vector<void *> &sockets,
             continue;
 
         for (size_t i = 0; i < sockets.size (); ++i) {
-            if ((poll_items[i].revents & ZLINK_POLLOUT) == 0
-                || send_pending[i] == 0) {
+            if ((poll_items[i].revents & ZLINK_POLLOUT) == 0 || send_pending[i] == 0) {
                 continue;
             }
 
-            const send_status_t send_rc = send_one_message (
-              sockets[i],
-              payload_size,
-              run_id,
-              phase,
-              msg_size,
-              (*seq)++);
+            const send_status_t send_rc =
+              send_one_message (sockets[i], payload_size, run_id, phase, msg_size, (*seq)++);
             if (send_rc == send_status_blocked)
                 continue;
             if (send_rc == send_status_fatal)
@@ -203,35 +180,18 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   size_t msg_size,
                                   uint32_t run_id)
 {
-    const size_t payload_size =
-      std::max<size_t> (msg_size, perf_multi_metric::header_size ());
-    const double warmup_s =
-      static_cast<double> (std::max (0, settings.warmup_seconds));
-    const double active_s =
-      static_cast<double> (std::max (1, settings.duration_seconds));
+    const size_t payload_size = std::max<size_t> (msg_size, perf_multi_metric::header_size ());
+    const double warmup_s = static_cast<double> (std::max (0, settings.warmup_seconds));
+    const double active_s = static_cast<double> (std::max (1, settings.duration_seconds));
 
     uint64_t seq = 1;
-    if (!run_send_window (
-          sockets,
-          payload_size,
-          run_id,
-          perf_multi_metric::phase_warmup,
-          msg_size,
-          warmup_s,
-          true,
-          &seq)) {
+    if (!run_send_window (sockets, payload_size, run_id, perf_multi_metric::phase_warmup, msg_size,
+                          warmup_s, true, &seq)) {
         return false;
     }
 
-    if (!run_send_window (
-          sockets,
-          payload_size,
-          run_id,
-          perf_multi_metric::phase_active,
-          msg_size,
-          active_s,
-          true,
-          &seq)) {
+    if (!run_send_window (sockets, payload_size, run_id, perf_multi_metric::phase_active, msg_size,
+                          active_s, true, &seq)) {
         return false;
     }
 
@@ -246,8 +206,8 @@ inline int run_client_benchmark (const std::string &lib_name,
     set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return 0;
     }
 
@@ -264,16 +224,9 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
 
     std::vector<void *> sockets;
-    if (!create_client_sockets (
-          ctx,
-          transport,
-          endpoint,
-          settings,
-          &sockets,
-          NULL)) {
+    if (!create_client_sockets (ctx, transport, endpoint, settings, &sockets, NULL)) {
         if (bench_debug_enabled ())
-            std::cerr << "[multi-dealer-dealer-client] create sockets failed"
-                      << std::endl;
+            std::cerr << "[multi-dealer-dealer-client] create sockets failed" << std::endl;
         close_client_sockets (&sockets);
         return 1;
     }
@@ -289,15 +242,10 @@ inline int run_client_benchmark (const std::string &lib_name,
 
         const uint32_t run_id = static_cast<uint32_t> (si + 1);
         std::cout << "CLIENT_READY," << msg_sizes[si] << std::endl;
-        if (!run_single_size_case (
-              sockets,
-              settings,
-              msg_sizes[si],
-              run_id)) {
+        if (!run_single_size_case (sockets, settings, msg_sizes[si], run_id)) {
             if (bench_debug_enabled ())
-                std::cerr
-                  << "[multi-dealer-dealer-client] size case failed size="
-                  << msg_sizes[si] << std::endl;
+                std::cerr << "[multi-dealer-dealer-client] size case failed size=" << msg_sizes[si]
+                          << std::endl;
             close_client_sockets (&sockets);
             return 1;
         }
@@ -319,8 +267,7 @@ int main (int argc, char **argv)
 
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];
-    const size_t fallback_size =
-      static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
+    const size_t fallback_size = static_cast<size_t> (std::strtoull (argv[3], NULL, 10));
 
     std::string endpoint;
     if (!parse_endpoint_arg (argc, argv, &endpoint)) {

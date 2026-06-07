@@ -10,7 +10,9 @@ namespace zlink::stream_connector::detail
 namespace
 {
 
-void write_prefix (std::vector<std::uint8_t> &frame, std::size_t header_size, std::size_t payload_size)
+void write_prefix (std::vector<std::uint8_t> &frame,
+                   std::size_t header_size,
+                   std::size_t payload_size)
 {
     frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
     frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
@@ -26,11 +28,13 @@ bool frame_codec_t::validate_frame_size (std::size_t header_size,
                                          std::size_t payload_size,
                                          const connector_options_t &options)
 {
-    return header_size <= std::numeric_limits<std::uint16_t>::max () && header_size <= options.max_metadata_size
+    return header_size <= std::numeric_limits<std::uint16_t>::max ()
+           && header_size <= options.max_metadata_size
            && payload_size <= options.max_send_payload_size;
 }
 
-result_t<std::vector<std::uint8_t>> frame_codec_t::encode_prefix (std::size_t header_size, std::size_t payload_size)
+result_t<std::vector<std::uint8_t>> frame_codec_t::encode_prefix (std::size_t header_size,
+                                                                  std::size_t payload_size)
 {
     if (header_size > std::numeric_limits<std::uint16_t>::max ()) {
         return result_t<std::vector<std::uint8_t>>::failure (error_code_t::frame_too_large,
@@ -51,8 +55,8 @@ result_t<std::vector<std::uint8_t>> frame_codec_t::encode (const std::vector<std
                                                            const connector_options_t &options)
 {
     if (!validate_frame_size (header.size (), payload.size (), options)) {
-        return result_t<std::vector<std::uint8_t>>::failure (error_code_t::frame_too_large,
-                                                             "Stream frame exceeds configured limits.");
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::frame_too_large, "Stream frame exceeds configured limits.");
     }
     if (header.size () > std::numeric_limits<std::uint16_t>::max ()) {
         return result_t<std::vector<std::uint8_t>>::failure (error_code_t::frame_too_large,

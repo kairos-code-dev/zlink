@@ -51,7 +51,8 @@ channel_pending_requests_t &channel_runtime_bundle_t::dealer_mesh_pending_reques
     return _dealer_mesh_pending_requests;
 }
 
-const channel_pending_requests_t &channel_runtime_bundle_t::dealer_mesh_pending_requests () const noexcept
+const channel_pending_requests_t &
+channel_runtime_bundle_t::dealer_mesh_pending_requests () const noexcept
 {
     return _dealer_mesh_pending_requests;
 }

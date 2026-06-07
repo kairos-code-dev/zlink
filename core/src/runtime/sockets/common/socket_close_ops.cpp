@@ -12,8 +12,7 @@ int zlink::socket_close_ops_t::request_close (socket_base_t *&socket_)
     return request_close (socket_, 0);
 }
 
-int zlink::socket_close_ops_t::request_close (socket_base_t *&socket_,
-                                              int handoff_timeout_ms_)
+int zlink::socket_close_ops_t::request_close (socket_base_t *&socket_, int handoff_timeout_ms_)
 {
     if (!socket_)
         return 0;

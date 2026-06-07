@@ -25,8 +25,8 @@ class wss_address_t : public ws_address_t
     int to_string (std::string &addr_) const;
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_HAVE_WSS
+#endif // ZLINK_HAVE_WSS
 
-#endif  // __ZLINK_WSS_ADDRESS_HPP_INCLUDED__
+#endif // __ZLINK_WSS_ADDRESS_HPP_INCLUDED__

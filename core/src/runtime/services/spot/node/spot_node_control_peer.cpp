@@ -12,14 +12,14 @@
 
 namespace zlink
 {
-bool spot_node_t::external_route_id_for_peer_endpoint (
-  const std::string &peer_endpoint_, std::string *out_) const
+bool spot_node_t::external_route_id_for_peer_endpoint (const std::string &peer_endpoint_,
+                                                       std::string *out_) const
 {
     if (peer_endpoint_.empty () || !out_)
         return false;
 
     scoped_lock_t lock (_sync);
-    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+    for (std::map<std::string, std::set<std::string>>::const_iterator it =
            _peer_state.peer_endpoints_by_rid.begin ();
          it != _peer_state.peer_endpoints_by_rid.end (); ++it) {
         if (it->second.count (peer_endpoint_) != 0) {
@@ -42,7 +42,8 @@ void spot_node_t::refresh_discovery_peers ()
         if (!discovery || service.empty ())
             return;
         seq = discovery->service_update_seq (service);
-        if (_discovery_state.pending_service_updates.empty () && seq == _discovery_state.discovery_seq)
+        if (_discovery_state.pending_service_updates.empty ()
+            && seq == _discovery_state.discovery_seq)
             return;
         _discovery_state.pending_service_updates.clear ();
         _discovery_state.discovery_seq = seq;
@@ -54,7 +55,7 @@ void spot_node_t::refresh_discovery_peers ()
     std::set<std::string> new_endpoints;
     std::map<std::string, uint32_t> new_weight_by_endpoint;
     std::map<std::string, uint32_t> new_weight_by_rid;
-    std::map<std::string, std::set<std::string> > new_endpoints_by_rid;
+    std::map<std::string, std::set<std::string>> new_endpoints_by_rid;
     std::string self_endpoint;
     zlink_routing_id_t self_rid;
     memset (&self_rid, 0, sizeof (self_rid));
@@ -64,19 +65,15 @@ void spot_node_t::refresh_discovery_peers ()
         self_endpoint = _discovery_state.advertise_endpoint;
     }
     for (size_t i = 0; i < providers.size (); ++i) {
-        if (!providers[i].endpoint.empty ()
-            && self_endpoint != providers[i].endpoint
+        if (!providers[i].endpoint.empty () && self_endpoint != providers[i].endpoint
             && discovery_protocol::socket_auto_connect_target_matches (
-              discovery->auto_connect_type (),
-              discovery_protocol::service_role_spot, providers[i].service_role,
-              self_rid, providers[i].routing_id, self_endpoint,
+              discovery->auto_connect_type (), discovery_protocol::service_role_spot,
+              providers[i].service_role, self_rid, providers[i].routing_id, self_endpoint,
               providers[i].endpoint)) {
             new_endpoints.insert (providers[i].endpoint);
-            new_weight_by_endpoint[providers[i].endpoint] =
-              providers[i].weight;
+            new_weight_by_endpoint[providers[i].endpoint] = providers[i].weight;
             if (providers[i].routing_id.size > 0) {
-                const std::string rid_key =
-                  zlink::routing_id_key (providers[i].routing_id);
+                const std::string rid_key = zlink::routing_id_key (providers[i].routing_id);
                 new_weight_by_rid[rid_key] = providers[i].weight;
                 new_endpoints_by_rid[rid_key].insert (providers[i].endpoint);
             }
@@ -98,19 +95,16 @@ void spot_node_t::refresh_discovery_peers ()
                 to_connect.push_back (*it);
         }
 
-        for (std::set<std::string>::const_iterator it =
-               _peer_state.discovery_endpoints.begin ();
+        for (std::set<std::string>::const_iterator it = _peer_state.discovery_endpoints.begin ();
              it != _peer_state.discovery_endpoints.end (); ++it) {
-            if (new_endpoints.count (*it) == 0
-                && _peer_state.manual_endpoints.count (*it) == 0)
+            if (new_endpoints.count (*it) == 0 && _peer_state.manual_endpoints.count (*it) == 0)
                 to_disconnect.push_back (*it);
         }
     }
 
     for (size_t i = 0; i < to_connect.size (); ++i) {
-        if (send_data_plane_command (
-              spot_control_protocol::cmd_connect_peer_pub,
-              to_connect[i].c_str ())
+        if (send_data_plane_command (spot_control_protocol::cmd_connect_peer_pub,
+                                     to_connect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
             if (_peer_state.active_endpoints.insert (to_connect[i]).second)
@@ -119,8 +113,7 @@ void spot_node_t::refresh_discovery_peers ()
     }
 
     for (size_t i = 0; i < to_disconnect.size (); ++i) {
-        if (send_data_plane_command (
-              spot_control_protocol::cmd_disconnect_peer_pub,
+        if (send_data_plane_command (spot_control_protocol::cmd_disconnect_peer_pub,
                                      to_disconnect[i].c_str ())
             == 0) {
             scoped_lock_t lock (_sync);
@@ -176,13 +169,11 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         runtime = _runtime;
         if (!runtime)
             return;
-        connected_peer_version =
-          mesh_peer_version (&runtime->execution.mesh_peer_state);
+        connected_peer_version = mesh_peer_version (&runtime->execution.mesh_peer_state);
     }
     if (!runtime->note_connected_peer_version (connected_peer_version))
         return;
-    snapshot_connected_mesh_peer_endpoints (&runtime->execution.mesh_peer_state,
-                                            &connected);
+    snapshot_connected_mesh_peer_endpoints (&runtime->execution.mesh_peer_state, &connected);
 
     bool changed = false;
     std::vector<spot_sub_t *> subs;
@@ -192,8 +183,8 @@ void spot_node_t::refresh_connected_peer_endpoints ()
         if (connected == _peer_state.connected_endpoints)
             return;
         const uint64_t now_ms = zlink::clock_t ().now_ms ();
-        for (std::set<std::string>::const_iterator it = connected.begin ();
-             it != connected.end (); ++it) {
+        for (std::set<std::string>::const_iterator it = connected.begin (); it != connected.end ();
+             ++it) {
             if (_peer_state.connected_endpoints.count (*it) == 0) {
                 spot_peer_observation_t &obs = _peer_state.observations[*it];
                 obs.last_changed_ms = now_ms;
@@ -201,8 +192,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
                     obs.connected_since_ms = now_ms;
             }
         }
-        for (std::set<std::string>::const_iterator it =
-               _peer_state.connected_endpoints.begin ();
+        for (std::set<std::string>::const_iterator it = _peer_state.connected_endpoints.begin ();
              it != _peer_state.connected_endpoints.end (); ++it) {
             if (connected.count (*it) == 0) {
                 spot_peer_observation_t &obs = _peer_state.observations[*it];
@@ -240,8 +230,7 @@ void spot_node_t::refresh_connected_peer_endpoints ()
     }
 
     if (changed && has_filters) {
-        if (send_data_plane_command (
-              spot_control_protocol::cmd_replay_handle_state_subscriptions)
+        if (send_data_plane_command (spot_control_protocol::cmd_replay_handle_state_subscriptions)
             != 0) {
             debug_mark_fault (errno);
             return;

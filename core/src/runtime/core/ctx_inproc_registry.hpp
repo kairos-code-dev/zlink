@@ -33,13 +33,10 @@ class ctx_inproc_registry_t
     ctx_inproc_registry_t ();
 
     int register_endpoint (const char *addr_, const endpoint_t &endpoint_);
-    int unregister_endpoint (const std::string &addr_,
-                             const socket_base_t *socket_);
+    int unregister_endpoint (const std::string &addr_, const socket_base_t *socket_);
     void unregister_endpoints (const socket_base_t *socket_);
     endpoint_t find_endpoint (const char *addr_);
-    bool pend_connection (const std::string &addr_,
-                          const endpoint_t &endpoint_,
-                          pipe_t **pipes_);
+    bool pend_connection (const std::string &addr_, const endpoint_t &endpoint_, pipe_t **pipes_);
     void connect_pending (const char *addr_, socket_base_t *bind_socket_);
     void collect_pending_addresses (std::vector<std::string> *out_) const;
 
@@ -62,15 +59,13 @@ class ctx_inproc_registry_t
         bind_side
     };
 
-    static void connect_inproc_sockets (
-      socket_base_t *bind_socket_,
-      const options_t &bind_options_,
-      const pending_connection_t &pending_connection_,
-      side side_);
+    static void connect_inproc_sockets (socket_base_t *bind_socket_,
+                                        const options_t &bind_options_,
+                                        const pending_connection_t &pending_connection_,
+                                        side side_);
 
     typedef std::map<std::string, endpoint_t> endpoints_t;
-    typedef std::multimap<std::string, pending_connection_t>
-      pending_connections_t;
+    typedef std::multimap<std::string, pending_connection_t> pending_connections_t;
 
     mutable mutex_t _sync;
     endpoints_t _endpoints;

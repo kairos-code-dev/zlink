@@ -7,15 +7,14 @@
 
 static bool should_run_spot_e2e_smoke_test (const char *name_)
 {
-    static const char *const smoke_cases[] = {
-      "test_spot_peer_tcp",
-      "test_spot_peer_tcp_reverse_publish",
-      "test_spot_multi_publisher",
-      "test_spot_aggregate_subscription_refcount",
-      "test_spot_node_direct_local_and_child_interop",
-      "test_spot_sub_handler_basic",
-      "test_spot_recv_callback_isolated_by_handle",
-      "test_spot_node_discovery_direct_and_child_interop"};
+    static const char *const smoke_cases[] = {"test_spot_peer_tcp",
+                                              "test_spot_peer_tcp_reverse_publish",
+                                              "test_spot_multi_publisher",
+                                              "test_spot_aggregate_subscription_refcount",
+                                              "test_spot_node_direct_local_and_child_interop",
+                                              "test_spot_sub_handler_basic",
+                                              "test_spot_recv_callback_isolated_by_handle",
+                                              "test_spot_node_discovery_direct_and_child_interop"};
     for (size_t i = 0; i < sizeof (smoke_cases) / sizeof (smoke_cases[0]); ++i) {
         if (strcmp (smoke_cases[i], name_) == 0)
             return true;
@@ -41,10 +40,10 @@ int main (int, char **)
     setup_test_environment (600);
 
     UNITY_BEGIN ();
-#define RUN_SPOT_TEST(name)                                                    \
-    do {                                                                       \
-        if (should_run_spot_test (#name))                                      \
-            RUN_TEST (name);                                                   \
+#define RUN_SPOT_TEST(name)                                                                        \
+    do {                                                                                           \
+        if (should_run_spot_test (#name))                                                          \
+            RUN_TEST (name);                                                                       \
     } while (0)
     RUN_SPOT_TEST (test_spot_peer_tcp);
     RUN_SPOT_TEST (test_spot_peer_tcp_reverse_publish);

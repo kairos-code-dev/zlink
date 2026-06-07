@@ -156,8 +156,8 @@ class i_asio_transport
     virtual const char *name () const = 0;
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZLINK_I_ASIO_TRANSPORT_HPP_INCLUDED__
+#endif // __ZLINK_I_ASIO_TRANSPORT_HPP_INCLUDED__

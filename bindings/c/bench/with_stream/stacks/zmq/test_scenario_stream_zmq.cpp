@@ -14,7 +14,8 @@
 #define ZMQ_STREAM 11
 #endif
 
-namespace {
+namespace
+{
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
@@ -33,15 +34,15 @@ struct server_options_t
     int tcp_nodelay;
     int io_threads;
 
-    server_options_t ()
-        : host ("0.0.0.0"),
-          port (38001),
-          size (1024),
-          sndbuf (1024 * 1024),
-          rcvbuf (1024 * 1024),
-          backlog (32768),
-          tcp_nodelay (1),
-          io_threads (4)
+    server_options_t () :
+        host ("0.0.0.0"),
+        port (38001),
+        size (1024),
+        sndbuf (1024 * 1024),
+        rcvbuf (1024 * 1024),
+        backlog (32768),
+        tcp_nodelay (1),
+        io_threads (4)
     {
     }
 };
@@ -65,18 +66,15 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
 {
     (void) zmq_setsockopt (socket, ZMQ_SNDBUF, &opt.sndbuf, sizeof (opt.sndbuf));
     (void) zmq_setsockopt (socket, ZMQ_RCVBUF, &opt.rcvbuf, sizeof (opt.rcvbuf));
-    (void) zmq_setsockopt (socket, ZMQ_BACKLOG, &opt.backlog,
-                           sizeof (opt.backlog));
+    (void) zmq_setsockopt (socket, ZMQ_BACKLOG, &opt.backlog, sizeof (opt.backlog));
 
 #ifdef ZMQ_TCP_NODELAY
-    (void) zmq_setsockopt (socket, ZMQ_TCP_NODELAY, &opt.tcp_nodelay,
-                           sizeof (opt.tcp_nodelay));
+    (void) zmq_setsockopt (socket, ZMQ_TCP_NODELAY, &opt.tcp_nodelay, sizeof (opt.tcp_nodelay));
 #endif
 
 #ifdef ZMQ_STREAM_NOTIFY
     const int stream_notify = 1;
-    (void) zmq_setsockopt (socket, ZMQ_STREAM_NOTIFY, &stream_notify,
-                           sizeof (stream_notify));
+    (void) zmq_setsockopt (socket, ZMQ_STREAM_NOTIFY, &stream_notify, sizeof (stream_notify));
 #endif
 
     const int hwm = 100;
@@ -88,8 +86,7 @@ bool is_stream_event_payload (const char *data, size_t size)
 {
     return data && size == 1
            && (static_cast<unsigned char> (data[0]) == k_stream_event_connect
-               || static_cast<unsigned char> (data[0])
-                    == k_stream_event_disconnect);
+               || static_cast<unsigned char> (data[0]) == k_stream_event_disconnect);
 }
 
 int recv_one_stream_chunk_msg_nowait (void *server,
@@ -129,11 +126,9 @@ int recv_one_stream_chunk_msg_nowait (void *server,
             return -1;
         }
 
-        const char *id_data =
-          static_cast<const char *> (zmq_msg_data (routing_id_out));
+        const char *id_data = static_cast<const char *> (zmq_msg_data (routing_id_out));
         const size_t id_size = zmq_msg_size (routing_id_out);
-        const char *payload_data =
-          static_cast<const char *> (zmq_msg_data (payload_out));
+        const char *payload_data = static_cast<const char *> (zmq_msg_data (payload_out));
         const size_t payload_size = zmq_msg_size (payload_out);
 
         if (!id_data || id_size == 0) {
@@ -143,8 +138,7 @@ int recv_one_stream_chunk_msg_nowait (void *server,
             continue;
         }
 
-        if (payload_size == 0
-            || is_stream_event_payload (payload_data, payload_size)) {
+        if (payload_size == 0 || is_stream_event_payload (payload_data, payload_size)) {
             zmq_msg_close (payload_out);
             zmq_msg_close (routing_id_out);
             continue;
@@ -164,22 +158,21 @@ bool send_stream_reply_msg (void *server,
 
     if (zmq_msg_send (routing_id_msg, server, ZMQ_SNDMORE) < 0)
         return false;
-    return zmq_send (server, payload_data, payload_size, 0)
-           == static_cast<int> (payload_size);
+    return zmq_send (server, payload_data, payload_size, 0) == static_cast<int> (payload_size);
 }
 
 class zmq_stream_echo_server_t
 {
   public:
-    explicit zmq_stream_echo_server_t (const server_options_t &opt_)
-        : opt (opt_),
-          ctx (NULL),
-          server (NULL),
-          recv_msgs (0),
-          parse_error (0),
-          protocol_error (0),
-          send_error (0),
-          stop (false)
+    explicit zmq_stream_echo_server_t (const server_options_t &opt_) :
+        opt (opt_),
+        ctx (NULL),
+        server (NULL),
+        recv_msgs (0),
+        parse_error (0),
+        protocol_error (0),
+        send_error (0),
+        stop (false)
     {
     }
 
@@ -237,14 +230,12 @@ class zmq_stream_echo_server_t
             }
         }
 
-        std::printf (
-          "%s\n",
-          stream_echo::make_metric_line (
-            "zmq", opt.size, recv_msgs.load (std::memory_order_relaxed),
-            parse_error.load (std::memory_order_relaxed),
-            protocol_error.load (std::memory_order_relaxed),
-            send_error.load (std::memory_order_relaxed), 0)
-            .c_str ());
+        std::printf ("%s\n", stream_echo::make_metric_line (
+                               "zmq", opt.size, recv_msgs.load (std::memory_order_relaxed),
+                               parse_error.load (std::memory_order_relaxed),
+                               protocol_error.load (std::memory_order_relaxed),
+                               send_error.load (std::memory_order_relaxed), 0)
+                               .c_str ());
 
         return 0;
     }
@@ -256,15 +247,14 @@ class zmq_stream_echo_server_t
         for (; processed < k_recv_batch_size; ++processed) {
             zmq_msg_t routing_id_msg;
             zmq_msg_t payload_msg;
-            const int rc = recv_one_stream_chunk_msg_nowait (
-              server, &routing_id_msg, &payload_msg, parse_error);
+            const int rc =
+              recv_one_stream_chunk_msg_nowait (server, &routing_id_msg, &payload_msg, parse_error);
             if (rc == 0)
                 break;
             if (rc < 0)
                 return processed == 0 ? -1 : processed;
 
-            const char *rid_data =
-              static_cast<const char *> (zmq_msg_data (&routing_id_msg));
+            const char *rid_data = static_cast<const char *> (zmq_msg_data (&routing_id_msg));
             const size_t rid_size = zmq_msg_size (&routing_id_msg);
             const unsigned char *payload_data =
               static_cast<const unsigned char *> (zmq_msg_data (&payload_msg));
@@ -291,8 +281,7 @@ class zmq_stream_echo_server_t
                     break;
                 }
                 recv_msgs.fetch_add (1, std::memory_order_relaxed);
-                if (!send_stream_reply_msg (server, &routing_id_msg, frame.data,
-                                            frame.size)) {
+                if (!send_stream_reply_msg (server, &routing_id_msg, frame.data, frame.size)) {
                     send_error.fetch_add (1, std::memory_order_relaxed);
                     break;
                 }

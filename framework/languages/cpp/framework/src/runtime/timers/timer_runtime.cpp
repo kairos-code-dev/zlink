@@ -55,14 +55,16 @@ timer_t spot_context_t::add_timer_erased (std::string name,
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "SPOT timer period must be greater than zero");
     }
-    if (options.overrun_policy == timer_overrun_policy_t::catch_up_bounded && options.max_catch_up_ticks == 0) {
+    if (options.overrun_policy == timer_overrun_policy_t::catch_up_bounded
+        && options.max_catch_up_ticks == 0) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "SPOT timer max catch-up ticks must be greater than zero");
     }
 
-    const auto duplicate = std::any_of (
-      _state->timers.begin (), _state->timers.end (),
-      [&] (const std::shared_ptr<detail::timer_state_t> &timer) { return timer->name == name && !timer->disposed; });
+    const auto duplicate = std::any_of (_state->timers.begin (), _state->timers.end (),
+                                        [&] (const std::shared_ptr<detail::timer_state_t> &timer) {
+                                            return timer->name == name && !timer->disposed;
+                                        });
     if (duplicate) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "duplicate SPOT timer registration");
@@ -84,7 +86,8 @@ timer_t spot_context_t::add_timer_erased (std::string name,
 namespace zlink::framework::detail
 {
 
-timer_runtime_t::timer_runtime_t (std::shared_ptr<spot_context_state_t> context) : _context (std::move (context))
+timer_runtime_t::timer_runtime_t (std::shared_ptr<spot_context_state_t> context) :
+    _context (std::move (context))
 {
 }
 
@@ -141,12 +144,14 @@ timer_tick_t make_tick (timer_state_t &state, std::uint64_t fire_count)
 
 } // namespace
 
-result_t<timer_tick_t> timer_runtime_t::dispatch_fire_count (timer_t &timer,
-                                                             std::uint64_t fire_count,
-                                                             std::function<void (const timer_tick_t &)> handler) const
+result_t<timer_tick_t>
+timer_runtime_t::dispatch_fire_count (timer_t &timer,
+                                      std::uint64_t fire_count,
+                                      std::function<void (const timer_tick_t &)> handler) const
 {
     if (timer.is_disposed ()) {
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::closed, "SPOT timer is disposed");
+        return result_t<timer_tick_t>::failure (framework_error_kind_t::closed,
+                                                "SPOT timer is disposed");
     }
     if (timer._state->running) {
         return result_t<timer_tick_t>::failure (framework_error_kind_t::request_rejected,
@@ -170,19 +175,21 @@ result_t<timer_tick_t> timer_runtime_t::dispatch_fire_count (timer_t &timer,
     }
     catch (const std::exception &error) {
         const auto stopped = timer._state->options.stop_on_unhandled_exception;
-        timer._state->failure_events.push_back (timer_failure_event_t{
-          timer._state->name, timer._state->handler_type, timer._state->delivery_index, stopped, error.what ()});
+        timer._state->failure_events.push_back (
+          timer_failure_event_t{timer._state->name, timer._state->handler_type,
+                                timer._state->delivery_index, stopped, error.what ()});
         if (stopped) {
             timer._state->disposed = true;
         }
         reset_running ();
-        return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed, error.what ());
+        return result_t<timer_tick_t>::failure (framework_error_kind_t::request_failed,
+                                                error.what ());
     }
     catch (...) {
         const auto stopped = timer._state->options.stop_on_unhandled_exception;
-        timer._state->failure_events.push_back (timer_failure_event_t{timer._state->name, timer._state->handler_type,
-                                                                      timer._state->delivery_index, stopped,
-                                                                      "unknown timer handler failure"});
+        timer._state->failure_events.push_back (timer_failure_event_t{
+          timer._state->name, timer._state->handler_type, timer._state->delivery_index, stopped,
+          "unknown timer handler failure"});
         if (stopped) {
             timer._state->disposed = true;
         }

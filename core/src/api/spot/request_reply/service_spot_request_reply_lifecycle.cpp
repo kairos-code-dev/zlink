@@ -21,36 +21,36 @@ void zlink_actor_run_lifecycle_for_spot (void *spot_);
 
 namespace
 {
-using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
-using zlink::spot_reqrep_internal::spot_state_identity_index;
 using zlink::spot_reqrep_internal::resolve_spot_identity;
-using zlink::spot_reqrep_internal::routing_pair_t;
 using zlink::spot_reqrep_internal::router_spot_request_reply_state_t;
+using zlink::spot_reqrep_internal::routing_pair_t;
+using zlink::spot_reqrep_internal::spot_request_reply_index_mutex;
 using zlink::spot_reqrep_internal::spot_request_reply_state_t;
+using zlink::spot_reqrep_internal::spot_state_identity_index;
 
 typedef std::pair<int, void *> dispatch_key_t;
 
-std::deque<zlink_spot_dispatch_info_t> *dispatch_queue_for_event (
-  zlink::spot_reqrep_internal::spot_dispatch_state_t *state_,
-  zlink_spot_dispatch_event_t event_)
+std::deque<zlink_spot_dispatch_info_t> *
+dispatch_queue_for_event (zlink::spot_reqrep_internal::spot_dispatch_state_t *state_,
+                          zlink_spot_dispatch_event_t event_)
 {
     switch (event_) {
-    case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
-        return state_ ? &state_->subscribe_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
-        return state_ ? &state_->routed_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
-        return state_ ? &state_->actor_join_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE:
-        return state_ ? &state_->actor_lifecycle_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
-        return state_ ? &state_->actor_readable_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
-        return state_ ? &state_->channel_reply_pending : NULL;
-    case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
-        return state_ ? &state_->timer_pending : NULL;
-    default:
-        return NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE:
+            return state_ ? &state_->subscribe_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE:
+            return state_ ? &state_->routed_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE:
+            return state_ ? &state_->actor_join_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE:
+            return state_ ? &state_->actor_lifecycle_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE:
+            return state_ ? &state_->actor_readable_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE:
+            return state_ ? &state_->channel_reply_pending : NULL;
+        case ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE:
+            return state_ ? &state_->timer_pending : NULL;
+        default:
+            return NULL;
     }
 }
 
@@ -59,76 +59,65 @@ dispatch_key_t dispatch_key_from_info (const zlink_spot_dispatch_info_t &info_)
     return std::make_pair (static_cast<int> (info_.event), info_.subject);
 }
 
-bool dispatch_has_pending (
-  const zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch_)
+bool dispatch_has_pending (const zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch_)
 {
-    return !dispatch_.subscribe_pending.empty ()
-           || !dispatch_.routed_pending.empty ()
-           || !dispatch_.actor_join_pending.empty ()
-           || !dispatch_.actor_lifecycle_pending.empty ()
+    return !dispatch_.subscribe_pending.empty () || !dispatch_.routed_pending.empty ()
+           || !dispatch_.actor_join_pending.empty () || !dispatch_.actor_lifecycle_pending.empty ()
            || !dispatch_.actor_readable_pending.empty ()
-           || !dispatch_.channel_reply_pending.empty ()
-           || !dispatch_.timer_pending.empty ();
+           || !dispatch_.channel_reply_pending.empty () || !dispatch_.timer_pending.empty ();
 }
 
-bool pop_next_dispatch_info (
-  zlink::spot_reqrep_internal::spot_dispatch_state_t *dispatch_,
-  zlink_spot_dispatch_info_t *info_out_)
+bool pop_next_dispatch_info (zlink::spot_reqrep_internal::spot_dispatch_state_t *dispatch_,
+                             zlink_spot_dispatch_info_t *info_out_)
 {
     if (!dispatch_ || !info_out_)
         return false;
 
     std::deque<zlink_spot_dispatch_info_t> *queue =
-      dispatch_queue_for_event (dispatch_,
-                                ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
+      dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (dispatch_,
-                                      ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
+    queue = dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (
-      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE);
+    queue = dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (
-      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE);
+    queue =
+      dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (
-      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE);
+    queue = dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (
-      dispatch_, ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE);
+    queue = dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
         return true;
     }
 
-    queue = dispatch_queue_for_event (dispatch_,
-                                      ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE);
+    queue = dispatch_queue_for_event (dispatch_, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE);
     if (queue && !queue->empty ()) {
         *info_out_ = queue->front ();
         queue->pop_front ();
@@ -138,12 +127,10 @@ bool pop_next_dispatch_info (
     return false;
 }
 
-void run_pending_spot_dispatch_events (
-  const std::shared_ptr<spot_request_reply_state_t> &state_)
+void run_pending_spot_dispatch_events (const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
     while (true) {
-        zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch =
-          state_->dispatch;
+        zlink::spot_reqrep_internal::spot_dispatch_state_t &dispatch = state_->dispatch;
         zlink_spot_dispatch_info_t info;
         memset (&info, 0, sizeof (info));
         {
@@ -183,16 +170,14 @@ void run_pending_spot_dispatch_events (
             return;
         }
 
-        const zlink::spot_dispatch_event_callback_context_t dispatch_scope (
-          owner);
+        const zlink::spot_dispatch_event_callback_context_t dispatch_scope (owner);
         handler (owner, &info, userdata);
 
         {
             std::lock_guard<std::mutex> dispatch_lock (dispatch.mutex);
             const dispatch_key_t key = dispatch_key_from_info (info);
             dispatch.active_info_valid = false;
-            if (dispatch.rearm_keys.erase (key) != 0
-                && dispatch.queued_keys.count (key) == 0) {
+            if (dispatch.rearm_keys.erase (key) != 0 && dispatch.queued_keys.count (key) == 0) {
                 std::deque<zlink_spot_dispatch_info_t> *queue =
                   dispatch_queue_for_event (&dispatch, info.event);
                 if (queue) {
@@ -219,17 +204,14 @@ void run_spot_dispatch_cycle (void *spot_, bool drain_channel_bridge_)
         return;
 
     if (drain_channel_bridge_) {
-        (void)
-          zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (
-            state);
+        (void) zlink::spot_reqrep_internal::drain_attached_channel_reply_bridge_progress (state);
     }
     run_pending_spot_dispatch_events (state);
     zlink_actor_run_lifecycle_for_spot (spot_);
 }
 
-void refresh_spot_identity_index (
-  spot_handle_t *spot_,
-  const std::shared_ptr<spot_request_reply_state_t> &state_)
+void refresh_spot_identity_index (spot_handle_t *spot_,
+                                  const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
     if (!spot_ || !state_)
         return;
@@ -238,8 +220,8 @@ void refresh_spot_identity_index (
     if (!resolve_spot_identity (spot_, &identity))
         return;
 
-    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
-    spot_state_identity_index()[identity.node_rid][identity.spot_rid] = state_;
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+    spot_state_identity_index ()[identity.node_rid][identity.spot_rid] = state_;
 }
 }
 
@@ -257,12 +239,11 @@ zlink::spot_reqrep_internal::try_find_spot_state (void *spot_)
     if (spot->logical_state && spot->logical_state->request_reply_state)
         return spot->logical_state->request_reply_state;
 
-    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
-    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
-      it = spot_owner_states ().find (spot_);
-    return it != spot_owner_states ().end ()
-             ? it->second
-             : std::shared_ptr<spot_request_reply_state_t> ();
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::iterator it =
+      spot_owner_states ().find (spot_);
+    return it != spot_owner_states ().end () ? it->second
+                                             : std::shared_ptr<spot_request_reply_state_t> ();
 }
 
 void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
@@ -271,10 +252,10 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
     if (!spot)
         return;
 
-    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
+    std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
     std::shared_ptr<spot_request_reply_state_t> state;
-    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
-      owned = spot_owner_states ().find (spot_);
+    std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::iterator owned =
+      spot_owner_states ().find (spot_);
     if (owned != spot_owner_states ().end ())
         state = owned->second;
     spot_owner_states ().erase (spot_);
@@ -285,10 +266,8 @@ void zlink::spot_reqrep_internal::erase_spot_owner_state (void *spot_)
         return;
 
     void *replacement_owner = NULL;
-    for (std::unordered_map<
-           void *,
-           std::shared_ptr<spot_request_reply_state_t> >::const_iterator it =
-           spot_owner_states ().begin ();
+    for (std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::const_iterator
+           it = spot_owner_states ().begin ();
          it != spot_owner_states ().end (); ++it) {
         if (it->second == state) {
             replacement_owner = it->first;
@@ -399,9 +378,9 @@ zlink::spot_reqrep_internal::find_or_create_spot_state (void *spot_)
     if (spot->logical_state)
         state = spot->logical_state->request_reply_state;
     {
-        std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex());
-        std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t> >::iterator
-          it = spot_owner_states ().find (spot_);
+        std::lock_guard<std::mutex> lock (spot_request_reply_index_mutex ());
+        std::unordered_map<void *, std::shared_ptr<spot_request_reply_state_t>>::iterator it =
+          spot_owner_states ().find (spot_);
         if (!state && it != spot_owner_states ().end ())
             state = it->second;
         if (!state) {

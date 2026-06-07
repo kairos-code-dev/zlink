@@ -16,14 +16,17 @@ namespace
 
 static_assert (!std::is_constructible<zlink::socket_monitor_t, void *>::value,
                "socket_monitor_t must not expose a raw void* constructor");
-static_assert (!std::is_constructible<zlink::socket_monitor_t, const zlink::socket_t &, zlink::monitor_event>::value,
+static_assert (!std::is_constructible<zlink::socket_monitor_t,
+                                      const zlink::socket_t &,
+                                      zlink::monitor_event>::value,
                "socket_monitor_t must not expose a public direct constructor");
 
 template <typename T> class has_open_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (U::open (std::declval<const zlink::socket_t &> (), zlink::monitor_event::all),
+    static auto test (int) -> decltype (U::open (std::declval<const zlink::socket_t &> (),
+                                                 zlink::monitor_event::all),
                                         std::true_type ());
 
     template <typename> static std::false_type test (...);
@@ -38,9 +41,9 @@ template <typename T> class has_on_event_t
 {
   private:
     template <typename U>
-    static auto
-    test (int) -> decltype (std::declval<U &> ().on_event (std::function<void (const zlink::monitor_event_t &)> ()),
-                            std::true_type ());
+    static auto test (int) -> decltype (std::declval<U &> ().on_event (
+                                          std::function<void (const zlink::monitor_event_t &)> ()),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -48,14 +51,16 @@ template <typename T> class has_on_event_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (has_on_event_t<zlink::socket_monitor_t>::value, "socket_monitor_t must expose on_event");
+static_assert (has_on_event_t<zlink::socket_monitor_t>::value,
+               "socket_monitor_t must expose on_event");
 
 template <typename T> class has_ignore_event_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (U::ignore_event (std::declval<const zlink::monitor_event_t &> ()),
-                                        std::true_type ());
+    static auto
+    test (int) -> decltype (U::ignore_event (std::declval<const zlink::monitor_event_t &> ()),
+                            std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -66,7 +71,8 @@ template <typename T> class has_ignore_event_t
 template <typename T> class has_size_t
 {
   private:
-    template <typename U> static auto test (int) -> decltype (std::declval<const U &> ().size (), std::true_type ());
+    template <typename U>
+    static auto test (int) -> decltype (std::declval<const U &> ().size (), std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -74,14 +80,16 @@ template <typename T> class has_size_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (has_ignore_event_t<zlink::socket_monitor_t>::value, "socket_monitor_t must expose ignore_event");
+static_assert (has_ignore_event_t<zlink::socket_monitor_t>::value,
+               "socket_monitor_t must expose ignore_event");
 static_assert (has_size_t<zlink::poller_t>::value, "poller_t must expose size");
 
 template <typename T> class has_single_event_wait_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (std::declval<U &> ().wait (std::chrono::milliseconds (1)), std::true_type ());
+    static auto test (int) -> decltype (std::declval<U &> ().wait (std::chrono::milliseconds (1)),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -93,7 +101,8 @@ template <typename T> class has_vector_return_wait_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (std::declval<U &> ().wait (size_t (1), std::chrono::milliseconds (1)),
+    static auto test (int) -> decltype (std::declval<U &> ().wait (size_t (1),
+                                                                   std::chrono::milliseconds (1)),
                                         std::true_type ());
 
     template <typename> static std::false_type test (...);
@@ -105,7 +114,8 @@ template <typename T> class has_vector_return_wait_t
 template <typename T> class has_tag_field_t
 {
   private:
-    template <typename U> static auto test (int) -> decltype (std::declval<U &> ().tag, std::true_type ());
+    template <typename U>
+    static auto test (int) -> decltype (std::declval<U &> ().tag, std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -116,7 +126,8 @@ template <typename T> class has_tag_field_t
 template <typename T> class has_raw_tag_field_t
 {
   private:
-    template <typename U> static auto test (int) -> decltype (std::declval<U &> ().raw_tag, std::true_type ());
+    template <typename U>
+    static auto test (int) -> decltype (std::declval<U &> ().raw_tag, std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -124,10 +135,14 @@ template <typename T> class has_raw_tag_field_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (!has_single_event_wait_t<zlink::poller_t>::value, "poller_t must not expose single-event wait");
-static_assert (!has_vector_return_wait_t<zlink::poller_t>::value, "poller_t must not expose vector-return wait");
-static_assert (!has_tag_field_t<zlink::poll_event_t>::value, "poll_event_t must not expose object tag");
-static_assert (!has_raw_tag_field_t<zlink::poll_event_t>::value, "poll_event_t must not expose raw tag");
+static_assert (!has_single_event_wait_t<zlink::poller_t>::value,
+               "poller_t must not expose single-event wait");
+static_assert (!has_vector_return_wait_t<zlink::poller_t>::value,
+               "poller_t must not expose vector-return wait");
+static_assert (!has_tag_field_t<zlink::poll_event_t>::value,
+               "poll_event_t must not expose object tag");
+static_assert (!has_raw_tag_field_t<zlink::poll_event_t>::value,
+               "poll_event_t must not expose raw tag");
 
 struct monitor_callback_state_t
 {
@@ -137,7 +152,8 @@ struct monitor_callback_state_t
     zlink::monitor_event_t event;
 };
 
-void socket_monitor_callback (monitor_callback_state_t &state_, const zlink::monitor_event_t &event_)
+void socket_monitor_callback (monitor_callback_state_t &state_,
+                              const zlink::monitor_event_t &event_)
 {
     {
         std::lock_guard<std::mutex> lock (state_.mutex);
@@ -153,9 +169,10 @@ bool wait_for_any_socket_monitor_event (zlink::socket_monitor_t &monitor_, int t
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
-        const std::chrono::steady_clock::duration remaining = deadline - std::chrono::steady_clock::now ();
-        const int remaining_ms =
-          static_cast<int> (std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ());
+        const std::chrono::steady_clock::duration remaining =
+          deadline - std::chrono::steady_clock::now ();
+        const int remaining_ms = static_cast<int> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ());
         if (!zlink_cpp_contract::wait_for_monitor_readable (monitor_, remaining_ms)) {
             continue;
         }
@@ -217,7 +234,8 @@ void test_socket_monitor_ignore_event_and_poller_size ()
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink::monitor_status_t snapshot = monitor.status ();
         if (snapshot.is_ready ()
-            || (snapshot.state_flags & static_cast<uint32_t> (zlink::monitor_state::closed)) != 0u) {
+            || (snapshot.state_flags & static_cast<uint32_t> (zlink::monitor_state::closed))
+                 != 0u) {
             ready = true;
             break;
         }
@@ -253,7 +271,8 @@ void test_poller_wait_buffer_returns_slot ()
     assert (poller.wait (events.data (), events.size (), std::chrono::milliseconds (2000)) == 1);
     assert (events[0].source_kind == zlink::poll_source_kind_t::socket);
     assert (events[0].slot == 17);
-    assert (static_cast<short> (events[0].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin));
+    assert (static_cast<short> (events[0].revents)
+            & static_cast<short> (zlink::poll_event_flag_t::pollin));
 
     zlink::message_t inbound;
     assert (left.recv (inbound) == 0);
@@ -295,7 +314,8 @@ void test_socket_only_poller_modify_rebuilds_cached_items ()
     poller.modify (left, zlink::poll_event_flag_t::pollin);
     assert (poller.wait (events.data (), events.size (), std::chrono::milliseconds (2000)) == 1);
     assert (events[0].slot == 11);
-    assert (static_cast<short> (events[0].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin));
+    assert (static_cast<short> (events[0].revents)
+            & static_cast<short> (zlink::poll_event_flag_t::pollin));
 
     zlink::message_t inbound;
     assert (left.recv (inbound) == 0);
@@ -410,9 +430,11 @@ void test_poller_distinguishes_timer_and_socket_in_same_buffer ()
     std::vector<zlink::poll_event_t> events (2);
     bool saw_socket = false;
     bool saw_timer = false;
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
     while ((!saw_socket || !saw_timer) && std::chrono::steady_clock::now () < deadline) {
-        const std::size_t count = poller.wait (events.data (), events.size (), std::chrono::milliseconds (200));
+        const std::size_t count =
+          poller.wait (events.data (), events.size (), std::chrono::milliseconds (200));
         for (std::size_t i = 0; i < count; ++i) {
             if (events[i].source_kind == zlink::poll_source_kind_t::socket) {
                 assert (events[i].slot == 41);
@@ -442,8 +464,9 @@ void test_socket_monitor_on_event_callback ()
     assert (monitor.valid ());
 
     monitor_callback_state_t callback_state;
-    monitor.on_event (
-      [&callback_state] (const zlink::monitor_event_t &event) { socket_monitor_callback (callback_state, event); });
+    monitor.on_event ([&callback_state] (const zlink::monitor_event_t &event) {
+        socket_monitor_callback (callback_state, event);
+    });
 
     server.bind ("tcp://127.0.0.1:*");
     std::string endpoint;
@@ -464,7 +487,8 @@ void test_socket_monitor_on_event_callback ()
     while (std::chrono::steady_clock::now () < monitor_status_deadline) {
         const zlink::monitor_status_t snapshot = monitor.status ();
         if (snapshot.is_ready ()
-            || (snapshot.state_flags & static_cast<uint32_t> (zlink::monitor_state::closed)) != 0u) {
+            || (snapshot.state_flags & static_cast<uint32_t> (zlink::monitor_state::closed))
+                 != 0u) {
             monitor_status_ready = true;
             break;
         }

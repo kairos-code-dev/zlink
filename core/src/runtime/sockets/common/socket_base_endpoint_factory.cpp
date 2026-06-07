@@ -31,21 +31,18 @@ int zlink::socket_base_t::bind_inproc_endpoint (const char *endpoint_uri_)
         endpoint_runtime ().set_last_endpoint (endpoint_uri_);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
+            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
                  != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
+            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
     }
     return rc;
 }
 
-int zlink::socket_base_t::bind_transport_listener (
-  const std::string &protocol_,
-  const std::string &address_,
-  io_thread_t *io_thread_)
+int zlink::socket_base_t::bind_transport_listener (const std::string &protocol_,
+                                                   const std::string &address_,
+                                                   io_thread_t *io_thread_)
 {
     if (protocol_ == protocol_name::tcp) {
         asio_tcp_listener_t *listener =
@@ -54,24 +51,21 @@ int zlink::socket_base_t::bind_transport_listener (
         int rc = listener->set_local_address (address_.c_str ());
         if (rc != 0) {
             LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address_),
-                               zlink_errno ());
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address_), zlink_errno ());
             return -1;
         }
 
         std::string last_endpoint;
         listener->get_local_address (last_endpoint);
         endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
+        add_endpoint (
+          make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
+          static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
+            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
                  != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
+            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -85,24 +79,21 @@ int zlink::socket_base_t::bind_transport_listener (
         int rc = listener->set_local_address (address_.c_str ());
         if (rc != 0) {
             LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address_),
-                               zlink_errno ());
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address_), zlink_errno ());
             return -1;
         }
 
         std::string last_endpoint;
         listener->get_local_address (last_endpoint);
         endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
+        add_endpoint (
+          make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
+          static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
+            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
                  != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
+            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -117,24 +108,21 @@ int zlink::socket_base_t::bind_transport_listener (
         int rc = listener->set_local_address (address_.c_str ());
         if (rc != 0) {
             LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address_),
-                               zlink_errno ());
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address_), zlink_errno ());
             return -1;
         }
 
         std::string last_endpoint;
         listener->get_local_address (last_endpoint);
         endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
+        add_endpoint (
+          make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
+          static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
+            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
                  != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
+            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -156,16 +144,14 @@ int zlink::socket_base_t::bind_transport_listener (
 
         ws_address_t *ws_addr =
 #if defined ZLINK_HAVE_WSS
-          secure ? static_cast<ws_address_t *> (new (std::nothrow) wss_address_t ())
-                 :
+          secure ? static_cast<ws_address_t *> (new (std::nothrow) wss_address_t ()) :
 #endif
                  new (std::nothrow) ws_address_t ();
         alloc_assert (ws_addr);
         int rc = ws_addr->resolve (address_.c_str (), true, options.ipv6);
         if (rc != 0) {
             LIBZLINK_DELETE (ws_addr);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address_),
-                               zlink_errno ());
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address_), zlink_errno ());
             return -1;
         }
 
@@ -176,24 +162,21 @@ int zlink::socket_base_t::bind_transport_listener (
         LIBZLINK_DELETE (ws_addr);
         if (rc != 0) {
             LIBZLINK_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address_),
-                               zlink_errno ());
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address_), zlink_errno ());
             return -1;
         }
 
         std::string last_endpoint;
         listener->get_local_address (last_endpoint);
         endpoint_runtime ().set_last_endpoint (last_endpoint);
-        add_endpoint (make_unconnected_bind_endpoint_pair (
-                        endpoint_runtime ().last_endpoint_uri ()),
-                      static_cast<own_t *> (listener), NULL);
+        add_endpoint (
+          make_unconnected_bind_endpoint_pair (endpoint_runtime ().last_endpoint_uri ()),
+          static_cast<own_t *> (listener), NULL);
         options.connected = true;
         if (_service_attachment
-            && _service_attachment->on_bind_success (
-                 endpoint_runtime ().last_endpoint_uri ())
+            && _service_attachment->on_bind_success (endpoint_runtime ().last_endpoint_uri ())
                  != 0) {
-            (void) term_endpoint_internal (
-              endpoint_runtime ().last_endpoint_uri ().c_str ());
+            (void) term_endpoint_internal (endpoint_runtime ().last_endpoint_uri ().c_str ());
             return -1;
         }
         return 0;
@@ -205,10 +188,9 @@ int zlink::socket_base_t::bind_transport_listener (
     return -1;
 }
 
-int zlink::socket_base_t::resolve_connect_address (
-  const std::string &protocol_,
-  const std::string &address_,
-  address_t *paddr_) const
+int zlink::socket_base_t::resolve_connect_address (const std::string &protocol_,
+                                                   const std::string &address_,
+                                                   address_t *paddr_) const
 {
     int rc = 0;
     if (protocol_ == protocol_name::tcp
@@ -217,13 +199,11 @@ int zlink::socket_base_t::resolve_connect_address (
 #endif
     ) {
         const char *check = address_.c_str ();
-        if (isalnum (*check) || isxdigit (*check) || *check == '['
-            || *check == ':') {
+        if (isalnum (*check) || isxdigit (*check) || *check == '[' || *check == ':') {
             check++;
-            while (isalnum (*check) || isxdigit (*check) || *check == '.'
-                   || *check == '-' || *check == ':' || *check == '%'
-                   || *check == ';' || *check == '[' || *check == ']'
-                   || *check == '_' || *check == '*') {
+            while (isalnum (*check) || isxdigit (*check) || *check == '.' || *check == '-'
+                   || *check == ':' || *check == '%' || *check == ';' || *check == '['
+                   || *check == ']' || *check == '_' || *check == '*') {
                 check++;
             }
         }
@@ -249,8 +229,7 @@ int zlink::socket_base_t::resolve_connect_address (
         if (protocol_ == protocol_name::wss) {
             paddr_->resolved.wss_addr = new (std::nothrow) wss_address_t ();
             alloc_assert (paddr_->resolved.wss_addr);
-            rc = paddr_->resolved.wss_addr->resolve (address_.c_str (), false,
-                                                     options.ipv6);
+            rc = paddr_->resolved.wss_addr->resolve (address_.c_str (), false, options.ipv6);
         } else
 #else
     else if (protocol_ == protocol_name::ws) {
@@ -258,8 +237,7 @@ int zlink::socket_base_t::resolve_connect_address (
         {
             paddr_->resolved.ws_addr = new (std::nothrow) ws_address_t ();
             alloc_assert (paddr_->resolved.ws_addr);
-            rc = paddr_->resolved.ws_addr->resolve (address_.c_str (), false,
-                                                    options.ipv6);
+            rc = paddr_->resolved.ws_addr->resolve (address_.c_str (), false, options.ipv6);
         }
 
         if (rc != 0)

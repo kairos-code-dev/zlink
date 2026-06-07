@@ -29,7 +29,8 @@ template <typename T> std::string message_packet_name ()
 }
 
 template <typename TMessage>
-auto to_packet_payload (const TMessage &message, int) -> decltype (to_stream_payload (message), zlink::message_t{})
+auto to_packet_payload (const TMessage &message, int) -> decltype (to_stream_payload (message),
+                                                                   zlink::message_t{})
 {
     auto payload = to_stream_payload (message);
     if constexpr (std::is_same_v<decltype (payload), zlink::message_t>) {

@@ -82,7 +82,8 @@ class actor_join_callback_submit_operation_t
   public:
     ~actor_join_callback_submit_operation_t ();
     actor_join_callback_submit_operation_t (actor_join_callback_submit_operation_t &&) noexcept;
-    actor_join_callback_submit_operation_t &operator= (actor_join_callback_submit_operation_t &&) noexcept;
+    actor_join_callback_submit_operation_t &
+    operator= (actor_join_callback_submit_operation_t &&) noexcept;
 
     actor_join_callback_submit_operation_t &&message (message_t &part_) &&;
     actor_join_callback_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
@@ -228,7 +229,8 @@ class actor_bind_operation_t
     const detail::actor_bind_state_t &state () const noexcept;
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
-    friend actor_bind_operation_t detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
+    friend actor_bind_operation_t
+    detail_make_actor_bind_operation (detail::actor_bind_state_t &&state_);
 };
 
 /// @brief Builds an actor-from-session unbind operation.
@@ -250,7 +252,8 @@ class actor_unbind_operation_t
     const detail::actor_bind_state_t &state () const noexcept;
 
     std::unique_ptr<detail::actor_bind_state_t> _state;
-    friend actor_unbind_operation_t detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
+    friend actor_unbind_operation_t
+    detail_make_actor_unbind_operation (detail::actor_bind_state_t &&state_);
 };
 
 } // namespace service

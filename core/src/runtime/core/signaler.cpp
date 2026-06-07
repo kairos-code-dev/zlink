@@ -72,8 +72,7 @@ static int close_wait_ms (int fd_, unsigned int max_ms_ = 2000)
     unsigned int ms_so_far = 0;
     const unsigned int min_step_ms = 1;
     const unsigned int max_step_ms = 100;
-    const unsigned int step_ms =
-      std::min (std::max (min_step_ms, max_ms_ / 10), max_step_ms);
+    const unsigned int step_ms = std::min (std::max (min_step_ms, max_ms_ / 10), max_step_ms);
 
     int rc = 0; // do not sleep on first attempt
     do {
@@ -112,8 +111,7 @@ zlink::signaler_t::~signaler_t ()
 #elif defined ZLINK_HAVE_WINDOWS
     if (_w != retired_fd) {
         const struct linger so_linger = {1, 0};
-        int rc = setsockopt (_w, SOL_SOCKET, SO_LINGER,
-                             reinterpret_cast<const char *> (&so_linger),
+        int rc = setsockopt (_w, SOL_SOCKET, SO_LINGER, reinterpret_cast<const char *> (&so_linger),
                              sizeof so_linger);
         //  Only check shutdown if WSASTARTUP was previously done
         if (rc == 0 || WSAGetLastError () != WSANOTINITIALISED) {
@@ -172,7 +170,6 @@ void zlink::signaler_t::send ()
             continue;
 #if defined(HAVE_FORK)
         if (unlikely (pid != getpid ())) {
-    
             errno = EINTR;
             break;
         }
@@ -188,7 +185,6 @@ void zlink::signaler_t::send ()
             continue;
 #if defined(HAVE_FORK)
         if (unlikely (pid != getpid ())) {
-    
             errno = EINTR;
             break;
         }
@@ -234,11 +230,12 @@ int zlink::signaler_t::wait (int timeout_) const
 #endif
     zlink_assert (rc == 1);
     if (unlikely ((pfd.revents & POLLIN) == 0)) {
-        if (pfd.revents & (POLLERR | POLLHUP
+        if (pfd.revents
+            & (POLLERR | POLLHUP
 #if defined POLLNVAL
-                           | POLLNVAL
+               | POLLNVAL
 #endif
-            )) {
+               )) {
             errno = EINTR;
             return -1;
         }
@@ -258,12 +255,10 @@ int zlink::signaler_t::wait (int timeout_) const
         timeout.tv_usec = timeout_ % 1000 * 1000;
     }
 #ifdef ZLINK_HAVE_WINDOWS
-    int rc =
-      select (0, fds.get (), NULL, NULL, timeout_ >= 0 ? &timeout : NULL);
+    int rc = select (0, fds.get (), NULL, NULL, timeout_ >= 0 ? &timeout : NULL);
     wsa_assert (rc != SOCKET_ERROR);
 #else
-    int rc =
-      select (_r + 1, fds.get (), NULL, NULL, timeout_ >= 0 ? &timeout : NULL);
+    int rc = select (_r + 1, fds.get (), NULL, NULL, timeout_ >= 0 ? &timeout : NULL);
     if (unlikely (rc < 0)) {
         errno_assert (errno == EINTR);
         return -1;
@@ -302,8 +297,7 @@ void zlink::signaler_t::recv ()
 #else
     unsigned char dummy;
 #if defined ZLINK_HAVE_WINDOWS
-    const int nbytes =
-      ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
+    const int nbytes = ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
     wsa_assert (nbytes != SOCKET_ERROR);
 #elif defined ZLINK_HAVE_VXWORKS
     ssize_t nbytes = ::recv (_r, (char *) &dummy, sizeof (dummy), 0);
@@ -324,8 +318,7 @@ int zlink::signaler_t::recv_failable ()
     uint64_t dummy;
     ssize_t sz = read (_r, &dummy, sizeof (dummy));
     if (sz == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
-            || errno == EBADF) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR || errno == EBADF) {
             errno = EAGAIN;
             return -1;
         }
@@ -348,8 +341,7 @@ int zlink::signaler_t::recv_failable ()
 #else
     unsigned char dummy;
 #if defined ZLINK_HAVE_WINDOWS
-    const int nbytes =
-      ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
+    const int nbytes = ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
     if (nbytes == SOCKET_ERROR) {
         const int last_error = WSAGetLastError ();
         if (last_error == WSAEWOULDBLOCK) {
@@ -365,8 +357,7 @@ int zlink::signaler_t::recv_failable ()
             errno = EAGAIN;
             return -1;
         }
-        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK
-                      || errno == EINTR);
+        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
     }
 #else
     ssize_t nbytes = ::recv (_r, &dummy, sizeof (dummy), 0);
@@ -375,8 +366,7 @@ int zlink::signaler_t::recv_failable ()
             errno = EAGAIN;
             return -1;
         }
-        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK
-                      || errno == EINTR);
+        errno_assert (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
     }
 #endif
     zlink_assert (nbytes == sizeof (dummy));

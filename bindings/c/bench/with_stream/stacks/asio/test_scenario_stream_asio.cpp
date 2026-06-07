@@ -13,7 +13,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 using boost::asio::ip::tcp;
 
@@ -31,15 +32,15 @@ struct server_options_t
     int tcp_nodelay;
     int io_threads;
 
-    server_options_t ()
-        : host ("0.0.0.0"),
-          port (38001),
-          size (1024),
-          sndbuf (1024 * 1024),
-          rcvbuf (1024 * 1024),
-          backlog (32768),
-          tcp_nodelay (1),
-          io_threads (8)
+    server_options_t () :
+        host ("0.0.0.0"),
+        port (38001),
+        size (1024),
+        sndbuf (1024 * 1024),
+        rcvbuf (1024 * 1024),
+        backlog (32768),
+        tcp_nodelay (1),
+        io_threads (8)
     {
     }
 };
@@ -75,26 +76,25 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
 class asio_echo_server_t
 {
   public:
-    explicit asio_echo_server_t (const server_options_t &opt_)
-        : opt (opt_),
-          io (),
-          work_guard (boost::asio::make_work_guard (io)),
-          acceptor (io),
-          signals (io, SIGINT, SIGTERM),
-          active_connections (0),
-          recv_msgs (0),
-          parse_error (0),
-          protocol_error (0),
-          send_error (0),
-          stopping (false)
+    explicit asio_echo_server_t (const server_options_t &opt_) :
+        opt (opt_),
+        io (),
+        work_guard (boost::asio::make_work_guard (io)),
+        acceptor (io),
+        signals (io, SIGINT, SIGTERM),
+        active_connections (0),
+        recv_msgs (0),
+        parse_error (0),
+        protocol_error (0),
+        send_error (0),
+        stopping (false)
     {
     }
 
     int run ()
     {
         boost::system::error_code ec;
-        const boost::asio::ip::address addr =
-          boost::asio::ip::make_address (opt.host, ec);
+        const boost::asio::ip::address addr = boost::asio::ip::make_address (opt.host, ec);
         if (ec) {
             std::fprintf (stderr, "asio server: invalid host %s\n", opt.host.c_str ());
             return 2;
@@ -121,9 +121,7 @@ class asio_echo_server_t
             return 2;
         }
 
-        signals.async_wait ([this] (const boost::system::error_code &, int) {
-            stop ();
-        });
+        signals.async_wait ([this] (const boost::system::error_code &, int) { stop (); });
 
         start_accept ();
 
@@ -136,15 +134,13 @@ class asio_echo_server_t
                 workers[i].join ();
         }
 
-        std::printf (
-          "%s\n",
-          stream_echo::make_metric_line (
-            "asio", opt.size, recv_msgs.load (std::memory_order_relaxed),
-            parse_error.load (std::memory_order_relaxed),
-            protocol_error.load (std::memory_order_relaxed),
-            send_error.load (std::memory_order_relaxed),
-            active_connections.load (std::memory_order_relaxed))
-            .c_str ());
+        std::printf ("%s\n", stream_echo::make_metric_line (
+                               "asio", opt.size, recv_msgs.load (std::memory_order_relaxed),
+                               parse_error.load (std::memory_order_relaxed),
+                               protocol_error.load (std::memory_order_relaxed),
+                               send_error.load (std::memory_order_relaxed),
+                               active_connections.load (std::memory_order_relaxed))
+                               .c_str ());
 
         return 0;
     }
@@ -161,10 +157,7 @@ class asio_echo_server_t
         io.stop ();
     }
 
-    void on_session_open ()
-    {
-        active_connections.fetch_add (1, std::memory_order_relaxed);
-    }
+    void on_session_open () { active_connections.fetch_add (1, std::memory_order_relaxed); }
 
     void on_session_close ()
     {
@@ -178,16 +171,12 @@ class asio_echo_server_t
             recv_msgs.fetch_add (1, std::memory_order_relaxed);
     }
 
-    void on_send_error ()
-    {
-        send_error.fetch_add (1, std::memory_order_relaxed);
-    }
+    void on_send_error () { send_error.fetch_add (1, std::memory_order_relaxed); }
 
     void apply_socket_tuning (tcp::socket &socket)
     {
         boost::system::error_code ec;
-        socket.set_option (
-          boost::asio::ip::tcp::no_delay (opt.tcp_nodelay != 0), ec);
+        socket.set_option (boost::asio::ip::tcp::no_delay (opt.tcp_nodelay != 0), ec);
         boost::asio::socket_base::send_buffer_size snd (opt.sndbuf);
         socket.set_option (snd, ec);
         boost::asio::socket_base::receive_buffer_size rcv (opt.rcvbuf);
@@ -200,24 +189,21 @@ class asio_echo_server_t
         if (stopping.load (std::memory_order_acquire))
             return;
 
-        std::shared_ptr<asio_session_t> session =
-          std::make_shared<asio_session_t> (*this, io);
-        acceptor.async_accept (
-          session->socket_ref (),
-          [this, session] (const boost::system::error_code &ec) {
-              if (!ec) {
-                  apply_socket_tuning (session->socket_ref ());
-                  session->start ();
-              }
-              if (!stopping.load (std::memory_order_acquire))
-                  start_accept ();
-          });
+        std::shared_ptr<asio_session_t> session = std::make_shared<asio_session_t> (*this, io);
+        acceptor.async_accept (session->socket_ref (),
+                               [this, session] (const boost::system::error_code &ec) {
+                                   if (!ec) {
+                                       apply_socket_tuning (session->socket_ref ());
+                                       session->start ();
+                                   }
+                                   if (!stopping.load (std::memory_order_acquire))
+                                       start_accept ();
+                               });
     }
 
     server_options_t opt;
     boost::asio::io_context io;
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      work_guard;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
     tcp::acceptor acceptor;
     boost::asio::signal_set signals;
     std::vector<std::thread> workers;
@@ -230,14 +216,14 @@ class asio_echo_server_t
     std::atomic<bool> stopping;
 };
 
-asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_context &io_)
-    : owner (owner_),
-      socket (io_),
-      strand (boost::asio::make_strand (io_)),
-      closed (false),
-      read_chunk (),
-      pending_write (),
-      frame_buffer ()
+asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_context &io_) :
+    owner (owner_),
+    socket (io_),
+    strand (boost::asio::make_strand (io_)),
+    closed (false),
+    read_chunk (),
+    pending_write (),
+    frame_buffer ()
 {
 }
 
@@ -253,17 +239,14 @@ void asio_session_t::start_read_chunk ()
         return;
 
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    socket.async_read_some (
-      boost::asio::buffer (read_chunk),
-      boost::asio::bind_executor (
-        strand,
-        [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_read_chunk (ec, bytes);
-        }));
+    socket.async_read_some (boost::asio::buffer (read_chunk),
+                            boost::asio::bind_executor (
+                              strand, [self] (const boost::system::error_code &ec, size_t bytes) {
+                                  self->on_read_chunk (ec, bytes);
+                              }));
 }
 
-void asio_session_t::on_read_chunk (const boost::system::error_code &ec,
-                                    size_t bytes)
+void asio_session_t::on_read_chunk (const boost::system::error_code &ec, size_t bytes)
 {
     if (closed)
         return;
@@ -309,11 +292,8 @@ void asio_session_t::start_write_chunk ()
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
     boost::asio::async_write (
       socket, boost::asio::buffer (pending_write),
-      boost::asio::bind_executor (
-        strand,
-        [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_write (ec, bytes);
-        }));
+      boost::asio::bind_executor (strand, [self] (const boost::system::error_code &ec,
+                                                  size_t bytes) { self->on_write (ec, bytes); }));
 }
 
 void asio_session_t::on_write (const boost::system::error_code &ec, size_t bytes)

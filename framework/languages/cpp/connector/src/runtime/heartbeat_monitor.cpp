@@ -20,7 +20,8 @@ bool heartbeat_monitor_t::due (std::chrono::steady_clock::time_point last_sent,
     if (!_options.enabled) {
         return false;
     }
-    return last_sent == std::chrono::steady_clock::time_point{} || now - last_sent >= _options.interval;
+    return last_sent == std::chrono::steady_clock::time_point{}
+           || now - last_sent >= _options.interval;
 }
 
 bool heartbeat_monitor_t::timed_out (std::chrono::steady_clock::time_point last_inbound,

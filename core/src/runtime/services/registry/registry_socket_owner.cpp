@@ -9,16 +9,14 @@
 
 namespace zlink
 {
-void registry_t::apply_socket_opts (socket_base_t *socket_,
-                                    const std::vector<socket_opt_t> &opts_)
+void registry_t::apply_socket_opts (socket_base_t *socket_, const std::vector<socket_opt_t> &opts_)
 {
     if (!socket_)
         return;
 
     for (size_t i = 0; i < opts_.size (); ++i) {
         if (!opts_[i].value.empty ()) {
-            socket_->setsockopt (opts_[i].option, &opts_[i].value[0],
-                                 opts_[i].value.size ());
+            socket_->setsockopt (opts_[i].option, &opts_[i].value[0], opts_[i].value.size ());
         }
     }
 }
@@ -137,15 +135,13 @@ void registry_t::close_sockets ()
     }
     if (router) {
         if (!router_endpoint.empty ())
-            static_cast<socket_base_t *> (router)->term_endpoint (
-              router_endpoint.c_str ());
+            static_cast<socket_base_t *> (router)->term_endpoint (router_endpoint.c_str ());
         socket_base_t *router_socket = static_cast<socket_base_t *> (router);
         (void) _lifecycle.close_socket (router_socket);
     }
     if (pub) {
         if (!pub_endpoint.empty ())
-            static_cast<socket_base_t *> (pub)->term_endpoint (
-              pub_endpoint.c_str ());
+            static_cast<socket_base_t *> (pub)->term_endpoint (pub_endpoint.c_str ());
         socket_base_t *pub_socket = static_cast<socket_base_t *> (pub);
         (void) _lifecycle.close_socket (pub_socket);
     }
@@ -182,9 +178,8 @@ int registry_t::ensure_peer_sub_socket ()
     return 0;
 }
 
-void registry_t::connect_peer_sub_endpoints (
-  void *peer_sub_,
-  const std::vector<std::string> &peer_pubs_)
+void registry_t::connect_peer_sub_endpoints (void *peer_sub_,
+                                             const std::vector<std::string> &peer_pubs_)
 {
     if (!peer_sub_)
         return;
@@ -192,7 +187,8 @@ void registry_t::connect_peer_sub_endpoints (
     for (size_t i = 0; i < peer_pubs_.size (); ++i) {
         const std::string &endpoint = peer_pubs_[i];
         scoped_lock_t lock (_sync);
-        if (_runtime_socket_state.peer_connected.find (endpoint) == _runtime_socket_state.peer_connected.end ()) {
+        if (_runtime_socket_state.peer_connected.find (endpoint)
+            == _runtime_socket_state.peer_connected.end ()) {
             zlink_connect (peer_sub_, endpoint.c_str ());
             _runtime_socket_state.peer_connected.insert (endpoint);
         }

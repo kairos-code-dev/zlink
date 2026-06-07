@@ -81,19 +81,21 @@ bool timer_t::valid () const noexcept
 
 void timer_t::start_ns (uint64_t interval_ns_, uint64_t repeat_count_)
 {
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_timer_start (_impl->handle, interval_ns_, repeat_count_)));
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_timer_start (_impl->handle, interval_ns_, repeat_count_)));
 }
 
 void timer_t::stop ()
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (zlink_timer_stop (_impl->handle)));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_timer_stop (_impl->handle)));
 }
 
 std::optional<uint64_t> timer_t::recv ()
 {
     uint64_t fire_count = 0;
-    const recv_result_t result = static_cast<recv_result_t> (zlink_timer_recv (_impl->handle, &fire_count));
+    const recv_result_t result =
+      static_cast<recv_result_t> (zlink_timer_recv (_impl->handle, &fire_count));
     if (result == recv_result_t::no_data)
         return std::nullopt;
     if (result != recv_result_t::ok)
@@ -122,7 +124,8 @@ void timer_t::close ()
 
     void *timer = _impl->handle;
     _impl->handle = nullptr;
-    detail::throw_if_failed<close_error_t> (static_cast<close_result_t> (zlink_timer_destroy (&timer)));
+    detail::throw_if_failed<close_error_t> (
+      static_cast<close_result_t> (zlink_timer_destroy (&timer)));
 }
 
 } // namespace zlink

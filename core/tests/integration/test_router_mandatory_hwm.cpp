@@ -14,11 +14,8 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
-int send_routed_payload_expect_maybe_eagain (void *router_,
-                                             const zlink_routing_id_t *rid_,
-                                             const void *buf_,
-                                             size_t size_,
-                                             int flags_)
+int send_routed_payload_expect_maybe_eagain (
+  void *router_, const zlink_routing_id_t *rid_, const void *buf_, size_t size_, int flags_)
 {
     zlink_msg_t msg;
     if (zlink_msg_init_size (&msg, size_) != 0)
@@ -26,8 +23,8 @@ int send_routed_payload_expect_maybe_eagain (void *router_,
     if (size_ > 0 && buf_)
         memcpy (zlink_msg_data (&msg), buf_, size_);
 
-    const int rc = zlink_send_rid (
-      router_, rid_, &msg, 1, static_cast<zlink_send_flags_t> (flags_));
+    const int rc =
+      zlink_send_rid (router_, rid_, &msg, 1, static_cast<zlink_send_flags_t> (flags_));
     if (rc != 0) {
         const int err = errno;
         zlink_msg_close (&msg);
@@ -47,7 +44,8 @@ void test_router_mandatory_hwm ()
 
     // Configure router socket to mandatory routing and set HWM and linger
     int mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     int sndhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
@@ -114,8 +112,8 @@ void test_router_send_rid_mandatory_hwm ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     int sndhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
@@ -144,8 +142,8 @@ void test_router_send_rid_mandatory_hwm ()
     const uint8_t buf[buf_size] = {0};
     int i = 0;
     for (; i < 100000; ++i) {
-        const int rc = send_routed_payload_expect_maybe_eagain (
-          router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
+        const int rc =
+          send_routed_payload_expect_maybe_eagain (router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
         if (rc == -1 && zlink_errno () == EAGAIN)
             break;
         TEST_ASSERT_EQUAL_INT (0, rc);
@@ -155,8 +153,8 @@ void test_router_send_rid_mandatory_hwm ()
     msleep (1000);
 
     for (; i < 100000; ++i) {
-        const int rc = send_routed_payload_expect_maybe_eagain (
-          router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
+        const int rc =
+          send_routed_payload_expect_maybe_eagain (router, &rid, buf, sizeof (buf), ZLINK_DONTWAIT);
         if (rc == -1 && zlink_errno () == EAGAIN)
             break;
         TEST_ASSERT_EQUAL_INT (0, rc);

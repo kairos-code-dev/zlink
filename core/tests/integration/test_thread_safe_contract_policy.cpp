@@ -40,8 +40,7 @@ std::string read_text_file (const char *path_)
 
     const int file_error = ferror (fp);
     fclose (fp);
-    TEST_ASSERT_EQUAL_INT_MESSAGE (0, file_error,
-                                   "failed while reading public header");
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, file_error, "failed while reading public header");
     return content;
 }
 
@@ -55,12 +54,10 @@ std::string dirname_of (const std::string &path_)
     return path_.substr (0, slash);
 }
 
-std::string resolve_public_header_text (const std::string &path_,
-                                        const std::string &include_root_,
-                                        int depth_)
+std::string
+resolve_public_header_text (const std::string &path_, const std::string &include_root_, int depth_)
 {
-    TEST_ASSERT_TRUE_MESSAGE (depth_ >= 0,
-                              "public header include depth exceeded");
+    TEST_ASSERT_TRUE_MESSAGE (depth_ >= 0, "public header include depth exceeded");
 
     const std::string content = read_text_file (path_.c_str ());
     std::string resolved = content;
@@ -94,13 +91,11 @@ std::string resolve_public_header_text (const std::string &path_,
             continue;
         }
 
-        const std::string include_path =
-          open == '<' && include_name.find ("zlink/") == 0
-            ? include_root_ + "/" + include_name
-            : base_dir + "/" + include_name;
+        const std::string include_path = open == '<' && include_name.find ("zlink/") == 0
+                                           ? include_root_ + "/" + include_name
+                                           : base_dir + "/" + include_name;
         resolved.append ("\n");
-        resolved.append (
-          resolve_public_header_text (include_path, include_root_, depth_ - 1));
+        resolved.append (resolve_public_header_text (include_path, include_root_, depth_ - 1));
         pos = end + 1;
     }
 
@@ -118,8 +113,7 @@ void assert_text_absent (const std::string &text_, const char *needle_)
     TEST_ASSERT_NOT_NULL (needle_);
 
     char msg[192];
-    snprintf (msg, sizeof (msg),
-              "public header must not expose forbidden contract token: %s",
+    snprintf (msg, sizeof (msg), "public header must not expose forbidden contract token: %s",
               needle_);
     TEST_ASSERT_TRUE_MESSAGE (text_.find (needle_) == std::string::npos, msg);
 }
@@ -129,9 +123,7 @@ void assert_text_present (const std::string &text_, const char *needle_)
     TEST_ASSERT_NOT_NULL (needle_);
 
     char msg[192];
-    snprintf (msg, sizeof (msg),
-              "required contract token missing from checked text: %s",
-              needle_);
+    snprintf (msg, sizeof (msg), "required contract token missing from checked text: %s", needle_);
     TEST_ASSERT_TRUE_MESSAGE (text_.find (needle_) != std::string::npos, msg);
 }
 
@@ -172,33 +164,25 @@ void test_docs_reflect_tiered_thread_safe_contract ()
     TEST_ASSERT_TRUE (TEST_REPO_ROOT[0] != '\0');
 
     const std::string socket_doc =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.md")
-                        .c_str ());
-    const std::string socket_doc_ko =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.ko.md")
-                        .c_str ());
-    const std::string discovery_doc =
-      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.md")
-                        .c_str ());
+      read_text_file ((std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.md").c_str ());
+    const std::string socket_doc_ko = read_text_file (
+      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/socket/README.ko.md").c_str ());
+    const std::string discovery_doc = read_text_file (
+      (std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.md").c_str ());
     const std::string discovery_doc_ko = read_text_file (
       (std::string (TEST_REPO_ROOT) + "/doc/spec/core/service/discovery.ko.md").c_str ());
     const std::string threading_doc = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md")
-        .c_str ());
+      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.md").c_str ());
     const std::string threading_doc_ko = read_text_file (
-      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.ko.md")
-        .c_str ());
+      (std::string (TEST_REPO_ROOT) + "/doc/internals/threading-model.ko.md").c_str ());
 
     assert_text_present (socket_doc, "tiered contract");
     assert_text_present (threading_doc, "`send`/`publish`/`send_rid`");
-    assert_text_present (socket_doc,
-                         "can be called concurrently from multiple threads");
+    assert_text_present (socket_doc, "can be called concurrently from multiple threads");
     assert_text_present (discovery_doc_ko, "thread-safe");
     assert_text_present (socket_doc, "fails with `errno=ESHUTDOWN`");
-    assert_text_present (discovery_doc,
-                         "Discovery is a control-plane subject in the tiered");
-    assert_text_present (threading_doc,
-                         "control paths serialize for correctness");
+    assert_text_present (discovery_doc, "Discovery is a control-plane subject in the tiered");
+    assert_text_present (threading_doc, "control paths serialize for correctness");
     assert_text_present (threading_doc_ko, "여러 스레드에서 동시 사용 가능");
 
     assert_text_absent (socket_doc, "same-handle operational APIs");

@@ -16,10 +16,12 @@ inline result_t<zlink::message_t> current_exception_to_message_result (const cha
         throw;
     }
     catch (const framework_exception_t &error) {
-        return result_t<zlink::message_t>::failure (error.kind (), error.what (), error.is_retriable ());
+        return result_t<zlink::message_t>::failure (error.kind (), error.what (),
+                                                    error.is_retriable ());
     }
     catch (...) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed, fallback_message);
+        return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
+                                                    fallback_message);
     }
 }
 
@@ -38,7 +40,8 @@ template <typename T> inline constexpr bool is_task_v = requires
 };
 
 template <typename TResult>
-task_t<zlink::message_t> serialize_handler_result (TResult &&result, serializer_registry_t &serializers)
+task_t<zlink::message_t> serialize_handler_result (TResult &&result,
+                                                   serializer_registry_t &serializers)
 {
     using result_type = std::remove_cvref_t<TResult>;
     if constexpr (is_task_v<result_type>) {
@@ -48,10 +51,12 @@ task_t<zlink::message_t> serialize_handler_result (TResult &&result, serializer_
             co_return result_t<zlink::message_t>::success (zlink::message_t{});
         } else {
             auto value = co_await result;
-            co_return result_t<zlink::message_t>::success (serializers.get<value_type> ().serialize (value));
+            co_return result_t<zlink::message_t>::success (
+              serializers.get<value_type> ().serialize (value));
         }
     } else {
-        co_return result_t<zlink::message_t>::success (serializers.get<result_type> ().serialize (result));
+        co_return result_t<zlink::message_t>::success (
+          serializers.get<result_type> ().serialize (result));
     }
 }
 

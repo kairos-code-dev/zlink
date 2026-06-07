@@ -10,7 +10,8 @@
 namespace perf
 {
 
-inline bool wait_socket_monitor_event (zlink::socket_monitor_t &monitor, uint64_t event_type, int timeout_ms)
+inline bool
+wait_socket_monitor_event (zlink::socket_monitor_t &monitor, uint64_t event_type, int timeout_ms)
 {
     for (;;) {
         const std::optional<zlink::monitor_event_t> event =
@@ -31,8 +32,8 @@ inline bool wait_socket_monitor_event (zlink::socket_monitor_t &monitor, uint64_
         return false;
     }
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms > 0 ? timeout_ms : 1);
     while (std::chrono::steady_clock::now () < deadline) {
         const auto remaining = deadline - std::chrono::steady_clock::now ();
         long wait_ms = std::chrono::duration_cast<std::chrono::milliseconds> (remaining).count ();

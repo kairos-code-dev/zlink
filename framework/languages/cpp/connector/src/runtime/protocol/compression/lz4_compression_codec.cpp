@@ -30,8 +30,10 @@ void write_u32 (std::string &output, std::uint32_t value)
 
 std::uint32_t read_u32 (std::span<const std::byte> input)
 {
-    return (std::to_integer<std::uint32_t> (input[0]) << 24) | (std::to_integer<std::uint32_t> (input[1]) << 16)
-           | (std::to_integer<std::uint32_t> (input[2]) << 8) | std::to_integer<std::uint32_t> (input[3]);
+    return (std::to_integer<std::uint32_t> (input[0]) << 24)
+           | (std::to_integer<std::uint32_t> (input[1]) << 16)
+           | (std::to_integer<std::uint32_t> (input[2]) << 8)
+           | std::to_integer<std::uint32_t> (input[3]);
 }
 
 } // namespace
@@ -62,7 +64,8 @@ zlink::message_t lz4_compression_codec_t::compress (const zlink::message_t &payl
     const int bound = LZ4_compressBound (static_cast<int> (input.size ()));
     std::vector<char> compressed (static_cast<std::size_t> (bound));
     const auto *input_data = reinterpret_cast<const char *> (input.data ());
-    const int written = LZ4_compress_default (input_data, compressed.data (), static_cast<int> (input.size ()), bound);
+    const int written = LZ4_compress_default (input_data, compressed.data (),
+                                              static_cast<int> (input.size ()), bound);
     if (written <= 0) {
         throw std::runtime_error ("LZ4 compression failed");
     }
@@ -89,8 +92,9 @@ zlink::message_t lz4_compression_codec_t::decompress (const zlink::message_t &pa
     }
     std::string output (original_size, '\0');
     const auto *input_data = reinterpret_cast<const char *> (input.data ());
-    const int decoded = LZ4_decompress_safe (input_data + 4, output.data (), static_cast<int> (input.size () - 4),
-                                             static_cast<int> (output.size ()));
+    const int decoded =
+      LZ4_decompress_safe (input_data + 4, output.data (), static_cast<int> (input.size () - 4),
+                           static_cast<int> (output.size ()));
     if (decoded != static_cast<int> (output.size ())) {
         throw std::runtime_error ("LZ4 decompression failed");
     }

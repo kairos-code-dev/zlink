@@ -32,13 +32,12 @@ int validate_request_send_flags_impl (zlink_send_flags_t flags_)
     return 0;
 }
 
-int send_request_frame_impl (
-  zlink::socket_base_t *socket_,
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  const zlink_routing_id_t *peer_rid_,
-  const void *data_,
-  size_t size_,
-  int flags_)
+int send_request_frame_impl (zlink::socket_base_t *socket_,
+                             zlink::part_helper_internal::handle_state_t *helper_state_,
+                             const zlink_routing_id_t *peer_rid_,
+                             const void *data_,
+                             size_t size_,
+                             int flags_)
 {
     zlink::msg_t msg;
     if (msg.init_size (size_) != 0)
@@ -46,46 +45,39 @@ int send_request_frame_impl (
     if (size_ > 0 && data_)
         memcpy (msg.data (), data_, size_);
 
-    const int rc = peer_rid_
-                     ? socket_->send_routed_scoped (
-                         peer_rid_, &msg, flags_,
-                         *helper_state_->send.send_scope)
-                     : socket_->send_scoped (
-                         &msg, flags_, *helper_state_->send.send_scope);
+    const int rc = peer_rid_ ? socket_->send_routed_scoped (peer_rid_, &msg, flags_,
+                                                            *helper_state_->send.send_scope)
+                             : socket_->send_scoped (&msg, flags_, *helper_state_->send.send_scope);
     const int saved_errno = errno;
     (void) msg.close ();
     errno = saved_errno;
     return rc;
 }
 
-int send_request_payload_part_impl (
-  zlink::socket_base_t *socket_,
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+int send_request_payload_part_impl (zlink::socket_base_t *socket_,
+                                    zlink::part_helper_internal::handle_state_t *helper_state_,
+                                    const zlink_routing_id_t *peer_rid_,
+                                    zlink_msg_t *part_,
+                                    zlink_send_flags_t flags_,
+                                    zlink_part_flag_t part_flag_)
 {
     LIBZLINK_UNUSED (peer_rid_);
 
-    return socket_->send_scoped (
-      reinterpret_cast<zlink::msg_t *> (part_),
-      static_cast<int> (flags_ & ZLINK_DONTWAIT)
-        | (part_flag_ == ZLINK_PART_MORE ? ZLINK_SNDMORE : 0),
-      *helper_state_->send.send_scope);
+    return socket_->send_scoped (reinterpret_cast<zlink::msg_t *> (part_),
+                                 static_cast<int> (flags_ & ZLINK_DONTWAIT)
+                                   | (part_flag_ == ZLINK_PART_MORE ? ZLINK_SNDMORE : 0),
+                                 *helper_state_->send.send_scope);
 }
 
-int stage_request_payload_part_impl (
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  zlink_msg_t *part_)
+int stage_request_payload_part_impl (zlink::part_helper_internal::handle_state_t *helper_state_,
+                                     zlink_msg_t *part_)
 {
     if (!helper_state_ || !part_) {
         errno = EFAULT;
         return -1;
     }
 
-    helper_state_->send.buffered_parts.resize (
-      helper_state_->send.buffered_parts.size () + 1);
+    helper_state_->send.buffered_parts.resize (helper_state_->send.buffered_parts.size () + 1);
     zlink_msg_t &slot = helper_state_->send.buffered_parts.back ();
     zlink_msg_init (&slot);
     if (zlink_msg_move (&slot, part_) != 0) {
@@ -109,33 +101,29 @@ int reqrep::validate_request_send_flags (zlink_send_flags_t flags_)
     return validate_request_send_flags_impl (flags_);
 }
 
-int reqrep::send_request_frame (
-  zlink::socket_base_t *socket_,
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  const zlink_routing_id_t *peer_rid_,
-  const void *data_,
-  size_t size_,
-  int flags_)
+int reqrep::send_request_frame (zlink::socket_base_t *socket_,
+                                zlink::part_helper_internal::handle_state_t *helper_state_,
+                                const zlink_routing_id_t *peer_rid_,
+                                const void *data_,
+                                size_t size_,
+                                int flags_)
 {
-    return send_request_frame_impl (socket_, helper_state_, peer_rid_, data_,
-                                    size_, flags_);
+    return send_request_frame_impl (socket_, helper_state_, peer_rid_, data_, size_, flags_);
 }
 
-int reqrep::send_request_payload_part (
-  zlink::socket_base_t *socket_,
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+int reqrep::send_request_payload_part (zlink::socket_base_t *socket_,
+                                       zlink::part_helper_internal::handle_state_t *helper_state_,
+                                       const zlink_routing_id_t *peer_rid_,
+                                       zlink_msg_t *part_,
+                                       zlink_send_flags_t flags_,
+                                       zlink_part_flag_t part_flag_)
 {
-    return send_request_payload_part_impl (socket_, helper_state_, peer_rid_,
-                                           part_, flags_, part_flag_);
+    return send_request_payload_part_impl (socket_, helper_state_, peer_rid_, part_, flags_,
+                                           part_flag_);
 }
 
-int reqrep::stage_request_payload_part (
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  zlink_msg_t *part_)
+int reqrep::stage_request_payload_part (zlink::part_helper_internal::handle_state_t *helper_state_,
+                                        zlink_msg_t *part_)
 {
     return stage_request_payload_part_impl (helper_state_, part_);
 }

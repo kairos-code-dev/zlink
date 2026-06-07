@@ -40,10 +40,9 @@ class asio_ipc_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void process_term (int linger_) ZLINK_OVERRIDE;
 
     void start_accept ();
-    void on_accept (
-      const std::shared_ptr<boost::asio::local::stream_protocol::socket>
-        &accept_socket_,
-      const boost::system::error_code &ec);
+    void
+    on_accept (const std::shared_ptr<boost::asio::local::stream_protocol::socket> &accept_socket_,
+               const boost::system::error_code &ec);
 
     void create_engine (fd_t fd_);
     void close ();
@@ -70,8 +69,8 @@ class asio_ipc_listener_t ZLINK_FINAL : public own_t, public io_object_t
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ipc_listener_t)
 };
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC
 
-#endif  // __ZLINK_ASIO_IPC_LISTENER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_IPC_LISTENER_HPP_INCLUDED__

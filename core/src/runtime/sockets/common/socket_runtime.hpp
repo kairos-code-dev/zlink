@@ -34,9 +34,7 @@ enum
 
 struct socket_monitor_event_record_t
 {
-    socket_monitor_event_record_t () :
-        event (0),
-        values_count (0)
+    socket_monitor_event_record_t () : event (0), values_count (0)
     {
         memset (values, 0, sizeof (values));
         memset (&routing_id, 0, sizeof (routing_id));
@@ -54,12 +52,8 @@ typedef void (socket_monitor_worker_idle_fn) (void *);
 struct socket_endpoint_pipe_t
 {
     socket_endpoint_pipe_t () : endpoint (NULL), pipe (NULL), local_type (endpoint_type_none) {}
-    socket_endpoint_pipe_t (own_t *endpoint_,
-                            pipe_t *pipe_,
-                            endpoint_type_t local_type_) :
-        endpoint (endpoint_),
-        pipe (pipe_),
-        local_type (local_type_)
+    socket_endpoint_pipe_t (own_t *endpoint_, pipe_t *pipe_, endpoint_type_t local_type_) :
+        endpoint (endpoint_), pipe (pipe_), local_type (local_type_)
     {
     }
 
@@ -92,11 +86,7 @@ struct socket_endpoint_runtime_t
     bool last_recv_source_rid_valid;
     std::string last_endpoint;
 
-    socket_endpoint_runtime_t () :
-        last_recv_source_rid (),
-        last_recv_source_rid_valid (false)
-    {
-    }
+    socket_endpoint_runtime_t () : last_recv_source_rid (), last_recv_source_rid_valid (false) {}
 
     void attach_pipe (pipe_t *pipe_);
     void detach_pipe (pipe_t *pipe_);
@@ -145,21 +135,17 @@ struct socket_monitor_runtime_t
                                 const unsigned char *routing_id_,
                                 size_t routing_id_size_,
                                 uint32_t *ready_count_out_);
-    bool erase_ready_connection (
-      const endpoint_uri_pair_t &endpoint_uri_pair_,
-      const unsigned char *routing_id_,
-      size_t routing_id_size_,
-      uint32_t *ready_count_out_);
-    bool erase_ready_connection_for_endpoint (
-      const endpoint_uri_pair_t &endpoint_uri_pair_,
-      uint32_t *ready_count_out_);
+    bool erase_ready_connection (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                 const unsigned char *routing_id_,
+                                 size_t routing_id_size_,
+                                 uint32_t *ready_count_out_);
+    bool erase_ready_connection_for_endpoint (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                              uint32_t *ready_count_out_);
     void reset_worker_state ();
     void start_task (uint64_t task_id_);
     bool dequeue_worker_event_nowait (socket_monitor_event_record_t *out_);
-    void requeue_worker_event_front (
-      const socket_monitor_event_record_t &record_);
-    void enqueue_worker_event (const socket_monitor_event_record_t &record_,
-                               size_t hwm_);
+    void requeue_worker_event_front (const socket_monitor_event_record_t &record_);
+    void enqueue_worker_event (const socket_monitor_event_record_t &record_, size_t hwm_);
     void stop_task ();
 
     void *socket;
@@ -194,10 +180,9 @@ struct socket_dispatch_bridge_t
     {
     }
 
-    bool load_send_ready_handler (
-      zlink_send_ready_handler_fn *handler_out_,
-      void **subject_out_,
-      void **userdata_out_) const;
+    bool load_send_ready_handler (zlink_send_ready_handler_fn *handler_out_,
+                                  void **subject_out_,
+                                  void **userdata_out_) const;
     void store_send_ready_handler (zlink_send_ready_handler_fn handler_,
                                    void *subject_,
                                    void *userdata_);
@@ -269,8 +254,7 @@ class socket_lifecycle_coordinator_t
     void wait_async_quiesced (int timeout_ms_);
     bool is_async_mailbox_active () const;
     bool is_async_quiesce_pending () const;
-    void complete_deferred_close_handoff (mailbox_t *mailbox_,
-                                          int timeout_ms_);
+    void complete_deferred_close_handoff (mailbox_t *mailbox_, int timeout_ms_);
     void clear_deferred_close ();
     void set_monitor_async_mailbox_owned (bool owned_);
     bool is_monitor_async_mailbox_owned () const;
@@ -304,8 +288,7 @@ class socket_lifecycle_coordinator_t
 class socket_callback_scope_t
 {
   public:
-    socket_callback_scope_t (socket_base_t *socket_,
-                             socket_lifecycle_coordinator_t &coordinator_);
+    socket_callback_scope_t (socket_base_t *socket_, socket_lifecycle_coordinator_t &coordinator_);
     ~socket_callback_scope_t ();
 
     bool acquired () const { return _entered; }
@@ -319,10 +302,8 @@ class socket_callback_scope_t
 class socket_public_api_scope_t
 {
   public:
-    explicit socket_public_api_scope_t (
-      socket_lifecycle_coordinator_t &coordinator_) :
-        _coordinator (&coordinator_),
-        _entered (coordinator_.enter_public_api ())
+    explicit socket_public_api_scope_t (socket_lifecycle_coordinator_t &coordinator_) :
+        _coordinator (&coordinator_), _entered (coordinator_.enter_public_api ())
     {
     }
 
@@ -342,10 +323,8 @@ class socket_public_api_scope_t
 class socket_public_api_lock_scope_t
 {
   public:
-    explicit socket_public_api_lock_scope_t (
-      socket_lifecycle_coordinator_t &coordinator_) :
-        _coordinator (&coordinator_),
-        _locked (true)
+    explicit socket_public_api_lock_scope_t (socket_lifecycle_coordinator_t &coordinator_) :
+        _coordinator (&coordinator_), _locked (true)
     {
         _coordinator->lock_public_api_sync ();
     }
@@ -364,8 +343,7 @@ class socket_public_api_lock_scope_t
 class socket_public_send_scope_t
 {
   public:
-    socket_public_send_scope_t (socket_lifecycle_coordinator_t &coordinator_,
-                                bool needs_sync_);
+    socket_public_send_scope_t (socket_lifecycle_coordinator_t &coordinator_, bool needs_sync_);
     ~socket_public_send_scope_t ();
 
     bool acquired () const { return _entered; }

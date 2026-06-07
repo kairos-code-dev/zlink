@@ -17,8 +17,7 @@ inline int register_endpoint (discovery_t *discovery_,
                               std::string *resolved_endpoint_out_,
                               const zlink_routing_id_t *routing_id_ = NULL,
                               uint16_t service_role_ = 0,
-                              uint32_t weight_ =
-                                100)
+                              uint32_t weight_ = 100)
 {
     if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -37,14 +36,12 @@ inline int register_endpoint (discovery_t *discovery_,
 
     std::vector<unsigned char> metadata;
 
-    return discovery_->register_service (
-      endpoint_, weight_, value, &metadata, resolved_endpoint_out_,
-      routing_id_, service_role_);
+    return discovery_->register_service (endpoint_, weight_, value, &metadata,
+                                         resolved_endpoint_out_, routing_id_, service_role_);
 }
 
-inline int unregister_endpoint (discovery_t *discovery_,
-                                const char *endpoint_,
-                                uint16_t service_role_ = 0)
+inline int
+unregister_endpoint (discovery_t *discovery_, const char *endpoint_, uint16_t service_role_ = 0)
 {
     if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -63,8 +60,7 @@ inline int unregister_endpoint (discovery_t *discovery_,
 inline int update_attributes (discovery_t *discovery_,
                               const char *endpoint_,
                               uint16_t service_role_ = 0,
-                              uint32_t weight_ =
-                                100)
+                              uint32_t weight_ = 100)
 {
     if (!discovery_ || !endpoint_ || endpoint_[0] == '\0') {
         errno = EINVAL;
@@ -83,8 +79,8 @@ inline int update_attributes (discovery_t *discovery_,
 
     std::vector<unsigned char> metadata;
 
-    return discovery_->update_service_attributes (
-      endpoint_, weight_, value, &metadata, service_role_);
+    return discovery_->update_service_attributes (endpoint_, weight_, value, &metadata,
+                                                  service_role_);
 }
 }
 }

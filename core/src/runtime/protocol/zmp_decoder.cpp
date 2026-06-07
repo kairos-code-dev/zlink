@@ -11,8 +11,7 @@ namespace
 static uint32_t compute_effective_max (int64_t maxmsgsize_)
 {
     uint64_t limit = zlink::zmp_max_body_size;
-    if (maxmsgsize_ >= 0
-        && static_cast<uint64_t> (maxmsgsize_) < limit)
+    if (maxmsgsize_ >= 0 && static_cast<uint64_t> (maxmsgsize_) < limit)
         limit = static_cast<uint64_t> (maxmsgsize_);
     return static_cast<uint32_t> (limit);
 }
@@ -110,8 +109,7 @@ int zlink::zmp_decoder_t::header_ready (unsigned char const *read_from_)
     return size_ready (msg_size, read_from_);
 }
 
-int zlink::zmp_decoder_t::size_ready (uint32_t msg_size_,
-                                    unsigned char const *read_from_)
+int zlink::zmp_decoder_t::size_ready (uint32_t msg_size_, unsigned char const *read_from_)
 {
     if (unlikely (msg_size_ > _max_msg_size_effective)) {
         _error_code = zmp_error_body_too_large;
@@ -131,23 +129,19 @@ int zlink::zmp_decoder_t::size_ready (uint32_t msg_size_,
     shared_message_memory_allocator &allocator = get_allocator ();
     const unsigned char *allocator_data = allocator.data ();
     const size_t allocator_size = allocator.size ();
-    const uintptr_t base =
-      reinterpret_cast<uintptr_t> (allocator_data);
+    const uintptr_t base = reinterpret_cast<uintptr_t> (allocator_data);
     const uintptr_t end = base + allocator_size;
     const uintptr_t ptr = reinterpret_cast<uintptr_t> (read_from_);
     const bool in_allocator = ptr >= base && ptr <= end;
     const size_t available =
-      in_allocator ? static_cast<size_t> (allocator_data + allocator_size
-                                          - read_from_)
-                   : 0;
+      in_allocator ? static_cast<size_t> (allocator_data + allocator_size - read_from_) : 0;
 
     if (unlikely (!in_allocator || msg_size_ > available)) {
         rc = _in_progress.init_size (static_cast<size_t> (msg_size_));
     } else {
         rc = _in_progress.init (const_cast<unsigned char *> (read_from_),
                                 static_cast<size_t> (msg_size_),
-                                shared_message_memory_allocator::call_dec_ref,
-                                allocator.buffer (),
+                                shared_message_memory_allocator::call_dec_ref, allocator.buffer (),
                                 allocator.provide_content ());
         if (_in_progress.is_zcmsg ()) {
             allocator.advance_content ();
@@ -164,8 +158,7 @@ int zlink::zmp_decoder_t::size_ready (uint32_t msg_size_,
     }
 
     _in_progress.set_flags (_msg_flags);
-    next_step (_in_progress.data (), _in_progress.size (),
-               &zmp_decoder_t::body_ready);
+    next_step (_in_progress.data (), _in_progress.size (), &zmp_decoder_t::body_ready);
 
     return 0;
 }

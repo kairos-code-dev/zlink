@@ -26,17 +26,15 @@ typedef struct zlink_peer_info_t
     uint64_t rcv_pending_msgs;
 } zlink_peer_info_t;
 
-inline int zlink_socket_peers(void *, zlink_peer_info_t *, size_t *)
+inline int zlink_socket_peers (void *, zlink_peer_info_t *, size_t *)
 {
     errno = ENOTSUP;
     return -1;
 }
 
-inline bool bench_msg_has_more(const zlink_msg_t &msg_)
+inline bool bench_msg_has_more (const zlink_msg_t &msg_)
 {
-    return (reinterpret_cast<const zlink::msg_t *>(&msg_)->flags()
-            & zlink::msg_t::more)
-           != 0;
+    return (reinterpret_cast<const zlink::msg_t *> (&msg_)->flags () & zlink::msg_t::more) != 0;
 }
 
 #if !defined(_WIN32)
@@ -61,80 +59,85 @@ static const size_t MAX_SOCKET_STRING = 256;
 static const int SETTLE_TIME_MS = 300;
 
 // --- Stopwatch ---
-class stopwatch_t {
-public:
-    void start() { _start = std::chrono::steady_clock::now(); }
-    double elapsed_ms() const {
-        auto end = std::chrono::steady_clock::now();
-        return std::chrono::duration<double, std::milli>(end - _start).count();
+class stopwatch_t
+{
+  public:
+    void start () { _start = std::chrono::steady_clock::now (); }
+    double elapsed_ms () const
+    {
+        auto end = std::chrono::steady_clock::now ();
+        return std::chrono::duration<double, std::milli> (end - _start).count ();
     }
-private:
+
+  private:
     std::chrono::steady_clock::time_point _start;
 };
 
-inline int parse_positive_env(const char *name_, int default_value_)
+inline int parse_positive_env (const char *name_, int default_value_)
 {
     if (!name_)
         return default_value_;
 
-    const char *env = std::getenv(name_);
+    const char *env = std::getenv (name_);
     if (!env || !*env)
         return default_value_;
 
     errno = 0;
     char *end = NULL;
-    const long parsed = std::strtol(env, &end, 10);
+    const long parsed = std::strtol (env, &end, 10);
     if (errno != 0 || end == env || parsed <= 0)
         return default_value_;
 
     if (parsed > INT_MAX)
         return INT_MAX;
-    return static_cast<int>(parsed);
+    return static_cast<int> (parsed);
 }
 
-inline int parse_positive_env_or_default(const char *name_, int default_value_)
+inline int parse_positive_env_or_default (const char *name_, int default_value_)
 {
-    return parse_positive_env(name_, default_value_);
+    return parse_positive_env (name_, default_value_);
 }
 
-inline int resolve_single_duration_seconds()
+inline int resolve_single_duration_seconds ()
 {
-    return parse_positive_env_or_default("PERF_SINGLE_DURATION_SECONDS", 2);
+    return parse_positive_env_or_default ("PERF_SINGLE_DURATION_SECONDS", 2);
 }
 
-inline int resolve_single_warmup_seconds()
+inline int resolve_single_warmup_seconds ()
 {
-    return parse_positive_env_or_default("PERF_SINGLE_WARMUP_SECONDS", 2);
+    return parse_positive_env_or_default ("PERF_SINGLE_WARMUP_SECONDS", 2);
 }
 
-inline int resolve_single_latency_duration_seconds()
+inline int resolve_single_latency_duration_seconds ()
 {
-    const int base = resolve_single_duration_seconds();
-    return parse_positive_env_or_default("PERF_SINGLE_LATENCY_SECONDS", base);
+    const int base = resolve_single_duration_seconds ();
+    return parse_positive_env_or_default ("PERF_SINGLE_LATENCY_SECONDS", base);
 }
 
-inline size_t resolve_single_latency_sample_cap()
+inline size_t resolve_single_latency_sample_cap ()
 {
-    const int cap =
-      parse_positive_env("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
-    return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
+    const int cap = parse_positive_env ("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
+    return cap > 0 ? static_cast<size_t> (cap) : static_cast<size_t> (200000);
 }
 
-struct latency_stats_t {
-    latency_stats_t() : mean_us(0.0), p95_us(0.0), p99_us(0.0) {}
+struct latency_stats_t
+{
+    latency_stats_t () : mean_us (0.0), p95_us (0.0), p99_us (0.0) {}
     double mean_us;
     double p95_us;
     double p99_us;
 };
 
-struct queue_stats_t {
-    queue_stats_t() :
-        snd_pending_max(0.0),
-        rcv_pending_max(0.0),
-        rcv_pending_end(0.0),
-        has_snd_pending(false),
-        has_rcv_pending(false)
-    {}
+struct queue_stats_t
+{
+    queue_stats_t () :
+        snd_pending_max (0.0),
+        rcv_pending_max (0.0),
+        rcv_pending_end (0.0),
+        has_snd_pending (false),
+        has_rcv_pending (false)
+    {
+    }
 
     double snd_pending_max;
     double rcv_pending_max;
@@ -143,75 +146,74 @@ struct queue_stats_t {
     bool has_rcv_pending;
 };
 
-class latency_stats_builder_t {
-public:
-    explicit latency_stats_builder_t(
-      size_t sample_cap_ = resolve_single_latency_sample_cap()) :
-      _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
-      _count(0),
-      _sum_us(0.0),
-      _rng_state(0x9e3779b97f4a7c15ULL)
+class latency_stats_builder_t
+{
+  public:
+    explicit latency_stats_builder_t (size_t sample_cap_ = resolve_single_latency_sample_cap ()) :
+        _sample_cap (sample_cap_ > 0 ? sample_cap_ : 1),
+        _count (0),
+        _sum_us (0.0),
+        _rng_state (0x9e3779b97f4a7c15ULL)
     {
-        _samples.reserve(_sample_cap);
+        _samples.reserve (_sample_cap);
     }
 
-    void add(double latency_us_)
+    void add (double latency_us_)
     {
         const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
         ++_count;
         _sum_us += sample;
 
-        if (_samples.size() < _sample_cap) {
-            _samples.push_back(sample);
+        if (_samples.size () < _sample_cap) {
+            _samples.push_back (sample);
             return;
         }
 
-        const unsigned long long slot = next_rand_u64() % _count;
-        if (slot < static_cast<unsigned long long>(_sample_cap)) {
-            _samples[static_cast<size_t>(slot)] = sample;
+        const unsigned long long slot = next_rand_u64 () % _count;
+        if (slot < static_cast<unsigned long long> (_sample_cap)) {
+            _samples[static_cast<size_t> (slot)] = sample;
         }
     }
 
-    unsigned long long count() const { return _count; }
+    unsigned long long count () const { return _count; }
 
-    latency_stats_t snapshot()
+    latency_stats_t snapshot ()
     {
         latency_stats_t out;
         if (_count == 0)
             return out;
 
-        out.mean_us = _sum_us / static_cast<double>(_count);
-        if (_samples.empty()) {
+        out.mean_us = _sum_us / static_cast<double> (_count);
+        if (_samples.empty ()) {
             out.p95_us = out.mean_us;
             out.p99_us = out.mean_us;
             return out;
         }
 
-        std::sort(_samples.begin(), _samples.end());
-        out.p95_us = percentile_from_sorted(_samples, 0.95);
-        out.p99_us = percentile_from_sorted(_samples, 0.99);
+        std::sort (_samples.begin (), _samples.end ());
+        out.p95_us = percentile_from_sorted (_samples, 0.95);
+        out.p99_us = percentile_from_sorted (_samples, 0.99);
         return out;
     }
 
-private:
-    static double percentile_from_sorted(const std::vector<double> &sorted_,
-                                         double q_)
+  private:
+    static double percentile_from_sorted (const std::vector<double> &sorted_, double q_)
     {
-        if (sorted_.empty())
+        if (sorted_.empty ())
             return 0.0;
         if (q_ <= 0.0)
-            return sorted_.front();
+            return sorted_.front ();
         if (q_ >= 1.0)
-            return sorted_.back();
+            return sorted_.back ();
 
-        const double pos = (sorted_.size() - 1) * q_;
-        const size_t lo = static_cast<size_t>(pos);
-        const size_t hi = lo + 1 < sorted_.size() ? lo + 1 : lo;
-        const double frac = pos - static_cast<double>(lo);
+        const double pos = (sorted_.size () - 1) * q_;
+        const size_t lo = static_cast<size_t> (pos);
+        const size_t hi = lo + 1 < sorted_.size () ? lo + 1 : lo;
+        const double frac = pos - static_cast<double> (lo);
         return sorted_[lo] + (sorted_[hi] - sorted_[lo]) * frac;
     }
 
-    unsigned long long next_rand_u64()
+    unsigned long long next_rand_u64 ()
     {
         if (_rng_state == 0)
             _rng_state = 0x9e3779b97f4a7c15ULL;
@@ -230,181 +232,186 @@ private:
     std::vector<double> _samples;
 };
 
-inline int bench_io_threads()
+inline int bench_io_threads ()
 {
-    return parse_positive_env("PERF_IO_THREADS", 1);
+    return parse_positive_env ("PERF_IO_THREADS", 1);
 }
 
-inline int bench_max_sockets()
+inline int bench_max_sockets ()
 {
-    const int explicit_max = parse_positive_env("PERF_MAX_SOCKETS", 0);
+    const int explicit_max = parse_positive_env ("PERF_MAX_SOCKETS", 0);
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
+    const int clients = parse_positive_env ("PERF_MULTI_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
-    const long required = static_cast<long>(clients) + 4096L;
+    const long required = static_cast<long> (clients) + 4096L;
     if (required > INT_MAX)
         return INT_MAX;
-    return static_cast<int>(required);
+    return static_cast<int> (required);
 }
 
-inline void apply_ctx_options(void *ctx_)
+inline void apply_ctx_options (void *ctx_)
 {
-    const bool debug = std::getenv("PERF_DEBUG") != NULL;
-    const int io_threads = bench_io_threads();
+    const bool debug = std::getenv ("PERF_DEBUG") != NULL;
+    const int io_threads = bench_io_threads ();
     if (io_threads > 0) {
-        const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, io_threads);
+        const int rc = zlink_ctx_set (ctx_, ZLINK_IO_THREADS, io_threads);
         if (rc != 0 && debug) {
             std::cerr << "zlink_ctx_set(ZLINK_IO_THREADS) failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
+                      << zlink_strerror (zlink_errno ()) << std::endl;
         }
     }
 
-    const int max_sockets = bench_max_sockets();
+    const int max_sockets = bench_max_sockets ();
     if (max_sockets > 0) {
-        const int rc = zlink_ctx_set(ctx_, ZLINK_MAX_SOCKETS, max_sockets);
+        const int rc = zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, max_sockets);
         if (rc != 0 && debug) {
             std::cerr << "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
+                      << zlink_strerror (zlink_errno ()) << std::endl;
         }
     }
 }
 
-class ctx_guard_t {
-public:
-    ctx_guard_t() : _ctx(zlink_ctx_new()) {
+class ctx_guard_t
+{
+  public:
+    ctx_guard_t () : _ctx (zlink_ctx_new ())
+    {
         if (_ctx)
-            apply_ctx_options(_ctx);
+            apply_ctx_options (_ctx);
     }
-    ~ctx_guard_t() {
+    ~ctx_guard_t ()
+    {
         if (_ctx) {
-            zlink_ctx_shutdown(_ctx);
-            zlink_ctx_term(_ctx);
+            zlink_ctx_shutdown (_ctx);
+            zlink_ctx_term (_ctx);
         }
     }
 
-    void *get() const { return _ctx; }
-    bool valid() const { return _ctx != NULL; }
+    void *get () const { return _ctx; }
+    bool valid () const { return _ctx != NULL; }
 
-private:
-    ctx_guard_t(const ctx_guard_t &);
-    ctx_guard_t &operator=(const ctx_guard_t &);
+  private:
+    ctx_guard_t (const ctx_guard_t &);
+    ctx_guard_t &operator= (const ctx_guard_t &);
 
     void *_ctx;
 };
 
-class socket_guard_t {
-public:
-    socket_guard_t() : _socket(NULL) {}
-    socket_guard_t(void *ctx_, int type_) :
-        _socket(zlink_socket(ctx_, static_cast<zlink_socket_type_t>(type_))) {}
-    ~socket_guard_t() {
+class socket_guard_t
+{
+  public:
+    socket_guard_t () : _socket (NULL) {}
+    socket_guard_t (void *ctx_, int type_) :
+        _socket (zlink_socket (ctx_, static_cast<zlink_socket_type_t> (type_)))
+    {
+    }
+    ~socket_guard_t ()
+    {
         if (_socket)
-            zlink_close(_socket);
+            zlink_close (_socket);
     }
 
-    void *get() const { return _socket; }
-    bool valid() const { return _socket != NULL; }
-    operator void *() const { return _socket; }
+    void *get () const { return _socket; }
+    bool valid () const { return _socket != NULL; }
+    operator void * () const { return _socket; }
 
-private:
-    socket_guard_t(const socket_guard_t &);
-    socket_guard_t &operator=(const socket_guard_t &);
+  private:
+    socket_guard_t (const socket_guard_t &);
+    socket_guard_t &operator= (const socket_guard_t &);
 
     void *_socket;
 };
 
-inline void print_result(const std::string& lib_type,
-                         const std::string& pattern,
-                         const std::string& transport,
-                         size_t size,
-                         double throughput,
-                         double latency,
-                         double latency_p95,
-                         double latency_p99) {
-    const double bandwidth_mb_s =
-      (throughput * static_cast<double>(size)) / 1000000.0;
+inline void print_result (const std::string &lib_type,
+                          const std::string &pattern,
+                          const std::string &transport,
+                          size_t size,
+                          double throughput,
+                          double latency,
+                          double latency_p95,
+                          double latency_p99)
+{
+    const double bandwidth_mb_s = (throughput * static_cast<double> (size)) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
+              << ",throughput," << std::fixed << std::setprecision (2) << throughput << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
+              << ",bandwidth," << std::fixed << std::setprecision (2) << bandwidth_mb_s
+              << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+              << ",latency," << std::fixed << std::setprecision (2) << latency << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
+              << ",latency_p95," << std::fixed << std::setprecision (2) << latency_p95 << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
-              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
+              << ",latency_p99," << std::fixed << std::setprecision (2) << latency_p99 << std::endl;
 }
 
-inline void print_queue_metrics(const std::string &lib_type,
-                                const std::string &pattern,
-                                const std::string &transport,
-                                size_t size,
-                                const queue_stats_t &queue_stats)
+inline void print_queue_metrics (const std::string &lib_type,
+                                 const std::string &pattern,
+                                 const std::string &transport,
+                                 size_t size,
+                                 const queue_stats_t &queue_stats)
 {
     if (queue_stats.has_snd_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",snd_pending_max,"
-                  << std::fixed << std::setprecision(2)
+        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+                  << ",snd_pending_max," << std::fixed << std::setprecision (2)
                   << queue_stats.snd_pending_max << std::endl;
     }
     if (queue_stats.has_rcv_pending) {
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",rcv_pending_max,"
-                  << std::fixed << std::setprecision(2)
+        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+                  << ",rcv_pending_max," << std::fixed << std::setprecision (2)
                   << queue_stats.rcv_pending_max << std::endl;
-        std::cout << "RESULT," << lib_type << "," << pattern << ","
-                  << transport << "," << size << ",rcv_pending_end,"
-                  << std::fixed << std::setprecision(2)
+        std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+                  << ",rcv_pending_end," << std::fixed << std::setprecision (2)
                   << queue_stats.rcv_pending_end << std::endl;
     }
 }
 
-inline void print_result(const std::string& lib_type,
-                         const std::string& pattern,
-                         const std::string& transport,
-                         size_t size,
-                         double throughput,
-                         double latency,
-                         double latency_p95,
-                         double latency_p99,
-                         const queue_stats_t &queue_stats) {
-    print_result(
-      lib_type, pattern, transport, size, throughput, latency, latency_p95,
-      latency_p99);
-    print_queue_metrics(lib_type, pattern, transport, size, queue_stats);
+inline void print_result (const std::string &lib_type,
+                          const std::string &pattern,
+                          const std::string &transport,
+                          size_t size,
+                          double throughput,
+                          double latency,
+                          double latency_p95,
+                          double latency_p99,
+                          const queue_stats_t &queue_stats)
+{
+    print_result (lib_type, pattern, transport, size, throughput, latency, latency_p95,
+                  latency_p99);
+    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
-inline void print_result(const std::string& lib_type,
-                         const std::string& pattern,
-                         const std::string& transport,
-                         size_t size,
-                         double throughput,
-                         double latency) {
-    print_result(
-      lib_type, pattern, transport, size, throughput, latency, latency, latency);
+inline void print_result (const std::string &lib_type,
+                          const std::string &pattern,
+                          const std::string &transport,
+                          size_t size,
+                          double throughput,
+                          double latency)
+{
+    print_result (lib_type, pattern, transport, size, throughput, latency, latency, latency);
 }
 
-inline bool bench_debug_enabled() {
-    static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
+inline bool bench_debug_enabled ()
+{
+    static const bool enabled = std::getenv ("PERF_DEBUG") != nullptr;
     return enabled;
 }
 
-inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
-                            const char *name_) {
-    const int rc =
-      zlink_set_option(socket_, option_, &value_, sizeof(value_));
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "setsockopt(" << name_ << ") failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+inline bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
-    if (bench_debug_enabled()) {
+    if (bench_debug_enabled ()) {
         int out = 0;
-        size_t out_size = sizeof(out);
-        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
+        size_t out_size = sizeof (out);
+        const int grc = zlink_get_option (socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -412,74 +419,63 @@ inline bool set_sockopt_int(void *socket_, zlink_option_t option_, int value_,
     return rc == 0;
 }
 
-inline bool set_pub_opt_int (void *socket_,
-                             zlink_pub_option_t option_,
-                             int value_,
-                             const char *name_)
+inline bool
+set_pub_opt_int (void *socket_, zlink_pub_option_t option_, int value_, const char *name_)
 {
-    const int rc =
-      zlink_set_pub_option (socket_, option_, &value_, sizeof (value_));
+    const int rc = zlink_set_pub_option (socket_, option_, &value_, sizeof (value_));
     if (rc != 0 && bench_debug_enabled ()) {
-        std::cerr << "set_pub_option(" << name_ << ") failed: "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
+        std::cerr << "set_pub_option(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
     return rc == 0;
 }
 
-inline int resolve_single_send_timeout_ms()
+inline int resolve_single_send_timeout_ms ()
 {
-    return parse_positive_env("PERF_SINGLE_SNDTIMEO_MS", 200);
+    return parse_positive_env ("PERF_SINGLE_SNDTIMEO_MS", 200);
 }
 
-inline int resolve_single_recv_timeout_ms()
+inline int resolve_single_recv_timeout_ms ()
 {
-    return parse_positive_env_or_default("PERF_SINGLE_RCVTIMEO_MS", 200);
+    return parse_positive_env_or_default ("PERF_SINGLE_RCVTIMEO_MS", 200);
 }
 
-inline bool use_raw_msg_api_bench()
+inline bool use_raw_msg_api_bench ()
 {
     return false;
 }
 
-inline int bench_msg_init_copy(zlink_msg_t *msg_,
-                               const void *data_,
-                               size_t size_)
+inline int bench_msg_init_copy (zlink_msg_t *msg_, const void *data_, size_t size_)
 {
     if (!msg_) {
         errno = EFAULT;
         return -1;
     }
 
-    if (::zlink_msg_init_size(msg_, size_) != 0)
+    if (::zlink_msg_init_size (msg_, size_) != 0)
         return -1;
 
     if (size_ > 0 && data_)
-        std::memcpy(::zlink_msg_data(msg_), data_, size_);
+        std::memcpy (::zlink_msg_data (msg_), data_, size_);
     return 0;
 }
 
-inline int bench_send_single_part (void *socket_,
-                                   zlink_msg_t *msg_,
-                                   zlink_send_flags_t flags_)
+inline int bench_send_single_part (void *socket_, zlink_msg_t *msg_, zlink_send_flags_t flags_)
 {
     return ::zlink_std_compat_send (socket_, msg_, 1, flags_) == ZLINK_SUBMIT_OK ? 0 : -1;
 }
 
-inline int bench_send_single_part_routed (
-  void *socket_,
-  const zlink_routing_id_t *target_rid_,
-  zlink_msg_t *msg_,
-  zlink_send_flags_t flags_)
+inline int bench_send_single_part_routed (void *socket_,
+                                          const zlink_routing_id_t *target_rid_,
+                                          zlink_msg_t *msg_,
+                                          zlink_send_flags_t flags_)
 {
-    return ::zlink_std_compat_send_rid (socket_, target_rid_, msg_, 1, flags_)
-             == ZLINK_SUBMIT_OK
+    return ::zlink_std_compat_send_rid (socket_, target_rid_, msg_, 1, flags_) == ZLINK_SUBMIT_OK
              ? 0
              : -1;
 }
 
-inline int bench_recv_single_part (void *socket_,
-                                   zlink_msg_t *msg_,
-                                   int flags_)
+inline int bench_recv_single_part (void *socket_, zlink_msg_t *msg_, int flags_)
 {
     if (!socket_ || !msg_) {
         errno = EFAULT;
@@ -488,9 +484,8 @@ inline int bench_recv_single_part (void *socket_,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc = ::zlink_std_compat_recv (
-      socket_, NULL, &parts, &part_count,
-      static_cast<zlink_recv_flags_t> (flags_));
+    const int rc = ::zlink_std_compat_recv (socket_, NULL, &parts, &part_count,
+                                            static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return -1;
 
@@ -520,9 +515,8 @@ inline int bench_recv_single_part_routed (void *socket_,
 
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const int rc =
-      ::zlink_std_compat_recv (socket_, source_rid_out_, &parts, &part_count,
-                    static_cast<zlink_recv_flags_t> (flags_));
+    const int rc = ::zlink_std_compat_recv (socket_, source_rid_out_, &parts, &part_count,
+                                            static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0)
         return -1;
 
@@ -540,94 +534,95 @@ inline int bench_recv_single_part_routed (void *socket_,
     return move_rc;
 }
 
-inline int resolve_single_pubsub_recv_timeout_ms()
+inline int resolve_single_pubsub_recv_timeout_ms ()
 {
-    return resolve_single_recv_timeout_ms();
+    return resolve_single_recv_timeout_ms ();
 }
 
-inline int resolve_single_socket_hwm(bool send_)
+inline int resolve_single_socket_hwm (bool send_)
 {
-    const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);
-    return send_ ? parse_positive_env("PERF_SINGLE_SNDHWM", base_hwm)
-                 : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
+    const int base_hwm = parse_positive_env ("PERF_SINGLE_HWM", 1000);
+    return send_ ? parse_positive_env ("PERF_SINGLE_SNDHWM", base_hwm)
+                 : parse_positive_env ("PERF_SINGLE_RCVHWM", base_hwm);
 }
 
-inline int resolve_single_queue_sample_ms()
+inline int resolve_single_queue_sample_ms ()
 {
-    return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
+    return parse_positive_env ("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
 }
 
-class queue_probe_t {
-public:
-    queue_probe_t(void *send_socket_, void *recv_socket_) :
-        _send_socket(send_socket_),
-        _recv_socket(recv_socket_),
-        _sample_interval_ns(resolve_sample_interval_ns()),
-        _send_last_sample_ns(0),
-        _recv_last_sample_ns(0),
-        _snd_pending_max(0),
-        _rcv_pending_max(0),
-        _rcv_pending_end(0),
-        _snd_seen(false),
-        _rcv_seen(false)
-    {}
+class queue_probe_t
+{
+  public:
+    queue_probe_t (void *send_socket_, void *recv_socket_) :
+        _send_socket (send_socket_),
+        _recv_socket (recv_socket_),
+        _sample_interval_ns (resolve_sample_interval_ns ()),
+        _send_last_sample_ns (0),
+        _recv_last_sample_ns (0),
+        _snd_pending_max (0),
+        _rcv_pending_max (0),
+        _rcv_pending_end (0),
+        _snd_seen (false),
+        _rcv_seen (false)
+    {
+    }
 
-    void sample_send_if_due() { maybe_sample_send(false); }
-    void sample_recv_if_due() { maybe_sample_recv(false); }
-    void force_sample_send() { maybe_sample_send(true); }
-    void force_sample_recv() { maybe_sample_recv(true); }
+    void sample_send_if_due () { maybe_sample_send (false); }
+    void sample_recv_if_due () { maybe_sample_recv (false); }
+    void force_sample_send () { maybe_sample_send (true); }
+    void force_sample_recv () { maybe_sample_recv (true); }
 
-    queue_stats_t snapshot() const
+    queue_stats_t snapshot () const
     {
         queue_stats_t out;
         if (_snd_seen) {
             out.has_snd_pending = true;
-            out.snd_pending_max = static_cast<double>(_snd_pending_max);
+            out.snd_pending_max = static_cast<double> (_snd_pending_max);
         }
         if (_rcv_seen) {
             out.has_rcv_pending = true;
-            out.rcv_pending_max = static_cast<double>(_rcv_pending_max);
-            out.rcv_pending_end = static_cast<double>(_rcv_pending_end);
+            out.rcv_pending_max = static_cast<double> (_rcv_pending_max);
+            out.rcv_pending_end = static_cast<double> (_rcv_pending_end);
         }
         return out;
     }
 
-private:
-    static unsigned long long resolve_sample_interval_ns()
+  private:
+    static unsigned long long resolve_sample_interval_ns ()
     {
-        const int sample_ms = resolve_single_queue_sample_ms();
+        const int sample_ms = resolve_single_queue_sample_ms ();
         const unsigned long long clamped_ms =
-          static_cast<unsigned long long>(sample_ms > 0 ? sample_ms : 100);
+          static_cast<unsigned long long> (sample_ms > 0 ? sample_ms : 100);
         return clamped_ms * 1000000ULL;
     }
 
-    static unsigned long long now_ns()
+    static unsigned long long now_ns ()
     {
-        return static_cast<unsigned long long>(
-          std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now().time_since_epoch())
-            .count());
+        return static_cast<unsigned long long> (
+          std::chrono::duration_cast<std::chrono::nanoseconds> (
+            std::chrono::steady_clock::now ().time_since_epoch ())
+            .count ());
     }
 
-    static unsigned long long peer_activity_score(
-      const zlink_peer_info_t &info_)
+    static unsigned long long peer_activity_score (const zlink_peer_info_t &info_)
     {
-        return static_cast<unsigned long long>(info_.msgs_sent)
-               + static_cast<unsigned long long>(info_.msgs_received);
+        return static_cast<unsigned long long> (info_.msgs_sent)
+               + static_cast<unsigned long long> (info_.msgs_received);
     }
 
-    static bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
+    static bool read_first_peer_info (void *socket_, zlink_peer_info_t *info_)
     {
         if (!socket_ || !info_)
             return false;
 
         size_t peer_count = 0;
-        if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
+        if (zlink_socket_peers (socket_, NULL, &peer_count) != 0 || peer_count == 0)
             return false;
 
-        std::vector<zlink_peer_info_t> peers(peer_count);
+        std::vector<zlink_peer_info_t> peers (peer_count);
         size_t to_copy = peer_count;
-        if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        if (zlink_socket_peers (socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
             return false;
 
         size_t best = 0;
@@ -639,7 +634,7 @@ private:
                 continue;
             }
             if (cand.connected_time == cur.connected_time
-                && peer_activity_score(cand) > peer_activity_score(cur)) {
+                && peer_activity_score (cand) > peer_activity_score (cur)) {
                 best = i;
             }
         }
@@ -648,12 +643,12 @@ private:
         return true;
     }
 
-    void maybe_sample_send(bool force_)
+    void maybe_sample_send (bool force_)
     {
         if (!_send_socket)
             return;
 
-        const unsigned long long now = now_ns();
+        const unsigned long long now = now_ns ();
         if (!force_ && _send_last_sample_ns > 0
             && now - _send_last_sample_ns < _sample_interval_ns) {
             return;
@@ -661,22 +656,21 @@ private:
         _send_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_send_socket, &info))
+        if (!read_first_peer_info (_send_socket, &info))
             return;
 
-        const unsigned long long pending =
-          static_cast<unsigned long long>(info.snd_pending_msgs);
+        const unsigned long long pending = static_cast<unsigned long long> (info.snd_pending_msgs);
         if (!_snd_seen || pending > _snd_pending_max)
             _snd_pending_max = pending;
         _snd_seen = true;
     }
 
-    void maybe_sample_recv(bool force_)
+    void maybe_sample_recv (bool force_)
     {
         if (!_recv_socket)
             return;
 
-        const unsigned long long now = now_ns();
+        const unsigned long long now = now_ns ();
         if (!force_ && _recv_last_sample_ns > 0
             && now - _recv_last_sample_ns < _sample_interval_ns) {
             return;
@@ -684,11 +678,10 @@ private:
         _recv_last_sample_ns = now;
 
         zlink_peer_info_t info;
-        if (!read_first_peer_info(_recv_socket, &info))
+        if (!read_first_peer_info (_recv_socket, &info))
             return;
 
-        const unsigned long long pending =
-          static_cast<unsigned long long>(info.rcv_pending_msgs);
+        const unsigned long long pending = static_cast<unsigned long long> (info.rcv_pending_msgs);
         if (!_rcv_seen || pending > _rcv_pending_max)
             _rcv_pending_max = pending;
         _rcv_pending_end = pending;
@@ -706,83 +699,81 @@ private:
     bool _snd_seen;
     bool _rcv_seen;
 
-    queue_probe_t(const queue_probe_t &);
-    queue_probe_t &operator=(const queue_probe_t &);
+    queue_probe_t (const queue_probe_t &);
+    queue_probe_t &operator= (const queue_probe_t &);
 };
 
-inline queue_stats_t sample_queue_stats(queue_probe_t *queue_probe_)
+inline queue_stats_t sample_queue_stats (queue_probe_t *queue_probe_)
 {
     if (!queue_probe_)
-        return queue_stats_t();
-    queue_probe_->force_sample_send();
-    queue_probe_->force_sample_recv();
-    return queue_probe_->snapshot();
+        return queue_stats_t ();
+    queue_probe_->force_sample_send ();
+    queue_probe_->force_sample_recv ();
+    return queue_probe_->snapshot ();
 }
 
-inline void print_fail_result(const std::string &lib_type,
-                              const std::string &pattern,
-                              const std::string &transport,
-                              size_t size,
-                              queue_probe_t *queue_probe_ = NULL)
+inline void print_fail_result (const std::string &lib_type,
+                               const std::string &pattern,
+                               const std::string &transport,
+                               size_t size,
+                               queue_probe_t *queue_probe_ = NULL)
 {
     if (!queue_probe_)
         return;
-    const queue_stats_t queue_stats = sample_queue_stats(queue_probe_);
-    print_queue_metrics(lib_type, pattern, transport, size, queue_stats);
+    const queue_stats_t queue_stats = sample_queue_stats (queue_probe_);
+    print_queue_metrics (lib_type, pattern, transport, size, queue_stats);
 }
 
-inline void apply_single_hwm(void *socket_)
+inline void apply_single_hwm (void *socket_)
 {
     if (!socket_)
         return;
 
-    const int sndhwm = resolve_single_socket_hwm(true);
-    const int rcvhwm = resolve_single_socket_hwm(false);
-    set_sockopt_int(socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
+    const int sndhwm = resolve_single_socket_hwm (true);
+    const int rcvhwm = resolve_single_socket_hwm (false);
+    set_sockopt_int (socket_, ZLINK_OPT_SNDHWM, sndhwm, "ZLINK_OPT_SNDHWM");
+    set_sockopt_int (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
 }
 
-inline void apply_single_send_timeout(void *socket_,
-                                      const std::string &transport_)
+inline void apply_single_send_timeout (void *socket_, const std::string &transport_)
 {
     if (!socket_)
         return;
     if (transport_ == "pgm" || transport_ == "epgm")
         return;
 
-    const int timeout_ms = resolve_single_send_timeout_ms();
-    set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
-                    "ZLINK_OPT_SNDTIMEO");
+    const int timeout_ms = resolve_single_send_timeout_ms ();
+    set_sockopt_int (socket_, ZLINK_OPT_SNDTIMEO, timeout_ms, "ZLINK_OPT_SNDTIMEO");
 }
 
-inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
-    if (!bench_debug_enabled())
+inline void apply_debug_timeouts (void *socket_, const std::string &transport)
+{
+    if (!bench_debug_enabled ())
         return;
     if (transport == "tcp" || transport == "ws") {
         const int timeout_ms = 2000;
-        set_sockopt_int(socket_, ZLINK_OPT_SNDTIMEO, timeout_ms,
-                        "ZLINK_OPT_SNDTIMEO");
-        set_sockopt_int(socket_, ZLINK_OPT_RCVTIMEO, timeout_ms,
-                        "ZLINK_OPT_RCVTIMEO");
+        set_sockopt_int (socket_, ZLINK_OPT_SNDTIMEO, timeout_ms, "ZLINK_OPT_SNDTIMEO");
+        set_sockopt_int (socket_, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
     }
 }
 
-inline std::string make_endpoint(const std::string& transport, const std::string& id) {
+inline std::string make_endpoint (const std::string &transport, const std::string &id)
+{
     if (transport == "pgm" || transport == "epgm") {
         if (transport == "pgm") {
-            if (const char *env = std::getenv("PERF_PGM_ENDPOINT")) {
+            if (const char *env = std::getenv ("PERF_PGM_ENDPOINT")) {
                 if (*env)
-                    return std::string(env);
+                    return std::string (env);
             }
         } else {
-            if (const char *env = std::getenv("PERF_EPGM_ENDPOINT")) {
+            if (const char *env = std::getenv ("PERF_EPGM_ENDPOINT")) {
                 if (*env)
-                    return std::string(env);
+                    return std::string (env);
             }
         }
 #if !defined(_WIN32)
         struct ifaddrs *ifaddr = nullptr;
-        if (getifaddrs(&ifaddr) == 0) {
+        if (getifaddrs (&ifaddr) == 0) {
             for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
                 if (!ifa->ifa_addr)
                     continue;
@@ -796,49 +787,59 @@ inline std::string make_endpoint(const std::string& transport, const std::string
                     continue;
                 char addr[INET_ADDRSTRLEN];
                 const struct sockaddr_in *sa =
-                  reinterpret_cast<const struct sockaddr_in *>(ifa->ifa_addr);
-                if (inet_ntop(AF_INET, &sa->sin_addr, addr, sizeof(addr))) {
-                    std::string endpoint =
-                      transport + "://" + addr + ";239.192.1.1:5555";
-                    freeifaddrs(ifaddr);
+                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
+                if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
+                    std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
+                    freeifaddrs (ifaddr);
                     return endpoint;
                 }
             }
-            freeifaddrs(ifaddr);
+            freeifaddrs (ifaddr);
         }
 #endif
-        return std::string();
+        return std::string ();
     }
-    if (transport == "inproc") return "inproc://" + id;
-    if (transport == "ipc") return "ipc://*";
-    if (transport == "ws") return "ws://127.0.0.1:*";
-    if (transport == "wss") return "wss://127.0.0.1:*";
-    if (transport == "tls") return "tls://127.0.0.1:*";
+    if (transport == "inproc")
+        return "inproc://" + id;
+    if (transport == "ipc")
+        return "ipc://*";
+    if (transport == "ws")
+        return "ws://127.0.0.1:*";
+    if (transport == "wss")
+        return "wss://127.0.0.1:*";
+    if (transport == "tls")
+        return "tls://127.0.0.1:*";
     return "tcp://127.0.0.1:*";
 }
 
-inline std::string make_fixed_endpoint(const std::string& transport, int port) {
+inline std::string make_fixed_endpoint (const std::string &transport, int port)
+{
     const std::string host = "127.0.0.1";
-    const std::string port_str = std::to_string(port);
-    if (transport == "ws") return "ws://" + host + ":" + port_str;
-    if (transport == "wss") return "wss://" + host + ":" + port_str;
-    if (transport == "tls") return "tls://" + host + ":" + port_str;
+    const std::string port_str = std::to_string (port);
+    if (transport == "ws")
+        return "ws://" + host + ":" + port_str;
+    if (transport == "wss")
+        return "wss://" + host + ":" + port_str;
+    if (transport == "tls")
+        return "tls://" + host + ":" + port_str;
     return "tcp://" + host + ":" + port_str;
 }
 
-inline void *resolve_symbol(const char *name) {
+inline void *resolve_symbol (const char *name)
+{
 #if defined(_WIN32)
-    HMODULE module = GetModuleHandleA(NULL);
+    HMODULE module = GetModuleHandleA (NULL);
     if (!module)
         return NULL;
-    return reinterpret_cast<void *>(GetProcAddress(module, name));
+    return reinterpret_cast<void *> (GetProcAddress (module, name));
 #else
-    return dlsym(RTLD_DEFAULT, name);
+    return dlsym (RTLD_DEFAULT, name);
 #endif
 }
 
 // --- Embedded Test Certificates for TLS ---
-namespace test_certs {
+namespace test_certs
+{
 
 static const char *ca_cert_pem =
   "-----BEGIN CERTIFICATE-----\n"
@@ -918,161 +919,167 @@ static const char *server_key_pem =
   "Dhpkrp6xWJWSNvXS0XcWGfM=\n"
   "-----END PRIVATE KEY-----\n";
 
-}  // namespace test_certs
+} // namespace test_certs
 
 // Write certificate to temp file and return path
-inline std::string write_temp_cert(const char* content, const std::string& suffix) {
+inline std::string write_temp_cert (const char *content, const std::string &suffix)
+{
     std::string path = "/tmp/bench_" + suffix + ".pem";
-    std::ofstream ofs(path);
+    std::ofstream ofs (path);
     if (ofs) {
         ofs << content;
-        ofs.close();
+        ofs.close ();
     }
     return path;
 }
 
 // Setup TLS options for server socket
-inline bool setup_tls_server(void* socket, const std::string& transport) {
-    if (transport != "tls" && transport != "wss") return true;
+inline bool setup_tls_server (void *socket, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
 
-    static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
-    static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
+    static std::string cert_path = write_temp_cert (test_certs::server_cert_pem, "server_cert");
+    static std::string key_path = write_temp_cert (test_certs::server_key_pem, "server_key");
 
-    if (zlink_set_tls_server(
-          socket, cert_path.c_str(), key_path.c_str(), 0)
-        != 0) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set TLS server options: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
+    if (zlink_set_tls_server (socket, cert_path.c_str (), key_path.c_str (), 0) != 0) {
+        if (bench_debug_enabled ())
+            std::cerr << "Failed to set TLS server options: " << zlink_strerror (zlink_errno ())
+                      << std::endl;
         return false;
     }
     return true;
 }
 
 // Setup TLS options for client socket
-inline bool setup_tls_client(void* socket, const std::string& transport) {
-    if (transport != "tls" && transport != "wss") return true;
+inline bool setup_tls_client (void *socket, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
 
-    static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
-    static const char* hostname = "localhost";
+    static std::string ca_path = write_temp_cert (test_certs::ca_cert_pem, "ca_cert");
+    static const char *hostname = "localhost";
 
-    if (!zlink_set_tls_client(socket, ca_path.c_str(), hostname, 0)) {
-        if (bench_debug_enabled())
-            std::cerr << "Failed to set TLS client options: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
+    if (!zlink_set_tls_client (socket, ca_path.c_str (), hostname, 0)) {
+        if (bench_debug_enabled ())
+            std::cerr << "Failed to set TLS client options: " << zlink_strerror (zlink_errno ())
+                      << std::endl;
         return false;
     }
     return true;
 }
 
-inline std::string bind_and_resolve_endpoint(void *socket_,
-                                             const std::string& transport,
-                                             const std::string& id) {
-    std::string endpoint = make_endpoint(transport, id);
-    if (endpoint.empty()) {
+inline std::string
+bind_and_resolve_endpoint (void *socket_, const std::string &transport, const std::string &id)
+{
+    std::string endpoint = make_endpoint (transport, id);
+    if (endpoint.empty ()) {
         std::cerr << "No endpoint available for transport " << transport << std::endl;
-        return std::string();
+        return std::string ();
     }
-    if (zlink_bind(socket_, endpoint.c_str()) != ZLINK_BIND_OK) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-        return std::string();
+    if (zlink_bind (socket_, endpoint.c_str ()) != ZLINK_BIND_OK) {
+        std::cerr << "bind failed for " << endpoint << ": " << zlink_strerror (zlink_errno ())
+                  << std::endl;
+        return std::string ();
     }
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof(last_endpoint);
-        if (!zlink_get_option(socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                              &size)) {
+        size_t size = sizeof (last_endpoint);
+        if (!zlink_get_option (socket_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint, &size)) {
             std::cerr << "getsockopt(ZLINK_SOCKOPT_LAST_ENDPOINT) failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
-            return std::string();
+                      << zlink_strerror (zlink_errno ()) << std::endl;
+            return std::string ();
         }
-        endpoint.assign(last_endpoint);
+        endpoint.assign (last_endpoint);
         if (transport == "tcp" || transport == "ws") {
             const std::string tcp_any = "://0.0.0.0:";
             const std::string tcp_ipv6_any = "://[::]:";
-            size_t pos = endpoint.find(tcp_any);
+            size_t pos = endpoint.find (tcp_any);
             if (pos != std::string::npos) {
-                endpoint.replace(pos, tcp_any.size(), "://127.0.0.1:");
+                endpoint.replace (pos, tcp_any.size (), "://127.0.0.1:");
             } else {
-                pos = endpoint.find(tcp_ipv6_any);
+                pos = endpoint.find (tcp_ipv6_any);
                 if (pos != std::string::npos) {
-                    endpoint.replace(pos, tcp_ipv6_any.size(), "://127.0.0.1:");
+                    endpoint.replace (pos, tcp_ipv6_any.size (), "://127.0.0.1:");
                 }
             }
         }
-        if (bench_debug_enabled()) {
+        if (bench_debug_enabled ()) {
             std::cerr << "Resolved endpoint (" << transport << "): " << endpoint << std::endl;
         }
     }
     return endpoint;
 }
 
-inline bool transport_available(const std::string& transport) {
+inline bool transport_available (const std::string &transport)
+{
     if (transport == "tcp" || transport == "ipc" || transport == "inproc")
         return true;
     return false;
 }
 
-inline void settle() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+inline void settle ()
+{
+    std::this_thread::sleep_for (std::chrono::milliseconds (SETTLE_TIME_MS));
 }
 
-inline bool connect_checked(void *socket_, const std::string& endpoint) {
-    if (zlink_connect(socket_, endpoint.c_str()) != ZLINK_CONNECT_OK) {
-        std::cerr << "connect failed for " << endpoint << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+inline bool connect_checked (void *socket_, const std::string &endpoint)
+{
+    if (zlink_connect (socket_, endpoint.c_str ()) != ZLINK_CONNECT_OK) {
+        std::cerr << "connect failed for " << endpoint << ": " << zlink_strerror (zlink_errno ())
+                  << std::endl;
         return false;
     }
-    if (bench_debug_enabled()) {
+    if (bench_debug_enabled ()) {
         std::cerr << "Connected to " << endpoint << std::endl;
     }
     return true;
 }
 
-inline bool setup_connected_pair(void *bind_socket_,
-                                 void *connect_socket_,
-                                 const std::string &transport_,
-                                 const std::string &id_) {
-    if (!setup_tls_server(bind_socket_, transport_)
-        || !setup_tls_client(connect_socket_, transport_))
+inline bool setup_connected_pair (void *bind_socket_,
+                                  void *connect_socket_,
+                                  const std::string &transport_,
+                                  const std::string &id_)
+{
+    if (!setup_tls_server (bind_socket_, transport_)
+        || !setup_tls_client (connect_socket_, transport_))
         return false;
 
-    apply_single_hwm(bind_socket_);
-    apply_single_hwm(connect_socket_);
+    apply_single_hwm (bind_socket_);
+    apply_single_hwm (connect_socket_);
 
-    std::string endpoint =
-      bind_and_resolve_endpoint(bind_socket_, transport_, id_);
-    if (endpoint.empty())
+    std::string endpoint = bind_and_resolve_endpoint (bind_socket_, transport_, id_);
+    if (endpoint.empty ())
         return false;
-    if (!connect_checked(connect_socket_, endpoint))
+    if (!connect_checked (connect_socket_, endpoint))
         return false;
 
-    apply_single_send_timeout(bind_socket_, transport_);
-    apply_single_send_timeout(connect_socket_, transport_);
+    apply_single_send_timeout (bind_socket_, transport_);
+    apply_single_send_timeout (connect_socket_, transport_);
 
-    settle();
+    settle ();
     return true;
 }
 
-inline int resolve_bench_count(const char *env_name, int default_value) {
-    if (const char *env = std::getenv(env_name)) {
+inline int resolve_bench_count (const char *env_name, int default_value)
+{
+    if (const char *env = std::getenv (env_name)) {
         errno = 0;
-        const long override = std::strtol(env, NULL, 10);
+        const long override = std::strtol (env, NULL, 10);
         if (errno == 0 && override > 0)
-            return static_cast<int>(override);
+            return static_cast<int> (override);
     }
     return default_value;
 }
 
-template <typename RunFn>
-inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+template <typename RunFn> inline int run_standard_bench_main (int argc_, char **argv_, RunFn run_)
+{
     if (argc_ < 4)
         return 1;
     std::string lib_name = argv_[1];
     std::string transport = argv_[2];
-    size_t size = std::stoul(argv_[3]);
-    run_(transport, size, lib_name);
+    size_t size = std::stoul (argv_[3]);
+    run_ (transport, size, lib_name);
     return 0;
 }
 

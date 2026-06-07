@@ -64,15 +64,13 @@ static void recv_bounce_msg (void *socket_)
     zlink_msg_init (&msg);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink::recv_msg_internal (socket_, &msg, 0));
-    TEST_ASSERT_EQUAL_STRING (bounce_content,
-                              static_cast<const char *> (zlink_msg_data (&msg)));
+    TEST_ASSERT_EQUAL_STRING (bounce_content, static_cast<const char *> (zlink_msg_data (&msg)));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
     zlink_msg_close (&msg);
 
     zlink_msg_init (&msg);
     TEST_ASSERT_SUCCESS_ERRNO (zlink::recv_msg_internal (socket_, &msg, 0));
-    TEST_ASSERT_EQUAL_STRING (bounce_content,
-                              static_cast<const char *> (zlink_msg_data (&msg)));
+    TEST_ASSERT_EQUAL_STRING (bounce_content, static_cast<const char *> (zlink_msg_data (&msg)));
     TEST_ASSERT_FALSE (test_msg_has_more (&msg));
     zlink_msg_close (&msg);
 }
@@ -107,8 +105,7 @@ static void send_bounce_msg_may_fail (void *socket_)
 static void recv_bounce_msg_fail (void *socket_)
 {
     int timeout = 250;
-    TEST_ASSERT_TRUE (
-      zlink::wait_socket_events_internal (socket_, 1, timeout) <= 0);
+    TEST_ASSERT_TRUE (zlink::wait_socket_events_internal (socket_, 1, timeout) <= 0);
 }
 
 void expect_bounce_fail (void *server_, void *client_)
@@ -151,11 +148,10 @@ void s_send_seq (void *socket_, ...)
 
         if (!prev) {
             TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_send (socket_, static_cast<const void *> (NULL), 0,
-                          end ? 0 : ZLINK_SNDMORE));
+              zlink_send (socket_, static_cast<const void *> (NULL), 0, end ? 0 : ZLINK_SNDMORE));
         } else {
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
-              socket_, prev, strlen (prev) + 1, end ? 0 : ZLINK_SNDMORE));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_send (socket_, prev, strlen (prev) + 1, end ? 0 : ZLINK_SNDMORE));
         }
         if (end)
             break;
@@ -199,8 +195,7 @@ void s_recv_seq (void *socket_, ...)
 void close_zero_linger (void *socket_)
 {
     int linger = 0;
-    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger,
-                               sizeof (linger));
+    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger, sizeof (linger));
     TEST_ASSERT_TRUE (rc == 0 || errno == ETERM);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
 }
@@ -261,10 +256,8 @@ int is_ipv6_available ()
         ipv6 = 0;
     else {
 #ifdef ZLINK_HAVE_WINDOWS
-        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &ipv6,
-                    sizeof (int));
-        rc = setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char *) &ipv6,
-                         sizeof (int));
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &ipv6, sizeof (int));
+        rc = setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char *) &ipv6, sizeof (int));
         if (rc == SOCKET_ERROR)
             ipv6 = 0;
         else {
@@ -278,8 +271,7 @@ int is_ipv6_available ()
         if (rc != 0)
             ipv6 = 0;
         else {
-            rc = bind (fd, reinterpret_cast<struct sockaddr *> (&test_addr),
-                       sizeof (test_addr));
+            rc = bind (fd, reinterpret_cast<struct sockaddr *> (&test_addr), sizeof (test_addr));
             if (rc != 0)
                 ipv6 = 0;
         }
@@ -301,8 +293,7 @@ int test_inet_pton (int af_, const char *src_, void *dst_)
 
         //  INADDR_NONE is -1 which is also a valid representation for IP
         //  255.255.255.255
-        if (ip4addr->s_addr == INADDR_NONE
-            && strcmp (src_, "255.255.255.255") != 0) {
+        if (ip4addr->s_addr == INADDR_NONE && strcmp (src_, "255.255.255.255") != 0) {
             return 0;
         }
 
@@ -329,13 +320,11 @@ sockaddr_in bind_bsd_socket (int socket_)
     saddr.sin_port = htons (PORT_6);
 #endif
 
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      bind (socket_, (struct sockaddr *) &saddr, sizeof (saddr)));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (bind (socket_, (struct sockaddr *) &saddr, sizeof (saddr)));
 
 #if !defined(_WIN32_WINNT) || (_WIN32_WINNT >= 0x0600)
     socklen_t saddr_len = sizeof (saddr);
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      getsockname (socket_, (struct sockaddr *) &saddr, &saddr_len));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (getsockname (socket_, (struct sockaddr *) &saddr, &saddr_len));
 #endif
 
     return saddr;
@@ -346,8 +335,7 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
     struct sockaddr_storage addr;
     //  OSX is very opinionated and wants the size to match the AF family type
     socklen_t addr_len;
-    const fd_t s_pre = socket (af_, SOCK_STREAM,
-                               protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
+    const fd_t s_pre = socket (af_, SOCK_STREAM, protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
 #ifdef ZLINK_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
@@ -373,8 +361,7 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
         hint.ai_socktype = SOCK_STREAM;
         hint.ai_protocol = IPPROTO_TCP;
 
-        TEST_ASSERT_SUCCESS_RAW_ZERO_ERRNO (
-          getaddrinfo (address, port, &hint, &in));
+        TEST_ASSERT_SUCCESS_RAW_ZERO_ERRNO (getaddrinfo (address, port, &hint, &in));
         TEST_ASSERT_NOT_NULL (in);
         memcpy (&addr, in->ai_addr, in->ai_addrlen);
         addr_len = (socklen_t) in->ai_addrlen;
@@ -390,23 +377,18 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
 #endif
     }
 
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      connect (s_pre, (struct sockaddr *) &addr, addr_len));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (connect (s_pre, (struct sockaddr *) &addr, addr_len));
 
     return s_pre;
 }
 
-fd_t bind_socket_resolve_port (const char *address_,
-                               const char *port_,
-                               char *my_endpoint_,
-                               const int af_,
-                               const int protocol_)
+fd_t bind_socket_resolve_port (
+  const char *address_, const char *port_, char *my_endpoint_, const int af_, const int protocol_)
 {
     struct sockaddr_storage addr;
     //  OSX is very opinionated and wants the size to match the AF family type
     socklen_t addr_len;
-    const fd_t s_pre = socket (af_, SOCK_STREAM,
-                               protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
+    const fd_t s_pre = socket (af_, SOCK_STREAM, protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
 #ifdef ZLINK_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
@@ -430,8 +412,7 @@ fd_t bind_socket_resolve_port (const char *address_,
 
         TEST_ASSERT_SUCCESS_RAW_ERRNO (
           setsockopt (s_pre, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int)));
-        TEST_ASSERT_SUCCESS_RAW_ZERO_ERRNO (
-          getaddrinfo (address_, port_, &hint, &in));
+        TEST_ASSERT_SUCCESS_RAW_ZERO_ERRNO (getaddrinfo (address_, port_, &hint, &in));
         TEST_ASSERT_NOT_NULL (in);
         memcpy (&addr, in->ai_addr, in->ai_addrlen);
         addr_len = (socklen_t) in->ai_addrlen;
@@ -451,22 +432,19 @@ fd_t bind_socket_resolve_port (const char *address_,
 #endif
     }
 
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      bind (s_pre, (struct sockaddr *) &addr, addr_len));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (bind (s_pre, (struct sockaddr *) &addr, addr_len));
     TEST_ASSERT_SUCCESS_RAW_ERRNO (listen (s_pre, SOMAXCONN));
 
     if (af_ == AF_INET || af_ == AF_INET6) {
         addr_len = sizeof (struct sockaddr_storage);
-        TEST_ASSERT_SUCCESS_RAW_ERRNO (
-          getsockname (s_pre, (struct sockaddr *) &addr, &addr_len));
-        snprintf (
-          my_endpoint_, 6 + strlen (address_) + 7 * sizeof (char), "%s://%s:%u",
-          protocol_ == IPPROTO_TCP   ? "tcp"
-          : protocol_ == IPPROTO_WSS ? "wss"
-                                     : "ws",
-          address_,
-          af_ == AF_INET ? ntohs ((*(struct sockaddr_in *) &addr).sin_port)
-                         : ntohs ((*(struct sockaddr_in6 *) &addr).sin6_port));
+        TEST_ASSERT_SUCCESS_RAW_ERRNO (getsockname (s_pre, (struct sockaddr *) &addr, &addr_len));
+        snprintf (my_endpoint_, 6 + strlen (address_) + 7 * sizeof (char), "%s://%s:%u",
+                  protocol_ == IPPROTO_TCP   ? "tcp"
+                  : protocol_ == IPPROTO_WSS ? "wss"
+                                             : "ws",
+                  address_,
+                  af_ == AF_INET ? ntohs ((*(struct sockaddr_in *) &addr).sin_port)
+                                 : ntohs ((*(struct sockaddr_in6 *) &addr).sin6_port));
     }
 
     return s_pre;
@@ -519,8 +497,8 @@ std::string make_test_temp_dir (const char *prefix_)
     const char *tmpdir = getenv ("TMPDIR");
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
-    const int n = snprintf (path, sizeof (path), "%s/%sXXXXXX", tmpdir,
-                            prefix_ ? prefix_ : "zlink");
+    const int n =
+      snprintf (path, sizeof (path), "%s/%sXXXXXX", tmpdir, prefix_ ? prefix_ : "zlink");
     if (n <= 0 || static_cast<size_t> (n) >= sizeof (path))
         strcpy (path, "/tmp/zlinkXXXXXX");
     char *dir = mkdtemp (path);
@@ -549,12 +527,9 @@ tls_test_files_t make_tls_test_files ()
     files.server_cert = files.dir + "/server.crt";
     files.server_key = files.dir + "/server.key";
 
-    TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
-                                      zlink::test_certs::ca_cert_pem));
-    TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
-                                      zlink::test_certs::server_cert_pem));
-    TEST_ASSERT_TRUE (write_pem_file (files.server_key,
-                                      zlink::test_certs::server_key_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.ca_cert, zlink::test_certs::ca_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_cert, zlink::test_certs::server_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_key, zlink::test_certs::server_key_pem));
 
     return files;
 }
@@ -572,10 +547,7 @@ void cleanup_tls_test_files (const tls_test_files_t &files_)
 }
 
 #if defined _WIN32
-int fuzzer_corpus_encode (const char *dirname,
-                          uint8_t ***data,
-                          size_t **len,
-                          size_t *num_cases)
+int fuzzer_corpus_encode (const char *dirname, uint8_t ***data, size_t **len, size_t *num_cases)
 {
     (void) dirname;
     (void) data;
@@ -587,10 +559,7 @@ int fuzzer_corpus_encode (const char *dirname,
 
 #else
 
-int fuzzer_corpus_encode (const char *dirname,
-                          uint8_t ***data,
-                          size_t **len,
-                          size_t *num_cases)
+int fuzzer_corpus_encode (const char *dirname, uint8_t ***data, size_t **len, size_t *num_cases)
 {
     TEST_ASSERT_NOT_NULL (dirname);
     TEST_ASSERT_NOT_NULL (data);
@@ -609,8 +578,7 @@ int fuzzer_corpus_encode (const char *dirname,
         if (!strcmp (ent->d_name, ".") || !strcmp (ent->d_name, ".."))
             continue;
 
-        char *filename =
-          (char *) malloc (strlen (dirname) + strlen (ent->d_name) + 2);
+        char *filename = (char *) malloc (strlen (dirname) + strlen (ent->d_name) + 2);
         TEST_ASSERT_NOT_NULL (filename);
         strcpy (filename, dirname);
         strcat (filename, "/");
@@ -631,11 +599,9 @@ int fuzzer_corpus_encode (const char *dirname,
         *len = (size_t *) realloc (*len, (*num_cases + 1) * sizeof (size_t));
         TEST_ASSERT_NOT_NULL (*len);
         *(*len + *num_cases) = file_len;
-        *data =
-          (uint8_t **) realloc (*data, (*num_cases + 1) * sizeof (uint8_t *));
+        *data = (uint8_t **) realloc (*data, (*num_cases + 1) * sizeof (uint8_t *));
         TEST_ASSERT_NOT_NULL (*data);
-        *(*data + *num_cases) =
-          (uint8_t *) malloc (file_len * sizeof (uint8_t));
+        *(*data + *num_cases) = (uint8_t *) malloc (file_len * sizeof (uint8_t));
         TEST_ASSERT_NOT_NULL (*(*data + *num_cases));
         size_t read_bytes = 0;
         read_bytes = fread (*(*data + *num_cases), 1, file_len, f);

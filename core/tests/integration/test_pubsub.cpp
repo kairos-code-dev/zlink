@@ -19,8 +19,7 @@ void test (const char *address)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (subscriber, my_endpoint));
 
     //  Subscribe to all messages.
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (subscriber, ""));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (subscriber, ""));
 
     //  Wait a bit till the subscription gets to the publisher
     msleep (SETTLE_TIME);

@@ -13,10 +13,7 @@
 #include <climits>
 #include <string.h>
 
-int zlink::recv_msg_socket (socket_base_t *socket_,
-                            int type_,
-                            zlink_msg_t *msg_,
-                            int flags_)
+int zlink::recv_msg_socket (socket_base_t *socket_, int type_, zlink_msg_t *msg_, int flags_)
 {
     // Hot path: direct recv-mode entry for single-message public recv. Changes
     // here affect PAIR/DEALER small-message throughput even without contention.
@@ -61,8 +58,7 @@ int zlink::recv_msg_socket (socket_base_t *socket_,
         return -1;
 
     const size_t size = zlink_msg_size (msg_);
-    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
-                                                                   : INT_MAX);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
 }
 
 int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
@@ -91,15 +87,12 @@ int zlink::recv_msg_routed_socket (socket_base_t *socket_,
         return -1;
     }
 
-    const int rc =
-      socket_->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_,
-                            flags_);
+    const int rc = socket_->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_, flags_);
     if (rc < 0)
         return -1;
 
     const size_t size = zlink_msg_size (msg_);
-    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
-                                                                   : INT_MAX);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
 }
 
 int zlink::recv_msg_routed_internal (void *socket_,
@@ -129,12 +122,10 @@ int zlink::recv_followup_msg_socket (socket_base_t *socket_, zlink_msg_t *msg_)
         return -1;
     }
 
-    const int rc = socket_->recv (reinterpret_cast<msg_t *> (msg_),
-                                  ZLINK_DONTWAIT);
+    const int rc = socket_->recv (reinterpret_cast<msg_t *> (msg_), ZLINK_DONTWAIT);
     if (rc >= 0) {
         const size_t size = zlink_msg_size (msg_);
-        return static_cast<int> (
-          size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
+        return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
     }
 
     if (errno == EAGAIN || errno == EINTR)
@@ -152,9 +143,7 @@ int zlink::recv_followup_msg_internal (void *socket_, zlink_msg_t *msg_)
     return recv_followup_msg_socket (socket, msg_);
 }
 
-int zlink::recv_followup_msg_socket_wait (socket_base_t *socket_,
-                                          zlink_msg_t *msg_,
-                                          int flags_)
+int zlink::recv_followup_msg_socket_wait (socket_base_t *socket_, zlink_msg_t *msg_, int flags_)
 {
     if (!socket_ || !msg_) {
         errno = EFAULT;
@@ -163,8 +152,7 @@ int zlink::recv_followup_msg_socket_wait (socket_base_t *socket_,
 
     while (socket_->recv (reinterpret_cast<msg_t *> (msg_), flags_) != 0) {
         const int saved_errno = errno;
-        if ((flags_ & ZLINK_DONTWAIT) != 0
-            || (saved_errno != EAGAIN && saved_errno != EINTR)) {
+        if ((flags_ & ZLINK_DONTWAIT) != 0 || (saved_errno != EAGAIN && saved_errno != EINTR)) {
             errno = saved_errno;
             return -1;
         }
@@ -180,8 +168,7 @@ int zlink::recv_followup_msg_socket_wait (socket_base_t *socket_,
 
 bool zlink::msg_frame_has_more (const zlink_msg_t &msg_)
 {
-    return (reinterpret_cast<const msg_t *> (&msg_)->flags () & msg_t::more)
-           != 0;
+    return (reinterpret_cast<const msg_t *> (&msg_)->flags () & msg_t::more) != 0;
 }
 
 void zlink::close_msg_frames (std::vector<zlink_msg_t> *frames_)
@@ -217,9 +204,7 @@ bool zlink::recv_msg_sequence_socket_wait (socket_base_t *socket_,
         if (!msg_frame_has_more (frame))
             return !frames_->empty ();
 
-        if (wait_socket_events_internal (socket_, ZLINK_POLLIN,
-                                         followup_timeout_ms_)
-            <= 0) {
+        if (wait_socket_events_internal (socket_, ZLINK_POLLIN, followup_timeout_ms_) <= 0) {
             errno = EAGAIN;
             close_msg_frames (frames_);
             return false;
@@ -241,9 +226,8 @@ int zlink::drain_followup_msg_sequence (socket_base_t *socket_,
     while (more) {
         zlink_msg_t next;
         zlink_msg_init (&next);
-        const int rc =
-          wait_for_input_ ? recv_followup_msg_socket_wait (socket_, &next, 0)
-                          : recv_followup_msg_socket (socket_, &next);
+        const int rc = wait_for_input_ ? recv_followup_msg_socket_wait (socket_, &next, 0)
+                                       : recv_followup_msg_socket (socket_, &next);
         if (rc < 0) {
             zlink_msg_close (&next);
             return -1;
@@ -268,8 +252,7 @@ int zlink::export_payload_msg_sequence (socket_base_t *socket_,
     }
 
     if (allow_single_ && !msg_frame_has_more (*first_payload_))
-        return recv_tls_view::export_single (first_payload_, parts_out_,
-                                             part_count_out_);
+        return recv_tls_view::export_single (first_payload_, parts_out_, part_count_out_);
 
     zlink_msg_t current;
     zlink_msg_init (&current);
@@ -318,8 +301,7 @@ int zlink::export_reserved_followup_msg_sequence (socket_base_t *socket_,
         return -1;
     }
 
-    if (recv_tls_view::storage ().count == 0
-        && recv_tls_view::reserve_first_slot () != 0) {
+    if (recv_tls_view::storage ().count == 0 && recv_tls_view::reserve_first_slot () != 0) {
         return -1;
     }
 
@@ -331,10 +313,8 @@ int zlink::export_reserved_followup_msg_sequence (socket_base_t *socket_,
 
         zlink_msg_t next;
         zlink_msg_init (&next);
-        const int rc =
-          wait_for_input_
-            ? recv_followup_msg_socket_wait (socket_, &next, 0)
-            : recv_followup_msg_socket (socket_, &next);
+        const int rc = wait_for_input_ ? recv_followup_msg_socket_wait (socket_, &next, 0)
+                                       : recv_followup_msg_socket (socket_, &next);
         if (rc < 0) {
             zlink_msg_close (&next);
             recv_tls_view::abort ();
@@ -354,10 +334,7 @@ int zlink::export_reserved_followup_msg_sequence (socket_base_t *socket_,
     }
 }
 
-int zlink::recv_buffer_internal (void *socket_,
-                                 void *buf_,
-                                 size_t len_,
-                                 int flags_)
+int zlink::recv_buffer_internal (void *socket_, void *buf_, size_t len_, int flags_)
 {
     zlink_msg_t msg;
     if (zlink_msg_init (&msg) != 0) {
@@ -382,9 +359,7 @@ int zlink::recv_buffer_internal (void *socket_,
     return nbytes;
 }
 
-int zlink::wait_socket_events_internal (void *socket_,
-                                        short events_,
-                                        long timeout_ms_)
+int zlink::wait_socket_events_internal (void *socket_, short events_, long timeout_ms_)
 {
     socket_base_t *socket = static_cast<socket_base_t *> (socket_);
     if (!socket || !socket->check_tag ()) {

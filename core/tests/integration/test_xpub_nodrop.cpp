@@ -39,10 +39,7 @@ struct delivery_ready_monitor_t
 
 struct pubsub_callback_counter_t
 {
-    pubsub_callback_counter_t () :
-        received (0), error (0)
-    {
-    }
+    pubsub_callback_counter_t () : received (0), error (0) {}
 
     std::atomic<int> received;
     std::atomic<int> error;
@@ -50,11 +47,9 @@ struct pubsub_callback_counter_t
     std::condition_variable cv;
 };
 
-void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
-                                     void *userdata_)
+void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_, void *userdata_)
 {
-    delivery_ready_state_t *state =
-      static_cast<delivery_ready_state_t *> (userdata_);
+    delivery_ready_state_t *state = static_cast<delivery_ready_state_t *> (userdata_);
     if (!state || !event_)
         return;
 
@@ -69,8 +64,7 @@ void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
         case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
         case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
         case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
-            state->error_code =
-              event_->value != 0 ? static_cast<int> (event_->value) : EIO;
+            state->error_code = event_->value != 0 ? static_cast<int> (event_->value) : EIO;
             break;
         default:
             break;
@@ -81,15 +75,13 @@ void delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
 
 void configure_pubsub_hwm (void *socket_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_SNDHWM, &kTcpSocketHwm, sizeof (kTcpSocketHwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_RCVHWM, &kTcpSocketHwm, sizeof (kTcpSocketHwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &kTcpSocketHwm, sizeof (kTcpSocketHwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &kTcpSocketHwm, sizeof (kTcpSocketHwm)));
 }
 
-bool open_delivery_ready_monitor (void *socket_,
-                                  uint64_t event_,
-                                  delivery_ready_monitor_t *out_)
+bool open_delivery_ready_monitor (void *socket_, uint64_t event_, delivery_ready_monitor_t *out_)
 {
     if (!socket_ || !out_)
         return false;
@@ -101,15 +93,11 @@ bool open_delivery_ready_monitor (void *socket_,
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = event_ | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
-                  | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+                  | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
     void *monitor = zlink_socket_monitor_open (socket_, &opts);
     if (!monitor
-        || zlink_socket_monitor_handler (
-             monitor, &delivery_ready_monitor_handler, state)
-             != 0) {
+        || zlink_socket_monitor_handler (monitor, &delivery_ready_monitor_handler, state) != 0) {
         if (monitor)
             (void) zlink_monitor_close (&monitor);
         delete state;
@@ -133,9 +121,9 @@ bool wait_delivery_ready (delivery_ready_monitor_t *monitor_, int timeout_ms_)
     if (state->ready)
         return true;
 
-    const bool signaled = state->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [state] () { return state->error_code != 0 || state->ready; });
+    const bool signaled =
+      state->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+                          [state] () { return state->error_code != 0 || state->ready; });
     return signaled && state->error_code == 0 && state->ready;
 }
 
@@ -161,8 +149,7 @@ void test ()
     void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
 
     int hwm = 2000;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
@@ -187,8 +174,7 @@ void test ()
 
     //  Send an empty message
     for (int i = 0; i < hwmlimit; i++) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_send (pub, static_cast<const void *> (NULL), 0, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_send (pub, static_cast<const void *> (NULL), 0, 0));
         send_count++;
     }
 
@@ -205,8 +191,8 @@ void test ()
 
         if (recv_count == 1) {
             const int sub_rcvtimeo = 250;
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-              sub, ZLINK_OPT_RCVTIMEO, &sub_rcvtimeo, sizeof (sub_rcvtimeo)));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_set_option (sub, ZLINK_OPT_RCVTIMEO, &sub_rcvtimeo, sizeof (sub_rcvtimeo)));
         }
 
     } while (true);
@@ -246,8 +232,7 @@ void test ()
 
 void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
 {
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 1));
 
     void *pub = test_context_socket (ZLINK_SOCKET_PUB);
     void *sub = test_context_socket (ZLINK_SOCKET_SUB);
@@ -258,60 +243,51 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_pub_option (pub, ZLINK_PUB_OPT_NODROP, &wait, sizeof (wait)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &kPubSendTimeoutMs,
-                        sizeof (kPubSendTimeoutMs)));
+      zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &kPubSendTimeoutMs, sizeof (kPubSendTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
     pubsub_callback_counter_t callback_state;
     const int target_messages = 50000;
 
-    std::future<int> recv_future =
-      std::async (std::launch::async, [&]() -> int {
-          while (callback_state.received.load (std::memory_order_acquire)
-                 < target_messages) {
-              zlink_msg_t *parts = NULL;
-              size_t part_count = 0;
-              char topic[64] = {0};
-              size_t topic_len = sizeof (topic);
-              if (zlink_subscribe (sub, NULL, &parts, &part_count, topic,
-                                   &topic_len, ZLINK_DONTWAIT)
-                  == 0) {
-                  const bool ok = part_count == 1
-                                  && topic_len == std::strlen (kPubsubTopic)
-                                  && memcmp (topic, kPubsubTopic, topic_len)
-                                       == 0
-                                  && zlink_msg_size (&parts[0])
-                                       == kPubsubPayloadSize;
-                  zlink_multipart_close (parts, part_count);
-                  if (!ok) {
-                      callback_state.error.store (
-                        EPROTO, std::memory_order_release);
-                      return -1;
-                  }
-                  callback_state.received.fetch_add (
-                    1, std::memory_order_acq_rel);
-                  continue;
-              }
+    std::future<int> recv_future = std::async (std::launch::async, [&] () -> int {
+        while (callback_state.received.load (std::memory_order_acquire) < target_messages) {
+            zlink_msg_t *parts = NULL;
+            size_t part_count = 0;
+            char topic[64] = {0};
+            size_t topic_len = sizeof (topic);
+            if (zlink_subscribe (sub, NULL, &parts, &part_count, topic, &topic_len, ZLINK_DONTWAIT)
+                == 0) {
+                const bool ok = part_count == 1 && topic_len == std::strlen (kPubsubTopic)
+                                && memcmp (topic, kPubsubTopic, topic_len) == 0
+                                && zlink_msg_size (&parts[0]) == kPubsubPayloadSize;
+                zlink_multipart_close (parts, part_count);
+                if (!ok) {
+                    callback_state.error.store (EPROTO, std::memory_order_release);
+                    return -1;
+                }
+                callback_state.received.fetch_add (1, std::memory_order_acq_rel);
+                continue;
+            }
 
-              const int err = zlink_errno ();
-              if (err != EAGAIN && err != EINTR) {
-                  callback_state.error.store (err, std::memory_order_release);
-                  return -1;
-              }
-              msleep (1);
-          }
+            const int err = zlink_errno ();
+            if (err != EAGAIN && err != EINTR) {
+                callback_state.error.store (err, std::memory_order_release);
+                return -1;
+            }
+            msleep (1);
+        }
 
-          return callback_state.received.load (std::memory_order_acquire);
-      });
+        return callback_state.received.load (std::memory_order_acquire);
+    });
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
 
     delivery_ready_monitor_t pub_monitor;
     delivery_ready_monitor_t sub_monitor;
-    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      pub, ZLINK_EVENT_CONNECTION_READY, &pub_monitor));
-    TEST_ASSERT_TRUE (open_delivery_ready_monitor (
-      sub, ZLINK_EVENT_CONNECTION_READY, &sub_monitor));
+    TEST_ASSERT_TRUE (
+      open_delivery_ready_monitor (pub, ZLINK_EVENT_CONNECTION_READY, &pub_monitor));
+    TEST_ASSERT_TRUE (
+      open_delivery_ready_monitor (sub, ZLINK_EVENT_CONNECTION_READY, &sub_monitor));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
     TEST_ASSERT_TRUE (wait_delivery_ready (&pub_monitor, 5000));
@@ -319,31 +295,25 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
 
     std::atomic<int> sent_progress (0);
 
-    std::future<int> send_future =
-      std::async (std::launch::async, [&]() -> int {
-          for (int i = 0; i < target_messages; ++i) {
-              zlink_msg_t payload;
-              if (zlink_msg_init_size (&payload, kPubsubPayloadSize) != 0)
-                  return -10;
-              memset (zlink_msg_data (&payload), '0' + (i % 10),
-                      kPubsubPayloadSize);
-              if (zlink_publish (pub, kPubsubTopic, &payload, 1, 0) != 0)
-                  return -(1000 + errno);
-              sent_progress.store (i + 1, std::memory_order_release);
-          }
-          return target_messages;
-      });
+    std::future<int> send_future = std::async (std::launch::async, [&] () -> int {
+        for (int i = 0; i < target_messages; ++i) {
+            zlink_msg_t payload;
+            if (zlink_msg_init_size (&payload, kPubsubPayloadSize) != 0)
+                return -10;
+            memset (zlink_msg_data (&payload), '0' + (i % 10), kPubsubPayloadSize);
+            if (zlink_publish (pub, kPubsubTopic, &payload, 1, 0) != 0)
+                return -(1000 + errno);
+            sent_progress.store (i + 1, std::memory_order_release);
+        }
+        return target_messages;
+    });
 
-    const std::future_status send_status =
-      send_future.wait_for (std::chrono::seconds (8));
-    const std::future_status recv_status =
-      recv_future.wait_for (std::chrono::seconds (8));
+    const std::future_status send_status = send_future.wait_for (std::chrono::seconds (8));
+    const std::future_status recv_status = recv_future.wait_for (std::chrono::seconds (8));
 
-    if (send_status != std::future_status::ready
-        || recv_status != std::future_status::ready) {
+    if (send_status != std::future_status::ready || recv_status != std::future_status::ready) {
         char detail[160];
-        snprintf (detail, sizeof (detail),
-                  "blocking publish timeout: sent=%d recv=%d",
+        snprintf (detail, sizeof (detail), "blocking publish timeout: sent=%d recv=%d",
                   sent_progress.load (std::memory_order_acquire),
                   callback_state.received.load (std::memory_order_acquire));
         close_delivery_ready_monitor (&sub_monitor);
@@ -355,12 +325,10 @@ void test_pub_blocking_publish_succeeds_while_subscriber_drains_tcp ()
 
     const int send_result = send_future.get ();
     const int recv_result = recv_future.get ();
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      target_messages, send_result,
-      "blocking publish timed out or failed while subscriber drained");
-    TEST_ASSERT_EQUAL_INT_MESSAGE (
-      0, callback_state.error.load (std::memory_order_acquire),
-      "subscriber recv observed malformed topic/payload shape");
+    TEST_ASSERT_EQUAL_INT_MESSAGE (target_messages, send_result,
+                                   "blocking publish timed out or failed while subscriber drained");
+    TEST_ASSERT_EQUAL_INT_MESSAGE (0, callback_state.error.load (std::memory_order_acquire),
+                                   "subscriber recv observed malformed topic/payload shape");
     TEST_ASSERT_EQUAL_INT_MESSAGE (
       target_messages, recv_result,
       "subscriber did not drain the expected number of published messages");

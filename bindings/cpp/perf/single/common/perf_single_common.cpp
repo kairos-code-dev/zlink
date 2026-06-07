@@ -161,8 +161,8 @@ bool set_sockopt_int (perf_socket_t &socket_,
 {
     const int rc = socket_.set (option_, value_);
     if (rc != 0 && bench_debug_enabled ()) {
-        std::cerr << "setsockopt(" << (name_ ? name_ : "?") << ") failed: " << zlink::last_error ().what ()
-                  << std::endl;
+        std::cerr << "setsockopt(" << (name_ ? name_ : "?")
+                  << ") failed: " << zlink::last_error ().what () << std::endl;
     }
     return rc == 0;
 }
@@ -183,7 +183,8 @@ bool apply_single_auto_hwm_msg_unit (ctx_guard_t &ctx_, size_t msg_size_)
         return true;
     try {
         zlink::context_options_t options = ctx_.ctx ().options ();
-        options.auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
+        options.auto_hwm_msg_unit_bytes (
+          zlink::byte_size_t::bytes (static_cast<int64_t> (msg_size_)));
         return true;
     }
     catch (const zlink::config_error_t &err) {
@@ -213,8 +214,10 @@ void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::s
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
     (void) set_sockopt_int (socket_, perf::options::socket_options::linger, linger_ms, "linger");
-    (void) set_sockopt_int (socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms, "sndtimeo");
-    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms, "rcvtimeo");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::sndtimeo, sndtimeo_ms,
+                            "sndtimeo");
+    (void) set_sockopt_int (socket_, perf::options::socket_options::rcvtimeo, rcvtimeo_ms,
+                            "rcvtimeo");
 }
 
 std::string make_endpoint (const std::string &transport, const std::string &id)
@@ -236,7 +239,8 @@ std::string make_endpoint (const std::string &transport, const std::string &id)
                     continue;
 
                 char addr[INET_ADDRSTRLEN];
-                const struct sockaddr_in *sa = reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
+                const struct sockaddr_in *sa =
+                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
                 if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
                     std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
                     freeifaddrs (ifaddr);
@@ -275,7 +279,9 @@ std::string make_fixed_endpoint (const std::string &transport, int port)
     return "tcp://" + host + ":" + port_str;
 }
 
-std::string bind_and_resolve_endpoint (perf_socket_t &socket_, const std::string &transport, const std::string &id)
+std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
+                                       const std::string &transport,
+                                       const std::string &id)
 {
     std::string endpoint = make_endpoint (transport, id);
     if (endpoint.empty ())
@@ -328,15 +334,18 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
                            const std::string &transport_,
                            const std::string &id_)
 {
-    if (!setup_tls_server (bind_socket_, transport_) || !setup_tls_client (connect_socket_, transport_)) {
+    if (!setup_tls_server (bind_socket_, transport_)
+        || !setup_tls_client (connect_socket_, transport_)) {
         return false;
     }
 
     apply_single_hwm (bind_socket_);
     apply_single_hwm (connect_socket_);
 
-    zlink::socket_monitor_t bind_monitor = bind_socket_.monitor_open (zlink::monitor_event::connection_ready);
-    zlink::socket_monitor_t connect_monitor = connect_socket_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t bind_monitor =
+      bind_socket_.monitor_open (zlink::monitor_event::connection_ready);
+    zlink::socket_monitor_t connect_monitor =
+      connect_socket_.monitor_open (zlink::monitor_event::connection_ready);
     if (!bind_monitor.valid () || !connect_monitor.valid ())
         return false;
 
@@ -353,10 +362,12 @@ bool setup_connected_pair (perf_socket_t &bind_socket_,
     apply_single_benchmark_socket_options (bind_socket_, transport_);
     apply_single_benchmark_socket_options (connect_socket_, transport_);
     const int connect_ready_timeout_ms = resolve_single_connect_ready_timeout_ms ();
-    if (!wait_socket_monitor_event (bind_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+    if (!wait_socket_monitor_event (bind_monitor,
+                                    static_cast<uint64_t> (zlink::monitor_event::connection_ready),
                                     connect_ready_timeout_ms)
-        || !wait_socket_monitor_event (connect_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
-                                       connect_ready_timeout_ms)) {
+        || !wait_socket_monitor_event (
+          connect_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+          connect_ready_timeout_ms)) {
         return false;
     }
     return true;

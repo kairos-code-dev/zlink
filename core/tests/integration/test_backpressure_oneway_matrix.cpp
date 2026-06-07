@@ -80,11 +80,7 @@ struct drain_gate_t
 
 struct raw_case_t
 {
-    raw_case_t () :
-        sender (NULL),
-        receiver (NULL),
-        has_target_rid (false),
-        tls_enabled (false)
+    raw_case_t () : sender (NULL), receiver (NULL), has_target_rid (false), tls_enabled (false)
     {
         memset (&target_rid, 0, sizeof (target_rid));
     }
@@ -113,12 +109,7 @@ struct pubsub_case_t
 
 struct spot_case_t
 {
-    spot_case_t () :
-        pub_node (NULL),
-        sub_node (NULL),
-        pub (NULL),
-        sub (NULL),
-        tls_enabled (false)
+    spot_case_t () : pub_node (NULL), sub_node (NULL), pub (NULL), sub (NULL), tls_enabled (false)
     {
     }
 
@@ -151,35 +142,25 @@ static bool is_spot_transport_available (const char *transport_)
     return false;
 }
 
-static void configure_tls (void *server_,
-                           void *client_,
-                           const tls_test_files_t &files_)
+static void configure_tls (void *server_, void *client_, const tls_test_files_t &files_)
 {
     const int trust_system = 0;
     const char hostname[] = "localhost";
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client_, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system,
-      sizeof (trust_system)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server_, ZLINK_OPT_TLS_CERT, files_.server_cert.c_str (),
-      files_.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server_, ZLINK_OPT_TLS_KEY, files_.server_key.c_str (),
-      files_.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client_, ZLINK_OPT_TLS_CA, files_.ca_cert.c_str (),
-      files_.ca_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client_, ZLINK_OPT_TLS_HOSTNAME, hostname,
-                        strlen (hostname)));
+      zlink_set_option (client_, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server_, ZLINK_OPT_TLS_CERT, files_.server_cert.c_str (), files_.server_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
+      server_, ZLINK_OPT_TLS_KEY, files_.server_key.c_str (), files_.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client_, ZLINK_OPT_TLS_CA, files_.ca_cert.c_str (),
+                                                 files_.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client_, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 }
 
-static void bind_endpoint (void *socket_,
-                           const char *transport_,
-                           const char *name_,
-                           char *endpoint_,
-                           size_t endpoint_len_)
+static void bind_endpoint (
+  void *socket_, const char *transport_, const char *name_, char *endpoint_, size_t endpoint_len_)
 {
     if (strcmp (transport_, "tcp") == 0) {
         test_bind (socket_, "tcp://127.0.0.1:*", endpoint_, endpoint_len_);
@@ -208,39 +189,34 @@ static void bind_endpoint (void *socket_,
 static void configure_sender_socket (void *socket_, int sndhwm_)
 {
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &sndhwm_, sizeof (sndhwm_)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_SNDBUF, &kSocketBufferBytes, sizeof (kSocketBufferBytes)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_RCVBUF, &kSocketBufferBytes, sizeof (kSocketBufferBytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufferBytes,
+                                                 sizeof (kSocketBufferBytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufferBytes,
+                                                 sizeof (kSocketBufferBytes)));
 }
 
 static void configure_receiver_socket (void *socket_, int rcvhwm_)
 {
     const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &kTimeoutMs,
-                        sizeof (kTimeoutMs)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &kTimeoutMs, sizeof (kTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &rcvhwm_, sizeof (rcvhwm_)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_SNDBUF, &kSocketBufferBytes, sizeof (kSocketBufferBytes)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      socket_, ZLINK_OPT_RCVBUF, &kSocketBufferBytes, sizeof (kSocketBufferBytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufferBytes,
+                                                 sizeof (kSocketBufferBytes)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufferBytes,
+                                                 sizeof (kSocketBufferBytes)));
 }
 
-static void ready_monitor_handler (const zlink_monitor_event_t *event_,
-                                   void *userdata_)
+static void ready_monitor_handler (const zlink_monitor_event_t *event_, void *userdata_)
 {
-    ready_monitor_state_t *state =
-      static_cast<ready_monitor_state_t *> (userdata_);
+    ready_monitor_state_t *state = static_cast<ready_monitor_state_t *> (userdata_);
     if (!state || !event_)
         return;
 
@@ -257,8 +233,7 @@ static void ready_monitor_handler (const zlink_monitor_event_t *event_,
         case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
         case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
             if (state->error_code == 0)
-                state->error_code =
-                  event_->value != 0 ? static_cast<int> (event_->value) : EIO;
+                state->error_code = event_->value != 0 ? static_cast<int> (event_->value) : EIO;
             break;
 
         default:
@@ -278,15 +253,11 @@ static bool open_ready_monitor (void *socket_, ready_monitor_t *out_)
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
-                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
+                  | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
     void *monitor = zlink_socket_monitor_open (socket_, &opts);
-    if (!monitor
-        || zlink_socket_monitor_handler (monitor, &ready_monitor_handler, state)
-             != 0) {
+    if (!monitor || zlink_socket_monitor_handler (monitor, &ready_monitor_handler, state) != 0) {
         if (monitor)
             (void) zlink_monitor_close (&monitor);
         delete state;
@@ -298,21 +269,18 @@ static bool open_ready_monitor (void *socket_, ready_monitor_t *out_)
     return true;
 }
 
-static bool wait_ready_count (ready_monitor_t *monitor_,
-                              size_t expected_count_,
-                              int timeout_ms_)
+static bool wait_ready_count (ready_monitor_t *monitor_, size_t expected_count_, int timeout_ms_)
 {
     if (!monitor_ || !monitor_->state)
         return false;
 
     ready_monitor_state_t *state = monitor_->state;
     std::unique_lock<std::mutex> lock (state->sync);
-    return state->cv.wait_for (
-             lock, std::chrono::milliseconds (timeout_ms_),
-             [state, expected_count_] () {
-                 return state->error_code != 0
-                        || state->ready_count >= expected_count_;
-             })
+    return state->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_),
+                               [state, expected_count_] () {
+                                   return state->error_code != 0
+                                          || state->ready_count >= expected_count_;
+                               })
            && state->error_code == 0 && state->ready_count >= expected_count_;
 }
 
@@ -343,15 +311,15 @@ static int classify_nonblocking_send_errno (zlink_submit_result_t *result_out_)
     }
 
     switch (errno) {
-    case EAGAIN:
-        *result_out_ = ZLINK_SUBMIT_BACKPRESSURED;
-        return 0;
-    case ENOTCONN:
-    case EHOSTUNREACH:
-        *result_out_ = ZLINK_SUBMIT_NOT_CONNECTED;
-        return 0;
-    default:
-        return -1;
+        case EAGAIN:
+            *result_out_ = ZLINK_SUBMIT_BACKPRESSURED;
+            return 0;
+        case ENOTCONN:
+        case EHOSTUNREACH:
+            *result_out_ = ZLINK_SUBMIT_NOT_CONNECTED;
+            return 0;
+        default:
+            return -1;
     }
 }
 
@@ -360,9 +328,8 @@ static int try_send_raw_part (void *sender_,
                               zlink_submit_result_t *result_out_)
 {
     zlink_msg_t part = make_payload_part ();
-    const int rc = target_rid_
-      ? zlink_send_rid (sender_, target_rid_, &part, 1, ZLINK_DONTWAIT)
-      : zlink_send (sender_, &part, 1, ZLINK_DONTWAIT);
+    const int rc = target_rid_ ? zlink_send_rid (sender_, target_rid_, &part, 1, ZLINK_DONTWAIT)
+                               : zlink_send (sender_, &part, 1, ZLINK_DONTWAIT);
     if (rc == 0) {
         *result_out_ = ZLINK_SUBMIT_OK;
         return 0;
@@ -387,24 +354,20 @@ static int try_publish_part (void *subject_, zlink_submit_result_t *result_out_)
     return classify_nonblocking_send_errno (result_out_);
 }
 
-static int recv_one_raw_message (void *socket_,
-                                 bool wants_routing_id_,
-                                 zlink_routing_id_t *source_rid_out_);
+static int
+recv_one_raw_message (void *socket_, bool wants_routing_id_, zlink_routing_id_t *source_rid_out_);
 
 static void set_send_timeout (void *socket_, int timeout_ms_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout_ms_,
-                        sizeof (timeout_ms_)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout_ms_, sizeof (timeout_ms_)));
 }
 
-static void send_raw_part_blocking (void *sender_,
-                                    const zlink_routing_id_t *target_rid_)
+static void send_raw_part_blocking (void *sender_, const zlink_routing_id_t *target_rid_)
 {
     zlink_msg_t part = make_payload_part ();
     if (target_rid_) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_send_rid (sender_, target_rid_, &part, 1, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_send_rid (sender_, target_rid_, &part, 1, 0));
         return;
     }
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sender_, &part, 1, 0));
@@ -415,14 +378,12 @@ static void prime_raw_case (raw_case_t *raw_, raw_pattern_t pattern_)
     TEST_ASSERT_NOT_NULL (raw_);
 
     set_send_timeout (raw_->sender, kTimeoutMs);
-    send_raw_part_blocking (
-      raw_->sender, raw_->has_target_rid ? &raw_->target_rid : NULL);
+    send_raw_part_blocking (raw_->sender, raw_->has_target_rid ? &raw_->target_rid : NULL);
     set_send_timeout (raw_->sender, 0);
 
     const bool wants_routing_id =
       pattern_ == raw_pattern_dealer_router || pattern_ == raw_pattern_router_router;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      recv_one_raw_message (raw_->receiver, wants_routing_id, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (recv_one_raw_message (raw_->receiver, wants_routing_id, NULL));
     msleep (50);
 }
 
@@ -443,8 +404,7 @@ static size_t measure_send_window_raw (void *sender_,
 
     for (size_t i = 0; i < attempt_limit_; ++i) {
         zlink_submit_result_t result = ZLINK_SUBMIT_NOT_CONNECTED;
-        TEST_ASSERT_SUCCESS_ERRNO (
-          try_send_raw_part (sender_, target_rid_, &result));
+        TEST_ASSERT_SUCCESS_ERRNO (try_send_raw_part (sender_, target_rid_, &result));
         if (result == ZLINK_SUBMIT_OK) {
             ++sent;
             continue;
@@ -458,9 +418,8 @@ static size_t measure_send_window_raw (void *sender_,
     return sent;
 }
 
-static size_t measure_send_window_pubsub (void *pub_,
-                                          size_t attempt_limit_,
-                                          bool *backpressured_out_)
+static size_t
+measure_send_window_pubsub (void *pub_, size_t attempt_limit_, bool *backpressured_out_)
 {
     size_t sent = 0;
     if (backpressured_out_)
@@ -492,9 +451,8 @@ static void start_drain (drain_gate_t *gate_)
 static bool wait_drain_done (drain_gate_t *gate_, int timeout_ms_)
 {
     std::unique_lock<std::mutex> lock (gate_->sync);
-    return gate_->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_),
-      [gate_] () { return gate_->done; });
+    return gate_->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_),
+                               [gate_] () { return gate_->done; });
 }
 
 static void wait_drain_start (drain_gate_t *gate_)
@@ -512,9 +470,8 @@ static void finish_drain (drain_gate_t *gate_, size_t received_, int error_code_
     gate_->cv.notify_all ();
 }
 
-static int recv_one_raw_message (void *socket_,
-                                 bool wants_routing_id_,
-                                 zlink_routing_id_t *source_rid_out_)
+static int
+recv_one_raw_message (void *socket_, bool wants_routing_id_, zlink_routing_id_t *source_rid_out_)
 {
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
@@ -526,8 +483,8 @@ static int recv_one_raw_message (void *socket_,
         const zlink_routing_id_t *peer_rid = NULL;
         const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        rc = zlink_router_recv (socket_, &peer_rid, &source_spot_rid,
-                                &request_seq, &parts, &part_count, 0);
+        rc = zlink_router_recv (socket_, &peer_rid, &source_spot_rid, &request_seq, &parts,
+                                &part_count, 0);
         if (rc == 0) {
             if (request_seq != 0) {
                 if (parts)
@@ -616,9 +573,7 @@ static void drain_raw_receiver_with_ack (void *receiver_,
     finish_drain (gate_, received, error_code);
 }
 
-static void drain_subscription_receiver (void *sub_,
-                                         size_t expected_messages_,
-                                         drain_gate_t *gate_)
+static void drain_subscription_receiver (void *sub_, size_t expected_messages_, drain_gate_t *gate_)
 {
     wait_drain_start (gate_);
 
@@ -630,14 +585,11 @@ static void drain_subscription_receiver (void *sub_,
         char topic[256];
         size_t topic_len = sizeof (topic);
         memset (topic, 0, sizeof (topic));
-        if (zlink_subscribe (sub_, NULL, &parts, &part_count, topic, &topic_len,
-                             0)
-            != 0) {
+        if (zlink_subscribe (sub_, NULL, &parts, &part_count, topic, &topic_len, 0) != 0) {
             error_code = errno != 0 ? errno : EIO;
             break;
         }
-        if (topic_len != strlen (kTopic)
-            || memcmp (topic, kTopic, topic_len) != 0) {
+        if (topic_len != strlen (kTopic) || memcmp (topic, kTopic, topic_len) != 0) {
             error_code = EPROTO;
             zlink_multipart_close (parts, part_count);
             break;
@@ -649,8 +601,7 @@ static void drain_subscription_receiver (void *sub_,
     finish_drain (gate_, received, error_code);
 }
 
-static void drain_available_subscription_messages (void *sub_,
-                                                   size_t attempt_limit_)
+static void drain_available_subscription_messages (void *sub_, size_t attempt_limit_)
 {
     for (size_t i = 0; i < attempt_limit_; ++i) {
         zlink_msg_t *parts = NULL;
@@ -658,8 +609,7 @@ static void drain_available_subscription_messages (void *sub_,
         char topic[256];
         size_t topic_len = sizeof (topic);
         memset (topic, 0, sizeof (topic));
-        if (zlink_subscribe (sub_, NULL, &parts, &part_count, topic, &topic_len,
-                             ZLINK_DONTWAIT)
+        if (zlink_subscribe (sub_, NULL, &parts, &part_count, topic, &topic_len, ZLINK_DONTWAIT)
             != 0) {
             if (errno == EAGAIN || errno == EINTR)
                 return;
@@ -711,11 +661,8 @@ static void close_spot_case (spot_case_t *spot_)
         cleanup_tls_test_files (spot_->tls_files);
 }
 
-static void setup_raw_case (raw_pattern_t pattern_,
-                            const char *transport_,
-                            int sndhwm_,
-                            int rcvhwm_,
-                            raw_case_t *out_)
+static void setup_raw_case (
+  raw_pattern_t pattern_, const char *transport_, int sndhwm_, int rcvhwm_, raw_case_t *out_)
 {
     int sender_type = ZLINK_SOCKET_DEALER;
     int receiver_type = ZLINK_SOCKET_DEALER;
@@ -749,23 +696,21 @@ static void setup_raw_case (raw_pattern_t pattern_,
     if (sender_type == ZLINK_SOCKET_ROUTER) {
         const int mandatory = 1;
         TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-          out_->sender, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
-          sizeof (mandatory)));
+          out_->sender, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     }
     if (sender_rid) {
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_set_routing_id (out_->sender, sender_rid, strlen (sender_rid)));
     }
     if (receiver_rid) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (
-          out_->receiver, receiver_rid, strlen (receiver_rid)));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_routing_id (out_->receiver, receiver_rid, strlen (receiver_rid)));
         if (pattern_ == raw_pattern_router_router) {
             static const char kConnectRid[] = "RAW-CONNECT";
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-              out_->sender, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, kConnectRid,
-              strlen (kConnectRid)));
-            out_->target_rid.size =
-              static_cast<uint8_t> (strlen (kConnectRid));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (out_->sender,
+                                                                ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+                                                                kConnectRid, strlen (kConnectRid)));
+            out_->target_rid.size = static_cast<uint8_t> (strlen (kConnectRid));
             memcpy (out_->target_rid.data, kConnectRid, strlen (kConnectRid));
             out_->has_target_rid = true;
         } else {
@@ -776,8 +721,7 @@ static void setup_raw_case (raw_pattern_t pattern_,
     }
 
     TEST_ASSERT_TRUE (open_ready_monitor (out_->sender, &out_->sender_monitor));
-    TEST_ASSERT_TRUE (
-      open_ready_monitor (out_->receiver, &out_->receiver_monitor));
+    TEST_ASSERT_TRUE (open_ready_monitor (out_->receiver, &out_->receiver_monitor));
 
     if (is_tls_transport (transport_)) {
         out_->tls_enabled = true;
@@ -787,21 +731,17 @@ static void setup_raw_case (raw_pattern_t pattern_,
 
     char endpoint[MAX_SOCKET_STRING];
     char name[64];
-    snprintf (name, sizeof (name), "bp-%s-%s", raw_pattern_name (pattern_),
-              transport_);
+    snprintf (name, sizeof (name), "bp-%s-%s", raw_pattern_name (pattern_), transport_);
     bind_endpoint (out_->receiver, transport_, name, endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (out_->sender, endpoint));
     TEST_ASSERT_TRUE (wait_ready_count (&out_->sender_monitor, 1, kTimeoutMs));
     TEST_ASSERT_TRUE (wait_ready_count (&out_->receiver_monitor, 1, kTimeoutMs));
-    if (pattern_ == raw_pattern_dealer_router
-        || pattern_ == raw_pattern_router_router)
+    if (pattern_ == raw_pattern_dealer_router || pattern_ == raw_pattern_router_router)
         prime_raw_case (out_, pattern_);
 }
 
-static void setup_pubsub_case (const char *transport_,
-                               int sndhwm_,
-                               int rcvhwm_,
-                               pubsub_case_t *out_)
+static void
+setup_pubsub_case (const char *transport_, int sndhwm_, int rcvhwm_, pubsub_case_t *out_)
 {
     out_->pub = test_context_socket (ZLINK_SOCKET_XPUB);
     out_->sub = test_context_socket (ZLINK_SOCKET_SUB);
@@ -810,8 +750,7 @@ static void setup_pubsub_case (const char *transport_,
     configure_receiver_socket (out_->sub, rcvhwm_);
     const int nodrop = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (out_->pub, ZLINK_PUB_OPT_NODROP, &nodrop,
-                            sizeof (nodrop)));
+      zlink_set_pub_option (out_->pub, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
 
     TEST_ASSERT_TRUE (open_ready_monitor (out_->pub, &out_->pub_monitor));
     TEST_ASSERT_TRUE (open_ready_monitor (out_->sub, &out_->sub_monitor));
@@ -830,14 +769,11 @@ static void setup_pubsub_case (const char *transport_,
     TEST_ASSERT_TRUE (wait_ready_count (&out_->sub_monitor, 1, kTimeoutMs));
 }
 
-static void bind_spot_node (void *node_,
-                            const char *transport_,
-                            char *endpoint_out_,
-                            size_t endpoint_size_)
+static void
+bind_spot_node (void *node_, const char *transport_, char *endpoint_out_, size_t endpoint_size_)
 {
     char bind_endpoint_buf[MAX_SOCKET_STRING];
-    snprintf (bind_endpoint_buf, sizeof (bind_endpoint_buf), "%s://127.0.0.1:0",
-              transport_);
+    snprintf (bind_endpoint_buf, sizeof (bind_endpoint_buf), "%s://127.0.0.1:0", transport_);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
     zlink_spot_node_status_t status;
@@ -847,23 +783,19 @@ static void bind_spot_node (void *node_,
     snprintf (endpoint_out_, endpoint_size_, "%s", status.local_endpoint);
 }
 
-static bool wait_for_spot_node_ready_state (void *node_,
-                                            int role_,
-                                            int timeout_ms_)
+static bool wait_for_spot_node_ready_state (void *node_, int role_, int timeout_ms_)
 {
     if (!node_ || timeout_ms_ <= 0)
         return false;
 
     const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
         if (zlink_spot_node_status (node_, &status) == 0) {
             const bool pub_ready = status.local_endpoint[0] != '\0';
-            const bool sub_ready =
-              status.active_peer_count > 0 && status.subject_count > 0;
+            const bool sub_ready = status.active_peer_count > 0 && status.subject_count > 0;
             if ((role_ == ZLINK_SPOT_ROLE_PUB && pub_ready)
                 || (role_ == ZLINK_SPOT_ROLE_SUB && sub_ready))
                 return true;
@@ -880,17 +812,13 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
         return false;
 
     const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (timeout_ms_);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
 
     while (std::chrono::steady_clock::now () < deadline) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status (node_, &status) == 0
-            && status.subject_count > 0
-            && (status.ready_subject_count > 0
-                || status.connected_peer_count > 0
-                || status.active_peer_count > 0
-                || status.configured_peer_count == 0)) {
+        if (zlink_spot_node_status (node_, &status) == 0 && status.subject_count > 0
+            && (status.ready_subject_count > 0 || status.connected_peer_count > 0
+                || status.active_peer_count > 0 || status.configured_peer_count == 0)) {
             return true;
         }
         std::this_thread::yield ();
@@ -899,10 +827,7 @@ static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
     return false;
 }
 
-static void setup_spot_case (const char *transport_,
-                             int sndhwm_,
-                             int rcvhwm_,
-                             spot_case_t *out_)
+static void setup_spot_case (const char *transport_, int sndhwm_, int rcvhwm_, spot_case_t *out_)
 {
     LIBZLINK_UNUSED (rcvhwm_);
     void *ctx = get_test_context ();
@@ -913,8 +838,7 @@ static void setup_spot_case (const char *transport_,
     TEST_ASSERT_NOT_NULL (out_->sub_node);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      out_->pub_node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &sndhwm_,
-      sizeof (sndhwm_)));
+      out_->pub_node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &sndhwm_, sizeof (sndhwm_)));
 
     out_->pub = zlink_spot_new (out_->pub_node);
     out_->sub = zlink_spot_new (out_->sub_node);
@@ -933,36 +857,31 @@ static void setup_spot_case (const char *transport_,
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (out_->sub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->sub, ZLINK_OPT_RCVTIMEO, &kSpotTimeoutMs,
-                        sizeof (kSpotTimeoutMs)));
+      zlink_set_option (out_->sub, ZLINK_OPT_RCVTIMEO, &kSpotTimeoutMs, sizeof (kSpotTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (out_->sub, kTopic));
 
     if (is_tls_transport (transport_)) {
         out_->tls_enabled = true;
         out_->tls_files = make_tls_test_files ();
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (
-          out_->pub_node, out_->tls_files.server_cert.c_str (),
-          out_->tls_files.server_key.c_str (), 0));
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (
-          out_->sub_node, out_->tls_files.ca_cert.c_str (), "localhost", 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (out_->pub_node,
+                                                         out_->tls_files.server_cert.c_str (),
+                                                         out_->tls_files.server_key.c_str (), 0));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_tls_client (out_->sub_node, out_->tls_files.ca_cert.c_str (), "localhost", 0));
     }
 
     char endpoint[MAX_SOCKET_STRING];
     bind_spot_node (out_->pub_node, transport_, endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (out_->sub_node,
-                                                             endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (out_->sub_node, endpoint));
     TEST_ASSERT_TRUE (
-      wait_for_spot_node_ready_state (out_->pub_node, ZLINK_SPOT_ROLE_PUB,
-                                      kSpotTimeoutMs));
-    TEST_ASSERT_TRUE (
-      wait_for_spot_node_subject_ready (out_->sub_node, kSpotTimeoutMs));
+      wait_for_spot_node_ready_state (out_->pub_node, ZLINK_SPOT_ROLE_PUB, kSpotTimeoutMs));
+    TEST_ASSERT_TRUE (wait_for_spot_node_subject_ready (out_->sub_node, kSpotTimeoutMs));
 }
 
-static void assert_progress_monotonic (const std::vector<size_t> &counts_,
-                                       const char *label_)
+static void assert_progress_monotonic (const std::vector<size_t> &counts_, const char *label_)
 {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE (
-      sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]), counts_.size (), label_);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE (sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]), counts_.size (),
+                                    label_);
     for (size_t i = 1; i < counts_.size (); ++i)
         TEST_ASSERT_TRUE_MESSAGE (counts_[i] >= counts_[i - 1], label_);
     TEST_ASSERT_TRUE_MESSAGE (counts_.back () > counts_.front (), label_);
@@ -971,32 +890,27 @@ static void assert_progress_monotonic (const std::vector<size_t> &counts_,
 static void verify_raw_progress_matrix ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_spot_transport_available (transport))
             continue;
 
         for (int pattern_value = raw_pattern_dealer_dealer;
              pattern_value <= raw_pattern_router_router; ++pattern_value) {
-            const raw_pattern_t pattern =
-              static_cast<raw_pattern_t> (pattern_value);
+            const raw_pattern_t pattern = static_cast<raw_pattern_t> (pattern_value);
             std::vector<size_t> counts;
-            for (size_t i = 0;
-                 i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
+            for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
                 raw_case_t raw;
-                setup_raw_case (pattern, transport, kHwmBuckets[i], kLargeHwm,
-                                &raw);
-                counts.push_back (measure_send_window_raw (
-                  raw.sender,
-                  raw.has_target_rid ? &raw.target_rid : NULL,
-                  static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
+                setup_raw_case (pattern, transport, kHwmBuckets[i], kLargeHwm, &raw);
+                counts.push_back (
+                  measure_send_window_raw (raw.sender, raw.has_target_rid ? &raw.target_rid : NULL,
+                                           static_cast<size_t> (kHwmBuckets[i]) + 1, NULL));
                 close_raw_case (&raw);
             }
 
             char label[128];
-            snprintf (label, sizeof (label), "%s %s sndhwm progress",
-                      raw_pattern_name (pattern), transport);
+            snprintf (label, sizeof (label), "%s %s sndhwm progress", raw_pattern_name (pattern),
+                      transport);
             assert_progress_monotonic (counts, label);
         }
     }
@@ -1005,25 +919,21 @@ static void verify_raw_progress_matrix ()
 static void verify_raw_pressure_entry_and_resume ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_transport_available (transport))
             continue;
 
         for (int pattern_value = raw_pattern_dealer_dealer;
              pattern_value <= raw_pattern_router_router; ++pattern_value) {
-            const raw_pattern_t pattern =
-              static_cast<raw_pattern_t> (pattern_value);
+            const raw_pattern_t pattern = static_cast<raw_pattern_t> (pattern_value);
             raw_case_t raw;
             setup_raw_case (pattern, transport, kSmallHwm, kSmallHwm, &raw);
 
             bool backpressured = false;
             const size_t queued = measure_send_window_raw (
-              raw.sender, raw.has_target_rid ? &raw.target_rid : NULL, 4096,
-              &backpressured);
-            TEST_ASSERT_TRUE_MESSAGE (backpressured,
-                                      raw_pattern_name (pattern));
+              raw.sender, raw.has_target_rid ? &raw.target_rid : NULL, 4096, &backpressured);
+            TEST_ASSERT_TRUE_MESSAGE (backpressured, raw_pattern_name (pattern));
             TEST_ASSERT_TRUE (queued > 0);
 
             if (pattern == raw_pattern_router_router) {
@@ -1032,9 +942,8 @@ static void verify_raw_pressure_entry_and_resume ()
             }
 
             drain_gate_t drain;
-            std::thread drain_thread (
-              drain_raw_receiver_with_ack, raw.receiver, pattern, queued,
-              &drain);
+            std::thread drain_thread (drain_raw_receiver_with_ack, raw.receiver, pattern, queued,
+                                      &drain);
             start_drain (&drain);
 
             TEST_ASSERT_TRUE (wait_drain_done (&drain, kTimeoutMs));
@@ -1043,23 +952,18 @@ static void verify_raw_pressure_entry_and_resume ()
             TEST_ASSERT_EQUAL_INT (0, drain.error_code);
 
             if (pattern == raw_pattern_dealer_dealer) {
-                TEST_ASSERT_SUCCESS_ERRNO (
-                  recv_one_raw_message (raw.sender, false, NULL));
+                TEST_ASSERT_SUCCESS_ERRNO (recv_one_raw_message (raw.sender, false, NULL));
             } else if (pattern == raw_pattern_dealer_router) {
-                TEST_ASSERT_SUCCESS_ERRNO (
-                  recv_one_raw_message (raw.sender, false, NULL));
+                TEST_ASSERT_SUCCESS_ERRNO (recv_one_raw_message (raw.sender, false, NULL));
             }
 
             set_send_timeout (raw.sender, kTimeoutMs);
-            send_raw_part_blocking (
-              raw.sender, raw.has_target_rid ? &raw.target_rid : NULL);
+            send_raw_part_blocking (raw.sender, raw.has_target_rid ? &raw.target_rid : NULL);
             set_send_timeout (raw.sender, 0);
 
             TEST_ASSERT_SUCCESS_ERRNO (recv_one_raw_message (
               raw.receiver,
-              pattern == raw_pattern_dealer_router
-                || pattern == raw_pattern_router_router,
-              NULL));
+              pattern == raw_pattern_dealer_router || pattern == raw_pattern_router_router, NULL));
             close_raw_case (&raw);
         }
     }
@@ -1068,34 +972,30 @@ static void verify_raw_pressure_entry_and_resume ()
 static void verify_raw_rcvhwm_effect ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_transport_available (transport))
             continue;
 
         for (int pattern_value = raw_pattern_dealer_dealer;
              pattern_value <= raw_pattern_router_router; ++pattern_value) {
-            const raw_pattern_t pattern =
-              static_cast<raw_pattern_t> (pattern_value);
+            const raw_pattern_t pattern = static_cast<raw_pattern_t> (pattern_value);
 
             raw_case_t low_rcv;
             setup_raw_case (pattern, transport, kLargeHwm, kSmallHwm, &low_rcv);
             const size_t low_count = measure_send_window_raw (
-              low_rcv.sender,
-              low_rcv.has_target_rid ? &low_rcv.target_rid : NULL, 512, NULL);
+              low_rcv.sender, low_rcv.has_target_rid ? &low_rcv.target_rid : NULL, 512, NULL);
             close_raw_case (&low_rcv);
 
             raw_case_t high_rcv;
             setup_raw_case (pattern, transport, kLargeHwm, kLargeHwm, &high_rcv);
             const size_t high_count = measure_send_window_raw (
-              high_rcv.sender,
-              high_rcv.has_target_rid ? &high_rcv.target_rid : NULL, 512, NULL);
+              high_rcv.sender, high_rcv.has_target_rid ? &high_rcv.target_rid : NULL, 512, NULL);
             close_raw_case (&high_rcv);
 
             char label[128];
-            snprintf (label, sizeof (label), "%s %s rcvhwm effect",
-                      raw_pattern_name (pattern), transport);
+            snprintf (label, sizeof (label), "%s %s rcvhwm effect", raw_pattern_name (pattern),
+                      transport);
             TEST_ASSERT_TRUE_MESSAGE (low_count <= high_count, label);
         }
     }
@@ -1104,15 +1004,13 @@ static void verify_raw_rcvhwm_effect ()
 static void verify_pubsub_matrix ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_transport_available (transport))
             continue;
 
         std::vector<size_t> counts;
-        for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]);
-             ++i) {
+        for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
             pubsub_case_t pubsub;
             setup_pubsub_case (transport, kHwmBuckets[i], kLargeHwm, &pubsub);
             counts.push_back (measure_send_window_pubsub (
@@ -1129,8 +1027,7 @@ static void verify_pubsub_matrix ()
 static void verify_pubsub_pressure_entry_and_resume ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_transport_available (transport))
             continue;
@@ -1139,14 +1036,12 @@ static void verify_pubsub_pressure_entry_and_resume ()
         setup_pubsub_case (transport, kSmallHwm, kSmallHwm, &entry_case);
 
         bool backpressured = false;
-        const size_t queued =
-          measure_send_window_pubsub (entry_case.pub, 4096, &backpressured);
+        const size_t queued = measure_send_window_pubsub (entry_case.pub, 4096, &backpressured);
         TEST_ASSERT_TRUE_MESSAGE (backpressured, transport);
         TEST_ASSERT_TRUE (queued > 0);
 
         drain_gate_t drain;
-        std::thread drain_thread (
-          drain_subscription_receiver, entry_case.sub, queued + 1, &drain);
+        std::thread drain_thread (drain_subscription_receiver, entry_case.sub, queued + 1, &drain);
         start_drain (&drain);
         set_send_timeout (entry_case.pub, kTimeoutMs);
         publish_part_blocking (entry_case.pub);
@@ -1160,14 +1055,12 @@ static void verify_pubsub_pressure_entry_and_resume ()
 
         pubsub_case_t low_rcv;
         setup_pubsub_case (transport, kLargeHwm, kSmallHwm, &low_rcv);
-        const size_t low_count =
-          measure_send_window_pubsub (low_rcv.pub, 512, NULL);
+        const size_t low_count = measure_send_window_pubsub (low_rcv.pub, 512, NULL);
         close_pubsub_case (&low_rcv);
 
         pubsub_case_t high_rcv;
         setup_pubsub_case (transport, kLargeHwm, kLargeHwm, &high_rcv);
-        const size_t high_count =
-          measure_send_window_pubsub (high_rcv.pub, 512, NULL);
+        const size_t high_count = measure_send_window_pubsub (high_rcv.pub, 512, NULL);
         close_pubsub_case (&high_rcv);
 
         char label[128];
@@ -1179,19 +1072,17 @@ static void verify_pubsub_pressure_entry_and_resume ()
 static void verify_spot_forwarding_matrix ()
 {
     for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]);
-         ++transport_index) {
+         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
         if (!is_spot_transport_available (transport))
             continue;
 
         std::vector<size_t> counts;
-        for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]);
-             ++i) {
+        for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
             spot_case_t spot;
             setup_spot_case (transport, kHwmBuckets[i], kLargeHwm, &spot);
-            const size_t queued = measure_send_window_pubsub (
-              spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL);
+            const size_t queued =
+              measure_send_window_pubsub (spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL);
             counts.push_back (queued);
             drain_available_subscription_messages (spot.sub, queued);
             close_spot_case (&spot);

@@ -17,16 +17,14 @@
 //  Check whether the sizes of public representation of the message (zlink_msg_t)
 //  and private representation of the message (zlink::msg_t) match.
 
-typedef char
-  zlink_msg_size_check[2 * ((sizeof (zlink::msg_t) == sizeof (zlink_msg_t)) != 0)
-                     - 1];
+typedef char zlink_msg_size_check[2 * ((sizeof (zlink::msg_t) == sizeof (zlink_msg_t)) != 0) - 1];
 
 namespace
 {
 const uintptr_t slice_lmsg_flag = static_cast<uintptr_t> (1);
 
-const size_t slice_content_pool_max = static_cast<size_t> (
-  zlink::env::positive_int ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
+const size_t slice_content_pool_max =
+  static_cast<size_t> (zlink::env::positive_int ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
 
 typedef std::vector<zlink::msg_t::content_t *> slice_content_pool_t;
 
@@ -45,8 +43,8 @@ zlink::msg_t::content_t *acquire_slice_content ()
         return content;
     }
 
-    zlink::msg_t::content_t *content = static_cast<zlink::msg_t::content_t *> (
-      std::malloc (sizeof (zlink::msg_t::content_t)));
+    zlink::msg_t::content_t *content =
+      static_cast<zlink::msg_t::content_t *> (std::malloc (sizeof (zlink::msg_t::content_t)));
     if (!content)
         errno = ENOMEM;
     return content;
@@ -66,9 +64,8 @@ void release_slice_content (zlink::msg_t::content_t *content_)
 
 void *encode_slice_hint (zlink::msg_t::content_t *content_, bool lmsg_owner_)
 {
-    return reinterpret_cast<void *> (
-      reinterpret_cast<uintptr_t> (content_)
-      | (lmsg_owner_ ? slice_lmsg_flag : 0));
+    return reinterpret_cast<void *> (reinterpret_cast<uintptr_t> (content_)
+                                     | (lmsg_owner_ ? slice_lmsg_flag : 0));
 }
 
 zlink::msg_t::content_t *decode_slice_hint (void *hint_, bool *lmsg_owner_out_)
@@ -76,8 +73,7 @@ zlink::msg_t::content_t *decode_slice_hint (void *hint_, bool *lmsg_owner_out_)
     const uintptr_t encoded = reinterpret_cast<uintptr_t> (hint_);
     if (lmsg_owner_out_)
         *lmsg_owner_out_ = (encoded & slice_lmsg_flag) != 0;
-    return reinterpret_cast<zlink::msg_t::content_t *> (encoded
-                                                        & ~slice_lmsg_flag);
+    return reinterpret_cast<zlink::msg_t::content_t *> (encoded & ~slice_lmsg_flag);
 }
 }
 
@@ -86,11 +82,8 @@ bool zlink::msg_t::check () const
     return _u.base.type >= type_min && _u.base.type <= type_max;
 }
 
-int zlink::msg_t::init (void *data_,
-                      size_t size_,
-                      msg_free_fn *ffn_,
-                      void *hint_,
-                      content_t *content_)
+int zlink::msg_t::init (
+  void *data_, size_t size_, msg_free_fn *ffn_, void *hint_, content_t *content_)
 {
     if (size_ < max_vsm_size) {
         const int rc = init_size (size_);
@@ -135,8 +128,7 @@ int zlink::msg_t::init_size (size_t size_)
         _u.lmsg.routing_id = 0;
         _u.lmsg.content = NULL;
         if (sizeof (content_t) + size_ > size_)
-            _u.lmsg.content =
-              static_cast<content_t *> (malloc (sizeof (content_t) + size_));
+            _u.lmsg.content = static_cast<content_t *> (malloc (sizeof (content_t) + size_));
         if (unlikely (!_u.lmsg.content)) {
             errno = ENOMEM;
             return -1;
@@ -215,8 +207,7 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
     void *view_data = src_data + offset_;
 
     if (src_.is_lmsg () || src_.is_zcmsg ()) {
-        content_t *content =
-          src_.is_lmsg () ? src_._u.lmsg.content : src_._u.zclmsg.content;
+        content_t *content = src_.is_lmsg () ? src_._u.lmsg.content : src_._u.zclmsg.content;
         if (!content) {
             errno = EFAULT;
             return -1;
@@ -244,8 +235,7 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
             return -1;
         }
 
-        rc = init_external_storage (view_content, view_data, size_,
-                                    &msg_t::call_dec_ref_on_slice,
+        rc = init_external_storage (view_content, view_data, size_, &msg_t::call_dec_ref_on_slice,
                                     encode_slice_hint (content, lmsg_owner));
         if (likely (rc == 0))
             return 0;
@@ -278,11 +268,8 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
     return 0;
 }
 
-int zlink::msg_t::init_external_storage (content_t *content_,
-                                       void *data_,
-                                       size_t size_,
-                                       msg_free_fn *ffn_,
-                                       void *hint_)
+int zlink::msg_t::init_external_storage (
+  content_t *content_, void *data_, size_t size_, msg_free_fn *ffn_, void *hint_)
 {
     zlink_assert (NULL != data_);
     zlink_assert (NULL != content_);
@@ -303,10 +290,7 @@ int zlink::msg_t::init_external_storage (content_t *content_,
     return 0;
 }
 
-int zlink::msg_t::init_data (void *data_,
-                           size_t size_,
-                           msg_free_fn *ffn_,
-                           void *hint_)
+int zlink::msg_t::init_data (void *data_, size_t size_, msg_free_fn *ffn_, void *hint_)
 {
     //  If data is NULL and size is not 0, a segfault
     //  would occur once the data is accessed
@@ -327,8 +311,7 @@ int zlink::msg_t::init_data (void *data_,
         _u.lmsg.group.sgroup.group[0] = '\0';
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
-        _u.lmsg.content =
-          static_cast<content_t *> (malloc (sizeof (content_t)));
+        _u.lmsg.content = static_cast<content_t *> (malloc (sizeof (content_t)));
         if (!_u.lmsg.content) {
             errno = ENOMEM;
             return -1;
@@ -414,15 +397,13 @@ int zlink::msg_t::close ()
     if (_u.base.type == type_lmsg) {
         //  If the content is not shared, or if it is shared and the reference
         //  count has dropped to zero, deallocate it.
-        if (!(_u.lmsg.flags & msg_t::shared)
-            || !_u.lmsg.content->refcnt.sub (1)) {
+        if (!(_u.lmsg.flags & msg_t::shared) || !_u.lmsg.content->refcnt.sub (1)) {
             //  We used "placement new" operator to initialize the reference
             //  counter so we call the destructor explicitly now.
             _u.lmsg.content->refcnt.~atomic_counter_t ();
 
             if (_u.lmsg.content->ffn)
-                _u.lmsg.content->ffn (_u.lmsg.content->data,
-                                      _u.lmsg.content->hint);
+                _u.lmsg.content->ffn (_u.lmsg.content->data, _u.lmsg.content->hint);
             free (_u.lmsg.content);
         }
     }
@@ -643,8 +624,7 @@ size_t zlink::msg_t::command_body_size () const
 {
     if (this->is_ping () || this->is_pong ())
         return this->size () - ping_cmd_name_size;
-    else if (!(this->flags () & msg_t::command)
-             && (this->is_subscribe () || this->is_cancel ()))
+    else if (!(this->flags () & msg_t::command) && (this->is_subscribe () || this->is_cancel ()))
         return this->size ();
     else if (this->is_subscribe ())
         return this->size () - sub_cmd_name_size;
@@ -659,17 +639,14 @@ void *zlink::msg_t::command_body ()
     unsigned char *data = NULL;
 
     if (this->is_ping () || this->is_pong ())
-        data =
-          static_cast<unsigned char *> (this->data ()) + ping_cmd_name_size;
+        data = static_cast<unsigned char *> (this->data ()) + ping_cmd_name_size;
     //  With inproc, command flag is not set for sub/cancel
-    else if (!(this->flags () & msg_t::command)
-             && (this->is_subscribe () || this->is_cancel ()))
+    else if (!(this->flags () & msg_t::command) && (this->is_subscribe () || this->is_cancel ()))
         data = static_cast<unsigned char *> (this->data ());
     else if (this->is_subscribe ())
         data = static_cast<unsigned char *> (this->data ()) + sub_cmd_name_size;
     else if (this->is_cancel ())
-        data =
-          static_cast<unsigned char *> (this->data ()) + cancel_cmd_name_size;
+        data = static_cast<unsigned char *> (this->data ()) + cancel_cmd_name_size;
 
     return data;
 }
@@ -782,8 +759,7 @@ int zlink::msg_t::set_group (const char *group_, size_t length_)
 
     if (length_ > 14) {
         _u.base.group.lgroup.type = group_type_long;
-        _u.base.group.lgroup.content =
-          (long_group_t *) malloc (sizeof (long_group_t));
+        _u.base.group.lgroup.content = (long_group_t *) malloc (sizeof (long_group_t));
         assert (_u.base.group.lgroup.content);
         new (&_u.base.group.lgroup.content->refcnt) zlink::atomic_counter_t ();
         _u.base.group.lgroup.content->refcnt.set (1);

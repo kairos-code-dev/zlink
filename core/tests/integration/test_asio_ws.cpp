@@ -69,7 +69,7 @@ void test_ws_stream_options ()
     ws_stream.auto_fragment (false);
 
     //  Test message size limit
-    ws_stream.read_message_max (16 * 1024 * 1024);  // 16 MB
+    ws_stream.read_message_max (16 * 1024 * 1024); // 16 MB
 }
 
 //  Test 3: TCP connection baseline (without WebSocket upgrade)
@@ -78,8 +78,7 @@ void test_tcp_connection_baseline ()
     net::io_context io_context;
 
     //  Create acceptor on ephemeral port
-    tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server socket
@@ -94,20 +93,18 @@ void test_tcp_connection_baseline ()
     boost::system::error_code accept_ec, connect_ec;
 
     //  Async accept
-    acceptor.async_accept (server_socket,
-                           [&] (const boost::system::error_code &ec) {
-                               accept_ec = ec;
-                               if (++completed >= 2)
-                                   all_done = true;
-                           });
+    acceptor.async_accept (server_socket, [&] (const boost::system::error_code &ec) {
+        accept_ec = ec;
+        if (++completed >= 2)
+            all_done = true;
+    });
 
     //  Async connect
-    client_socket.async_connect (endpoint,
-                                 [&] (const boost::system::error_code &ec) {
-                                     connect_ec = ec;
-                                     if (++completed >= 2)
-                                         all_done = true;
-                                 });
+    client_socket.async_connect (endpoint, [&] (const boost::system::error_code &ec) {
+        connect_ec = ec;
+        if (++completed >= 2)
+            all_done = true;
+    });
 
     //  Run io_context with timeout using thread
     std::thread io_thread ([&] () { io_context.run (); });
@@ -124,8 +121,7 @@ void test_tcp_connection_baseline ()
 
     TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "TCP connection timed out");
     TEST_ASSERT_FALSE_MESSAGE (accept_ec.failed (), accept_ec.message ().c_str ());
-    TEST_ASSERT_FALSE_MESSAGE (connect_ec.failed (),
-                               connect_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (connect_ec.failed (), connect_ec.message ().c_str ());
     TEST_ASSERT_TRUE (server_socket.is_open ());
     TEST_ASSERT_TRUE (client_socket.is_open ());
 }
@@ -139,13 +135,11 @@ void test_ws_handshake ()
     auto work = net::make_work_guard (io_context);
 
     //  Create acceptor on ephemeral port
-    tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Build host string for handshake
-    std::string host =
-      "127.0.0.1:" + std::to_string (endpoint.port ());
+    std::string host = "127.0.0.1:" + std::to_string (endpoint.port ());
 
     //  Server WebSocket stream
     websocket::stream<tcp::socket> server_ws (io_context);
@@ -159,43 +153,39 @@ void test_ws_handshake ()
     boost::system::error_code server_hs_ec, client_hs_ec;
 
     //  Set up the chain of operations
-    acceptor.async_accept (server_ws.next_layer (),
-                           [&] (const boost::system::error_code &ec) {
-                               if (ec) {
-                                   all_done = true;
-                                   work.reset ();
-                                   return;
-                               }
+    acceptor.async_accept (server_ws.next_layer (), [&] (const boost::system::error_code &ec) {
+        if (ec) {
+            all_done = true;
+            work.reset ();
+            return;
+        }
 
-                               //  Server: accept WebSocket upgrade
-                               server_ws.async_accept (
-                                 [&] (const boost::system::error_code &ec) {
-                                     server_hs_ec = ec;
-                                     if (++stage >= 2) {
-                                         all_done = true;
-                                         work.reset ();
-                                     }
-                                 });
-                           });
+        //  Server: accept WebSocket upgrade
+        server_ws.async_accept ([&] (const boost::system::error_code &ec) {
+            server_hs_ec = ec;
+            if (++stage >= 2) {
+                all_done = true;
+                work.reset ();
+            }
+        });
+    });
 
-    client_ws.next_layer ().async_connect (
-      endpoint, [&] (const boost::system::error_code &ec) {
-          if (ec) {
-              all_done = true;
-              work.reset ();
-              return;
-          }
+    client_ws.next_layer ().async_connect (endpoint, [&] (const boost::system::error_code &ec) {
+        if (ec) {
+            all_done = true;
+            work.reset ();
+            return;
+        }
 
-          //  Client: perform WebSocket handshake
-          client_ws.async_handshake (host, "/zlink",
-                                     [&] (const boost::system::error_code &ec) {
-                                         client_hs_ec = ec;
-                                         if (++stage >= 2) {
-                                             all_done = true;
-                                             work.reset ();
-                                         }
-                                     });
-      });
+        //  Client: perform WebSocket handshake
+        client_ws.async_handshake (host, "/zlink", [&] (const boost::system::error_code &ec) {
+            client_hs_ec = ec;
+            if (++stage >= 2) {
+                all_done = true;
+                work.reset ();
+            }
+        });
+    });
 
     //  Run io_context in a separate thread
     std::thread io_thread ([&] () { io_context.run (); });
@@ -212,10 +202,8 @@ void test_ws_handshake ()
     io_thread.join ();
 
     TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "WebSocket handshake timed out");
-    TEST_ASSERT_FALSE_MESSAGE (server_hs_ec.failed (),
-                               server_hs_ec.message ().c_str ());
-    TEST_ASSERT_FALSE_MESSAGE (client_hs_ec.failed (),
-                               client_hs_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (server_hs_ec.failed (), server_hs_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (client_hs_ec.failed (), client_hs_ec.message ().c_str ());
 
     //  Note: Don't call sync close - it blocks when io_context is stopped
     //  Let the streams destruct naturally
@@ -230,12 +218,10 @@ void test_ws_binary_message ()
     auto work = net::make_work_guard (io_context);
 
     //  Create acceptor on ephemeral port
-    tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::make_address ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (io_context, tcp::endpoint (net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
-    std::string host =
-      "127.0.0.1:" + std::to_string (endpoint.port ());
+    std::string host = "127.0.0.1:" + std::to_string (endpoint.port ());
 
     //  Server and client WebSocket streams
     websocket::stream<tcp::socket> server_ws (io_context);
@@ -246,8 +232,7 @@ void test_ws_binary_message ()
     client_ws.binary (true);
 
     //  Test data
-    const unsigned char test_data[] = {0x01, 0x02, 0x03, 0x04, 0x05,
-                                       0x00, 0xFF, 0xFE, 0xFD};
+    const unsigned char test_data[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0xFF, 0xFE, 0xFD};
     const std::size_t test_data_size = sizeof (test_data);
 
     //  State tracking
@@ -258,63 +243,55 @@ void test_ws_binary_message ()
     std::size_t bytes_read = 0;
 
     //  Set up the chain of operations
-    acceptor.async_accept (server_ws.next_layer (),
-                           [&] (const boost::system::error_code &ec) {
-                               if (ec) {
-                                   all_done = true;
-                                   work.reset ();
-                                   return;
-                               }
+    acceptor.async_accept (server_ws.next_layer (), [&] (const boost::system::error_code &ec) {
+        if (ec) {
+            all_done = true;
+            work.reset ();
+            return;
+        }
 
-                               //  Server: accept WebSocket upgrade, then read
-                               server_ws.async_accept (
-                                 [&] (const boost::system::error_code &ec) {
-                                     if (ec) {
-                                         all_done = true;
-                                         work.reset ();
-                                         return;
-                                     }
+        //  Server: accept WebSocket upgrade, then read
+        server_ws.async_accept ([&] (const boost::system::error_code &ec) {
+            if (ec) {
+                all_done = true;
+                work.reset ();
+                return;
+            }
 
-                                     //  Server reads binary data
-                                     server_ws.async_read (
-                                       recv_buffer,
-                                       [&] (const boost::system::error_code &ec,
-                                            std::size_t n) {
-                                           read_ec = ec;
-                                           bytes_read = n;
-                                           all_done = true;
-                                           work.reset ();
-                                       });
-                                 });
-                           });
+            //  Server reads binary data
+            server_ws.async_read (recv_buffer,
+                                  [&] (const boost::system::error_code &ec, std::size_t n) {
+                                      read_ec = ec;
+                                      bytes_read = n;
+                                      all_done = true;
+                                      work.reset ();
+                                  });
+        });
+    });
 
-    client_ws.next_layer ().async_connect (
-      endpoint, [&] (const boost::system::error_code &ec) {
-          if (ec) {
-              all_done = true;
-              work.reset ();
-              return;
-          }
+    client_ws.next_layer ().async_connect (endpoint, [&] (const boost::system::error_code &ec) {
+        if (ec) {
+            all_done = true;
+            work.reset ();
+            return;
+        }
 
-          //  Client: perform WebSocket handshake, then write
-          client_ws.async_handshake (host, "/zlink",
-                                     [&] (const boost::system::error_code &ec) {
-                                         if (ec) {
-                                             all_done = true;
-                                             work.reset ();
-                                             return;
-                                         }
+        //  Client: perform WebSocket handshake, then write
+        client_ws.async_handshake (host, "/zlink", [&] (const boost::system::error_code &ec) {
+            if (ec) {
+                all_done = true;
+                work.reset ();
+                return;
+            }
 
-                                         //  Client writes binary data
-                                         client_ws.async_write (
-                                           net::buffer (test_data, test_data_size),
-                                           [&] (const boost::system::error_code &ec,
-                                                std::size_t n) {
-                                               write_ec = ec;
-                                               bytes_written = n;
-                                           });
-                                     });
-      });
+            //  Client writes binary data
+            client_ws.async_write (net::buffer (test_data, test_data_size),
+                                   [&] (const boost::system::error_code &ec, std::size_t n) {
+                                       write_ec = ec;
+                                       bytes_written = n;
+                                   });
+        });
+    });
 
     //  Run io_context in a separate thread
     std::thread io_thread ([&] () { io_context.run (); });
@@ -330,8 +307,7 @@ void test_ws_binary_message ()
     }
     io_thread.join ();
 
-    TEST_ASSERT_TRUE_MESSAGE (all_done.load (),
-                              "WebSocket message exchange timed out");
+    TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "WebSocket message exchange timed out");
     TEST_ASSERT_FALSE_MESSAGE (write_ec.failed (), write_ec.message ().c_str ());
     TEST_ASSERT_FALSE_MESSAGE (read_ec.failed (), read_ec.message ().c_str ());
     TEST_ASSERT_EQUAL_UINT64 (test_data_size, bytes_written);
@@ -390,8 +366,8 @@ void test_zlink_ws_bind ()
     if (rc == -1) {
         int err = zlink_errno ();
         char msg[256];
-        snprintf (msg, sizeof (msg), "zlink_bind(ws://) failed with errno %d: %s",
-                  err, zlink_strerror (err));
+        snprintf (msg, sizeof (msg), "zlink_bind(ws://) failed with errno %d: %s", err,
+                  zlink_strerror (err));
         TEST_FAIL_MESSAGE (msg);
     }
     TEST_ASSERT_EQUAL_INT (0, rc);
@@ -436,8 +412,7 @@ void test_zlink_ws_connect ()
     if (rc == -1) {
         int err = zlink_errno ();
         char msg[256];
-        snprintf (msg, sizeof (msg),
-                  "zlink_connect(ws://) failed with errno %d: %s", err,
+        snprintf (msg, sizeof (msg), "zlink_connect(ws://) failed with errno %d: %s", err,
                   zlink_strerror (err));
         TEST_FAIL_MESSAGE (msg);
     }
@@ -591,26 +566,22 @@ void test_zlink_wss_pair_message ()
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (), files.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (),
-      files.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (),
-      files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (), files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     //  Bind server to WSS endpoint
     int rc = zlink_bind (server, "wss://127.0.0.1:*");
@@ -632,11 +603,11 @@ void test_zlink_wss_pair_message ()
     cleanup_tls_test_files (files);
     teardown_zlink_ctx ();
 }
-#endif  // ZLINK_HAVE_WSS
+#endif // ZLINK_HAVE_WSS
 
-#endif  // ZLINK_HAVE_WS
+#endif // ZLINK_HAVE_WS
 
-#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_WS
+#else // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_WS
 
 void setUp ()
 {
@@ -652,7 +623,7 @@ void test_asio_ws_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio WebSocket not enabled, skipping tests");
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS
 
 int main ()
 {
@@ -679,7 +650,7 @@ int main ()
 #if defined ZLINK_HAVE_WSS
     RUN_TEST (test_zlink_wss_pair_message);
 #endif
-#endif  // ZLINK_HAVE_WS
+#endif // ZLINK_HAVE_WS
 
 #else
     RUN_TEST (test_asio_ws_not_enabled);

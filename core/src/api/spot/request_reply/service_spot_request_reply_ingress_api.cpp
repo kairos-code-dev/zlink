@@ -22,8 +22,7 @@
 
 namespace
 {
-const bool spot_direct_route_debug_on =
-  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+const bool spot_direct_route_debug_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 
 bool spot_direct_route_debug_enabled ()
 {
@@ -35,34 +34,25 @@ int process_route_combined_message (void *node_,
                                     std::vector<zlink_msg_t> &combined)
 {
     if (spot_direct_route_debug_enabled ()) {
-        std::fprintf (stderr,
-                      "[spot-direct] routed recv parts=%zu socket=%d\n",
-                      combined.size (),
+        std::fprintf (stderr, "[spot-direct] routed recv parts=%zu socket=%d\n", combined.size (),
                       socket ? socket->socket_id () : -1);
     }
 
     if (!combined.empty ()) {
-        zlink::msg_t *kind_msg =
-          reinterpret_cast<zlink::msg_t *> (&combined[0]);
+        zlink::msg_t *kind_msg = reinterpret_cast<zlink::msg_t *> (&combined[0]);
         if (kind_msg->check ()
             && zlink::spot_control_protocol::is_peer_pub_route_topic (
-              static_cast<const char *> (kind_msg->data ()),
-              kind_msg->size ())) {
-            zlink::spot_node_t *node =
-              static_cast<zlink::spot_node_t *> (node_);
-            zlink::spot_runtime_t *runtime =
-              zlink::spot_node_access_t::runtime (node);
+              static_cast<const char *> (kind_msg->data ()), kind_msg->size ())) {
+            zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+            zlink::spot_runtime_t *runtime = zlink::spot_node_access_t::runtime (node);
             if (!runtime || combined.size () < 2) {
                 zlink::request_reply::close_built_parts (&combined);
                 errno = EPROTO;
                 return -1;
             }
 
-            zlink::msg_t *topic_msg =
-              reinterpret_cast<zlink::msg_t *> (&combined[1]);
-            std::string topic (
-              static_cast<const char *> (topic_msg->data ()),
-              topic_msg->size ());
+            zlink::msg_t *topic_msg = reinterpret_cast<zlink::msg_t *> (&combined[1]);
+            std::string topic (static_cast<const char *> (topic_msg->data ()), topic_msg->size ());
             zlink::spot_owned_msg_parts_t payload;
             for (size_t i = 2; i < combined.size (); ++i) {
                 payload.push_back (zlink_msg_t ());
@@ -79,11 +69,8 @@ int process_route_combined_message (void *node_,
               runtime, &runtime->execution.data_plane_state, topic, payload);
             if (spot_direct_route_debug_enabled ()) {
                 std::fprintf (
-                  stderr,
-                  "[spot-direct] ingress peer-pub topic=%s rc=%d errno=%d targets=%zu\n",
-                  topic.c_str (),
-                  rc,
-                  errno,
+                  stderr, "[spot-direct] ingress peer-pub topic=%s rc=%d errno=%d targets=%zu\n",
+                  topic.c_str (), rc, errno,
                   runtime->execution.data_plane_state.local_fanout.targets.size ());
             }
             const int saved_errno = errno;
@@ -98,16 +85,13 @@ int process_route_combined_message (void *node_,
 
     zlink::spot_reqrep_internal::parsed_spot_envelope_t spot_envelope;
     int rc = -1;
-    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-          &combined[0], combined.size (), &spot_envelope)) {
+    if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (&combined[0], combined.size (),
+                                                                  &spot_envelope)) {
         const int saved_errno = errno != 0 ? errno : EPROTO;
         if (spot_direct_route_debug_enabled ()) {
-            std::fprintf (
-              stderr,
-              "[spot-direct] ingress parse failed errno=%d parts=%zu socket=%d\n",
-              saved_errno,
-              combined.size (),
-              socket ? socket->socket_id () : -1);
+            std::fprintf (stderr,
+                          "[spot-direct] ingress parse failed errno=%d parts=%zu socket=%d\n",
+                          saved_errno, combined.size (), socket ? socket->socket_id () : -1);
         }
         zlink::request_reply::close_built_parts (&combined);
         errno = saved_errno;
@@ -119,26 +103,22 @@ int process_route_combined_message (void *node_,
         if (spot_envelope.destination_class
             == zlink::spot_routed_protocol::actor_gateway_endpoint_class) {
             rc = zlink::spot_actor_internal::process_gateway_delivery (
-              node_,
-              &spot_envelope.source_node_rid_value,
-              spot_envelope.payload_parts,
+              node_, &spot_envelope.source_node_rid_value, spot_envelope.payload_parts,
               spot_envelope.payload_part_count);
         } else {
-            rc = zlink::spot_reqrep_internal::
-              process_parsed_route_combined_for_local_delivery (&combined,
-                                                                spot_envelope);
+            rc = zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery (
+              &combined, spot_envelope);
         }
     } else {
         if (spot_direct_route_debug_enabled ()) {
             std::string local_node_rid;
             (void) zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
               static_cast<zlink::spot_node_t *> (node_), &local_node_rid);
-            std::fprintf (
-              stderr,
-              "[spot-direct] drop non-local routed envelope on external router node=%s dest_node=%s dest_endpoint=%s\n",
-              local_node_rid.c_str (),
-              spot_envelope.destination_node_rid.c_str (),
-              spot_envelope.destination_endpoint_rid.c_str ());
+            std::fprintf (stderr,
+                          "[spot-direct] drop non-local routed envelope on external router node=%s "
+                          "dest_node=%s dest_endpoint=%s\n",
+                          local_node_rid.c_str (), spot_envelope.destination_node_rid.c_str (),
+                          spot_envelope.destination_endpoint_rid.c_str ());
         }
         rc = 0;
     }
@@ -153,7 +133,7 @@ int process_route_combined_message (void *node_,
 }
 
 int recv_combined_external_router_message (zlink::socket_base_t *socket_,
-                                      std::vector<zlink_msg_t> *out_)
+                                           std::vector<zlink_msg_t> *out_)
 {
     if (!socket_ || !out_) {
         errno = EFAULT;
@@ -166,20 +146,16 @@ int recv_combined_external_router_message (zlink::socket_base_t *socket_,
     zlink_msg_init (&first);
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
-    if (zlink::recv_msg_routed_socket (socket_, &first, &source_rid,
-                                       ZLINK_DONTWAIT)
-        != 0) {
+    if (zlink::recv_msg_routed_socket (socket_, &first, &source_rid, ZLINK_DONTWAIT) != 0) {
         zlink_msg_close (&first);
         return -1;
     }
 
     out_->push_back (first);
-    while (!out_->empty ()
-           && zlink::msg_frame_has_more (out_->back ())) {
+    while (!out_->empty () && zlink::msg_frame_has_more (out_->back ())) {
         zlink_msg_t next;
         zlink_msg_init (&next);
-        if (zlink::internal_pair_queue::recv_followup_with_retry (
-              socket_, &next, ZLINK_DONTWAIT)
+        if (zlink::internal_pair_queue::recv_followup_with_retry (socket_, &next, ZLINK_DONTWAIT)
             != 0) {
             const int saved_errno = errno;
             zlink::request_reply::close_built_parts (out_);
@@ -195,23 +171,20 @@ int recv_combined_external_router_message (zlink::socket_base_t *socket_,
 }
 
 int zlink::spot_reqrep_internal::process_external_router_combined_for_data_plane (
-  zlink::spot_node_t *node_,
-  std::vector<zlink_msg_t> *combined_)
+  zlink::spot_node_t *node_, std::vector<zlink_msg_t> *combined_)
 {
     if (!node_ || !combined_) {
         errno = EFAULT;
         return -1;
     }
 
-    const int processed = process_route_combined_message (node_, NULL,
-                                                          *combined_);
+    const int processed = process_route_combined_message (node_, NULL, *combined_);
     return processed < 0 ? -1 : 0;
 }
 
 extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
 {
-    zlink::socket_base_t *socket =
-      static_cast<zlink::socket_base_t *> (socket_);
+    zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (socket_);
     if (!socket) {
         errno = EFAULT;
         return -1;
@@ -222,21 +195,15 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
         if (recv_combined_external_router_message (socket, &combined) != 0) {
             if (spot_direct_route_debug_enabled () && errno == EAGAIN) {
                 static std::atomic<int> g_external_eagain_logs (0);
-                if (g_external_eagain_logs.fetch_add (
-                      1, std::memory_order_acq_rel)
-                    < 64) {
-                    std::fprintf (
-                      stderr,
-                      "[spot-direct] external-router recv eagain socket=%d\n",
-                      socket->socket_id ());
+                if (g_external_eagain_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
+                    std::fprintf (stderr, "[spot-direct] external-router recv eagain socket=%d\n",
+                                  socket->socket_id ());
                 }
             }
             if (spot_direct_route_debug_enabled () && errno != EAGAIN) {
-                std::fprintf (
-                  stderr,
-                  "[spot-direct] external-router recv failed errno=%d socket=%d\n",
-                  errno,
-                  socket->socket_id ());
+                std::fprintf (stderr,
+                              "[spot-direct] external-router recv failed errno=%d socket=%d\n",
+                              errno, socket->socket_id ());
             }
             if (errno == EAGAIN)
                 return 0;
@@ -244,10 +211,8 @@ extern "C" int zlink_spot_process_external_router (void *node_, void *socket_)
         }
 
         if (spot_direct_route_debug_enabled ()) {
-            std::fprintf (stderr,
-                          "[spot-direct] external-router recv ok socket=%d parts=%zu\n",
-                          socket->socket_id (),
-                          combined.size ());
+            std::fprintf (stderr, "[spot-direct] external-router recv ok socket=%d parts=%zu\n",
+                          socket->socket_id (), combined.size ());
         }
         if (process_route_combined_message (node_, socket, combined) < 0)
             return -1;

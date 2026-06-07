@@ -13,8 +13,7 @@ namespace registry_route_hash
 
 inline size_t combine (size_t seed_, size_t value_)
 {
-    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
-                    + (seed_ >> 2));
+    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6) + (seed_ >> 2));
 }
 
 inline uint64_t rotl64 (uint64_t value_, int shift_)
@@ -30,10 +29,7 @@ inline uint64_t read_le64 (const unsigned char *data_)
     return value;
 }
 
-inline void sip_round (uint64_t *v0_,
-                       uint64_t *v1_,
-                       uint64_t *v2_,
-                       uint64_t *v3_)
+inline void sip_round (uint64_t *v0_, uint64_t *v1_, uint64_t *v2_, uint64_t *v3_)
 {
     *v0_ += *v1_;
     *v1_ = rotl64 (*v1_, 13);

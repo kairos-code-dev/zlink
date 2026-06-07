@@ -43,9 +43,8 @@ void test_localhost ()
     //  Check that we have local networking via Zlink
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
     if (zlink_bind (dealer, "tcp://127.0.0.1:*") == -1) {
-        TEST_FAIL_MESSAGE (
-          "E: Cannot find 127.0.0.1 -- your system does not have local\n"
-          "E: networking. Please fix this before running libzlink checks.\n");
+        TEST_FAIL_MESSAGE ("E: Cannot find 127.0.0.1 -- your system does not have local\n"
+                           "E: networking. Please fix this before running libzlink checks.\n");
     }
 
     test_context_socket_close (dealer);
@@ -60,10 +59,9 @@ void test_max_sockets ()
         handle[count] = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (handle[count] == retired_fd) {
             printf ("W: Only able to create %d sockets on this box\n", count);
-            const char msg[] =
-              "I: Tune your system to increase maximum allowed file handles\n"
+            const char msg[] = "I: Tune your system to increase maximum allowed file handles\n"
 #if !defined(ZLINK_HAVE_WINDOWS)
-              "I: Run 'ulimit -n 1200' in bash\n"
+                               "I: Run 'ulimit -n 1200' in bash\n"
 #endif
               ;
             TEST_FAIL_MESSAGE (msg);

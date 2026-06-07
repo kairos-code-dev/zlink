@@ -16,18 +16,15 @@ uint32_t resolve_effective_ready_count (uint32_t ready_count_,
                                         uint32_t connected_ready_count_)
 {
     const uint32_t effective_peer_count =
-      active_peer_count_ > connected_ready_count_ ? active_peer_count_
-                                                  : connected_ready_count_;
+      active_peer_count_ > connected_ready_count_ ? active_peer_count_ : connected_ready_count_;
     if (effective_peer_count == 0)
         return ready_count_;
     return clamp_ready_peer_count (ready_count_, effective_peer_count);
 }
 
-unsigned int subscription_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
+unsigned int subscription_ready_holdoff_ticks (const std::set<std::string> &connected_endpoints_)
 {
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
+    for (std::set<std::string>::const_iterator it = connected_endpoints_.begin ();
          it != connected_endpoints_.end (); ++it) {
         if (it->compare (0, 6, "wss://") == 0)
             return 500;
@@ -38,11 +35,9 @@ unsigned int subscription_ready_holdoff_ticks (
     return 50;
 }
 
-unsigned int subscription_replay_attempt_count (
-  const std::set<std::string> &connected_endpoints_)
+unsigned int subscription_replay_attempt_count (const std::set<std::string> &connected_endpoints_)
 {
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
+    for (std::set<std::string>::const_iterator it = connected_endpoints_.begin ();
          it != connected_endpoints_.end (); ++it) {
         if (it->compare (0, 6, "wss://") == 0)
             return 40;
@@ -55,11 +50,9 @@ unsigned int subscription_replay_attempt_count (
     return 10;
 }
 
-unsigned int subscription_replay_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
+unsigned int subscription_replay_holdoff_ticks (const std::set<std::string> &connected_endpoints_)
 {
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
+    for (std::set<std::string>::const_iterator it = connected_endpoints_.begin ();
          it != connected_endpoints_.end (); ++it) {
         if (it->compare (0, 6, "wss://") == 0)
             return 2;
@@ -72,11 +65,9 @@ unsigned int subscription_replay_holdoff_ticks (
     return 5;
 }
 
-unsigned int pub_delivery_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_)
+unsigned int pub_delivery_ready_holdoff_ticks (const std::set<std::string> &connected_endpoints_)
 {
-    for (std::set<std::string>::const_iterator it =
-           connected_endpoints_.begin ();
+    for (std::set<std::string>::const_iterator it = connected_endpoints_.begin ();
          it != connected_endpoints_.end (); ++it) {
         if (it->compare (0, 6, "wss://") == 0)
             return 50;

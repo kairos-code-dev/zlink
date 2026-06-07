@@ -26,10 +26,7 @@ void tearDown ()
 class test_ip_resolver_t ZLINK_FINAL : public zlink::ip_resolver_t
 {
   public:
-    test_ip_resolver_t (zlink::ip_resolver_options_t opts_) :
-        ip_resolver_t (opts_)
-    {
-    }
+    test_ip_resolver_t (zlink::ip_resolver_options_t opts_) : ip_resolver_t (opts_) {}
 
   protected:
     struct dns_lut_t
@@ -96,8 +93,7 @@ class test_ip_resolver_t ZLINK_FINAL : public zlink::ip_resolver_t
           "eth0",
           "eth1",
         };
-        unsigned lut_len =
-          sizeof (dummy_interfaces) / sizeof (dummy_interfaces[0]);
+        unsigned lut_len = sizeof (dummy_interfaces) / sizeof (dummy_interfaces[0]);
 
         for (unsigned i = 0; i < lut_len; i++) {
             if (strcmp (dummy_interfaces[i], ifname_) == 0) {
@@ -149,15 +145,21 @@ static void test_resolve (zlink::ip_resolver_options_t opts_,
     TEST_ASSERT_SUCCESS_ERRNO (rc);
 
 
-    validate_address (family, &addr, expected_addr_, expected_port_,
-                      expected_zone_, expected_addr_v4_failover_);
+    validate_address (family, &addr, expected_addr_, expected_port_, expected_zone_,
+                      expected_addr_v4_failover_);
 }
 
 // Helper macro to define the v4/v6 function pairs
-#define MAKE_TEST_V4V6(_test)                                                  \
-    static void _test##_ipv4 () { _test (false); }                             \
-                                                                               \
-    static void _test##_ipv6 () { _test (true); }
+#define MAKE_TEST_V4V6(_test)                                                                      \
+    static void _test##_ipv4 ()                                                                    \
+    {                                                                                              \
+        _test (false);                                                                             \
+    }                                                                                              \
+                                                                                                   \
+    static void _test##_ipv6 ()                                                                    \
+    {                                                                                              \
+        _test (true);                                                                              \
+    }
 
 static void test_bind_any (bool ipv6_)
 {
@@ -495,8 +497,7 @@ static void test_parse_ipv6_port_nobrackets ()
     resolver_opts.ipv6 (true).expect_port (true);
 
     //  Should this be allowed? Seems error-prone but so far ZLINK accepts it.
-    test_resolve (resolver_opts, "abcd:1234::1:0:234:123", "abcd:1234::1:0:234",
-                  123);
+    test_resolve (resolver_opts, "abcd:1234::1:0:234:123", "abcd:1234::1:0:234", 123);
 }
 
 static void test_parse_ipv4_in_ipv6 ()
@@ -508,8 +509,7 @@ static void test_parse_ipv4_in_ipv6 ()
     //  Parsing IPv4 should also work if an IPv6 is requested, it returns an
     //  IPv6 with the IPv4 address embedded (except sometimes on Windows where
     //  we end up with an IPv4 anyway)
-    test_resolve (resolver_opts, "11.22.33.44", "::ffff:11.22.33.44", 0, 0,
-                  "11.22.33.44");
+    test_resolve (resolver_opts, "11.22.33.44", "::ffff:11.22.33.44", 0, 0, "11.22.33.44");
 }
 
 static void test_parse_ipv4_in_ipv6_port ()
@@ -518,8 +518,7 @@ static void test_parse_ipv4_in_ipv6_port ()
 
     resolver_opts.ipv6 (true).expect_port (true);
 
-    test_resolve (resolver_opts, "11.22.33.44:55", "::ffff:11.22.33.44", 55, 0,
-                  "11.22.33.44");
+    test_resolve (resolver_opts, "11.22.33.44:55", "::ffff:11.22.33.44", 55, 0, "11.22.33.44");
 }
 
 static void test_parse_ipv6_scope_int ()
@@ -546,8 +545,7 @@ static void test_parse_ipv6_scope_int_port ()
 
     resolver_opts.expect_port (true).ipv6 (true);
 
-    test_resolve (resolver_opts, "3000:4:5::1:234%2:1111", "3000:4:5::1:234",
-                  1111, 2);
+    test_resolve (resolver_opts, "3000:4:5::1:234%2:1111", "3000:4:5::1:234", 1111, 2);
 }
 
 static void test_parse_ipv6_scope_if ()
@@ -556,8 +554,7 @@ static void test_parse_ipv6_scope_if ()
 
     resolver_opts.ipv6 (true);
 
-    test_resolve (resolver_opts, "3000:4:5::1:234%eth1", "3000:4:5::1:234", 0,
-                  3);
+    test_resolve (resolver_opts, "3000:4:5::1:234%eth1", "3000:4:5::1:234", 0, 3);
 }
 
 static void test_parse_ipv6_scope_if_port ()
@@ -566,8 +563,7 @@ static void test_parse_ipv6_scope_if_port ()
 
     resolver_opts.expect_port (true).ipv6 (true);
 
-    test_resolve (resolver_opts, "3000:4:5::1:234%eth0:8080", "3000:4:5::1:234",
-                  8080, 2);
+    test_resolve (resolver_opts, "3000:4:5::1:234%eth0:8080", "3000:4:5::1:234", 8080, 2);
 }
 
 static void test_parse_ipv6_scope_if_port_brackets ()
@@ -576,8 +572,7 @@ static void test_parse_ipv6_scope_if_port_brackets ()
 
     resolver_opts.expect_port (true).ipv6 (true);
 
-    test_resolve (resolver_opts, "[3000:4:5::1:234%eth0]:8080",
-                  "3000:4:5::1:234", 8080, 2);
+    test_resolve (resolver_opts, "[3000:4:5::1:234%eth0]:8080", "3000:4:5::1:234", 8080, 2);
 }
 
 static void test_parse_ipv6_scope_badif ()
@@ -698,8 +693,7 @@ static void test_dns_ipv6_port ()
 
     resolver_opts.ipv6 (true).expect_port (true).allow_dns (true);
 
-    test_resolve (resolver_opts, "ip.zlink.org:1234", "fdf5:d058:d656::1",
-                  1234);
+    test_resolve (resolver_opts, "ip.zlink.org:1234", "fdf5:d058:d656::1", 1234);
 }
 
 void test_dns_brackets ()
@@ -757,8 +751,7 @@ void test_dns_ipv6_scope ()
 
     //  Not sure if that's very useful but you could technically add a scope
     //  identifier to a hostname
-    test_resolve (resolver_opts, "ip.zlink.org%lo0", "fdf5:d058:d656::1", 0,
-                  1);
+    test_resolve (resolver_opts, "ip.zlink.org%lo0", "fdf5:d058:d656::1", 0, 1);
 }
 
 void test_dns_ipv6_scope_port ()
@@ -769,8 +762,7 @@ void test_dns_ipv6_scope_port ()
 
     //  Not sure if that's very useful but you could technically add a scope
     //  identifier to a hostname
-    test_resolve (resolver_opts, "ip.zlink.org%lo0:4444", "fdf5:d058:d656::1",
-                  4444, 1);
+    test_resolve (resolver_opts, "ip.zlink.org%lo0:4444", "fdf5:d058:d656::1", 4444, 1);
 }
 
 void test_dns_ipv6_scope_port_brackets ()
@@ -779,8 +771,7 @@ void test_dns_ipv6_scope_port_brackets ()
 
     resolver_opts.allow_dns (true).expect_port (true).ipv6 (true);
 
-    test_resolve (resolver_opts, "[ip.zlink.org%lo0]:4444",
-                  "fdf5:d058:d656::1", 4444, 1);
+    test_resolve (resolver_opts, "[ip.zlink.org%lo0]:4444", "fdf5:d058:d656::1", 4444, 1);
 }
 
 static void test_addr (int family_, const char *addr_, bool multicast_)

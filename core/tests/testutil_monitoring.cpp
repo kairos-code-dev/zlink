@@ -6,8 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void record_monitor_probe_event (const zlink_monitor_event_t *event_,
-                                        void *userdata_);
+static void record_monitor_probe_event (const zlink_monitor_event_t *event_, void *userdata_);
 
 namespace
 {
@@ -27,8 +26,7 @@ void deactivate_test_monitor_probe (test_monitor_probe_t *probe_)
         g_active_monitor_probe = NULL;
 }
 
-void record_active_test_monitor_event (const zlink_monitor_event_t *event_,
-                                       void *)
+void record_active_test_monitor_event (const zlink_monitor_event_t *event_, void *)
 {
     std::lock_guard<std::mutex> lock (g_active_monitor_probe_sync);
     record_monitor_probe_event (event_, g_active_monitor_probe);
@@ -50,9 +48,7 @@ static int wait_monitor_readable (void *monitor_, int flags_, long timeout_ms_)
     return 0;
 }
 
-int recv_monitor_event_from_socket (void *monitor_,
-                                    zlink_monitor_event_t *event_,
-                                    int flags_)
+int recv_monitor_event_from_socket (void *monitor_, zlink_monitor_event_t *event_, int flags_)
 {
     if (!monitor_ || !event_) {
         errno = EINVAL;
@@ -62,17 +58,13 @@ int recv_monitor_event_from_socket (void *monitor_,
     if (wait_monitor_readable (monitor_, flags_, 0) != 0)
         return -1;
 
-    return zlink_socket_monitor_recv (
-      monitor_, event_, static_cast<zlink_recv_flags_t> (flags_));
+    return zlink_socket_monitor_recv (monitor_, event_, static_cast<zlink_recv_flags_t> (flags_));
 }
 
 //  Read one event off the monitor socket; return value and address
 //  by reference, if not null, and event number by value. Returns -1
 //  in case of error.
-static int get_monitor_event_internal (void *monitor_,
-                                       int *value_,
-                                       char **address_,
-                                       int recv_flag_)
+static int get_monitor_event_internal (void *monitor_, int *value_, char **address_, int recv_flag_)
 {
     zlink_monitor_event_t event;
     if (recv_monitor_event_from_socket (monitor_, &event, recv_flag_) == -1) {
@@ -84,8 +76,7 @@ static int get_monitor_event_internal (void *monitor_,
         *value_ = static_cast<int> (event.value);
 
     if (address_) {
-        const char *addr = event.remote_addr[0] ? event.remote_addr
-                                                : event.local_addr;
+        const char *addr = event.remote_addr[0] ? event.remote_addr : event.local_addr;
         const size_t len = strlen (addr);
         *address_ = static_cast<char *> (malloc (len + 1));
         memcpy (*address_, addr, len);
@@ -95,10 +86,7 @@ static int get_monitor_event_internal (void *monitor_,
     return static_cast<int> (event.event);
 }
 
-int get_monitor_event_with_timeout (void *monitor_,
-                                    int *value_,
-                                    char **address_,
-                                    int timeout_)
+int get_monitor_event_with_timeout (void *monitor_, int *value_, char **address_, int timeout_)
 {
     int res;
     if (timeout_ == -1) {
@@ -107,16 +95,14 @@ int get_monitor_event_with_timeout (void *monitor_,
         while (true) {
             if (wait_monitor_readable (monitor_, 0, timeout_step) != 0) {
                 wait_time += timeout_step;
-                fprintf (stderr, "Still waiting for monitor event after %i ms\n",
-                         wait_time);
+                fprintf (stderr, "Still waiting for monitor event after %i ms\n", wait_time);
                 continue;
             }
             res = get_monitor_event_internal (monitor_, value_, address_, 0);
             if (res != -1)
                 break;
             wait_time += timeout_step;
-            fprintf (stderr, "Still waiting for monitor event after %i ms\n",
-                     wait_time);
+            fprintf (stderr, "Still waiting for monitor event after %i ms\n", wait_time);
         }
     } else {
         if (wait_monitor_readable (monitor_, 0, timeout_) != 0) {
@@ -134,22 +120,16 @@ int get_monitor_event (void *monitor_, int *value_, char **address_)
 
 void expect_monitor_event (void *monitor_, int expected_event_)
 {
-    TEST_ASSERT_EQUAL_HEX (expected_event_,
-                           get_monitor_event (monitor_, NULL, NULL));
+    TEST_ASSERT_EQUAL_HEX (expected_event_, get_monitor_event (monitor_, NULL, NULL));
 }
 
-static void print_unexpected_event (char *buf_,
-                                    size_t buf_size_,
-                                    int event_,
-                                    int err_,
-                                    int expected_event_,
-                                    int expected_err_)
+static void print_unexpected_event (
+  char *buf_, size_t buf_size_, int event_, int err_, int expected_event_, int expected_err_)
 {
     snprintf (buf_, buf_size_,
               "Unexpected event: 0x%x, value = %i/0x%x (expected: 0x%x, value "
               "= %i/0x%x)\n",
-              event_, err_, err_, expected_event_, expected_err_,
-              expected_err_);
+              event_, err_, err_, expected_event_, expected_err_, expected_err_);
 }
 
 int expect_monitor_event_multiple (void *server_mon_,
@@ -164,9 +144,7 @@ int expect_monitor_event_multiple (void *server_mon_,
 
     int event;
     int err;
-    while ((event =
-              get_monitor_event_with_timeout (server_mon_, &err, NULL, timeout))
-             != -1
+    while ((event = get_monitor_event_with_timeout (server_mon_, &err, NULL, timeout)) != -1
            || !count_of_expected_events) {
         if (event == -1) {
             if (optional_)
@@ -192,26 +170,20 @@ int expect_monitor_event_multiple (void *server_mon_,
             client_closed_connection = 1;
             break;
         }
-        if (event != expected_event_
-            || (-1 != expected_err_ && err != expected_err_)) {
+        if (event != expected_event_ || (-1 != expected_err_ && err != expected_err_)) {
             char buf[256];
-            print_unexpected_event (buf, sizeof buf, event, err,
-                                    expected_event_, expected_err_);
+            print_unexpected_event (buf, sizeof buf, event, err, expected_event_, expected_err_);
             TEST_FAIL_MESSAGE (buf);
         }
         ++count_of_expected_events;
     }
-    TEST_ASSERT_TRUE (optional_ || count_of_expected_events > 0
-                      || client_closed_connection);
+    TEST_ASSERT_TRUE (optional_ || count_of_expected_events > 0 || client_closed_connection);
 
     return count_of_expected_events;
 }
 
-static int64_t get_monitor_event_internal_v2 (void *monitor_,
-                                              uint64_t **value_,
-                                              char **local_address_,
-                                              char **remote_address_,
-                                              int recv_flag_)
+static int64_t get_monitor_event_internal_v2 (
+  void *monitor_, uint64_t **value_, char **local_address_, char **remote_address_, int recv_flag_)
 {
     zlink_monitor_event_t event;
     if (recv_monitor_event_from_socket (monitor_, &event, recv_flag_) == -1) {
@@ -242,39 +214,32 @@ static int64_t get_monitor_event_internal_v2 (void *monitor_,
     return static_cast<int64_t> (event.event);
 }
 
-static int64_t get_monitor_event_with_timeout_v2 (void *monitor_,
-                                                  uint64_t **value_,
-                                                  char **local_address_,
-                                                  char **remote_address_,
-                                                  int timeout_)
+static int64_t get_monitor_event_with_timeout_v2 (
+  void *monitor_, uint64_t **value_, char **local_address_, char **remote_address_, int timeout_)
 {
     int64_t res;
     if (timeout_ == -1) {
         int timeout_step = 250;
         int wait_time = 0;
         while (true) {
-            if (zlink::wait_socket_events_internal (monitor_, 1, timeout_step)
-                <= 0) {
+            if (zlink::wait_socket_events_internal (monitor_, 1, timeout_step) <= 0) {
                 wait_time += timeout_step;
-                fprintf (stderr, "Still waiting for monitor event after %i ms\n",
-                         wait_time);
+                fprintf (stderr, "Still waiting for monitor event after %i ms\n", wait_time);
                 continue;
             }
-            res = get_monitor_event_internal_v2 (
-              monitor_, value_, local_address_, remote_address_, 0);
+            res =
+              get_monitor_event_internal_v2 (monitor_, value_, local_address_, remote_address_, 0);
             if (res != -1)
                 break;
             wait_time += timeout_step;
-            fprintf (stderr, "Still waiting for monitor event after %i ms\n",
-                     wait_time);
+            fprintf (stderr, "Still waiting for monitor event after %i ms\n", wait_time);
         }
     } else {
         if (zlink::wait_socket_events_internal (monitor_, 1, timeout_) <= 0) {
             errno = EAGAIN;
             return -1;
         }
-        res = get_monitor_event_internal_v2 (monitor_, value_, local_address_,
-                                             remote_address_, 0);
+        res = get_monitor_event_internal_v2 (monitor_, value_, local_address_, remote_address_, 0);
     }
     return res;
 }
@@ -284,8 +249,8 @@ int64_t get_monitor_event_v2 (void *monitor_,
                               char **local_address_,
                               char **remote_address_)
 {
-    return get_monitor_event_with_timeout_v2 (monitor_, value_, local_address_,
-                                              remote_address_, -1);
+    return get_monitor_event_with_timeout_v2 (monitor_, value_, local_address_, remote_address_,
+                                              -1);
 }
 
 void expect_monitor_event_v2 (void *monitor_,
@@ -295,29 +260,25 @@ void expect_monitor_event_v2 (void *monitor_,
 {
     char *local_address = NULL;
     char *remote_address = NULL;
-    int64_t event = get_monitor_event_v2 (
-      monitor_, NULL, expected_local_address_ ? &local_address : NULL,
-      expected_remote_address_ ? &remote_address : NULL);
+    int64_t event =
+      get_monitor_event_v2 (monitor_, NULL, expected_local_address_ ? &local_address : NULL,
+                            expected_remote_address_ ? &remote_address : NULL);
     bool failed = false;
     char buf[256];
     char *pos = buf;
     if (event != expected_event_) {
         pos += snprintf (pos, sizeof buf - (pos - buf),
                          "Expected monitor event %llx, but received %llx\n",
-                         static_cast<long long> (expected_event_),
-                         static_cast<long long> (event));
+                         static_cast<long long> (expected_event_), static_cast<long long> (event));
         failed = true;
     }
-    if (expected_local_address_
-        && 0 != strcmp (local_address, expected_local_address_)) {
-        pos += snprintf (pos, sizeof buf - (pos - buf),
-                         "Expected local address %s, but received %s\n",
-                         expected_local_address_, local_address);
+    if (expected_local_address_ && 0 != strcmp (local_address, expected_local_address_)) {
+        pos +=
+          snprintf (pos, sizeof buf - (pos - buf), "Expected local address %s, but received %s\n",
+                    expected_local_address_, local_address);
     }
-    if (expected_remote_address_
-        && 0 != strcmp (remote_address, expected_remote_address_)) {
-        snprintf (pos, sizeof buf - (pos - buf),
-                  "Expected remote address %s, but received %s\n",
+    if (expected_remote_address_ && 0 != strcmp (remote_address, expected_remote_address_)) {
+        snprintf (pos, sizeof buf - (pos - buf), "Expected remote address %s, but received %s\n",
                   expected_remote_address_, remote_address);
     }
     free (local_address);
@@ -325,11 +286,9 @@ void expect_monitor_event_v2 (void *monitor_,
     TEST_ASSERT_FALSE_MESSAGE (failed, buf);
 }
 
-static void record_monitor_probe_event (const zlink_monitor_event_t *event_,
-                                        void *userdata_)
+static void record_monitor_probe_event (const zlink_monitor_event_t *event_, void *userdata_)
 {
-    test_monitor_probe_t *probe =
-      static_cast<test_monitor_probe_t *> (userdata_);
+    test_monitor_probe_t *probe = static_cast<test_monitor_probe_t *> (userdata_);
     if (!probe || !event_)
         return;
 
@@ -362,8 +321,7 @@ void *open_test_monitor_probe (void *socket_,
     void *monitor = zlink_socket_monitor_open (socket_, &opts);
     TEST_ASSERT_NOT_NULL (monitor);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_socket_monitor_handler (monitor, &record_active_test_monitor_event,
-                                    NULL));
+      zlink_socket_monitor_handler (monitor, &record_active_test_monitor_event, NULL));
     return monitor;
 }
 
@@ -379,23 +337,18 @@ void close_test_monitor_probe (void **monitor_p_, test_monitor_probe_t *probe_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_monitor_close (monitor_p_));
 }
 
-bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_,
-                                    int expected_,
-                                    int timeout_ms_)
+bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_, int expected_, int timeout_ms_)
 {
-    return zlink_test_wait_until_step (timeout_ms_, 10, [=] {
-        return test_monitor_probe_count (probe_) >= expected_;
-    });
+    return zlink_test_wait_until_step (
+      timeout_ms_, 10, [=] { return test_monitor_probe_count (probe_) >= expected_; });
 }
 
 bool test_monitor_probe_wait_no_additional (test_monitor_probe_t *probe_,
                                             int baseline_,
                                             int timeout_ms_)
 {
-    const bool saw_additional =
-      zlink_test_wait_until_step (timeout_ms_, 10, [=] {
-          return test_monitor_probe_count (probe_) > baseline_;
-      });
+    const bool saw_additional = zlink_test_wait_until_step (
+      timeout_ms_, 10, [=] { return test_monitor_probe_count (probe_) > baseline_; });
     return !saw_additional && test_monitor_probe_count (probe_) == baseline_;
 }
 
@@ -440,9 +393,7 @@ bool wait_monitor_event_routing_id (void *monitor_,
 
         for (;;) {
             zlink_monitor_event_t event;
-            if (recv_monitor_event_from_socket (monitor_, &event,
-                                                ZLINK_DONTWAIT)
-                != 0)
+            if (recv_monitor_event_from_socket (monitor_, &event, ZLINK_DONTWAIT) != 0)
                 break;
             if (event.event != expected_event_)
                 continue;

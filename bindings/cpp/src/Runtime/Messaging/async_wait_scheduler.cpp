@@ -24,7 +24,8 @@ class async_wait_scheduler_t
     async_wait_scheduler_t ()
     {
         const unsigned int hardware_threads = std::thread::hardware_concurrency ();
-        const size_t worker_count = hardware_threads == 0 ? 2u : std::min<size_t> (4u, hardware_threads);
+        const size_t worker_count =
+          hardware_threads == 0 ? 2u : std::min<size_t> (4u, hardware_threads);
         _workers.reserve (worker_count);
         for (size_t i = 0; i < worker_count; ++i)
             _workers.emplace_back ([this] (std::stop_token stop_) { run (stop_); });
@@ -68,7 +69,8 @@ class async_wait_scheduler_t
             std::function<void ()> task;
             {
                 std::unique_lock<std::mutex> lock (_mutex);
-                _ready.wait (lock, [&] { return stop_.stop_requested () || _stopping || !_tasks.empty (); });
+                _ready.wait (
+                  lock, [&] { return stop_.stop_requested () || _stopping || !_tasks.empty (); });
                 if (_tasks.empty ())
                     continue;
                 task = std::move (_tasks.front ());

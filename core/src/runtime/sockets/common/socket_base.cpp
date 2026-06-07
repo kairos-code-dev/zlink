@@ -52,10 +52,8 @@ bool zlink::socket_base_t::check_tag () const
     return _tag == 0xbaddecaf;
 }
 
-zlink::socket_base_t *zlink::socket_base_t::create (int type_,
-                                                class ctx_t *parent_,
-                                                uint32_t tid_,
-                                                int sid_)
+zlink::socket_base_t *
+zlink::socket_base_t::create (int type_, class ctx_t *parent_, uint32_t tid_, int sid_)
 {
     socket_base_t *s = NULL;
     switch (type_) {
@@ -99,9 +97,7 @@ zlink::socket_base_t *zlink::socket_base_t::create (int type_,
     return s;
 }
 
-zlink::socket_base_t::socket_base_t (ctx_t *parent_,
-                                   uint32_t tid_,
-                                   int sid_) :
+zlink::socket_base_t::socket_base_t (ctx_t *parent_, uint32_t tid_, int sid_) :
     own_t (parent_, tid_),
     _tag (0xbaddecaf),
     _ctx_terminated (false),
@@ -154,8 +150,7 @@ void zlink::socket_base_t::set_auto_hwm_role (auto_hwm_role_t role_)
     refresh_auto_hwm_policy ();
 }
 
-void zlink::socket_base_t::set_auto_hwm_scope (auto_hwm_scope_t scope_,
-                                               size_t scope_count_)
+void zlink::socket_base_t::set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_)
 {
     _auto_hwm_scope = scope_;
     _auto_hwm_scope_count = scope_count_ > 0 ? scope_count_ : 1;
@@ -214,11 +209,10 @@ bool zlink::socket_base_t::auto_hwm_policy_enabled () const
     return _auto_hwm_policy_enabled;
 }
 
-zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan (
-  const auto_hwm_context_plan_t &context_)
+zlink::auto_hwm_socket_plan_t
+zlink::socket_base_t::prepare_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_)
 {
-    auto_hwm_role_t role = _auto_hwm_role_override ? _auto_hwm_role
-                                                   : auto_hwm_role_none;
+    auto_hwm_role_t role = _auto_hwm_role_override ? _auto_hwm_role : auto_hwm_role_none;
     if (role == auto_hwm_role_none)
         role = auto_hwm_default_role_for_socket_type (options.type);
     _auto_hwm_role = role;
@@ -227,11 +221,9 @@ zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan
     uint64_t pending_messages = 0;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
-        const size_t attached_pipe_count =
-          endpoint_runtime ().attached_pipe_count ();
+        const size_t attached_pipe_count = endpoint_runtime ().attached_pipe_count ();
         managed_connections = attached_pipe_count;
-        const size_t ready_connections =
-          static_cast<size_t> (monitor_runtime ().ready_count ());
+        const size_t ready_connections = static_cast<size_t> (monitor_runtime ().ready_count ());
         if (ready_connections > managed_connections)
             managed_connections = ready_connections;
         for (size_t i = 0; i != attached_pipe_count; ++i) {
@@ -248,28 +240,24 @@ zlink::auto_hwm_socket_plan_t zlink::socket_base_t::prepare_auto_hwm_socket_plan
     const int message_unit_bytes =
       _auto_hwm_msg_unit_override
         ? options.auto_hwm_msg_unit_bytes
-        : (ctx ? ctx->auto_hwm_msg_unit_bytes ()
-               : context_.message_unit_bytes);
-    auto_hwm_socket_plan_prepare (
-      role, options.type, managed_connections, managed_connections, &plan,
-      message_unit_bytes, options.sndbuf, options.rcvbuf,
-      _manual_sndbuf, _manual_rcvbuf, _auto_hwm_scope, _auto_hwm_scope_count,
-      true);
+        : (ctx ? ctx->auto_hwm_msg_unit_bytes () : context_.message_unit_bytes);
+    auto_hwm_socket_plan_prepare (role, options.type, managed_connections, managed_connections,
+                                  &plan, message_unit_bytes, options.sndbuf, options.rcvbuf,
+                                  _manual_sndbuf, _manual_rcvbuf, _auto_hwm_scope,
+                                  _auto_hwm_scope_count, true);
     plan.pending_messages = pending_messages;
     return plan;
 }
 
-void zlink::socket_base_t::apply_auto_hwm_socket_plan (
-  const auto_hwm_context_plan_t &context_,
-  const auto_hwm_socket_plan_t &plan_,
-  bool force_apply_,
-  uint32_t recalc_reason_)
+void zlink::socket_base_t::apply_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_,
+                                                       const auto_hwm_socket_plan_t &plan_,
+                                                       bool force_apply_,
+                                                       uint32_t recalc_reason_)
 {
     _auto_hwm_context_plan = context_;
     _auto_hwm_socket_plan = plan_;
 
-    if (!_auto_hwm_context_plan.enabled
-        || (!_auto_hwm_policy_enabled && !force_apply_))
+    if (!_auto_hwm_context_plan.enabled || (!_auto_hwm_policy_enabled && !force_apply_))
         return;
 
     uint32_t recalc_reason = recalc_reason_;
@@ -318,27 +306,22 @@ void zlink::socket_base_t::refresh_auto_hwm_policy (bool force_apply_)
 
     uint32_t recalc_reason = _auto_hwm_last_recalc_reason;
     if (recalc_reason == ZLINK_AUTO_HWM_RECALC_REASON_NONE) {
-        recalc_reason = _auto_hwm_last_recalc_ms == 0
-                          ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
-                          : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+        recalc_reason = _auto_hwm_last_recalc_ms == 0 ? ZLINK_AUTO_HWM_RECALC_REASON_INITIAL
+                                                      : ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
     }
 
     const bool enabled = ctx->get (ZLINK_CTX_OPT_AUTO_HWM_ENABLE) != 0;
-    auto_hwm_context_plan_make (
-      enabled, ctx->auto_hwm_profile (), &_auto_hwm_context_plan,
-      ctx->auto_hwm_msg_unit_bytes ());
+    auto_hwm_context_plan_make (enabled, ctx->auto_hwm_profile (), &_auto_hwm_context_plan,
+                                ctx->auto_hwm_msg_unit_bytes ());
     _auto_hwm_socket_plan = prepare_auto_hwm_socket_plan (_auto_hwm_context_plan);
-    auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan,
-                               1);
-    apply_auto_hwm_socket_plan (_auto_hwm_context_plan, _auto_hwm_socket_plan,
-                                force_apply_, recalc_reason);
+    auto_hwm_context_finalize (&_auto_hwm_context_plan, &_auto_hwm_socket_plan, 1);
+    apply_auto_hwm_socket_plan (_auto_hwm_context_plan, _auto_hwm_socket_plan, force_apply_,
+                                recalc_reason);
 }
 
-static void copy_routing_id (zlink_routing_id_t *out_,
-                             const zlink::blob_t &routing_id_)
+static void copy_routing_id (zlink_routing_id_t *out_, const zlink::blob_t &routing_id_)
 {
-    zlink::copy_routing_id_from_bytes (routing_id_.data (),
-                                       routing_id_.size (), out_);
+    zlink::copy_routing_id_from_bytes (routing_id_.data (), routing_id_.size (), out_);
 }
 
 zlink::socket_base_t::~socket_base_t ()
@@ -358,9 +341,8 @@ zlink::i_mailbox *zlink::socket_base_t::get_mailbox () const
     return _mailbox;
 }
 
-void zlink::socket_base_t::store_socket_msg_part (
-  std::vector<zlink_msg_t> *parts_,
-  zlink::msg_t *msg_)
+void zlink::socket_base_t::store_socket_msg_part (std::vector<zlink_msg_t> *parts_,
+                                                  zlink::msg_t *msg_)
 {
     if (!parts_ || !msg_)
         return;
@@ -375,8 +357,7 @@ void zlink::socket_base_t::store_socket_msg_part (
     parts_->push_back (stored);
 }
 
-int zlink::socket_base_t::init_peer_weight_command (zlink::msg_t *msg_,
-                                                    uint32_t weight_)
+int zlink::socket_base_t::init_peer_weight_command (zlink::msg_t *msg_, uint32_t weight_)
 {
     if (!msg_) {
         errno = EFAULT;
@@ -405,8 +386,8 @@ bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
         return false;
     if (msg_.size () != peer_weight_cmd_name_size + 4)
         return false;
-    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (),
-                peer_weight_cmd_name, peer_weight_cmd_name_size)
+    if (memcmp (const_cast<zlink::msg_t &> (msg_).data (), peer_weight_cmd_name,
+                peer_weight_cmd_name_size)
         != 0) {
         return false;
     }
@@ -414,10 +395,9 @@ bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
     const unsigned char *payload =
       static_cast<unsigned char *> (const_cast<zlink::msg_t &> (msg_).data ())
       + peer_weight_cmd_name_size;
-    const uint32_t weight = (static_cast<uint32_t> (payload[0]) << 24)
-                            | (static_cast<uint32_t> (payload[1]) << 16)
-                            | (static_cast<uint32_t> (payload[2]) << 8)
-                            | static_cast<uint32_t> (payload[3]);
+    const uint32_t weight =
+      (static_cast<uint32_t> (payload[0]) << 24) | (static_cast<uint32_t> (payload[1]) << 16)
+      | (static_cast<uint32_t> (payload[2]) << 8) | static_cast<uint32_t> (payload[3]);
     if (weight > 100)
         return false;
 
@@ -459,8 +439,7 @@ int zlink::socket_base_t::xsend (msg_t *)
     return -1;
 }
 
-int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_,
-                                        msg_t *msg_)
+int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
 {
     LIBZLINK_UNUSED (target_rid_);
     LIBZLINK_UNUSED (msg_);
@@ -505,8 +484,7 @@ int zlink::socket_base_t::xrecv_pipe (msg_t *msg_, pipe_t **pipe_out_)
     return xrecv (msg_);
 }
 
-int zlink::socket_base_t::xrecv_routed (msg_t *msg_,
-                                        zlink_routing_id_t *source_rid_out_)
+int zlink::socket_base_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_)
 {
     if (source_rid_out_)
         source_rid_out_->size = 0;

@@ -6,10 +6,10 @@
 /******************************************************************************/
 
 #define LIBZLINK_UNUSED(object) (void) object
-#define LIBZLINK_DELETE(p_object)                                                \
-    {                                                                          \
-        delete p_object;                                                       \
-        p_object = 0;                                                          \
+#define LIBZLINK_DELETE(p_object)                                                                  \
+    {                                                                                              \
+        delete p_object;                                                                           \
+        p_object = 0;                                                                              \
     }
 
 /******************************************************************************/
@@ -42,24 +42,24 @@
 #if defined ZLINK_HAVE_NOEXCEPT
 #define ZLINK_DEFAULT = default;
 #else
-#define ZLINK_DEFAULT                                                            \
-    {                                                                          \
+#define ZLINK_DEFAULT                                                                              \
+    {                                                                                              \
     }
 #endif
 #endif
 
 #if !defined ZLINK_NON_COPYABLE_NOR_MOVABLE
 #if defined ZLINK_HAVE_NOEXCEPT
-#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                \
-  public:                                                                      \
-    classname (const classname &) = delete;                                    \
-    classname &operator= (const classname &) = delete;                         \
-    classname (classname &&) = delete;                                         \
+#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                                  \
+  public:                                                                                          \
+    classname (const classname &) = delete;                                                        \
+    classname &operator= (const classname &) = delete;                                             \
+    classname (classname &&) = delete;                                                             \
     classname &operator= (classname &&) = delete;
 #else
-#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                \
-  private:                                                                     \
-    classname (const classname &);                                             \
+#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                                  \
+  private:                                                                                         \
+    classname (const classname &);                                                                 \
     classname &operator= (const classname &);
 #endif
 #endif

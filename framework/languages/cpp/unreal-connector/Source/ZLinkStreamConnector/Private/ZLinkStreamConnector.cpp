@@ -118,8 +118,10 @@ std::uint16_t read_u16 (const std::vector<std::uint8_t> &bytes, std::size_t offs
 
 std::uint32_t read_u32 (const std::vector<std::uint8_t> &bytes, std::size_t offset)
 {
-    return (static_cast<std::uint32_t> (bytes[offset]) << 24) | (static_cast<std::uint32_t> (bytes[offset + 1]) << 16)
-           | (static_cast<std::uint32_t> (bytes[offset + 2]) << 8) | static_cast<std::uint32_t> (bytes[offset + 3]);
+    return (static_cast<std::uint32_t> (bytes[offset]) << 24)
+           | (static_cast<std::uint32_t> (bytes[offset + 1]) << 16)
+           | (static_cast<std::uint32_t> (bytes[offset + 2]) << 8)
+           | static_cast<std::uint32_t> (bytes[offset + 3]);
 }
 
 std::uint64_t read_u64 (const std::vector<std::uint8_t> &bytes, std::size_t &offset)
@@ -132,7 +134,8 @@ std::uint64_t read_u64 (const std::vector<std::uint8_t> &bytes, std::size_t &off
     return value;
 }
 
-std::string read_text (const std::vector<std::uint8_t> &bytes, std::size_t &offset, std::size_t size)
+std::string
+read_text (const std::vector<std::uint8_t> &bytes, std::size_t &offset, std::size_t size)
 {
     std::string value (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
                        bytes.begin () + static_cast<std::ptrdiff_t> (offset + size));
@@ -167,16 +170,17 @@ std::vector<std::uint8_t> encode_lz4_payload (const std::vector<std::uint8_t> &p
     }
     const int bound = LZ4_compressBound (static_cast<int> (payload.size ()));
     std::vector<std::uint8_t> compressed (static_cast<std::size_t> (bound));
-    const int written =
-      LZ4_compress_default (reinterpret_cast<const char *> (payload.data ()),
-                            reinterpret_cast<char *> (compressed.data ()), static_cast<int> (payload.size ()), bound);
+    const int written = LZ4_compress_default (reinterpret_cast<const char *> (payload.data ()),
+                                              reinterpret_cast<char *> (compressed.data ()),
+                                              static_cast<int> (payload.size ()), bound);
     if (written > 0) {
         output.insert (output.end (), compressed.begin (), compressed.begin () + written);
         return output;
     }
 #endif
 
-    const auto literal_token = static_cast<std::uint8_t> (std::min<std::size_t> (payload.size (), 15) << 4);
+    const auto literal_token =
+      static_cast<std::uint8_t> (std::min<std::size_t> (payload.size (), 15) << 4);
     output.push_back (literal_token);
     if (payload.size () >= 15) {
         append_lz4_length (output, payload.size () - 15);
@@ -185,7 +189,8 @@ std::vector<std::uint8_t> encode_lz4_payload (const std::vector<std::uint8_t> &p
     return output;
 }
 
-std::optional<std::vector<std::uint8_t>> decode_lz4_payload (const std::vector<std::uint8_t> &payload)
+std::optional<std::vector<std::uint8_t>>
+decode_lz4_payload (const std::vector<std::uint8_t> &payload)
 {
     if (payload.size () < 4) {
         return std::nullopt;
@@ -203,7 +208,8 @@ std::optional<std::vector<std::uint8_t>> decode_lz4_payload (const std::vector<s
     output.resize (original_size);
     const int decoded = LZ4_decompress_safe (reinterpret_cast<const char *> (payload.data () + 4),
                                              reinterpret_cast<char *> (output.data ()),
-                                             static_cast<int> (payload.size () - 4), static_cast<int> (output.size ()));
+                                             static_cast<int> (payload.size () - 4),
+                                             static_cast<int> (output.size ()));
     if (decoded == static_cast<int> (output.size ())) {
         return output;
     }
@@ -236,8 +242,8 @@ std::optional<std::vector<std::uint8_t>> decode_lz4_payload (const std::vector<s
         if (payload.size () - offset < 2) {
             return std::nullopt;
         }
-        const std::size_t match_offset =
-          static_cast<std::size_t> (payload[offset]) | (static_cast<std::size_t> (payload[offset + 1]) << 8);
+        const std::size_t match_offset = static_cast<std::size_t> (payload[offset])
+                                         | (static_cast<std::size_t> (payload[offset + 1]) << 8);
         offset += 2;
         if (match_offset == 0 || match_offset > output.size ()) {
             return std::nullopt;
@@ -267,7 +273,9 @@ std::optional<std::vector<std::uint8_t>> decode_lz4_payload (const std::vector<s
     return output;
 }
 
-void add_metadata (TMap<FString, FString> &metadata, const std::string &key, const std::string &value)
+void add_metadata (TMap<FString, FString> &metadata,
+                   const std::string &key,
+                   const std::string &value)
 {
 #if __has_include("CoreMinimal.h")
     metadata.Add (FString (UTF8_TO_TCHAR (key.c_str ())), FString (UTF8_TO_TCHAR (value.c_str ())));
@@ -411,9 +419,9 @@ std::optional<decoded_frame_t> try_decode_frame (std::vector<std::uint8_t> &buff
     if (has_flag (flags_value, frame_flags_t::has_metadata)) {
         const auto metadata_size = read_u16 (buffer, offset);
         offset += 2;
-        std::vector<std::uint8_t> metadata_bytes (buffer.begin () + static_cast<std::ptrdiff_t> (offset),
-                                                  buffer.begin ()
-                                                    + static_cast<std::ptrdiff_t> (offset + metadata_size));
+        std::vector<std::uint8_t> metadata_bytes (
+          buffer.begin () + static_cast<std::ptrdiff_t> (offset),
+          buffer.begin () + static_cast<std::ptrdiff_t> (offset + metadata_size));
         offset += metadata_size;
         decoded.metadata = decode_metadata (metadata_bytes);
     }
@@ -481,7 +489,8 @@ class FZLinkStreamConnectorRuntime
             BroadcastStateChanged (LastState);
             return;
         }
-        Socket.Reset (SocketSubsystem->CreateSocket (NAME_Stream, TEXT ("ZLinkStreamConnector"), false));
+        Socket.Reset (
+          SocketSubsystem->CreateSocket (NAME_Stream, TEXT ("ZLinkStreamConnector"), false));
         if (!Socket || !Socket->Connect (*Address)) {
             CloseSocketOnly ();
             LastState = EZLinkStreamConnectionState::Disconnected;
@@ -508,7 +517,9 @@ class FZLinkStreamConnectorRuntime
         SendJson (PacketName, JsonPayload, FZLinkStreamSendOptions{});
     }
 
-    void SendJson (const FName &PacketName, const FString &JsonPayload, const FZLinkStreamSendOptions &Options)
+    void SendJson (const FName &PacketName,
+                   const FString &JsonPayload,
+                   const FZLinkStreamSendOptions &Options)
     {
         LastPacketName = PacketName;
         LastJsonPayload = JsonPayload;
@@ -534,8 +545,9 @@ class FZLinkStreamConnectorRuntime
 #if __has_include("CoreMinimal.h")
         ++NextRequestSeq;
         PendingRequests.emplace (NextRequestSeq, to_utf8 (PacketName.ToString ()));
-        SendFrame (encode_frame (frame_kind_t::request, NextRequestSeq, to_utf8 (PacketName.ToString ()),
-                                 to_utf8 (JsonPayload), Options.Metadata, Options.bCompress));
+        SendFrame (encode_frame (frame_kind_t::request, NextRequestSeq,
+                                 to_utf8 (PacketName.ToString ()), to_utf8 (JsonPayload),
+                                 Options.Metadata, Options.bCompress));
 #endif
     }
 
@@ -582,7 +594,8 @@ class FZLinkStreamConnectorRuntime
         }
         FString Remainder = Endpoint.RightChop (FCString::Strlen (Prefix));
         FString PortText;
-        if (!Remainder.Split (TEXT (":"), &Host, &PortText, ESearchCase::CaseSensitive, ESearchDir::FromEnd)) {
+        if (!Remainder.Split (TEXT (":"), &Host, &PortText, ESearchCase::CaseSensitive,
+                              ESearchDir::FromEnd)) {
             return false;
         }
         Port = FCString::Atoi (*PortText);
@@ -623,7 +636,8 @@ class FZLinkStreamConnectorRuntime
             if (!Socket->Recv (Chunk.GetData (), Chunk.Num (), BytesRead) || BytesRead <= 0) {
                 break;
             }
-            ReceiveBuffer.insert (ReceiveBuffer.end (), Chunk.GetData (), Chunk.GetData () + BytesRead);
+            ReceiveBuffer.insert (ReceiveBuffer.end (), Chunk.GetData (),
+                                  Chunk.GetData () + BytesRead);
         }
         while (auto frame = try_decode_frame (ReceiveBuffer)) {
             DispatchQueue.push_back (std::move (*frame));
@@ -714,7 +728,9 @@ void UZLinkStreamConnector::SendJsonWithOptions (FName PacketName,
     _runtime->SendJson (PacketName, JsonPayload, Options);
 }
 
-void UZLinkStreamConnector::RequestJson (FName PacketName, const FString &JsonPayload, float TimeoutSeconds)
+void UZLinkStreamConnector::RequestJson (FName PacketName,
+                                         const FString &JsonPayload,
+                                         float TimeoutSeconds)
 {
     _runtime->RequestJson (PacketName, JsonPayload, TimeoutSeconds);
 }
@@ -760,7 +776,8 @@ bool UZLinkStreamConnector::IsConnected () const
 
 int UZLinkStreamConnector::PendingDispatchCount () const
 {
-    return const_cast<UE::ZLinkStreamConnector::Private::FZLinkStreamConnectorRuntime *> (_runtime.get ())
+    return const_cast<UE::ZLinkStreamConnector::Private::FZLinkStreamConnectorRuntime *> (
+             _runtime.get ())
       ->PendingDispatchCount ();
 }
 

@@ -12,10 +12,9 @@
 
 namespace zlink
 {
-int socket_discovery_attachment_t::attach_validation (
-  discovery_t *discovery_,
-  uint16_t *local_role_out_,
-  std::string *bound_endpoint_out_)
+int socket_discovery_attachment_t::attach_validation (discovery_t *discovery_,
+                                                      uint16_t *local_role_out_,
+                                                      std::string *bound_endpoint_out_)
 {
     if (!discovery_
         || !discovery_protocol::auto_connect_type_allows_raw_socket (
@@ -26,8 +25,8 @@ int socket_discovery_attachment_t::attach_validation (
 
     const uint16_t local_role =
       discovery_protocol::derive_socket_service_role (_socket->socket_type ());
-    if (!discovery_protocol::auto_connect_type_allows_role (
-          discovery_->auto_connect_type (), local_role)) {
+    if (!discovery_protocol::auto_connect_type_allows_role (discovery_->auto_connect_type (),
+                                                            local_role)) {
         errno = ENOTSUP;
         return -1;
     }
@@ -38,8 +37,7 @@ int socket_discovery_attachment_t::attach_validation (
         errno = EBUSY;
         return -1;
     }
-    if (_socket->socket_has_manual_connect_endpoints ()
-        || _socket->socket_has_attached_pipes ()) {
+    if (_socket->socket_has_manual_connect_endpoints () || _socket->socket_has_attached_pipes ()) {
         errno = EBUSY;
         return -1;
     }
@@ -54,11 +52,10 @@ int socket_discovery_attachment_t::attach_validation (
     return 0;
 }
 
-int socket_discovery_attachment_t::register_bound_endpoint (
-  discovery_t *discovery_,
-  uint16_t local_role_,
-  const std::string &endpoint_,
-  std::string *resolved_endpoint_out_)
+int socket_discovery_attachment_t::register_bound_endpoint (discovery_t *discovery_,
+                                                            uint16_t local_role_,
+                                                            const std::string &endpoint_,
+                                                            std::string *resolved_endpoint_out_)
 {
     if (!discovery_ || endpoint_.empty ()) {
         errno = EINVAL;
@@ -74,20 +71,18 @@ int socket_discovery_attachment_t::register_bound_endpoint (
         routing_id_ptr = &routing_id;
     }
 
-    return discovery_owned_service::register_endpoint (
-      discovery_, endpoint_.c_str (), resolved_endpoint_out_, routing_id_ptr, local_role_,
-      _socket->local_peer_weight ());
+    return discovery_owned_service::register_endpoint (discovery_, endpoint_.c_str (),
+                                                       resolved_endpoint_out_, routing_id_ptr,
+                                                       local_role_, _socket->local_peer_weight ());
 }
 
-bool socket_discovery_attachment_t::ensure_socket_routing_id (
-  zlink_routing_id_t *out_)
+bool socket_discovery_attachment_t::ensure_socket_routing_id (zlink_routing_id_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
         return false;
     }
     memset (out_, 0, sizeof (*out_));
-    return zlink::discovery::ensure_socket_routing_id_present (_socket, NULL,
-                                                               out_);
+    return zlink::discovery::ensure_socket_routing_id_present (_socket, NULL, out_);
 }
 }

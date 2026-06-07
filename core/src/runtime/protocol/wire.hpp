@@ -28,8 +28,7 @@ inline void put_uint16 (unsigned char *buffer_, uint16_t value_)
 
 inline uint16_t get_uint16 (const unsigned char *buffer_)
 {
-    return ((static_cast<uint16_t> (buffer_[0])) << 8)
-           | (static_cast<uint16_t> (buffer_[1]));
+    return ((static_cast<uint16_t> (buffer_[0])) << 8) | (static_cast<uint16_t> (buffer_[1]));
 }
 
 inline void put_uint32 (unsigned char *buffer_, uint32_t value_)
@@ -44,8 +43,7 @@ inline uint32_t get_uint32 (const unsigned char *buffer_)
 {
     return ((static_cast<uint32_t> (buffer_[0])) << 24)
            | ((static_cast<uint32_t> (buffer_[1])) << 16)
-           | ((static_cast<uint32_t> (buffer_[2])) << 8)
-           | (static_cast<uint32_t> (buffer_[3]));
+           | ((static_cast<uint32_t> (buffer_[2])) << 8) | (static_cast<uint32_t> (buffer_[3]));
 }
 
 inline void put_uint64 (unsigned char *buffer_, uint64_t value_)
@@ -68,8 +66,7 @@ inline uint64_t get_uint64 (const unsigned char *buffer_)
            | ((static_cast<uint64_t> (buffer_[3])) << 32)
            | ((static_cast<uint64_t> (buffer_[4])) << 24)
            | ((static_cast<uint64_t> (buffer_[5])) << 16)
-           | ((static_cast<uint64_t> (buffer_[6])) << 8)
-           | (static_cast<uint64_t> (buffer_[7]));
+           | ((static_cast<uint64_t> (buffer_[6])) << 8) | (static_cast<uint64_t> (buffer_[7]));
 }
 }
 

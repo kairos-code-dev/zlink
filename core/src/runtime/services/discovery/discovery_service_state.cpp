@@ -14,8 +14,7 @@ namespace zlink
 {
 namespace
 {
-static bool provider_equal_local (const provider_info_t &lhs_,
-                                  const provider_info_t &rhs_)
+static bool provider_equal_local (const provider_info_t &lhs_, const provider_info_t &rhs_)
 {
     if (lhs_.endpoint != rhs_.endpoint)
         return false;
@@ -26,9 +25,7 @@ static bool provider_equal_local (const provider_info_t &lhs_,
     if (lhs_.routing_id.size != rhs_.routing_id.size)
         return false;
     if (lhs_.routing_id.size > 0
-        && memcmp (lhs_.routing_id.data, rhs_.routing_id.data,
-                   lhs_.routing_id.size)
-             != 0) {
+        && memcmp (lhs_.routing_id.data, rhs_.routing_id.data, lhs_.routing_id.size) != 0) {
         return false;
     }
     return lhs_.value == rhs_.value && lhs_.metadata == rhs_.metadata
@@ -48,8 +45,7 @@ static bool providers_equal_local (const std::vector<provider_info_t> &lhs_,
     return true;
 }
 
-static bool provider_less_local (const provider_info_t &lhs_,
-                                 const provider_info_t &rhs_)
+static bool provider_less_local (const provider_info_t &lhs_, const provider_info_t &rhs_)
 {
     if (lhs_.service_role != rhs_.service_role)
         return lhs_.service_role < rhs_.service_role;
@@ -64,9 +60,7 @@ discovery_service_change_t::discovery_service_change_t () : changed (false)
 }
 
 discovery_service_state_t::discovery_service_state_t () :
-    _observer_callbacks_inflight (0),
-    _update_seq (0),
-    _service_seq (0)
+    _observer_callbacks_inflight (0), _update_seq (0), _service_seq (0)
 {
 }
 
@@ -109,8 +103,7 @@ void discovery_service_state_t::begin_observer_notification (
     _observer_callbacks_inflight += observers_out_->size ();
 }
 
-void discovery_service_state_t::finish_observer_notification (
-  size_t observer_count_)
+void discovery_service_state_t::finish_observer_notification (size_t observer_count_)
 {
     if (observer_count_ > _observer_callbacks_inflight)
         _observer_callbacks_inflight = 0;
@@ -128,8 +121,7 @@ void discovery_service_state_t::take_shutdown_observers (
     _observer_callbacks_inflight = 0;
 }
 
-void discovery_service_state_t::snapshot_providers (
-  std::vector<provider_info_t> *out_) const
+void discovery_service_state_t::snapshot_providers (std::vector<provider_info_t> *out_) const
 {
     if (!out_)
         return;
@@ -148,24 +140,19 @@ void discovery_service_state_t::snapshot_member_peers (
 
     for (size_t i = 0; i < _providers.size (); ++i) {
         const provider_info_t &provider = _providers[i];
-        const discovery_member_key_t key (provider.service_role,
-                                          provider.endpoint);
+        const discovery_member_key_t key (provider.service_role, provider.endpoint);
         if (local_members_.count (key) != 0)
             continue;
 
         zlink_member_peer_entry_t entry;
         memset (&entry, 0, sizeof (entry));
-        entry.auto_connect_type =
-          static_cast<zlink_auto_connect_type_t> (auto_connect_type_);
-        entry.service_role =
-          static_cast<zlink_service_role_t> (provider.service_role);
-        copy_fixed_c_string_from_bytes (entry.channel_name,
-                                        sizeof (entry.channel_name),
+        entry.auto_connect_type = static_cast<zlink_auto_connect_type_t> (auto_connect_type_);
+        entry.service_role = static_cast<zlink_service_role_t> (provider.service_role);
+        copy_fixed_c_string_from_bytes (entry.channel_name, sizeof (entry.channel_name),
                                         provider.channel_name.data (),
                                         provider.channel_name.size ());
         copy_fixed_c_string_from_bytes (entry.endpoint, sizeof (entry.endpoint),
-                                        provider.endpoint.data (),
-                                        provider.endpoint.size ());
+                                        provider.endpoint.data (), provider.endpoint.size ());
         entry.routing_id = provider.routing_id;
         entry.weight = provider.weight;
         entry.value = provider.value;

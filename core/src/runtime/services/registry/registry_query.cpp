@@ -22,8 +22,7 @@ struct summary_key_t
 
     bool operator== (const summary_key_t &other_) const
     {
-        return auto_connect_type == other_.auto_connect_type
-               && service_role == other_.service_role
+        return auto_connect_type == other_.auto_connect_type && service_role == other_.service_role
                && channel_name == other_.channel_name;
     }
 };
@@ -33,17 +32,15 @@ struct summary_key_hash_t
     size_t operator() (const summary_key_t &key_) const
     {
         size_t seed = std::hash<uint16_t> () (key_.auto_connect_type);
-        seed ^= std::hash<uint16_t> () (key_.service_role) + 0x9e3779b9
-                + (seed << 6) + (seed >> 2);
-        seed ^= std::hash<std::string> () (key_.channel_name) + 0x9e3779b9
-                + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<uint16_t> () (key_.service_role) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^=
+          std::hash<std::string> () (key_.channel_name) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
 
-bool topology_filter_match (
-  const zlink_registry_topology_entry_t &entry_,
-  const zlink_registry_topology_filter_t *filter_)
+bool topology_filter_match (const zlink_registry_topology_entry_t &entry_,
+                            const zlink_registry_topology_filter_t *filter_)
 {
     if (!filter_)
         return true;
@@ -52,8 +49,7 @@ bool topology_filter_match (
         return false;
     if (filter_->service_kind != 0 && filter_->service_kind != entry_.service_kind)
         return false;
-    if (filter_->service_role != 0
-        && filter_->service_role != entry_.service_role) {
+    if (filter_->service_role != 0 && filter_->service_role != entry_.service_role) {
         return false;
     }
     if (filter_->state != 0 && filter_->state != entry_.state)
@@ -66,8 +62,7 @@ bool topology_filter_match (
     if (filter_->routing_id.size > 0) {
         if (filter_->routing_id.size != entry_.routing_id.size)
             return false;
-        if (memcmp (filter_->routing_id.data, entry_.routing_id.data,
-                    filter_->routing_id.size)
+        if (memcmp (filter_->routing_id.data, entry_.routing_id.data, filter_->routing_id.size)
             != 0) {
             return false;
         }
@@ -94,30 +89,25 @@ bool topology_entry_less (const zlink_registry_topology_entry_t &lhs_,
         return lhs_.routing_id.size < rhs_.routing_id.size;
     if (lhs_.routing_id.size == 0)
         return false;
-    return memcmp (lhs_.routing_id.data, rhs_.routing_id.data,
-                   lhs_.routing_id.size)
-           < 0;
+    return memcmp (lhs_.routing_id.data, rhs_.routing_id.data, lhs_.routing_id.size) < 0;
 }
 
-bool topology_filter_requests_spot_owner_local (
-  const zlink_registry_topology_filter_t *filter_)
+bool topology_filter_requests_spot_owner_local (const zlink_registry_topology_filter_t *filter_)
 {
     return filter_ && filter_->service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
-           && filter_->service_role == ZLINK_SERVICE_ROLE_SPOT
-           && filter_->routing_id.size > 0 && filter_->channel_name[0] != '\0';
+           && filter_->service_role == ZLINK_SERVICE_ROLE_SPOT && filter_->routing_id.size > 0
+           && filter_->channel_name[0] != '\0';
 }
 
-bool registry_service_summary_filter_match (
-  const zlink_registry_service_summary_entry_t &entry_,
-  const zlink_registry_service_summary_filter_t *filter_)
+bool registry_service_summary_filter_match (const zlink_registry_service_summary_entry_t &entry_,
+                                            const zlink_registry_service_summary_filter_t *filter_)
 {
     if (!filter_)
         return true;
     if (filter_->auto_connect_type != ZLINK_AUTO_CONNECT_INVALID
         && filter_->auto_connect_type != entry_.auto_connect_type)
         return false;
-    if (filter_->service_role != 0
-        && filter_->service_role != entry_.service_role) {
+    if (filter_->service_role != 0 && filter_->service_role != entry_.service_role) {
         return false;
     }
     if (filter_->channel_name[0] != '\0'
@@ -127,9 +117,8 @@ bool registry_service_summary_filter_match (
     return true;
 }
 
-bool registry_service_summary_less (
-  const zlink_registry_service_summary_entry_t &lhs_,
-  const zlink_registry_service_summary_entry_t &rhs_)
+bool registry_service_summary_less (const zlink_registry_service_summary_entry_t &lhs_,
+                                    const zlink_registry_service_summary_entry_t &rhs_)
 {
     if (lhs_.auto_connect_type != rhs_.auto_connect_type)
         return lhs_.auto_connect_type < rhs_.auto_connect_type;
@@ -168,10 +157,7 @@ struct provider_projection_key_t
 struct provider_projection_state_t
 {
     provider_projection_state_t () :
-        initialized (false),
-        conflicted (false),
-        source_registry (0),
-        registration_id (0)
+        initialized (false), conflicted (false), source_registry (0), registration_id (0)
     {
     }
 
@@ -184,8 +170,7 @@ struct provider_projection_state_t
 
 }
 
-int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_,
-                                          size_t *count_)
+int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entries_, size_t *count_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -193,10 +178,9 @@ int zlink::registry_t::topology_snapshot (zlink_registry_topology_entry_t *entri
     return topology_query (NULL, entries_, count_);
 }
 
-int zlink::registry_t::topology_query (
-  const zlink_registry_topology_filter_t *filter_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
+int zlink::registry_t::topology_query (const zlink_registry_topology_filter_t *filter_,
+                                       zlink_registry_topology_entry_t *entries_,
+                                       size_t *count_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -246,8 +230,7 @@ void zlink::registry_t::collect_topology_entries_locked (
     }
 
     zlink_registry_topology_entry_t best_entry;
-    if (select_spot_owner_entry_locked (matched, filter_->channel_name,
-                                        &best_entry)) {
+    if (select_spot_owner_entry_locked (matched, filter_->channel_name, &best_entry)) {
         out_->push_back (best_entry);
     }
 }
@@ -306,10 +289,8 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
         const uint64_t reported_at = entry.last_reported_ms;
         const std::string owner_rid = tit->second.owner.routing_id_key;
         if (!found || reported_at > best_reported_at
-            || (reported_at == best_reported_at
-                && registration_id > best_registration_id)
-            || (reported_at == best_reported_at
-                && registration_id == best_registration_id
+            || (reported_at == best_reported_at && registration_id > best_registration_id)
+            || (reported_at == best_reported_at && registration_id == best_registration_id
                 && owner_rid < best_routing_id)) {
             *entry_out_ = entry;
             best_registration_id = registration_id;
@@ -325,8 +306,7 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
             provider_key_t provider_key;
             provider_key.service_role = discovery_protocol::service_role_spot;
             provider_key.endpoint = entry.endpoint;
-            provider_map_t::const_iterator pit =
-              sit->second.providers.find (provider_key);
+            provider_map_t::const_iterator pit = sit->second.providers.find (provider_key);
             if (pit == sit->second.providers.end ()) {
                 provider_key.service_role = discovery_protocol::service_role_router;
                 pit = sit->second.providers.find (provider_key);
@@ -336,13 +316,10 @@ bool zlink::registry_t::select_spot_owner_entry_locked (
 
             const uint64_t registration_id = pit->second.registration_id;
             const uint64_t reported_at = entry.last_reported_ms;
-            const std::string owner_rid =
-              zlink::routing_id_key (pit->second.routing_id);
+            const std::string owner_rid = zlink::routing_id_key (pit->second.routing_id);
             if (!found || reported_at > best_reported_at
-                || (reported_at == best_reported_at
-                    && registration_id > best_registration_id)
-                || (reported_at == best_reported_at
-                    && registration_id == best_registration_id
+                || (reported_at == best_reported_at && registration_id > best_registration_id)
+                || (reported_at == best_reported_at && registration_id == best_registration_id
                     && owner_rid < best_routing_id)) {
                 *entry_out_ = entry;
                 best_registration_id = registration_id;
@@ -370,9 +347,7 @@ int zlink::registry_t::service_summary_snapshot (
 
     out_->clear ();
 
-    std::unordered_map<summary_key_t,
-                       zlink_registry_service_summary_entry_t,
-                       summary_key_hash_t>
+    std::unordered_map<summary_key_t, zlink_registry_service_summary_entry_t, summary_key_hash_t>
       grouped;
     {
         scoped_lock_t lock (_sync);
@@ -390,8 +365,7 @@ int zlink::registry_t::service_summary_snapshot (
                 memset (&entry, 0, sizeof (entry));
                 entry.auto_connect_type = row.auto_connect_type;
                 entry.service_role = row.service_role;
-                copy_fixed_c_string_from_cstr (entry.channel_name,
-                                               sizeof (entry.channel_name),
+                copy_fixed_c_string_from_cstr (entry.channel_name, sizeof (entry.channel_name),
                                                row.channel_name);
             }
             entry.total_count++;
@@ -419,10 +393,8 @@ int zlink::registry_t::service_summary_snapshot (
     }
 
     out_->reserve (grouped.size ());
-    for (std::unordered_map<summary_key_t,
-                            zlink_registry_service_summary_entry_t,
-                            summary_key_hash_t>::const_iterator it =
-           grouped.begin ();
+    for (std::unordered_map<summary_key_t, zlink_registry_service_summary_entry_t,
+                            summary_key_hash_t>::const_iterator it = grouped.begin ();
          it != grouped.end (); ++it) {
         if (registry_service_summary_filter_match (it->second, filter_))
             out_->push_back (it->second);
@@ -450,28 +422,23 @@ int zlink::registry_t::member_peers (const char *channel_name_,
         key.channel_name = channel_name_;
         service_map_t::const_iterator sit = _projection_state.services.find (key);
         if (sit != _projection_state.services.end ()) {
-            std::map<provider_projection_key_t, provider_projection_state_t>
-              projection;
-            for (provider_map_t::const_iterator pit =
-                   sit->second.providers.begin ();
+            std::map<provider_projection_key_t, provider_projection_state_t> projection;
+            for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
-                const std::string rid_key =
-                  zlink::routing_id_key (pit->second.routing_id);
+                const std::string rid_key = zlink::routing_id_key (pit->second.routing_id);
                 if (rid_key.empty ())
                     continue;
                 provider_projection_key_t projection_key;
                 projection_key.service_role = pit->second.service_role;
                 projection_key.routing_id_key = rid_key;
-                provider_projection_state_t &state =
-                  projection[projection_key];
+                provider_projection_state_t &state = projection[projection_key];
                 if (!state.initialized) {
                     state.initialized = true;
                     state.source_registry = pit->second.source_registry;
                     state.registration_id = pit->second.registration_id;
                     state.endpoint = pit->second.endpoint;
                 } else if (state.source_registry != pit->second.source_registry
-                           || state.registration_id
-                                != pit->second.registration_id
+                           || state.registration_id != pit->second.registration_id
                            || state.endpoint != pit->second.endpoint) {
                     state.conflicted = true;
                 }
@@ -480,32 +447,25 @@ int zlink::registry_t::member_peers (const char *channel_name_,
             matched.reserve (sit->second.providers.size ());
             for (provider_map_t::const_iterator pit = sit->second.providers.begin ();
                  pit != sit->second.providers.end (); ++pit) {
-                const std::string rid_key =
-                  zlink::routing_id_key (pit->second.routing_id);
+                const std::string rid_key = zlink::routing_id_key (pit->second.routing_id);
                 if (!rid_key.empty ()) {
                     provider_projection_key_t projection_key;
                     projection_key.service_role = pit->second.service_role;
                     projection_key.routing_id_key = rid_key;
-                    std::map<provider_projection_key_t,
-                             provider_projection_state_t>::const_iterator
+                    std::map<provider_projection_key_t, provider_projection_state_t>::const_iterator
                       projection_it = projection.find (projection_key);
-                    if (projection_it != projection.end ()
-                        && projection_it->second.conflicted) {
+                    if (projection_it != projection.end () && projection_it->second.conflicted) {
                         continue;
                     }
                 }
                 zlink_member_peer_entry_t entry;
                 memset (&entry, 0, sizeof (entry));
                 entry.auto_connect_type =
-                  static_cast<zlink_auto_connect_type_t> (
-                    sit->second.auto_connect_type);
-                entry.service_role =
-                  static_cast<zlink_service_role_t> (pit->second.service_role);
-                copy_fixed_c_string_from_cstr (entry.channel_name,
-                                               sizeof (entry.channel_name),
+                  static_cast<zlink_auto_connect_type_t> (sit->second.auto_connect_type);
+                entry.service_role = static_cast<zlink_service_role_t> (pit->second.service_role);
+                copy_fixed_c_string_from_cstr (entry.channel_name, sizeof (entry.channel_name),
                                                channel_name_);
-                copy_fixed_c_string_from_cstr (entry.endpoint,
-                                               sizeof (entry.endpoint),
+                copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                                pit->second.endpoint.c_str ());
                 entry.routing_id = pit->second.routing_id;
                 entry.weight = pit->second.weight;
@@ -531,20 +491,17 @@ int zlink::registry_t::member_peers (const char *channel_name_,
     return 0;
 }
 
-void zlink::registry_t::handle_topology_query (
-  void *router_,
-  const zlink_msg_t *frames_,
-  size_t frame_count_,
-  const zlink_routing_id_t &sender_id_)
+void zlink::registry_t::handle_topology_query (void *router_,
+                                               const zlink_msg_t *frames_,
+                                               size_t frame_count_,
+                                               const zlink_routing_id_t &sender_id_)
 {
     zlink_registry_topology_filter_t filter;
     memset (&filter, 0, sizeof (filter));
     const zlink_registry_topology_filter_t *filter_ptr = NULL;
 
     if (frame_count_ >= 2 && zlink_msg_size (&frames_[1]) == sizeof (filter)) {
-        memcpy (&filter,
-                zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])),
-                sizeof (filter));
+        memcpy (&filter, zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[1])), sizeof (filter));
         filter_ptr = &filter;
     }
 
@@ -571,14 +528,11 @@ void zlink::registry_t::send_topology_reply (
         return;
     }
 
-    discovery_protocol::send_u16 (router_, discovery_protocol::msg_topology_reply,
-                                  ZLINK_SNDMORE);
-    discovery_protocol::send_u32 (router_,
-                                  static_cast<uint32_t> (entries_.size ()),
+    discovery_protocol::send_u16 (router_, discovery_protocol::msg_topology_reply, ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (router_, static_cast<uint32_t> (entries_.size ()),
                                   entries_.empty () ? 0 : ZLINK_SNDMORE);
     for (size_t i = 0; i < entries_.size (); ++i) {
-        discovery_protocol::send_frame (
-          router_, &entries_[i], sizeof (entries_[i]),
-          (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
+        discovery_protocol::send_frame (router_, &entries_[i], sizeof (entries_[i]),
+                                        (i + 1 == entries_.size ()) ? 0 : ZLINK_SNDMORE);
     }
 }

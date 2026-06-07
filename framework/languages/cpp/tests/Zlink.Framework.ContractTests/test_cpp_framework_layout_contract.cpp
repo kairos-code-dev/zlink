@@ -48,10 +48,11 @@ bool public_headers_do_not_include_runtime (const std::filesystem::path &root)
         std::size_t line_no = 0;
         while (std::getline (input, line)) {
             ++line_no;
-            if (line.find ("src/runtime") != std::string::npos || line.find ("/Private/") != std::string::npos
+            if (line.find ("src/runtime") != std::string::npos
+                || line.find ("/Private/") != std::string::npos
                 || line.find ("Private/") != std::string::npos) {
-                std::cerr << "public header references runtime implementation: " << entry.path () << ':' << line_no
-                          << '\n';
+                std::cerr << "public header references runtime implementation: " << entry.path ()
+                          << ':' << line_no << '\n';
                 ok = false;
             }
         }
@@ -132,8 +133,8 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
             ++line_no;
             for (const auto &needle : forbidden) {
                 if (line.find (needle) != std::string::npos) {
-                    std::cerr << "public header exposes runtime/test dependency: " << entry.path () << ':' << line_no
-                              << " contains " << needle << '\n';
+                    std::cerr << "public header exposes runtime/test dependency: " << entry.path ()
+                              << ':' << line_no << " contains " << needle << '\n';
                     ok = false;
                 }
             }
@@ -175,7 +176,8 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
     const auto start = text.find ("## 6. 참고 문서 추적표");
     const auto end = text.find ("## 7. 기능 축 추적표");
     if (start == std::string::npos || end == std::string::npos || start >= end) {
-        std::cerr << "implementation plan lacks a bounded reference document tracking table: " << path << '\n';
+        std::cerr << "implementation plan lacks a bounded reference document tracking table: "
+                  << path << '\n';
         return false;
     }
     const auto table = text.substr (start, end - start);
@@ -194,16 +196,16 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
         const auto link = std::string ("(./") + filename + ")";
         const auto link_count = count_occurrences (table, link);
         if (link_count != 1) {
-            std::cerr << "reference document tracking table must reference exactly once: " << filename << " (got "
-                      << link_count << ")\n";
+            std::cerr << "reference document tracking table must reference exactly once: "
+                      << filename << " (got " << link_count << ")\n";
             ok = false;
         }
     }
 
     const auto tracked_count = count_occurrences (table, ".ko.md)");
     if (tracked_count != file_count) {
-        std::cerr << "reference document tracking table count mismatch: tracked " << tracked_count << ", files "
-                  << file_count << '\n';
+        std::cerr << "reference document tracking table count mismatch: tracked " << tracked_count
+                  << ", files " << file_count << '\n';
         ok = false;
     }
     return ok;
@@ -212,15 +214,16 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 bool non_empty_directories_do_not_keep_gitkeep (const std::filesystem::path &root)
 {
     bool ok = true;
-    const std::filesystem::path roots[] = {root / "framework/include",
-                                           root / "framework/src/runtime",
-                                           root / "connector/include",
-                                           root / "connector/src/runtime",
-                                           root / "http-client/include",
-                                           root / "http-client/src/runtime",
-                                           root / "extensions/include",
-                                           root / "unreal-connector/Source/ZLinkStreamConnector/Public",
-                                           root / "unreal-connector/Source/ZLinkStreamConnector/Private"};
+    const std::filesystem::path roots[] = {
+      root / "framework/include",
+      root / "framework/src/runtime",
+      root / "connector/include",
+      root / "connector/src/runtime",
+      root / "http-client/include",
+      root / "http-client/src/runtime",
+      root / "extensions/include",
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public",
+      root / "unreal-connector/Source/ZLinkStreamConnector/Private"};
 
     for (const auto &scan_root : roots) {
         if (!std::filesystem::exists (scan_root)) {
@@ -240,7 +243,8 @@ bool non_empty_directories_do_not_keep_gitkeep (const std::filesystem::path &roo
                 }
             }
             if (has_real_entry) {
-                std::cerr << "non-empty framework directory still keeps placeholder: " << entry.path () << '\n';
+                std::cerr << "non-empty framework directory still keeps placeholder: "
+                          << entry.path () << '\n';
                 ok = false;
             }
         }
@@ -270,7 +274,8 @@ bool draft_readme_role_tables_cover_files (const std::filesystem::path &root)
             continue;
         }
         const auto filename = entry.path ().filename ().generic_string ();
-        if (filename == "README.ko.md" || filename.size () < 6 || filename.substr (filename.size () - 6) != ".ko.md") {
+        if (filename == "README.ko.md" || filename.size () < 6
+            || filename.substr (filename.size () - 6) != ".ko.md") {
             continue;
         }
         const auto link = std::string ("(./") + filename + ")";
@@ -300,14 +305,20 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
 
     bool ok = true;
     const std::string rows[] = {
-      "| `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, "
+      "| `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, "
+      "`http-client-https`, "
       "`http-client-regression` |",
-      "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, "
+      "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, "
+      "`connector-contract`, "
       "`connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |",
-      "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |",
-      "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, "
-      "`framework-sample-process-e2e`, `framework-sample-log`, `framework-sample-api`, `framework-sample-bingo`, "
-      "`framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, `framework-sample-registry`, "
+      "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, "
+      "`unreal-connector-smoke` |",
+      "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, "
+      "`framework-sample-e2e`, "
+      "`framework-sample-process-e2e`, `framework-sample-log`, `framework-sample-api`, "
+      "`framework-sample-bingo`, "
+      "`framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, "
+      "`framework-sample-registry`, "
       "`framework-sample-session`, `framework-sample-tictactoe` |"};
     for (const auto &row : rows) {
         if (table.find (row) == std::string::npos) {
@@ -335,17 +346,18 @@ bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L connector-unit",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-integration",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-contract",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-protocol",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-transport",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-typed",
-                                    "ctest --test-dir framework/languages/cpp/build -L connector-package",
-                                    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract",
-                                    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile",
-                                    "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L connector-unit",
+      "ctest --test-dir framework/languages/cpp/build -L connector-integration",
+      "ctest --test-dir framework/languages/cpp/build -L connector-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L connector-contract",
+      "ctest --test-dir framework/languages/cpp/build -L connector-protocol",
+      "ctest --test-dir framework/languages/cpp/build -L connector-transport",
+      "ctest --test-dir framework/languages/cpp/build -L connector-typed",
+      "ctest --test-dir framework/languages/cpp/build -L connector-package",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 20 verification commands lack: " << command << '\n';
@@ -391,9 +403,10 @@ bool implementation_plan_goal6_covers_parity_model (const std::filesystem::path 
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-contract",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-host",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R parity"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-contract",
+      "ctest --test-dir framework/languages/cpp/build -L framework-host",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R parity"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 6 verification commands lack: " << command << '\n';
@@ -421,23 +434,24 @@ bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`zlink::context_t` lifecycle owner",
-                                    "channel/stream/discovery/registry/spot lifecycle owner",
-                                    "CAPI dispatch callback 등록과 recv 처리",
-                                    "typed handler projection",
-                                    "CAPI timer event projection",
-                                    "core ordering 보존",
-                                    "framework offload executor",
-                                    "runtime drain",
-                                    "transport abstraction",
-                                    "endpoint URI validation",
-                                    "TCP, IPC, TLS, WebSocket transport support through zlink core",
-                                    "public API가 CAPI handle, socket recv, poller slot을 노출하지 않는다",
-                                    "모든 handler는 coroutine executor를 통과한다",
-                                    "CPU-bound handler는 offload executor에서 실행 가능하다",
-                                    "offload executor는 shutdown에서 drain된다",
-                                    "별도 event loop",
-                                    "public API로"};
+    const std::string required[] = {
+      "`zlink::context_t` lifecycle owner",
+      "channel/stream/discovery/registry/spot lifecycle owner",
+      "CAPI dispatch callback 등록과 recv 처리",
+      "typed handler projection",
+      "CAPI timer event projection",
+      "core ordering 보존",
+      "framework offload executor",
+      "runtime drain",
+      "transport abstraction",
+      "endpoint URI validation",
+      "TCP, IPC, TLS, WebSocket transport support through zlink core",
+      "public API가 CAPI handle, socket recv, poller slot을 노출하지 않는다",
+      "모든 handler는 coroutine executor를 통과한다",
+      "CPU-bound handler는 offload executor에서 실행 가능하다",
+      "offload executor는 shutdown에서 drain된다",
+      "별도 event loop",
+      "public API로"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 7 runtime integration lacks required contract: " << needle << '\n';
@@ -445,8 +459,9 @@ bool implementation_plan_goal7_covers_runtime_integration (const std::filesystem
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R runtime",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R runtime",
+      "ctest --test-dir framework/languages/cpp/build -L framework-integration"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 7 verification commands lack: " << command << '\n';
@@ -474,29 +489,32 @@ bool implementation_plan_goal8_covers_handler_serializer_model (const std::files
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`handler_registry_t`",
-                                    "options.handlers().add<THandler>(group)",
-                                    "handler alias: `request_type`, `reply_type`, `spot_type`, `actor_type`",
-                                    "handler `topic_name`",
-                                    "typed deserialize/serialize",
-                                    "handler DI resolve",
-                                    "handler exception mapping",
-                                    "`serializer_registry_t`",
-                                    "JSON serializer 기본값",
-                                    "custom serializer 등록",
-                                    "channel, topic, spot, actor, request, reply type을 반복해서 나열하지 않는다",
-                                    "type 정보는 handler class alias와 `topic_name`에서 읽는다",
-                                    "decode 실패는 `payload_decode_failed`",
-                                    "serializer registry 구현은 public header에 노출하지 않는다"};
+    const std::string required[] = {
+      "`handler_registry_t`",
+      "options.handlers().add<THandler>(group)",
+      "handler alias: `request_type`, `reply_type`, `spot_type`, `actor_type`",
+      "handler `topic_name`",
+      "typed deserialize/serialize",
+      "handler DI resolve",
+      "handler exception mapping",
+      "`serializer_registry_t`",
+      "JSON serializer 기본값",
+      "custom serializer 등록",
+      "channel, topic, spot, actor, request, reply type을 반복해서 나열하지 않는다",
+      "type 정보는 handler class alias와 `topic_name`에서 읽는다",
+      "decode 실패는 `payload_decode_failed`",
+      "serializer registry 구현은 public header에 노출하지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
-            std::cerr << "Goal 8 handler/serializer model lacks required contract: " << needle << '\n';
+            std::cerr << "Goal 8 handler/serializer model lacks required contract: " << needle
+                      << '\n';
             ok = false;
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-unit -R handler",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-unit -R serializer"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R handler",
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R serializer"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 8 verification commands lack: " << command << '\n';
@@ -524,24 +542,25 @@ bool implementation_plan_goal9_covers_channel_messaging (const std::filesystem::
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"request/reply, send/event, pub/sub, route channel, outbound client",
-                                    "`add_client_server_channel(...)`",
-                                    "server/client/publisher/subscriber capability",
-                                    "`bind(...)`",
-                                    "`connect(...)`",
-                                    "`use_discovery(...)`",
-                                    "`request_client_t`",
-                                    "`publisher_t`",
-                                    "request timeout",
-                                    "reply correlation",
-                                    "outbound-only host",
-                                    "route channel",
-                                    "handler not found mapping",
-                                    "disconnected result",
-                                    "channel messaging 기본 호출은 channel name 기준",
-                                    "같은 capability 안에서 discovery와 manual connection을 섞지 않는다",
-                                    "pending queue 한도 초과는 `request_rejected`",
-                                    "route handler가 없으면 request는 handler not found 계열 error로 닫힌다"};
+    const std::string required[] = {
+      "request/reply, send/event, pub/sub, route channel, outbound client",
+      "`add_client_server_channel(...)`",
+      "server/client/publisher/subscriber capability",
+      "`bind(...)`",
+      "`connect(...)`",
+      "`use_discovery(...)`",
+      "`request_client_t`",
+      "`publisher_t`",
+      "request timeout",
+      "reply correlation",
+      "outbound-only host",
+      "route channel",
+      "handler not found mapping",
+      "disconnected result",
+      "channel messaging 기본 호출은 channel name 기준",
+      "같은 capability 안에서 discovery와 manual connection을 섞지 않는다",
+      "pending queue 한도 초과는 `request_rejected`",
+      "route handler가 없으면 request는 handler not found 계열 error로 닫힌다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 9 channel messaging lacks required contract: " << needle << '\n';
@@ -579,25 +598,27 @@ bool implementation_plan_goal10_covers_backpressure_reliability (const std::file
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"send readiness, bounded queue, timeout, retry/dead-letter extension point",
-                                    "nonblocking send",
-                                    "send-ready runtime integration",
-                                    "HWM awareness",
-                                    "bounded pending queue",
-                                    "timeout 처리",
-                                    "disconnected 처리",
-                                    "shutdown 처리",
-                                    "explicit retry hook",
-                                    "dead-letter extension point",
-                                    "idempotency key hook",
-                                    "graceful close와 drain",
-                                    "public non-blocking 옵션으로 책임을 사용자에게 넘기지 않는다",
-                                    "timeout 전 send-ready가 오면 pending 작업을 drain한다",
-                                    "shutdown 중 pending 작업은 graceful drain 또는 `shutdown` 실패",
-                                    "slow subscriber나 disconnected subscriber"};
+    const std::string required[] = {
+      "send readiness, bounded queue, timeout, retry/dead-letter extension point",
+      "nonblocking send",
+      "send-ready runtime integration",
+      "HWM awareness",
+      "bounded pending queue",
+      "timeout 처리",
+      "disconnected 처리",
+      "shutdown 처리",
+      "explicit retry hook",
+      "dead-letter extension point",
+      "idempotency key hook",
+      "graceful close와 drain",
+      "public non-blocking 옵션으로 책임을 사용자에게 넘기지 않는다",
+      "timeout 전 send-ready가 오면 pending 작업을 drain한다",
+      "shutdown 중 pending 작업은 graceful drain 또는 `shutdown` 실패",
+      "slow subscriber나 disconnected subscriber"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
-            std::cerr << "Goal 10 backpressure/reliability lacks required contract: " << needle << '\n';
+            std::cerr << "Goal 10 backpressure/reliability lacks required contract: " << needle
+                      << '\n';
             ok = false;
         }
     }
@@ -632,37 +653,38 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"SPOT node, Entry Spot, user Spot, actor handler",
-                                    "`spot_node_builder_t`",
-                                    "`spot_t`",
-                                    "`entry_spot_t`",
-                                    "`spot_context_t`",
-                                    "`spot_context_t::publish(...)`",
-                                    "`spot_context_t::request_to(...)`",
-                                    "`spot_context_t::handlers()`",
-                                    "`spot_handler_registry_t`",
-                                    "`add_handler<&TSpot::method>()`",
-                                    "`add_subscribe<&TSpot::method>(topic)`",
-                                    "`add_actor_packet<&TSpot::method>()`",
-                                    "`add_actor_disconnected<&TSpot::method>()`",
-                                    "`on_actor_join(actor, message_t)`",
-                                    "`on_post_actor_joined(actor)`",
-                                    "`on_actor_left(actor)`",
-                                    "`spot_context_t::close()`",
-                                    "`spot_create_result_t`",
-                                    "Entry Spot",
-                                    "user Spot lifecycle",
-                                    "Registry-backed Spot lookup",
-                                    "SPOT node lifecycle은 app host가 관리한다",
-                                    "core SPOT dispatch ordering",
-                                    "Spot 등록부에서는 Spot member function만 나열한다",
-                                    "일반 Spot은 `spot_t`, Entry Spot은 `entry_spot_t`를 상속한다",
-                                    "compile-time으로 검증한다",
-                                    "actor join admission은 registry handler가 아니라 user Spot member callback으로 처리하고",
-                                    "request/reply는 DTO generic이 아니라 `message_t`를 사용한다",
-                                    "actor join/post-join/left lifecycle은 Spot member callback 이름이 계약이다",
-                                    "Spot create result는 `existing`, `created`, `rejected` state와 optional reply message를",
-                                    "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
+    const std::string required[] = {
+      "SPOT node, Entry Spot, user Spot, actor handler",
+      "`spot_node_builder_t`",
+      "`spot_t`",
+      "`entry_spot_t`",
+      "`spot_context_t`",
+      "`spot_context_t::publish(...)`",
+      "`spot_context_t::request_to(...)`",
+      "`spot_context_t::handlers()`",
+      "`spot_handler_registry_t`",
+      "`add_handler<&TSpot::method>()`",
+      "`add_subscribe<&TSpot::method>(topic)`",
+      "`add_actor_packet<&TSpot::method>()`",
+      "`add_actor_disconnected<&TSpot::method>()`",
+      "`on_actor_join(actor, message_t)`",
+      "`on_post_actor_joined(actor)`",
+      "`on_actor_left(actor)`",
+      "`spot_context_t::close()`",
+      "`spot_create_result_t`",
+      "Entry Spot",
+      "user Spot lifecycle",
+      "Registry-backed Spot lookup",
+      "SPOT node lifecycle은 app host가 관리한다",
+      "core SPOT dispatch ordering",
+      "Spot 등록부에서는 Spot member function만 나열한다",
+      "일반 Spot은 `spot_t`, Entry Spot은 `entry_spot_t`를 상속한다",
+      "compile-time으로 검증한다",
+      "actor join admission은 registry handler가 아니라 user Spot member callback으로 처리하고",
+      "request/reply는 DTO generic이 아니라 `message_t`를 사용한다",
+      "actor join/post-join/left lifecycle은 Spot member callback 이름이 계약이다",
+      "Spot create result는 `existing`, `created`, `rejected` state와 optional reply message를",
+      "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 11 SPOT runtime lacks required contract: " << needle << '\n';
@@ -670,8 +692,9 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 11 verification commands lack: " << command << '\n';
@@ -729,8 +752,9 @@ bool implementation_plan_goal12_covers_spot_timer (const std::filesystem::path &
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot -R timer",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R timer"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot -R timer",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R timer"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 12 verification commands lack: " << command << '\n';
@@ -758,27 +782,28 @@ bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"Header 기반 packet stream",
-                                    "`stream_builder_t`",
-                                    "`stream_t`",
-                                    "`packet_stream_session_t`",
-                                    "`stream_header_t`",
-                                    "`stream_error_t`",
-                                    "STREAM bind",
-                                    "packet session registration",
-                                    "lifecycle callback",
-                                    "packet callback",
-                                    "packet reply",
-                                    "`stream_t::write_packet(...)`",
-                                    "header encode/decode",
-                                    "semantic validation",
-                                    "write backpressure",
-                                    "session ordering",
-                                    "close cleanup",
-                                    "raw byte stream dispatch는 core public 표면에 넣지 않는다",
-                                    "Header validation 실패 packet은 application handler로 넘기지 않는다",
-                                    "같은 stream session lifecycle callback과 packet callback은 직렬",
-                                    "pending write 중 disconnect"};
+    const std::string required[] = {
+      "Header 기반 packet stream",
+      "`stream_builder_t`",
+      "`stream_t`",
+      "`packet_stream_session_t`",
+      "`stream_header_t`",
+      "`stream_error_t`",
+      "STREAM bind",
+      "packet session registration",
+      "lifecycle callback",
+      "packet callback",
+      "packet reply",
+      "`stream_t::write_packet(...)`",
+      "header encode/decode",
+      "semantic validation",
+      "write backpressure",
+      "session ordering",
+      "close cleanup",
+      "raw byte stream dispatch는 core public 표면에 넣지 않는다",
+      "Header validation 실패 packet은 application handler로 넘기지 않는다",
+      "같은 stream session lifecycle callback과 packet callback은 직렬",
+      "pending write 중 disconnect"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 13 STREAM framework lacks required contract: " << needle << '\n';
@@ -786,8 +811,9 @@ bool implementation_plan_goal13_covers_stream_framework (const std::filesystem::
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R stream"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 13 verification commands lack: " << command << '\n';
@@ -815,28 +841,29 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"STREAM session과 actor를 ActorGateway로 bind/relay",
-                                    "`stream.attach_actor_gateway(spot_node_name)`",
-                                    "`actor_ref_t`",
-                                    "`session_actor_manager_t`",
-                                    "`session_actor_t`",
-                                    "`actor_context_t`",
-                                    "`bound_session_t`",
-                                    "`actor_join_result_t`",
-                                    "actor factory 등록",
-                                    "local actor handle bind",
-                                    "remote actor ref bind",
-                                    "session actor relay",
-                                    "bound session push",
-                                    "actor disconnect cleanup",
-                                    "actor type mismatch error",
-                                    "duplicate actor error",
-                                    "remote ActorGateway locator codec 숨김",
-                                    "application route mesh channel을 만들지 않는다",
-                                    "node rid, actor id, generation round-trip",
-                                    "actor push는 `bound_session_t`를 통해 내려간다",
-                                    "Registry나 sample-only metadata store에 저장하지 않는다",
-                                    "`relay(...)`와 `send(...)`는 caller payload를 소비하지 않는다"};
+    const std::string required[] = {
+      "STREAM session과 actor를 ActorGateway로 bind/relay",
+      "`stream.attach_actor_gateway(spot_node_name)`",
+      "`actor_ref_t`",
+      "`session_actor_manager_t`",
+      "`session_actor_t`",
+      "`actor_context_t`",
+      "`bound_session_t`",
+      "`actor_join_result_t`",
+      "actor factory 등록",
+      "local actor handle bind",
+      "remote actor ref bind",
+      "session actor relay",
+      "bound session push",
+      "actor disconnect cleanup",
+      "actor type mismatch error",
+      "duplicate actor error",
+      "remote ActorGateway locator codec 숨김",
+      "application route mesh channel을 만들지 않는다",
+      "node rid, actor id, generation round-trip",
+      "actor push는 `bound_session_t`를 통해 내려간다",
+      "Registry나 sample-only metadata store에 저장하지 않는다",
+      "`relay(...)`와 `send(...)`는 caller payload를 소비하지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 14 ActorGateway lacks required contract: " << needle << '\n';
@@ -844,8 +871,9 @@ bool implementation_plan_goal14_covers_actor_gateway (const std::filesystem::pat
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-regression -R actor"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway",
+      "ctest --test-dir framework/languages/cpp/build -L framework-regression -R actor"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 14 verification commands lack: " << command << '\n';
@@ -873,21 +901,22 @@ bool implementation_plan_goal15_covers_registry_topology (const std::filesystem:
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"embedded registry, remote query, topology 조회, Spot remote address lookup",
-                                    "embedded registry bootstrap",
-                                    "registry query client",
-                                    "topology query",
-                                    "service summary",
-                                    "Spot remote address lookup 기본값",
-                                    "custom Spot resolver",
-                                    "duplicate resolver rejection",
-                                    "ambiguous route channel validation",
-                                    "stale address cleanup",
-                                    "monitoring snapshot source",
-                                    "Registry는 Spot remote address 조회 기본값",
-                                    "session actor relay hot path의 actor route store로 Registry를 쓰지 않는다",
-                                    "Spot discovery 없이 Registry Spot 기본값을 켜면 validation 오류",
-                                    "route channel이 둘 이상이면 resolver channel 이름을 명시해야 한다"};
+    const std::string required[] = {
+      "embedded registry, remote query, topology 조회, Spot remote address lookup",
+      "embedded registry bootstrap",
+      "registry query client",
+      "topology query",
+      "service summary",
+      "Spot remote address lookup 기본값",
+      "custom Spot resolver",
+      "duplicate resolver rejection",
+      "ambiguous route channel validation",
+      "stale address cleanup",
+      "monitoring snapshot source",
+      "Registry는 Spot remote address 조회 기본값",
+      "session actor relay hot path의 actor route store로 Registry를 쓰지 않는다",
+      "Spot discovery 없이 Registry Spot 기본값을 켜면 validation 오류",
+      "route channel이 둘 이상이면 resolver channel 이름을 명시해야 한다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 15 registry/topology lacks required contract: " << needle << '\n';
@@ -925,20 +954,21 @@ bool implementation_plan_goal16_covers_observability (const std::filesystem::pat
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"monitoring builder",
-                                    "runtime event enum",
-                                    "typed event payload structs",
-                                    "socket/discovery/registry/spot/stream/actor/session event projection",
-                                    "timer immediate failure event",
-                                    "correlation id",
-                                    "health status",
-                                    "readiness/liveness",
-                                    "metrics/tracing hook",
-                                    "logging integration",
-                                    "handler exception과 transport error가 구분된다",
-                                    "timer handler failure는 snapshot diff interval을 기다리지 않는다",
-                                    "zlink channel, registry, STREAM endpoint, hosted service 상태",
-                                    "public callback payload에 exception 객체 자체를 직접 싣지 않는다"};
+    const std::string required[] = {
+      "monitoring builder",
+      "runtime event enum",
+      "typed event payload structs",
+      "socket/discovery/registry/spot/stream/actor/session event projection",
+      "timer immediate failure event",
+      "correlation id",
+      "health status",
+      "readiness/liveness",
+      "metrics/tracing hook",
+      "logging integration",
+      "handler exception과 transport error가 구분된다",
+      "timer handler failure는 snapshot diff interval을 기다리지 않는다",
+      "zlink channel, registry, STREAM endpoint, hosted service 상태",
+      "public callback payload에 exception 객체 자체를 직접 싣지 않는다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 16 observability lacks required contract: " << needle << '\n';
@@ -946,8 +976,9 @@ bool implementation_plan_goal16_covers_observability (const std::filesystem::pat
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-observability",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-observability",
+      "ctest --test-dir framework/languages/cpp/build -L framework-unit -R monitoring"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 16 verification commands lack: " << command << '\n';
@@ -975,25 +1006,26 @@ bool implementation_plan_goal17_covers_module_hosting (const std::filesystem::pa
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`module_t`",
-                                    "`framework_module_contract_t`",
-                                    "`hosted_service_t`",
-                                    "`app_t::add_zlink_framework(...)`",
-                                    "`zlink_framework_options_t`",
-                                    "`options.services()`",
-                                    "`options.handlers()`",
-                                    "`options.codecs().add_json()`",
-                                    "discovery/channel/spot/stream fluent options builders",
-                                    "module service registration",
-                                    "module handler registration",
-                                    "stage wrapper module pattern",
-                                    "hosted service start/stop lifecycle",
-                                    "`app_t::add_zlink_framework(options_callback)`",
-                                    "JSON codec 사용만 선언하고 message type을 모두 나열하지",
-                                    "`dependency_list_t<Dep...>`와 DI 생성자 주입",
-                                    "handler용 DI factory, serializer smoke 검증",
-                                    "낮은 수준 zlink builder 람다를 두지 않는다",
-                                    "hosted service는 app startup/shutdown과 함께 시작하고 종료한다"};
+    const std::string required[] = {
+      "`module_t`",
+      "`framework_module_contract_t`",
+      "`hosted_service_t`",
+      "`app_t::add_zlink_framework(...)`",
+      "`zlink_framework_options_t`",
+      "`options.services()`",
+      "`options.handlers()`",
+      "`options.codecs().add_json()`",
+      "discovery/channel/spot/stream fluent options builders",
+      "module service registration",
+      "module handler registration",
+      "stage wrapper module pattern",
+      "hosted service start/stop lifecycle",
+      "`app_t::add_zlink_framework(options_callback)`",
+      "JSON codec 사용만 선언하고 message type을 모두 나열하지",
+      "`dependency_list_t<Dep...>`와 DI 생성자 주입",
+      "handler용 DI factory, serializer smoke 검증",
+      "낮은 수준 zlink builder 람다를 두지 않는다",
+      "hosted service는 app startup/shutdown과 함께 시작하고 종료한다"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 17 module/hosted lacks required contract: " << needle << '\n';
@@ -1031,39 +1063,40 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string required[] = {"`zlink::http_client` namespace",
-                                    "`zlink/http_client.hpp`",
-                                    "`http-client/include/zlink/http_client/contracts/*`",
-                                    "`http-client/src/runtime/*`",
-                                    "`zlink::http_client` CMake target",
-                                    "`client_t::create()`",
-                                    "`base_url(endpoint)`",
-                                    "`timeout(duration)`",
-                                    "`default_header(name, value)`",
-                                    "`json()`",
-                                    "`get(path)`, `post(path)`, `put(path)`, `delete_(path)`",
-                                    "typed request body: `body(dto)`",
-                                    "callback submit",
-                                    "coroutine submit",
-                                    "typed JSON response: `submit<TReply>()`",
-                                    "HTTP status와 transport error를 client result/error kind로 매핑",
-                                    "HTTP client regression test suite",
-                                    "`Boost.Beast` runtime private 구현",
-                                    "HTTP와 HTTPS endpoint",
-                                    "TLS verification option",
-                                    "certificate authority bundle 또는 test certificate trust option",
-                                    "framework sample 전용 helper나 framework target이 아니다",
-                                    "`Boost.Beast`, `Boost.Asio`, OpenSSL, socket, resolver",
-                                    "`base_url(...)`은 `http://`와 `https://` endpoint를 모두 받는다",
-                                    "TLS handshake, server certificate verification, hostname verification",
-                                    "묵시적으로 TLS verification을 끄지 않는다",
-                                    "`submit(callback)` 또는",
-                                    "`co_await submit<T>()`",
-                                    "`message_t` 또는 DTO serializer hook",
-                                    "`nlohmann::json::parse`로 field를 직접 꺼내지 않는다",
-                                    "retry, redirect, cookie, proxy, multipart, streaming download",
-                                    "TicTacToe client sample은 이 HTTP client로 `POST /games`를 호출한다",
-                                    "TLS verification 실패, test certificate trust 성공"};
+    const std::string required[] = {
+      "`zlink::http_client` namespace",
+      "`zlink/http_client.hpp`",
+      "`http-client/include/zlink/http_client/contracts/*`",
+      "`http-client/src/runtime/*`",
+      "`zlink::http_client` CMake target",
+      "`client_t::create()`",
+      "`base_url(endpoint)`",
+      "`timeout(duration)`",
+      "`default_header(name, value)`",
+      "`json()`",
+      "`get(path)`, `post(path)`, `put(path)`, `delete_(path)`",
+      "typed request body: `body(dto)`",
+      "callback submit",
+      "coroutine submit",
+      "typed JSON response: `submit<TReply>()`",
+      "HTTP status와 transport error를 client result/error kind로 매핑",
+      "HTTP client regression test suite",
+      "`Boost.Beast` runtime private 구현",
+      "HTTP와 HTTPS endpoint",
+      "TLS verification option",
+      "certificate authority bundle 또는 test certificate trust option",
+      "framework sample 전용 helper나 framework target이 아니다",
+      "`Boost.Beast`, `Boost.Asio`, OpenSSL, socket, resolver",
+      "`base_url(...)`은 `http://`와 `https://` endpoint를 모두 받는다",
+      "TLS handshake, server certificate verification, hostname verification",
+      "묵시적으로 TLS verification을 끄지 않는다",
+      "`submit(callback)` 또는",
+      "`co_await submit<T>()`",
+      "`message_t` 또는 DTO serializer hook",
+      "`nlohmann::json::parse`로 field를 직접 꺼내지 않는다",
+      "retry, redirect, cookie, proxy, multipart, streaming download",
+      "TicTacToe client sample은 이 HTTP client로 `POST /games`를 호출한다",
+      "TLS verification 실패, test certificate trust 성공"};
     for (const auto &needle : required) {
         if (goal.find (needle) == std::string::npos) {
             std::cerr << "Goal 18 HTTP client lacks required contract: " << needle << '\n';
@@ -1071,11 +1104,12 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L http-client-contract",
-                                    "ctest --test-dir framework/languages/cpp/build -L http-client-unit",
-                                    "ctest --test-dir framework/languages/cpp/build -L http-client-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L http-client-https",
-                                    "ctest --test-dir framework/languages/cpp/build -L http-client-regression"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L http-client-contract",
+      "ctest --test-dir framework/languages/cpp/build -L http-client-unit",
+      "ctest --test-dir framework/languages/cpp/build -L http-client-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L http-client-https",
+      "ctest --test-dir framework/languages/cpp/build -L http-client-regression"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 18 verification commands lack: " << command << '\n';
@@ -1150,9 +1184,10 @@ bool implementation_plan_goal19_covers_http_hosting (const std::filesystem::path
         }
     }
 
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-http",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-integration -R http"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-http",
+      "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L framework-integration -R http"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 19 verification commands lack: " << command << '\n';
@@ -1176,7 +1211,8 @@ bool registry_draft_matches_monitoring_contract (const std::filesystem::path &ro
                                     "topology나 service summary", "typed monitoring event"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
-            std::cerr << "registry draft no longer documents implemented " << "monitoring contract: " << needle << '\n';
+            std::cerr << "registry draft no longer documents implemented "
+                      << "monitoring contract: " << needle << '\n';
             ok = false;
         }
     }
@@ -1185,8 +1221,8 @@ bool registry_draft_matches_monitoring_contract (const std::filesystem::path &ro
                                  "monitoring 통합 단계에서 별도 regression으로 고정한다"};
     for (const auto &needle : stale) {
         if (text.find (needle) != std::string::npos) {
-            std::cerr << "registry draft still treats implemented monitoring " << "contract as pending: " << needle
-                      << '\n';
+            std::cerr << "registry draft still treats implemented monitoring "
+                      << "contract as pending: " << needle << '\n';
             ok = false;
         }
     }
@@ -1210,19 +1246,20 @@ bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::pat
     const auto goal = text.substr (start, end - start);
 
     bool ok = true;
-    const std::string commands[] = {"ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-log",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-api",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-play",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-session",
-                                    "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe"};
+    const std::string commands[] = {
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-log",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-api",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-play",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-session",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 21 verification commands lack: " << command << '\n';
@@ -1252,34 +1289,49 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
     const std::string commands[] = {
       "ctest --test-dir framework/languages/cpp/build --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-zlink --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-channel "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-zlink-spot --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-stream "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-actor-gateway "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-zlink-registry "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-http --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-http-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-config --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-observability --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-observability "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L http-client-contract --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L http-client-unit --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L http-client-regression --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L http-client-regression "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L http-client-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-log --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-session "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L framework-sample-tictactoe "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-unit --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-integration --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-contract --output-on-failure",
@@ -1288,14 +1340,18 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
       "ctest --test-dir framework/languages/cpp/build -L connector-typed --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-package --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile "
+      "--output-on-failure",
+      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke "
+      "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build-coverage --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build-coverage -L framework-coverage --output-on-failure"};
+      "ctest --test-dir framework/languages/cpp/build-coverage -L framework-coverage "
+      "--output-on-failure"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 22 verification commands lack: " << command << '\n';
@@ -1303,13 +1359,14 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
         }
     }
 
-    const std::string non_ctest_commands[] = {"cmake --build framework/languages/cpp/build",
-                                              "cmake -S framework/languages/cpp",
-                                              "-B framework/languages/cpp/build-coverage",
-                                              "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON",
-                                              "-DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
-                                              "cmake --build framework/languages/cpp/build-coverage",
-                                              "git diff --check -- framework/languages/cpp bindings/cpp"};
+    const std::string non_ctest_commands[] = {
+      "cmake --build framework/languages/cpp/build",
+      "cmake -S framework/languages/cpp",
+      "-B framework/languages/cpp/build-coverage",
+      "-DZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE=ON",
+      "-DZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD=80",
+      "cmake --build framework/languages/cpp/build-coverage",
+      "git diff --check -- framework/languages/cpp bindings/cpp"};
     for (const auto &command : non_ctest_commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 22 verification commands lack non-CTest gate: " << command << '\n';
@@ -1365,7 +1422,8 @@ bool posd_log_has_current_goal_mapping (const std::filesystem::path &root)
             continue;
         }
         const auto line_end = text.find ('\n', offset);
-        const auto line = text.substr (offset, line_end == std::string::npos ? std::string::npos : line_end - offset);
+        const auto line = text.substr (offset, line_end == std::string::npos ? std::string::npos
+                                                                             : line_end - offset);
         if (line.find ("잔여 POSD 위험 신호와 리팩토링 이슈 0개") == std::string::npos) {
             std::cerr << "POSD refactoring log mapping row lacks zero-issue "
                          "recheck status: "
@@ -1374,9 +1432,9 @@ bool posd_log_has_current_goal_mapping (const std::filesystem::path &root)
         }
     }
 
-    const std::string stale_headings[] = {"\n## Goal 17. C++ Stream Connector", "\n## Goal 18. Unreal Stream Connector",
-                                          "\n## Goal 20. Final Parity And Regression Gate",
-                                          "\n## Goal 21. Extension Boundaries"};
+    const std::string stale_headings[] = {
+      "\n## Goal 17. C++ Stream Connector", "\n## Goal 18. Unreal Stream Connector",
+      "\n## Goal 20. Final Parity And Regression Gate", "\n## Goal 21. Extension Boundaries"};
     for (const auto &heading : stale_headings) {
         if (text.find (heading) != std::string::npos) {
             std::cerr << "POSD refactoring log uses stale plan goal heading: " << heading << '\n';
@@ -1397,29 +1455,32 @@ bool cmake_extension_boundaries_hold (const std::filesystem::path &root)
     bool ok = true;
     const auto extension_count = count_occurrences (text, "add_zlink_framework_extension(");
     if (extension_count != 11) {
-        std::cerr << "expected 11 framework extension targets, got " << extension_count << ": " << path << '\n';
+        std::cerr << "expected 11 framework extension targets, got " << extension_count << ": "
+                  << path << '\n';
         ok = false;
     }
-    if (text.find ("target_link_libraries(${target_name} INTERFACE zlink::framework)") == std::string::npos) {
+    if (text.find ("target_link_libraries(${target_name} INTERFACE zlink::framework)")
+        == std::string::npos) {
         std::cerr << "framework extension helper must depend on core only: " << path << '\n';
         ok = false;
     }
 
-    const std::string forbidden[] = {"target_link_libraries(zlink_framework PUBLIC zlink::framework_extension_",
-                                     "target_link_libraries(zlink_framework PRIVATE zlink::framework_extension_",
-                                     "target_link_libraries(zlink_framework PUBLIC Kafka",
-                                     "target_link_libraries(zlink_framework PRIVATE Kafka",
-                                     "target_link_libraries(zlink_framework PUBLIC gRPC",
-                                     "target_link_libraries(zlink_framework PRIVATE gRPC",
-                                     "target_link_libraries(zlink_framework PUBLIC yaml",
-                                     "target_link_libraries(zlink_framework PRIVATE yaml",
-                                     "target_link_libraries(zlink_framework PUBLIC FlatBuffers",
-                                     "target_link_libraries(zlink_framework PRIVATE FlatBuffers",
-                                     "find_package(Kafka",
-                                     "find_package(gRPC",
-                                     "find_package(yaml",
-                                     "find_package(YAML",
-                                     "find_package(FlatBuffers"};
+    const std::string forbidden[] = {
+      "target_link_libraries(zlink_framework PUBLIC zlink::framework_extension_",
+      "target_link_libraries(zlink_framework PRIVATE zlink::framework_extension_",
+      "target_link_libraries(zlink_framework PUBLIC Kafka",
+      "target_link_libraries(zlink_framework PRIVATE Kafka",
+      "target_link_libraries(zlink_framework PUBLIC gRPC",
+      "target_link_libraries(zlink_framework PRIVATE gRPC",
+      "target_link_libraries(zlink_framework PUBLIC yaml",
+      "target_link_libraries(zlink_framework PRIVATE yaml",
+      "target_link_libraries(zlink_framework PUBLIC FlatBuffers",
+      "target_link_libraries(zlink_framework PRIVATE FlatBuffers",
+      "find_package(Kafka",
+      "find_package(gRPC",
+      "find_package(yaml",
+      "find_package(YAML",
+      "find_package(FlatBuffers"};
     for (const auto &needle : forbidden) {
         if (text.find (needle) != std::string::npos) {
             std::cerr << "core framework target must not depend on extension "
@@ -1435,7 +1496,8 @@ bool contract_headers_have_compile_coverage (const std::filesystem::path &root,
                                              const std::filesystem::path &include_dir,
                                              const std::string &include_prefix)
 {
-    const auto coverage_file = root / "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp";
+    const auto coverage_file =
+      root / "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp";
     std::ifstream coverage_input (coverage_file);
     std::ostringstream coverage_buffer;
     coverage_buffer << coverage_input.rdbuf ();
@@ -1447,9 +1509,11 @@ bool contract_headers_have_compile_coverage (const std::filesystem::path &root,
             continue;
         }
         const auto relative = std::filesystem::relative (entry.path (), root / include_dir);
-        const auto include = std::string ("#include <") + include_prefix + relative.generic_string () + ">";
+        const auto include =
+          std::string ("#include <") + include_prefix + relative.generic_string () + ">";
         if (coverage_text.find (include) == std::string::npos) {
-            std::cerr << "public contract header lacks direct compile coverage: " << entry.path () << '\n';
+            std::cerr << "public contract header lacks direct compile coverage: " << entry.path ()
+                      << '\n';
             ok = false;
         }
     }
@@ -1469,7 +1533,8 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
             continue;
         }
 
-        const auto relative = std::filesystem::relative (entry.path (), samples_root).generic_string ();
+        const auto relative =
+          std::filesystem::relative (entry.path (), samples_root).generic_string ();
         const bool dto_contract_file = relative.find ("/Shared/Contracts/") != std::string::npos;
 
         std::ifstream input (entry.path ());
@@ -1507,8 +1572,10 @@ bool sample_server_code_does_not_block_on_task_result (const std::filesystem::pa
             continue;
         }
 
-        const auto relative = std::filesystem::relative (entry.path (), samples_root).generic_string ();
-        if (relative.find ("/Server/") == std::string::npos && relative.find ("/Shared/") == std::string::npos) {
+        const auto relative =
+          std::filesystem::relative (entry.path (), samples_root).generic_string ();
+        if (relative.find ("/Server/") == std::string::npos
+            && relative.find ("/Shared/") == std::string::npos) {
             continue;
         }
 
@@ -1517,7 +1584,8 @@ bool sample_server_code_does_not_block_on_task_result (const std::filesystem::pa
         std::size_t line_no = 0;
         while (std::getline (input, line)) {
             ++line_no;
-            if (line.find (".result (") != std::string::npos || line.find (".result(") != std::string::npos) {
+            if (line.find (".result (") != std::string::npos
+                || line.find (".result(") != std::string::npos) {
                 std::cerr << "sample server/shared code must use task_t await or "
                              "callback completion instead of blocking result(): "
                           << entry.path () << ':' << line_no << '\n';
@@ -1528,7 +1596,8 @@ bool sample_server_code_does_not_block_on_task_result (const std::filesystem::pa
     return ok;
 }
 
-bool client_sample_uses_connector (const std::filesystem::path &root, const std::filesystem::path &client_file)
+bool client_sample_uses_connector (const std::filesystem::path &root,
+                                   const std::filesystem::path &client_file)
 {
     const auto path = root / client_file;
     bool ok = true;
@@ -1586,7 +1655,9 @@ bool client_sample_does_not_include_server_implementation (const std::filesystem
     return ok;
 }
 
-bool file_does_not_contain (const std::filesystem::path &path, const std::string &needle, const std::string &message)
+bool file_does_not_contain (const std::filesystem::path &path,
+                            const std::string &needle,
+                            const std::string &message)
 {
     if (!file_contains (path, needle)) {
         return true;
@@ -1599,8 +1670,9 @@ bool http_client_public_surface_excludes_deferred_features (const std::filesyste
 {
     bool ok = true;
     const auto include_root = root / "http-client/include";
-    const std::string forbidden[] = {"retry",     "redirect",           "cookie",          "proxy",
-                                     "multipart", "streaming_download", "download_stream", "follow_redirect"};
+    const std::string forbidden[] = {"retry",           "redirect",       "cookie",
+                                     "proxy",           "multipart",      "streaming_download",
+                                     "download_stream", "follow_redirect"};
 
     for (const auto &entry : std::filesystem::recursive_directory_iterator (include_root)) {
         if (!entry.is_regular_file ()) {
@@ -1618,8 +1690,8 @@ bool http_client_public_surface_excludes_deferred_features (const std::filesyste
             ++line_no;
             for (const auto &needle : forbidden) {
                 if (line.find (needle) != std::string::npos) {
-                    std::cerr << "HTTP client public surface exposes deferred feature: " << entry.path () << ':'
-                              << line_no << " contains " << needle << '\n';
+                    std::cerr << "HTTP client public surface exposes deferred feature: "
+                              << entry.path () << ':' << line_no << " contains " << needle << '\n';
                     ok = false;
                 }
             }
@@ -1633,8 +1705,9 @@ bool stream_connector_public_surface_hides_runtime_internals (const std::filesys
     bool ok = true;
     const auto include_root = root / "connector/include";
     const std::string forbidden[] = {
-      "connector_state_t",   "connector_runtime_t", "pending_request_t", "pending_requests", "transport_connection_t",
-      "stream_connection_t", "frame_codec_t",       "header_codec_t",    "metadata_codec_t", "lz4_compression_codec_t"};
+      "connector_state_t",      "connector_runtime_t",    "pending_request_t", "pending_requests",
+      "transport_connection_t", "stream_connection_t",    "frame_codec_t",     "header_codec_t",
+      "metadata_codec_t",       "lz4_compression_codec_t"};
 
     for (const auto &entry : std::filesystem::recursive_directory_iterator (include_root)) {
         if (!entry.is_regular_file ()) {
@@ -1666,10 +1739,12 @@ bool stream_connector_public_surface_hides_runtime_internals (const std::filesys
 bool http_hosting_public_surface_excludes_non_goal_features (const std::filesystem::path &root)
 {
     bool ok = true;
-    const std::filesystem::path include_roots[] = {root / "framework/include/zlink/framework/contracts/http"};
-    const std::string forbidden[] = {"mvc",        "MVC",         "controller",        "Controller",
-                                     "razor",      "Razor",       "websocket",         "WebSocket",
-                                     "web_socket", "view_engine", "template_renderer", "render_template"};
+    const std::filesystem::path include_roots[] = {
+      root / "framework/include/zlink/framework/contracts/http"};
+    const std::string forbidden[] = {
+      "mvc",        "MVC",         "controller",        "Controller",
+      "razor",      "Razor",       "websocket",         "WebSocket",
+      "web_socket", "view_engine", "template_renderer", "render_template"};
 
     for (const auto &include_root : include_roots) {
         if (std::filesystem::is_regular_file (include_root)) {
@@ -1682,7 +1757,8 @@ bool http_hosting_public_surface_excludes_non_goal_features (const std::filesyst
                     if (line.find (needle) != std::string::npos) {
                         std::cerr << "HTTP hosting public surface exposes non-goal "
                                      "feature: "
-                                  << include_root << ':' << line_no << " contains " << needle << '\n';
+                                  << include_root << ':' << line_no << " contains " << needle
+                                  << '\n';
                         ok = false;
                     }
                 }
@@ -1708,7 +1784,8 @@ bool http_hosting_public_surface_excludes_non_goal_features (const std::filesyst
                     if (line.find (needle) != std::string::npos) {
                         std::cerr << "HTTP hosting public surface exposes non-goal "
                                      "feature: "
-                                  << entry.path () << ':' << line_no << " contains " << needle << '\n';
+                                  << entry.path () << ':' << line_no << " contains " << needle
+                                  << '\n';
                         ok = false;
                     }
                 }
@@ -1727,16 +1804,18 @@ int main ()
     bool ok = true;
     ok &= require_exists (root / "framework/include/zlink/framework/contracts");
     ok &= require_exists (root / "framework/include/zlink/framework/contracts/assembly");
-    ok &= require_exists (root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
+    ok &=
+      require_exists (root / "framework/include/zlink/framework/contracts/detail/message_name.hpp");
     const std::string removed_framework_facades[] = {
-      "actors.hpp", "app.hpp",        "assembly.hpp", "call.hpp",   "channels.hpp",      "config.hpp",
-      "error.hpp",  "execution.hpp",  "handlers.hpp", "health.hpp", "http.hpp",          "logging.hpp",
-      "module.hpp", "monitoring.hpp", "registry.hpp", "result.hpp", "serialization.hpp", "services.hpp",
-      "spots.hpp",  "streams.hpp",    "task.hpp",     "timers.hpp", "transport.hpp"};
+      "actors.hpp", "app.hpp",           "assembly.hpp",  "call.hpp",       "channels.hpp",
+      "config.hpp", "error.hpp",         "execution.hpp", "handlers.hpp",   "health.hpp",
+      "http.hpp",   "logging.hpp",       "module.hpp",    "monitoring.hpp", "registry.hpp",
+      "result.hpp", "serialization.hpp", "services.hpp",  "spots.hpp",      "streams.hpp",
+      "task.hpp",   "timers.hpp",        "transport.hpp"};
     for (const auto &header : removed_framework_facades) {
-        ok &= require_absent (
-          root / "framework/include/zlink/framework" / header,
-          "one-line facade wrappers are dead compatibility surface; use zlink/framework.hpp or contracts/*");
+        ok &= require_absent (root / "framework/include/zlink/framework" / header,
+                              "one-line facade wrappers are dead compatibility surface; use "
+                              "zlink/framework.hpp or contracts/*");
     }
     ok &= require_exists (root / "framework/src/runtime");
     ok &= require_exists (root / "framework/src/runtime/backend/contracts");
@@ -1784,21 +1863,27 @@ int main ()
     ok &= require_exists (root / "framework/src/runtime/channels/route_handler_registry.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_handler_invoker.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_handler_invoker.hpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/route_internal_packet_dispatcher.cpp");
-    ok &= require_exists (root / "framework/src/runtime/channels/route_internal_packet_dispatcher.hpp");
+    ok &=
+      require_exists (root / "framework/src/runtime/channels/route_internal_packet_dispatcher.cpp");
+    ok &=
+      require_exists (root / "framework/src/runtime/channels/route_internal_packet_dispatcher.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet_dispatcher.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_packet_dispatcher.hpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_receive_pump.cpp");
     ok &= require_exists (root / "framework/src/runtime/channels/route_receive_pump.hpp");
     ok &= require_exists (root / "framework/src/runtime/configuration/builders");
-    ok &= require_exists (root / "framework/src/runtime/configuration/builders/configuration_builder.cpp");
+    ok &= require_exists (
+      root / "framework/src/runtime/configuration/builders/configuration_builder.cpp");
     ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts");
     ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts/calls");
-    ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
-    ok &=
-      require_exists (root / "connector/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
-    ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
+    ok &= require_exists (
+      root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
+    ok &= require_exists (
+      root
+      / "connector/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
+    ok &= require_exists (
+      root / "connector/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
     ok &= require_exists (root / "connector/src/runtime");
     ok &= require_exists (root / "connector/src/runtime/calls");
     ok &= require_exists (root / "connector/src/runtime/protocol");
@@ -1808,7 +1893,8 @@ int main ()
     ok &= require_exists (root / "connector/src/runtime/connector_lifecycle.cpp");
     ok &= require_exists (root / "connector/src/runtime/heartbeat_monitor.cpp");
     ok &= require_exists (root / "connector/src/runtime/calls/zlink_stream_calls.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/compression/lz4_compression_codec.cpp");
+    ok &= require_exists (root
+                          / "connector/src/runtime/protocol/compression/lz4_compression_codec.cpp");
     ok &= require_exists (root / "connector/src/runtime/protocol/framing/frame_codec.cpp");
     ok &= require_exists (root / "connector/src/runtime/protocol/framing.cpp");
     ok &= require_exists (root / "connector/src/runtime/protocol/header_codec.cpp");
@@ -1828,18 +1914,24 @@ int main ()
     ok &= require_exists (root / "tests/Zlink.Framework.E2ETests");
     ok &= require_exists (root / "tests/Systems.Zlink.Stream.Connector.Tests");
     ok &= require_exists (root / "tests/Zlink.Unreal.Stream.Connector.Tests");
-    ok &= require_exists (root / "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp");
-    ok &= require_exists (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp");
-    ok &= require_exists (root / "tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp");
-    ok &= require_exists (root / "tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp");
+    ok &= require_exists (
+      root / "tests/Zlink.Framework.ContractTests/test_cpp_framework_contract_headers.cpp");
+    ok &= require_exists (
+      root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp");
+    ok &= require_exists (
+      root / "tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp");
+    ok &= require_exists (
+      root / "tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp");
     ok &= require_exists (root / "unreal-connector/Source/ZLinkStreamConnector/Public");
     ok &= require_exists (root / "unreal-connector/Source/ZLinkStreamConnector/Private");
-    ok &= require_exists (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp");
+    ok &= require_exists (root
+                          / "unreal-connector/Source/ZLinkStreamConnector/Private/"
+                            "ZLinkStreamConnectorAutomationTests.cpp");
     ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/Bingo/Shared/Contracts/messages.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
+    ok &=
+      require_exists (root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/api_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/api_server_framework.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/Handlers/match_bingo_handler.hpp");
@@ -1847,26 +1939,34 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Server/Play/Actors/player_actor.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/Actors/player_actor_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_card.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_notification_publisher.hpp");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_notification_publisher.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_models.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_spot.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp");
-    ok &= require_absent (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp",
-                          "sample handler aggregate headers hide the real .NET-aligned Handlers owner");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Play/BingoRoomSpots/Handlers/bingo_room_timer_handler.hpp");
+    ok &=
+      require_absent (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room_handlers.hpp",
+                      "sample handler aggregate headers hide the real .NET-aligned Handlers owner");
     ok &= require_exists (root / "samples/Bingo/Server/Play/EntrySpot/bingo_entry_spot.hpp");
-    ok &= require_absent (root / "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp",
-                          "SPOT actor packets must be registered as spot member functions");
-    ok &= require_absent (root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp",
-                          "sample handler wrappers hide the real .NET-aligned Handlers owner");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp");
+    ok &= require_absent (
+      root / "samples/Bingo/Server/Play/EntrySpot/Handlers/match_bingo_actor_handler.hpp",
+      "SPOT actor packets must be registered as spot member functions");
+    ok &=
+      require_absent (root / "samples/Bingo/Server/Play/EntrySpot/match_bingo_actor_handler.hpp",
+                      "sample handler wrappers hide the real .NET-aligned Handlers owner");
+    ok &=
+      require_exists (root / "samples/Bingo/Server/Play/Handlers/allocate_bingo_room_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/Handlers/bingo_room_directory.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Play/Handlers/ensure_player_actor_handler.hpp");
+    ok &=
+      require_exists (root / "samples/Bingo/Server/Play/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/play_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Registry/registry_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/main.cpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/session_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Session/Sessions/bingo_session.hpp");
-    ok &= require_exists (root / "samples/Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp");
+    ok &= require_exists (
+      root / "samples/Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/bingo_notification_inbox.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/bingo_client_options.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/bingo_player_client.hpp");
@@ -1875,43 +1975,59 @@ int main ()
     ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Contracts/messages.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/authenticate_actor_handler.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Api/Handlers/authenticate_actor_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/api_server_host_factory.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/create_match_handler.hpp");
-    ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
-                          "TicTacToe API framework setup belongs in api_server_host_factory.hpp like .NET");
-    ok &= require_absent (root / "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp",
-                          "SPOT actor packets must be registered as spot member functions");
+    ok &= require_absent (
+      root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
+      "TicTacToe API framework setup belongs in api_server_host_factory.hpp like .NET");
+    ok &= require_absent (
+      root / "samples/TicTacToe/Server/Play/EntrySpot/Handlers/join_match_handler.hpp",
+      "SPOT actor packets must be registered as spot member functions");
     ok &= require_absent (root / "samples/TicTacToe/Server/Play/EntrySpot/join_match_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_match_room.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/game_notification_publisher.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_contract_mapper.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_models.hpp");
+    ok &=
+      require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_match_room.hpp");
+    ok &= require_exists (
+      root / "samples/TicTacToe/Server/Play/GameSpots/game_notification_publisher.hpp");
+    ok &= require_exists (
+      root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_contract_mapper.hpp");
+    ok &=
+      require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_models.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/GameSpots/tictactoe_game_spot.hpp");
-    ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/tictactoe_game_join_handler.hpp",
-                          "SPOT actor joins must be registered as spot member functions");
-    ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp",
-                          "SPOT actor packets must be registered as spot member functions");
+    ok &= require_absent (
+      root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/tictactoe_game_join_handler.hpp",
+      "SPOT actor joins must be registered as spot member functions");
+    ok &= require_absent (
+      root / "samples/TicTacToe/Server/Play/GameSpots/Handlers/place_mark_handler.hpp",
+      "SPOT actor packets must be registered as spot member functions");
     ok &= require_absent (root / "samples/TicTacToe/Server/Play/GameSpots/place_mark_handler.hpp",
                           "sample handler wrappers hide the real .NET-aligned Handlers owner");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Play/Handlers/ensure_player_actor_handler.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Handlers/create_match_room_handler.hpp");
+    ok &= require_exists (
+      root / "samples/TicTacToe/Server/Play/Handlers/ensure_player_actor_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/play_server_host_factory.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Registry/registry_host_factory.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Session/session_server_host_factory.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Session/Sessions/session_relay_session.hpp");
-    ok &= require_exists (
-      root / "samples/TicTacToe/Server/Session/Sessions/Handlers/authenticate_session_packet_handler.hpp");
-    ok &= require_exists (
-      root / "samples/TicTacToe/Server/Session/Sessions/Handlers/create_match_session_packet_handler.hpp");
+    ok &=
+      require_exists (root / "samples/TicTacToe/Server/Session/session_server_host_factory.hpp");
+    ok &=
+      require_exists (root / "samples/TicTacToe/Server/Session/Sessions/session_relay_session.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Session/Sessions/Handlers/"
+                            "authenticate_session_packet_handler.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Session/Sessions/Handlers/"
+                            "create_match_session_packet_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Client/session_actor_notification_inbox.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_client_options.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_player_client.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_client.hpp");
 
     ok &= client_sample_uses_connector (root, "samples/Bingo/Client/bingo_player_client.hpp");
-    ok &= client_sample_uses_connector (root, "samples/TicTacToe/Client/tictactoe_player_client.hpp");
+    ok &=
+      client_sample_uses_connector (root, "samples/TicTacToe/Client/tictactoe_player_client.hpp");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
     ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "socket_fd",
@@ -1924,76 +2040,99 @@ int main ()
                          "co_await runtime::await_task_result");
     ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp",
                          "handler_coroutine_executor ().submit");
-    ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp", "co_await await_task_result");
+    ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp",
+                         "co_await await_task_result");
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
                          "runtime::handler_coroutine_executor ().submit");
-    ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp", "co_await runtime::await_task_result");
-    ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp", "handler_coroutine_executor ()");
-    ok &=
-      file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp", "co_await runtime::await_task_result");
-    ok &= file_does_not_contain (root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result (",
-                                 "route handler dispatch must await task_t instead of blocking with result()");
-    ok &= file_does_not_contain (root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result(",
-                                 "route handler dispatch must await task_t instead of blocking with result()");
-    ok &=
-      file_does_not_contain (root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp",
-                             ".result", "connector callback submit must observe task completion instead of blocking");
-    ok &=
-      file_does_not_contain (root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp", ".result",
-                             "connector auto codec callback submit must observe task completion instead of blocking");
-    ok &= file_does_not_contain (root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
-                                 "on_completed ([&",
-                                 "connector auto codec must not depend on immediate callback completion");
-    ok &= file_does_not_contain (root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
-                                 "std::optional<result_t",
-                                 "connector auto codec must let task_t own result storage details");
-    ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.cpp", ".result",
-                                 "connector send callback submit must observe task completion instead of blocking");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-                                 "zlink/stream_connector",
-                                 "Unreal connector must not wrap the general C++ connector runtime");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
-                                 "zlink/stream_connector",
-                                 "Unreal public API must not include the general C++ connector surface");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
-                                 "task_t", "Unreal public API must not expose connector coroutine task_t");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
-                                 "<coroutine>", "Unreal public API must not include coroutine support");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
-                                 "co_await", "Unreal public API must not expose coroutine await syntax");
-    ok &= file_does_not_contain (root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
-                                 "submit", "Unreal public API must use delegates instead of connector submit calls");
-    ok &= file_does_not_contain (root / "CMakeLists.txt",
-                                 "target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)",
-                                 "Unreal connector target must not publicly wrap the general C++ connector");
-    ok &= file_does_not_contain (root / "CMakeLists.txt",
-                                 "target_link_libraries(zlink_unreal_stream_connector PRIVATE zlink::stream_connector)",
-                                 "Unreal connector target must not privately wrap the general C++ connector");
+    ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
+                         "co_await runtime::await_task_result");
+    ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",
+                         "handler_coroutine_executor ()");
+    ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",
+                         "co_await runtime::await_task_result");
+    ok &= file_does_not_contain (
+      root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result (",
+      "route handler dispatch must await task_t instead of blocking with result()");
+    ok &= file_does_not_contain (
+      root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result(",
+      "route handler dispatch must await task_t instead of blocking with result()");
+    ok &= file_does_not_contain (
+      root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp",
+      ".result", "connector callback submit must observe task completion instead of blocking");
+    ok &= file_does_not_contain (
+      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp", ".result",
+      "connector auto codec callback submit must observe task completion instead of blocking");
+    ok &= file_does_not_contain (
+      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp", "on_completed ([&",
+      "connector auto codec must not depend on immediate callback completion");
+    ok &= file_does_not_contain (
+      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
+      "std::optional<result_t", "connector auto codec must let task_t own result storage details");
+    ok &= file_does_not_contain (
+      root / "connector/src/runtime/connector_runtime.cpp", ".result",
+      "connector send callback submit must observe task completion instead of blocking");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "zlink/stream_connector", "Unreal connector must not wrap the general C++ connector runtime");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      "zlink/stream_connector",
+      "Unreal public API must not include the general C++ connector surface");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "task_t",
+      "Unreal public API must not expose connector coroutine task_t");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      "<coroutine>", "Unreal public API must not include coroutine support");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      "co_await", "Unreal public API must not expose coroutine await syntax");
+    ok &= file_does_not_contain (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "submit",
+      "Unreal public API must use delegates instead of connector submit calls");
     ok &= file_does_not_contain (
       root / "CMakeLists.txt",
-      "target_include_directories(zlink_unreal_stream_connector PRIVATE\n  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)",
+      "target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)",
+      "Unreal connector target must not publicly wrap the general C++ connector");
+    ok &= file_does_not_contain (
+      root / "CMakeLists.txt",
+      "target_link_libraries(zlink_unreal_stream_connector PRIVATE zlink::stream_connector)",
+      "Unreal connector target must not privately wrap the general C++ connector");
+    ok &= file_does_not_contain (
+      root / "CMakeLists.txt",
+      "target_include_directories(zlink_unreal_stream_connector PRIVATE\n  "
+      "${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)",
       "Unreal connector target must not include general connector runtime internals");
-    ok &= file_does_not_contain (root / "CMakeLists.txt", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
-                                 "Stream connector JSON helper is always included and must not expose a fake option");
-    ok &= file_does_not_contain (root / "CMakePresets.json", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
-                                 "CMake presets must not set the removed Stream Connector JSON helper option");
-    ok &= file_contains (root / "CMakeLists.txt", "set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)");
+    ok &= file_does_not_contain (
+      root / "CMakeLists.txt", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
+      "Stream connector JSON helper is always included and must not expose a fake option");
+    ok &= file_does_not_contain (
+      root / "CMakePresets.json", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
+      "CMake presets must not set the removed Stream Connector JSON helper option");
     ok &= file_contains (root / "CMakeLists.txt",
-                         "if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)");
+                         "set(ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED OFF)");
     ok &= file_contains (
       root / "CMakeLists.txt",
-      "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>");
-    ok &= file_contains (root / "CMakeLists.txt", "set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>");
-    ok &= file_does_not_contain (root / "cmake/zlink_framework_cppConfig.cmake.in",
-                                 "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@",
-                                 "Framework package config must not restore connector MessagePack dependency");
-    ok &= file_does_not_contain (root / "cmake/zlink_framework_cppConfig.cmake.in",
-                                 "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@",
-                                 "Framework package config must not restore connector Protobuf dependency");
+      "if(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK AND TARGET zlink::cpp_codec_messagepack)");
+    ok &=
+      file_contains (root / "CMakeLists.txt", "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_MESSAGEPACK_"
+                                              "ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK>");
+    ok &=
+      file_contains (root / "CMakeLists.txt", "set(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED OFF)");
+    ok &= file_contains (
+      root / "CMakeLists.txt",
+      "if(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF AND TARGET zlink::cpp_codec_protobuf)");
+    ok &= file_contains (
+      root / "CMakeLists.txt",
+      "$<$<BOOL:${ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED}>:ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF>");
+    ok &= file_does_not_contain (
+      root / "cmake/zlink_framework_cppConfig.cmake.in",
+      "@ZLINK_STREAM_CONNECTOR_EXPORT_MESSAGEPACK_DEPENDENCY@",
+      "Framework package config must not restore connector MessagePack dependency");
+    ok &= file_does_not_contain (
+      root / "cmake/zlink_framework_cppConfig.cmake.in",
+      "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@",
+      "Framework package config must not restore connector Protobuf dependency");
     ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
                          "@ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY@");
     ok &= file_contains (root / "cmake/zlink_stream_connector_cppConfig.cmake.in",
@@ -2002,45 +2141,58 @@ int main ()
                          "@ZLINK_STREAM_CONNECTOR_EXPORT_PROTOBUF_DEPENDENCY@");
     ok &= file_contains (root / "../../../bindings/cpp/CMakeLists.txt",
                          "install(TARGETS ${target_name}\n    EXPORT zlink_cppTargets)");
-    ok &= file_contains (root / "CMakeLists.txt",
-                         "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
-    ok &= file_contains (root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
-                         "\"Sockets\"");
-    ok &= file_contains (root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
-                         "\"Networking\"");
     ok &= file_contains (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp",
-      "IMPLEMENT_SIMPLE_AUTOMATION_TEST");
+      root / "CMakeLists.txt",
+      "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
     ok &= file_contains (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnectorAutomationTests.cpp", "FSocket");
+      root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Sockets\"");
+    ok &= file_contains (
+      root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Networking\"");
+    ok &= file_contains (root
+                           / "unreal-connector/Source/ZLinkStreamConnector/Private/"
+                             "ZLinkStreamConnectorAutomationTests.cpp",
+                         "IMPLEMENT_SIMPLE_AUTOMATION_TEST");
+    ok &= file_contains (root
+                           / "unreal-connector/Source/ZLinkStreamConnector/Private/"
+                             "ZLinkStreamConnectorAutomationTests.cpp",
+                         "FSocket");
     ok &= http_client_public_surface_excludes_deferred_features (root);
     ok &= stream_connector_public_surface_hides_runtime_internals (root);
     ok &= http_hosting_public_surface_excludes_non_goal_features (root);
-    ok &= file_does_not_contain (root / "framework/include/zlink/framework/contracts/http/http.hpp",
-                                 "http_options_builder_t &tls",
-                                 "HTTP hosting public API must use configure_tls, not tls compatibility aliases");
-    ok &= file_does_not_contain (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp", ".tls (",
-                                 "HTTP hosting regression tests must use configure_tls final API");
-    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "asio::thread_pool _io_workers");
-    ok &= file_does_not_contain (root / "framework/src/runtime/http/http_listener.cpp", "std::thread connection_thread",
-                                 "HTTP hosting must not create one OS thread per connection");
-    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "_tls_context.emplace");
-    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "*_tls_context");
+    ok &= file_does_not_contain (
+      root / "framework/include/zlink/framework/contracts/http/http.hpp",
+      "http_options_builder_t &tls",
+      "HTTP hosting public API must use configure_tls, not tls compatibility aliases");
+    ok &= file_does_not_contain (
+      root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp", ".tls (",
+      "HTTP hosting regression tests must use configure_tls final API");
+    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp",
+                         "asio::thread_pool _io_workers");
     ok &= file_does_not_contain (root / "framework/src/runtime/http/http_listener.cpp",
-                                 "asio::ssl::context context (asio::ssl::context::tls_server)",
-                                 "HTTP hosting must reuse listener TLS context instead of creating it per connection");
+                                 "std::thread connection_thread",
+                                 "HTTP hosting must not create one OS thread per connection");
+    ok &=
+      file_contains (root / "framework/src/runtime/http/http_listener.cpp", "_tls_context.emplace");
+    ok &= file_contains (root / "framework/src/runtime/http/http_listener.cpp", "*_tls_context");
+    ok &= file_does_not_contain (
+      root / "framework/src/runtime/http/http_listener.cpp",
+      "asio::ssl::context context (asio::ssl::context::tls_server)",
+      "HTTP hosting must reuse listener TLS context instead of creating it per connection");
 
     ok &= public_headers_do_not_include_runtime (root / "framework/include");
     ok &= public_headers_do_not_include_runtime (root / "connector/include");
     ok &= public_headers_do_not_include_runtime (root / "http-client/include");
     ok &= public_headers_do_not_include_runtime (root / "extensions/include");
-    ok &= public_headers_do_not_include_runtime (root / "unreal-connector/Source/ZLinkStreamConnector/Public");
+    ok &= public_headers_do_not_include_runtime (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "framework/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "connector/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "http-client/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "extensions/include");
-    ok &=
-      public_headers_do_not_expose_runtime_dependencies (root / "unreal-connector/Source/ZLinkStreamConnector/Public");
+    ok &= public_headers_do_not_expose_runtime_dependencies (
+      root / "unreal-connector/Source/ZLinkStreamConnector/Public");
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");

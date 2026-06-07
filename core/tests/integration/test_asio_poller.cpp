@@ -163,8 +163,7 @@ void test_dealer_router ()
 
     //  Compare message data with known length (zlink_msg_data is not null-terminated)
     TEST_ASSERT_EQUAL_INT (strlen ("Hello Router"), zlink_msg_size (&msg));
-    TEST_ASSERT_EQUAL_MEMORY ("Hello Router", zlink_msg_data (&msg),
-                               zlink_msg_size (&msg));
+    TEST_ASSERT_EQUAL_MEMORY ("Hello Router", zlink_msg_data (&msg), zlink_msg_size (&msg));
 
     zlink_msg_close (&identity);
     zlink_msg_close (&msg);
@@ -223,13 +222,11 @@ void test_multiple_io_threads ()
 
     // Communicate
     const char *msg = "Multi-IO test";
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (strlen (msg)),
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, msg, strlen (msg), 0)));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)),
+                           TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, msg, strlen (msg), 0)));
 
     char buffer[64];
-    int rc = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (client, buffer, sizeof (buffer), 0));
+    int rc = TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, buffer, sizeof (buffer), 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)), rc);
 
     // Clean up
@@ -245,8 +242,7 @@ void test_inproc_transport ()
     void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "inproc://test_asio_inproc"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (client, "inproc://test_asio_inproc"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "inproc://test_asio_inproc"));
 
     // Inproc should work immediately
     send_string_expect_success (server, "inproc test", 0);
@@ -256,7 +252,7 @@ void test_inproc_transport ()
     test_context_socket_close (server);
 }
 
-#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || ZLINK_HAVE_WINDOWS
+#else // !ZLINK_IOTHREAD_POLLER_USE_ASIO || ZLINK_HAVE_WINDOWS
 
 void setUp ()
 {
@@ -272,7 +268,7 @@ void test_asio_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {

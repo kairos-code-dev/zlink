@@ -156,7 +156,8 @@ class dealer_router_client_bench_t
                 _poller.add (sock, zlink::poll_event_flag_t::pollin, _socket_states.size () - 1);
             }
 
-            const bool ready = perf::multi::wait_connect_ready_all (_monitors, _settings.connect_ready_timeout_ms);
+            const bool ready =
+              perf::multi::wait_connect_ready_all (_monitors, _settings.connect_ready_timeout_ms);
             for (size_t i = 0; i < _monitors.size (); ++i)
                 perf::multi::close_connect_monitor (_monitors[i]);
             if (!ready)
@@ -164,7 +165,8 @@ class dealer_router_client_bench_t
             if (!perf::multi::recalculate_auto_hwm (_ctx))
                 return false;
             if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
-                perf::multi::emit_auto_hwm_detail (*_holders[0], "client", "endpoint", _transport, _msg_size, "dealer");
+                perf::multi::emit_auto_hwm_detail (*_holders[0], "client", "endpoint", _transport,
+                                                   _msg_size, "dealer");
             }
 
             return !_socket_states.empty ();
@@ -200,21 +202,23 @@ class dealer_router_client_bench_t
 
     bool try_send_request (socket_state_t &state, perf_metric::phase_t phase)
     {
-        std::vector<char> &request_buffer = state.borrow_payload ? state.request_buffer : _shared_request_buffer;
+        std::vector<char> &request_buffer =
+          state.borrow_payload ? state.request_buffer : _shared_request_buffer;
         if (!state.sock || request_buffer.empty ())
             return false;
 
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
-        if (!perf_metric::stamp_payload (&request_buffer[0], state.payload_size, _run_id, phase, _msg_size, _seq,
-                                         sent_ts_ns)) {
+        if (!perf_metric::stamp_payload (&request_buffer[0], state.payload_size, _run_id, phase,
+                                         _msg_size, _seq, sent_ts_ns)) {
             return false;
         }
 
-        state.request = state.borrow_payload
-                          ? zlink::message_t::from (
-                              std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
-                          : zlink::message_t::from (
-                              std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
+        state.request =
+          state.borrow_payload
+            ? zlink::message_t::from (
+                std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)))
+            : zlink::message_t::from (
+                std::as_bytes (std::span<const char> (request_buffer.data (), state.payload_size)));
         if (!state.request.valid ()) {
             return false;
         }
@@ -261,7 +265,8 @@ class dealer_router_client_bench_t
             return -1;
         }
 
-        const bool decoded = perf_metric::decode_payload_header (state.reply.data (), state.reply.size (), header_out);
+        const bool decoded =
+          perf_metric::decode_payload_header (state.reply.data (), state.reply.size (), header_out);
         state.reply.close ();
         if (!decoded)
             return 1;
@@ -292,7 +297,8 @@ class dealer_router_client_bench_t
             // (signal-driven) poll wait; no poller timer object is used. Matches
             // the C reference run_echo_window_round_robin
             // (bindings/c/perf/multi/common/perf_multi_client_helpers.hpp:901-1075).
-            const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (seconds);
+            const auto deadline =
+              std::chrono::steady_clock::now () + std::chrono::seconds (seconds);
 
             for (size_t attempt = 0; attempt < _socket_states.size (); ++attempt) {
                 socket_state_t &state = _socket_states[attempt];
@@ -359,8 +365,9 @@ class dealer_router_client_bench_t
 
                         ++count;
                         if (lat_out && phase == perf_metric::phase_active) {
-                            const double latency_ns =
-                              perf_metric::elapsed_latency_ns (perf_metric::now_ns (), header.sent_ts_ns) * 0.5;
+                            const double latency_ns = perf_metric::elapsed_latency_ns (
+                                                        perf_metric::now_ns (), header.sent_ts_ns)
+                                                      * 0.5;
                             latency.add (latency_ns);
                         }
 
@@ -391,7 +398,8 @@ class dealer_router_client_bench_t
     void print_result () const
     {
         perf::multi::print_client_result_lines (_lib_name, k_pattern_result, _transport, _msg_size,
-                                                _result.active_count, _phase_cfg.active_seconds, 2.0, _result.latency);
+                                                _result.active_count, _phase_cfg.active_seconds,
+                                                2.0, _result.latency);
     }
 
   private:
@@ -426,15 +434,18 @@ bool perf_dealer_router_client (const std::string &lib_name,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
 
     dealer_router_client_bench_t bench (transport, lib_name, msg_size, endpoint, settings);
     if (!bench.run ()) {
-        std::cerr << "DEALER_ROUTER_CLIENT_FAIL,transport=" << transport << ",size=" << msg_size << std::endl;
+        std::cerr << "DEALER_ROUTER_CLIENT_FAIL,transport=" << transport << ",size=" << msg_size
+                  << std::endl;
         return false;
     }
 

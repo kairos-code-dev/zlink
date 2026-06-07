@@ -31,10 +31,11 @@ bool wait_for_spot_ready (zlink::service::spot_node_t &node_,
         const bool pub_ready =
           !status.local_endpoint ().empty ()
           && (min_active_peer_count_ == 0 || status.active_peer_count () >= min_active_peer_count_);
-        const bool sub_ready = require_subject_ ? status.subject_count () > 0
-                                                    && (status.active_peer_count () >= min_active_peer_count_
-                                                        || status.connected_peer_count () >= min_active_peer_count_)
-                                                : status.active_peer_count () >= min_active_peer_count_;
+        const bool sub_ready =
+          require_subject_ ? status.subject_count () > 0
+                               && (status.active_peer_count () >= min_active_peer_count_
+                                   || status.connected_peer_count () >= min_active_peer_count_)
+                           : status.active_peer_count () >= min_active_peer_count_;
         if (require_subject_ ? sub_ready : pub_ready)
             return true;
         std::this_thread::yield ();
@@ -49,7 +50,8 @@ int main ()
 {
     zlink::context_t ctx;
     zlink::service::registry_t registry (ctx);
-    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh, detail::k_spot_service);
+    zlink::service::discovery_t discovery (ctx, zlink::auto_connect_type::spot_mesh,
+                                           detail::k_spot_service);
     zlink::service::spot_node_t node (ctx);
     assert (registry.valid ());
     assert (discovery.valid ());
@@ -70,7 +72,8 @@ int main ()
 
     zlink::topic_message_t inbound;
     bool got_message = false;
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
         zlink::message_t outbound = detail::make_message ("spot-callback");
         spot.publish ("topic:alpha").message (outbound).submit ();

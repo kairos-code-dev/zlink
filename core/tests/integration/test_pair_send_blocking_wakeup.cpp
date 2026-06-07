@@ -31,8 +31,7 @@ void configure_pair_socket (void *socket_)
 void fill_until_hwm (void *sender_, const char *buffer_)
 {
     int sent = 0;
-    while (zlink_send (sender_, buffer_, kMsgSize, ZLINK_DONTWAIT)
-           == static_cast<int> (kMsgSize))
+    while (zlink_send (sender_, buffer_, kMsgSize, ZLINK_DONTWAIT) == static_cast<int> (kMsgSize))
         ++sent;
 
     TEST_ASSERT_GREATER_THAN_INT (0, sent);
@@ -48,8 +47,7 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
     configure_pair_socket (sender);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
-                        sizeof (kSendTimeoutMs)));
+      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs, sizeof (kSendTimeoutMs)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, kEndpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, kEndpoint));
@@ -61,9 +59,8 @@ void test_pair_blocking_send_wakes_only_after_lwm_reads ()
 
     fill_until_hwm (sender, send_buf);
 
-    auto send_future = std::async (std::launch::async, [&]() {
-        return zlink_send (sender, send_buf, kMsgSize, 0);
-    });
+    auto send_future = std::async (std::launch::async,
+                                   [&] () { return zlink_send (sender, send_buf, kMsgSize, 0); });
 
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
@@ -100,8 +97,7 @@ void test_pair_blocking_send_times_out_without_recv ()
     configure_pair_socket (sender);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
-                        sizeof (kSendTimeoutMs)));
+      zlink_set_option (sender, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs, sizeof (kSendTimeoutMs)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, kTimeoutEndpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, kTimeoutEndpoint));
@@ -112,12 +108,10 @@ void test_pair_blocking_send_times_out_without_recv ()
     fill_until_hwm (sender, send_buf);
 
     void *stopwatch = zlink_stopwatch_start ();
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN,
-                               zlink_send (sender, send_buf, kMsgSize, 0));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_send (sender, send_buf, kMsgSize, 0));
     const unsigned int elapsed_ms = zlink_stopwatch_stop (stopwatch) / 1000;
 
-    TEST_ASSERT_TRUE (
-      elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 250));
+    TEST_ASSERT_TRUE (elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 250));
 
     test_context_socket_close (sender);
     test_context_socket_close (receiver);

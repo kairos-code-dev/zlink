@@ -54,8 +54,9 @@ const char *log_level_name (log_level_t level) noexcept
 
 log_level_t parse_log_level (std::string level)
 {
-    std::transform (level.begin (), level.end (), level.begin (),
-                    [] (char ch) { return static_cast<char> (std::tolower (static_cast<unsigned char> (ch))); });
+    std::transform (level.begin (), level.end (), level.begin (), [] (char ch) {
+        return static_cast<char> (std::tolower (static_cast<unsigned char> (ch)));
+    });
     if (level == "trace") {
         return log_level_t::trace;
     }
@@ -90,8 +91,8 @@ std::string format_record (const log_record_t &record)
     localtime_r (&time, &tm);
 #endif
     std::ostringstream output;
-    output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%S") << ' ' << log_level_name (record.level) << ' ' << record.category
-           << " - " << record.message;
+    output << std::put_time (&tm, "%Y-%m-%dT%H:%M:%S") << ' ' << log_level_name (record.level)
+           << ' ' << record.category << " - " << record.message;
     for (const auto &field : record.fields) {
         output << ' ' << field.key << '=' << field.value;
     }
@@ -106,8 +107,9 @@ void rotate_if_needed (const std::string &path, const rotating_file_options_t &o
     }
 
     for (std::size_t index = options.max_files; index > 0; --index) {
-        const auto from =
-          index == 1 ? std::filesystem::path (path) : std::filesystem::path (path + "." + std::to_string (index - 1));
+        const auto from = index == 1
+                            ? std::filesystem::path (path)
+                            : std::filesystem::path (path + "." + std::to_string (index - 1));
         const auto to = std::filesystem::path (path + "." + std::to_string (index));
         if (std::filesystem::exists (from)) {
             std::error_code ignored;
@@ -134,9 +136,12 @@ void emit_log (const std::shared_ptr<logging_state_t> &state,
         return;
     }
 
-    log_record_t record{
-      static_cast<log_level_t> (level), category, message, std::move (fields), std::chrono::system_clock::now (),
-      std::this_thread::get_id ()};
+    log_record_t record{static_cast<log_level_t> (level),
+                        category,
+                        message,
+                        std::move (fields),
+                        std::chrono::system_clock::now (),
+                        std::this_thread::get_id ()};
 
     std::vector<logging_builder_t::sink_t> callbacks;
     std::vector<std::string> files;
@@ -176,7 +181,8 @@ logger_factory_t::logger_factory_t () : _state (std::make_shared<detail::logging
 {
 }
 
-logger_factory_t::logger_factory_t (std::shared_ptr<detail::logging_state_t> state) : _state (std::move (state))
+logger_factory_t::logger_factory_t (std::shared_ptr<detail::logging_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -208,7 +214,8 @@ logging_builder_t &logging_builder_t::use_file (std::string path)
     return *this;
 }
 
-logging_builder_t &logging_builder_t::use_rotating_file (std::string path, rotating_file_options_t options)
+logging_builder_t &logging_builder_t::use_rotating_file (std::string path,
+                                                         rotating_file_options_t options)
 {
     std::lock_guard lock (_state->mutex);
     _state->file_paths.push_back (std::move (path));

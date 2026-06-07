@@ -12,7 +12,8 @@
 namespace zlink
 {
 
-stream_socket_t::stream_socket_t (context_t &ctx_) : routed_message_socket_t (ctx_, socket_type::stream)
+stream_socket_t::stream_socket_t (context_t &ctx_) :
+    routed_message_socket_t (ctx_, socket_type::stream)
 {
 }
 
@@ -34,8 +35,8 @@ void stream_socket_t::set_packet_handler (
   std::function<void (const routing_id_t &, message_t &&, message_t &&)> handler_)
 {
     _packet_handler = std::move (handler_);
-    auto trampoline = [] (void *, const zlink_routing_id_t *source_rid_, zlink_msg_t *header_, zlink_msg_t *body_,
-                          void *userdata_) {
+    auto trampoline = [] (void *, const zlink_routing_id_t *source_rid_, zlink_msg_t *header_,
+                          zlink_msg_t *body_, void *userdata_) {
         stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
         if (!self || !self->_packet_handler)
             return;
@@ -47,9 +48,11 @@ void stream_socket_t::set_packet_handler (
         self->_packet_handler (source, std::move (header), std::move (body));
     };
     if (zlink_stream_packet_handler (detail::native_handle (*this),
-                                     static_cast<zlink_stream_packet_handler_fn> (+trampoline), this)
+                                     static_cast<zlink_stream_packet_handler_fn> (+trampoline),
+                                     this)
         != 0)
-        throw handler_error_t (detail::handler_result_from_errno (detail::current_errno ()), detail::current_errno ());
+        throw handler_error_t (detail::handler_result_from_errno (detail::current_errno ()),
+                               detail::current_errno ());
 }
 
 void stream_socket_t::set_routing_id (const routing_id_t &routing_id_)
@@ -68,8 +71,9 @@ void stream_socket_t::get_routing_id (routing_id_t &routing_id_) const
 
 void stream_socket_t::attach_actor_gateway (service::spot_node_t &node_)
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_stream_attach_actor_gateway (detail::native_handle (*this), detail::native_handle (node_))));
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_stream_attach_actor_gateway (
+        detail::native_handle (*this), detail::native_handle (node_))));
 }
 
 service::actor_bind_operation_t stream_socket_t::bind_actor (const routing_id_t &session_rid_,

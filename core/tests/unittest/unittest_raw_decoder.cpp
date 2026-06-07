@@ -26,8 +26,7 @@ void test_decode_passthrough_single_buffer ()
     TEST_ASSERT_EQUAL_INT (1, rc);
     TEST_ASSERT_EQUAL_UINT (sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT ((int) sizeof (buf), decoder.msg ()->size ());
-    TEST_ASSERT_EQUAL_STRING_LEN ("abc",
-                                  static_cast<const char *> (decoder.msg ()->data ()),
+    TEST_ASSERT_EQUAL_STRING_LEN ("abc", static_cast<const char *> (decoder.msg ()->data ()),
                                   decoder.msg ()->size ());
 }
 

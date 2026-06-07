@@ -1,6 +1,7 @@
 #include "../common/perf_multi_relay_server.hpp"
 
-namespace {
+namespace
+{
 
 static const char *k_pattern = "MULTI_ROUTER_ROUTER";
 static const char *k_token = "router_router";
@@ -26,6 +27,5 @@ int main (int argc, char **argv)
 
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];
-    return perf_multi_relay_server::run_server_benchmark (
-      config, lib_name, transport);
+    return perf_multi_relay_server::run_server_benchmark (config, lib_name, transport);
 }

@@ -34,12 +34,9 @@ int apply_dealer_timeouts (socket_base_t *dealer_,
         errno = EINVAL;
         return -1;
     }
-    dealer_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger_ms_,
-                         sizeof (linger_ms_));
-    dealer_->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms_,
-                         sizeof (sndtimeo_ms_));
-    dealer_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms_,
-                         sizeof (rcvtimeo_ms_));
+    dealer_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger_ms_, sizeof (linger_ms_));
+    dealer_->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms_, sizeof (sndtimeo_ms_));
+    dealer_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms_, sizeof (rcvtimeo_ms_));
     return 0;
 }
 
@@ -88,8 +85,7 @@ int prepare_transient_dealer (ctx_t *ctx_,
         return -1;
 
     if (routing_id_ && routing_id_->size > 0) {
-        if (dealer->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, routing_id_->data,
-                                routing_id_->size)
+        if (dealer->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, routing_id_->data, routing_id_->size)
             != 0) {
             (void) close_dealer (ctx_, dealer);
             return -1;
@@ -101,8 +97,7 @@ int prepare_transient_dealer (ctx_t *ctx_,
 
     bootstrap_runtime_->apply_socket_options (dealer);
     (void) apply_dealer_timeouts (dealer, 200, 500, 500);
-    if (dealer->connect (uplink_.c_str ()) != 0
-        || wait_dealer_connected (dealer, 500) != 0) {
+    if (dealer->connect (uplink_.c_str ()) != 0 || wait_dealer_connected (dealer, 500) != 0) {
         (void) close_dealer (ctx_, dealer);
         return -1;
     }
@@ -111,9 +106,7 @@ int prepare_transient_dealer (ctx_t *ctx_,
     return 0;
 }
 
-int prepare_query_dealer (ctx_t *ctx_,
-                          const char *endpoint_,
-                          socket_base_t **dealer_out_)
+int prepare_query_dealer (ctx_t *ctx_, const char *endpoint_, socket_base_t **dealer_out_)
 {
     if (!ctx_ || !endpoint_ || !*endpoint_ || !dealer_out_) {
         errno = EINVAL;
@@ -129,8 +122,7 @@ int prepare_query_dealer (ctx_t *ctx_,
         return -1;
     }
     (void) apply_dealer_timeouts (dealer, 0, 1000, 1000);
-    if (dealer->connect (endpoint_) != 0
-        || wait_dealer_connected (dealer, 1000) != 0) {
+    if (dealer->connect (endpoint_) != 0 || wait_dealer_connected (dealer, 1000) != 0) {
         dealer->close ();
         return -1;
     }
@@ -174,8 +166,7 @@ int recv_status_ack (socket_base_t *socket_,
         }
 
         discovery_protocol::status_ack_t ack;
-        if (discovery_protocol::decode_status_ack (frames, expected_msg_id_,
-                                                   &ack)) {
+        if (discovery_protocol::decode_status_ack (frames, expected_msg_id_, &ack)) {
             *status_out_ = static_cast<int> (ack.status);
             if (resolved_out_)
                 *resolved_out_ = ack.resolved_endpoint;
@@ -199,9 +190,8 @@ int recv_status_ack (socket_base_t *socket_,
     return -1;
 }
 
-int recv_topology_reply_entries (
-  socket_base_t *socket_,
-  std::vector<zlink_registry_topology_entry_t> *entries_out_)
+int recv_topology_reply_entries (socket_base_t *socket_,
+                                 std::vector<zlink_registry_topology_entry_t> *entries_out_)
 {
     if (!socket_ || !entries_out_) {
         errno = EINVAL;
@@ -213,8 +203,7 @@ int recv_topology_reply_entries (
     if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
         return -1;
 
-    const bool ok = discovery_protocol::decode_topology_reply (frames,
-                                                               entries_out_);
+    const bool ok = discovery_protocol::decode_topology_reply (frames, entries_out_);
     return ok ? 0 : -1;
 }
 
@@ -231,8 +220,7 @@ int recv_route_reply (socket_base_t *socket_,
     if (!recv_msg_sequence_socket_wait (socket_, &frames, 500))
         return -1;
 
-    const bool ok = discovery_protocol::decode_route_reply (
-      frames, owner_rid_out_, value_out_);
+    const bool ok = discovery_protocol::decode_route_reply (frames, owner_rid_out_, value_out_);
     return ok ? 0 : -1;
 }
 }

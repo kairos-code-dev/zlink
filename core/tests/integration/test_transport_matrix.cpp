@@ -11,8 +11,7 @@ namespace
 {
 void *create_sync_socket (int type_)
 {
-    void *socket =
-      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
+    void *socket = zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -29,7 +28,7 @@ static bool is_transport_available (const char *transport_)
     if (strcmp (transport_, "tcp") == 0 || strcmp (transport_, "inproc") == 0)
         return true;
 
-    //  IPC is available on Unix-like systems
+        //  IPC is available on Unix-like systems
 #ifdef ZLINK_HAVE_IPC
     if (strcmp (transport_, "ipc") == 0)
         return true;
@@ -44,27 +43,20 @@ static bool is_tls_transport (const char *transport_)
     return strcmp (transport_, "tls") == 0 || strcmp (transport_, "wss") == 0;
 }
 
-static void configure_tls (void *server_,
-                           void *client_,
-                           const tls_test_files_t &files_)
+static void configure_tls (void *server_, void *client_, const tls_test_files_t &files_)
 {
     const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client_, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client_, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system,
-      sizeof (trust_system)));
+      server_, ZLINK_OPT_TLS_CERT, files_.server_cert.c_str (), files_.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server_, ZLINK_OPT_TLS_CERT, files_.server_cert.c_str (),
-      files_.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server_, ZLINK_OPT_TLS_KEY, files_.server_key.c_str (),
-      files_.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client_, ZLINK_OPT_TLS_CA, files_.ca_cert.c_str (),
-      files_.ca_cert.size ()));
+      server_, ZLINK_OPT_TLS_KEY, files_.server_key.c_str (), files_.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client_, ZLINK_OPT_TLS_CA, files_.ca_cert.c_str (),
+                                                 files_.ca_cert.size ()));
     const char hostname[] = "localhost";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client_, ZLINK_OPT_TLS_HOSTNAME, hostname,
-                        strlen (hostname)));
+      zlink_set_option (client_, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 }
 
 static void bind_endpoint (void *socket_,
@@ -180,8 +172,7 @@ static void run_router_dealer (const char *transport_)
     void *router = create_sync_socket (ZLINK_SOCKET_ROUTER);
     void *dealer = create_sync_socket (ZLINK_SOCKET_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (dealer, "DEALER1", 7));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "DEALER1", 7));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -190,8 +181,7 @@ static void run_router_dealer (const char *transport_)
     }
 
     char endpoint[MAX_SOCKET_STRING];
-    bind_endpoint (router, transport_, "matrix_router_dealer", endpoint,
-                   sizeof (endpoint));
+    bind_endpoint (router, transport_, "matrix_router_dealer", endpoint, sizeof (endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
     msleep (SETTLE_TIME);
@@ -219,10 +209,8 @@ static void run_router_router (const char *transport_)
     void *server = create_sync_socket (ZLINK_SOCKET_ROUTER);
     void *client = create_sync_socket (ZLINK_SOCKET_ROUTER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (server, "SERVER", 6));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (client, "CLIENT", 6));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server, "SERVER", 6));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "CLIENT", 6));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -231,8 +219,7 @@ static void run_router_router (const char *transport_)
     }
 
     char endpoint[MAX_SOCKET_STRING];
-    bind_endpoint (server, transport_, "matrix_router_router", endpoint,
-                   sizeof (endpoint));
+    bind_endpoint (server, transport_, "matrix_router_router", endpoint, sizeof (endpoint));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     msleep (SETTLE_TIME);

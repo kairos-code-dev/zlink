@@ -40,8 +40,8 @@ std::size_t metadata_codec_t::encoded_size (const metadata_t &metadata)
 result_t<std::vector<std::uint8_t>> metadata_codec_t::encode (const metadata_t &metadata)
 {
     if (metadata.values.size () > std::numeric_limits<std::uint8_t>::max ()) {
-        return result_t<std::vector<std::uint8_t>>::failure (error_code_t::validation_failed,
-                                                             "Metadata entry count must not exceed 255.");
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::validation_failed, "Metadata entry count must not exceed 255.");
     }
 
     std::vector<std::uint8_t> bytes;
@@ -70,18 +70,21 @@ result_t<std::vector<std::uint8_t>> metadata_codec_t::encode (const metadata_t &
 result_t<metadata_t> metadata_codec_t::decode (const std::vector<std::uint8_t> &bytes)
 {
     if (bytes.empty ()) {
-        return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Metadata payload is empty.");
+        return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                              "Metadata payload is empty.");
     }
     std::size_t offset = 0;
     const auto count = bytes[offset++];
     metadata_t metadata;
     for (std::uint8_t i = 0; i < count; ++i) {
         if (bytes.size () - offset < 1) {
-            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Metadata key length is missing.");
+            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                                  "Metadata key length is missing.");
         }
         const auto key_size = bytes[offset++];
         if (key_size == 0 || bytes.size () - offset < key_size) {
-            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Metadata key is invalid.");
+            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                                  "Metadata key is invalid.");
         }
         std::string key (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
                          bytes.begin () + static_cast<std::ptrdiff_t> (offset + key_size));
@@ -92,17 +95,20 @@ result_t<metadata_t> metadata_codec_t::decode (const std::vector<std::uint8_t> &
         }
         const auto value_size = read_u16 (bytes, offset);
         if (value_size == 0 || bytes.size () - offset < value_size) {
-            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Metadata value is invalid.");
+            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                                  "Metadata value is invalid.");
         }
         std::string value (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
                            bytes.begin () + static_cast<std::ptrdiff_t> (offset + value_size));
         offset += value_size;
         if (!metadata.values.emplace (std::move (key), std::move (value)).second) {
-            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Duplicate metadata key.");
+            return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                                  "Duplicate metadata key.");
         }
     }
     if (offset != bytes.size ()) {
-        return result_t<metadata_t>::failure (error_code_t::frame_decode_failed, "Metadata contains trailing bytes.");
+        return result_t<metadata_t>::failure (error_code_t::frame_decode_failed,
+                                              "Metadata contains trailing bytes.");
     }
     return result_t<metadata_t>::success (std::move (metadata));
 }

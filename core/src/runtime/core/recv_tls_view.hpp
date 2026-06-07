@@ -26,8 +26,7 @@ struct storage_t
 inline size_t payload_cap ()
 {
     static const size_t cap = [] () -> size_t {
-        return static_cast<size_t> (
-          env::positive_int ("ZLINK_RECV_TLS_PAYLOAD_CAP", 2));
+        return static_cast<size_t> (env::positive_int ("ZLINK_RECV_TLS_PAYLOAD_CAP", 2));
     }();
     return cap;
 }
@@ -161,9 +160,7 @@ inline int push (zlink_msg_t *src_)
     return 0;
 }
 
-inline int export_single (zlink_msg_t *src_,
-                          zlink_msg_t **parts_out_,
-                          size_t *part_count_out_)
+inline int export_single (zlink_msg_t *src_, zlink_msg_t **parts_out_, size_t *part_count_out_)
 {
     if (!src_ || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
@@ -214,8 +211,7 @@ inline int reserve_first_slot ()
     return 0;
 }
 
-inline int commit_reserved_single (zlink_msg_t **parts_out_,
-                                   size_t *part_count_out_)
+inline int commit_reserved_single (zlink_msg_t **parts_out_, size_t *part_count_out_)
 {
     if (reserve_first_slot () != 0)
         return -1;

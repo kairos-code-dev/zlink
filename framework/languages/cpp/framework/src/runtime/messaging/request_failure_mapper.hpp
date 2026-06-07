@@ -27,7 +27,8 @@ enum class request_result_t
 class request_failure_mapper_t
 {
   public:
-    framework_exception_t completion_exception (request_result_t result, const std::string &operation_name) const;
+    framework_exception_t completion_exception (request_result_t result,
+                                                const std::string &operation_name) const;
     framework_exception_t error_header_exception (const std::string &error_code,
                                                   const std::string &error_message,
                                                   const std::string &operation_name) const;

@@ -8,9 +8,9 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 /// Initialize a zlink message with a given null-terminated string
-#define ZLINK_PREPARE_STRING(msg, data, size)                                    \
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));                           \
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, size + 1));            \
+#define ZLINK_PREPARE_STRING(msg, data, size)                                                      \
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));                                             \
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, size + 1));                              \
     memcpy (zlink_msg_data (&msg), data, size + 1);
 
 static int publicationsReceived = 0;
@@ -20,11 +20,9 @@ void test_disconnect_inproc ()
 {
     void *pub_socket = test_context_socket (ZLINK_SOCKET_XPUB);
     void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_socket, "foo"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_socket, "foo"));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (pub_socket, "inproc://someInProcDescriptor"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub_socket, "inproc://someInProcDescriptor"));
 
     for (int iteration = 0;; ++iteration) {
         zlink_pollitem_t items[] = {
@@ -37,8 +35,8 @@ void test_disconnect_inproc ()
             int subscribed = 0;
             char topic[16];
             size_t topic_len = sizeof (topic);
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_event (
-              pub_socket, NULL, &subscribed, topic, &topic_len, 0));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_subscription_event (pub_socket, NULL, &subscribed, topic, &topic_len, 0));
             TEST_ASSERT_EQUAL_UINT (3, topic_len);
             TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);
             if (!subscribed) {
@@ -55,19 +53,18 @@ void test_disconnect_inproc ()
             size_t part_count = 0;
             char topic[16];
             size_t topic_len = sizeof (topic);
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (
-              sub_socket, &parts, &part_count, 0, topic, &topic_len));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_subscribe (sub_socket, &parts, &part_count, 0, topic, &topic_len));
             TEST_ASSERT_EQUAL_UINT (3, topic_len);
             TEST_ASSERT_EQUAL_MEMORY ("foo", topic, 3);
             TEST_ASSERT_EQUAL_UINT (1, part_count);
-            TEST_ASSERT_EQUAL_STRING (
-              "this is foo!", static_cast<const char *> (zlink_msg_data (&parts[0])));
+            TEST_ASSERT_EQUAL_STRING ("this is foo!",
+                                      static_cast<const char *> (zlink_msg_data (&parts[0])));
             zlink_multipart_close (parts, part_count);
             publicationsReceived++;
         }
         if (iteration == 1) {
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink_connect (sub_socket, "inproc://someInProcDescriptor"));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, "inproc://someInProcDescriptor"));
             msleep (SETTLE_TIME);
         }
         if (iteration == 4) {

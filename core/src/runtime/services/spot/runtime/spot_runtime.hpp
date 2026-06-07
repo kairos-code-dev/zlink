@@ -41,13 +41,7 @@ enum spot_shutdown_phase_t
 
 struct spot_attachment_t
 {
-    spot_attachment_t () :
-        id (0),
-        kind (0),
-        socket (NULL),
-        relay_socket (NULL)
-    {
-    }
+    spot_attachment_t () : id (0), kind (0), socket (NULL), relay_socket (NULL) {}
 
     uint64_t id;
     int kind;
@@ -77,8 +71,7 @@ struct spot_node_hwm_config_t
     int dispatch_workers_max;
 };
 
-inline int spot_node_admission_hwm_for_profile (
-  zlink_auto_hwm_profile_t profile_)
+inline int spot_node_admission_hwm_for_profile (zlink_auto_hwm_profile_t profile_)
 {
     switch (profile_) {
         case ZLINK_AUTO_HWM_PROFILE_COMPACT:
@@ -93,14 +86,12 @@ inline int spot_node_admission_hwm_for_profile (
     }
 }
 
-inline bool spot_node_router_hwm_overridden (
-  const spot_node_hwm_config_t &config_)
+inline bool spot_node_router_hwm_overridden (const spot_node_hwm_config_t &config_)
 {
     return config_.router_hwm_override > 0;
 }
 
-inline bool spot_node_pubsub_hwm_overridden (
-  const spot_node_hwm_config_t &config_)
+inline bool spot_node_pubsub_hwm_overridden (const spot_node_hwm_config_t &config_)
 {
     return config_.pubsub_hwm_override > 0;
 }
@@ -113,16 +104,14 @@ inline bool spot_node_valid_hwm_profile (int profile_)
            || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
 }
 
-inline int spot_node_router_admission_hwm (
-  const spot_node_hwm_config_t &config_)
+inline int spot_node_router_admission_hwm (const spot_node_hwm_config_t &config_)
 {
     return config_.router_hwm_override > 0
              ? config_.router_hwm_override
              : spot_node_admission_hwm_for_profile (config_.router_profile);
 }
 
-inline int spot_node_pubsub_admission_hwm (
-  const spot_node_hwm_config_t &config_)
+inline int spot_node_pubsub_admission_hwm (const spot_node_hwm_config_t &config_)
 {
     return config_.pubsub_hwm_override > 0
              ? config_.pubsub_hwm_override
@@ -136,9 +125,7 @@ struct spot_runtime_t
     ctx_t *ctx () const;
 
     int start ();
-    int create_attachment (int kind_,
-                           const char *endpoint_,
-                           uint64_t *out_id_);
+    int create_attachment (int kind_, const char *endpoint_, uint64_t *out_id_);
     socket_base_t *attachment_socket (uint64_t id_) const;
     int destroy_attachment (uint64_t id_);
     int destroy_attachment_async (uint64_t id_);
@@ -174,18 +161,16 @@ struct spot_runtime_t
     int start_dispatch_workers ();
     void stop_dispatch_workers ();
     int post_dispatch_event (void *spot_);
-    int post_dispatch_task (spot_dispatch_worker_pool_t::task_fn_t fn_,
-                            void *arg_);
-    void set_external_route_id (const std::string &peer_endpoint_,
-                                const std::string &route_id_);
+    int post_dispatch_task (spot_dispatch_worker_pool_t::task_fn_t fn_, void *arg_);
+    void set_external_route_id (const std::string &peer_endpoint_, const std::string &route_id_);
     void set_external_route_id (const std::string &peer_endpoint_,
                                 const std::string &route_id_,
                                 const std::string &route_endpoint_);
     std::string erase_external_route_id (const std::string &peer_endpoint_);
     std::vector<std::string> clear_external_route_ids ();
     bool missing_external_routes_for_ready_peer () const;
-    std::vector<std::string> external_route_ids_for_destination (
-      const std::string &destination_node_rid_) const;
+    std::vector<std::string>
+    external_route_ids_for_destination (const std::string &destination_node_rid_) const;
 
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;

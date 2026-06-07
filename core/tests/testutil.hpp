@@ -134,7 +134,7 @@ using zlink::retired_fd;
 //  In MSVC prior to v14, snprintf is not available
 //  The closest implementation is the _snprintf_s function
 #if defined _MSC_VER && _MSC_VER < 1900
-#define snprintf(buffer_, count_, format_, ...)                                \
+#define snprintf(buffer_, count_, format_, ...)                                                    \
     _snprintf_s (buffer_, count_, _TRUNCATE, format_, __VA_ARGS__)
 #endif
 
@@ -214,8 +214,7 @@ enum zlink_test_wait_step_result_t
     zlink_test_wait_failed
 };
 
-template <typename Predicate>
-bool zlink_test_wait_until (int timeout_ms_, Predicate predicate_)
+template <typename Predicate> bool zlink_test_wait_until (int timeout_ms_, Predicate predicate_)
 {
     const int attempts = timeout_ms_ / zlink_test_poll_step_ms;
     for (int i = 0; i < attempts; ++i) {
@@ -227,9 +226,7 @@ bool zlink_test_wait_until (int timeout_ms_, Predicate predicate_)
 }
 
 template <typename Predicate>
-bool zlink_test_wait_until_step (int timeout_ms_,
-                                 int step_ms_,
-                                 Predicate predicate_)
+bool zlink_test_wait_until_step (int timeout_ms_, int step_ms_, Predicate predicate_)
 {
     const int attempts = timeout_ms_ / step_ms_ + 1;
     for (int i = 0; i < attempts; ++i) {
@@ -256,9 +253,7 @@ bool zlink_test_wait_until_result (int timeout_ms_, Predicate predicate_)
 }
 
 template <typename Predicate>
-bool zlink_test_wait_until_result_step (int timeout_ms_,
-                                        int step_ms_,
-                                        Predicate predicate_)
+bool zlink_test_wait_until_result_step (int timeout_ms_, int step_ms_, Predicate predicate_)
 {
     const int attempts = timeout_ms_ / step_ms_ + 1;
     for (int i = 0; i < attempts; ++i) {
@@ -304,9 +299,6 @@ fd_t bind_socket_resolve_port (const char *address_,
                                const int af_ = AF_INET,
                                const int protocol_ = IPPROTO_TCP);
 
-int fuzzer_corpus_encode (const char *filename,
-                          uint8_t ***data,
-                          size_t **len,
-                          size_t *num_cases);
+int fuzzer_corpus_encode (const char *filename, uint8_t ***data, size_t **len, size_t *num_cases);
 
 #endif

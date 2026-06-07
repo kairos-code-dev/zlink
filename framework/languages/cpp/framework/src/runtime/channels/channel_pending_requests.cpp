@@ -16,7 +16,8 @@ std::uint64_t channel_pending_requests_t::next_request_seq ()
     return request_seq;
 }
 
-bool channel_pending_requests_t::register_request (std::uint64_t request_seq, std::string channel_name)
+bool channel_pending_requests_t::register_request (std::uint64_t request_seq,
+                                                   std::string channel_name)
 {
     return _pending.emplace (request_seq, std::move (channel_name)).second;
 }

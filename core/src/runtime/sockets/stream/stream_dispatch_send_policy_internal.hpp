@@ -13,18 +13,14 @@
 
 namespace zlink
 {
-inline uint32_t stream_dispatch_decode_routing_id (
-  const zlink_routing_id_t *rid_)
+inline uint32_t stream_dispatch_decode_routing_id (const zlink_routing_id_t *rid_)
 {
     return (static_cast<uint32_t> (rid_->data[0]) << 24)
            | (static_cast<uint32_t> (rid_->data[1]) << 16)
-           | (static_cast<uint32_t> (rid_->data[2]) << 8)
-           | static_cast<uint32_t> (rid_->data[3]);
+           | (static_cast<uint32_t> (rid_->data[2]) << 8) | static_cast<uint32_t> (rid_->data[3]);
 }
 
-inline pipe_t *resolve_direct_dispatch_output_pipe (
-  const stream_t *socket_,
-  uint32_t routing_id_)
+inline pipe_t *resolve_direct_dispatch_output_pipe (const stream_t *socket_, uint32_t routing_id_)
 {
     if (!socket_ || !stream_dispatch_owns_socket (socket_))
         return NULL;
@@ -58,8 +54,7 @@ class stream_dispatch_send_policy_t
         _sndtimeo (sndtimeo_),
         _deadline (sndtimeo_ < 0
                      ? std::chrono::steady_clock::time_point::max ()
-                     : std::chrono::steady_clock::now ()
-                         + std::chrono::milliseconds (sndtimeo_)),
+                     : std::chrono::steady_clock::now () + std::chrono::milliseconds (sndtimeo_)),
         _retry_count (0)
     {
     }
@@ -76,8 +71,7 @@ class stream_dispatch_send_policy_t
         if (_dontwait)
             return false;
 
-        const std::chrono::steady_clock::time_point now =
-          std::chrono::steady_clock::now ();
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
         if (now >= _deadline)
             return false;
 
@@ -88,12 +82,9 @@ class stream_dispatch_send_policy_t
         }
 
         const std::chrono::microseconds remaining =
-          std::chrono::duration_cast<std::chrono::microseconds> (_deadline
-                                                                 - now);
+          std::chrono::duration_cast<std::chrono::microseconds> (_deadline - now);
         const std::chrono::microseconds backoff =
-          remaining < std::chrono::microseconds (100)
-            ? remaining
-            : std::chrono::microseconds (100);
+          remaining < std::chrono::microseconds (100) ? remaining : std::chrono::microseconds (100);
         if (backoff.count () > 0)
             std::this_thread::sleep_for (backoff);
         else

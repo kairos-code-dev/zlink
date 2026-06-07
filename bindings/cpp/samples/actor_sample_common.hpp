@@ -35,12 +35,14 @@ struct actor_sample_dispatch_state_t
 inline bool wait_until_flag (actor_sample_capture_t &capture_, bool actor_sample_capture_t::*flag_)
 {
     std::unique_lock<std::mutex> lock (capture_.mutex);
-    return capture_.cv.wait_for (lock, std::chrono::seconds (2), [&] () { return capture_.*flag_; });
+    return capture_.cv.wait_for (lock, std::chrono::seconds (2),
+                                 [&] () { return capture_.*flag_; });
 }
 
 inline zlink::routing_id_t sample_rid (const char *text_)
 {
-    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
+    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_),
+                                      std::strlen (text_));
 }
 
 struct actor_sample_stream_session_t
@@ -68,7 +70,8 @@ struct actor_sample_stream_session_t
     }
 };
 
-inline void actor_sample_dispatch (actor_sample_dispatch_state_t &state_, const zlink::spot_dispatch_info_t &info_)
+inline void actor_sample_dispatch (actor_sample_dispatch_state_t &state_,
+                                   const zlink::spot_dispatch_info_t &info_)
 {
     if (info_.event == zlink::spot_dispatch_event_t::actor_join_readable) {
         auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);

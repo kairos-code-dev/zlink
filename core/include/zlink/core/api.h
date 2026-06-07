@@ -89,8 +89,8 @@ ZLINK_EXPORT zlink_close_result_t zlink_ctx_shutdown (void *context_);
  * @return 0 on success, -1 on failure (errno is set).
  */
 ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
-                                zlink_ctx_option_t option_,
-                                int optval_);
+                                                  zlink_ctx_option_t option_,
+                                                  int optval_);
 
 /**
  * @brief Set a context option from a byte buffer.
@@ -105,9 +105,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set (void *context_,
  * @return ZLINK_CONFIG_OK on success, otherwise a zlink_config_result_t error.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data (void *context_,
-                                zlink_ctx_option_t option_,
-                                const void *optval_,
-                                size_t optvallen_);
+                                                       zlink_ctx_option_t option_,
+                                                       const void *optval_,
+                                                       size_t optvallen_);
 
 /**
  * @brief Get a context option.
@@ -115,8 +115,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_ctx_set_data (void *context_,
  * @param option_   Option name.
  * @return Option value, or -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_,
-                                zlink_config_result_t *error_out_);
+ZLINK_EXPORT int
+zlink_ctx_get (void *context_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_);
 
 /**
  * @brief Recalculate and apply auto HWM for the entire context immediately.
@@ -126,17 +126,16 @@ ZLINK_EXPORT int zlink_ctx_get (void *context_, zlink_ctx_option_t option_,
  * @param context_  Context handle.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT zlink_config_result_t zlink_ctx_auto_hwm_recalculate (
-  void *context_);
+ZLINK_EXPORT zlink_config_result_t zlink_ctx_auto_hwm_recalculate (void *context_);
 
 /** @brief Start a built-in proxy between frontend and backend sockets. */
 ZLINK_EXPORT zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
 
 /** @brief Start a steerable proxy with an additional control socket. */
 ZLINK_EXPORT zlink_config_result_t zlink_proxy_steerable (void *frontend_,
-                                    void *backend_,
-                                    void *capture_,
-                                    void *control_);
+                                                          void *backend_,
+                                                          void *capture_,
+                                                          void *control_);
 
 /** @brief Check if the library supports a given capability (e.g. "ipc", "tls"). */
 ZLINK_EXPORT bool zlink_has (const char *capability_);

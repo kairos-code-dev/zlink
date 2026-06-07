@@ -15,7 +15,8 @@
 #include <thread>
 #include <vector>
 
-namespace perf_multi_relay_server {
+namespace perf_multi_relay_server
+{
 
 using ::setup_tls_server;
 
@@ -71,8 +72,7 @@ struct pending_reply_t
     pending_reply_t () : rid (), parts () {}
 
     pending_reply_t (pending_reply_t &&other) noexcept :
-        rid (other.rid),
-        parts (std::move (other.parts))
+        rid (other.rid), parts (std::move (other.parts))
     {
         std::memset (&other.rid, 0, sizeof (other.rid));
     }
@@ -147,44 +147,34 @@ inline bool try_send_reply_now (void *server,
     if (would_block)
         *would_block = false;
 
-    const zlink_submit_result_t send_rc = ::perf_zlink_send_rid_parts (
-      server,
-      source_rid,
-      parts,
-      part_count,
-      static_cast<zlink_send_flags_t> (ZLINK_SEND_FLAGS_DONTWAIT));
+    const zlink_submit_result_t send_rc =
+      ::perf_zlink_send_rid_parts (server, source_rid, parts, part_count,
+                                   static_cast<zlink_send_flags_t> (ZLINK_SEND_FLAGS_DONTWAIT));
     if (send_rc == ZLINK_SUBMIT_OK)
         return true;
 
     const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR || err == EHOSTUNREACH
-        || err == ENOTCONN) {
+    if (err == EAGAIN || err == EINTR || err == EHOSTUNREACH || err == ENOTCONN) {
         if (would_block)
             *would_block = true;
         return false;
     }
 
     if (bench_debug_enabled ()) {
-        std::cerr << "[perf-multi-relay] reply send failed err=" << err
-                  << std::endl;
+        std::cerr << "[perf-multi-relay] reply send failed err=" << err << std::endl;
     }
     return false;
 }
 
-inline bool flush_pending_replies (void *server,
-                                   std::deque<pending_reply_t> *pending)
+inline bool flush_pending_replies (void *server, std::deque<pending_reply_t> *pending)
 {
     if (!pending)
         return true;
     while (!pending->empty ()) {
         pending_reply_t &front = pending->front ();
         bool would_block = false;
-        const bool ok = try_send_reply_now (
-          server,
-          &front.rid,
-          front.parts.data (),
-          front.parts.size (),
-          &would_block);
+        const bool ok = try_send_reply_now (server, &front.rid, front.parts.data (),
+                                            front.parts.size (), &would_block);
         if (ok) {
             // zlink_send_rid consumed the parts on success; clear the vector
             // without closing them again so the destructor is a no-op.
@@ -221,12 +211,7 @@ inline bool drain_recv_and_relay (void *server,
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         const zlink_recv_result_t rc = ::perf_zlink_router_recv_parts (
-          server,
-          &source_rid,
-          &source_spot_rid,
-          &request_seq,
-          &parts,
-          &part_count,
+          server, &source_rid, &source_spot_rid, &request_seq, &parts, &part_count,
           static_cast<zlink_recv_flags_t> (ZLINK_RECV_FLAGS_DONTWAIT));
         if (rc != ZLINK_RECV_OK) {
             const int err = zlink_errno ();
@@ -236,32 +221,27 @@ inline bool drain_recv_and_relay (void *server,
                 return true;
             }
             if (bench_debug_enabled ()) {
-                std::cerr << "[perf-multi-relay] recv failed err=" << err
-                          << std::endl;
+                std::cerr << "[perf-multi-relay] recv failed err=" << err << std::endl;
             }
             return false;
         }
 
-        if (!source_rid || source_rid->size == 0
-            || (source_spot_rid && source_spot_rid->size != 0)
+        if (!source_rid || source_rid->size == 0 || (source_spot_rid && source_spot_rid->size != 0)
             || request_seq != 0 || part_count == 0 || !parts) {
             zlink_multipart_close (parts, part_count);
             errno = EPROTO;
             return false;
         }
         if (bench_debug_enabled ()
-            && g_debug_relay_logs.fetch_add (1, std::memory_order_acq_rel)
-                 < 12) {
+            && g_debug_relay_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
             std::cerr << "[perf-multi-relay] echo request size="
-                      << (part_count > 0 && parts ? zlink_msg_size (&parts[0])
-                                                  : 0)
+                      << (part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0)
                       << " rid_size=" << static_cast<int> (source_rid->size)
-                      << " rid=" << format_rid_debug (source_rid)
-                      << " part_count=" << part_count << std::endl;
+                      << " rid=" << format_rid_debug (source_rid) << " part_count=" << part_count
+                      << std::endl;
         }
 
-        const size_t msg_size =
-          part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
+        const size_t msg_size = part_count > 0 && parts ? zlink_msg_size (&parts[0]) : 0;
         if (active_msg_size && msg_size > 0 && *active_msg_size != msg_size) {
             if (!apply_benchmark_context_auto_hwm_msg_unit (ctx, msg_size)) {
                 zlink_multipart_close (parts, part_count);
@@ -269,19 +249,15 @@ inline bool drain_recv_and_relay (void *server,
             }
             apply_benchmark_hwm (server, hwm_value);
             *active_msg_size = msg_size;
-            perf_print_auto_hwm_snapshot (
-              server, false, "server", transport, true, msg_size, socket_type);
+            perf_print_auto_hwm_snapshot (server, false, "server", transport, true, msg_size,
+                                          socket_type);
         }
 
         // While we still have backlog, push everything onto the queue to keep
         // ordering. Otherwise try to send immediately.
         bool would_block = false;
         if (pending && pending->empty ()
-            && try_send_reply_now (server,
-                                   source_rid,
-                                   parts,
-                                   part_count,
-                                   &would_block)) {
+            && try_send_reply_now (server, source_rid, parts, part_count, &would_block)) {
             continue;
         }
         if (!would_block && pending && !pending->empty ()) {
@@ -299,8 +275,7 @@ inline bool drain_recv_and_relay (void *server,
             return false;
         }
         pending->emplace_back ();
-        if (!capture_pending_reply (source_rid, parts, part_count,
-                                    &pending->back ())) {
+        if (!capture_pending_reply (source_rid, parts, part_count, &pending->back ())) {
             pending->pop_back ();
             return false;
         }
@@ -334,8 +309,7 @@ inline bool run_server_loop (const relay_server_config_t &config,
             if (zlink_errno () == EINTR)
                 continue;
             if (bench_debug_enabled ()) {
-                std::cerr << "[perf-multi-relay] poll failed err="
-                          << zlink_errno () << std::endl;
+                std::cerr << "[perf-multi-relay] poll failed err=" << zlink_errno () << std::endl;
             }
             return false;
         }
@@ -347,14 +321,8 @@ inline bool run_server_loop (const relay_server_config_t &config,
         }
         if ((item.revents & ZLINK_POLLIN) != 0) {
             bool recv_drained = false;
-            if (!drain_recv_and_relay (server,
-                                       ctx,
-                                       config.socket_type,
-                                       hwm_value,
-                                       transport,
-                                       &active_msg_size,
-                                       &pending,
-                                       &recv_drained))
+            if (!drain_recv_and_relay (server, ctx, config.socket_type, hwm_value, transport,
+                                       &active_msg_size, &pending, &recv_drained))
                 return false;
         }
     }
@@ -369,8 +337,8 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     set_perf_multi_pattern_env (config.pattern_name);
 
     if (!perf_multi_client::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << config.pattern_name
-                  << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << config.pattern_name << "," << transport
+                  << std::endl;
         return 0;
     }
 
@@ -392,10 +360,8 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (config.has_server_routing_id && config.server_routing_id) {
-        zlink_set_routing_id (
-          server,
-          config.server_routing_id,
-          std::strlen (config.server_routing_id));
+        zlink_set_routing_id (server, config.server_routing_id,
+                              std::strlen (config.server_routing_id));
     }
 
     if (!setup_tls_server (server, transport)) {
@@ -404,9 +370,7 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     }
 
     const std::string endpoint = bind_server_endpoint (
-      server,
-      transport,
-      lib_name + std::string ("_") + config.token + "_server");
+      server, transport, lib_name + std::string ("_") + config.token + "_server");
     if (endpoint.empty ()) {
         zlink_close (server);
         return 1;
@@ -429,8 +393,7 @@ inline int run_server_benchmark (const relay_server_config_t &config,
     std::cout << "READY," << endpoint << std::endl;
 
     const bool loop_ok =
-      run_server_loop (
-        config, server, ctx.get (), settings.hwm, lib_name, transport);
+      run_server_loop (config, server, ctx.get (), settings.hwm, lib_name, transport);
 
     zlink_close (server);
     return loop_ok ? 0 : 1;

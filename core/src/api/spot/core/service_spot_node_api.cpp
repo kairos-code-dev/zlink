@@ -41,8 +41,7 @@ int refresh_external_router_identity (zlink::spot_node_t *node)
     memset (&node_rid, 0, sizeof (node_rid));
     if (node->node_routing_id (&node_rid) != 0 || node_rid.size == 0)
         return -1;
-    return runtime->external_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID,
-                                                 node_rid.data,
+    return runtime->external_router->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, node_rid.data,
                                                  node_rid.size);
 }
 
@@ -75,9 +74,7 @@ extern "C" void zlink_timer_cleanup_spot (void *spot_);
 extern "C" int zlink_spot_has_joined_or_pending_actor (void *spot_);
 
 template <typename Row>
-static int copy_snapshot_rows (const std::vector<Row> &rows_,
-                               Row *entries_,
-                               size_t *count_)
+static int copy_snapshot_rows (const std::vector<Row> &rows_, Row *entries_, size_t *count_)
 {
     if (!count_) {
         errno = EINVAL;
@@ -102,9 +99,8 @@ static int copy_snapshot_rows (const std::vector<Row> &rows_,
     return 0;
 }
 
-static void *create_spot_facade (
-  zlink::spot_node_t *node_,
-  const std::shared_ptr<spot_logical_state_t> &logical_state_)
+static void *create_spot_facade (zlink::spot_node_t *node_,
+                                 const std::shared_ptr<spot_logical_state_t> &logical_state_)
 {
     if (!node_ || !logical_state_) {
         errno = EFAULT;
@@ -165,8 +161,7 @@ void *zlink_spot_new (void *node_)
     return create_spot_facade (node, state);
 }
 
-zlink_config_result_t zlink_spot_node_entry_spot (void *node_,
-                                                  void **spot_out_)
+zlink_config_result_t zlink_spot_node_entry_spot (void *node_, void **spot_out_)
 {
     if (spot_out_)
         *spot_out_ = NULL;
@@ -195,8 +190,8 @@ zlink_config_result_t zlink_spot_node_entry_spot (void *node_,
     return ZLINK_CONFIG_OK;
 }
 
-zlink_config_result_t zlink_spot_node_spot_lookup (
-  void *node_, const zlink_routing_id_t *spot_rid_, void **spot_out_)
+zlink_config_result_t
+zlink_spot_node_spot_lookup (void *node_, const zlink_routing_id_t *spot_rid_, void **spot_out_)
 {
     if (!node_) {
         errno = EFAULT;
@@ -222,11 +217,10 @@ zlink_config_result_t zlink_spot_node_spot_lookup (
     return ZLINK_CONFIG_OK;
 }
 
-zlink_config_result_t zlink_spot_node_spot_get_or_new (
-  void *node_,
-  const zlink_routing_id_t *spot_rid_,
-  void **spot_out_,
-  uint32_t *created_out_)
+zlink_config_result_t zlink_spot_node_spot_get_or_new (void *node_,
+                                                       const zlink_routing_id_t *spot_rid_,
+                                                       void **spot_out_,
+                                                       uint32_t *created_out_)
 {
     if (spot_out_)
         *spot_out_ = NULL;
@@ -248,22 +242,18 @@ zlink_config_result_t zlink_spot_node_spot_get_or_new (
 
     bool created = false;
     std::shared_ptr<spot_logical_state_t> state =
-      zlink::spot_node_access_t::get_or_new_spot_state (node, spot_rid_,
-                                                        &created);
+      zlink::spot_node_access_t::get_or_new_spot_state (node, spot_rid_, &created);
     if (!state)
         return zlink::config_result_internal::from_errno (errno);
 
     void *spot = create_spot_facade (node, state);
     if (!spot) {
         if (created)
-            zlink::spot_node_access_t::cancel_get_or_new_spot_state (node,
-                                                                     state);
+            zlink::spot_node_access_t::cancel_get_or_new_spot_state (node, state);
         return zlink::config_result_internal::from_errno (errno);
     }
 
-    if (created
-        && !zlink::spot_node_access_t::publish_get_or_new_spot_state (node,
-                                                                      state)) {
+    if (created && !zlink::spot_node_access_t::publish_get_or_new_spot_state (node, state)) {
         zlink_spot_destroy (&spot);
         std::shared_ptr<spot_logical_state_t> existing =
           zlink::spot_node_access_t::lookup_spot_state (node, spot_rid_);
@@ -309,8 +299,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     if (zlink::spot_reqrep_internal::has_pending_spot_request_work (state))
         zlink::spot_reqrep_internal::claim_spot_completion_owner (state);
     const bool last_facade =
-      zlink::spot_node_access_t::is_last_spot_facade_for_logical_state (node,
-                                                                        spot);
+      zlink::spot_node_access_t::is_last_spot_facade_for_logical_state (node, spot);
     if (last_facade && zlink_spot_has_joined_or_pending_actor (spot)) {
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
@@ -330,8 +319,7 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
     return ZLINK_CLOSE_OK;
 }
 
-void *zlink_spot_node_new (void *ctx_,
-                           const zlink_spot_node_options_t *options_)
+void *zlink_spot_node_new (void *ctx_, const zlink_spot_node_options_t *options_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -340,15 +328,13 @@ void *zlink_spot_node_new (void *ctx_,
     zlink_spot_node_mode_t mode = ZLINK_SPOT_NODE_MODE_ALL;
     if (options_ && options_->mode != 0)
         mode = options_->mode;
-    if (mode != ZLINK_SPOT_NODE_MODE_PUBSUB
-        && mode != ZLINK_SPOT_NODE_MODE_ROUTED
+    if (mode != ZLINK_SPOT_NODE_MODE_PUBSUB && mode != ZLINK_SPOT_NODE_MODE_ROUTED
         && mode != ZLINK_SPOT_NODE_MODE_ALL) {
         errno = EINVAL;
         return NULL;
     }
     zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (
-      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
-                                         mode));
+      zlink::spot_node_access_t::create (static_cast<zlink::ctx_t *> (ctx_), mode));
     if (!node)
         return NULL;
     if (!zlink::spot_node_access_t::entry_spot_state (node)) {
@@ -397,8 +383,7 @@ zlink_config_result_t zlink_spot_node_set_pub_bind (void *node_, const char *end
       zlink::spot_node_access_t::set_pub_bind (node, endpoint_));
 }
 
-zlink_config_result_t zlink_spot_node_set_router_bind (
-  void *node_, const char *endpoint_)
+zlink_config_result_t zlink_spot_node_set_router_bind (void *node_, const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -431,24 +416,23 @@ zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node_, const char 
       zlink::spot_node_access_t::disconnect_peer (node, peer_endpoint_));
 }
 
-zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
-  void *node_,
-  const zlink_routing_id_t *target_node_rid_)
+zlink_connect_result_t
+zlink_spot_node_disconnect_peer_rid (void *node_, const zlink_routing_id_t *target_node_rid_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    const int rc =
-      zlink::spot_node_access_t::disconnect_peer_rid (node, target_node_rid_);
+    const int rc = zlink::spot_node_access_t::disconnect_peer_rid (node, target_node_rid_);
     if (target_node_rid_)
         note_actor_spot_node_peer_disconnected (node, target_node_rid_);
     return zlink::connect_result_internal::from_rc (rc);
 }
 
-zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
-  void *node_, const char *channel_name_, const char *endpoint_)
+zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (void *node_,
+                                                                    const char *channel_name_,
+                                                                    const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -456,15 +440,14 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
     return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::connect_router_channel_peer (
-        node, channel_name_, endpoint_));
+      zlink::spot_node_access_t::connect_router_channel_peer (node, channel_name_, endpoint_));
 }
 
-zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid (
-  void *node_,
-  const char *channel_name_,
-  const zlink_routing_id_t *peer_rid_,
-  const char *endpoint_)
+zlink_connect_result_t
+zlink_spot_node_connect_router_channel_peer_rid (void *node_,
+                                                 const char *channel_name_,
+                                                 const zlink_routing_id_t *peer_rid_,
+                                                 const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -472,12 +455,13 @@ zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid (
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
     return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::connect_router_channel_peer_rid (
-        node, channel_name_, peer_rid_, endpoint_));
+      zlink::spot_node_access_t::connect_router_channel_peer_rid (node, channel_name_, peer_rid_,
+                                                                  endpoint_));
 }
 
-zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (
-  void *node_, const char *channel_name_, const char *endpoint_)
+zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (void *node_,
+                                                                       const char *channel_name_,
+                                                                       const char *endpoint_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -485,14 +469,11 @@ zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
     return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::disconnect_router_channel_peer (
-        node, channel_name_, endpoint_));
+      zlink::spot_node_access_t::disconnect_router_channel_peer (node, channel_name_, endpoint_));
 }
 
 zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
-  void *node_,
-  const char *channel_name_,
-  const zlink_routing_id_t *peer_rid_)
+  void *node_, const char *channel_name_, const zlink_routing_id_t *peer_rid_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -500,12 +481,11 @@ zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
     return zlink::connect_result_internal::from_rc (
-      zlink::spot_node_access_t::disconnect_router_channel_peer_rid (
-        node, channel_name_, peer_rid_));
+      zlink::spot_node_access_t::disconnect_router_channel_peer_rid (node, channel_name_,
+                                                                     peer_rid_));
 }
 
-zlink_config_result_t zlink_spot_node_status (void *node_,
-                                                       zlink_spot_node_status_t *out_)
+zlink_config_result_t zlink_spot_node_status (void *node_, zlink_spot_node_status_t *out_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -517,9 +497,9 @@ zlink_config_result_t zlink_spot_node_status (void *node_,
 }
 
 zlink_config_result_t zlink_spot_node_peers (void *node_,
-                                                    const zlink_spot_node_peer_filter_t *filter_,
-                                                    zlink_spot_node_peer_entry_t *entries_,
-                                                    size_t *count_)
+                                             const zlink_spot_node_peer_filter_t *filter_,
+                                             zlink_spot_node_peer_entry_t *entries_,
+                                             size_t *count_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -529,15 +509,13 @@ zlink_config_result_t zlink_spot_node_peers (void *node_,
     std::vector<zlink_spot_node_peer_entry_t> rows;
     if (zlink::spot_node_access_t::peers_snapshot (node, filter_, &rows) != 0)
         return zlink::config_result_internal::from_rc (-1);
-    return zlink::config_result_internal::from_rc (
-      copy_snapshot_rows (rows, entries_, count_));
+    return zlink::config_result_internal::from_rc (copy_snapshot_rows (rows, entries_, count_));
 }
 
-zlink_config_result_t zlink_spot_node_subjects (
-  void *node_,
-  const zlink_spot_node_subject_filter_t *filter_,
-  zlink_spot_node_subject_entry_t *entries_,
-  size_t *count_)
+zlink_config_result_t zlink_spot_node_subjects (void *node_,
+                                                const zlink_spot_node_subject_filter_t *filter_,
+                                                zlink_spot_node_subject_entry_t *entries_,
+                                                size_t *count_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -545,18 +523,16 @@ zlink_config_result_t zlink_spot_node_subjects (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     std::vector<zlink_spot_node_subject_entry_t> rows;
-    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows)
-        != 0)
+    if (zlink::spot_node_access_t::subjects_snapshot (node, filter_, &rows) != 0)
         return zlink::config_result_internal::from_rc (-1);
-    return zlink::config_result_internal::from_rc (
-      copy_snapshot_rows (rows, entries_, count_));
+    return zlink::config_result_internal::from_rc (copy_snapshot_rows (rows, entries_, count_));
 }
 
-zlink_config_result_t zlink_spot_node_internal_sockets (
-  void *node_,
-  const zlink_spot_node_socket_filter_t *filter_,
-  zlink_spot_node_socket_entry_t *entries_,
-  size_t *count_)
+zlink_config_result_t
+zlink_spot_node_internal_sockets (void *node_,
+                                  const zlink_spot_node_socket_filter_t *filter_,
+                                  zlink_spot_node_socket_entry_t *entries_,
+                                  size_t *count_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -564,12 +540,9 @@ zlink_config_result_t zlink_spot_node_internal_sockets (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     std::vector<zlink_spot_node_socket_entry_t> rows;
-    if (zlink::spot_node_access_t::internal_sockets_snapshot (node, filter_,
-                                                              &rows)
-        != 0)
+    if (zlink::spot_node_access_t::internal_sockets_snapshot (node, filter_, &rows) != 0)
         return zlink::config_result_internal::from_rc (-1);
-    return zlink::config_result_internal::from_rc (
-      copy_snapshot_rows (rows, entries_, count_));
+    return zlink::config_result_internal::from_rc (copy_snapshot_rows (rows, entries_, count_));
 }
 
 zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *discovery_)
@@ -583,8 +556,9 @@ zlink_config_result_t zlink_spot_node_attach_discovery (void *node_, void *disco
       zlink::spot_node_access_t::attach_discovery (node, discovery_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
-  void *node_, const char *channel_name_, void *discovery_)
+zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (void *node_,
+                                                                       const char *channel_name_,
+                                                                       void *discovery_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -592,13 +566,11 @@ zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_router_channel_discovery (
-        node, channel_name_, discovery_));
+      zlink::spot_node_access_t::attach_router_channel_discovery (node, channel_name_, discovery_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
-                                                             void *discovery_,
-                                                             void *dealer_)
+zlink_config_result_t
+zlink_spot_node_attach_channel_dealer (void *node_, void *discovery_, void *dealer_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -606,14 +578,11 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_channel_dealer (
-        node, discovery_, dealer_));
+      zlink::spot_node_access_t::attach_channel_dealer (node, discovery_, dealer_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
-  void *node_,
-  const char *channel_name_,
-  void *dealer_)
+zlink_config_result_t
+zlink_spot_node_attach_channel_dealer_manual (void *node_, const char *channel_name_, void *dealer_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {
@@ -621,12 +590,10 @@ zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::attach_channel_dealer_manual (
-        node, channel_name_, dealer_));
+      zlink::spot_node_access_t::attach_channel_dealer_manual (node, channel_name_, dealer_));
 }
 
-zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_,
-                                                          void *pub_)
+zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_)
 {
     zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
     if (!node) {

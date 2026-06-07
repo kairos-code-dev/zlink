@@ -20,9 +20,8 @@ class ctx_socket_registry_t
   public:
     typedef array_t<socket_base_t> sockets_t;
 
-    bool initialize_slot_pool (size_t slot_count_,
-                               size_t first_socket_slot_,
-                               i_mailbox *term_mailbox_);
+    bool
+    initialize_slot_pool (size_t slot_count_, size_t first_socket_slot_, i_mailbox *term_mailbox_);
     void clear ();
 
     void bind_mailbox (uint32_t tid_, i_mailbox *mailbox_);
@@ -38,12 +37,8 @@ class ctx_socket_registry_t
     size_t socket_count () const;
 
     void collect_sockets (std::vector<socket_base_t *> *out_) const;
-    int wait_for_socket_removal (mutex_t *sync_,
-                                 const socket_base_t *socket_,
-                                 int timeout_ms_);
-    int wait_for_socket_count_at_most (mutex_t *sync_,
-                                       size_t max_count_,
-                                       int timeout_ms_);
+    int wait_for_socket_removal (mutex_t *sync_, const socket_base_t *socket_, int timeout_ms_);
+    int wait_for_socket_count_at_most (mutex_t *sync_, size_t max_count_, int timeout_ms_);
 
   private:
     bool contains_socket (const socket_base_t *socket_) const;

@@ -24,8 +24,8 @@ void test_request_dealer_router_roundtrip ()
     zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
     zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
     const std::string routing_id_text = "request-reply-client";
-    zlink::routing_id_t routing_id =
-      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (routing_id_text.data ()), routing_id_text.size ());
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
+      reinterpret_cast<const uint8_t *> (routing_id_text.data ()), routing_id_text.size ());
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("rr-cpp");
     dealer_socket.set_routing_id (routing_id);
@@ -58,7 +58,10 @@ void test_request_dealer_router_roundtrip ()
     });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request ().message (request).timeout (std::chrono::milliseconds (5000)).submit_async ();
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");
@@ -94,10 +97,14 @@ void test_request_wait_for_zero_pumps_progress ()
     });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request ().message (request).timeout (std::chrono::milliseconds (5000)).submit_async ();
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
 
     bool ready = false;
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
     while (std::chrono::steady_clock::now () < deadline) {
         if (future.wait_for (std::chrono::milliseconds (0)) == std::future_status::ready) {
             ready = true;
@@ -148,8 +155,8 @@ void test_received_reply_rejects_non_none_flags ()
     zlink::socket_monitor_t router_monitor = router_socket.monitor_open ();
     zlink::socket_monitor_t dealer_monitor = dealer_socket.monitor_open ();
     const std::string routing_id_text = "request-reply-flags-client";
-    zlink::routing_id_t routing_id =
-      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (routing_id_text.data ()), routing_id_text.size ());
+    zlink::routing_id_t routing_id = zlink::routing_id_t::from (
+      reinterpret_cast<const uint8_t *> (routing_id_text.data ()), routing_id_text.size ());
 
     const std::string endpoint = zlink_cpp_contract::unique_inproc ("rr-cpp-reply-flags");
     dealer_socket.set_routing_id (routing_id);
@@ -182,7 +189,10 @@ void test_received_reply_rejects_non_none_flags ()
     });
 
     zlink::async_result_t<std::vector<zlink::message_t>> future =
-      dealer_socket.request ().message (request).timeout (std::chrono::milliseconds (5000)).submit_async ();
+      dealer_socket.request ()
+        .message (request)
+        .timeout (std::chrono::milliseconds (5000))
+        .submit_async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");

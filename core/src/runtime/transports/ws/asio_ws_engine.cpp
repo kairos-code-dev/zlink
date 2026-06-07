@@ -36,11 +36,9 @@
 
 namespace
 {
-const bool ws_gather_write_on =
-  zlink::asio_stream_fastpath_policy::gather_write_enabled ();
+const bool ws_gather_write_on = zlink::asio_stream_fastpath_policy::gather_write_enabled ();
 
-const size_t ws_gather_threshold =
-  zlink::asio_stream_fastpath_policy::gather_threshold ();
+const size_t ws_gather_threshold = zlink::asio_stream_fastpath_policy::gather_threshold ();
 
 const size_t stream_target_initial_cap = 64 * 1024;
 const size_t ws_stream_initial_target = 64 * 1024;
@@ -75,8 +73,7 @@ size_t stream_encoder_max_write_target (const zlink::options_t &options_)
 
 #if ASIO_WS_ENGINE_DEBUG
 #include <cstdio>
-#define WS_ENGINE_DBG(fmt, ...)                                                \
-    fprintf (stderr, "[ASIO_WS_ENGINE] " fmt "\n", ##__VA_ARGS__)
+#define WS_ENGINE_DBG(fmt, ...) fprintf (stderr, "[ASIO_WS_ENGINE] " fmt "\n", ##__VA_ARGS__)
 #else
 #define WS_ENGINE_DBG(fmt, ...)
 #endif
@@ -96,12 +93,11 @@ static std::string get_peer_address (zlink::fd_t s_)
     return peer_address;
 }
 
-zlink::asio_ws_engine_t::asio_ws_engine_t (
-  fd_t fd_,
-  const options_t &options_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_,
-  bool is_client_,
-  std::unique_ptr<i_asio_transport> transport_) :
+zlink::asio_ws_engine_t::asio_ws_engine_t (fd_t fd_,
+                                           const options_t &options_,
+                                           const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                           bool is_client_,
+                                           std::unique_ptr<i_asio_transport> transport_) :
     _transport (std::move (transport_)),
     _is_client (is_client_),
     _ws_handshake_complete (false),
@@ -136,12 +132,10 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _read_buffer_ptr (NULL),
     _last_read_request_size (0),
     _last_read_had_partial_prefix (false),
-    _stream_decoder_read_target_size (
-      stream_decoder_initial_read_target (options_)),
+    _stream_decoder_read_target_size (stream_decoder_initial_read_target (options_)),
     _stream_decoder_read_target_max (stream_decoder_max_read_target (options_)),
     _stream_decoder_read_target_full_hits (0),
-    _stream_encoder_write_target_size (
-      stream_encoder_initial_write_target (options_)),
+    _stream_encoder_write_target_size (stream_encoder_initial_write_target (options_)),
     _stream_encoder_write_target_max (stream_encoder_max_write_target (options_)),
     _stream_encoder_write_target_full_hits (0),
     _stream_encoder_pending_resize_size (0),
@@ -236,12 +230,10 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _read_buffer_ptr (NULL),
     _last_read_request_size (0),
     _last_read_had_partial_prefix (false),
-    _stream_decoder_read_target_size (
-      stream_decoder_initial_read_target (options_)),
+    _stream_decoder_read_target_size (stream_decoder_initial_read_target (options_)),
     _stream_decoder_read_target_max (stream_decoder_max_read_target (options_)),
     _stream_decoder_read_target_full_hits (0),
-    _stream_encoder_write_target_size (
-      stream_encoder_initial_write_target (options_)),
+    _stream_encoder_write_target_size (stream_encoder_initial_write_target (options_)),
     _stream_encoder_write_target_max (stream_encoder_max_write_target (options_)),
     _stream_encoder_write_target_full_hits (0),
     _stream_encoder_pending_resize_size (0),
@@ -267,8 +259,7 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _has_heartbeat_timer (false),
     _ssl_context (std::move (ssl_context_))
 {
-    WS_ENGINE_DBG ("Constructor: fd=%d, client=%d (custom transport)", fd_,
-                   is_client_);
+    WS_ENGINE_DBG ("Constructor: fd=%d, client=%d (custom transport)", fd_, is_client_);
 
     int rc = _tx_msg.init ();
     errno_assert (rc == 0);
@@ -344,8 +335,7 @@ zlink::asio_ws_engine_t::~asio_ws_engine_t ()
     LIBZLINK_DELETE (_decoder);
 }
 
-void zlink::asio_ws_engine_t::plug (io_thread_t *io_thread_,
-                                   session_base_t *session_)
+void zlink::asio_ws_engine_t::plug (io_thread_t *io_thread_, session_base_t *session_)
 {
     WS_ENGINE_DBG ("plug called");
 
@@ -356,8 +346,7 @@ void zlink::asio_ws_engine_t::plug (io_thread_t *io_thread_,
     _socket = _session->get_socket ();
 
     //  Get reference to io_context
-    asio_poller_t *poller =
-      static_cast<asio_poller_t *> (io_thread_->get_poller ());
+    asio_poller_t *poller = static_cast<asio_poller_t *> (io_thread_->get_poller ());
     _io_context = &poller->get_io_context ();
 
     //  Create timer
@@ -393,17 +382,14 @@ void zlink::asio_ws_engine_t::start_ws_handshake ()
     const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
 
     _transport->async_handshake (
-      handshake_type,
-      [this, callback_guard] (const boost::system::error_code &ec,
-                              std::size_t) {
+      handshake_type, [this, callback_guard] (const boost::system::error_code &ec, std::size_t) {
           if (callback_guard.expired ())
               return;
           on_ws_handshake_complete (ec);
       });
 }
 
-void zlink::asio_ws_engine_t::on_ws_handshake_complete (
-  const boost::system::error_code &ec)
+void zlink::asio_ws_engine_t::on_ws_handshake_complete (const boost::system::error_code &ec)
 {
     WS_ENGINE_DBG ("WebSocket handshake complete, ec=%s", ec.message ().c_str ());
 
@@ -442,8 +428,7 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     _last_error_reason.clear ();
 
     const size_t identity_len =
-      std::min (static_cast<size_t> (_options.routing_id_size),
-                static_cast<size_t> (255));
+      std::min (static_cast<size_t> (_options.routing_id_size), static_cast<size_t> (255));
     const size_t body_len = zmp_control::hello_min_body_size + identity_len;
     _hello_send[0] = zmp_magic;
     _hello_send[1] = zmp_version;
@@ -451,20 +436,16 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     _hello_send[3] = 0;
     put_uint32 (_hello_send + 4, static_cast<uint32_t> (body_len));
     _hello_send[zmp_header_size + 0] = zmp_control_hello;
-    _hello_send[zmp_header_size + 1] =
-      static_cast<unsigned char> (_options.type);
-    _hello_send[zmp_header_size + 2] =
-      static_cast<unsigned char> (identity_len);
+    _hello_send[zmp_header_size + 1] = static_cast<unsigned char> (_options.type);
+    _hello_send[zmp_header_size + 2] = static_cast<unsigned char> (identity_len);
     if (identity_len > 0)
-        memcpy (_hello_send + zmp_header_size
-                  + zmp_control::hello_min_body_size,
+        memcpy (_hello_send + zmp_header_size + zmp_control::hello_min_body_size,
                 _options.routing_id, identity_len);
 
     _hello_send_size = zmp_header_size + body_len;
     _ready_send.clear ();
     _ready_send.reserve (_hello_send_size + zmp_header_size + 1);
-    _ready_send.insert (_ready_send.end (), _hello_send,
-                        _hello_send + _hello_send_size);
+    _ready_send.insert (_ready_send.end (), _hello_send, _hello_send + _hello_send_size);
 
     std::vector<unsigned char> ready_body;
     ready_body.push_back (zmp_control_ready);
@@ -477,13 +458,10 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     ready_frame[1] = zmp_version;
     ready_frame[2] = zmp_flag_control;
     ready_frame[3] = 0;
-    put_uint32 (&ready_frame[4],
-                static_cast<uint32_t> (ready_body.size ()));
-    memcpy (&ready_frame[zmp_header_size], &ready_body[0],
-            ready_body.size ());
+    put_uint32 (&ready_frame[4], static_cast<uint32_t> (ready_body.size ()));
+    memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
 
-    _ready_send.insert (_ready_send.end (), ready_frame.begin (),
-                        ready_frame.end ());
+    _ready_send.insert (_ready_send.end (), ready_frame.begin (), ready_frame.end ());
     _outpos = &_ready_send[0];
     _outsize = _ready_send.size ();
     _hello_sent = true;
@@ -546,21 +524,19 @@ void zlink::asio_ws_engine_t::start_async_read ()
     const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_read_some (
       buffer, buffer_size,
-      [this, callback_guard] (const boost::system::error_code &ec,
-                              std::size_t bytes_transferred) {
+      [this, callback_guard] (const boost::system::error_code &ec, std::size_t bytes_transferred) {
           if (callback_guard.expired ())
               return;
           on_read_complete (ec, bytes_transferred);
       });
 }
 
-void zlink::asio_ws_engine_t::on_read_complete (
-  const boost::system::error_code &ec, std::size_t bytes_transferred)
+void zlink::asio_ws_engine_t::on_read_complete (const boost::system::error_code &ec,
+                                                std::size_t bytes_transferred)
 {
     _read_pending = false;
 
-    WS_ENGINE_DBG ("on_read_complete: ec=%s, bytes=%zu", ec.message ().c_str (),
-                   bytes_transferred);
+    WS_ENGINE_DBG ("on_read_complete: ec=%s, bytes=%zu", ec.message ().c_str (), bytes_transferred);
 
     if (_terminating)
         return;
@@ -600,13 +576,12 @@ void zlink::asio_ws_engine_t::on_read_complete (
         _process_msg = &asio_ws_engine_t::decode_and_push;
 
         if (_encoder == NULL) {
-            _encoder =
-              new (std::nothrow) zmp_encoder_t (_options.out_batch_size);
+            _encoder = new (std::nothrow) zmp_encoder_t (_options.out_batch_size);
             alloc_assert (_encoder);
         }
         if (_decoder == NULL) {
-            _decoder = new (std::nothrow)
-              zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+            _decoder =
+              new (std::nothrow) zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
             alloc_assert (_decoder);
         }
 
@@ -620,8 +595,7 @@ void zlink::asio_ws_engine_t::on_read_complete (
 
         //  Notify session that engine is ready
         if (_session) {
-            _session->set_peer_routing_id (_peer_routing_id,
-                                           _peer_routing_id_size);
+            _session->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
             _session->engine_ready ();
         }
 
@@ -630,8 +604,7 @@ void zlink::asio_ws_engine_t::on_read_complete (
             const int rc = routing_id.init_size (_peer_routing_id_size);
             errno_assert (rc == 0);
             if (_peer_routing_id_size > 0)
-                memcpy (routing_id.data (), _peer_routing_id,
-                        _peer_routing_id_size);
+                memcpy (routing_id.data (), _peer_routing_id, _peer_routing_id_size);
             routing_id.set_flags (msg_t::routing_id);
             const int push_rc = _session->push_msg (&routing_id);
             if (push_rc == 0) {
@@ -645,9 +618,8 @@ void zlink::asio_ws_engine_t::on_read_complete (
 
         //  Notify socket about successful handshake
         if (_socket) {
-            _socket->event_connection_ready_changed(_endpoint_uri_pair,
-                                             _peer_routing_id,
-                                             _peer_routing_id_size);
+            _socket->event_connection_ready_changed (_endpoint_uri_pair, _peer_routing_id,
+                                                     _peer_routing_id_size);
         }
 
         //  Trigger output to start sending any pending messages
@@ -704,16 +676,15 @@ void zlink::asio_ws_engine_t::start_async_write ()
     const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_write_some (
       _outpos, _outsize,
-      [this, callback_guard] (const boost::system::error_code &ec,
-                              std::size_t bytes_transferred) {
+      [this, callback_guard] (const boost::system::error_code &ec, std::size_t bytes_transferred) {
           if (callback_guard.expired ())
               return;
           on_write_complete (ec, bytes_transferred);
       });
 }
 
-void zlink::asio_ws_engine_t::on_write_complete (
-  const boost::system::error_code &ec, std::size_t bytes_transferred)
+void zlink::asio_ws_engine_t::on_write_complete (const boost::system::error_code &ec,
+                                                 std::size_t bytes_transferred)
 {
     _write_pending = false;
 
@@ -766,8 +737,7 @@ bool zlink::asio_ws_engine_t::handshake_zmp ()
         return false;
 
     if (_decoder == NULL) {
-        _decoder = new (std::nothrow)
-          zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+        _decoder = new (std::nothrow) zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
         alloc_assert (_decoder);
         _input_in_decoder_buffer = false;
     }
@@ -782,8 +752,7 @@ bool zlink::asio_ws_engine_t::receive_hello ()
 {
     while (_insize > 0) {
         if (_hello_header_bytes < zmp_header_size) {
-            const size_t to_copy =
-              std::min (_insize, zmp_header_size - _hello_header_bytes);
+            const size_t to_copy = std::min (_insize, zmp_header_size - _hello_header_bytes);
             memcpy (_hello_recv + _hello_header_bytes, _inpos, to_copy);
             _hello_header_bytes += to_copy;
             _inpos += to_copy;
@@ -807,10 +776,8 @@ bool zlink::asio_ws_engine_t::receive_hello ()
 
         if (_hello_body_bytes < _hello_body_len) {
             const size_t to_copy =
-              std::min (_insize, static_cast<size_t> (_hello_body_len)
-                                    - _hello_body_bytes);
-            memcpy (_hello_recv + zmp_header_size + _hello_body_bytes, _inpos,
-                    to_copy);
+              std::min (_insize, static_cast<size_t> (_hello_body_len) - _hello_body_bytes);
+            memcpy (_hello_recv + zmp_header_size + _hello_body_bytes, _inpos, to_copy);
             _hello_body_bytes += to_copy;
             _inpos += to_copy;
             _insize -= to_copy;
@@ -829,18 +796,14 @@ bool zlink::asio_ws_engine_t::receive_hello ()
     return false;
 }
 
-bool zlink::asio_ws_engine_t::parse_hello (const unsigned char *data_,
-                                         size_t size_)
+bool zlink::asio_ws_engine_t::parse_hello (const unsigned char *data_, size_t size_)
 {
     zmp_control::hello_parse_result_t result;
-    if (zmp_control::parse_hello_frame (
-          data_, size_, _options.type, &result)
-        != 0) {
+    if (zmp_control::parse_hello_frame (data_, size_, _options.type, &result) != 0) {
         set_last_error (result.error_code, result.error_reason);
         if (result.malformed_hello_event) {
             _socket->event_handshake_failed_protocol (
-              _session->get_endpoint (),
-              ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+              _session->get_endpoint (), ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         }
         error (protocol_error);
         return false;
@@ -917,9 +880,7 @@ int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
     properties_t properties;
     init_properties (properties);
     const char *error_reason = NULL;
-    if (zmp_control::parse_ready_metadata (
-          msg_, &properties, &error_reason)
-        != 0) {
+    if (zmp_control::parse_ready_metadata (msg_, &properties, &error_reason) != 0) {
         set_last_error (zmp_error_internal, error_reason);
         return -1;
     }
@@ -945,8 +906,8 @@ int zlink::asio_ws_engine_t::process_error_message (msg_t *msg_)
 
 bool zlink::asio_ws_engine_t::process_input ()
 {
-    WS_ENGINE_DBG ("process_input: insize=%zu, inpos=%p, in_decoder_buffer=%d",
-                   _insize, static_cast<void *> (_inpos), _input_in_decoder_buffer);
+    WS_ENGINE_DBG ("process_input: insize=%zu, inpos=%p, in_decoder_buffer=%d", _insize,
+                   static_cast<void *> (_inpos), _input_in_decoder_buffer);
 
     if (!_decoder)
         return true;
@@ -970,7 +931,8 @@ bool zlink::asio_ws_engine_t::process_input ()
             decode_size = std::min (_insize, decode_size);
             memcpy (decode_buf, _inpos, decode_size);
             _decoder->resize_buffer (decode_size);
-            WS_ENGINE_DBG ("process_input: copied %zu bytes from external buffer to decoder", decode_size);
+            WS_ENGINE_DBG ("process_input: copied %zu bytes from external buffer to decoder",
+                           decode_size);
         }
 
         WS_ENGINE_DBG ("process_input: calling decode with size=%zu", decode_size);
@@ -986,8 +948,8 @@ bool zlink::asio_ws_engine_t::process_input ()
 
         //  Message decoded, push to session
         msg_t *msg = _decoder->msg ();
-        WS_ENGINE_DBG ("process_input: got message, size=%zu, flags=0x%x",
-                       msg->size (), msg->flags ());
+        WS_ENGINE_DBG ("process_input: got message, size=%zu, flags=0x%x", msg->size (),
+                       msg->flags ());
         rc = (this->*_process_msg) (msg);
         WS_ENGINE_DBG ("process_input: process_msg rc=%d", rc);
         if (rc == -1)
@@ -998,8 +960,7 @@ bool zlink::asio_ws_engine_t::process_input ()
     if (rc == -1) {
         if (errno != EAGAIN) {
             WS_ENGINE_DBG ("process_input: decode/process error, errno=%d", errno);
-            zmp_decoder_t *decoder =
-              dynamic_cast<zmp_decoder_t *> (_decoder);
+            zmp_decoder_t *decoder = dynamic_cast<zmp_decoder_t *> (_decoder);
             if (decoder && decoder->error_code () != 0)
                 set_last_error (decoder->error_code (), NULL);
             error (protocol_error);
@@ -1036,8 +997,7 @@ void zlink::asio_ws_engine_t::prime_stream_decoder_read_target ()
     _decoder->resize_buffer (_stream_decoder_read_target_size);
 }
 
-void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (
-  size_t bytes_transferred_)
+void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (size_t bytes_transferred_)
 {
     if (!use_stream_dynamic_read_growth ())
         return;
@@ -1052,10 +1012,9 @@ void zlink::asio_ws_engine_t::maybe_grow_stream_decoder_read_target (
         return;
     }
 
-    const size_t grown =
-      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
-        _stream_decoder_read_target_size, _stream_decoder_read_target_max,
-        &_stream_decoder_read_target_full_hits, 1);
+    const size_t grown = zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+      _stream_decoder_read_target_size, _stream_decoder_read_target_max,
+      &_stream_decoder_read_target_full_hits, 1);
     if (grown == 0)
         return;
 
@@ -1076,8 +1035,7 @@ void zlink::asio_ws_engine_t::apply_pending_stream_encoder_resize ()
     _encoder->resize_buffer (_stream_encoder_write_target_size);
 }
 
-void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (
-  size_t filled_out_batch_)
+void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (size_t filled_out_batch_)
 {
     if (!use_stream_dynamic_write_growth ())
         return;
@@ -1087,10 +1045,9 @@ void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (
         return;
     }
 
-    const size_t grown =
-      zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
-        _stream_encoder_write_target_size, _stream_encoder_write_target_max,
-        &_stream_encoder_write_target_full_hits, 1);
+    const size_t grown = zlink::asio_stream_fastpath_policy::next_stream_target_after_full_hit (
+      _stream_encoder_write_target_size, _stream_encoder_write_target_max,
+      &_stream_encoder_write_target_full_hits, 1);
     if (grown == 0)
         return;
 
@@ -1098,9 +1055,9 @@ void zlink::asio_ws_engine_t::maybe_schedule_stream_encoder_growth (
 }
 
 bool zlink::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
-                                                 unsigned char *buffer_,
-                                                 size_t buffer_size_,
-                                                 size_t &header_size_)
+                                                   unsigned char *buffer_,
+                                                   size_t buffer_size_,
+                                                   size_t &header_size_)
 {
     if (buffer_size_ < zmp_header_size)
         return false;
@@ -1167,8 +1124,7 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     }
 
     size_t header_size = 0;
-    if (!build_gather_header (_tx_msg, _gather_header,
-                              sizeof (_gather_header), header_size)) {
+    if (!build_gather_header (_tx_msg, _gather_header, sizeof (_gather_header), header_size)) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }
@@ -1183,8 +1139,7 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
     _transport->async_writev (
       _gather_header, _gather_header_size, _gather_body, _gather_body_size,
-      [this, callback_guard] (const boost::system::error_code &ec,
-                              std::size_t bytes) {
+      [this, callback_guard] (const boost::system::error_code &ec, std::size_t bytes) {
           if (callback_guard.expired ())
               return;
           on_write_complete (ec, bytes);
@@ -1257,8 +1212,8 @@ bool zlink::asio_ws_engine_t::prepare_output_buffer ()
 
 void zlink::asio_ws_engine_t::speculative_write ()
 {
-    WS_ENGINE_DBG ("speculative_write: write_pending=%d, output_stopped=%d",
-                   _write_pending, _output_stopped);
+    WS_ENGINE_DBG ("speculative_write: write_pending=%d, output_stopped=%d", _write_pending,
+                   _output_stopped);
 
     //  Guard: If async write is already in progress, skip.
     //  This ensures single write-in-flight invariant.
@@ -1290,11 +1245,9 @@ void zlink::asio_ws_engine_t::speculative_write ()
     //  Note: For WebSocket, this writes a complete frame or returns 0 with EAGAIN
     zlink_assert (_transport);
     const std::size_t bytes =
-      _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
-                              _outsize);
+      _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos), _outsize);
 
-    WS_ENGINE_DBG ("speculative_write: write_some returned %zu, errno=%d", bytes,
-                   errno);
+    WS_ENGINE_DBG ("speculative_write: write_some returned %zu, errno=%d", bytes, errno);
 
     if (bytes == 0) {
         //  Check if it's would_block (retry later) or actual error
@@ -1315,14 +1268,12 @@ void zlink::asio_ws_engine_t::speculative_write ()
     _outpos += bytes;
     _outsize -= bytes;
 
-    WS_ENGINE_DBG ("speculative_write: wrote %zu bytes, remaining=%zu", bytes,
-                   _outsize);
+    WS_ENGINE_DBG ("speculative_write: wrote %zu bytes, remaining=%zu", bytes, _outsize);
 
     if (_outsize > 0) {
         //  Partial write (shouldn't happen for WebSocket frame-based write,
         //  but handle it for robustness).
-        WS_ENGINE_DBG ("speculative_write: partial write, async for remaining %zu",
-                       _outsize);
+        WS_ENGINE_DBG ("speculative_write: partial write, async for remaining %zu", _outsize);
         start_async_write ();
     } else {
         //  Complete write succeeded.
@@ -1335,11 +1286,10 @@ void zlink::asio_ws_engine_t::speculative_write ()
 
         //  Try to prepare and write more data speculatively.
         while (prepare_output_buffer ()) {
-            const std::size_t more_bytes = _transport->write_some (
-              reinterpret_cast<const std::uint8_t *> (_outpos), _outsize);
+            const std::size_t more_bytes =
+              _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos), _outsize);
 
-            WS_ENGINE_DBG ("speculative_write loop: wrote %zu, errno=%d",
-                           more_bytes, errno);
+            WS_ENGINE_DBG ("speculative_write loop: wrote %zu, errno=%d", more_bytes, errno);
 
             if (more_bytes == 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -1389,8 +1339,7 @@ int zlink::asio_ws_engine_t::push_msg_to_session (msg_t *msg_)
     return _session->push_msg (msg_);
 }
 
-void zlink::asio_ws_engine_t::set_last_error (uint8_t code_,
-                                            const char *reason_)
+void zlink::asio_ws_engine_t::set_last_error (uint8_t code_, const char *reason_)
 {
     _last_error_code = code_;
     if (reason_ && *reason_)
@@ -1399,8 +1348,7 @@ void zlink::asio_ws_engine_t::set_last_error (uint8_t code_,
         _last_error_reason.assign (zmp_error_reason (code_));
 }
 
-void zlink::asio_ws_engine_t::send_error_frame (uint8_t code_,
-                                              const char *reason_)
+void zlink::asio_ws_engine_t::send_error_frame (uint8_t code_, const char *reason_)
 {
     if (!_transport || !_transport->is_open ())
         return;
@@ -1409,8 +1357,7 @@ void zlink::asio_ws_engine_t::send_error_frame (uint8_t code_,
     if (!reason || !*reason)
         reason = zmp_error_reason (code_);
 
-    const size_t reason_len =
-      std::min (strlen (reason), static_cast<size_t> (UCHAR_MAX));
+    const size_t reason_len = std::min (strlen (reason), static_cast<size_t> (UCHAR_MAX));
     const size_t body_len = 3 + reason_len;
     unsigned char buffer[zmp_header_size + 3 + UCHAR_MAX];
 
@@ -1428,8 +1375,7 @@ void zlink::asio_ws_engine_t::send_error_frame (uint8_t code_,
     const size_t total = zmp_header_size + body_len;
     size_t offset = 0;
     while (offset < total) {
-        const std::size_t written =
-          _transport->write_some (buffer + offset, total - offset);
+        const std::size_t written = _transport->write_some (buffer + offset, total - offset);
         if (written == 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
@@ -1468,8 +1414,7 @@ void zlink::asio_ws_engine_t::error (error_reason_t reason_)
     }
 
     if (reason_ == timeout_error || reason_ == protocol_error) {
-        const uint8_t code =
-          _last_error_code ? _last_error_code : zmp_error_internal;
+        const uint8_t code = _last_error_code ? _last_error_code : zmp_error_internal;
         send_error_frame (code, _last_error_reason.c_str ());
     }
 
@@ -1485,13 +1430,12 @@ void zlink::asio_ws_engine_t::error (error_reason_t reason_)
     }
 
     const blob_t *routing_id = _session ? &_session->peer_routing_id () : NULL;
-    const unsigned char *routing_id_data =
-      routing_id ? routing_id->data () : NULL;
+    const unsigned char *routing_id_data = routing_id ? routing_id->data () : NULL;
     const size_t routing_id_size = routing_id ? routing_id->size () : 0;
 
     if (_socket) {
-        _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
-                                     routing_id_data, routing_id_size);
+        _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason, routing_id_data,
+                                     routing_id_size);
     }
 
     if (_session) {
@@ -1504,8 +1448,7 @@ void zlink::asio_ws_engine_t::error (error_reason_t reason_)
 
 void zlink::asio_ws_engine_t::terminate ()
 {
-    WS_ENGINE_DBG ("terminate: read_pending=%d, write_pending=%d",
-                   _read_pending, _write_pending);
+    WS_ENGINE_DBG ("terminate: read_pending=%d, write_pending=%d", _read_pending, _write_pending);
 
     if (_terminating)
         return;
@@ -1587,8 +1530,8 @@ bool zlink::asio_ws_engine_t::restart_input ()
 
 void zlink::asio_ws_engine_t::restart_output ()
 {
-    WS_ENGINE_DBG ("restart_output: io_error=%d, output_stopped=%d, write_pending=%d",
-                   _io_error, _output_stopped, _write_pending);
+    WS_ENGINE_DBG ("restart_output: io_error=%d, output_stopped=%d, write_pending=%d", _io_error,
+                   _output_stopped, _write_pending);
 
     if (_io_error)
         return;
@@ -1626,8 +1569,7 @@ void zlink::asio_ws_engine_t::add_timer (int timeout_, int id_)
 
     _timer->expires_after (std::chrono::milliseconds (timeout_));
     const std::weak_ptr<callback_guard_t> callback_guard = _callback_guard;
-    _timer->async_wait ([this, id_, callback_guard] (
-                          const boost::system::error_code &ec) {
+    _timer->async_wait ([this, id_, callback_guard] (const boost::system::error_code &ec) {
         if (callback_guard.expired ())
             return;
         on_timer (id_, ec);
@@ -1645,8 +1587,7 @@ void zlink::asio_ws_engine_t::cancel_timer (int id_)
     }
 }
 
-void zlink::asio_ws_engine_t::on_timer (int id_,
-                                       const boost::system::error_code &ec)
+void zlink::asio_ws_engine_t::on_timer (int id_, const boost::system::error_code &ec)
 {
     if (_terminating || ec == boost::asio::error::operation_aborted)
         return;
@@ -1674,8 +1615,8 @@ bool zlink::asio_ws_engine_t::init_properties (properties_t &properties_)
     if (_peer_address.empty ())
         return false;
 
-    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (
-      std::string (ZLINK_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
+    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (std::string (ZLINK_MSG_PROPERTY_PEER_ADDRESS),
+                                             _peer_address);
 
     return true;
 }
@@ -1755,8 +1696,7 @@ int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
 {
-    zmp_control::build_heartbeat_ping (
-      msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
+    zmp_control::build_heartbeat_ping (msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
 
     _next_msg = &asio_ws_engine_t::pull_msg_from_session;
     if (!_has_timeout_timer && _heartbeat_timeout > 0) {
@@ -1770,8 +1710,7 @@ int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
 int zlink::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
 {
     zmp_control::heartbeat_action_t action;
-    if (zmp_control::parse_heartbeat (
-          msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
+    if (zmp_control::parse_heartbeat (msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
         != 0) {
         set_last_error (zmp_error_internal, action.error_reason);
         return -1;
@@ -1779,8 +1718,7 @@ int zlink::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
 
     if (action.kind == zmp_control::heartbeat_action_send_ack) {
         if (!_has_ttl_timer && action.ttl_ds > 0) {
-            add_timer (static_cast<int> (action.ttl_ds) * 100,
-                       heartbeat_ttl_timer_id);
+            add_timer (static_cast<int> (action.ttl_ds) * 100, heartbeat_ttl_timer_id);
             _has_ttl_timer = true;
         }
 
@@ -1801,4 +1739,4 @@ int zlink::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
     return 0;
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

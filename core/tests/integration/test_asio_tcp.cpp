@@ -131,8 +131,7 @@ void test_large_message ()
     char *recv_buf = static_cast<char *> (malloc (msg_size));
     TEST_ASSERT_NOT_NULL (recv_buf);
 
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (msg_size),
-                           zlink_recv (client, recv_buf, msg_size, 0));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (msg_size), zlink_recv (client, recv_buf, msg_size, 0));
 
     TEST_ASSERT_EQUAL_MEMORY (large_msg, recv_buf, msg_size);
 
@@ -183,8 +182,7 @@ void test_dealer_router_pattern ()
 
     //  Set identity for dealer
     const char *identity = "TestDealer";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (dealer, identity, strlen (identity)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, identity, strlen (identity)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
@@ -203,18 +201,15 @@ void test_dealer_router_pattern ()
     zlink_msg_init (&recv_msg);
 
     TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&recv_identity, router, 0));
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (identity)),
-                           zlink_msg_size (&recv_identity));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (identity)), zlink_msg_size (&recv_identity));
 
     TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&recv_msg, router, 0));
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)),
-                           zlink_msg_size (&recv_msg));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)), zlink_msg_size (&recv_msg));
 
     //  Router replies to dealer
     const char *reply = "Reply from router";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_send (router, zlink_msg_data (&recv_identity),
-                zlink_msg_size (&recv_identity), ZLINK_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, zlink_msg_data (&recv_identity),
+                                           zlink_msg_size (&recv_identity), ZLINK_SNDMORE));
     send_string_expect_success (router, reply, 0);
 
     //  Dealer receives reply
@@ -304,15 +299,14 @@ void test_xpub_xsub_pattern ()
     msleep (SETTLE_TIME);
 
     //  Subscribe via XSUB (send subscription message)
-    const char sub_msg[] = {1, 'A'};  //  Subscribe to "A"
-    TEST_ASSERT_EQUAL_INT (
-      2, zlink_send (xsub, sub_msg, sizeof (sub_msg), 0));
+    const char sub_msg[] = {1, 'A'}; //  Subscribe to "A"
+    TEST_ASSERT_EQUAL_INT (2, zlink_send (xsub, sub_msg, sizeof (sub_msg), 0));
 
     //  XPUB receives subscription notification
     char sub_recv[32];
     int sub_size = zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0);
     TEST_ASSERT_EQUAL_INT (2, sub_size);
-    TEST_ASSERT_EQUAL_INT (1, sub_recv[0]);  //  Subscribe
+    TEST_ASSERT_EQUAL_INT (1, sub_recv[0]); //  Subscribe
     TEST_ASSERT_EQUAL_INT ('A', sub_recv[1]);
 
     //  Publish message
@@ -334,10 +328,8 @@ void test_hwm_behavior ()
 
     //  Set low HWM
     int hwm = 5;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_RCVHWM, &hwm, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -383,7 +375,7 @@ void test_socket_bounce ()
     test_context_socket_close (server);
 }
 
-#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO
+#else // !ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 void setUp ()
 {
@@ -399,7 +391,7 @@ void test_asio_tcp_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {

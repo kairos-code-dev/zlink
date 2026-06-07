@@ -21,8 +21,7 @@ stream_sched_mode_t parse_stream_session_sched_mode ()
 {
     if (zlink::env::equals ("ZLINK_ASIO_STREAM_SESSION_SCHED", "rr", "RR"))
         return stream_sched_rr;
-    if (zlink::env::equals ("ZLINK_ASIO_STREAM_SESSION_SCHED",
-                            "minload", "MINLOAD"))
+    if (zlink::env::equals ("ZLINK_ASIO_STREAM_SESSION_SCHED", "minload", "MINLOAD"))
         return stream_sched_minload;
 
     return stream_sched_rr;
@@ -30,8 +29,7 @@ stream_sched_mode_t parse_stream_session_sched_mode ()
 }
 
 zlink::ctx_io_thread_registry_t::ctx_io_thread_registry_t () :
-    _next_io_thread (0),
-    _next_stream_io_thread (0)
+    _next_io_thread (0), _next_stream_io_thread (0)
 {
 }
 
@@ -87,8 +85,7 @@ zlink::io_thread_t *zlink::ctx_io_thread_registry_t::choose (uint64_t affinity_)
     return selected_io_thread;
 }
 
-zlink::io_thread_t *
-zlink::ctx_io_thread_registry_t::choose_stream (uint64_t affinity_)
+zlink::io_thread_t *zlink::ctx_io_thread_registry_t::choose_stream (uint64_t affinity_)
 {
     if (_threads.empty ())
         return NULL;
@@ -97,8 +94,7 @@ zlink::ctx_io_thread_registry_t::choose_stream (uint64_t affinity_)
     if (mode == stream_sched_rr) {
         const io_threads_t::size_type size = _threads.size ();
         const io_threads_t::size_type start_index =
-          static_cast<io_threads_t::size_type> (
-            _next_stream_io_thread.add (1) % size);
+          static_cast<io_threads_t::size_type> (_next_stream_io_thread.add (1) % size);
 
         for (io_threads_t::size_type n = 0; n != size; ++n) {
             const io_threads_t::size_type i = (start_index + n) % size;

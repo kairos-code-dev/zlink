@@ -36,7 +36,8 @@ namespace ssl = asio::ssl;
 template <typename TStream> class websocket_stream_connection_t final : public stream_connection_t
 {
   public:
-    explicit websocket_stream_connection_t (websocket::stream<TStream> stream) : _stream (std::move (stream))
+    explicit websocket_stream_connection_t (websocket::stream<TStream> stream) :
+        _stream (std::move (stream))
     {
         _stream.binary (true);
     }
@@ -66,7 +67,8 @@ template <typename TStream> class websocket_stream_connection_t final : public s
         return _read_buffer.size ();
     }
 
-    std::size_t read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
+    std::size_t
+    read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
     {
         if (available (error) == 0 || error) {
             return 0;
@@ -95,7 +97,10 @@ template <typename TStream> class websocket_stream_connection_t final : public s
         _stream.close (websocket::close_code::normal, ignored);
     }
 
-    void close (boost::system::error_code &error) override { beast::get_lowest_layer (_stream).close (error); }
+    void close (boost::system::error_code &error) override
+    {
+        beast::get_lowest_layer (_stream).close (error);
+    }
 
   private:
     websocket::stream<TStream> _stream;
@@ -103,8 +108,8 @@ template <typename TStream> class websocket_stream_connection_t final : public s
     std::size_t _read_offset = 0;
 };
 
-std::optional<websocket_endpoint_parts_t> parse_websocket_endpoint_with_prefix (const std::string &endpoint,
-                                                                                std::string_view prefix)
+std::optional<websocket_endpoint_parts_t>
+parse_websocket_endpoint_with_prefix (const std::string &endpoint, std::string_view prefix)
 {
     if (endpoint.rfind (std::string (prefix), 0) != 0) {
         return std::nullopt;
@@ -112,16 +117,16 @@ std::optional<websocket_endpoint_parts_t> parse_websocket_endpoint_with_prefix (
 
     const auto host_start = prefix.size ();
     const auto path_start = endpoint.find ('/', host_start);
-    const auto authority =
-      endpoint.substr (host_start, path_start == std::string::npos ? std::string::npos : path_start - host_start);
+    const auto authority = endpoint.substr (
+      host_start, path_start == std::string::npos ? std::string::npos : path_start - host_start);
     const auto colon = authority.rfind (':');
     if (colon == std::string::npos || colon == 0 || colon + 1 >= authority.size ()) {
         return std::nullopt;
     }
 
-    return websocket_endpoint_parts_t{authority.substr (0, colon), authority.substr (colon + 1),
-                                      path_start == std::string::npos ? std::string ("/")
-                                                                      : endpoint.substr (path_start)};
+    return websocket_endpoint_parts_t{
+      authority.substr (0, colon), authority.substr (colon + 1),
+      path_start == std::string::npos ? std::string ("/") : endpoint.substr (path_start)};
 }
 
 } // namespace
@@ -131,7 +136,8 @@ std::optional<websocket_endpoint_parts_t> parse_websocket_endpoint (const std::s
     return parse_websocket_endpoint_with_prefix (endpoint, "ws://");
 }
 
-std::optional<websocket_endpoint_parts_t> parse_websocket_secure_endpoint (const std::string &endpoint)
+std::optional<websocket_endpoint_parts_t>
+parse_websocket_secure_endpoint (const std::string &endpoint)
 {
     return parse_websocket_endpoint_with_prefix (endpoint, "wss://");
 }
@@ -149,9 +155,10 @@ std::unique_ptr<stream_connection_t> connect_websocket (boost::asio::io_context 
 }
 
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-std::unique_ptr<stream_connection_t> connect_websocket_secure (boost::asio::io_context &io_context,
-                                                               const websocket_endpoint_parts_t &endpoint,
-                                                               bool skip_server_certificate_validation)
+std::unique_ptr<stream_connection_t>
+connect_websocket_secure (boost::asio::io_context &io_context,
+                          const websocket_endpoint_parts_t &endpoint,
+                          bool skip_server_certificate_validation)
 {
     ssl::context context (ssl::context::tls_client);
     context.set_default_verify_paths ();
@@ -170,7 +177,8 @@ std::unique_ptr<stream_connection_t> connect_websocket_secure (boost::asio::io_c
     stream.next_layer ().handshake (ssl::stream_base::client);
     stream.binary (true);
     stream.handshake (endpoint.host, endpoint.target);
-    return std::make_unique<websocket_stream_connection_t<ssl::stream<tcp::socket>>> (std::move (stream));
+    return std::make_unique<websocket_stream_connection_t<ssl::stream<tcp::socket>>> (
+      std::move (stream));
 }
 #endif
 

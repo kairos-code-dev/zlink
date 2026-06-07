@@ -16,11 +16,8 @@ static void discovery_registry_provider_thread (void *arg_)
 {
     discovery_registry_sample_t *sample = (discovery_registry_sample_t *) arg_;
 
-    assert (zlink_socket_attach_discovery (sample->provider,
-                                           sample->provider_discovery)
-            == 0);
-    assert (zlink_bind (sample->provider, sample->service_endpoint)
-            == ZLINK_BIND_OK);
+    assert (zlink_socket_attach_discovery (sample->provider, sample->provider_discovery) == 0);
+    assert (zlink_bind (sample->provider, sample->service_endpoint) == ZLINK_BIND_OK);
 }
 
 static void discovery_registry_client_thread (void *arg_)
@@ -40,8 +37,7 @@ int main (void)
     void *registry = zlink_registry_new (ctx);
     sample.provider_discovery =
       zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_channel_name);
-    sample.client_discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_channel_name);
+    sample.client_discovery = zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_FANOUT, k_channel_name);
     sample.provider = zlink_socket (ctx, ZLINK_SOCKET_PUB);
     assert (ctx != NULL);
     assert (registry != NULL);
@@ -54,25 +50,19 @@ int main (void)
     reserve_tcp_endpoint (registry_pub, sizeof (registry_pub));
     reserve_tcp_endpoint (sample.service_endpoint, sizeof (sample.service_endpoint));
 
-    assert (zlink_registry_bind (registry, registry_pub, sample.registry_router)
-            == 0);
-    assert (zlink_registry_set_broadcast_interval (registry, 50)
-            == ZLINK_CONFIG_OK);
+    assert (zlink_registry_bind (registry, registry_pub, sample.registry_router) == 0);
+    assert (zlink_registry_set_broadcast_interval (registry, 50) == ZLINK_CONFIG_OK);
 
     zlink_registry_status_t status;
     assert (zlink_registry_status (registry, &status) == 0);
     assert (strlen (status.bind_endpoint) > 0);
-    assert (zlink_discovery_connect_registry (
-              sample.provider_discovery, sample.registry_router)
+    assert (zlink_discovery_connect_registry (sample.provider_discovery, sample.registry_router)
             == ZLINK_CONNECT_OK);
-    assert (zlink_discovery_connect_registry (
-              sample.client_discovery, sample.registry_router)
+    assert (zlink_discovery_connect_registry (sample.client_discovery, sample.registry_router)
             == ZLINK_CONNECT_OK);
 
-    void *provider = zlink_thread_start (
-      &discovery_registry_provider_thread, &sample);
-    void *client = zlink_thread_start (
-      &discovery_registry_client_thread, &sample);
+    void *provider = zlink_thread_start (&discovery_registry_provider_thread, &sample);
+    void *client = zlink_thread_start (&discovery_registry_client_thread, &sample);
     assert (provider != NULL);
     assert (client != NULL);
 
@@ -80,8 +70,7 @@ int main (void)
     zlink_thread_join (client);
     assert (sample.discovered == 1);
 
-    printf ("[discovery-registry] service: \"%s\" -> discovered\n",
-            k_channel_name);
+    printf ("[discovery-registry] service: \"%s\" -> discovered\n", k_channel_name);
 
     zlink_close (sample.provider);
     zlink_discovery_destroy (&sample.client_discovery);

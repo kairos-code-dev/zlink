@@ -11,8 +11,10 @@
 namespace zlink::samples
 {
 
-inline stream_connector::connector_options_t make_immediate_connector_options (
-  std::string endpoint, std::chrono::milliseconds connect_timeout, std::chrono::milliseconds request_timeout)
+inline stream_connector::connector_options_t
+make_immediate_connector_options (std::string endpoint,
+                                  std::chrono::milliseconds connect_timeout,
+                                  std::chrono::milliseconds request_timeout)
 {
     stream_connector::connector_options_t options;
     options.endpoint = std::move (endpoint);
@@ -53,7 +55,8 @@ TCallResult request_client_packet (stream_connector::connector_t &connector,
                                    const TRequest &request,
                                    const char *fallback_error = "request failed")
 {
-    auto result = stream_connector::codecs::request<TReply> (connector, request).submit ().result ();
+    auto result =
+      stream_connector::codecs::request<TReply> (connector, request).submit ().result ();
     return make_client_call_result<TCallResult> (TRequest::packet_name, result, fallback_error);
 }
 
@@ -62,7 +65,8 @@ TCallResult send_client_packet (stream_connector::connector_t &connector,
                                 TRequest request,
                                 const char *fallback_error = "send failed")
 {
-    auto result = stream_connector::codecs::send (connector, std::move (request)).submit ().result ();
+    auto result =
+      stream_connector::codecs::send (connector, std::move (request)).submit ().result ();
     return make_client_call_result<TCallResult> (TRequest::packet_name, result, fallback_error);
 }
 

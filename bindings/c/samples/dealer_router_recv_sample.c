@@ -21,9 +21,8 @@ static void dealer_router_router_thread (void *arg_)
     zlink_msg_t reply;
 
     assert (zlink_msg_init (&part) == 0);
-    assert (zlink_router_recv_part (sample->router, &source_node_rid,
-                                    &source_spot_rid, &request_seq, &part,
-                                    &has_more, 0)
+    assert (zlink_router_recv_part (sample->router, &source_node_rid, &source_spot_rid,
+                                    &request_seq, &part, &has_more, 0)
             == ZLINK_RECV_OK);
     assert (source_node_rid != NULL);
     assert (source_node_rid->size > 0);
@@ -31,14 +30,13 @@ static void dealer_router_router_thread (void *arg_)
     assert (request_seq == 0);
     assert (has_more == ZLINK_PART_FINAL);
     assert (zlink_msg_size (&part) == strlen (k_dealer_router_request));
-    assert (memcmp (zlink_msg_data (&part), k_dealer_router_request,
-                    strlen (k_dealer_router_request))
-            == 0);
+    assert (
+      memcmp (zlink_msg_data (&part), k_dealer_router_request, strlen (k_dealer_router_request))
+      == 0);
     zlink_msg_close (&part);
 
     make_message (&reply, k_dealer_router_reply);
-    assert (zlink_send_part_rid (sample->router, source_node_rid, &reply, 0,
-                                 ZLINK_PART_FINAL)
+    assert (zlink_send_part_rid (sample->router, source_node_rid, &reply, 0, ZLINK_PART_FINAL)
             == ZLINK_SUBMIT_OK);
 }
 
@@ -51,12 +49,10 @@ static void dealer_router_dealer_thread (void *arg_)
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     make_message (&outbound, k_dealer_router_request);
-    assert (zlink_send_part (sample->dealer, &outbound, 0, ZLINK_PART_FINAL)
-            == ZLINK_SUBMIT_OK);
+    assert (zlink_send_part (sample->dealer, &outbound, 0, ZLINK_PART_FINAL) == ZLINK_SUBMIT_OK);
 
     assert (zlink_msg_init (&part) == 0);
-    assert (zlink_recv_part (sample->dealer, &rid, &part, &has_more, 0)
-            == ZLINK_RECV_OK);
+    assert (zlink_recv_part (sample->dealer, &rid, &part, &has_more, 0) == ZLINK_RECV_OK);
     assert (has_more == ZLINK_PART_FINAL);
 
     sample->reply_len = zlink_msg_size (&part);
@@ -78,21 +74,19 @@ int main (void)
     assert (sample.router != NULL);
     assert (sample.dealer != NULL);
 
-    void *router_monitor = open_socket_monitor (
-      sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-    void *dealer_monitor = open_socket_monitor (
-      sample.dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *router_monitor =
+      open_socket_monitor (sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *dealer_monitor =
+      open_socket_monitor (sample.dealer, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     assert (zlink_bind (sample.router, "tcp://127.0.0.1:0") == ZLINK_BIND_OK);
     char endpoint[256];
     get_last_endpoint (sample.router, endpoint, sizeof (endpoint));
     assert (zlink_connect (sample.dealer, endpoint) == ZLINK_CONNECT_OK);
     assert (wait_for_socket_monitor_event_with_activity (
-      router_monitor, sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
-      -1,
-      2000));
-    assert (wait_for_socket_monitor_event (
-      dealer_monitor, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1, 2000));
+      router_monitor, sample.router, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1, 2000));
+    assert (wait_for_socket_monitor_event (dealer_monitor,
+                                           ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1, 2000));
 
     void *router = zlink_thread_start (&dealer_router_router_thread, &sample);
     void *dealer = zlink_thread_start (&dealer_router_dealer_thread, &sample);
@@ -103,8 +97,8 @@ int main (void)
     zlink_thread_join (router);
 
     assert (strcmp (sample.reply, k_dealer_router_reply) == 0);
-    printf ("[dealer-router/recv] send: \"%s\" -> recv: \"%.*s\"\n",
-            k_dealer_router_request, (int) sample.reply_len, sample.reply);
+    printf ("[dealer-router/recv] send: \"%s\" -> recv: \"%.*s\"\n", k_dealer_router_request,
+            (int) sample.reply_len, sample.reply);
 
     zlink_monitor_close (&dealer_monitor);
     zlink_monitor_close (&router_monitor);

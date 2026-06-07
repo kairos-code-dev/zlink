@@ -16,7 +16,8 @@
 static const size_t FRAME_PREFIX_SIZE = 4;
 static const size_t MAX_STREAM_FRAME_SIZE = 16 * 1024 * 1024;
 
-struct stream_buffer_t {
+struct stream_buffer_t
+{
     std::vector<char> data;
     size_t offset;
 
@@ -83,8 +84,7 @@ inline int stream_decode_available_frames (stream_buffer_t &stash, int max_frame
     return decoded;
 }
 
-inline bool stream_decode_one_frame (stream_buffer_t &stash,
-                                     std::vector<char> *payload_out)
+inline bool stream_decode_one_frame (stream_buffer_t &stash, std::vector<char> *payload_out)
 {
     if (!payload_out)
         return false;
@@ -105,9 +105,7 @@ inline bool stream_decode_one_frame (stream_buffer_t &stash,
 
     payload_out->assign (frame_len, 0);
     if (frame_len > 0) {
-        std::memcpy (&(*payload_out)[0],
-                     &stash.data[stash.offset + FRAME_PREFIX_SIZE],
-                     frame_len);
+        std::memcpy (&(*payload_out)[0], &stash.data[stash.offset + FRAME_PREFIX_SIZE], frame_len);
     }
 
     stash.offset += required;
@@ -125,9 +123,7 @@ inline void stream_build_framed_payload (const std::vector<char> &payload,
     framed_out->assign (FRAME_PREFIX_SIZE + payload.size (), 0);
     std::memcpy (&(*framed_out)[0], &net_len, FRAME_PREFIX_SIZE);
     if (!payload.empty ()) {
-        std::memcpy (&(*framed_out)[FRAME_PREFIX_SIZE],
-                     &payload[0],
-                     payload.size ());
+        std::memcpy (&(*framed_out)[FRAME_PREFIX_SIZE], &payload[0], payload.size ());
     }
 }
 

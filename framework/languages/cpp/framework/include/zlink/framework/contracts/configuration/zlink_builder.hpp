@@ -41,9 +41,12 @@ class zlink_builder_t
     zlink_builder_t &route_channel (std::string route_channel_name);
     zlink_builder_t &route_channel (std::string route_channel_name,
                                     std::function<void (route_channel_builder_t &)> configure);
-    zlink_builder_t &channel (std::string channel_name, std::function<void (channel_builder_t &)> configure);
-    zlink_builder_t &add_spot_node (std::string spot_node_name, std::function<void (spot_node_builder_t &)> configure);
-    zlink_builder_t &stream (std::string stream_name, std::function<void (stream_builder_t &)> configure);
+    zlink_builder_t &channel (std::string channel_name,
+                              std::function<void (channel_builder_t &)> configure);
+    zlink_builder_t &add_spot_node (std::string spot_node_name,
+                                    std::function<void (spot_node_builder_t &)> configure);
+    zlink_builder_t &stream (std::string stream_name,
+                             std::function<void (stream_builder_t &)> configure);
 
     std::vector<channel_snapshot_t> channels () const;
     registry_options_snapshot_t registry_options () const;

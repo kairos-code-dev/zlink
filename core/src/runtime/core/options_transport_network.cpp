@@ -14,12 +14,8 @@
 #define BINDDEVSIZ 16
 #endif
 
-int zlink::options_setsockopt_transport_network (options_t *self_,
-                                                 int option_,
-                                                 const void *optval_,
-                                                 size_t optvallen_,
-                                                 bool is_int_,
-                                                 int value_)
+int zlink::options_setsockopt_transport_network (
+  options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDBUF:
@@ -145,12 +141,8 @@ int zlink::options_setsockopt_transport_network (options_t *self_,
     return -1;
 }
 
-int zlink::options_getsockopt_transport_network (const options_t *self_,
-                                                 int option_,
-                                                 void *optval_,
-                                                 size_t *optvallen_,
-                                                 bool is_int_,
-                                                 int *value_)
+int zlink::options_getsockopt_transport_network (
+  const options_t *self_, int option_, void *optval_, size_t *optvallen_, bool is_int_, int *value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDBUF:

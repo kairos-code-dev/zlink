@@ -34,9 +34,10 @@ class timer_runtime_t
   public:
     static timer_runtime_t from (spot_context_t &context);
 
-    result_t<timer_tick_t> dispatch_fire_count (timer_t &timer,
-                                                std::uint64_t fire_count,
-                                                std::function<void (const timer_tick_t &)> handler = {}) const;
+    result_t<timer_tick_t>
+    dispatch_fire_count (timer_t &timer,
+                         std::uint64_t fire_count,
+                         std::function<void (const timer_tick_t &)> handler = {}) const;
 
     void cancel_all () const noexcept;
     std::vector<timer_failure_event_t> failure_events (const timer_t &timer) const;

@@ -50,15 +50,12 @@ zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_)
     return zlink::connect_result_internal::from_rc (handle.socket->term_endpoint (addr_));
 }
 
-zlink_connect_result_t zlink_disconnect_rid (
-  void *s_,
-  const zlink_routing_id_t *peer_rid_)
+zlink_connect_result_t zlink_disconnect_rid (void *s_, const zlink_routing_id_t *peer_rid_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return zlink::connect_result_internal::from_errno (EFAULT);
-    return zlink::connect_result_internal::from_rc (
-      handle.socket->term_peer_rid (peer_rid_));
+    return zlink::connect_result_internal::from_rc (handle.socket->term_peer_rid (peer_rid_));
 }
 
 zlink_config_result_t zlink_socket_attach_discovery (void *s_, void *discovery_)
@@ -67,12 +64,10 @@ zlink_config_result_t zlink_socket_attach_discovery (void *s_, void *discovery_)
     if (!handle.socket)
         return ZLINK_CONFIG_INVALID_HANDLE;
 
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
-    return zlink::config_result_internal::from_rc (
-      handle.socket->attach_discovery (discovery));
+    return zlink::config_result_internal::from_rc (handle.socket->attach_discovery (discovery));
 }
 
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
@@ -141,10 +136,8 @@ zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *captur
       zlink::proxy (frontend.socket, backend.socket, capture_socket));
 }
 
-zlink_config_result_t zlink_proxy_steerable (void *frontend_,
-                                            void *backend_,
-                                            void *capture_,
-                                            void *control_)
+zlink_config_result_t
+zlink_proxy_steerable (void *frontend_, void *backend_, void *capture_, void *control_)
 {
     if (!frontend_ || !backend_) {
         errno = EFAULT;
@@ -175,8 +168,7 @@ zlink_config_result_t zlink_proxy_steerable (void *frontend_,
     }
 
     return zlink::config_result_internal::from_rc (
-      zlink::proxy_steerable (frontend.socket, backend.socket,
-                              capture_socket, control_socket));
+      zlink::proxy_steerable (frontend.socket, backend.socket, capture_socket, control_socket));
 }
 
 bool zlink_has (const char *capability_)

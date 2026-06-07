@@ -74,7 +74,8 @@ class configuration_section_t
     std::string _prefix;
 };
 
-template <typename T> concept configuration_bindable = requires (const configuration_section_t &section)
+template <typename T>
+concept configuration_bindable = requires (const configuration_section_t &section)
 {
     {
         T::bind (section)

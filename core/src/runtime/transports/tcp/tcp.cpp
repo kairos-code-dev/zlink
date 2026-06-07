@@ -32,8 +32,8 @@ int zlink::tune_tcp_socket (fd_t s_, int tcp_nodelay_)
     int rc = 0;
     if (tcp_nodelay_ != -1) {
         int nodelay = tcp_nodelay_ != 0 ? 1 : 0;
-        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELAY,
-                         reinterpret_cast<char *> (&nodelay), sizeof (int));
+        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char *> (&nodelay),
+                         sizeof (int));
         assert_success_or_recoverable (s_, rc);
         if (rc != 0)
             return rc;
@@ -43,8 +43,7 @@ int zlink::tune_tcp_socket (fd_t s_, int tcp_nodelay_)
     //  Disable delayed acknowledgements as they hurt latency significantly.
     if (tcp_nodelay_ != 0) {
         int nodelack = 1;
-        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELACK, (char *) &nodelack,
-                         sizeof (int));
+        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELACK, (char *) &nodelack, sizeof (int));
         assert_success_or_recoverable (s_, rc);
     }
 #endif
@@ -53,27 +52,22 @@ int zlink::tune_tcp_socket (fd_t s_, int tcp_nodelay_)
 
 int zlink::set_tcp_send_buffer (fd_t sockfd_, int bufsize_)
 {
-    const int rc =
-      setsockopt (sockfd_, SOL_SOCKET, SO_SNDBUF,
-                  reinterpret_cast<char *> (&bufsize_), sizeof bufsize_);
+    const int rc = setsockopt (sockfd_, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char *> (&bufsize_),
+                               sizeof bufsize_);
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
 }
 
 int zlink::set_tcp_receive_buffer (fd_t sockfd_, int bufsize_)
 {
-    const int rc =
-      setsockopt (sockfd_, SOL_SOCKET, SO_RCVBUF,
-                  reinterpret_cast<char *> (&bufsize_), sizeof bufsize_);
+    const int rc = setsockopt (sockfd_, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char *> (&bufsize_),
+                               sizeof bufsize_);
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
 }
 
-int zlink::tune_tcp_keepalives (fd_t s_,
-                              int keepalive_,
-                              int keepalive_cnt_,
-                              int keepalive_idle_,
-                              int keepalive_intvl_)
+int zlink::tune_tcp_keepalives (
+  fd_t s_, int keepalive_, int keepalive_cnt_, int keepalive_idle_, int keepalive_intvl_)
 {
     // These options are used only under certain #ifdefs below.
     LIBZLINK_UNUSED (keepalive_);
@@ -90,14 +84,11 @@ int zlink::tune_tcp_keepalives (fd_t s_,
     if (keepalive_ != -1) {
         tcp_keepalive keepalive_opts;
         keepalive_opts.onoff = keepalive_;
-        keepalive_opts.keepalivetime =
-          keepalive_idle_ != -1 ? keepalive_idle_ * 1000 : 7200000;
-        keepalive_opts.keepaliveinterval =
-          keepalive_intvl_ != -1 ? keepalive_intvl_ * 1000 : 1000;
+        keepalive_opts.keepalivetime = keepalive_idle_ != -1 ? keepalive_idle_ * 1000 : 7200000;
+        keepalive_opts.keepaliveinterval = keepalive_intvl_ != -1 ? keepalive_intvl_ * 1000 : 1000;
         DWORD num_bytes_returned;
-        const int rc = WSAIoctl (s_, SIO_KEEPALIVE_VALS, &keepalive_opts,
-                                 sizeof (keepalive_opts), NULL, 0,
-                                 &num_bytes_returned, NULL, NULL);
+        const int rc = WSAIoctl (s_, SIO_KEEPALIVE_VALS, &keepalive_opts, sizeof (keepalive_opts),
+                                 NULL, 0, &num_bytes_returned, NULL, NULL);
         assert_success_or_recoverable (s_, rc);
         if (rc == SOCKET_ERROR)
             return rc;
@@ -105,17 +96,15 @@ int zlink::tune_tcp_keepalives (fd_t s_,
 #else
 #ifdef ZLINK_HAVE_SO_KEEPALIVE
     if (keepalive_ != -1) {
-        int rc =
-          setsockopt (s_, SOL_SOCKET, SO_KEEPALIVE,
-                      reinterpret_cast<char *> (&keepalive_), sizeof (int));
+        int rc = setsockopt (s_, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char *> (&keepalive_),
+                             sizeof (int));
         assert_success_or_recoverable (s_, rc);
         if (rc != 0)
             return rc;
 
 #ifdef ZLINK_HAVE_TCP_KEEPCNT
         if (keepalive_cnt_ != -1) {
-            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_cnt_,
-                                 sizeof (int));
+            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_cnt_, sizeof (int));
             assert_success_or_recoverable (s_, rc);
             if (rc != 0)
                 return rc;
@@ -124,8 +113,7 @@ int zlink::tune_tcp_keepalives (fd_t s_,
 
 #ifdef ZLINK_HAVE_TCP_KEEPIDLE
         if (keepalive_idle_ != -1) {
-            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPIDLE,
-                                 &keepalive_idle_, sizeof (int));
+            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPIDLE, &keepalive_idle_, sizeof (int));
             assert_success_or_recoverable (s_, rc);
             if (rc != 0)
                 return rc;
@@ -133,8 +121,7 @@ int zlink::tune_tcp_keepalives (fd_t s_,
 #else // ZLINK_HAVE_TCP_KEEPIDLE
 #ifdef ZLINK_HAVE_TCP_KEEPALIVE
         if (keepalive_idle_ != -1) {
-            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPALIVE,
-                                 &keepalive_idle_, sizeof (int));
+            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPALIVE, &keepalive_idle_, sizeof (int));
             assert_success_or_recoverable (s_, rc);
             if (rc != 0)
                 return rc;
@@ -144,8 +131,7 @@ int zlink::tune_tcp_keepalives (fd_t s_,
 
 #ifdef ZLINK_HAVE_TCP_KEEPINTVL
         if (keepalive_intvl_ != -1) {
-            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPINTVL,
-                                 &keepalive_intvl_, sizeof (int));
+            int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPINTVL, &keepalive_intvl_, sizeof (int));
             assert_success_or_recoverable (s_, rc);
             if (rc != 0)
                 return rc;
@@ -168,14 +154,12 @@ int zlink::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
 #if defined(ZLINK_HAVE_WINDOWS) && defined(TCP_MAXRT)
     // msdn says it's supported in >= Vista, >= Windows Server 2003
     timeout_ /= 1000; // in seconds
-    const int rc =
-      setsockopt (sockfd_, IPPROTO_TCP, TCP_MAXRT,
-                  reinterpret_cast<char *> (&timeout_), sizeof (timeout_));
+    const int rc = setsockopt (sockfd_, IPPROTO_TCP, TCP_MAXRT,
+                               reinterpret_cast<char *> (&timeout_), sizeof (timeout_));
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
 #elif defined(TCP_USER_TIMEOUT)
-    int rc = setsockopt (sockfd_, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout_,
-                         sizeof (timeout_));
+    int rc = setsockopt (sockfd_, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout_, sizeof (timeout_));
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
 #else
@@ -197,9 +181,9 @@ int zlink::tcp_write (fd_t s_, const void *data_, size_t size_)
 
     //  Signalise peer failure.
     if (nbytes == SOCKET_ERROR
-        && (last_error == WSAENETDOWN || last_error == WSAENETRESET
-            || last_error == WSAEHOSTUNREACH || last_error == WSAECONNABORTED
-            || last_error == WSAETIMEDOUT || last_error == WSAECONNRESET))
+        && (last_error == WSAENETDOWN || last_error == WSAENETRESET || last_error == WSAEHOSTUNREACH
+            || last_error == WSAECONNABORTED || last_error == WSAETIMEDOUT
+            || last_error == WSAECONNRESET))
         return -1;
 
     //  Circumvent a Windows bug:
@@ -217,21 +201,18 @@ int zlink::tcp_write (fd_t s_, const void *data_, size_t size_)
     //  Several errors are OK. When speculative write is being done we may not
     //  be able to write a single byte from the socket. Also, SIGSTOP issued
     //  by a debugging tool can result in EINTR error.
-    if (nbytes == -1
-        && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+    if (nbytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
         return 0;
 
     //  Signalise peer failure.
     if (nbytes == -1) {
 #if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
-        errno_assert (errno != EACCES && errno != EBADF && errno != EDESTADDRREQ
-                      && errno != EFAULT && errno != EISCONN
-                      && errno != EMSGSIZE && errno != ENOMEM
+        errno_assert (errno != EACCES && errno != EBADF && errno != EDESTADDRREQ && errno != EFAULT
+                      && errno != EISCONN && errno != EMSGSIZE && errno != ENOMEM
                       && errno != ENOTSOCK && errno != EOPNOTSUPP);
 #else
-        errno_assert (errno != EACCES && errno != EDESTADDRREQ
-                      && errno != EFAULT && errno != EISCONN
-                      && errno != EMSGSIZE && errno != ENOMEM
+        errno_assert (errno != EACCES && errno != EDESTADDRREQ && errno != EFAULT
+                      && errno != EISCONN && errno != EMSGSIZE && errno != ENOMEM
                       && errno != ENOTSOCK && errno != EOPNOTSUPP);
 #endif
         return -1;
@@ -246,8 +227,7 @@ int zlink::tcp_read (fd_t s_, void *data_, size_t size_)
 {
 #ifdef ZLINK_HAVE_WINDOWS
 
-    const int rc =
-      recv (s_, static_cast<char *> (data_), static_cast<int> (size_), 0);
+    const int rc = recv (s_, static_cast<char *> (data_), static_cast<int> (size_), 0);
 
     //  If not a single byte can be read from the socket in non-blocking mode
     //  we'll get an error (this may happen during the speculative read).
@@ -256,11 +236,10 @@ int zlink::tcp_read (fd_t s_, void *data_, size_t size_)
         if (last_error == WSAEWOULDBLOCK) {
             errno = EAGAIN;
         } else {
-            wsa_assert (
-              last_error == WSAENETDOWN || last_error == WSAENETRESET
-              || last_error == WSAECONNABORTED || last_error == WSAETIMEDOUT
-              || last_error == WSAECONNRESET || last_error == WSAECONNREFUSED
-              || last_error == WSAENOTCONN || last_error == WSAENOBUFS);
+            wsa_assert (last_error == WSAENETDOWN || last_error == WSAENETRESET
+                        || last_error == WSAECONNABORTED || last_error == WSAETIMEDOUT
+                        || last_error == WSAECONNRESET || last_error == WSAECONNREFUSED
+                        || last_error == WSAENOTCONN || last_error == WSAENOBUFS);
             errno = wsa_error_to_errno (last_error);
         }
     }
@@ -276,8 +255,7 @@ int zlink::tcp_read (fd_t s_, void *data_, size_t size_)
     //  by a debugging tool can result in EINTR error.
     if (rc == -1) {
 #if !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
-        errno_assert (errno != EBADF && errno != EFAULT && errno != ENOMEM
-                      && errno != ENOTSOCK);
+        errno_assert (errno != EBADF && errno != EFAULT && errno != ENOMEM && errno != ENOTSOCK);
 #else
         errno_assert (errno != EFAULT && errno != ENOMEM && errno != ENOTSOCK);
 #endif
@@ -296,9 +274,9 @@ void zlink::tcp_tune_loopback_fast_path (const fd_t socket_)
     int sio_loopback_fastpath = 1;
     DWORD number_of_bytes_returned = 0;
 
-    const int rc = WSAIoctl (
-      socket_, SIO_LOOPBACK_FAST_PATH, &sio_loopback_fastpath,
-      sizeof sio_loopback_fastpath, NULL, 0, &number_of_bytes_returned, 0, 0);
+    const int rc =
+      WSAIoctl (socket_, SIO_LOOPBACK_FAST_PATH, &sio_loopback_fastpath,
+                sizeof sio_loopback_fastpath, NULL, 0, &number_of_bytes_returned, 0, 0);
 
     if (SOCKET_ERROR == rc) {
         const DWORD last_error = ::WSAGetLastError ();
@@ -318,9 +296,8 @@ void zlink::tune_tcp_busy_poll (fd_t socket_, int busy_poll_)
 {
 #if defined(ZLINK_HAVE_BUSY_POLL)
     if (busy_poll_ > 0) {
-        const int rc =
-          setsockopt (socket_, SOL_SOCKET, SO_BUSY_POLL,
-                      reinterpret_cast<char *> (&busy_poll_), sizeof (int));
+        const int rc = setsockopt (socket_, SOL_SOCKET, SO_BUSY_POLL,
+                                   reinterpret_cast<char *> (&busy_poll_), sizeof (int));
         assert_success_or_recoverable (socket_, rc);
     }
 #else
@@ -330,10 +307,10 @@ void zlink::tune_tcp_busy_poll (fd_t socket_, int busy_poll_)
 }
 
 zlink::fd_t zlink::tcp_open_socket (const char *address_,
-                                const zlink::options_t &options_,
-                                bool local_,
-                                bool fallback_to_ipv4_,
-                                zlink::tcp_address_t *out_tcp_addr_)
+                                    const zlink::options_t &options_,
+                                    bool local_,
+                                    bool fallback_to_ipv4_,
+                                    zlink::tcp_address_t *out_tcp_addr_)
 {
     //  Convert the textual address into address structure.
     int rc = out_tcp_addr_->resolve (address_, local_, options_.ipv6);
@@ -344,9 +321,8 @@ zlink::fd_t zlink::tcp_open_socket (const char *address_,
     fd_t s = open_socket (out_tcp_addr_->family (), SOCK_STREAM, IPPROTO_TCP);
 
     //  IPv6 address family not supported, try automatic downgrade to IPv4.
-    if (s == retired_fd && fallback_to_ipv4_
-        && out_tcp_addr_->family () == AF_INET6 && errno == EAFNOSUPPORT
-        && options_.ipv6) {
+    if (s == retired_fd && fallback_to_ipv4_ && out_tcp_addr_->family () == AF_INET6
+        && errno == EAFNOSUPPORT && options_.ipv6) {
         rc = out_tcp_addr_->resolve (address_, local_, false);
         if (rc != 0) {
             return retired_fd;

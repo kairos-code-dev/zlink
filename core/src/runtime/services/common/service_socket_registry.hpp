@@ -20,9 +20,7 @@ class service_socket_registry_t
   public:
     typedef std::map<int, socket_base_t *> socket_map_t;
 
-    service_socket_registry_t ()
-    {
-    }
+    service_socket_registry_t () {}
 
     void register_socket (socket_base_t *socket_, bool accepting_new_)
     {
@@ -43,8 +41,7 @@ class service_socket_registry_t
         _closing_sockets.erase (socket_->socket_id ());
     }
 
-    int close_socket (socket_base_t *&socket_,
-                      const socket_base_t **closed_socket_ = NULL)
+    int close_socket (socket_base_t *&socket_, const socket_base_t **closed_socket_ = NULL)
     {
         if (!socket_)
             return 0;
@@ -75,8 +72,8 @@ class service_socket_registry_t
         scoped_lock_t lock (_sync);
         if (owned_)
             *owned_ = _owned_sockets;
-        for (socket_map_t::const_iterator it = _owned_sockets.begin ();
-             it != _owned_sockets.end (); ++it)
+        for (socket_map_t::const_iterator it = _owned_sockets.begin (); it != _owned_sockets.end ();
+             ++it)
             _closing_sockets[it->first] = it->second;
         _owned_sockets.clear ();
         if (closing_)
@@ -95,8 +92,7 @@ class service_socket_registry_t
             return false;
         scoped_lock_t lock (_sync);
         const int socket_id = socket_->socket_id ();
-        return _owned_sockets.count (socket_id) != 0
-               || _closing_sockets.count (socket_id) != 0;
+        return _owned_sockets.count (socket_id) != 0 || _closing_sockets.count (socket_id) != 0;
     }
 
     void clear ()
@@ -119,13 +115,11 @@ class service_socket_registry_t
 
         scoped_lock_t lock (_sync);
         std::fprintf (stderr, "%s owned=", prefix_);
-        for (socket_map_t::const_iterator it =
-               _owned_sockets.begin ();
-             it != _owned_sockets.end (); ++it)
+        for (socket_map_t::const_iterator it = _owned_sockets.begin (); it != _owned_sockets.end ();
+             ++it)
             std::fprintf (stderr, "%d,", it->first);
         std::fprintf (stderr, " closing=");
-        for (socket_map_t::const_iterator it =
-               _closing_sockets.begin ();
+        for (socket_map_t::const_iterator it = _closing_sockets.begin ();
              it != _closing_sockets.end (); ++it)
             std::fprintf (stderr, "%d,", it->first);
         std::fprintf (stderr, "\n");

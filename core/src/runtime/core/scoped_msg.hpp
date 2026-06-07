@@ -19,33 +19,18 @@ class scoped_msg_t
         errno_assert (rc == 0);
     }
 
-    ~scoped_msg_t ()
-    {
-        close ();
-    }
+    ~scoped_msg_t () { close (); }
 
     scoped_msg_t (const scoped_msg_t &) = delete;
     scoped_msg_t &operator= (const scoped_msg_t &) = delete;
 
-    zlink_msg_t *get ()
-    {
-        return &_msg;
-    }
+    zlink_msg_t *get () { return &_msg; }
 
-    const zlink_msg_t *get () const
-    {
-        return &_msg;
-    }
+    const zlink_msg_t *get () const { return &_msg; }
 
-    zlink_msg_t &ref ()
-    {
-        return _msg;
-    }
+    zlink_msg_t &ref () { return _msg; }
 
-    const zlink_msg_t &ref () const
-    {
-        return _msg;
-    }
+    const zlink_msg_t &ref () const { return _msg; }
 
     void close ()
     {

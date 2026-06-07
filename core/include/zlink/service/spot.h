@@ -45,9 +45,7 @@ typedef struct zlink_spot_node_options_t
  * with ENOTSUP. A node created with ROUTED mode rejects topic pub/sub APIs with
  * ENOTSUP.
  */
-ZLINK_EXPORT void *zlink_spot_node_new (
-  void *ctx,
-  const zlink_spot_node_options_t *options);
+ZLINK_EXPORT void *zlink_spot_node_new (void *ctx, const zlink_spot_node_options_t *options);
 
 /**
  * @brief Destroy a SPOT node and release all resources.
@@ -56,117 +54,100 @@ ZLINK_EXPORT void *zlink_spot_node_new (
  */
 ZLINK_EXPORT zlink_close_result_t zlink_spot_node_destroy (void **node_p);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_entry_spot (
-  void *node_,
-  void **spot_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_entry_spot (void *node_, void **spot_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (
-  void *node_,
-  const zlink_routing_id_t *spot_rid_,
-  void **spot_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_lookup (void *node_,
+                                                                const zlink_routing_id_t *spot_rid_,
+                                                                void **spot_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spot_get_or_new (
-  void *node_,
-  const zlink_routing_id_t *spot_rid_,
-  void **spot_out_,
-  uint32_t *created_out_);
+  void *node_, const zlink_routing_id_t *spot_rid_, void **spot_out_, uint32_t *created_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (
-  void *node_,
-  const char *actor_id_,
-  zlink_actor_ref_t *actor_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_new (void *node_,
+                                                              const char *actor_id_,
+                                                              zlink_actor_ref_t *actor_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup (
-  void *node_,
-  const char *actor_id_,
-  zlink_actor_ref_t *out_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actor_lookup (void *node_,
+                                                                 const char *actor_id_,
+                                                                 zlink_actor_ref_t *out_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_remote_actor_get_ref (
-  void *node_,
-  const zlink_routing_id_t *target_node_rid_,
-  const char *actor_id_,
-  zlink_actor_lookup_handler_fn handler_,
-  void *userdata_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t
+zlink_remote_actor_get_ref (void *node_,
+                            const zlink_routing_id_t *target_node_rid_,
+                            const char *actor_id_,
+                            zlink_actor_lookup_handler_fn handler_,
+                            void *userdata_,
+                            uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_destroy (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_destroy (void *node_,
+                                                                  const zlink_actor_ref_t *actor_,
+                                                                  zlink_reply_handler_fn handler_,
+                                                                  void *userdata_,
+                                                                  uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_spot (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_actor_join_spot_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_node_actor_join_spot (void *node_,
+                                 const zlink_actor_ref_t *actor_,
+                                 const zlink_routing_id_t *dest_node_rid_,
+                                 const zlink_routing_id_t *dest_spot_rid_,
+                                 zlink_msg_t *parts_,
+                                 size_t part_count_,
+                                 zlink_actor_join_spot_handler_fn handler_,
+                                 void *userdata_,
+                                 zlink_send_flags_t flags_,
+                                 uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_join_entry_spot (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *dest_node_rid_,
-  zlink_actor_join_entry_spot_handler_fn handler_,
-  void *userdata_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_node_actor_join_entry_spot (void *node_,
+                                       const zlink_actor_ref_t *actor_,
+                                       const zlink_routing_id_t *dest_node_rid_,
+                                       zlink_actor_join_entry_spot_handler_fn handler_,
+                                       void *userdata_,
+                                       uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv (
-  void *spot_,
-  zlink_actor_join_info_t *info_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  zlink_recv_flags_t flags_);
+ZLINK_EXPORT zlink_recv_result_t zlink_spot_actor_join_recv (void *spot_,
+                                                             zlink_actor_join_info_t *info_out_,
+                                                             zlink_msg_t **parts_out_,
+                                                             size_t *part_count_out_,
+                                                             zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_actor_join_reply (
-  void *spot_,
-  const zlink_actor_join_info_t *info_,
-  int32_t join_result_code_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_actor_join_reply (void *spot_,
+                             const zlink_actor_join_info_t *info_,
+                             int32_t join_result_code_,
+                             zlink_msg_t *parts_,
+                             size_t part_count_);
 
-ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_leave_spot (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  const zlink_routing_id_t *current_spot_rid_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  uint32_t timeout_ms_);
+ZLINK_EXPORT zlink_submit_result_t
+zlink_spot_node_actor_leave_spot (void *node_,
+                                  const zlink_actor_ref_t *actor_,
+                                  const zlink_routing_id_t *current_spot_rid_,
+                                  zlink_reply_handler_fn handler_,
+                                  void *userdata_,
+                                  uint32_t timeout_ms_);
 
-ZLINK_EXPORT zlink_recv_result_t zlink_spot_node_actor_recv_part (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  zlink_actor_recv_info_t *info_out_,
-  zlink_msg_t *part_out_,
-  zlink_part_flag_t *has_more_out_,
-  zlink_recv_flags_t flags_);
+ZLINK_EXPORT zlink_recv_result_t
+zlink_spot_node_actor_recv_part (void *node_,
+                                 const zlink_actor_ref_t *actor_,
+                                 zlink_actor_recv_info_t *info_out_,
+                                 zlink_msg_t *part_out_,
+                                 zlink_part_flag_t *has_more_out_,
+                                 zlink_recv_flags_t flags_);
 
 ZLINK_EXPORT zlink_submit_result_t zlink_spot_node_actor_send_bound_session_msg (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  zlink_msg_t *message_,
-  zlink_send_flags_t flags_);
+  void *node_, const zlink_actor_ref_t *actor_, zlink_msg_t *message_, zlink_send_flags_t flags_);
 
 ZLINK_EXPORT zlink_recv_result_t zlink_spot_recv_actor_lifecycle (
-  void *spot_,
-  zlink_spot_actor_lifecycle_event_t *event_out_,
-  zlink_recv_flags_t flags_);
+  void *spot_, zlink_spot_actor_lifecycle_event_t *event_out_, zlink_recv_flags_t flags_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_stream_bound_actors (
-  void *stream_,
-  const zlink_routing_id_t *session_rid_,
-  zlink_actor_ref_t *entries_,
-  size_t *count_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_stream_bound_actors (void *stream_,
+                           const zlink_routing_id_t *session_rid_,
+                           zlink_actor_ref_t *entries_,
+                           size_t *count_);
 
 ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
-  void *node_,
-  const zlink_actor_ref_t *actor_,
-  uint32_t timeout_ms_);
+  void *node_, const zlink_actor_ref_t *actor_, uint32_t timeout_ms_);
 
 /** @brief Bind the routed ingress endpoint for this SPOT node.
  *
@@ -174,8 +155,8 @@ ZLINK_EXPORT zlink_request_result_t zlink_spot_node_actor_close_bound_session (
  * from this call. A node that also enables PUB/SUB stores the router endpoint
  * and starts when zlink_spot_node_set_pub_bind() is called.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (
-  void *node, const char *endpoint);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (void *node,
+                                                                    const char *endpoint);
 
 /** @brief Bind the PUB/SUB mesh endpoint for this SPOT node.
  *
@@ -183,8 +164,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_router_bind (
  * After a successful bind, use zlink_spot_node_status() to retrieve
  * the resolved endpoint (local_endpoint field) with the actual assigned port.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (
-  void *node, const char *endpoint);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (void *node, const char *endpoint);
 
 /**
  * @brief Connect to a peer SPOT node endpoint (mesh topology).
@@ -192,38 +172,26 @@ ZLINK_EXPORT zlink_config_result_t zlink_spot_node_set_pub_bind (
  * Returns EBUSY if discovery is already attached.
  */
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_peer (void *node,
-                                               const char *peer_endpoint);
+                                                                  const char *peer_endpoint);
 
 /**
  * @brief Disconnect from a peer SPOT node endpoint.
  *
  * Returns EBUSY if discovery is already attached.
  */
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (
-  void *node, const char *peer_endpoint);
-ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer_rid (
-  void *node, const zlink_routing_id_t *target_node_rid);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_peer (void *node,
+                                                                     const char *peer_endpoint);
+ZLINK_EXPORT zlink_connect_result_t
+zlink_spot_node_disconnect_peer_rid (void *node, const zlink_routing_id_t *target_node_rid);
 
 ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer (
-  void *node,
-  const char *channel_name,
-  const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t
-zlink_spot_node_connect_router_channel_peer_rid (
-  void *node,
-  const char *channel_name,
-  const zlink_routing_id_t *peer_rid,
-  const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t
-zlink_spot_node_disconnect_router_channel_peer (
-  void *node,
-  const char *channel_name,
-  const char *endpoint);
-ZLINK_EXPORT zlink_connect_result_t
-zlink_spot_node_disconnect_router_channel_peer_rid (
-  void *node,
-  const char *channel_name,
-  const zlink_routing_id_t *peer_rid);
+  void *node, const char *channel_name, const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_connect_router_channel_peer_rid (
+  void *node, const char *channel_name, const zlink_routing_id_t *peer_rid, const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer (
+  void *node, const char *channel_name, const char *endpoint);
+ZLINK_EXPORT zlink_connect_result_t zlink_spot_node_disconnect_router_channel_peer_rid (
+  void *node, const char *channel_name, const zlink_routing_id_t *peer_rid);
 
 /**
  * @brief Attach a Discovery instance for discovery-owned SPOT peer connection.
@@ -232,27 +200,18 @@ zlink_spot_node_disconnect_router_channel_peer_rid (
  * its mesh identity from that channel view and discovery destroy owns
  * participant shutdown.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node,
-                                                   void *discovery);
-ZLINK_EXPORT zlink_config_result_t
-zlink_spot_node_attach_router_channel_discovery (
-  void *node,
-  const char *channel_name,
-  void *discovery);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_discovery (void *node, void *discovery);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_router_channel_discovery (
+  void *node, const char *channel_name, void *discovery);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (
-  void *node_,
-  void *discovery_,
-  void *dealer_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer (void *node_,
+                                                                          void *discovery_,
+                                                                          void *dealer_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_channel_dealer_manual (
-  void *node_,
-  const char *channel_name_,
-  void *dealer_);
+  void *node_, const char *channel_name_, void *dealer_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (
-  void *node_,
-  void *pub_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_attach_pub_ingress (void *node_, void *pub_);
 
 typedef struct zlink_spot_node_status_t
 {
@@ -347,36 +306,32 @@ typedef struct zlink_spot_node_actor_entry_t
     uint64_t last_changed_ms;
 } zlink_spot_node_actor_entry_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_status (
-  void *node_,
-  zlink_spot_node_status_t *out_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_peers (
-  void *node_,
-  const zlink_spot_node_peer_filter_t *filter_,
-  zlink_spot_node_peer_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_subjects (
-  void *node_,
-  const zlink_spot_node_subject_filter_t *filter_,
-  zlink_spot_node_subject_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_internal_sockets (
-  void *node_,
-  const zlink_spot_node_socket_filter_t *filter_,
-  zlink_spot_node_socket_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots (
-  void *node_,
-  zlink_spot_node_spot_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors (
-  void *node_,
-  zlink_spot_node_actor_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_actors (
-  void *spot_,
-  zlink_actor_ref_t *entries_,
-  size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_status (void *node_,
+                                                           zlink_spot_node_status_t *out_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_spot_node_peers (void *node_,
+                       const zlink_spot_node_peer_filter_t *filter_,
+                       zlink_spot_node_peer_entry_t *entries_,
+                       size_t *count_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_spot_node_subjects (void *node_,
+                          const zlink_spot_node_subject_filter_t *filter_,
+                          zlink_spot_node_subject_entry_t *entries_,
+                          size_t *count_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_spot_node_internal_sockets (void *node_,
+                                  const zlink_spot_node_socket_filter_t *filter_,
+                                  zlink_spot_node_socket_entry_t *entries_,
+                                  size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_spots (void *node_,
+                                                          zlink_spot_node_spot_entry_t *entries_,
+                                                          size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_node_actors (void *node_,
+                                                           zlink_spot_node_actor_entry_t *entries_,
+                                                           size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_spot_actors (void *spot_,
+                                                      zlink_actor_ref_t *entries_,
+                                                      size_t *count_);
 
 
 #ifdef __cplusplus

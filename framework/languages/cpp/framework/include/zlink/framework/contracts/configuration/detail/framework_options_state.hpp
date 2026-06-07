@@ -32,7 +32,8 @@ namespace detail
 
 inline bool is_blank (const std::string &value)
 {
-    return std::all_of (value.begin (), value.end (), [] (unsigned char ch) { return std::isspace (ch) != 0; });
+    return std::all_of (value.begin (), value.end (),
+                        [] (unsigned char ch) { return std::isspace (ch) != 0; });
 }
 
 inline void require_non_blank (const std::string &value, const char *message)
@@ -81,11 +82,13 @@ template <typename TSession> std::string stream_session_name ()
     }
 }
 
-using manual_connection_map_t = std::map<std::string, std::map<std::string, std::vector<std::string>>>;
+using manual_connection_map_t =
+  std::map<std::string, std::map<std::string, std::vector<std::string>>>;
 
-inline std::vector<std::string> manual_connections_for (const manual_connection_map_t &connections_by_node,
-                                                        const std::string &node_name,
-                                                        const std::string &channel_name)
+inline std::vector<std::string>
+manual_connections_for (const manual_connection_map_t &connections_by_node,
+                        const std::string &node_name,
+                        const std::string &channel_name)
 {
     const auto node_connections = connections_by_node.find (node_name);
     if (node_connections == connections_by_node.end ()) {
@@ -143,7 +146,8 @@ struct handler_group_options_state_t
 
     std::map<std::string, std::vector<channel_binding_t>> channels_by_group;
     std::map<std::string, std::vector<installer_binding_t>> installers_by_group;
-    std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>> handler_packets_by_group;
+    std::map<std::string, std::set<std::pair<handler_group_kind_t, std::string>>>
+      handler_packets_by_group;
     std::vector<serializer_installer_t> json_serializer_installers;
     std::set<std::type_index> json_serializer_types;
     bool json_enabled = false;
@@ -154,7 +158,8 @@ struct handler_group_options_state_t
                       std::string surface_name)
     {
         require_non_blank (group_name, "handler group name is required");
-        auto binding = channel_binding_t{channel_name, std::move (allowed_kinds), std::move (surface_name)};
+        auto binding =
+          channel_binding_t{channel_name, std::move (allowed_kinds), std::move (surface_name)};
         auto found = installers_by_group.find (group_name);
         if (found != installers_by_group.end ()) {
             for (const auto &installer : found->second) {
@@ -192,7 +197,9 @@ struct handler_group_options_state_t
         }
     }
 
-    void add_handler_packet (const std::string &group_name, handler_group_kind_t kind, std::string packet_name)
+    void add_handler_packet (const std::string &group_name,
+                             handler_group_kind_t kind,
+                             std::string packet_name)
     {
         require_non_blank (group_name, "handler group name is required");
         auto &packets = handler_packets_by_group[group_name];
@@ -211,11 +218,13 @@ struct handler_group_options_state_t
         json_serializer_installers.back () ();
     }
 
-    bool channel_exposes_any (const std::string &channel_name, const std::set<handler_group_kind_t> &kinds) const
+    bool channel_exposes_any (const std::string &channel_name,
+                              const std::set<handler_group_kind_t> &kinds) const
     {
         for (const auto &[group_name, channels] : channels_by_group) {
-            const auto channel_found = std::any_of (channels.begin (), channels.end (),
-                                                    [&] (const auto &c) { return c.channel_name == channel_name; });
+            const auto channel_found =
+              std::any_of (channels.begin (), channels.end (),
+                           [&] (const auto &c) { return c.channel_name == channel_name; });
             if (!channel_found) {
                 continue;
             }
@@ -232,15 +241,17 @@ struct handler_group_options_state_t
         return false;
     }
 
-    static void
-    validate_compatible (const std::string &group_name, const channel_binding_t &channel, handler_group_kind_t kind)
+    static void validate_compatible (const std::string &group_name,
+                                     const channel_binding_t &channel,
+                                     handler_group_kind_t kind)
     {
         if (channel.allowed_kinds.contains (kind)) {
             return;
         }
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     channel.surface_name + " '" + channel.channel_name + "' maps handler group '"
-                                       + group_name + "' with an incompatible handler kind");
+                                     channel.surface_name + " '" + channel.channel_name
+                                       + "' maps handler group '" + group_name
+                                       + "' with an incompatible handler kind");
     }
 };
 

@@ -18,8 +18,7 @@ namespace request_reply_runtime
 struct sequence_state_t
 {
     sequence_state_t () :
-        default_timeout_ms (zlink::request_reply::default_timeout_ms),
-        next_request_seq (1)
+        default_timeout_ms (zlink::request_reply::default_timeout_ms), next_request_seq (1)
     {
     }
 
@@ -29,8 +28,8 @@ struct sequence_state_t
 };
 
 template <typename PendingSet>
-inline uint64_t allocate_request_sequence (
-  uint64_t *next_request_seq_, const PendingSet &pending_sequences_)
+inline uint64_t allocate_request_sequence (uint64_t *next_request_seq_,
+                                           const PendingSet &pending_sequences_)
 {
     if (!next_request_seq_) {
         errno = EFAULT;
@@ -61,47 +60,41 @@ inline uint64_t allocate_request_sequence (
     return 0;
 }
 
-template <typename SequenceState>
-inline uint64_t allocate_request_sequence (SequenceState *state_)
+template <typename SequenceState> inline uint64_t allocate_request_sequence (SequenceState *state_)
 {
     if (!state_) {
         errno = EFAULT;
         return 0;
     }
 
-    return allocate_request_sequence (&state_->next_request_seq,
-                                      state_->pending_sequences);
+    return allocate_request_sequence (&state_->next_request_seq, state_->pending_sequences);
 }
 
-template <typename CallbackContext>
-inline void destroy_timeout_callback_ctx (void *userdata_)
+template <typename CallbackContext> inline void destroy_timeout_callback_ctx (void *userdata_)
 {
     delete static_cast<CallbackContext *> (userdata_);
 }
 
 template <typename CallbackContext, typename InitFn>
-inline int schedule_timeout_task (
-  uint32_t timeout_ms_,
-  void (*callback_)(void *),
-  InitFn init_context_,
-  std::shared_ptr<zlink::request_timeout::task_t> *task_out_)
+inline int schedule_timeout_task (uint32_t timeout_ms_,
+                                  void (*callback_) (void *),
+                                  InitFn init_context_,
+                                  std::shared_ptr<zlink::request_timeout::task_t> *task_out_)
 {
     if (!callback_ || !task_out_) {
         errno = EFAULT;
         return -1;
     }
 
-    std::unique_ptr<CallbackContext> timeout_ctx (
-      new (std::nothrow) CallbackContext ());
+    std::unique_ptr<CallbackContext> timeout_ctx (new (std::nothrow) CallbackContext ());
     if (!timeout_ctx) {
         errno = ENOMEM;
         return -1;
     }
 
     init_context_ (*timeout_ctx);
-    *task_out_ = zlink::request_timeout::schedule (
-      timeout_ms_, callback_, timeout_ctx.release (),
-      &destroy_timeout_callback_ctx<CallbackContext>);
+    *task_out_ = zlink::request_timeout::schedule (timeout_ms_, callback_, timeout_ctx.release (),
+                                                   &destroy_timeout_callback_ctx<CallbackContext>);
     if (!*task_out_) {
         errno = ENOMEM;
         return -1;

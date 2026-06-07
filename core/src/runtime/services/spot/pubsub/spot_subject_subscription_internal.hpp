@@ -7,8 +7,7 @@
 
 #include "services/spot/pubsub/spot_sub.hpp"
 
-int spot_append_subscription_subjects (
-  void *handle_,
-  std::vector<zlink::spot_sub_t::subject_descriptor_t> *out_);
+int spot_append_subscription_subjects (void *handle_,
+                                       std::vector<zlink::spot_sub_t::subject_descriptor_t> *out_);
 
 #endif

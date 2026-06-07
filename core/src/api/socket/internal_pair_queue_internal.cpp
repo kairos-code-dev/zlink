@@ -20,16 +20,13 @@ void set_internal_pair_socket_defaults (zlink::socket_base_t *socket_)
     socket_->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
 }
 
-bool recv_internal_pair_handshake (zlink::socket_base_t *socket_,
-                                   long timeout_ms_)
+bool recv_internal_pair_handshake (zlink::socket_base_t *socket_, long timeout_ms_)
 {
     if (!socket_)
         return false;
 
     const int timeout = static_cast<int> (timeout_ms_);
-    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout,
-                             sizeof (timeout))
-        != 0)
+    if (socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &timeout, sizeof (timeout)) != 0)
         return false;
 
     zlink::msg_t msg;
@@ -40,8 +37,7 @@ bool recv_internal_pair_handshake (zlink::socket_base_t *socket_,
     msg.close ();
 
     const int blocking = -1;
-    (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &blocking,
-                                sizeof (blocking));
+    (void) socket_->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &blocking, sizeof (blocking));
     return rc == 0;
 }
 
@@ -53,15 +49,13 @@ void close_internal_pair_socket (zlink::socket_base_t *socket_)
     socket_->close ();
 }
 
-void close_internal_pair_sockets (zlink::socket_base_t *rx_,
-                                  zlink::socket_base_t *tx_)
+void close_internal_pair_sockets (zlink::socket_base_t *rx_, zlink::socket_base_t *tx_)
 {
     close_internal_pair_socket (tx_);
     close_internal_pair_socket (rx_);
 }
 
-bool handshake_internal_pair (zlink::socket_base_t *rx_,
-                              zlink::socket_base_t *tx_)
+bool handshake_internal_pair (zlink::socket_base_t *rx_, zlink::socket_base_t *tx_)
 {
     if (!rx_ || !tx_)
         return false;
@@ -98,7 +92,9 @@ bool handshake_internal_pair (zlink::socket_base_t *rx_,
 }
 }
 
-zlink::internal_pair_queue::queue_t::queue_t () : _rx (NULL), _tx (NULL) {}
+zlink::internal_pair_queue::queue_t::queue_t () : _rx (NULL), _tx (NULL)
+{
+}
 
 zlink::socket_base_t *zlink::internal_pair_queue::queue_t::rx_socket () const
 {
@@ -115,10 +111,9 @@ bool zlink::internal_pair_queue::queue_t::ready () const
     return _rx && _tx;
 }
 
-void zlink::internal_pair_queue::queue_t::adopt (
-  zlink::socket_base_t *rx_,
-  zlink::socket_base_t *tx_,
-  const char *endpoint_)
+void zlink::internal_pair_queue::queue_t::adopt (zlink::socket_base_t *rx_,
+                                                 zlink::socket_base_t *tx_,
+                                                 const char *endpoint_)
 {
     _rx = rx_;
     _tx = tx_;
@@ -159,16 +154,12 @@ void zlink::internal_pair_queue::close_and_wait (queue_t *queue_)
 
     close (queue_);
     if (ctx && tx)
-        (void) ctx->wait_for_socket_removal (
-          tx, internal_pair_socket_removal_timeout_ms);
+        (void) ctx->wait_for_socket_removal (tx, internal_pair_socket_removal_timeout_ms);
     if (ctx && rx)
-        (void) ctx->wait_for_socket_removal (
-          rx, internal_pair_socket_removal_timeout_ms);
+        (void) ctx->wait_for_socket_removal (rx, internal_pair_socket_removal_timeout_ms);
 }
 
-int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_,
-                                        const char *prefix_,
-                                        queue_t *queue_)
+int zlink::internal_pair_queue::ensure (zlink::ctx_t *ctx_, const char *prefix_, queue_t *queue_)
 {
     if (!ctx_ || !prefix_ || !queue_) {
         errno = EFAULT;
@@ -232,10 +223,9 @@ int zlink::internal_pair_queue::send_buffer_frame (zlink::socket_base_t *socket_
     return rc;
 }
 
-int zlink::internal_pair_queue::recv_followup_with_retry (
-  zlink::socket_base_t *socket_,
-  zlink_msg_t *msg_,
-  int flags_)
+int zlink::internal_pair_queue::recv_followup_with_retry (zlink::socket_base_t *socket_,
+                                                          zlink_msg_t *msg_,
+                                                          int flags_)
 {
     return zlink::recv_followup_msg_socket_wait (socket_, msg_, flags_);
 }

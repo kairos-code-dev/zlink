@@ -99,9 +99,7 @@ void cleanup_child (process_capture_t *proc_)
     close_process_capture (proc_);
 }
 
-void reader_loop (FILE *stream_,
-                  process_capture_t *proc_,
-                  bool stdout_stream_)
+void reader_loop (FILE *stream_, process_capture_t *proc_, bool stdout_stream_)
 {
     char buffer[512];
     while (stream_ && fgets (buffer, sizeof (buffer), stream_)) {
@@ -132,8 +130,7 @@ bool start_process (const std::string &path_,
     int stdin_pipe[2] = {-1, -1};
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
-    if (pipe (stdin_pipe) != 0 || pipe (stdout_pipe) != 0
-        || pipe (stderr_pipe) != 0) {
+    if (pipe (stdin_pipe) != 0 || pipe (stdout_pipe) != 0 || pipe (stderr_pipe) != 0) {
         return false;
     }
 
@@ -163,8 +160,7 @@ bool start_process (const std::string &path_,
         std::vector<std::string> env_storage;
         for (char **it = environ; it && *it; ++it)
             env_storage.push_back (*it);
-        env_storage.insert (env_storage.end (), env_overrides_.begin (),
-                            env_overrides_.end ());
+        env_storage.insert (env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
 
         std::vector<char *> envp;
         for (size_t i = 0; i < env_storage.size (); ++i)
@@ -194,10 +190,8 @@ bool start_process (const std::string &path_,
         return false;
     }
 
-    out_->stdout_thread =
-      std::thread (&reader_loop, out_->stdout_file, out_, true);
-    out_->stderr_thread =
-      std::thread (&reader_loop, out_->stderr_file, out_, false);
+    out_->stdout_thread = std::thread (&reader_loop, out_->stdout_file, out_, true);
+    out_->stderr_thread = std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
 }
 
@@ -216,9 +210,7 @@ bool wait_for_stdout_prefix (process_capture_t *proc_,
 
     while (std::chrono::steady_clock::now () < deadline) {
         for (size_t i = 0; i < proc_->stdout_lines.size (); ++i) {
-            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_),
-                                                prefix_)
-                == 0) {
+            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_), prefix_) == 0) {
                 if (line_out_)
                     *line_out_ = proc_->stdout_lines[i];
                 return true;
@@ -268,9 +260,8 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
     TEST_ASSERT_NOT_NULL (line_);
     TEST_ASSERT_TRUE (proc_->stdin_fd >= 0);
     const size_t size = std::strlen (line_);
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (size),
-      static_cast<int> (write (proc_->stdin_fd, line_, size)));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (size),
+                           static_cast<int> (write (proc_->stdin_fd, line_, size)));
 }
 
 bool stdout_contains_metric (process_capture_t *proc_, const char *metric_)
@@ -286,16 +277,13 @@ bool stdout_contains_metric (process_capture_t *proc_, const char *metric_)
     return false;
 }
 
-void run_multi_stream_process_case (const char *recv_mode_,
-                                    const char *transport_)
+void run_multi_stream_process_case (const char *recv_mode_, const char *transport_)
 {
     process_capture_t server;
     process_capture_t client;
 
-    const std::string server_path =
-      sibling_binary_path (g_self_path, "comp_src_stream_server");
-    const std::string client_path =
-      sibling_binary_path (g_self_path, "perf_stream_client");
+    const std::string server_path = sibling_binary_path (g_self_path, "comp_src_stream_server");
+    const std::string client_path = sibling_binary_path (g_self_path, "perf_stream_client");
 
     std::vector<std::string> common_env;
     common_env.push_back ("PERF_MSG_SIZES=64");
@@ -308,12 +296,10 @@ void run_multi_stream_process_case (const char *recv_mode_,
     std::vector<std::string> server_args;
     server_args.push_back ("current");
     server_args.push_back (transport_);
-    TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, common_env, &server));
+    TEST_ASSERT_TRUE (start_process (server_path, server_args, common_env, &server));
 
     std::string ready_line;
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line));
+    TEST_ASSERT_TRUE (wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line));
     std::string endpoint = ready_line.substr (strlen ("READY,"));
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
@@ -338,8 +324,7 @@ void run_multi_stream_process_case (const char *recv_mode_,
     client_args.push_back ("--print-perf-result");
     client_args.push_back ("1");
 
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, common_env, &client));
+    TEST_ASSERT_TRUE (start_process (client_path, client_args, common_env, &client));
 
     int client_rc = INT_MIN;
     TEST_ASSERT_TRUE (wait_for_exit_code (&client, 30000, &client_rc));
@@ -347,14 +332,10 @@ void run_multi_stream_process_case (const char *recv_mode_,
     TEST_ASSERT_EQUAL_INT_MESSAGE (0, client_rc, client.stderr_text.c_str ());
     TEST_ASSERT_TRUE (stdout_contains_metric (
       &client,
-      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
-       + ",64,throughput")
-        .c_str ()));
+      (std::string ("RESULT,current,MULTI_STREAM,") + transport_ + ",64,throughput").c_str ()));
     TEST_ASSERT_TRUE (stdout_contains_metric (
       &client,
-      (std::string ("RESULT,current,MULTI_STREAM,") + transport_
-       + ",64,latency")
-        .c_str ()));
+      (std::string ("RESULT,current,MULTI_STREAM,") + transport_ + ",64,latency").c_str ()));
 
     write_stdin_line (&server, "STOP\n");
 

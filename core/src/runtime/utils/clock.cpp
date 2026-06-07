@@ -67,8 +67,8 @@ ULONGLONG compatible_get_tick_count64 ()
         ++s_wrap;
 
     s_last_tick = current_tick;
-    const ULONGLONG result = (static_cast<ULONGLONG> (s_wrap) << 32)
-                             + static_cast<ULONGLONG> (current_tick);
+    const ULONGLONG result =
+      (static_cast<ULONGLONG> (s_wrap) << 32) + static_cast<ULONGLONG> (current_tick);
 
     return result;
 #endif
@@ -95,8 +95,7 @@ f_compatible_get_tick_count64 init_compatible_get_tick_count64 ()
     return func;
 }
 
-static f_compatible_get_tick_count64 my_get_tick_count64 =
-  init_compatible_get_tick_count64 ();
+static f_compatible_get_tick_count64 my_get_tick_count64 = init_compatible_get_tick_count64 ();
 #endif
 
 #ifndef ZLINK_HAVE_WINDOWS
@@ -132,18 +131,15 @@ uint64_t zlink::clock_t::now_us ()
 
     //  Convert the tick number into the number of seconds
     //  since the system was started.
-    const double ticks_div =
-      static_cast<double> (ticks_per_second.QuadPart) / usecs_per_sec;
+    const double ticks_div = static_cast<double> (ticks_per_second.QuadPart) / usecs_per_sec;
     return static_cast<uint64_t> (tick.QuadPart / ticks_div);
 
-#elif defined HAVE_CLOCK_GETTIME                                               \
-  && (defined CLOCK_MONOTONIC || defined ZLINK_HAVE_VXWORKS)
+#elif defined HAVE_CLOCK_GETTIME && (defined CLOCK_MONOTONIC || defined ZLINK_HAVE_VXWORKS)
 
     //  Use POSIX clock_gettime function to get precise monotonic time.
     struct timespec tv;
 
-#if defined ZLINK_HAVE_OSX                                                       \
-  && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
+#if defined ZLINK_HAVE_OSX && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
     int rc = alt_clock_gettime (SYSTEM_CLOCK, &tv);
 #else
     int rc = clock_gettime (CLOCK_MONOTONIC, &tv);
@@ -225,30 +221,28 @@ uint64_t zlink::clock_t::rdtsc ()
     return _ReadStatusReg (pmccntr_el0);
 #elif (defined __GNUC__ && (defined __i386__ || defined __x86_64__))
     uint32_t low, high;
-    __asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
+    __asm__ volatile ("rdtsc" : "=a"(low), "=d"(high));
     return static_cast<uint64_t> (high) << 32 | low;
-#elif (defined __SUNPRO_CC && (__SUNPRO_CC >= 0x5100)                          \
+#elif (defined __SUNPRO_CC && (__SUNPRO_CC >= 0x5100)                                              \
        && (defined __i386 || defined __amd64 || defined __x86_64))
     union
     {
         uint64_t u64val;
         uint32_t u32val[2];
     } tsc;
-    asm("rdtsc" : "=a"(tsc.u32val[0]), "=d"(tsc.u32val[1]));
+    asm ("rdtsc" : "=a"(tsc.u32val[0]), "=d"(tsc.u32val[1]));
     return tsc.u64val;
 #elif defined(__s390__)
     uint64_t tsc;
-    asm("\tstck\t%0\n" : "=Q"(tsc) : : "cc");
+    asm ("\tstck\t%0\n" : "=Q"(tsc) : : "cc");
     return tsc;
 #else
     struct timespec ts;
-#if defined ZLINK_HAVE_OSX                                                       \
-  && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
+#if defined ZLINK_HAVE_OSX && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
     alt_clock_gettime (SYSTEM_CLOCK, &ts);
 #else
     clock_gettime (CLOCK_MONOTONIC, &ts);
 #endif
-    return static_cast<uint64_t> (ts.tv_sec) * nsecs_per_usec * usecs_per_sec
-           + ts.tv_nsec;
+    return static_cast<uint64_t> (ts.tv_sec) * nsecs_per_usec * usecs_per_sec + ts.tv_nsec;
 #endif
 }

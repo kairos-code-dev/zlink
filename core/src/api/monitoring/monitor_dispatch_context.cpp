@@ -13,8 +13,7 @@ monitor_handler_state_t *&monitor_handler_state_tls ()
 }
 }
 
-zlink::monitor_dispatch_context_t::monitor_dispatch_context_t (
-  monitor_handler_state_t *state_) :
+zlink::monitor_dispatch_context_t::monitor_dispatch_context_t (monitor_handler_state_t *state_) :
     _previous_state (monitor_handler_state_tls ())
 {
     monitor_handler_state_tls () = state_;

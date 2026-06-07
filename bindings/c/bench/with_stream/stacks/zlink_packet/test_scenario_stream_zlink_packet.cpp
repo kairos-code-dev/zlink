@@ -11,7 +11,8 @@
 #include <string>
 #include <thread>
 
-namespace {
+namespace
+{
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
@@ -59,12 +60,9 @@ std::string make_endpoint (const std::string &host, int port)
 
 void apply_socket_tuning (void *socket, const server_options_t &opt)
 {
-    (void) zlink_set_option (socket, ZLINK_OPT_SNDBUF, &opt.sndbuf,
-                             sizeof (opt.sndbuf));
-    (void) zlink_set_option (socket, ZLINK_OPT_RCVBUF, &opt.rcvbuf,
-                             sizeof (opt.rcvbuf));
-    (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog,
-                             sizeof (opt.backlog));
+    (void) zlink_set_option (socket, ZLINK_OPT_SNDBUF, &opt.sndbuf, sizeof (opt.sndbuf));
+    (void) zlink_set_option (socket, ZLINK_OPT_RCVBUF, &opt.rcvbuf, sizeof (opt.rcvbuf));
+    (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog, sizeof (opt.backlog));
     (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
     const int hwm = 100;
@@ -79,29 +77,22 @@ bool build_packet_frame (zlink_msg_t *packet_out,
     if (!packet_out || !header_part || !body_part)
         return false;
 
-    const size_t header_size =
-      zlink_msg_size (const_cast<zlink_msg_t *> (header_part));
-    const size_t body_size =
-      zlink_msg_size (const_cast<zlink_msg_t *> (body_part));
-    const size_t total_size =
-      stream_echo::k_stream_packet_prefix_size + header_size + body_size;
+    const size_t header_size = zlink_msg_size (const_cast<zlink_msg_t *> (header_part));
+    const size_t body_size = zlink_msg_size (const_cast<zlink_msg_t *> (body_part));
+    const size_t total_size = stream_echo::k_stream_packet_prefix_size + header_size + body_size;
     if (zlink_msg_init_size (packet_out, total_size) != 0)
         return false;
 
-    unsigned char *dst =
-      static_cast<unsigned char *> (zlink_msg_data (packet_out));
-    stream_echo::store_u16_be (
-      dst, static_cast<uint16_t> (header_size & 0xFFFFu));
+    unsigned char *dst = static_cast<unsigned char *> (zlink_msg_data (packet_out));
+    stream_echo::store_u16_be (dst, static_cast<uint16_t> (header_size & 0xFFFFu));
     stream_echo::store_u32_be (dst + 2, static_cast<uint32_t> (body_size));
     if (header_size > 0) {
         std::memcpy (dst + stream_echo::k_stream_packet_prefix_size,
-                     zlink_msg_data (const_cast<zlink_msg_t *> (header_part)),
-                     header_size);
+                     zlink_msg_data (const_cast<zlink_msg_t *> (header_part)), header_size);
     }
     if (body_size > 0) {
         std::memcpy (dst + stream_echo::k_stream_packet_prefix_size + header_size,
-                     zlink_msg_data (const_cast<zlink_msg_t *> (body_part)),
-                     body_size);
+                     zlink_msg_data (const_cast<zlink_msg_t *> (body_part)), body_size);
     }
     return true;
 }
@@ -145,20 +136,17 @@ class zlink_stream_packet_echo_server_t
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
         if (zlink_bind (server, endpoint.c_str ()) != 0) {
-            std::fprintf (
-              stderr, "zlink_packet stream: bind failed: %s endpoint=%s\n",
-              zlink_strerror (zlink_errno ()), endpoint.c_str ());
+            std::fprintf (stderr, "zlink_packet stream: bind failed: %s endpoint=%s\n",
+                          zlink_strerror (zlink_errno ()), endpoint.c_str ());
             return 2;
         }
 
         g_server_instance = this;
-        if (zlink_stream_packet_handler (
-              server, &zlink_stream_packet_echo_server_t::on_packet_static,
-              NULL)
+        if (zlink_stream_packet_handler (server,
+                                         &zlink_stream_packet_echo_server_t::on_packet_static, NULL)
             != 0) {
-            std::fprintf (
-              stderr, "zlink_packet stream: packet handler attach failed: %s\n",
-              zlink_strerror (zlink_errno ()));
+            std::fprintf (stderr, "zlink_packet stream: packet handler attach failed: %s\n",
+                          zlink_strerror (zlink_errno ()));
             return 2;
         }
 
@@ -169,14 +157,12 @@ class zlink_stream_packet_echo_server_t
         while (!stop.load (std::memory_order_acquire))
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        std::printf ("%s\n",
-                     stream_echo::make_metric_line (
-                       "zlink_packet", opt.size,
-                       recv_msgs.load (std::memory_order_relaxed),
-                       parse_error.load (std::memory_order_relaxed),
-                       protocol_error.load (std::memory_order_relaxed),
-                       send_error.load (std::memory_order_relaxed), 0)
-                       .c_str ());
+        std::printf ("%s\n", stream_echo::make_metric_line (
+                               "zlink_packet", opt.size, recv_msgs.load (std::memory_order_relaxed),
+                               parse_error.load (std::memory_order_relaxed),
+                               protocol_error.load (std::memory_order_relaxed),
+                               send_error.load (std::memory_order_relaxed), 0)
+                               .c_str ());
         return 0;
     }
 
@@ -214,8 +200,7 @@ class zlink_stream_packet_echo_server_t
         }
 
         recv_msgs.fetch_add (1, std::memory_order_relaxed);
-        if (zlink_send_part_rid (stream_, rid_, &reply, ZLINK_SEND_FLAGS_NONE,
-                                 ZLINK_PART_FINAL)
+        if (zlink_send_part_rid (stream_, rid_, &reply, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL)
             != 0) {
             send_error.fetch_add (1, std::memory_order_relaxed);
         }
@@ -264,8 +249,7 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     if (opt.size > k_max_payload_size) {
-        std::fprintf (stderr, "zlink_packet stream: size too large %zu\n",
-                      opt.size);
+        std::fprintf (stderr, "zlink_packet stream: size too large %zu\n", opt.size);
         return false;
     }
     return true;

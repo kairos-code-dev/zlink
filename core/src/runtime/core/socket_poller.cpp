@@ -58,24 +58,17 @@ int zlink::socket_poller_t::signaler_fd (fd_t *fd_) const
     return -1;
 }
 
-int zlink::socket_poller_t::add (socket_base_t *socket_,
-                               void *user_data_,
-                               short events_)
+int zlink::socket_poller_t::add (socket_base_t *socket_, void *user_data_, short events_)
 {
-    if (find_if2 (_items.begin (), _items.end (), socket_, &is_socket)
-        != _items.end ()) {
+    if (find_if2 (_items.begin (), _items.end (), socket_, &is_socket) != _items.end ()) {
         errno = EINVAL;
         return -1;
     }
 
-    const item_t item = {
-        socket_,
-        0,
-        user_data_,
-        events_
+    const item_t item = {socket_, 0, user_data_, events_
 #if defined ZLINK_POLL_BASED_ON_POLL
-        ,
-        -1
+                         ,
+                         -1
 #endif
     };
     try {
@@ -92,20 +85,15 @@ int zlink::socket_poller_t::add (socket_base_t *socket_,
 
 int zlink::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
 {
-    if (find_if2 (_items.begin (), _items.end (), fd_, &is_fd)
-        != _items.end ()) {
+    if (find_if2 (_items.begin (), _items.end (), fd_, &is_fd) != _items.end ()) {
         errno = EINVAL;
         return -1;
     }
 
-    const item_t item = {
-        NULL,
-        fd_,
-        user_data_,
-        events_
+    const item_t item = {NULL, fd_, user_data_, events_
 #if defined ZLINK_POLL_BASED_ON_POLL
-        ,
-        -1
+                         ,
+                         -1
 #endif
     };
     try {
@@ -122,8 +110,7 @@ int zlink::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
 
 int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -139,11 +126,9 @@ int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
     return 0;
 }
 
-int zlink::socket_poller_t::modify_user_data (const socket_base_t *socket_,
-                                              void *user_data_)
+int zlink::socket_poller_t::modify_user_data (const socket_base_t *socket_, void *user_data_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -157,8 +142,7 @@ int zlink::socket_poller_t::modify_user_data (const socket_base_t *socket_,
 
 int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -176,8 +160,7 @@ int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
 
 int zlink::socket_poller_t::modify_fd_user_data (fd_t fd_, void *user_data_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -191,8 +174,7 @@ int zlink::socket_poller_t::modify_fd_user_data (fd_t fd_, void *user_data_)
 
 int zlink::socket_poller_t::remove (socket_base_t *socket_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -207,8 +189,7 @@ int zlink::socket_poller_t::remove (socket_base_t *socket_)
 
 int zlink::socket_poller_t::remove_fd (fd_t fd_)
 {
-    const items_t::iterator it =
-      find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
+    const items_t::iterator it = find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
 
     if (it == _items.end ()) {
         errno = EINVAL;
@@ -233,8 +214,7 @@ int zlink::socket_poller_t::rebuild ()
         _pollfds = NULL;
     }
 
-    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
-         ++it) {
+    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end; ++it) {
         if (it->events)
             _pollset_size++;
     }
@@ -252,13 +232,12 @@ int zlink::socket_poller_t::rebuild ()
 
     int item_nbr = 0;
 
-    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
-         ++it) {
+    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end; ++it) {
         if (it->events) {
             if (it->socket) {
                 size_t fd_size = sizeof (zlink::fd_t);
-                const int rc = it->socket->getsockopt (
-                  ZLINK_INTERNAL_OPT_FD, &_pollfds[item_nbr].fd, &fd_size);
+                const int rc =
+                  it->socket->getsockopt (ZLINK_INTERNAL_OPT_FD, &_pollfds[item_nbr].fd, &fd_size);
                 if (rc != 0) {
                     const int saved_errno = errno;
                     free (_pollfds);
@@ -273,10 +252,9 @@ int zlink::socket_poller_t::rebuild ()
                 item_nbr++;
             } else {
                 _pollfds[item_nbr].fd = it->fd;
-                _pollfds[item_nbr].events =
-                  (it->events & ZLINK_POLLIN ? POLLIN : 0)
-                  | (it->events & ZLINK_POLLOUT ? POLLOUT : 0)
-                  | (it->events & ZLINK_POLLPRI ? POLLPRI : 0);
+                _pollfds[item_nbr].events = (it->events & ZLINK_POLLIN ? POLLIN : 0)
+                                            | (it->events & ZLINK_POLLOUT ? POLLOUT : 0)
+                                            | (it->events & ZLINK_POLLPRI ? POLLPRI : 0);
                 it->pollfd_index = item_nbr;
                 item_nbr++;
             }
@@ -300,16 +278,14 @@ int zlink::socket_poller_t::rebuild ()
     _max_fd = 0;
 
     //  Build the fd_sets for passing to select ().
-    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
-         ++it) {
+    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end; ++it) {
         if (it->events) {
             //  If the poll item is a 0MQ socket we are interested in input on the
             //  notification file descriptor retrieved by the ZLINK_INTERNAL_OPT_FD socket option.
             if (it->socket) {
                 zlink::fd_t notify_fd;
                 size_t fd_size = sizeof (zlink::fd_t);
-                int rc =
-                  it->socket->getsockopt (ZLINK_INTERNAL_OPT_FD, &notify_fd, &fd_size);
+                int rc = it->socket->getsockopt (ZLINK_INTERNAL_OPT_FD, &notify_fd, &fd_size);
                 if (rc != 0) {
                     _pollset_size = 0;
                     _need_rebuild = true;
@@ -345,8 +321,9 @@ int zlink::socket_poller_t::rebuild ()
     return 0;
 }
 
-void zlink::socket_poller_t::zero_trail_events (
-  zlink::socket_poller_t::event_t *events_, int n_events_, int found_)
+void zlink::socket_poller_t::zero_trail_events (zlink::socket_poller_t::event_t *events_,
+                                                int n_events_,
+                                                int found_)
 {
     for (int i = found_; i < n_events_; ++i) {
         events_[i].socket = NULL;
@@ -356,8 +333,8 @@ void zlink::socket_poller_t::zero_trail_events (
     }
 }
 
-int zlink::socket_poller_t::check_socket_events (
-  zlink::socket_poller_t::event_t *events_, int n_events_)
+int zlink::socket_poller_t::check_socket_events (zlink::socket_poller_t::event_t *events_,
+                                                 int n_events_)
 {
     int found = 0;
     for (items_t::iterator it = _items.begin (), end = _items.end ();
@@ -381,14 +358,13 @@ int zlink::socket_poller_t::check_socket_events (
 }
 
 #if defined ZLINK_POLL_BASED_ON_POLL
-int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_,
-                                        int n_events_)
+int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_, int n_events_)
 #elif defined ZLINK_POLL_BASED_ON_SELECT
 int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_,
-                                        int n_events_,
-                                        fd_set &inset_,
-                                        fd_set &outset_,
-                                        fd_set &errset_)
+                                          int n_events_,
+                                          fd_set &inset_,
+                                          fd_set &outset_,
+                                          fd_set &errset_)
 #endif
 {
     int found = 0;
@@ -453,8 +429,8 @@ int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *event
 }
 
 int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
-                                int n_events_,
-                                long timeout_)
+                                  int n_events_,
+                                  long timeout_)
 {
     if (_items.empty () && timeout_ < 0) {
         errno = EFAULT;
@@ -526,8 +502,7 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
                 end = now + timeout_;
             }
             const uint64_t remaining = end > now ? end - now : 0;
-            timeout = static_cast<int> (
-              std::min<uint64_t> (remaining, INT_MAX));
+            timeout = static_cast<int> (std::min<uint64_t> (remaining, INT_MAX));
         }
 
         //  Wait for events.
@@ -594,14 +569,11 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
         }
 
         //  Wait for events. Ignore interrupts if there's infinite timeout.
-        memcpy (inset.get (), _pollset_in.get (),
-                valid_pollset_bytes (*_pollset_in.get ()));
-        memcpy (outset.get (), _pollset_out.get (),
-                valid_pollset_bytes (*_pollset_out.get ()));
-        memcpy (errset.get (), _pollset_err.get (),
-                valid_pollset_bytes (*_pollset_err.get ()));
-        const int rc = select (static_cast<int> (_max_fd + 1), inset.get (),
-                               outset.get (), errset.get (), ptimeout);
+        memcpy (inset.get (), _pollset_in.get (), valid_pollset_bytes (*_pollset_in.get ()));
+        memcpy (outset.get (), _pollset_out.get (), valid_pollset_bytes (*_pollset_out.get ()));
+        memcpy (errset.get (), _pollset_err.get (), valid_pollset_bytes (*_pollset_err.get ()));
+        const int rc = select (static_cast<int> (_max_fd + 1), inset.get (), outset.get (),
+                               errset.get (), ptimeout);
 #if defined ZLINK_HAVE_WINDOWS
         if (unlikely (rc == SOCKET_ERROR)) {
             errno = wsa_error_to_errno (WSAGetLastError ());
@@ -616,8 +588,8 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
 #endif
 
         //  Check for the events.
-        const int found = check_events (events_, n_events_, *inset.get (),
-                                        *outset.get (), *errset.get ());
+        const int found =
+          check_events (events_, n_events_, *inset.get (), *outset.get (), *errset.get ());
         if (found) {
             if (found > 0)
                 zero_trail_events (events_, n_events_, found);

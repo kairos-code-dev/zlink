@@ -63,8 +63,7 @@ void test_discovery_service_state_tracks_provider_views_and_sequences ()
     zlink::discovery_service_change_t change;
     zlink_routing_id_t routing_id;
     memset (&routing_id, 0, sizeof (routing_id));
-    state.apply_provider_snapshot (11, 1, providers, "svc", routing_id,
-                                   &change);
+    state.apply_provider_snapshot (11, 1, providers, "svc", routing_id, &change);
 
     TEST_ASSERT_TRUE (change.changed);
     TEST_ASSERT_EQUAL_UINT (ZLINK_DISCOVERY_SERVICE_UP, change.event.event_type);
@@ -73,12 +72,10 @@ void test_discovery_service_state_tracks_provider_views_and_sequences ()
     TEST_ASSERT_EQUAL_UINT64 (1, state.service_update_seq ());
 
     std::set<zlink::discovery_member_key_t> local_members;
-    local_members.insert (
-      zlink::discovery_member_key_t (1, std::string ("tcp://local")));
+    local_members.insert (zlink::discovery_member_key_t (1, std::string ("tcp://local")));
 
     std::vector<zlink_member_peer_entry_t> peers;
-    state.snapshot_member_peers (ZLINK_AUTO_CONNECT_CLIENT_SERVER, local_members,
-                                 &peers);
+    state.snapshot_member_peers (ZLINK_AUTO_CONNECT_CLIENT_SERVER, local_members, &peers);
     TEST_ASSERT_EQUAL_UINT (1, peers.size ());
     TEST_ASSERT_EQUAL_UINT16 (2, peers[0].service_role);
     TEST_ASSERT_EQUAL_STRING ("svc", peers[0].channel_name);

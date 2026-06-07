@@ -29,8 +29,7 @@ void spot_runtime_shutdown_logf_local (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf ("ZLINK_DEBUG_SPOT_SHUTDOWN", "[spot-runtime] ", fmt_,
-                    args);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_SHUTDOWN", "[spot-runtime] ", fmt_, args);
     va_end (args);
 }
 }
@@ -59,8 +58,7 @@ int spot_runtime_t::close_control_sockets ()
     runtime_socket_slot_ref_t refs[9];
     socket_base_t *sockets[9];
     const std::string *endpoints[9];
-    const bool close_directly[9] = {
-      false, false, false, false, false, false, false, false, false};
+    const bool close_directly[9] = {false, false, false, false, false, false, false, false, false};
     const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
     {
         scoped_lock_t lock (spot_node_access_t::sync (owner));
@@ -75,15 +73,12 @@ int spot_runtime_t::close_control_sockets ()
     if (spot_shutdown_debug_enabled ()) {
         std::fprintf (
           stderr,
-          "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d pub_ingress_sub=%d peer_ctrl_pub=%d peer_ctrl_sub=%d external_router=%d fanout=%d\n",
-          sockets[0] ? sockets[0]->socket_id () : -1,
-          sockets[1] ? sockets[1]->socket_id () : -1,
-          sockets[2] ? sockets[2]->socket_id () : -1,
-          sockets[3] ? sockets[3]->socket_id () : -1,
-          sockets[4] ? sockets[4]->socket_id () : -1,
-          sockets[5] ? sockets[5]->socket_id () : -1,
-          sockets[6] ? sockets[6]->socket_id () : -1,
-          sockets[7] ? sockets[7]->socket_id () : -1,
+          "[spot-close] ctrl_front=%d ctrl_back=%d mesh_pub=%d mesh_xsub=%d pub_ingress_sub=%d "
+          "peer_ctrl_pub=%d peer_ctrl_sub=%d external_router=%d fanout=%d\n",
+          sockets[0] ? sockets[0]->socket_id () : -1, sockets[1] ? sockets[1]->socket_id () : -1,
+          sockets[2] ? sockets[2]->socket_id () : -1, sockets[3] ? sockets[3]->socket_id () : -1,
+          sockets[4] ? sockets[4]->socket_id () : -1, sockets[5] ? sockets[5]->socket_id () : -1,
+          sockets[6] ? sockets[6]->socket_id () : -1, sockets[7] ? sockets[7]->socket_id () : -1,
           sockets[8] ? sockets[8]->socket_id () : -1);
         std::fflush (stderr);
     }
@@ -107,8 +102,7 @@ int spot_runtime_t::close_control_sockets ()
                 close_socket_ptr (&sockets[i]);
                 continue;
             }
-            preserve_first_error (
-              close_runtime_socket_async (sockets[i], 2000), &first_error);
+            preserve_first_error (close_runtime_socket_async (sockets[i], 2000), &first_error);
         }
     } else {
         for (size_t i = 0; i < slot_count; ++i)
@@ -144,8 +138,7 @@ int spot_runtime_t::detach_runtime_endpoints ()
     if (ctrl_back && !data_ctrl_endpoint.empty ())
         (void) ctrl_back->term_endpoint (data_ctrl_endpoint.c_str ());
     if (external_router_local && !external_router_bind_endpoint.empty ())
-        (void) external_router_local->term_endpoint (
-          external_router_bind_endpoint.c_str ());
+        (void) external_router_local->term_endpoint (external_router_bind_endpoint.c_str ());
     if (fanout && !sub_fanout_endpoint.empty ())
         (void) fanout->term_endpoint (sub_fanout_endpoint.c_str ());
     if (pub_ingress && !pub_ingress_endpoint.empty ())
@@ -155,28 +148,23 @@ int spot_runtime_t::detach_runtime_endpoints ()
 
 int spot_runtime_t::stop_and_join ()
 {
-    spot_runtime_shutdown_logf_local ("stop_and_join begin runtime=%p",
-                                      static_cast<void *> (this));
+    spot_runtime_shutdown_logf_local ("stop_and_join begin runtime=%p", static_cast<void *> (this));
     begin_shutdown ();
     bool terminate_sent = false;
     if (data_ctrl_front) {
-        spot_runtime_shutdown_logf_local ("send terminate runtime=%p",
-                                          static_cast<void *> (this));
+        spot_runtime_shutdown_logf_local ("send terminate runtime=%p", static_cast<void *> (this));
         scoped_lock_t lock (ctrl_sync);
-        if (send_ascii_frame (
-              data_ctrl_front, spot_control_protocol::cmd_terminate, 0)
-            != 0) {
+        if (send_ascii_frame (data_ctrl_front, spot_control_protocol::cmd_terminate, 0) != 0) {
             const int err = errno != 0 ? errno : EIO;
-            if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM
-                && err != EPIPE && err != ENOTSOCK) {
+            if (err != EAGAIN && err != ETIMEDOUT && err != EFSM && err != ETERM && err != EPIPE
+                && err != ENOTSOCK) {
                 errno = err;
                 return -1;
             }
         } else
             terminate_sent = true;
     }
-    spot_runtime_shutdown_logf_local ("terminate_sent=%d runtime=%p",
-                                      terminate_sent ? 1 : 0,
+    spot_runtime_shutdown_logf_local ("terminate_sent=%d runtime=%p", terminate_sent ? 1 : 0,
                                       static_cast<void *> (this));
     advance_shutdown_phase (spot_shutdown_phase_stop_producers);
     if (!terminate_sent)
@@ -189,9 +177,8 @@ int spot_runtime_t::stop_and_join ()
             spot_runtime_shutdown_logf_local ("joined data-plane runtime=%p",
                                               static_cast<void *> (this));
         }
-        spot_data_plane_t::teardown_runtime (
-          owner, this, &execution.data_plane_state,
-          &execution.data_plane_protocol_state);
+        spot_data_plane_t::teardown_runtime (owner, this, &execution.data_plane_state,
+                                             &execution.data_plane_protocol_state);
         execution.data_plane_running = false;
     }
     spot_runtime_shutdown_logf_local ("stop dispatch workers runtime=%p",
@@ -206,8 +193,7 @@ int spot_runtime_t::stop_and_join ()
     {
         scoped_lock_t lock (attachment_sync);
         while (!retired_attachment_relay_sockets.empty ()) {
-            retired_relay_sockets.push_back (
-              retired_attachment_relay_sockets.front ());
+            retired_relay_sockets.push_back (retired_attachment_relay_sockets.front ());
             retired_attachment_relay_sockets.pop_front ();
         }
     }
@@ -228,8 +214,7 @@ size_t spot_runtime_t::live_socket_slot_count () const
 {
     size_t count = 0;
     const_runtime_socket_slot_ref_t refs[9];
-    const size_t slot_count =
-      fill_runtime_socket_slot_refs (this, refs);
+    const size_t slot_count = fill_runtime_socket_slot_refs (this, refs);
     scoped_lock_t lock (spot_node_access_t::sync (owner));
     for (size_t i = 0; i < slot_count; ++i)
         count += refs[i].slot && *refs[i].slot != NULL ? 1 : 0;
@@ -250,9 +235,8 @@ int spot_runtime_t::abortive_stop ()
     if (execution.data_plane_running) {
         if (data_plane_thread.get_started ())
             data_plane_thread.stop ();
-        spot_data_plane_t::teardown_runtime (
-          owner, this, &execution.data_plane_state,
-          &execution.data_plane_protocol_state);
+        spot_data_plane_t::teardown_runtime (owner, this, &execution.data_plane_state,
+                                             &execution.data_plane_protocol_state);
         execution.data_plane_running = false;
     }
     stop_dispatch_workers ();
@@ -295,8 +279,7 @@ int spot_runtime_t::abortive_stop ()
     std::vector<socket_base_t *> attachment_sockets;
     {
         scoped_lock_t lock (attachment_sync);
-        for (std::map<uint64_t, spot_attachment_t>::iterator it =
-               attachments.begin ();
+        for (std::map<uint64_t, spot_attachment_t>::iterator it = attachments.begin ();
              it != attachments.end (); ++it) {
             if (it->second.socket)
                 attachment_sockets.push_back (it->second.socket);
@@ -304,8 +287,7 @@ int spot_runtime_t::abortive_stop ()
                 attachment_sockets.push_back (it->second.relay_socket);
         }
         while (!retired_attachment_relay_sockets.empty ()) {
-            attachment_sockets.push_back (
-              retired_attachment_relay_sockets.front ());
+            attachment_sockets.push_back (retired_attachment_relay_sockets.front ());
             retired_attachment_relay_sockets.pop_front ();
         }
         attachments.clear ();

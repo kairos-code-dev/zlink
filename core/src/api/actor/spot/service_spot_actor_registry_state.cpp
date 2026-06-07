@@ -39,8 +39,7 @@ void actor_node_registry_t::erase_spot (spot_handle_t *spot_)
 }
 
 spot_handle_t *actor_node_registry_t::find_spot_for_state (
-  zlink::spot_node_t *node_,
-  const std::shared_ptr<spot_logical_state_t> &state_) const
+  zlink::spot_node_t *node_, const std::shared_ptr<spot_logical_state_t> &state_) const
 {
     if (!node_ || !state_)
         return NULL;
@@ -53,8 +52,7 @@ spot_handle_t *actor_node_registry_t::find_spot_for_state (
 }
 
 spot_handle_t *actor_node_registry_t::find_replacement_spot (
-  spot_handle_t *spot_,
-  const std::shared_ptr<spot_logical_state_t> &state_) const
+  spot_handle_t *spot_, const std::shared_ptr<spot_logical_state_t> &state_) const
 {
     if (!spot_ || !state_)
         return NULL;
@@ -106,8 +104,8 @@ bool actor_node_registry_t::collect_spots_for_node (
     return true;
 }
 
-void actor_node_registry_t::register_node (
-  zlink::spot_node_t *node_, const zlink_routing_id_t &node_rid_)
+void actor_node_registry_t::register_node (zlink::spot_node_t *node_,
+                                           const zlink_routing_id_t &node_rid_)
 {
     if (!node_)
         return;
@@ -125,8 +123,7 @@ void actor_node_registry_t::erase_node_routes (zlink::spot_node_t *node_)
 {
     if (!node_)
         return;
-    for (std::map<std::string, zlink::spot_node_t *>::iterator it =
-           nodes_by_rid.begin ();
+    for (std::map<std::string, zlink::spot_node_t *>::iterator it = nodes_by_rid.begin ();
          it != nodes_by_rid.end ();) {
         if (it->second == node_)
             it = nodes_by_rid.erase (it);
@@ -140,8 +137,8 @@ void actor_node_registry_t::erase_known_node (zlink::spot_node_t *node_)
     known_nodes.erase (node_);
 }
 
-zlink::spot_node_t *actor_node_registry_t::resolve_node_by_rid (
-  const zlink_routing_id_t &rid_) const
+zlink::spot_node_t *
+actor_node_registry_t::resolve_node_by_rid (const zlink_routing_id_t &rid_) const
 {
     std::map<std::string, zlink::spot_node_t *>::const_iterator it =
       nodes_by_rid.find (routing_id_key (rid_));
@@ -153,13 +150,11 @@ bool actor_node_registry_t::known_node (zlink::spot_node_t *node_) const
     return node_ && known_nodes.count (node_) != 0;
 }
 
-zlink::spot_node_t *actor_node_registry_t::find_socket_owner (
-  zlink::socket_base_t *socket_) const
+zlink::spot_node_t *actor_node_registry_t::find_socket_owner (zlink::socket_base_t *socket_) const
 {
     if (!socket_)
         return NULL;
-    for (std::set<zlink::spot_node_t *>::const_iterator node_it =
-           known_nodes.begin ();
+    for (std::set<zlink::spot_node_t *>::const_iterator node_it = known_nodes.begin ();
          node_it != known_nodes.end (); ++node_it) {
         if (zlink::spot_node_access_t::owns_socket (*node_it, socket_))
             return *node_it;
@@ -167,14 +162,12 @@ zlink::spot_node_t *actor_node_registry_t::find_socket_owner (
     return NULL;
 }
 
-void actor_node_registry_t::collect_actor_handles (
-  std::vector<actor_handle_t *> *out_) const
+void actor_node_registry_t::collect_actor_handles (std::vector<actor_handle_t *> *out_) const
 {
     if (!out_)
         return;
     out_->clear ();
-    for (std::set<zlink::spot_node_t *>::const_iterator node_it =
-           known_nodes.begin ();
+    for (std::set<zlink::spot_node_t *>::const_iterator node_it = known_nodes.begin ();
          node_it != known_nodes.end (); ++node_it) {
         const std::set<actor_handle_t *> &node_actors =
           zlink::spot_node_access_t::actor_handles (*node_it);
@@ -182,17 +175,15 @@ void actor_node_registry_t::collect_actor_handles (
     }
 }
 
-actor_handle_t *actor_node_registry_t::find_unique_actor_by_id (
-  const char *actor_id_, bool include_pending_) const
+actor_handle_t *actor_node_registry_t::find_unique_actor_by_id (const char *actor_id_,
+                                                                bool include_pending_) const
 {
     actor_handle_t *match = NULL;
-    for (std::set<zlink::spot_node_t *>::const_iterator node_it =
-           known_nodes.begin ();
+    for (std::set<zlink::spot_node_t *>::const_iterator node_it = known_nodes.begin ();
          node_it != known_nodes.end (); ++node_it) {
         std::map<std::string, actor_handle_t *> &actors =
           zlink::spot_node_access_t::actors_by_id (*node_it);
-        std::map<std::string, actor_handle_t *>::iterator actor_it =
-          actors.find (actor_id_);
+        std::map<std::string, actor_handle_t *>::iterator actor_it = actors.find (actor_id_);
         if (actor_it == actors.end ()
             || (!include_pending_ && actor_it->second->pending_remote_join))
             continue;

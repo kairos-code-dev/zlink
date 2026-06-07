@@ -25,10 +25,7 @@ class service_public_api_guard_t
         return false;
     }
 
-    void leave_public_api ()
-    {
-        _state.fetch_sub (1, std::memory_order_acq_rel);
-    }
+    void leave_public_api () { _state.fetch_sub (1, std::memory_order_acq_rel); }
 
     bool begin_close_or_fail_busy ()
     {
@@ -45,23 +42,18 @@ class service_public_api_guard_t
             }
 
             const uint32_t desired = old | closing_bit;
-            if (_state.compare_exchange_weak (
-                  old, desired, std::memory_order_acq_rel,
-                  std::memory_order_acquire)) {
+            if (_state.compare_exchange_weak (old, desired, std::memory_order_acq_rel,
+                                              std::memory_order_acquire)) {
                 return true;
             }
         }
     }
 
-    void mark_closing ()
-    {
-        _state.fetch_or (closing_bit, std::memory_order_acq_rel);
-    }
+    void mark_closing () { _state.fetch_or (closing_bit, std::memory_order_acq_rel); }
 
     void cancel_close ()
     {
-        const uint32_t old =
-          _state.fetch_and (~closing_bit, std::memory_order_acq_rel);
+        const uint32_t old = _state.fetch_and (~closing_bit, std::memory_order_acq_rel);
         zlink_assert ((old & closing_bit) != 0);
     }
 
@@ -76,8 +68,7 @@ class service_public_api_scope_t
 {
   public:
     explicit service_public_api_scope_t (service_public_api_guard_t &guard_) :
-        _guard (&guard_),
-        _entered (guard_.enter_public_api ())
+        _guard (&guard_), _entered (guard_.enter_public_api ())
     {
     }
 

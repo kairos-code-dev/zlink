@@ -39,11 +39,13 @@ bool is_supported_transport (const std::string &transport_)
 
 zlink::routing_id_t make_text_rid (const char *text_)
 {
-    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
+    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_),
+                                      std::strlen (text_));
 }
 
-inline std::string
-bind_data_endpoint (zlink::service::spot_node_t &node_, const std::string &transport_, int fixed_port_)
+inline std::string bind_data_endpoint (zlink::service::spot_node_t &node_,
+                                       const std::string &transport_,
+                                       int fixed_port_)
 {
     return perf::multi::bind_routed_spot_endpoint (
       node_, transport_, fixed_port_ > 0 ? fixed_port_ : perf::multi::bench_port_base (50000));
@@ -80,11 +82,14 @@ bool stdin_stop_thread (zlink::service::spot_node_t *control_node_,
         }
         if (perf::multi::parse_size_command_line (line, "START,", &start_size)) {
             if (!control_pub_ || !control_sub_
-                || !perf::multi::wait_ready_count_and_data_endpoint (*control_sub_, data_node_, k_control_topic,
-                                                                     start_size, expected_ready_count_, timeout_ms_)
-                || !perf::multi::wait_for_spot_node_connected_peer_count (*data_node_, 1, timeout_ms_)
-                || !perf::multi::publish_control_payload (*control_pub_, k_control_topic,
-                                                          perf::multi::make_start_command (start_size), timeout_ms_)) {
+                || !perf::multi::wait_ready_count_and_data_endpoint (
+                  *control_sub_, data_node_, k_control_topic, start_size, expected_ready_count_,
+                  timeout_ms_)
+                || !perf::multi::wait_for_spot_node_connected_peer_count (*data_node_, 1,
+                                                                          timeout_ms_)
+                || !perf::multi::publish_control_payload (
+                  *control_pub_, k_control_topic, perf::multi::make_start_command (start_size),
+                  timeout_ms_)) {
                 request_stop ();
                 return true;
             }
@@ -106,16 +111,20 @@ bool is_transient_recv_errno (int err_)
 
 } // namespace
 
-bool perf_spot_reqrep_server (const std::string &lib_name, const std::string &transport, size_t msg_size)
+bool perf_spot_reqrep_server (const std::string &lib_name,
+                              const std::string &transport,
+                              size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("SPOT_REQREP");
 
     if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes = perf::multi::resolve_case_msg_sizes (msg_size);
     const size_t max_msg_size = perf::multi::max_case_msg_size (msg_sizes, msg_size);
     (void) max_msg_size;
@@ -130,7 +139,8 @@ bool perf_spot_reqrep_server (const std::string &lib_name, const std::string &tr
         || !perf::multi::configure_spot_control_tls (control_node, transport))
         return false;
     if (!perf::multi::apply_spot_node_admission_hwm (data_node, settings.sndhwm, settings.rcvhwm)
-        || !perf::multi::apply_spot_node_admission_hwm (control_node, settings.sndhwm, settings.rcvhwm))
+        || !perf::multi::apply_spot_node_admission_hwm (control_node, settings.sndhwm,
+                                                        settings.rcvhwm))
         return false;
     try {
         data_node.set_routing_id (make_text_rid (k_server_node_rid_text));
@@ -157,10 +167,13 @@ bool perf_spot_reqrep_server (const std::string &lib_name, const std::string &tr
     if (!perf::multi::apply_spot_auto_hwm_msg_unit (ctx.ctx (), snapshot_msg_size))
         return false;
 
-    const std::string endpoint = bind_data_endpoint (data_node, transport, settings.server_bind_port);
-    const int control_base_port =
-      settings.server_bind_port > 0 ? settings.server_bind_port + 512 : perf::multi::bench_port_base (41000);
-    const std::string control_endpoint = perf::multi::bind_spot_endpoint (control_node, transport, control_base_port);
+    const std::string endpoint =
+      bind_data_endpoint (data_node, transport, settings.server_bind_port);
+    const int control_base_port = settings.server_bind_port > 0
+                                    ? settings.server_bind_port + 512
+                                    : perf::multi::bench_port_base (41000);
+    const std::string control_endpoint =
+      perf::multi::bind_spot_endpoint (control_node, transport, control_base_port);
     if (endpoint.empty () || control_endpoint.empty ())
         return false;
 
@@ -179,63 +192,64 @@ bool perf_spot_reqrep_server (const std::string &lib_name, const std::string &tr
         stop_requested.store (true, std::memory_order_release);
         stop_cv.notify_all ();
     };
-    const int start_timeout_ms =
-      std::max (settings.connect_ready_timeout_ms, std::max (1000, settings.connect_ready_timeout_ms * 6));
-    std::thread stop_thread (stdin_stop_thread, &control_node, &data_node, &control_pub, &control_sub,
-                             std::max<size_t> (1, settings.clients), start_timeout_ms, std::ref (stop_requested),
-                             std::ref (stop_cv));
+    const int start_timeout_ms = std::max (settings.connect_ready_timeout_ms,
+                                           std::max (1000, settings.connect_ready_timeout_ms * 6));
+    std::thread stop_thread (stdin_stop_thread, &control_node, &data_node, &control_pub,
+                             &control_sub, std::max<size_t> (1, settings.clients), start_timeout_ms,
+                             std::ref (stop_requested), std::ref (stop_cv));
 
     try {
-        responder.set_dispatch_handler (
-          [&responder, &stop_requested, &failed, &request_stop] (const zlink::spot_dispatch_info_t &info_) {
-              (void) info_;
-              while (!stop_requested.load (std::memory_order_acquire)) {
-                  zlink::received_t received;
-                  try {
-                      const int rc = responder.recv_routed (received, zlink::recv_flags_t::dontwait);
-                      if (rc == static_cast<int> (zlink::recv_result_t::no_data))
-                          return;
-                      if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
-                          failed.store (true, std::memory_order_release);
-                          request_stop ();
-                          return;
-                      }
-                  }
-                  catch (const zlink::recv_error_t &err) {
-                      if (err.result () == zlink::recv_result_t::no_data
-                          || is_transient_recv_errno (err.internal_errno ())) {
-                          return;
-                      }
-                      failed.store (true, std::memory_order_release);
-                      request_stop ();
-                      return;
-                  }
-                  if (received.parts ().empty ())
-                      continue;
-                  try {
-                      // echo: reply with the same payload through the
-                      // received_t.reply() helper, which routes back to
-                      // the originating spot via the spot mesh.
-                      std::vector<zlink::message_t> &parts = received.parts ();
-                      zlink::service::reply_submit_operation_t reply = received.reply ().message (parts[0]);
-                      for (size_t i = 1; i < parts.size (); ++i)
-                          reply = std::move (reply).message (parts[i]);
-                      std::move (reply).submit ();
-                  }
-                  catch (const zlink::submit_error_t &err) {
-                      const zlink::submit_result_t result = err.result ();
-                      if (result == zlink::submit_result_t::backpressured
-                          || result == zlink::submit_result_t::not_connected
-                          || result == zlink::submit_result_t::not_found
-                          || is_transient_recv_errno (err.internal_errno ())) {
-                          continue;
-                      }
-                      failed.store (true, std::memory_order_release);
-                      request_stop ();
-                      return;
-                  }
-              }
-          });
+        responder.set_dispatch_handler ([&responder, &stop_requested, &failed,
+                                         &request_stop] (const zlink::spot_dispatch_info_t &info_) {
+            (void) info_;
+            while (!stop_requested.load (std::memory_order_acquire)) {
+                zlink::received_t received;
+                try {
+                    const int rc = responder.recv_routed (received, zlink::recv_flags_t::dontwait);
+                    if (rc == static_cast<int> (zlink::recv_result_t::no_data))
+                        return;
+                    if (rc != static_cast<int> (zlink::recv_result_t::ok)) {
+                        failed.store (true, std::memory_order_release);
+                        request_stop ();
+                        return;
+                    }
+                }
+                catch (const zlink::recv_error_t &err) {
+                    if (err.result () == zlink::recv_result_t::no_data
+                        || is_transient_recv_errno (err.internal_errno ())) {
+                        return;
+                    }
+                    failed.store (true, std::memory_order_release);
+                    request_stop ();
+                    return;
+                }
+                if (received.parts ().empty ())
+                    continue;
+                try {
+                    // echo: reply with the same payload through the
+                    // received_t.reply() helper, which routes back to
+                    // the originating spot via the spot mesh.
+                    std::vector<zlink::message_t> &parts = received.parts ();
+                    zlink::service::reply_submit_operation_t reply =
+                      received.reply ().message (parts[0]);
+                    for (size_t i = 1; i < parts.size (); ++i)
+                        reply = std::move (reply).message (parts[i]);
+                    std::move (reply).submit ();
+                }
+                catch (const zlink::submit_error_t &err) {
+                    const zlink::submit_result_t result = err.result ();
+                    if (result == zlink::submit_result_t::backpressured
+                        || result == zlink::submit_result_t::not_connected
+                        || result == zlink::submit_result_t::not_found
+                        || is_transient_recv_errno (err.internal_errno ())) {
+                        continue;
+                    }
+                    failed.store (true, std::memory_order_release);
+                    request_stop ();
+                    return;
+                }
+            }
+        });
     }
     catch (const std::exception &) {
         request_stop ();
@@ -248,7 +262,8 @@ bool perf_spot_reqrep_server (const std::string &lib_name, const std::string &tr
     // a fatal error. The dispatch handler does the actual recv/reply work
     // off the io thread; the main thread just waits for shutdown.
     std::unique_lock<std::mutex> stop_lock (stop_mutex);
-    stop_cv.wait (stop_lock, [&stop_requested] () { return stop_requested.load (std::memory_order_acquire); });
+    stop_cv.wait (stop_lock,
+                  [&stop_requested] () { return stop_requested.load (std::memory_order_acquire); });
 
     if (stop_thread.joinable ())
         stop_thread.join ();

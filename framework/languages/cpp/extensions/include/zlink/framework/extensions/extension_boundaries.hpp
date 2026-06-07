@@ -32,8 +32,9 @@ class metrics_extension_t
 
     metrics_extension_t &observe_runtime_events (monitoring_builder_t &monitoring)
     {
-        monitoring.on_trace (
-          [this] (const runtime_event_base_t &event) { observed_sources.push_back (event.source_name); });
+        monitoring.on_trace ([this] (const runtime_event_base_t &event) {
+            observed_sources.push_back (event.source_name);
+        });
         return *this;
     }
 
@@ -53,7 +54,8 @@ class tracing_extension_t
 
     tracing_extension_t &use_monitoring_events (monitoring_builder_t &monitoring)
     {
-        monitoring.on_trace ([this] (const runtime_event_base_t &event) { traces.push_back (event.correlation_id); });
+        monitoring.on_trace (
+          [this] (const runtime_event_base_t &event) { traces.push_back (event.correlation_id); });
         return *this;
     }
 
@@ -108,7 +110,8 @@ struct retry_policy_t
     std::size_t max_attempts = 3;
     bool preserve_ordering = true;
     bool require_idempotency_key = true;
-    std::string duplicate_delivery_policy = "retries may duplicate delivery; handlers must use the idempotency key";
+    std::string duplicate_delivery_policy =
+      "retries may duplicate delivery; handlers must use the idempotency key";
     std::string ordering_policy = "preserve ordering within a channel unless explicitly disabled";
 };
 
@@ -127,14 +130,17 @@ class advanced_retry_extension_t
 class dead_letter_storage_extension_t
 {
   public:
-    dead_letter_storage_extension_t &store (std::function<void (const channel_reliability_event_t &)> sink)
+    dead_letter_storage_extension_t &
+    store (std::function<void (const channel_reliability_event_t &)> sink)
     {
         storage_sink = std::move (sink);
         return *this;
     }
 
-    std::string duplicate_handling = "dead-letter records retain the idempotency key for duplicate detection";
-    std::string ordering_handling = "dead-letter storage preserves the failed operation observation order";
+    std::string duplicate_handling =
+      "dead-letter records retain the idempotency key for duplicate detection";
+    std::string ordering_handling =
+      "dead-letter storage preserves the failed operation observation order";
     std::function<void (const channel_reliability_event_t &)> storage_sink;
 };
 

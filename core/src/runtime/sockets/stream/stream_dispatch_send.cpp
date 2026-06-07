@@ -8,11 +8,10 @@
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
 
-int zlink::stream_t::stream_dispatch_send_from_io (
-  const zlink_routing_id_t *rid_,
-  const void *data_,
-  size_t size_,
-  int flags_)
+int zlink::stream_t::stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
+                                                   const void *data_,
+                                                   size_t size_,
+                                                   int flags_)
 {
     if (!rid_ || rid_->size != 4) {
         errno = EINVAL;
@@ -29,8 +28,7 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return -1;
     }
 
-    pipe_t *const direct_out =
-      resolve_direct_dispatch_output_pipe (this, routing_id);
+    pipe_t *const direct_out = resolve_direct_dispatch_output_pipe (this, routing_id);
 
     if (size_ == 0) {
         if (direct_out) {
@@ -54,8 +52,7 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return -1;
 
     if (direct_out
-        && direct_out->write_single_message_and_flush_no_recursive_hwm_check (
-          &out_msg)) {
+        && direct_out->write_single_message_and_flush_no_recursive_hwm_check (&out_msg)) {
         const int init_rc = out_msg.init ();
         errno_assert (init_rc == 0);
         return 1;
@@ -67,8 +64,7 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         {
             route_shard_t &shard = route_shard_for (routing_id);
             scoped_fast_lock_t shard_lock (shard.sync);
-            route_shard_t::routes_t::iterator it = shard.routes.find (
-              routing_id);
+            route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
             if (it == shard.routes.end () || !it->second) {
                 const int rc = out_msg.close ();
                 errno_assert (rc == 0);
@@ -76,9 +72,7 @@ int zlink::stream_t::stream_dispatch_send_from_io (
                 return -1;
             }
 
-            if (it->second
-                  ->write_single_message_and_flush_no_recursive_hwm_check (
-                    &out_msg)) {
+            if (it->second->write_single_message_and_flush_no_recursive_hwm_check (&out_msg)) {
                 const int init_rc = out_msg.init ();
                 errno_assert (init_rc == 0);
                 return 1;
@@ -109,10 +103,9 @@ int zlink::stream_t::stream_dispatch_send_from_io (
     return -1;
 }
 
-int zlink::stream_t::stream_dispatch_send_msg_from_io (
-  const zlink_routing_id_t *rid_,
-  msg_t *msg_,
-  int flags_)
+int zlink::stream_t::stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
+                                                       msg_t *msg_,
+                                                       int flags_)
 {
     if (!rid_ || rid_->size != 4 || !msg_) {
         errno = EINVAL;
@@ -125,8 +118,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         return -1;
     }
 
-    pipe_t *const direct_out =
-      resolve_direct_dispatch_output_pipe (this, routing_id);
+    pipe_t *const direct_out = resolve_direct_dispatch_output_pipe (this, routing_id);
 
     if (direct_out) {
         if (msg_->size () == 0) {
@@ -136,8 +128,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
             return 1;
         }
 
-        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
-              msg_)) {
+        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (msg_)) {
             const int init_rc = msg_->init ();
             errno_assert (init_rc == 0);
             return 1;
@@ -150,8 +141,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         {
             route_shard_t &shard = route_shard_for (routing_id);
             scoped_fast_lock_t shard_lock (shard.sync);
-            route_shard_t::routes_t::iterator it = shard.routes.find (
-              routing_id);
+            route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
             if (it == shard.routes.end () || !it->second) {
                 errno = EHOSTUNREACH;
                 return -1;
@@ -164,9 +154,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
                 return 1;
             }
 
-            if (it->second
-                  ->write_single_message_and_flush_no_recursive_hwm_check (
-                    msg_)) {
+            if (it->second->write_single_message_and_flush_no_recursive_hwm_check (msg_)) {
                 const int init_rc = msg_->init ();
                 errno_assert (init_rc == 0);
                 return 1;
@@ -191,8 +179,7 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
     return -1;
 }
 
-int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
-                                                               int flags_)
+int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_, int flags_)
 {
     if (!msg_) {
         errno = EINVAL;
@@ -213,8 +200,7 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
         return 1;
     }
 
-    if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
-          msg_)) {
+    if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (msg_)) {
         const int init_rc = msg_->init ();
         errno_assert (init_rc == 0);
         return 1;
@@ -222,8 +208,7 @@ int zlink::stream_t::stream_dispatch_send_current_msg_from_io (msg_t *msg_,
 
     if (dispatch_pipe) {
         direct_out->refresh_write_credit (dispatch_pipe->get_msgs_read ());
-        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (
-              msg_)) {
+        if (direct_out->write_single_message_and_flush_no_recursive_hwm_check (msg_)) {
             const int init_rc = msg_->init ();
             errno_assert (init_rc == 0);
             return 1;

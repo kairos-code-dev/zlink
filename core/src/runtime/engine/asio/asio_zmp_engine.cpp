@@ -23,10 +23,9 @@
 #include <limits.h>
 #include <string.h>
 
-zlink::asio_zmp_engine_t::asio_zmp_engine_t (
-  fd_t fd_,
-  const options_t &options_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_) :
+zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
+                                             const options_t &options_,
+                                             const endpoint_uri_pair_t &endpoint_uri_pair_) :
     asio_engine_t (fd_, options_, endpoint_uri_pair_),
     _hello_sent (false),
     _hello_received (false),
@@ -44,11 +43,10 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (
     init_zmp_engine ();
 }
 
-zlink::asio_zmp_engine_t::asio_zmp_engine_t (
-  fd_t fd_,
-  const options_t &options_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_,
-  std::unique_ptr<i_asio_transport> transport_) :
+zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
+                                             const options_t &options_,
+                                             const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                             std::unique_ptr<i_asio_transport> transport_) :
     asio_engine_t (fd_, options_, endpoint_uri_pair_, std::move (transport_)),
     _hello_sent (false),
     _hello_received (false),
@@ -98,10 +96,10 @@ zlink::asio_zmp_engine_t::~asio_zmp_engine_t ()
 
 void zlink::asio_zmp_engine_t::init_zmp_engine ()
 {
-    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmp_engine_t::pull_msg_from_session);
-    _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmp_engine_t::decode_and_push);
+    _next_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::pull_msg_from_session);
+    _process_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::decode_and_push);
 
     if (_options.heartbeat_interval > 0) {
         _heartbeat_timeout = _options.heartbeat_timeout;
@@ -121,8 +119,7 @@ void zlink::asio_zmp_engine_t::init_zmp_engine ()
     _last_error_reason.clear ();
 }
 
-void zlink::asio_zmp_engine_t::set_last_error (uint8_t code_,
-                                             const char *reason_)
+void zlink::asio_zmp_engine_t::set_last_error (uint8_t code_, const char *reason_)
 {
     _last_error_code = code_;
     if (reason_ && *reason_)
@@ -131,8 +128,7 @@ void zlink::asio_zmp_engine_t::set_last_error (uint8_t code_,
         _last_error_reason.assign (zmp_error_reason (code_));
 }
 
-void zlink::asio_zmp_engine_t::send_error_frame (uint8_t code_,
-                                               const char *reason_)
+void zlink::asio_zmp_engine_t::send_error_frame (uint8_t code_, const char *reason_)
 {
     i_asio_transport *tr = transport ();
     if (!tr || !tr->is_open ())
@@ -142,8 +138,7 @@ void zlink::asio_zmp_engine_t::send_error_frame (uint8_t code_,
     if (!reason || !*reason)
         reason = zmp_error_reason (code_);
 
-    const size_t reason_len =
-      std::min (strlen (reason), static_cast<size_t> (UCHAR_MAX));
+    const size_t reason_len = std::min (strlen (reason), static_cast<size_t> (UCHAR_MAX));
     const size_t body_len = 3 + reason_len;
     unsigned char buffer[zmp_header_size + 3 + UCHAR_MAX];
 
@@ -161,8 +156,7 @@ void zlink::asio_zmp_engine_t::send_error_frame (uint8_t code_,
     const size_t total = zmp_header_size + body_len;
     size_t offset = 0;
     while (offset < total) {
-        const std::size_t written =
-          tr->write_some (buffer + offset, total - offset);
+        const std::size_t written = tr->write_some (buffer + offset, total - offset);
         if (written == 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
@@ -188,8 +182,7 @@ void zlink::asio_zmp_engine_t::error (error_reason_t reason_)
     }
 
     if (reason_ == timeout_error || reason_ == protocol_error) {
-        const uint8_t code =
-          _last_error_code ? _last_error_code : zmp_error_internal;
+        const uint8_t code = _last_error_code ? _last_error_code : zmp_error_internal;
         send_error_frame (code, _last_error_reason.c_str ());
     }
 
@@ -201,8 +194,7 @@ void zlink::asio_zmp_engine_t::plug_internal ()
     set_handshake_timer ();
 
     const size_t identity_len =
-      std::min (static_cast<size_t> (_options.routing_id_size),
-                static_cast<size_t> (255));
+      std::min (static_cast<size_t> (_options.routing_id_size), static_cast<size_t> (255));
     const size_t body_len = zmp_control::hello_min_body_size + identity_len;
     _hello_send[0] = zmp_magic;
     _hello_send[1] = zmp_version;
@@ -210,20 +202,16 @@ void zlink::asio_zmp_engine_t::plug_internal ()
     _hello_send[3] = 0;
     put_uint32 (_hello_send + 4, static_cast<uint32_t> (body_len));
     _hello_send[zmp_header_size + 0] = zmp_control_hello;
-    _hello_send[zmp_header_size + 1] =
-      static_cast<unsigned char> (_options.type);
-    _hello_send[zmp_header_size + 2] =
-      static_cast<unsigned char> (identity_len);
+    _hello_send[zmp_header_size + 1] = static_cast<unsigned char> (_options.type);
+    _hello_send[zmp_header_size + 2] = static_cast<unsigned char> (identity_len);
     if (identity_len > 0)
-        memcpy (_hello_send + zmp_header_size
-                  + zmp_control::hello_min_body_size,
+        memcpy (_hello_send + zmp_header_size + zmp_control::hello_min_body_size,
                 _options.routing_id, identity_len);
 
     _hello_send_size = zmp_header_size + body_len;
     _ready_send.clear ();
     _ready_send.reserve (_hello_send_size + zmp_header_size + 1);
-    _ready_send.insert (_ready_send.end (), _hello_send,
-                        _hello_send + _hello_send_size);
+    _ready_send.insert (_ready_send.end (), _hello_send, _hello_send + _hello_send_size);
 
     std::vector<unsigned char> ready_body;
     ready_body.push_back (zmp_control_ready);
@@ -236,13 +224,10 @@ void zlink::asio_zmp_engine_t::plug_internal ()
     ready_frame[1] = zmp_version;
     ready_frame[2] = zmp_flag_control;
     ready_frame[3] = 0;
-    put_uint32 (&ready_frame[4],
-                static_cast<uint32_t> (ready_body.size ()));
-    memcpy (&ready_frame[zmp_header_size], &ready_body[0],
-            ready_body.size ());
+    put_uint32 (&ready_frame[4], static_cast<uint32_t> (ready_body.size ()));
+    memcpy (&ready_frame[zmp_header_size], &ready_body[0], ready_body.size ());
 
-    _ready_send.insert (_ready_send.end (), ready_frame.begin (),
-                        ready_frame.end ());
+    _ready_send.insert (_ready_send.end (), ready_frame.begin (), ready_frame.end ());
     _outpos = &_ready_send[0];
     _outsize = _ready_send.size ();
     _hello_sent = true;
@@ -273,8 +258,7 @@ bool zlink::asio_zmp_engine_t::handshake ()
     }
 
     if (_decoder == NULL) {
-        _decoder = new (std::nothrow)
-          zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+        _decoder = new (std::nothrow) zmp_decoder_t (_options.in_batch_size, _options.maxmsgsize);
         alloc_assert (_decoder);
         _input_in_decoder_buffer = false;
     }
@@ -291,13 +275,11 @@ bool zlink::asio_zmp_engine_t::handshake ()
     }
 
     if (_has_handshake_stage) {
-        session ()->set_peer_routing_id (_peer_routing_id,
-                                         _peer_routing_id_size);
+        session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
         session ()->engine_ready ();
         _has_handshake_stage = false;
     } else {
-        session ()->set_peer_routing_id (_peer_routing_id,
-                                         _peer_routing_id_size);
+        session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
     }
 
     if (_options.recv_routing_id) {
@@ -322,8 +304,8 @@ bool zlink::asio_zmp_engine_t::handshake ()
         _has_handshake_timer = false;
     }
 
-    socket ()->event_connection_ready_changed(_endpoint_uri_pair, _peer_routing_id,
-                                       _peer_routing_id_size);
+    socket ()->event_connection_ready_changed (_endpoint_uri_pair, _peer_routing_id,
+                                               _peer_routing_id_size);
 
     if (_output_stopped)
         restart_output ();
@@ -339,8 +321,7 @@ bool zlink::asio_zmp_engine_t::receive_hello ()
 {
     while (_insize > 0) {
         if (_hello_header_bytes < zmp_header_size) {
-            const size_t to_copy =
-              std::min (_insize, zmp_header_size - _hello_header_bytes);
+            const size_t to_copy = std::min (_insize, zmp_header_size - _hello_header_bytes);
             memcpy (_hello_recv + _hello_header_bytes, _inpos, to_copy);
             _hello_header_bytes += to_copy;
             _inpos += to_copy;
@@ -364,10 +345,8 @@ bool zlink::asio_zmp_engine_t::receive_hello ()
 
         if (_hello_body_bytes < _hello_body_len) {
             const size_t to_copy =
-              std::min (_insize, static_cast<size_t> (_hello_body_len)
-                                    - _hello_body_bytes);
-            memcpy (_hello_recv + zmp_header_size + _hello_body_bytes, _inpos,
-                    to_copy);
+              std::min (_insize, static_cast<size_t> (_hello_body_len) - _hello_body_bytes);
+            memcpy (_hello_recv + zmp_header_size + _hello_body_bytes, _inpos, to_copy);
             _hello_body_bytes += to_copy;
             _inpos += to_copy;
             _insize -= to_copy;
@@ -386,18 +365,14 @@ bool zlink::asio_zmp_engine_t::receive_hello ()
     return false;
 }
 
-bool zlink::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
-                                          size_t size_)
+bool zlink::asio_zmp_engine_t::parse_hello (const unsigned char *data_, size_t size_)
 {
     zmp_control::hello_parse_result_t result;
-    if (zmp_control::parse_hello_frame (
-          data_, size_, _options.type, &result)
-        != 0) {
+    if (zmp_control::parse_hello_frame (data_, size_, _options.type, &result) != 0) {
         set_last_error (result.error_code, result.error_reason);
         if (result.malformed_hello_event) {
             socket ()->event_handshake_failed_protocol (
-              session ()->get_endpoint (),
-              ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+              session ()->get_endpoint (), ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         }
         error (protocol_error);
         return false;
@@ -474,9 +449,7 @@ int zlink::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
     properties_t properties;
     init_properties (properties);
     const char *error_reason = NULL;
-    if (zmp_control::parse_ready_metadata (
-          msg_, &properties, &error_reason)
-        != 0) {
+    if (zmp_control::parse_ready_metadata (msg_, &properties, &error_reason) != 0) {
         set_last_error (zmp_error_internal, error_reason);
         return -1;
     }
@@ -504,8 +477,8 @@ int zlink::asio_zmp_engine_t::produce_pong_message (msg_t *msg_)
 {
     zmp_control::build_heartbeat_ack (msg_, _heartbeat_ctx);
     _heartbeat_ctx.clear ();
-    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmp_engine_t::pull_msg_from_session);
+    _next_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::pull_msg_from_session);
     return 0;
 }
 
@@ -576,11 +549,10 @@ int zlink::asio_zmp_engine_t::process_command_message (msg_t *msg_)
 
 int zlink::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
 {
-    zmp_control::build_heartbeat_ping (
-      msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
+    zmp_control::build_heartbeat_ping (msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
 
-    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmp_engine_t::pull_msg_from_session);
+    _next_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::pull_msg_from_session);
     if (!_has_timeout_timer && _heartbeat_timeout > 0) {
         add_timer (_heartbeat_timeout, heartbeat_timeout_timer_id);
         _has_timeout_timer = true;
@@ -592,8 +564,7 @@ int zlink::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
 int zlink::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
 {
     zmp_control::heartbeat_action_t action;
-    if (zmp_control::parse_heartbeat (
-          msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
+    if (zmp_control::parse_heartbeat (msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
         != 0) {
         set_last_error (zmp_error_internal, action.error_reason);
         return -1;
@@ -601,14 +572,13 @@ int zlink::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
 
     if (action.kind == zmp_control::heartbeat_action_send_ack) {
         if (!_has_ttl_timer && action.ttl_ds > 0) {
-            add_timer (static_cast<int> (action.ttl_ds) * 100,
-                       heartbeat_ttl_timer_id);
+            add_timer (static_cast<int> (action.ttl_ds) * 100, heartbeat_ttl_timer_id);
             _has_ttl_timer = true;
         }
 
         _heartbeat_ctx.assign (action.ctx, action.ctx + action.ctx_len);
-        _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-          &asio_zmp_engine_t::produce_pong_message);
+        _next_msg =
+          static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::produce_pong_message);
         restart_output ();
         return 0;
     }
@@ -617,9 +587,9 @@ int zlink::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
 }
 
 bool zlink::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,
-                                                  unsigned char *buffer_,
-                                                  size_t buffer_size_,
-                                                  size_t &header_size_)
+                                                    unsigned char *buffer_,
+                                                    size_t buffer_size_,
+                                                    size_t &header_size_)
 {
     if (buffer_size_ < zmp_header_size)
         return false;
@@ -657,9 +627,9 @@ int zlink::asio_zmp_engine_t::push_one_then_decode (msg_t *msg_)
 {
     const int rc = session ()->push_msg (msg_);
     if (rc == 0)
-        _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-          &asio_zmp_engine_t::decode_and_push);
+        _process_msg =
+          static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::decode_and_push);
     return rc;
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO

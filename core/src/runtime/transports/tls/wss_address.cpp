@@ -37,4 +37,4 @@ int zlink::wss_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-#endif  // ZLINK_HAVE_WSS
+#endif // ZLINK_HAVE_WSS

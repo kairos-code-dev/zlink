@@ -34,7 +34,8 @@ class dispatch_projection_t
 
     explicit dispatch_projection_t (offload_executor_t &offload);
 
-    void register_handler (runtime_event_kind_t kind, handler_execution_t execution, handler_t handler);
+    void
+    register_handler (runtime_event_kind_t kind, handler_execution_t execution, handler_t handler);
     void project (runtime_event_kind_t kind);
     const std::vector<runtime_event_t> &projected_events () const noexcept;
 

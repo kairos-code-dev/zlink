@@ -2,12 +2,12 @@
 
 #include "addon_exports.h"
 
-static napi_value init(napi_env env, napi_value exports)
+static napi_value init (napi_env env, napi_value exports)
 {
-    define_core_exports(env, exports);
-    define_discovery_exports(env, exports);
-    define_spot_exports(env, exports);
+    define_core_exports (env, exports);
+    define_discovery_exports (env, exports);
+    define_spot_exports (env, exports);
     return exports;
 }
 
-NAPI_MODULE(NODE_GYP_MODULE_NAME, init)
+NAPI_MODULE (NODE_GYP_MODULE_NAME, init)

@@ -21,10 +21,8 @@ spot_dispatch_tls_t &spot_dispatch_tls ()
 }
 }
 
-zlink::spot_dispatch_context_t::spot_dispatch_context_t (void *handle_,
-                                                         bool is_node_) :
-    _previous_handle (spot_dispatch_tls ().handle),
-    _previous_is_node (spot_dispatch_tls ().is_node)
+zlink::spot_dispatch_context_t::spot_dispatch_context_t (void *handle_, bool is_node_) :
+    _previous_handle (spot_dispatch_tls ().handle), _previous_is_node (spot_dispatch_tls ().is_node)
 {
     spot_dispatch_tls_t &context = spot_dispatch_tls ();
     context.handle = handle_;

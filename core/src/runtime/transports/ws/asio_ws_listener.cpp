@@ -37,8 +37,7 @@
 
 #if ASIO_WS_LISTENER_DEBUG
 #include <cstdio>
-#define WS_LISTENER_DBG(fmt, ...)                                              \
-    fprintf (stderr, "[ASIO_WS_LISTENER] " fmt "\n", ##__VA_ARGS__)
+#define WS_LISTENER_DBG(fmt, ...) fprintf (stderr, "[ASIO_WS_LISTENER] " fmt "\n", ##__VA_ARGS__)
 #else
 #define WS_LISTENER_DBG(fmt, ...)
 #endif
@@ -55,8 +54,8 @@ create_wss_server_context (const zlink::options_t &options_)
     }
 
     std::unique_ptr<boost::asio::ssl::context> ssl_context =
-      zlink::ssl_context_helper_t::create_server_context (
-        options_.tls_cert, options_.tls_key, options_.tls_password);
+      zlink::ssl_context_helper_t::create_server_context (options_.tls_cert, options_.tls_key,
+                                                          options_.tls_password);
     if (!ssl_context)
         return std::unique_ptr<boost::asio::ssl::context> ();
 
@@ -69,22 +68,20 @@ create_wss_server_context (const zlink::options_t &options_)
         }
 
         if (!options_.tls_ca.empty ()) {
-            if (!zlink::ssl_context_helper_t::load_ca_certificate (
-                  *ssl_context, options_.tls_ca)) {
+            if (!zlink::ssl_context_helper_t::load_ca_certificate (*ssl_context, options_.tls_ca)) {
                 return std::unique_ptr<boost::asio::ssl::context> ();
             }
         } else if (trust_system) {
             ssl_context->set_default_verify_paths ();
         }
     } else if (!options_.tls_ca.empty ()) {
-        if (!zlink::ssl_context_helper_t::load_ca_certificate (
-              *ssl_context, options_.tls_ca)) {
+        if (!zlink::ssl_context_helper_t::load_ca_certificate (*ssl_context, options_.tls_ca)) {
             return std::unique_ptr<boost::asio::ssl::context> ();
         }
     }
 
-    if (!zlink::ssl_context_helper_t::configure_server_verification (
-          *ssl_context, require_client_cert)) {
+    if (!zlink::ssl_context_helper_t::configure_server_verification (*ssl_context,
+                                                                     require_client_cert)) {
         return std::unique_ptr<boost::asio::ssl::context> ();
     }
 
@@ -126,8 +123,8 @@ size_t stream_accept_target (const zlink::options_t &options_)
 #endif
 
 zlink::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
-                                              socket_base_t *socket_,
-                                              const options_t &options_) :
+                                               socket_base_t *socket_,
+                                               const options_t &options_) :
     own_t (io_thread_, options_),
     io_object_t (io_thread_),
     _io_context (io_thread_->get_io_context ()),
@@ -148,12 +145,10 @@ zlink::asio_ws_listener_t::~asio_ws_listener_t ()
     WS_LISTENER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
 }
 
-int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
-                                                bool secure_)
+int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_, bool secure_)
 {
-    WS_LISTENER_DBG ("set_local_address: host=%s, port=%u, path=%s",
-                     addr_->host ().c_str (), addr_->port (),
-                     addr_->path ().c_str ());
+    WS_LISTENER_DBG ("set_local_address: host=%s, port=%u, path=%s", addr_->host ().c_str (),
+                     addr_->port (), addr_->path ().c_str ());
 
     _secure = secure_;
 #if !defined ZLINK_HAVE_WSS
@@ -169,9 +164,8 @@ int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
     _port = addr_->port ();
 
     //  Determine protocol family from the resolved address
-    boost::asio::ip::tcp protocol = addr_->family () == AF_INET6
-                                      ? boost::asio::ip::tcp::v6 ()
-                                      : boost::asio::ip::tcp::v4 ();
+    boost::asio::ip::tcp protocol =
+      addr_->family () == AF_INET6 ? boost::asio::ip::tcp::v6 () : boost::asio::ip::tcp::v4 ();
 
     boost::system::error_code ec;
 
@@ -186,15 +180,12 @@ int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
     //  Set socket options
 #ifdef ZLINK_HAVE_WINDOWS
     _acceptor.set_option (
-      boost::asio::detail::socket_option::boolean<SOL_SOCKET,
-                                                   SO_EXCLUSIVEADDRUSE> (true),
-      ec);
+      boost::asio::detail::socket_option::boolean<SOL_SOCKET, SO_EXCLUSIVEADDRUSE> (true), ec);
 #else
     _acceptor.set_option (boost::asio::socket_base::reuse_address (true), ec);
 #endif
     if (ec) {
-        WS_LISTENER_DBG ("Failed to set reuse_address: %s",
-                         ec.message ().c_str ());
+        WS_LISTENER_DBG ("Failed to set reuse_address: %s", ec.message ().c_str ());
         _acceptor.close ();
         errno = EADDRINUSE;
         return -1;
@@ -213,19 +204,15 @@ int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
     boost::asio::ip::tcp::endpoint bind_endpoint;
     const struct sockaddr *sa = addr_->addr ();
     if (sa->sa_family == AF_INET) {
-        const struct sockaddr_in *sin =
-          reinterpret_cast<const struct sockaddr_in *> (sa);
+        const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (sa);
         bind_endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)),
-          ntohs (sin->sin_port));
+          boost::asio::ip::address_v4 (ntohl (sin->sin_addr.s_addr)), ntohs (sin->sin_port));
     } else {
-        const struct sockaddr_in6 *sin6 =
-          reinterpret_cast<const struct sockaddr_in6 *> (sa);
+        const struct sockaddr_in6 *sin6 = reinterpret_cast<const struct sockaddr_in6 *> (sa);
         boost::asio::ip::address_v6::bytes_type bytes;
         memcpy (bytes.data (), sin6->sin6_addr.s6_addr, 16);
         bind_endpoint = boost::asio::ip::tcp::endpoint (
-          boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id),
-          ntohs (sin6->sin6_port));
+          boost::asio::ip::address_v6 (bytes, sin6->sin6_scope_id), ntohs (sin6->sin6_port));
     }
 
     //  Bind the acceptor
@@ -276,9 +263,7 @@ int zlink::asio_ws_listener_t::get_local_address (std::string &addr_) const
     return addr_.empty () ? -1 : 0;
 }
 
-std::string
-zlink::asio_ws_listener_t::get_socket_name (fd_t fd_,
-                                           socket_end_t socket_end_) const
+std::string zlink::asio_ws_listener_t::get_socket_name (fd_t fd_, socket_end_t socket_end_) const
 {
     return zlink::get_socket_name<tcp_address_t> (fd_, socket_end_);
 }
@@ -293,8 +278,7 @@ void zlink::asio_ws_listener_t::process_plug ()
 
 void zlink::asio_ws_listener_t::process_term (int linger_)
 {
-    WS_LISTENER_DBG ("process_term called, linger=%d, accepting=%zu", linger_,
-                     _accepting_count);
+    WS_LISTENER_DBG ("process_term called, linger=%d, accepting=%zu", linger_, _accepting_count);
 
     _terminating = true;
     _linger = linger_;
@@ -304,8 +288,7 @@ void zlink::asio_ws_listener_t::process_term (int linger_)
         fd_t fd = _acceptor.native_handle ();
         boost::system::error_code ec;
         _acceptor.close (ec);
-        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint),
-                               fd);
+        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), fd);
     }
 
     //  Process pending handlers
@@ -327,12 +310,12 @@ void zlink::asio_ws_listener_t::start_accept ()
         alloc_assert (accept_socket.get ());
 
         ++_accepting_count;
-        WS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)",
-                         _accepting_count, target_accepts);
-        _acceptor.async_accept (
-          *accept_socket, [this, accept_socket] (const boost::system::error_code &ec) {
-              on_accept (accept_socket, ec);
-          });
+        WS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)", _accepting_count,
+                         target_accepts);
+        _acceptor.async_accept (*accept_socket,
+                                [this, accept_socket] (const boost::system::error_code &ec) {
+                                    on_accept (accept_socket, ec);
+                                });
     }
 }
 
@@ -342,8 +325,8 @@ void zlink::asio_ws_listener_t::on_accept (
 {
     if (_accepting_count > 0)
         --_accepting_count;
-    WS_LISTENER_DBG ("on_accept: ec=%s, terminating=%d, pending=%zu",
-                     ec.message ().c_str (), _terminating, _accepting_count);
+    WS_LISTENER_DBG ("on_accept: ec=%s, terminating=%d, pending=%zu", ec.message ().c_str (),
+                     _terminating, _accepting_count);
 
     if (_terminating) {
         if (!ec && accept_socket_ && accept_socket_->is_open ()) {
@@ -360,8 +343,7 @@ void zlink::asio_ws_listener_t::on_accept (
             return;
         }
 
-        _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
+        _socket->event_accept_failed (make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
 
         start_accept ();
         return;
@@ -373,8 +355,7 @@ void zlink::asio_ws_listener_t::on_accept (
 
     //  Get peer address for accept filter
     boost::system::error_code peer_ec;
-    boost::asio::ip::tcp::endpoint remote_endpoint =
-      accept_socket_->remote_endpoint (peer_ec);
+    boost::asio::ip::tcp::endpoint remote_endpoint = accept_socket_->remote_endpoint (peer_ec);
 
     struct sockaddr_storage ss;
     socklen_t ss_len = sizeof (ss);
@@ -382,22 +363,18 @@ void zlink::asio_ws_listener_t::on_accept (
 
     if (!peer_ec) {
         if (remote_endpoint.address ().is_v4 ()) {
-            struct sockaddr_in *sin =
-              reinterpret_cast<struct sockaddr_in *> (&ss);
+            struct sockaddr_in *sin = reinterpret_cast<struct sockaddr_in *> (&ss);
             sin->sin_family = AF_INET;
             sin->sin_port = htons (remote_endpoint.port ());
-            sin->sin_addr.s_addr =
-              htonl (remote_endpoint.address ().to_v4 ().to_uint ());
+            sin->sin_addr.s_addr = htonl (remote_endpoint.address ().to_v4 ().to_uint ());
             ss_len = sizeof (struct sockaddr_in);
         } else {
-            struct sockaddr_in6 *sin6 =
-              reinterpret_cast<struct sockaddr_in6 *> (&ss);
+            struct sockaddr_in6 *sin6 = reinterpret_cast<struct sockaddr_in6 *> (&ss);
             sin6->sin6_family = AF_INET6;
             sin6->sin6_port = htons (remote_endpoint.port ());
             auto bytes = remote_endpoint.address ().to_v6 ().to_bytes ();
             memcpy (sin6->sin6_addr.s6_addr, bytes.data (), 16);
-            sin6->sin6_scope_id =
-              remote_endpoint.address ().to_v6 ().scope_id ();
+            sin6->sin6_scope_id = remote_endpoint.address ().to_v6 ().scope_id ();
             ss_len = sizeof (struct sockaddr_in6);
         }
     }
@@ -417,8 +394,8 @@ void zlink::asio_ws_listener_t::on_accept (
     //  Tune the accepted socket
     if (tune_socket (fd) != 0) {
         WS_LISTENER_DBG ("on_accept: tune_socket failed");
-        _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), zlink_errno ());
+        _socket->event_accept_failed (make_unconnected_bind_endpoint_pair (_endpoint),
+                                      zlink_errno ());
 #ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
@@ -447,9 +424,8 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
         remote_addr = remote_addr.substr (6);
 
     const std::string prefix = _secure ? "wss://" : "ws://";
-    const endpoint_uri_pair_t endpoint_pair (
-      prefix + local_addr + _path, prefix + remote_addr + _path,
-      endpoint_type_bind);
+    const endpoint_uri_pair_t endpoint_pair (prefix + local_addr + _path,
+                                             prefix + remote_addr + _path, endpoint_type_bind);
 
     std::unique_ptr<i_asio_transport> transport;
 #if defined ZLINK_HAVE_WSS
@@ -457,8 +433,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
     if (_secure) {
         ssl_context = create_wss_server_context (options);
         if (!ssl_context) {
-            _socket->event_accept_failed (
-              make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
+            _socket->event_accept_failed (make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
 #ifdef ZLINK_HAVE_WINDOWS
             closesocket (fd_);
 #else
@@ -467,15 +442,14 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
             return;
         }
         std::unique_ptr<wss_transport_t> wss_transport (
-          new (std::nothrow)
-            wss_transport_t (*ssl_context, _path, _host));
+          new (std::nothrow) wss_transport_t (*ssl_context, _path, _host));
         alloc_assert (wss_transport);
         transport.reset (wss_transport.release ());
     } else
 #endif
     {
-        std::unique_ptr<ws_transport_t> ws_transport (
-          new (std::nothrow) ws_transport_t (_path, _host));
+        std::unique_ptr<ws_transport_t> ws_transport (new (std::nothrow)
+                                                        ws_transport_t (_path, _host));
         alloc_assert (ws_transport);
         transport.reset (ws_transport.release ());
     }
@@ -487,21 +461,19 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
     if (_secure) {
         if (is_stream)
             engine = new (std::nothrow) asio_raw_engine_t (
-              fd_, engine_options, endpoint_pair, std::move (transport),
-              std::move (ssl_context));
+              fd_, engine_options, endpoint_pair, std::move (transport), std::move (ssl_context));
         else
             engine = new (std::nothrow) asio_zmp_engine_t (
-              fd_, engine_options, endpoint_pair, std::move (transport),
-              std::move (ssl_context));
+              fd_, engine_options, endpoint_pair, std::move (transport), std::move (ssl_context));
     } else
 #endif
     {
         if (is_stream)
-            engine = new (std::nothrow) asio_raw_engine_t (
-              fd_, engine_options, endpoint_pair, std::move (transport));
+            engine = new (std::nothrow)
+              asio_raw_engine_t (fd_, engine_options, endpoint_pair, std::move (transport));
         else
-            engine = new (std::nothrow) asio_zmp_engine_t (
-              fd_, engine_options, endpoint_pair, std::move (transport));
+            engine = new (std::nothrow)
+              asio_zmp_engine_t (fd_, engine_options, endpoint_pair, std::move (transport));
     }
     alloc_assert (engine);
 
@@ -512,8 +484,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
     zlink_assert (io_thread);
 
     //  Create and launch session
-    session_base_t *session =
-      session_base_t::create (io_thread, false, _socket, options, NULL);
+    session_base_t *session = session_base_t::create (io_thread, false, _socket, options, NULL);
     errno_assert (session);
     session->inc_seqnum ();
     launch_child (session);
@@ -530,8 +501,7 @@ void zlink::asio_ws_listener_t::close ()
         fd_t fd = _acceptor.native_handle ();
         boost::system::error_code ec;
         _acceptor.close (ec);
-        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint),
-                               fd);
+        _socket->event_closed (make_unconnected_bind_endpoint_pair (_endpoint), fd);
     }
 }
 
@@ -539,16 +509,15 @@ int zlink::asio_ws_listener_t::tune_socket (fd_t fd_) const
 {
     int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
     rc = rc
-         | tune_tcp_keepalives (fd_, options.tcp_keepalive,
-                                options.tcp_keepalive_cnt,
-                                options.tcp_keepalive_idle,
-                                options.tcp_keepalive_intvl);
+         | tune_tcp_keepalives (fd_, options.tcp_keepalive, options.tcp_keepalive_cnt,
+                                options.tcp_keepalive_idle, options.tcp_keepalive_intvl);
     rc = rc | tune_tcp_maxrt (fd_, options.tcp_maxrt);
     return rc;
 }
 
-bool zlink::asio_ws_listener_t::apply_accept_filters (
-  fd_t fd_, const struct sockaddr_storage &ss, socklen_t ss_len) const
+bool zlink::asio_ws_listener_t::apply_accept_filters (fd_t fd_,
+                                                      const struct sockaddr_storage &ss,
+                                                      socklen_t ss_len) const
 {
     //  Make socket non-inheritable
     make_socket_noninheritable (fd_);
@@ -557,10 +526,7 @@ bool zlink::asio_ws_listener_t::apply_accept_filters (
     if (!options.tcp_accept_filters.empty ()) {
         bool matched = false;
         for (options_t::tcp_accept_filters_t::size_type i = 0,
-                                                        size =
-                                                          options
-                                                            .tcp_accept_filters
-                                                            .size ();
+                                                        size = options.tcp_accept_filters.size ();
              i != size; ++i) {
             if (options.tcp_accept_filters[i].match_address (
                   reinterpret_cast<const struct sockaddr *> (&ss), ss_len)) {
@@ -589,4 +555,4 @@ bool zlink::asio_ws_listener_t::apply_accept_filters (
     return true;
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

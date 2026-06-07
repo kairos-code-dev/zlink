@@ -34,23 +34,19 @@ class spot_pub_t
     bool check_tag () const;
     bool is_node_owned_default () const;
 
-    int publish (const char *topic_,
-                 zlink_msg_t *parts_,
-                 size_t part_count_,
-                 int flags_);
+    int publish (const char *topic_, zlink_msg_t *parts_, size_t part_count_, int flags_);
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int set_routing_id (const void *data_, size_t size_);
-    int set_send_ready_handler (zlink_send_ready_handler_fn handler_,
-                                void *subject_,
-                                void *userdata_);
+    int
+    set_send_ready_handler (zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_);
     int routing_id (zlink_routing_id_t *out_) const;
     int fill_monitor_snapshot (zlink_monitor_status_t *out_) const;
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
     bool owns_socket (const socket_base_t *socket_) const;
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
-    void set_part_helper_state (
-      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
+    void
+    set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
     void invoke_send_ready_handler ();
     spot_node_t *node () const { return _node; }

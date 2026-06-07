@@ -19,8 +19,7 @@ void validate_address (int family,
                        const char *expected_addr_v4_failover_ = NULL)
 {
 #if defined ZLINK_HAVE_WINDOWS
-    if (family == AF_INET6 && expected_addr_v4_failover_ != NULL
-        && addr_->family () == AF_INET) {
+    if (family == AF_INET6 && expected_addr_v4_failover_ != NULL && addr_->family () == AF_INET) {
         //  We've requested an IPv6 but the system gave us an IPv4, use the
         //  failover address
         family = AF_INET;
@@ -36,11 +35,9 @@ void validate_address (int family,
         struct in6_addr expected_addr;
         const sockaddr_in6 *ip6_addr = &addr_->ipv6;
 
-        TEST_ASSERT_EQUAL (
-          1, test_inet_pton (AF_INET6, expected_addr_, &expected_addr));
+        TEST_ASSERT_EQUAL (1, test_inet_pton (AF_INET6, expected_addr_, &expected_addr));
 
-        int neq = memcmp (&ip6_addr->sin6_addr, &expected_addr,
-                          sizeof (expected_addr_));
+        int neq = memcmp (&ip6_addr->sin6_addr, &expected_addr, sizeof (expected_addr_));
 
         TEST_ASSERT_EQUAL (0, neq);
         TEST_ASSERT_EQUAL (htons (expected_port_), ip6_addr->sin6_port);
@@ -49,8 +46,7 @@ void validate_address (int family,
         struct in_addr expected_addr;
         const sockaddr_in *ip4_addr = &addr_->ipv4;
 
-        TEST_ASSERT_EQUAL (
-          1, test_inet_pton (AF_INET, expected_addr_, &expected_addr));
+        TEST_ASSERT_EQUAL (1, test_inet_pton (AF_INET, expected_addr_, &expected_addr));
 
         TEST_ASSERT_EQUAL (expected_addr.s_addr, ip4_addr->sin_addr.s_addr);
         TEST_ASSERT_EQUAL (htons (expected_port_), ip4_addr->sin_port);

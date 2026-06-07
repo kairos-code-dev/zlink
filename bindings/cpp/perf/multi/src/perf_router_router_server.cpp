@@ -70,16 +70,20 @@ void debug_log (const std::string &message_)
 
 } // namespace
 
-bool perf_router_router_server (const std::string &lib_name, const std::string &transport, size_t msg_size)
+bool perf_router_router_server (const std::string &lib_name,
+                                const std::string &transport,
+                                size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("ROUTER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_ROUTER_ROUTER," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_ROUTER_ROUTER," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
     // Hold the typed router_socket_t directly; matches dealer_router_server
@@ -89,15 +93,16 @@ bool perf_router_router_server (const std::string &lib_name, const std::string &
     if (!server.valid ())
         return false;
 
-    server.set_routing_id (zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("SERVER"), 6));
+    server.set_routing_id (
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("SERVER"), 6));
     perf::multi::apply_benchmark_socket_options (server, settings, transport);
     if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size))
         return false;
     if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
-    const std::string endpoint =
-      perf::multi::bind_and_resolve_endpoint (server, transport, "cpp_multi_router_router", settings.server_bind_port);
+    const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
+      server, transport, "cpp_multi_router_router", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
@@ -125,14 +130,16 @@ bool perf_router_router_server (const std::string &lib_name, const std::string &
 
     auto send_payload = [&] (const zlink::routing_id_t &rid, zlink::message_t &payload) -> int {
         try {
-            const bool sent =
-              std::move (server.send (rid)).message (payload).flags (zlink::send_flags_t::dontwait).submit ();
+            const bool sent = std::move (server.send (rid))
+                                .message (payload)
+                                .flags (zlink::send_flags_t::dontwait)
+                                .submit ();
             return sent ? 1 : 0;
         }
         catch (const zlink::submit_error_t &err) {
             const int err_no = err.internal_errno ();
-            if (err_no == EAGAIN || err_no == EWOULDBLOCK || err_no == EINTR || err_no == EHOSTUNREACH
-                || err_no == ENOTCONN) {
+            if (err_no == EAGAIN || err_no == EWOULDBLOCK || err_no == EINTR
+                || err_no == EHOSTUNREACH || err_no == ENOTCONN) {
                 return 0;
             }
             errno = err_no;
@@ -162,13 +169,16 @@ bool perf_router_router_server (const std::string &lib_name, const std::string &
             poll_interest = poll_interest | zlink::poll_event_flag_t::pollout;
         poller.modify (server, poll_interest);
 
-        const size_t poll_rc = poller.wait (events.data (), events.size (), std::chrono::milliseconds (-1));
+        const size_t poll_rc =
+          poller.wait (events.data (), events.size (), std::chrono::milliseconds (-1));
         if (poll_rc == 0)
             continue;
 
         const short revents = static_cast<short> (events[0].revents);
-        const bool readable = (revents & static_cast<short> (zlink::poll_event_flag_t::pollin)) != 0;
-        const bool writable = (revents & static_cast<short> (zlink::poll_event_flag_t::pollout)) != 0;
+        const bool readable =
+          (revents & static_cast<short> (zlink::poll_event_flag_t::pollin)) != 0;
+        const bool writable =
+          (revents & static_cast<short> (zlink::poll_event_flag_t::pollout)) != 0;
 
         if (writable && !pending_replies.empty ()) {
             if (!flush_pending ()) {
@@ -186,8 +196,8 @@ bool perf_router_router_server (const std::string &lib_name, const std::string &
             const int recv_rc = server.recv (received, zlink::recv_flags_t::dontwait);
             if (recv_rc != 0) {
                 const int err = errno;
-                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data) || err == EAGAIN || err == EWOULDBLOCK
-                    || err == EINTR)
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data) || err == EAGAIN
+                    || err == EWOULDBLOCK || err == EINTR)
                     break;
                 debug_log ("recv failed errno=" + std::to_string (err));
                 failed = true;
@@ -209,7 +219,8 @@ bool perf_router_router_server (const std::string &lib_name, const std::string &
             }
 
             if (!pending_replies.empty ()) {
-                pending_replies.push_back (pending_reply_t{*received.routing_id (), std::move (part)});
+                pending_replies.push_back (
+                  pending_reply_t{*received.routing_id (), std::move (part)});
                 continue;
             }
 

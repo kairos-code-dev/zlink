@@ -17,7 +17,9 @@ bool perf_debug_enabled ()
     return std::getenv ("PERF_DEBUG") != NULL;
 }
 
-int recv_pair_payload (zlink::pair_socket_t &socket_, zlink::message_t &part_, zlink::recv_flags_t flags_)
+int recv_pair_payload (zlink::pair_socket_t &socket_,
+                       zlink::message_t &part_,
+                       zlink::recv_flags_t flags_)
 {
     try {
         return socket_.recv (part_, flags_);
@@ -42,7 +44,8 @@ bool record_pair_payload (const zlink::message_t &payload,
     if (!perf_single_metric::decode_payload_header (payload.data (), payload.size (), &header)) {
         return true;
     }
-    if (!perf_single_metric::is_expected (header, run_id, perf_single_metric::phase_active, msg_size)) {
+    if (!perf_single_metric::is_expected (header, run_id, perf_single_metric::phase_active,
+                                          msg_size)) {
         return true;
     }
 
@@ -87,7 +90,8 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
         return false;
     }
 
-    if (!perf::single::setup_connected_pair (bind_socket, conn_socket, transport, lib_name + "_pair")) {
+    if (!perf::single::setup_connected_pair (bind_socket, conn_socket, transport,
+                                             lib_name + "_pair")) {
         if (perf_debug_enabled ())
             std::cerr << "pair: setup_connected_pair failed errno=" << errno << std::endl;
         return false;
@@ -95,18 +99,22 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
 
     const int recv_timeout = perf::single::resolve_single_recv_timeout_ms ();
     bind_socket.options ().recv_timeout (std::chrono::milliseconds (recv_timeout));
-    conn_socket.options ().send_timeout (std::chrono::milliseconds (perf::single::resolve_single_send_timeout_ms ()));
+    conn_socket.options ().send_timeout (
+      std::chrono::milliseconds (perf::single::resolve_single_send_timeout_ms ()));
 
     const int duration_s = perf::single::resolve_single_duration_seconds ();
-    std::vector<char> payload (std::max<size_t> (msg_size, perf_single_metric::header_size ()), '\0');
+    std::vector<char> payload (std::max<size_t> (msg_size, perf_single_metric::header_size ()),
+                               '\0');
     const size_t payload_size = payload.size ();
 
     const uint32_t run_id = 1U;
     std::atomic<unsigned long long> sent_count (0);
     std::atomic<unsigned long long> received_count (0);
     std::atomic<bool> sender_ok (true);
-    perf::single::latency_stats_builder_t latency_builder (perf::single::resolve_single_latency_sample_cap ());
-    const auto active_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+    perf::single::latency_stats_builder_t latency_builder (
+      perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
 
     std::thread receiver_thread ([&] () {
         zlink::poller_t poller;
@@ -131,7 +139,8 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
 
             for (;;) {
                 zlink::message_t part;
-                const int recv_rc = recv_pair_payload (bind_socket, part, zlink::recv_flags_t::dontwait);
+                const int recv_rc =
+                  recv_pair_payload (bind_socket, part, zlink::recv_flags_t::dontwait);
                 if (recv_rc != 0) {
                     if (errno == EAGAIN || errno == EINTR)
                         break;
@@ -142,7 +151,8 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
                     return;
                 }
                 if (std::chrono::steady_clock::now () < active_deadline
-                    && !record_pair_payload (part, run_id, msg_size, payload_size, received_count, latency_builder)) {
+                    && !record_pair_payload (part, run_id, msg_size, payload_size, received_count,
+                                             latency_builder)) {
                     sender_ok.store (false, std::memory_order_release);
                     return;
                 }
@@ -167,7 +177,8 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
-            const int send_rc = perf::single::send_payload_dontwait (conn_socket, payload.data (), payload.size ());
+            const int send_rc =
+              perf::single::send_payload_dontwait (conn_socket, payload.data (), payload.size ());
             if (send_rc < 0) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
@@ -187,19 +198,23 @@ bool run_pattern_pair (const std::string &transport, size_t msg_size, const std:
     receiver_thread.join ();
 
     const unsigned long long active_received = received_count.load (std::memory_order_acquire);
-    if (!sender_ok.load (std::memory_order_acquire) || active_received == 0 || latency_builder.count () == 0) {
+    if (!sender_ok.load (std::memory_order_acquire) || active_received == 0
+        || latency_builder.count () == 0) {
         if (perf_debug_enabled ())
             std::cerr << "pair: active phase failed received=" << active_received << std::endl;
         return false;
     }
     const perf::single::latency_stats_t latency = latency_builder.snapshot ();
 
-    perf::single::emit_single_socket_hwm_detail (bind_socket, "PAIR", transport, "receiver", "pair", msg_size);
-    perf::single::emit_single_socket_hwm_detail (conn_socket, "PAIR", transport, "sender", "pair", msg_size);
+    perf::single::emit_single_socket_hwm_detail (bind_socket, "PAIR", transport, "receiver", "pair",
+                                                 msg_size);
+    perf::single::emit_single_socket_hwm_detail (conn_socket, "PAIR", transport, "sender", "pair",
+                                                 msg_size);
 
-    const double throughput = duration_s > 0 ? static_cast<double> (active_received) / duration_s : 0.0;
-    perf::single::print_result (lib_name, "PAIR", transport, msg_size, throughput, latency.mean_ns, latency.p95_ns,
-                                latency.p99_ns);
+    const double throughput =
+      duration_s > 0 ? static_cast<double> (active_received) / duration_s : 0.0;
+    perf::single::print_result (lib_name, "PAIR", transport, msg_size, throughput, latency.mean_ns,
+                                latency.p95_ns, latency.p99_ns);
     return true;
 }
 

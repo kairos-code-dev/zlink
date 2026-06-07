@@ -26,7 +26,8 @@ namespace detail
 class recv_part_out_guard_t
 {
   public:
-    explicit recv_part_out_guard_t (message_t &part_) noexcept : _part (part_), _has_saved (false), _committed (false)
+    explicit recv_part_out_guard_t (message_t &part_) noexcept :
+        _part (part_), _has_saved (false), _committed (false)
     {
         // Only save+restore when the caller passes a msg that already carries
         // a payload. A freshly-inited empty msg has no state worth preserving
@@ -69,8 +70,10 @@ class recv_part_out_guard_t
     bool _committed;
 };
 
-inline int
-recv_single_part_message (void *handle_, routing_id_t *source_rid_out_, message_t &part_out_, recv_flags_t flags_)
+inline int recv_single_part_message (void *handle_,
+                                     routing_id_t *source_rid_out_,
+                                     message_t &part_out_,
+                                     recv_flags_t flags_)
 {
     recv_part_out_guard_t part_guard (part_out_);
     if (!part_guard.prepare ())
@@ -78,8 +81,9 @@ recv_single_part_message (void *handle_, routing_id_t *source_rid_out_, message_
 
     const zlink_routing_id_t *source_rid = nullptr;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    const int rc = zlink_recv_part (handle_, &source_rid, detail::native_handle (part_out_), &has_more,
-                                    static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+    const int rc =
+      zlink_recv_part (handle_, &source_rid, detail::native_handle (part_out_), &has_more,
+                       static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
     if (rc != 0)
         return rc;
     if (has_more != ZLINK_PART_FINAL) {
@@ -110,13 +114,14 @@ inline int recv_single_part_routed_message (void *handle_,
     const zlink_routing_id_t *source_spot_rid = nullptr;
     uint64_t request_seq = 0;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    const int rc = zlink_router_recv_part (handle_, &source_node_rid, &source_spot_rid, &request_seq,
-                                           detail::native_handle (part_out_), &has_more,
-                                           static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+    const int rc = zlink_router_recv_part (
+      handle_, &source_node_rid, &source_spot_rid, &request_seq, detail::native_handle (part_out_),
+      &has_more, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
     if (rc != 0)
         return rc;
-    if (has_more != ZLINK_PART_FINAL || request_seq != 0 || (source_spot_rid && source_spot_rid->size > 0)
-        || !source_node_rid || source_node_rid->size == 0) {
+    if (has_more != ZLINK_PART_FINAL || request_seq != 0
+        || (source_spot_rid && source_spot_rid->size > 0) || !source_node_rid
+        || source_node_rid->size == 0) {
         errno = has_more != ZLINK_PART_FINAL ? EMSGSIZE : EPROTO;
         return -1;
     }

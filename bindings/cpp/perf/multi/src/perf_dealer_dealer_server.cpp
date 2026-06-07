@@ -17,44 +17,54 @@
 namespace
 {
 
-void apply_dealer_socket_options (zlink::dealer_socket_t &socket, const perf::multi::multi_bench_settings_t &settings)
+void apply_dealer_socket_options (zlink::dealer_socket_t &socket,
+                                  const perf::multi::multi_bench_settings_t &settings)
 {
     zlink::dealer_socket_options_t options = socket.options ();
     if (perf::multi::manual_socket_overrides_enabled ()) {
-        options.send_hwm (zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
-        options.recv_hwm (zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
+        options.send_hwm (
+          zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
+        options.recv_hwm (
+          zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
     }
     options.send_timeout (std::chrono::milliseconds (settings.sndtimeo_ms));
     options.recv_timeout (std::chrono::milliseconds (settings.rcvtimeo_ms));
     options.linger (std::chrono::milliseconds (0));
 }
 
-std::string bind_dealer_endpoint (zlink::dealer_socket_t &socket, const std::string &transport, int fixed_port)
+std::string
+bind_dealer_endpoint (zlink::dealer_socket_t &socket, const std::string &transport, int fixed_port)
 {
-    const std::string bind_endpoint = perf::multi::make_endpoint (transport, "cpp_multi_dealer_dealer", fixed_port);
+    const std::string bind_endpoint =
+      perf::multi::make_endpoint (transport, "cpp_multi_dealer_dealer", fixed_port);
     try {
         socket.bind (bind_endpoint);
     }
     catch (const zlink::binding_error_t &) {
         return std::string ();
     }
-    return transport == "inproc" ? bind_endpoint
-                                 : perf::multi::normalize_endpoint_host (socket.options ().last_endpoint ());
+    return transport == "inproc"
+             ? bind_endpoint
+             : perf::multi::normalize_endpoint_host (socket.options ().last_endpoint ());
 }
 
 } // namespace
 
-bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &transport, size_t msg_size)
+bool perf_dealer_dealer_server (const std::string &lib_name,
+                                const std::string &transport,
+                                size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("DEALER_DEALER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_DEALER," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_DEALER," << transport
+                  << std::endl;
         return true;
     }
 
     try {
-        const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+        const perf::multi::multi_bench_settings_t settings =
+          perf::multi::resolve_multi_bench_settings ();
 
         perf::multi::ctx_guard_t ctx;
         zlink::dealer_socket_t server (ctx.ctx ());
@@ -68,7 +78,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &
         zlink::poller_t poller;
         poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
-        const std::string endpoint = bind_dealer_endpoint (server, transport, settings.server_bind_port);
+        const std::string endpoint =
+          bind_dealer_endpoint (server, transport, settings.server_bind_port);
         if (endpoint.empty ())
             return false;
 
@@ -76,16 +87,20 @@ bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &
 
         if (!perf::multi::wait_for_start_from_stdin (msg_size))
             return false;
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size) || !perf::multi::recalculate_auto_hwm (ctx))
+        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size)
+            || !perf::multi::recalculate_auto_hwm (ctx))
             return false;
-        perf::multi::emit_auto_hwm_detail (server, "server", "server", transport, msg_size, "dealer");
+        perf::multi::emit_auto_hwm_detail (server, "server", "server", transport, msg_size,
+                                           "dealer");
 
         const int active_seconds = settings.duration_seconds > 0 ? settings.duration_seconds : 1;
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (active_seconds);
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (active_seconds);
 
         bool failed = false;
         unsigned long long active_count = 0;
-        perf::multi::bench_latency_sampler_t latency (static_cast<size_t> (active_seconds) * 5000000U);
+        perf::multi::bench_latency_sampler_t latency (static_cast<size_t> (active_seconds)
+                                                      * 5000000U);
         zlink::message_t part;
         std::vector<zlink::poll_event_t> events (1);
         size_t stop_count = 0;
@@ -97,10 +112,12 @@ bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &
         // (bindings/c/perf/multi/src/perf_multi_dealer_dealer_server.cpp:208-301)
         // and its is_stop_token_message handling (lines 113-116).
         while (std::chrono::steady_clock::now () < deadline) {
-            const size_t ready_count = poller.wait (events.data (), events.size (), std::chrono::milliseconds (-1));
+            const size_t ready_count =
+              poller.wait (events.data (), events.size (), std::chrono::milliseconds (-1));
             if (ready_count == 0)
                 continue;
-            if (!(static_cast<short> (events[0].revents) & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
+            if (!(static_cast<short> (events[0].revents)
+                  & static_cast<short> (zlink::poll_event_flag_t::pollin))) {
                 continue;
             }
 
@@ -147,7 +164,8 @@ bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &
                 }
 
                 ++active_count;
-                latency.add (perf_metric::elapsed_latency_ns (perf_metric::now_ns (), header.sent_ts_ns));
+                latency.add (
+                  perf_metric::elapsed_latency_ns (perf_metric::now_ns (), header.sent_ts_ns));
                 part.close ();
             }
             if (failed)
@@ -165,8 +183,9 @@ bool perf_dealer_dealer_server (const std::string &lib_name, const std::string &
         const double throughput =
           static_cast<double> (active_count) / static_cast<double> (std::max (1, active_seconds));
         const double bandwidth = throughput * static_cast<double> (msg_size) / 1000000.0;
-        perf::multi::print_result (lib_name, "MULTI_DEALER_DEALER", transport, msg_size, throughput, bandwidth,
-                                   latency_stats.mean_ns, latency_stats.p95_ns, latency_stats.p99_ns);
+        perf::multi::print_result (lib_name, "MULTI_DEALER_DEALER", transport, msg_size, throughput,
+                                   bandwidth, latency_stats.mean_ns, latency_stats.p95_ns,
+                                   latency_stats.p99_ns);
         return true;
     }
     catch (const zlink::binding_error_t &) {

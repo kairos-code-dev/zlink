@@ -24,20 +24,24 @@ namespace
 result_t<void> validate_packet_limits (const connector_state_t &state, const packet_t &packet)
 {
     if (packet.payload.size () > state.options.max_send_payload_size) {
-        return result_t<void>::failure (error_code_t::frame_too_large, "stream connector payload is too large");
+        return result_t<void>::failure (error_code_t::frame_too_large,
+                                        "stream connector payload is too large");
     }
     std::size_t metadata_size = 0;
     for (const auto &[key, value] : packet.metadata.values) {
         metadata_size += key.size () + value.size ();
     }
     if (metadata_size > state.options.max_metadata_size) {
-        return result_t<void>::failure (error_code_t::validation_failed, "stream connector metadata is too large");
+        return result_t<void>::failure (error_code_t::validation_failed,
+                                        "stream connector metadata is too large");
     }
     if (packet.codec == codec_t::message_pack && !state.message_pack_enabled) {
-        return result_t<void>::failure (error_code_t::unsupported_codec, "MessagePack codec is not enabled");
+        return result_t<void>::failure (error_code_t::unsupported_codec,
+                                        "MessagePack codec is not enabled");
     }
     if (packet.codec == codec_t::protobuf && !state.protobuf_enabled) {
-        return result_t<void>::failure (error_code_t::unsupported_codec, "Protobuf codec is not enabled");
+        return result_t<void>::failure (error_code_t::unsupported_codec,
+                                        "Protobuf codec is not enabled");
     }
     if (packet.compressed) {
         if (state.options.compression != compression_t::lz4) {
@@ -45,7 +49,8 @@ result_t<void> validate_packet_limits (const connector_state_t &state, const pac
                                             "stream connector compression is not configured");
         }
         if (!state.lz4_enabled) {
-            return result_t<void>::failure (error_code_t::compression_failed, "LZ4 compression is not enabled");
+            return result_t<void>::failure (error_code_t::compression_failed,
+                                            "LZ4 compression is not enabled");
         }
     }
     return result_t<void>::success ();
@@ -82,13 +87,14 @@ read_exact_until (connector_state_t &state, std::size_t size, steady_clock_t::ti
     std::size_t offset = 0;
     while (offset < size) {
         if (steady_clock_t::now () >= deadline) {
-            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::request_timeout,
-                                                                 "stream connector request timed out");
+            return result_t<std::vector<std::uint8_t>>::failure (
+              error_code_t::request_timeout, "stream connector request timed out");
         }
         boost::system::error_code error;
         const auto available = state.connection ? state.connection->available (error) : 0;
         if (error) {
-            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::disconnected, error.message ());
+            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::disconnected,
+                                                                 error.message ());
         }
         if (available == 0) {
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -97,7 +103,8 @@ read_exact_until (connector_state_t &state, std::size_t size, steady_clock_t::ti
         const auto to_read = std::min<std::size_t> (available, bytes.size () - offset);
         const auto read = state.connection->read_some (bytes.data () + offset, to_read, error);
         if (error) {
-            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::disconnected, error.message ());
+            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::disconnected,
+                                                                 error.message ());
         }
         offset += read;
     }
@@ -114,8 +121,8 @@ result_t<void> write_packet_frame (connector_state_t &state,
         flags = flags | header_flags_t::payload_compressed;
     }
     header_codec_t header_codec;
-    auto header =
-      header_codec.encode (stream_header_t{kind, packet.codec, flags, request_seq, packet.name, packet.metadata});
+    auto header = header_codec.encode (
+      stream_header_t{kind, packet.codec, flags, request_seq, packet.name, packet.metadata});
     if (!header) {
         return result_t<void>::failure (header.error_code (), header.error ()->message);
     }
@@ -143,26 +150,28 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
 {
     auto prefix_result = read_exact_until (state, 6, deadline);
     if (!prefix_result) {
-        return result_t<packet_t>::failure (prefix_result.error_code (), prefix_result.error ()
-                                                                           ? prefix_result.error ()->message
-                                                                           : "stream connector read failed");
+        return result_t<packet_t>::failure (
+          prefix_result.error_code (), prefix_result.error () ? prefix_result.error ()->message
+                                                              : "stream connector read failed");
     }
     auto prefix = std::move (prefix_result.value ());
     const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
-    const auto payload_size = (static_cast<std::size_t> (prefix[2]) << 24)
-                              | (static_cast<std::size_t> (prefix[3]) << 16)
-                              | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
+    const auto payload_size =
+      (static_cast<std::size_t> (prefix[2]) << 24) | (static_cast<std::size_t> (prefix[3]) << 16)
+      | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
     auto header_bytes = read_exact_until (state, header_size, deadline);
     if (!header_bytes) {
-        return result_t<packet_t>::failure (header_bytes.error_code (), header_bytes.error ()
-                                                                          ? header_bytes.error ()->message
-                                                                          : "stream connector header read failed");
+        return result_t<packet_t>::failure (header_bytes.error_code (),
+                                            header_bytes.error ()
+                                              ? header_bytes.error ()->message
+                                              : "stream connector header read failed");
     }
     auto payload_bytes = read_exact_until (state, payload_size, deadline);
     if (!payload_bytes) {
-        return result_t<packet_t>::failure (payload_bytes.error_code (), payload_bytes.error ()
-                                                                           ? payload_bytes.error ()->message
-                                                                           : "stream connector payload read failed");
+        return result_t<packet_t>::failure (payload_bytes.error_code (),
+                                            payload_bytes.error ()
+                                              ? payload_bytes.error ()->message
+                                              : "stream connector payload read failed");
     }
     header_codec_t header_codec;
     auto decoded = header_codec.decode (header_bytes.value ());
@@ -179,7 +188,8 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
                                                 "stream connector compression is not configured");
         }
         if (!state.lz4_enabled) {
-            return result_t<packet_t>::failure (error_code_t::decompression_failed, "LZ4 compression is not enabled");
+            return result_t<packet_t>::failure (error_code_t::decompression_failed,
+                                                "LZ4 compression is not enabled");
         }
         try {
             payload = lz4_compression_codec_t{}.decompress (payload);
@@ -188,7 +198,8 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());
         }
     }
-    return result_t<packet_t>::success (packet_t{header.name, header.metadata, header.codec, compressed, payload});
+    return result_t<packet_t>::success (
+      packet_t{header.name, header.metadata, header.codec, compressed, payload});
 }
 
 result_t<void> send_due_heartbeat (connector_state_t &state)
@@ -218,13 +229,15 @@ result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t p
 {
     std::lock_guard<std::mutex> lock (state->transport_mutex);
     if (!is_transport_connected (*state)) {
-        return result_t<void>::failure (error_code_t::disconnected, "stream connector is not connected");
+        return result_t<void>::failure (error_code_t::disconnected,
+                                        "stream connector is not connected");
     }
     if (auto validation = validate_packet_limits (*state, packet); !validation) {
         publish_error (*state, *validation.error ());
         return validation;
     }
-    if (auto written = write_packet_frame (*state, message_kind_t::send, packet, std::nullopt); !written) {
+    if (auto written = write_packet_frame (*state, message_kind_t::send, packet, std::nullopt);
+        !written) {
         publish_error (*state, *written.error ());
         return written;
     }
@@ -232,34 +245,39 @@ result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t p
     return result_t<void>::success ();
 }
 
-result_t<zlink::message_t>
-submit_request (std::shared_ptr<void> state_handle, packet_t packet, std::chrono::milliseconds timeout)
+result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
+                                           packet_t packet,
+                                           std::chrono::milliseconds timeout)
 {
     auto state = std::static_pointer_cast<connector_state_t> (std::move (state_handle));
     std::lock_guard<std::mutex> lock (state->transport_mutex);
     if (!is_transport_connected (*state)) {
-        return result_t<zlink::message_t>::failure (error_code_t::disconnected, "stream connector is not connected");
+        return result_t<zlink::message_t>::failure (error_code_t::disconnected,
+                                                    "stream connector is not connected");
     }
     if (auto validation = validate_packet_limits (*state, packet); !validation) {
         publish_error (*state, *validation.error ());
-        return result_t<zlink::message_t>::failure (validation.error_code (), validation.error ()
-                                                                                ? validation.error ()->message
-                                                                                : "stream request validation failed");
+        return result_t<zlink::message_t>::failure (
+          validation.error_code (),
+          validation.error () ? validation.error ()->message : "stream request validation failed");
     }
     const auto seq = state->next_request_seq++;
     state->pending_requests.emplace (seq, pending_request_t{seq, std::move (packet)});
     const auto &request_packet = state->pending_requests.at (seq).packet;
-    if (auto written = write_packet_frame (*state, message_kind_t::request, request_packet, seq); !written) {
+    if (auto written = write_packet_frame (*state, message_kind_t::request, request_packet, seq);
+        !written) {
         publish_error (*state, *written.error ());
         state->pending_requests.erase (seq);
-        return result_t<zlink::message_t>::failure (written.error_code (), written.error ()->message);
+        return result_t<zlink::message_t>::failure (written.error_code (),
+                                                    written.error ()->message);
     }
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
         auto received = read_packet_frame (*state, deadline);
         if (!received) {
             state->pending_requests.erase (seq);
-            return result_t<zlink::message_t>::failure (received.error_code (), received.error ()->message);
+            return result_t<zlink::message_t>::failure (received.error_code (),
+                                                        received.error ()->message);
         }
         auto packet = std::move (received.value ());
         if (packet.name != "reply") {
@@ -300,7 +318,8 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
     return result_t<void>::success ();
 }
 
-result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state, std::chrono::milliseconds timeout)
+result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
+                                 std::chrono::milliseconds timeout)
 {
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
@@ -315,12 +334,14 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state, std::
                 return result_t<packet_t>::success (std::move (packet));
             }
             if (!is_transport_connected (*state)) {
-                return result_t<packet_t>::failure (error_code_t::disconnected, "stream connector is not connected");
+                return result_t<packet_t>::failure (error_code_t::disconnected,
+                                                    "stream connector is not connected");
             }
         }
 
         if (steady_clock_t::now () >= deadline) {
-            return result_t<packet_t>::failure (error_code_t::request_timeout, "stream connector receive timed out");
+            return result_t<packet_t>::failure (error_code_t::request_timeout,
+                                                "stream connector receive timed out");
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }

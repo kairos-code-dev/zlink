@@ -12,7 +12,8 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 static const char *k_pattern = "MULTI_DEALER_ROUTER";
 static const char *k_token = "dealer_router";
@@ -32,9 +33,8 @@ inline void request_queue_probe (size_t msg_size)
     g_queue_probe_pending.store (true, std::memory_order_release);
 }
 
-inline void emit_requested_queue_probe (const std::string &lib_name,
-                                        const std::string &transport,
-                                        void *server)
+inline void
+emit_requested_queue_probe (const std::string &lib_name, const std::string &transport, void *server)
 {
     if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
         return;
@@ -43,10 +43,8 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
     if (msg_size == 0 || !server)
         return;
 
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
-    print_server_queue_metrics (
-      lib_name, k_pattern, transport, msg_size, queue_stats);
+    const server_queue_stats_t queue_stats = sample_server_queue_stats (server, server);
+    print_server_queue_metrics (lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 inline bool relay_router_once (void *server)
@@ -87,28 +85,24 @@ inline bool relay_router_once (void *server)
     return err == EAGAIN || err == EINTR;
 }
 
-inline void print_server_metrics (
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics,
-  const server_queue_stats_t &queue_stats)
+inline void print_server_metrics (const std::string &lib_name,
+                                  const std::string &transport,
+                                  const std::vector<size_t> &sizes,
+                                  const bench_multi_resource_metrics_t &metrics,
+                                  const server_queue_stats_t &queue_stats)
 {
     for (size_t i = 0; i < sizes.size (); ++i) {
         if (metrics.has_cpu_pct) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i] << ",server_cpu_pct,"
-                      << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                      << std::endl;
+            std::cout << "RESULT," << lib_name << "," << k_pattern << "," << transport << ","
+                      << sizes[i] << ",server_cpu_pct," << std::fixed << std::setprecision (2)
+                      << metrics.cpu_pct << std::endl;
         }
         if (metrics.has_mem_mb) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i] << ",server_mem_mb,"
-                      << std::fixed << std::setprecision (2) << metrics.mem_mb
-                      << std::endl;
+            std::cout << "RESULT," << lib_name << "," << k_pattern << "," << transport << ","
+                      << sizes[i] << ",server_mem_mb," << std::fixed << std::setprecision (2)
+                      << metrics.mem_mb << std::endl;
         }
-        print_server_queue_metrics (
-          lib_name, k_pattern, transport, sizes[i], queue_stats);
+        print_server_queue_metrics (lib_name, k_pattern, transport, sizes[i], queue_stats);
     }
 }
 
@@ -126,8 +120,8 @@ int main (int argc, char **argv)
 
     set_perf_multi_pattern_env (k_pattern);
     if (!perf_multi_client::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return 0;
     }
     if (!transport_available (transport)) {
@@ -148,8 +142,7 @@ int main (int argc, char **argv)
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     if (k_server_has_routing_id && k_server_routing_id) {
-        zlink_set_routing_id (
-          server, k_server_routing_id, std::strlen (k_server_routing_id));
+        zlink_set_routing_id (server, k_server_routing_id, std::strlen (k_server_routing_id));
     }
 
     if (!setup_tls_server (server, transport)) {
@@ -158,8 +151,7 @@ int main (int argc, char **argv)
     }
 
     const std::string endpoint =
-      bind_server_endpoint (server, transport,
-                            lib_name + std::string ("_") + k_token + "_server");
+      bind_server_endpoint (server, transport, lib_name + std::string ("_") + k_token + "_server");
     if (endpoint.empty ()) {
         zlink_close (server);
         return 1;
@@ -191,8 +183,7 @@ int main (int argc, char **argv)
     if (sizes.empty ())
         sizes.push_back (64);
 
-    const bench_multi_cpu_sample_t sample_start =
-      bench_multi_capture_cpu_sample ();
+    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
 
@@ -205,10 +196,8 @@ int main (int argc, char **argv)
         }
     }
 
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (sample_start);
-    const server_queue_stats_t queue_stats =
-      sample_server_queue_stats (server, server);
+    const bench_multi_resource_metrics_t metrics = bench_multi_finish_resource_probe (sample_start);
+    const server_queue_stats_t queue_stats = sample_server_queue_stats (server, server);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
     zlink_close (server);

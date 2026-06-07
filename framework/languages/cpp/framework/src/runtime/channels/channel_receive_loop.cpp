@@ -38,7 +38,8 @@ class receive_gate_guard_t
 
 } // namespace
 
-channel_receive_loop_t::channel_receive_loop_t (channel_runtime_bundle_t &bundle, channel_message_pump_t pump) :
+channel_receive_loop_t::channel_receive_loop_t (channel_runtime_bundle_t &bundle,
+                                                channel_message_pump_t pump) :
     _bundle (bundle), _pump (std::move (pump))
 {
 }
@@ -48,15 +49,16 @@ void channel_receive_loop_t::enqueue_server_message (runtime::messaging::message
     _server_messages.push_back (std::move (parts));
 }
 
-result_t<channel_receive_result_t> channel_receive_loop_t::drain_server_messages (const std::string &channel_name,
-                                                                                  service_provider_t &services,
-                                                                                  serializer_registry_t &serializers,
-                                                                                  const handler_registry_t &handlers)
+result_t<channel_receive_result_t>
+channel_receive_loop_t::drain_server_messages (const std::string &channel_name,
+                                               service_provider_t &services,
+                                               serializer_registry_t &serializers,
+                                               const handler_registry_t &handlers)
 {
     receive_gate_guard_t receive_gate (_bundle);
     if (!receive_gate.try_enter ()) {
-        return result_t<channel_receive_result_t>::failure (framework_error_kind_t::request_rejected,
-                                                            "channel receive loop is already active");
+        return result_t<channel_receive_result_t>::failure (
+          framework_error_kind_t::request_rejected, "channel receive loop is already active");
     }
 
     channel_receive_result_t result;
@@ -64,10 +66,12 @@ result_t<channel_receive_result_t> channel_receive_loop_t::drain_server_messages
         auto parts = std::move (_server_messages.front ());
         _server_messages.pop_front ();
 
-        auto reply = _pump.dispatch_server_message (channel_name, parts, services, serializers, handlers);
+        auto reply =
+          _pump.dispatch_server_message (channel_name, parts, services, serializers, handlers);
         if (!reply) {
             return result_t<channel_receive_result_t>::failure (
-              reply.error_kind (), reply.error () ? reply.error ()->what () : "channel receive loop dispatch failed");
+              reply.error_kind (),
+              reply.error () ? reply.error ()->what () : "channel receive loop dispatch failed");
         }
         ++result.dispatched;
         if (reply.value ().size () != 0) {

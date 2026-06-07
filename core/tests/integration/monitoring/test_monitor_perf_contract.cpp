@@ -48,20 +48,18 @@ bool bench_debug_enabled ()
     return enabled;
 }
 
-bool set_sockopt_int (void *socket_,
-                      zlink_option_t option_,
-                      int value_,
-                      const char *name_)
+bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, const char *name_)
 {
     const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
     if (rc != 0 && bench_debug_enabled ()) {
-        std::cerr << "setsockopt(" << name_ << ") failed: "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
+        std::cerr << "setsockopt(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
     return rc == 0;
 }
 
-namespace perf_multi_metric {
+namespace perf_multi_metric
+{
 inline size_t header_size ()
 {
     return sizeof (uint32_t) * 4 + sizeof (uint64_t) * 2;
@@ -78,10 +76,7 @@ static const char kPerfPubsubTopic[] = "bench";
 struct connect_monitor_state_t
 {
     connect_monitor_state_t () :
-        connection_ready_count (0),
-        accepted_count (0),
-        connected_count (0),
-        error_code (0)
+        connection_ready_count (0), accepted_count (0), connected_count (0), error_code (0)
     {
     }
 
@@ -171,10 +166,7 @@ struct queue_probe_t
         ++recv_samples;
     }
 
-    void assert_ok () const
-    {
-        TEST_ASSERT_FALSE (sample_failed);
-    }
+    void assert_ok () const { TEST_ASSERT_FALSE (sample_failed); }
 
     void *send_socket;
     void *recv_socket;
@@ -194,8 +186,7 @@ struct queue_probe_t
 
         int events = 0;
         size_t events_size = sizeof (events);
-        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &events_size)
-            != 0) {
+        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &events_size) != 0) {
             sample_failed = true;
             return;
         }
@@ -214,9 +205,8 @@ void close_socket_zero_linger (void *socket_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
 }
 
-void perf_pubsub_delivery_ready_monitor_handler (
-  const zlink_monitor_event_t *event_,
-  void *userdata_)
+void perf_pubsub_delivery_ready_monitor_handler (const zlink_monitor_event_t *event_,
+                                                 void *userdata_)
 {
     delivery_ready_monitor_state_t *state =
       static_cast<delivery_ready_monitor_state_t *> (userdata_);
@@ -237,8 +227,7 @@ void perf_pubsub_delivery_ready_monitor_handler (
             case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
             case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
                 if (state->error_code == 0)
-                    state->error_code =
-                      event_->value > 0 ? static_cast<int> (event_->value) : EIO;
+                    state->error_code = event_->value > 0 ? static_cast<int> (event_->value) : EIO;
                 break;
 
             default:
@@ -248,30 +237,26 @@ void perf_pubsub_delivery_ready_monitor_handler (
     state->cv.notify_all ();
 }
 
-bool open_perf_like_delivery_ready_monitor (
-  void *socket_,
-  uint64_t events_,
-  delivery_ready_monitor_t *out_)
+bool open_perf_like_delivery_ready_monitor (void *socket_,
+                                            uint64_t events_,
+                                            delivery_ready_monitor_t *out_)
 {
     if (!socket_ || !out_)
         return false;
 
-    delivery_ready_monitor_state_t *state =
-      new (std::nothrow) delivery_ready_monitor_state_t;
+    delivery_ready_monitor_state_t *state = new (std::nothrow) delivery_ready_monitor_state_t;
     if (!state)
         return false;
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
     opts.events = events_ | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
-                  | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
+                  | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
     void *monitor = zlink_socket_monitor_open (socket_, &opts);
     if (!monitor
-        || zlink_socket_monitor_handler (
-             monitor, &perf_pubsub_delivery_ready_monitor_handler, state)
+        || zlink_socket_monitor_handler (monitor, &perf_pubsub_delivery_ready_monitor_handler,
+                                         state)
              != 0) {
         if (monitor)
             (void) zlink_monitor_close (&monitor);
@@ -282,10 +267,8 @@ bool open_perf_like_delivery_ready_monitor (
     const int monitor_hwm = parse_positive_env ("PERF_MONITOR_HWM", 1000);
     set_sockopt_int (monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER");
     if (monitor_hwm > 0) {
-        set_sockopt_int (
-          monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
-        set_sockopt_int (
-          monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
+        set_sockopt_int (monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM");
+        set_sockopt_int (monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM");
     }
 
     out_->monitor = monitor;
@@ -293,8 +276,7 @@ bool open_perf_like_delivery_ready_monitor (
     return true;
 }
 
-bool wait_perf_like_delivery_ready (delivery_ready_monitor_t *monitor_,
-                                    int timeout_ms_)
+bool wait_perf_like_delivery_ready (delivery_ready_monitor_t *monitor_, int timeout_ms_)
 {
     if (!monitor_ || !monitor_->state)
         return false;
@@ -306,9 +288,9 @@ bool wait_perf_like_delivery_ready (delivery_ready_monitor_t *monitor_,
     if (state->ready)
         return true;
 
-    const bool signaled = state->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
-      [state] () { return state->error_code != 0 || state->ready; });
+    const bool signaled =
+      state->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1),
+                          [state] () { return state->error_code != 0 || state->ready; });
     return signaled && state->error_code == 0 && state->ready;
 }
 
@@ -327,21 +309,17 @@ void close_perf_like_delivery_ready_monitor (delivery_ready_monitor_t *monitor_)
     delete state;
 }
 
-void send_pubsub_perf_payload_expect_success (void *server_,
-                                              const char *payload_)
+void send_pubsub_perf_payload_expect_success (void *server_, const char *payload_)
 {
     TEST_ASSERT_NOT_NULL (server_);
     TEST_ASSERT_NOT_NULL (payload_);
     zlink_msg_t part;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_size (&part, strlen (payload_)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, strlen (payload_)));
     memcpy (zlink_msg_data (&part), payload_, strlen (payload_));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (server_, kPerfPubsubTopic, &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (server_, kPerfPubsubTopic, &part, 1, 0));
 }
 
-void recv_pubsub_perf_payload_expect_success (void *client_,
-                                              const char *payload_)
+void recv_pubsub_perf_payload_expect_success (void *client_, const char *payload_)
 {
     char topic[32] = {0};
     size_t topic_len = sizeof (topic);
@@ -353,8 +331,7 @@ void recv_pubsub_perf_payload_expect_success (void *client_,
     TEST_ASSERT_EQUAL_UINT64 (strlen (kPerfPubsubTopic), topic_len);
     TEST_ASSERT_EQUAL_MEMORY (kPerfPubsubTopic, topic, topic_len);
     TEST_ASSERT_EQUAL_UINT64 (strlen (payload_), zlink_msg_size (&parts[0]));
-    TEST_ASSERT_EQUAL_MEMORY (payload_, zlink_msg_data (&parts[0]),
-                              strlen (payload_));
+    TEST_ASSERT_EQUAL_MEMORY (payload_, zlink_msg_data (&parts[0]), strlen (payload_));
     zlink_multipart_close (parts, part_count);
 }
 
@@ -370,23 +347,18 @@ void discard_socket_message (const zlink_routing_id_t *,
 void configure_bounded_pair_socket (void *socket_, int timeout_ms_)
 {
     const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout_ms_, sizeof (timeout_ms_)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &timeout_ms_,
-                        sizeof (timeout_ms_)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &timeout_ms_,
-                        sizeof (timeout_ms_)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &timeout_ms_, sizeof (timeout_ms_)));
 }
 
 void configure_send_ready_backpressure_socket (void *socket_)
 {
     const int hwm = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 }
 
 void arm_send_ready_notification_via_backpressure (void *send_socket_)
@@ -396,8 +368,7 @@ void arm_send_ready_notification_via_backpressure (void *send_socket_)
     bool armed = false;
     for (int i = 0; i < 8192; ++i) {
         errno = 0;
-        const int rc = zlink_send (send_socket_, payload, sizeof (payload),
-                                   ZLINK_DONTWAIT);
+        const int rc = zlink_send (send_socket_, payload, sizeof (payload), ZLINK_DONTWAIT);
         if (rc >= 0)
             continue;
         TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
@@ -407,11 +378,9 @@ void arm_send_ready_notification_via_backpressure (void *send_socket_)
     TEST_ASSERT_TRUE (armed);
 }
 
-void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_,
-                                        void *userdata_)
+void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_, void *userdata_)
 {
-    connect_monitor_state_t *state =
-      static_cast<connect_monitor_state_t *> (userdata_);
+    connect_monitor_state_t *state = static_cast<connect_monitor_state_t *> (userdata_);
     if (!state || !event_)
         return;
 
@@ -437,8 +406,7 @@ void perf_like_connect_monitor_handler (const zlink_monitor_event_t *event_,
             case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
             case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
                 if (state->error_code == 0) {
-                    state->error_code =
-                      event_->value > 0 ? static_cast<int> (event_->value) : EIO;
+                    state->error_code = event_->value > 0 ? static_cast<int> (event_->value) : EIO;
                 }
                 break;
 
@@ -454,9 +422,8 @@ size_t connect_ready_count (const connect_monitor_state_t *state_)
 {
     if (!state_)
         return 0;
-    return std::max (
-      std::max (state_->connection_ready_count, state_->accepted_count),
-      state_->connected_count);
+    return std::max (std::max (state_->connection_ready_count, state_->accepted_count),
+                     state_->connected_count);
 }
 
 bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
@@ -470,28 +437,23 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
 
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
-    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED
-                  | ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_BIND_FAILED
-                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+    opts.events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_CONNECTED | ZLINK_EVENT_ACCEPTED
+                  | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
+                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
                   | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
     void *monitor = zlink_socket_monitor_open (socket_, &opts);
     if (!monitor) {
         delete state;
         return false;
     }
-    if (zlink_socket_monitor_handler (monitor, &perf_like_connect_monitor_handler,
-                                      state)
-        != 0) {
+    if (zlink_socket_monitor_handler (monitor, &perf_like_connect_monitor_handler, state) != 0) {
         zlink_monitor_close (&monitor);
         delete state;
         return false;
     }
 
     const int zero = 0;
-    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero))
-        != ZLINK_CONFIG_OK) {
+    if (zlink_set_option (monitor, ZLINK_OPT_LINGER, &zero, sizeof (zero)) != ZLINK_CONFIG_OK) {
         (void) zlink_monitor_close (&monitor);
         delete state;
         return false;
@@ -504,19 +466,15 @@ bool open_perf_like_connect_monitor (void *socket_, connect_monitor_t *out_)
 
 void close_perf_like_connect_monitor (connect_monitor_t *monitor_);
 
-bool open_perf_like_connect_monitor_with_perf_sockopts (void *socket_,
-                                                        connect_monitor_t *out_)
+bool open_perf_like_connect_monitor_with_perf_sockopts (void *socket_, connect_monitor_t *out_)
 {
     if (!open_perf_like_connect_monitor (socket_, out_))
         return false;
 
     const int monitor_hwm = 1000;
-    if (!set_sockopt_int (out_->monitor, ZLINK_OPT_LINGER, 0,
-                          "ZLINK_OPT_LINGER")
-        || !set_sockopt_int (out_->monitor, ZLINK_OPT_SNDHWM, monitor_hwm,
-                             "ZLINK_OPT_SNDHWM")
-        || !set_sockopt_int (out_->monitor, ZLINK_OPT_RCVHWM, monitor_hwm,
-                             "ZLINK_OPT_RCVHWM")) {
+    if (!set_sockopt_int (out_->monitor, ZLINK_OPT_LINGER, 0, "ZLINK_OPT_LINGER")
+        || !set_sockopt_int (out_->monitor, ZLINK_OPT_SNDHWM, monitor_hwm, "ZLINK_OPT_SNDHWM")
+        || !set_sockopt_int (out_->monitor, ZLINK_OPT_RCVHWM, monitor_hwm, "ZLINK_OPT_RCVHWM")) {
         close_perf_like_connect_monitor (out_);
         return false;
     }
@@ -530,14 +488,12 @@ bool wait_perf_like_connect_ready (connect_monitor_t *monitor_, int timeout_ms_)
         return false;
 
     std::unique_lock<std::mutex> lock (monitor_->state->sync);
-    return monitor_->state->cv.wait_for (
-      lock, std::chrono::milliseconds (timeout_ms_),
-      [monitor_]() {
-          return monitor_->state->error_code != 0
-                 || connect_ready_count (monitor_->state) >= 1;
-      })
-           && monitor_->state->error_code == 0
-           && connect_ready_count (monitor_->state) >= 1;
+    return monitor_->state->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_),
+                                         [monitor_] () {
+                                             return monitor_->state->error_code != 0
+                                                    || connect_ready_count (monitor_->state) >= 1;
+                                         })
+           && monitor_->state->error_code == 0 && connect_ready_count (monitor_->state) >= 1;
 }
 
 void close_perf_like_connect_monitor (connect_monitor_t *monitor_)
@@ -573,14 +529,12 @@ void make_unique_inproc_endpoint (char *endpoint_, size_t size_)
 void send_ready_self_close_handler (void *subject_, void *)
 {
     void *socket = subject_;
-    g_send_ready_self_close_rc.store (zlink_close (socket),
-                                      std::memory_order_release);
+    g_send_ready_self_close_rc.store (zlink_close (socket), std::memory_order_release);
     g_send_ready_self_close_errno.store (errno, std::memory_order_release);
 }
 }
 
-void run_pair_perf_like_monitor_sampling_case (bool sample_send_,
-                                               bool sample_recv_)
+void run_pair_perf_like_monitor_sampling_case (bool sample_send_, bool sample_recv_)
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -619,7 +573,7 @@ void run_pair_perf_like_monitor_sampling_case (bool sample_send_,
     const int message_count = 16;
     std::atomic<bool> recv_failed (false);
 
-    std::thread receiver ([&]() {
+    std::thread receiver ([&] () {
         for (int i = 0; i < message_count; ++i) {
             if (!recv_exact (server, payload)) {
                 recv_failed.store (true, std::memory_order_release);
@@ -736,12 +690,8 @@ void test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready ()
 
     connect_monitor_t server_monitor;
     connect_monitor_t client_monitor;
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (server,
-                                                         &server_monitor));
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (client,
-                                                         &client_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (server, &server_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (client, &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -777,12 +727,8 @@ void test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready ()
 
     connect_monitor_t server_monitor;
     connect_monitor_t client_monitor;
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (server,
-                                                         &server_monitor));
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (client,
-                                                         &client_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (server, &server_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (client, &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -818,13 +764,10 @@ void test_dealer_router_perf_like_client_monitor_preserves_bidirectional_deliver
     configure_bounded_pair_socket (client, 500);
 
     static const char dealer_id[] = "PERF-DEALER";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, dealer_id, sizeof (dealer_id) - 1));
 
     connect_monitor_t client_monitor;
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (client,
-                                                         &client_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (client, &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -842,9 +785,8 @@ void test_dealer_router_perf_like_client_monitor_preserves_bidirectional_deliver
     recv_string_expect_success (server, "dealer-router-monitor-ping", 0);
 
     TEST_ASSERT_EQUAL_INT (
-      rid_size,
-      TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
+      rid_size, TEST_ASSERT_SUCCESS_ERRNO (
+                  zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
     send_string_expect_success (server, "dealer-router-monitor-pong", 0);
     recv_string_expect_success (client, "dealer-router-monitor-pong", 0);
 
@@ -870,18 +812,13 @@ void test_router_router_perf_like_client_monitor_preserves_bidirectional_deliver
 
     static const char server_id[] = "SERVER";
     static const char client_id[] = "CLIENT";
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (server, server_id, sizeof (server_id) - 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (client, client_id, sizeof (client_id) - 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, server_id,
-      sizeof (server_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server, server_id, sizeof (server_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, client_id, sizeof (client_id) - 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+                                                        server_id, sizeof (server_id) - 1));
 
     connect_monitor_t client_monitor;
-    TEST_ASSERT_TRUE (
-      open_perf_like_connect_monitor_with_perf_sockopts (client,
-                                                         &client_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_connect_monitor_with_perf_sockopts (client, &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -889,10 +826,9 @@ void test_router_router_perf_like_client_monitor_preserves_bidirectional_deliver
     TEST_ASSERT_TRUE (wait_perf_like_connect_ready (&client_monitor, 3000));
     close_perf_like_connect_monitor (&client_monitor);
 
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (sizeof (server_id) - 1),
-      TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_send (client, server_id, sizeof (server_id) - 1, ZLINK_SNDMORE)));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (sizeof (server_id) - 1),
+                           TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
+                             client, server_id, sizeof (server_id) - 1, ZLINK_SNDMORE)));
     send_string_expect_success (client, "router-router-monitor-ping", 0);
 
     unsigned char rid_buf[255];
@@ -903,14 +839,13 @@ void test_router_router_perf_like_client_monitor_preserves_bidirectional_deliver
     recv_string_expect_success (server, "router-router-monitor-ping", 0);
 
     TEST_ASSERT_EQUAL_INT (
-      rid_size,
-      TEST_ASSERT_SUCCESS_ERRNO (
-        zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
+      rid_size, TEST_ASSERT_SUCCESS_ERRNO (
+                  zlink_send (server, rid_buf, static_cast<size_t> (rid_size), ZLINK_SNDMORE)));
     send_string_expect_success (server, "router-router-monitor-pong", 0);
 
     unsigned char reply_rid[255];
-    const int reply_rid_size = TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (client, reply_rid, sizeof (reply_rid), 0));
+    const int reply_rid_size =
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, reply_rid, sizeof (reply_rid), 0));
     TEST_ASSERT_EQUAL_INT (sizeof (server_id) - 1, reply_rid_size);
     TEST_ASSERT_EQUAL_MEMORY (server_id, reply_rid, reply_rid_size);
     recv_string_expect_success (client, "router-router-monitor-pong", 0);
@@ -937,10 +872,10 @@ void test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv ()
 
     delivery_ready_monitor_t server_monitor;
     delivery_ready_monitor_t client_monitor;
-    TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (
-      server, ZLINK_EVENT_CONNECTION_READY, &server_monitor));
-    TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (
-      client, ZLINK_EVENT_CONNECTION_READY, &client_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (server, ZLINK_EVENT_CONNECTION_READY,
+                                                             &server_monitor));
+    TEST_ASSERT_TRUE (open_perf_like_delivery_ready_monitor (client, ZLINK_EVENT_CONNECTION_READY,
+                                                             &client_monitor));
 
     char endpoint[kPerfMonitorEndpointSize];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -973,10 +908,8 @@ void test_pubsub_raw_socket_callback_model_is_accepted ()
     size_t part_count = 0;
     char topic[32];
     size_t topic_len = sizeof (topic);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_NO_DATA,
-      zlink_subscribe (client, NULL, &parts, &part_count, topic, &topic_len,
-                       ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, zlink_subscribe (client, NULL, &parts, &part_count,
+                                                                topic, &topic_len, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     close_socket_zero_linger (client);
@@ -993,15 +926,11 @@ void test_pubsub_raw_socket_rejects_multipart_send_api ()
     TEST_ASSERT_NOT_NULL (pub);
 
     zlink_msg_t parts[2];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_size (&parts[0], strlen (kPerfPubsubTopic)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (
-      &parts[1], perf_multi_metric::header_size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], strlen (kPerfPubsubTopic)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[1], perf_multi_metric::header_size ()));
 
-    memcpy (zlink_msg_data (&parts[0]), kPerfPubsubTopic,
-            strlen (kPerfPubsubTopic));
-    memset (zlink_msg_data (&parts[1]), 0,
-            perf_multi_metric::header_size ());
+    memcpy (zlink_msg_data (&parts[0]), kPerfPubsubTopic, strlen (kPerfPubsubTopic));
+    memset (zlink_msg_data (&parts[1]), 0, perf_multi_metric::header_size ());
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_SUPPORTED, zlink_send (pub, parts, 2, 0));
@@ -1038,19 +967,14 @@ void test_send_ready_self_close_blocks_followup_operational_api ()
       zlink_send_ready_handler (client, &send_ready_self_close_handler, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     arm_send_ready_notification_via_backpressure (client);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (server, &discard_socket_message, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &discard_socket_message, NULL));
 
-    const bool callback_observed =
-      zlink_test_wait_until_step (3000, 10, [] {
-          return g_send_ready_self_close_rc.load (std::memory_order_acquire)
-                 != INT_MIN;
-      });
+    const bool callback_observed = zlink_test_wait_until_step (3000, 10, [] {
+        return g_send_ready_self_close_rc.load (std::memory_order_acquire) != INT_MIN;
+    });
     TEST_ASSERT_TRUE (callback_observed);
 
-    TEST_ASSERT_EQUAL_INT (0,
-                           g_send_ready_self_close_rc.load (
-                             std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (0, g_send_ready_self_close_rc.load (std::memory_order_acquire));
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_send (client, "post-close-send", 16, 0));
@@ -1069,18 +993,13 @@ int main ()
     RUN_TEST (test_pair_perf_like_send_sampling_preserves_oneway_delivery);
     RUN_TEST (test_pair_perf_like_recv_sampling_preserves_oneway_delivery);
     RUN_TEST (test_pair_perf_like_bidirectional_sampling_preserves_oneway_delivery);
-    RUN_TEST (
-      test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery);
+    RUN_TEST (test_pair_inproc_perf_like_monitor_ready_implies_bidirectional_delivery);
     RUN_TEST (test_pubsub_perf_like_monitor_sockopts_preserve_connect_ready);
-    RUN_TEST (
-      test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv);
+    RUN_TEST (test_pubsub_perf_like_delivery_ready_preserves_oneway_delivery_recv);
     RUN_TEST (test_pubsub_raw_socket_callback_model_is_accepted);
     RUN_TEST (test_pubsub_raw_socket_rejects_multipart_send_api);
-    RUN_TEST (
-      test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);
-    RUN_TEST (
-      test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery);
-    RUN_TEST (
-      test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    RUN_TEST (test_dealer_dealer_perf_like_monitor_sockopts_preserve_connect_ready);
+    RUN_TEST (test_dealer_router_perf_like_client_monitor_preserves_bidirectional_delivery);
+    RUN_TEST (test_router_router_perf_like_client_monitor_preserves_bidirectional_delivery);
     return UNITY_END ();
 }

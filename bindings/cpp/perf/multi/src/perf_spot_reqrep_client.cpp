@@ -71,7 +71,13 @@ struct client_slot_t
     uint64_t next_seq;
 
     client_slot_t () :
-        owner (NULL), index (0), spot (), payload (), waiting_reply (false), last_sent_ts_ns (0), next_seq (1)
+        owner (NULL),
+        index (0),
+        spot (),
+        payload (),
+        waiting_reply (false),
+        last_sent_ts_ns (0),
+        next_seq (1)
     {
     }
 };
@@ -119,8 +125,10 @@ void signal_control_connected ()
 bool wait_for_control_connected (int timeout_ms_)
 {
     std::unique_lock<std::mutex> lock (g_start_gate.mutex);
-    const bool ok = g_start_gate.cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms_)),
-                                              [] () { return g_start_gate.stopped || g_start_gate.control_connected; });
+    const bool ok =
+      g_start_gate.cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms_)), [] () {
+          return g_start_gate.stopped || g_start_gate.control_connected;
+      });
     if (!ok || g_start_gate.stopped) {
         errno = g_start_gate.stopped ? ECANCELED : ETIMEDOUT;
         return false;
@@ -131,9 +139,9 @@ bool wait_for_control_connected (int timeout_ms_)
 bool wait_for_start (size_t msg_size_, int timeout_ms_)
 {
     std::unique_lock<std::mutex> lock (g_start_gate.mutex);
-    const bool ok = g_start_gate.cv.wait_for (lock, std::chrono::milliseconds (std::max (1, timeout_ms_)), [&] () {
-        return g_start_gate.stopped || g_start_gate.started_size == msg_size_;
-    });
+    const bool ok = g_start_gate.cv.wait_for (
+      lock, std::chrono::milliseconds (std::max (1, timeout_ms_)),
+      [&] () { return g_start_gate.stopped || g_start_gate.started_size == msg_size_; });
     if (!ok || g_start_gate.stopped) {
         errno = g_start_gate.stopped ? ECANCELED : ETIMEDOUT;
         return false;
@@ -214,7 +222,8 @@ size_t active_spot_slot_limit (size_t total_slots, size_t msg_size)
 
 zlink::routing_id_t make_text_rid (const char *text_)
 {
-    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_), std::strlen (text_));
+    return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_),
+                                      std::strlen (text_));
 }
 
 class spot_reqrep_client_bench_t
@@ -282,8 +291,9 @@ class spot_reqrep_client_bench_t
             return false;
         }
 
-        perf::multi::print_client_result_lines (_lib_name, k_pattern_result, _transport, _msg_size, active_count,
-                                                std::max (1, _settings.duration_seconds), 2.0, latency);
+        perf::multi::print_client_result_lines (
+          _lib_name, k_pattern_result, _transport, _msg_size, active_count,
+          std::max (1, _settings.duration_seconds), 2.0, latency);
         return true;
     }
 
@@ -304,7 +314,8 @@ class spot_reqrep_client_bench_t
         if (!perf::multi::configure_spot_server_tls (*_data_node, _transport)
             || !perf::multi::configure_spot_client_tls (*_data_node, _transport))
             return false;
-        if (!perf::multi::apply_spot_node_admission_hwm (*_data_node, _settings.sndhwm, _settings.rcvhwm))
+        if (!perf::multi::apply_spot_node_admission_hwm (*_data_node, _settings.sndhwm,
+                                                         _settings.rcvhwm))
             return false;
         if (!perf::multi::apply_spot_auto_hwm_msg_unit (_ctx.ctx (), _msg_size))
             return false;
@@ -329,8 +340,8 @@ class spot_reqrep_client_bench_t
                 return false;
             }
             const std::string rid_text = std::string ("SPOT-REQREP-") + std::to_string (i);
-            slot->spot->set_routing_id (
-              zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ()));
+            slot->spot->set_routing_id (zlink::routing_id_t::from (
+              reinterpret_cast<const uint8_t *> (rid_text.data ()), rid_text.size ()));
             slot->payload.assign (payload_size, k_payload_fill);
             _slots.push_back (std::move (slot));
         }
@@ -346,7 +357,8 @@ class spot_reqrep_client_bench_t
             }
         }
         catch (const zlink::binding_error_t &err) {
-            debug_log (std::string ("poller add failed errno=") + std::to_string (err.internal_errno ()));
+            debug_log (std::string ("poller add failed errno=")
+                       + std::to_string (err.internal_errno ()));
             return false;
         }
         _events.resize (_slots.size ());
@@ -361,13 +373,14 @@ class spot_reqrep_client_bench_t
             return true;
 
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
-        if (!perf_metric::stamp_payload (slot_.payload.data (), slot_.payload.size (), _active_run_id,
-                                         perf_metric::phase_active, _msg_size, slot_.next_seq, sent_ts_ns)) {
+        if (!perf_metric::stamp_payload (slot_.payload.data (), slot_.payload.size (),
+                                         _active_run_id, perf_metric::phase_active, _msg_size,
+                                         slot_.next_seq, sent_ts_ns)) {
             return false;
         }
 
-        zlink::message_t request =
-          zlink::message_t::from (std::as_bytes (std::span<const char> (slot_.payload.data (), slot_.payload.size ())));
+        zlink::message_t request = zlink::message_t::from (
+          std::as_bytes (std::span<const char> (slot_.payload.data (), slot_.payload.size ())));
         if (!request.valid ())
             return false;
 
@@ -383,9 +396,10 @@ class spot_reqrep_client_bench_t
                 .message (request)
                 .timeout (std::chrono::milliseconds (std::max (1, _settings.rcvtimeo_ms)))
                 .flags (static_cast<int> (zlink::send_flags_t::dontwait))
-                .submit ([slot_ptr] (zlink::request_result_t result, std::vector<zlink::message_t> parts) {
-                    on_reply (slot_ptr, result, std::move (parts));
-                });
+                .submit (
+                  [slot_ptr] (zlink::request_result_t result, std::vector<zlink::message_t> parts) {
+                      on_reply (slot_ptr, result, std::move (parts));
+                  });
             if (!ok) {
                 slot_.waiting_reply.store (false, std::memory_order_release);
                 return true;
@@ -396,7 +410,8 @@ class spot_reqrep_client_bench_t
         catch (const zlink::submit_error_t &err) {
             slot_.waiting_reply.store (false, std::memory_order_release);
             const zlink::submit_result_t result = err.result ();
-            if (result == zlink::submit_result_t::backpressured || result == zlink::submit_result_t::not_connected
+            if (result == zlink::submit_result_t::backpressured
+                || result == zlink::submit_result_t::not_connected
                 || result == zlink::submit_result_t::not_found)
                 return true;
             errno = err.internal_errno ();
@@ -404,7 +419,9 @@ class spot_reqrep_client_bench_t
         }
     }
 
-    static void on_reply (client_slot_t *slot_, zlink::request_result_t result_, std::vector<zlink::message_t> parts_)
+    static void on_reply (client_slot_t *slot_,
+                          zlink::request_result_t result_,
+                          std::vector<zlink::message_t> parts_)
     {
         if (!slot_ || !slot_->owner)
             return;
@@ -416,8 +433,10 @@ class spot_reqrep_client_bench_t
             return;
 
         perf_metric::header_t header;
-        if (!perf_metric::decode_payload_header (parts_.front ().data (), parts_.front ().size (), &header)
-            || !perf_metric::is_expected (header, bench->_active_run_id, perf_metric::phase_active, bench->_msg_size)) {
+        if (!perf_metric::decode_payload_header (parts_.front ().data (), parts_.front ().size (),
+                                                 &header)
+            || !perf_metric::is_expected (header, bench->_active_run_id, perf_metric::phase_active,
+                                          bench->_msg_size)) {
             return;
         }
 
@@ -436,14 +455,17 @@ class spot_reqrep_client_bench_t
         }
     }
 
-    bool run_active_phase (unsigned long long *count_out_, perf::multi::bench_latency_stats_t *latency_out_)
+    bool run_active_phase (unsigned long long *count_out_,
+                           perf::multi::bench_latency_stats_t *latency_out_)
     {
         if (!count_out_ || !latency_out_)
             return false;
 
         const int duration_seconds = std::max (1, _settings.duration_seconds);
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_seconds);
-        _active_deadline_ns.store (perf_metric::now_ns () + static_cast<uint64_t> (duration_seconds) * 1000000000ULL,
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (duration_seconds);
+        _active_deadline_ns.store (perf_metric::now_ns ()
+                                     + static_cast<uint64_t> (duration_seconds) * 1000000000ULL,
                                    std::memory_order_release);
         _active_reply_count.store (0, std::memory_order_release);
         {
@@ -473,16 +495,18 @@ class spot_reqrep_client_bench_t
             const auto now = std::chrono::steady_clock::now ();
             if (now >= deadline)
                 break;
-            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
-            const auto wait_timeout =
-              std::max (std::chrono::milliseconds (1), std::min (remaining, std::chrono::milliseconds (50)));
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+            const auto wait_timeout = std::max (
+              std::chrono::milliseconds (1), std::min (remaining, std::chrono::milliseconds (50)));
             try {
                 (void) _poller.wait (_events.data (), _events.size (), wait_timeout);
             }
             catch (const zlink::recv_error_t &err) {
                 if (err.internal_errno () == EINTR || err.internal_errno () == EAGAIN)
                     continue;
-                debug_log (std::string ("poller wait failed errno=") + std::to_string (err.internal_errno ()));
+                debug_log (std::string ("poller wait failed errno=")
+                           + std::to_string (err.internal_errno ()));
                 return false;
             }
         }
@@ -533,11 +557,13 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
     if (endpoint.empty () || control_endpoint.empty ())
         return false;
 
@@ -546,13 +572,15 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     if (!control_node.valid ())
         return false;
     if (!perf::multi::configure_spot_control_tls (control_node, transport)
-        || !perf::multi::apply_spot_node_admission_hwm (control_node, settings.sndhwm, settings.rcvhwm))
+        || !perf::multi::apply_spot_node_admission_hwm (control_node, settings.sndhwm,
+                                                        settings.rcvhwm))
         return false;
     const size_t snapshot_msg_size = msg_size;
     if (!perf::multi::apply_spot_auto_hwm_msg_unit (control_ctx.ctx (), snapshot_msg_size))
         return false;
 
-    const std::string local_control_endpoint = perf::multi::bind_spot_endpoint (control_node, transport, 0);
+    const std::string local_control_endpoint =
+      perf::multi::bind_spot_endpoint (control_node, transport, 0);
     if (local_control_endpoint.empty ())
         return false;
     zlink::service::spot_t control_spot = control_node.create_spot ();
@@ -570,8 +598,8 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     std::cout << "CLIENT_CONTROL_ENDPOINT," << local_control_endpoint << std::endl;
 
     std::thread stdin_thread (stdin_watcher);
-    const int start_timeout_ms =
-      std::max (settings.connect_ready_timeout_ms, std::max (1000, settings.connect_ready_timeout_ms * 6));
+    const int start_timeout_ms = std::max (settings.connect_ready_timeout_ms,
+                                           std::max (1000, settings.connect_ready_timeout_ms * 6));
     if (!wait_for_control_connected (start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
@@ -587,21 +615,24 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
     }
     wait_for_settle_ms (resolve_spot_ready_settle_ms ());
     if (!perf::multi::publish_control_payload (control_spot, k_control_topic,
-                                               std::string ("DATA_ENDPOINT_SIZE,") + std::to_string (msg_size)
-                                                 + std::string (",") + bench->local_data_endpoint (),
+                                               std::string ("DATA_ENDPOINT_SIZE,")
+                                                 + std::to_string (msg_size) + std::string (",")
+                                                 + bench->local_data_endpoint (),
                                                start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
-    if (!perf::multi::publish_control_payload (control_spot, k_control_topic, "CONNECTED", start_timeout_ms)) {
+    if (!perf::multi::publish_control_payload (control_spot, k_control_topic, "CONNECTED",
+                                               start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
     wait_for_settle_ms (resolve_spot_control_settle_ms ());
     if (!perf::multi::publish_control_payload (
           control_spot, k_control_topic,
-          perf::multi::make_ready_count_command (msg_size, std::max<size_t> (1, settings.clients)), start_timeout_ms)) {
+          perf::multi::make_ready_count_command (msg_size, std::max<size_t> (1, settings.clients)),
+          start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
@@ -610,7 +641,8 @@ bool perf_spot_reqrep_client (const std::string &lib_name,
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }
-    if (!perf::multi::wait_for_control_start (control_spot, k_control_topic, msg_size, start_timeout_ms)) {
+    if (!perf::multi::wait_for_control_start (control_spot, k_control_topic, msg_size,
+                                              start_timeout_ms)) {
         stop_and_release_stdin_thread (stdin_thread);
         return false;
     }

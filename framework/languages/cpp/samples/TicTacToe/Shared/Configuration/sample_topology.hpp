@@ -30,8 +30,8 @@ inline void apply_port_offset (std::string &endpoint, std::uint16_t offset)
     if (colon == std::string::npos || colon + 1 >= endpoint.size ()) {
         return;
     }
-    const auto port =
-      static_cast<std::uint16_t> (static_cast<std::uint16_t> (std::atoi (endpoint.c_str () + colon + 1)) + offset);
+    const auto port = static_cast<std::uint16_t> (
+      static_cast<std::uint16_t> (std::atoi (endpoint.c_str () + colon + 1)) + offset);
     endpoint.replace (colon + 1, std::string::npos, std::to_string (port));
 }
 } // namespace detail

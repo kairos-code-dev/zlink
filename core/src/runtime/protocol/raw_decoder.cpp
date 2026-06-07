@@ -8,8 +8,7 @@
 #include <cstring>
 
 zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
-    _allocator (bufsize_, 1),
-    _max_msg_size (maxmsgsize_)
+    _allocator (bufsize_, 1), _max_msg_size (maxmsgsize_)
 {
     const int rc = _in_progress.init ();
     errno_assert (rc == 0);
@@ -18,8 +17,7 @@ zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
 zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_,
                                      int64_t maxmsgsize_,
                                      size_t max_buffer_size_) :
-    _allocator (bufsize_, 1, max_buffer_size_),
-    _max_msg_size (maxmsgsize_)
+    _allocator (bufsize_, 1, max_buffer_size_), _max_msg_size (maxmsgsize_)
 {
     const int rc = _in_progress.init ();
     errno_assert (rc == 0);
@@ -37,12 +35,9 @@ void zlink::raw_decoder_t::get_buffer (unsigned char **data_, size_t *size_)
     *size_ = _allocator.size ();
 }
 
-int zlink::raw_decoder_t::decode (const unsigned char *data_,
-                                  size_t size_,
-                                  size_t &bytes_used_)
+int zlink::raw_decoder_t::decode (const unsigned char *data_, size_t size_, size_t &bytes_used_)
 {
-    if (_max_msg_size >= 0
-        && size_ > static_cast<size_t> (_max_msg_size)) {
+    if (_max_msg_size >= 0 && size_ > static_cast<size_t> (_max_msg_size)) {
         errno = EMSGSIZE;
         return -1;
     }
@@ -56,8 +51,7 @@ int zlink::raw_decoder_t::decode (const unsigned char *data_,
     const uintptr_t end = base + allocator_size;
     const uintptr_t ptr = reinterpret_cast<uintptr_t> (data_);
     const bool in_allocator =
-      allocator_data && ptr >= base && ptr <= end
-      && size_ <= static_cast<size_t> (end - ptr);
+      allocator_data && ptr >= base && ptr <= end && size_ <= static_cast<size_t> (end - ptr);
 
     int rc = 0;
     if (!in_allocator) {
@@ -67,13 +61,12 @@ int zlink::raw_decoder_t::decode (const unsigned char *data_,
             return -1;
         }
         if (size_ > 0) {
-            std::memcpy (_in_progress.data (),
-                         const_cast<unsigned char *> (data_), size_);
+            std::memcpy (_in_progress.data (), const_cast<unsigned char *> (data_), size_);
         }
     } else {
         rc = _in_progress.init (const_cast<unsigned char *> (data_), size_,
-                                shared_message_memory_allocator::call_dec_ref,
-                                _allocator.buffer (), _allocator.provide_content ());
+                                shared_message_memory_allocator::call_dec_ref, _allocator.buffer (),
+                                _allocator.provide_content ());
     }
 
     // If the message became zero-copy backed by allocator memory,

@@ -7,14 +7,16 @@
 namespace zlink::framework::runtime::messaging
 {
 
-pending_submit_t
-pending_submit_t::create_command (try_submit_fn try_submit, std::optional<clock_t::time_point> deadline, wake_fn wake)
+pending_submit_t pending_submit_t::create_command (try_submit_fn try_submit,
+                                                   std::optional<clock_t::time_point> deadline,
+                                                   wake_fn wake)
 {
     return pending_submit_t (std::move (try_submit), deadline, std::move (wake), true);
 }
 
-pending_submit_t
-pending_submit_t::create_request (try_submit_fn try_submit, std::optional<clock_t::time_point> deadline, wake_fn wake)
+pending_submit_t pending_submit_t::create_request (try_submit_fn try_submit,
+                                                   std::optional<clock_t::time_point> deadline,
+                                                   wake_fn wake)
 {
     return pending_submit_t (std::move (try_submit), deadline, std::move (wake), false);
 }
@@ -45,7 +47,8 @@ bool pending_submit_t::try_submit ()
         return false;
     }
     if (expired ()) {
-        fail (std::make_exception_ptr (std::runtime_error ("ZLink submit timed out before acceptance.")));
+        fail (std::make_exception_ptr (
+          std::runtime_error ("ZLink submit timed out before acceptance.")));
         return false;
     }
 

@@ -20,7 +20,8 @@ typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
 }
 
-namespace {
+namespace
+{
 
 static const char *k_pattern = "MULTI_STREAM";
 static const char k_stop_token[] = "__zlink_perf_stop__";
@@ -28,9 +29,8 @@ static perf_multi_stream::session_t g_stream_session;
 
 int on_stream_raw_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
 {
-    if (!perf_multi_stream::handle_raw_stream_chunk (&g_stream_session,
-                                                     g_stream_session.send_socket,
-                                                     rid, msg, k_stop_token)) {
+    if (!perf_multi_stream::handle_raw_stream_chunk (
+          &g_stream_session, g_stream_session.send_socket, rid, msg, k_stop_token)) {
         perf_stop_requested ().store (true, std::memory_order_release);
     }
     if (msg)
@@ -51,8 +51,7 @@ inline void install_signal_handlers ()
 #endif
 }
 
-inline bool parse_queue_probe_command (const std::string &line,
-                                       size_t *msg_size_out)
+inline bool parse_queue_probe_command (const std::string &line, size_t *msg_size_out)
 {
     if (!msg_size_out)
         return false;
@@ -93,24 +92,21 @@ inline void start_control_stdin_watcher ()
     stdin_watcher.detach ();
 }
 
-inline void print_server_metrics (
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
+inline void print_server_metrics (const std::string &lib_name,
+                                  const std::string &transport,
+                                  const std::vector<size_t> &sizes,
+                                  const bench_multi_resource_metrics_t &metrics)
 {
     for (size_t i = 0; i < sizes.size (); ++i) {
         if (metrics.has_cpu_pct) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_cpu_pct," << std::fixed
-                      << std::setprecision (2) << metrics.cpu_pct << std::endl;
+            std::cout << "RESULT," << lib_name << "," << k_pattern << "," << transport << ","
+                      << sizes[i] << ",server_cpu_pct," << std::fixed << std::setprecision (2)
+                      << metrics.cpu_pct << std::endl;
         }
         if (metrics.has_mem_mb) {
-            std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                      << transport << "," << sizes[i]
-                      << ",server_mem_mb," << std::fixed
-                      << std::setprecision (2) << metrics.mem_mb << std::endl;
+            std::cout << "RESULT," << lib_name << "," << k_pattern << "," << transport << ","
+                      << sizes[i] << ",server_mem_mb," << std::fixed << std::setprecision (2)
+                      << metrics.mem_mb << std::endl;
         }
     }
 }
@@ -129,8 +125,8 @@ int main (int argc, char **argv)
     set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return 0;
     }
 
@@ -149,8 +145,8 @@ int main (int argc, char **argv)
     void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
     if (!server) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] socket create failed errno="
-                      << zlink_errno () << std::endl;
+            std::cerr << "[multi-stream-server] socket create failed errno=" << zlink_errno ()
+                      << std::endl;
         }
         return 1;
     }
@@ -163,28 +159,25 @@ int main (int argc, char **argv)
     apply_benchmark_hwm (server, settings.hwm);
 
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
-    set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms,
-                     "ZLINK_OPT_SNDTIMEO");
-    set_sockopt_int (server, ZLINK_OPT_RCVTIMEO, io_timeout_ms,
-                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms, "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_RCVTIMEO, io_timeout_ms, "ZLINK_OPT_RCVTIMEO");
     set_sockopt_int (server, ZLINK_OPT_TCP_NODELAY, 1, "ZLINK_OPT_TCP_NODELAY");
 
     if (!setup_tls_server (server, transport)) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] tls setup failed transport="
-                      << transport << " errno=" << zlink_errno ()
-                      << std::endl;
+            std::cerr << "[multi-stream-server] tls setup failed transport=" << transport
+                      << " errno=" << zlink_errno () << std::endl;
         }
         zlink_close (server);
         return 1;
     }
 
-    const std::string endpoint = bind_server_endpoint (
-      server, transport, lib_name + "_stream_server");
+    const std::string endpoint =
+      bind_server_endpoint (server, transport, lib_name + "_stream_server");
     if (endpoint.empty ()) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] bind endpoint failed errno="
-                      << zlink_errno () << std::endl;
+            std::cerr << "[multi-stream-server] bind endpoint failed errno=" << zlink_errno ()
+                      << std::endl;
         }
         zlink_close (server);
         return 1;
@@ -194,8 +187,8 @@ int main (int argc, char **argv)
     perf_multi_stream::reset_session (&g_stream_session, server);
     if (zlink_stream_attach_raw (server, &on_stream_raw_packet) != 0) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] raw stream attach failed errno="
-                      << zlink_errno () << std::endl;
+            std::cerr << "[multi-stream-server] raw stream attach failed errno=" << zlink_errno ()
+                      << std::endl;
         }
         perf_multi_stream::clear_session (&g_stream_session);
         zlink_close (server);
@@ -206,13 +199,12 @@ int main (int argc, char **argv)
 
     std::cout << "READY," << endpoint << std::endl;
 
-    const int rc = perf_multi_stream::run_server_event_loop (
-      &g_stream_session, server, k_stop_token, NULL, NULL);
+    const int rc = perf_multi_stream::run_server_event_loop (&g_stream_session, server,
+                                                             k_stop_token, NULL, NULL);
 
     perf_multi_stream::clear_session (&g_stream_session);
 
-    const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (cpu_start);
+    const bench_multi_resource_metrics_t metrics = bench_multi_finish_resource_probe (cpu_start);
     print_server_metrics (lib_name, transport, sizes, metrics);
     zlink_close (server);
     return rc;

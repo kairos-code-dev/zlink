@@ -28,7 +28,10 @@ class actor_ref_t
 {
   public:
     actor_ref_t () = default;
-    actor_ref_t (node_rid_t node_rid, std::string actor_type, std::string actor_id, std::uint64_t generation = 1);
+    actor_ref_t (node_rid_t node_rid,
+                 std::string actor_type,
+                 std::string actor_id,
+                 std::uint64_t generation = 1);
 
     const node_rid_t &node_rid () const noexcept;
     std::string_view actor_type () const noexcept;
@@ -60,25 +63,33 @@ struct actor_join_reply_t
 };
 } // namespace detail
 
-class actor_join_spot_call_t : private detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>
+class actor_join_spot_call_t
+    : private detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>
 {
   private:
     using base_t = detail::call_facade_t<actor_join_spot_call_t, actor_join_result_t>;
 
   public:
-    explicit actor_join_spot_call_t (result_t<actor_join_result_t> result) : base_t (std::move (result)) {}
+    explicit actor_join_spot_call_t (result_t<actor_join_result_t> result) :
+        base_t (std::move (result))
+    {
+    }
 
     using base_t::submit;
     using base_t::timeout;
 };
 
-class actor_join_entry_spot_call_t : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>
+class actor_join_entry_spot_call_t
+    : private detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>
 {
   private:
     using base_t = detail::call_facade_t<actor_join_entry_spot_call_t, actor_ref_t>;
 
   public:
-    explicit actor_join_entry_spot_call_t (result_t<actor_ref_t> result) : base_t (std::move (result)) {}
+    explicit actor_join_entry_spot_call_t (result_t<actor_ref_t> result) :
+        base_t (std::move (result))
+    {
+    }
 
     using base_t::submit;
     using base_t::timeout;
@@ -142,19 +153,21 @@ class actor_context_t
             if (!erased) {
                 const auto *error = erased.error ();
                 return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
-                  erased.error_kind (), error != nullptr ? error->what () : "actor join spot failed"));
+                  erased.error_kind (),
+                  error != nullptr ? error->what () : "actor join spot failed"));
             }
             const auto &reply = erased.value ();
-            return actor_join_spot_call_t (
-              result_t<actor_join_result_t>::success (actor_join_result_t{reply.result_code, reply.actor, reply.reply}));
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::success (
+              actor_join_result_t{reply.result_code, reply.actor, reply.reply}));
         }
         catch (const framework_exception_t &error) {
-            return actor_join_spot_call_t (
-              result_t<actor_join_result_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
+              error.kind (), error.what (), error.is_retriable ()));
         }
         catch (...) {
-            return actor_join_spot_call_t (result_t<actor_join_result_t>::failure (
-              framework_error_kind_t::payload_decode_failed, "actor join spot reply decode failed"));
+            return actor_join_spot_call_t (
+              result_t<actor_join_result_t>::failure (framework_error_kind_t::payload_decode_failed,
+                                                      "actor join spot reply decode failed"));
         }
     }
 
@@ -163,9 +176,11 @@ class actor_context_t
   private:
     friend class session_actor_t;
     friend class session_actor_manager_t;
-    explicit actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state, actor_ref_t actor_ref);
+    explicit actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state,
+                              actor_ref_t actor_ref);
 
-    result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &request);
+    result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid,
+                                                           const zlink::message_t &request);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _actor_ref;
@@ -193,7 +208,8 @@ class session_actor_t
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
 
-    explicit session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state, actor_ref_t ref);
+    explicit session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state,
+                              actor_ref_t ref);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _ref;

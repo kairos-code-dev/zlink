@@ -15,7 +15,8 @@
 
 using namespace CppServer::Asio;
 
-namespace {
+namespace
+{
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
@@ -31,15 +32,15 @@ struct server_options_t
     int tcp_nodelay;
     int io_threads;
 
-    server_options_t ()
-        : host ("0.0.0.0"),
-          port (38003),
-          size (1024),
-          sndbuf (1024 * 1024),
-          rcvbuf (1024 * 1024),
-          backlog (32768),
-          tcp_nodelay (1),
-          io_threads (8)
+    server_options_t () :
+        host ("0.0.0.0"),
+        port (38003),
+        size (1024),
+        sndbuf (1024 * 1024),
+        rcvbuf (1024 * 1024),
+        backlog (32768),
+        tcp_nodelay (1),
+        io_threads (8)
     {
     }
 };
@@ -52,12 +53,8 @@ struct metrics_t
     std::atomic<long> send_error;
     std::atomic<long> active_connections;
 
-    metrics_t ()
-        : recv_msgs (0),
-          parse_error (0),
-          protocol_error (0),
-          send_error (0),
-          active_connections (0)
+    metrics_t () :
+        recv_msgs (0), parse_error (0), protocol_error (0), send_error (0), active_connections (0)
     {
     }
 };
@@ -75,12 +72,8 @@ class stream_echo_session_t : public TCPSession
   public:
     stream_echo_session_t (const std::shared_ptr<TCPServer> &server,
                            const server_options_t &opt_,
-                           metrics_t &metrics_)
-        : TCPSession (server),
-          opt (opt_),
-          metrics (metrics_),
-          frame_buffer (),
-          pending_send ()
+                           metrics_t &metrics_) :
+        TCPSession (server), opt (opt_), metrics (metrics_), frame_buffer (), pending_send ()
     {
     }
 
@@ -105,8 +98,8 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
-        stream_echo::append_frame_bytes (
-          &frame_buffer, static_cast<const unsigned char *> (buffer), size);
+        stream_echo::append_frame_bytes (&frame_buffer, static_cast<const unsigned char *> (buffer),
+                                         size);
         if (stream_echo::has_invalid_declared_size (&frame_buffer)) {
             metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
             metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
@@ -139,9 +132,7 @@ class stream_echo_session_t : public TCPSession
         }
     }
 
-    void onError (int,
-                  const std::string &,
-                  const std::string &) override
+    void onError (int, const std::string &, const std::string &) override
     {
         metrics.send_error.fetch_add (1, std::memory_order_relaxed);
     }
@@ -158,16 +149,13 @@ class stream_echo_server_t : public TCPServer
   public:
     stream_echo_server_t (const std::shared_ptr<Service> &service,
                           const server_options_t &opt_,
-                          metrics_t &metrics_)
-        : TCPServer (service, opt_.host, opt_.port),
-          opt (opt_),
-          metrics (metrics_)
+                          metrics_t &metrics_) :
+        TCPServer (service, opt_.host, opt_.port), opt (opt_), metrics (metrics_)
     {
     }
 
   protected:
-    std::shared_ptr<TCPSession>
-    CreateSession (const std::shared_ptr<TCPServer> &server) override
+    std::shared_ptr<TCPSession> CreateSession (const std::shared_ptr<TCPServer> &server) override
     {
         return std::make_shared<stream_echo_session_t> (server, opt, metrics);
     }
@@ -177,19 +165,15 @@ class stream_echo_server_t : public TCPServer
         std::error_code ec;
         acceptor ().listen (opt.backlog, ec);
         if (ec) {
-            std::fprintf (stderr,
-                          "cppserver stream: listen(backlog=%d) failed: %s\n",
-                          opt.backlog, ec.message ().c_str ());
+            std::fprintf (stderr, "cppserver stream: listen(backlog=%d) failed: %s\n", opt.backlog,
+                          ec.message ().c_str ());
         }
     }
 
-    void onError (int error,
-                  const std::string &category,
-                  const std::string &message) override
+    void onError (int error, const std::string &category, const std::string &message) override
     {
-        std::fprintf (stderr,
-                      "cppserver stream error code=%d category=%s message=%s\n",
-                      error, category.c_str (), message.c_str ());
+        std::fprintf (stderr, "cppserver stream error code=%d category=%s message=%s\n", error,
+                      category.c_str (), message.c_str ());
     }
 
   private:
@@ -238,8 +222,7 @@ int main (int argc, char **argv)
     metrics_t metrics;
 
     auto service = std::make_shared<Service> (std::max (1, opt.io_threads));
-    auto server =
-      std::make_shared<stream_echo_server_t> (service, opt, metrics);
+    auto server = std::make_shared<stream_echo_server_t> (service, opt, metrics);
 
     server->SetupNoDelay (opt.tcp_nodelay != 0);
     server->SetupReuseAddress (true);
@@ -258,15 +241,14 @@ int main (int argc, char **argv)
     server->Stop ();
     service->Stop ();
 
-    std::printf (
-      "%s\n",
-      stream_echo::make_metric_line (
-        "cppserver", opt.size, metrics.recv_msgs.load (std::memory_order_relaxed),
-        metrics.parse_error.load (std::memory_order_relaxed),
-        metrics.protocol_error.load (std::memory_order_relaxed),
-        metrics.send_error.load (std::memory_order_relaxed),
-        metrics.active_connections.load (std::memory_order_relaxed))
-        .c_str ());
+    std::printf ("%s\n",
+                 stream_echo::make_metric_line (
+                   "cppserver", opt.size, metrics.recv_msgs.load (std::memory_order_relaxed),
+                   metrics.parse_error.load (std::memory_order_relaxed),
+                   metrics.protocol_error.load (std::memory_order_relaxed),
+                   metrics.send_error.load (std::memory_order_relaxed),
+                   metrics.active_connections.load (std::memory_order_relaxed))
+                   .c_str ());
 
     return 0;
 }

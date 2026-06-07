@@ -44,8 +44,8 @@ ZLINK_EXPORT void *zlink_discovery_new (void *ctx,
  * Discovery learns the Registry broadcast and topology-uplink endpoints from
  * this bootstrap connection and configures its internal sockets automatically.
  */
-ZLINK_EXPORT zlink_connect_result_t zlink_discovery_connect_registry (
-  void *discovery, const char *registry_endpoint);
+ZLINK_EXPORT zlink_connect_result_t
+zlink_discovery_connect_registry (void *discovery, const char *registry_endpoint);
 
 /**
  * @brief Resolve the current owner node for a logical SPOT routing id.
@@ -73,14 +73,11 @@ typedef struct zlink_spot_route_t
 } zlink_spot_route_t;
 
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_spot (
-  void *discovery_,
-  const zlink_routing_id_t *spot_rid_,
-  zlink_spot_route_t *route_out_);
+  void *discovery_, const zlink_routing_id_t *spot_rid_, zlink_spot_route_t *route_out_);
 
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor (
-  void *discovery_,
-  const char *actor_id_,
-  zlink_actor_route_t *route_out_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor (void *discovery_,
+                                                                  const char *actor_id_,
+                                                                  zlink_actor_route_t *route_out_);
 
 /**
  * @brief Bind an owner-scoped route row in the connected Registry.
@@ -97,13 +94,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_actor (
  * @param value_size_ Route value size in bytes.
  * @return `ZLINK_CONFIG_OK` on success, or another result on failure.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_bind_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  const void *value_,
-  size_t value_size_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_bind_route (void *discovery_,
+                                                               zlink_route_kind_t kind_,
+                                                               const void *key_,
+                                                               size_t key_size_,
+                                                               const void *value_,
+                                                               size_t value_size_);
 
 /**
  * @brief Remove a route row owned by the current service registration.
@@ -111,11 +107,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_bind_route (
  * A stale owner registration cannot remove a route row claimed by a newer
  * owner generation for the same route identity.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_unbind_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_unbind_route (void *discovery_,
+                                                                 zlink_route_kind_t kind_,
+                                                                 const void *key_,
+                                                                 size_t key_size_);
 
 /**
  * @brief Resolve an owner-scoped route row from the connected Registry.
@@ -124,17 +119,17 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_unbind_route (
  * `value_out_` receives an initialized message containing the route value. The
  * caller must close `value_out_` with `zlink_msg_close`.
  */
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_resolve_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  zlink_routing_id_t *owner_rid_out_,
-  zlink_msg_t *value_out_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_discovery_resolve_route (void *discovery_,
+                               zlink_route_kind_t kind_,
+                               const void *key_,
+                               size_t key_size_,
+                               zlink_routing_id_t *owner_rid_out_,
+                               zlink_msg_t *value_out_);
 
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_);
 ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
-                                            int64_t *value_out_);
+                                                              int64_t *value_out_);
 /**
  * @brief Destroy the discovery instance and release all resources.
  *
@@ -143,9 +138,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_discovery_get_value (void *discovery_,
  */
 ZLINK_EXPORT zlink_close_result_t zlink_discovery_destroy (void **discovery_p);
 
-ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
-                                               zlink_member_peer_entry_t *entries_,
-                                               size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_discovery_member_peers (
+  void *discovery_, zlink_member_peer_entry_t *entries_, size_t *count_);
 
 #ifdef __cplusplus
 }

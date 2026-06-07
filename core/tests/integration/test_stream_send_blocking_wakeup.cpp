@@ -34,10 +34,7 @@ const int kFillDeadlineMs = 5000;
 
 struct stream_route_probe_t
 {
-    stream_route_probe_t () : ready (0), rid ()
-    {
-        memset (&rid, 0, sizeof (rid));
-    }
+    stream_route_probe_t () : ready (0), rid () { memset (&rid, 0, sizeof (rid)); }
 
     std::atomic<int> ready;
     zlink_routing_id_t rid;
@@ -63,14 +60,11 @@ void configure_stream_socket (void *socket_)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (socket_, ZLINK_OPT_RCVHWM, &kStreamHwm, sizeof (kStreamHwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes,
-                        sizeof (kSocketBufBytes)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes, sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes,
-                        sizeof (kSocketBufBytes)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes, sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs,
-                        sizeof (kSendTimeoutMs)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kSendTimeoutMs, sizeof (kSendTimeoutMs)));
 }
 
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -151,9 +145,7 @@ int connect_raw_tcp (const char *endpoint_)
         return -1;
     }
 
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
+    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr), sizeof (addr)) != 0) {
         const int err = errno;
         close (fd);
         errno = err;
@@ -198,8 +190,7 @@ void close_raw_fd (int fd_)
 void set_raw_timeout (int fd_, int timeout_ms_)
 {
     const int rcvbuf_rc =
-      setsockopt (fd_, SOL_SOCKET, SO_RCVBUF, &kSocketBufBytes,
-                  sizeof (kSocketBufBytes));
+      setsockopt (fd_, SOL_SOCKET, SO_RCVBUF, &kSocketBufBytes, sizeof (kSocketBufBytes));
     TEST_ASSERT_EQUAL_INT (0, rcvbuf_rc);
 
     struct timeval tv;
@@ -227,13 +218,10 @@ bool wait_stream_route_ready (stream_route_probe_t *probe_, int timeout_ms_)
     return probe_->ready.load (std::memory_order_acquire) != 0;
 }
 
-int capture_stream_route_callback (const zlink_routing_id_t *rid_,
-                                   zlink_msg_t *msg_,
-                                   void *)
+int capture_stream_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *)
 {
     if (msg_) {
-        if (g_stream_route_probe && rid_
-            && zlink_msg_size (msg_) > 0 && rid_->size == kRouteIdSize
+        if (g_stream_route_probe && rid_ && zlink_msg_size (msg_) > 0 && rid_->size == kRouteIdSize
             && g_stream_route_probe->ready.load (std::memory_order_acquire) == 0) {
             g_stream_route_probe->rid.size = rid_->size;
             memcpy (g_stream_route_probe->rid.data, rid_->data, kRouteIdSize);
@@ -244,8 +232,7 @@ int capture_stream_route_callback (const zlink_routing_id_t *rid_,
     return 0;
 }
 
-int capture_stream_route_raw_callback (const zlink_routing_id_t *rid_,
-                                       zlink_msg_t *msg_)
+int capture_stream_route_raw_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
 {
     return capture_stream_route_callback (rid_, msg_, NULL);
 }
@@ -253,13 +240,13 @@ int capture_stream_route_raw_callback (const zlink_routing_id_t *rid_,
 void capture_stream_send_ready_callback (void *, void *)
 {
     if (g_stream_send_ready_probe) {
-        g_stream_send_ready_probe->ready_count.fetch_add (
-          1, std::memory_order_acq_rel);
+        g_stream_send_ready_probe->ready_count.fetch_add (1, std::memory_order_acq_rel);
     }
 }
 
-bool wait_stream_send_ready_count_at_least (
-  stream_send_ready_probe_t *probe_, int expected_, int timeout_ms_)
+bool wait_stream_send_ready_count_at_least (stream_send_ready_probe_t *probe_,
+                                            int expected_,
+                                            int timeout_ms_)
 {
     if (!probe_)
         return false;
@@ -274,9 +261,10 @@ bool wait_stream_send_ready_count_at_least (
     return probe_->ready_count.load (std::memory_order_acquire) >= expected_;
 }
 
-bool wait_stream_poller_no_event (
-  void *poller_, zlink_poller_event_t *event_, zlink_config_result_t *error_out_,
-  long timeout_ms_)
+bool wait_stream_poller_no_event (void *poller_,
+                                  zlink_poller_event_t *event_,
+                                  zlink_config_result_t *error_out_,
+                                  long timeout_ms_)
 {
     if (!poller_ || !event_ || !error_out_)
         return false;
@@ -340,15 +328,13 @@ void fill_stream_send_queue_until_hwm (void *server_, const zlink_routing_id_t *
     TEST_ASSERT_TRUE (reached_full);
 }
 
-void fill_stream_send_queue_until_backpressured_once (
-  void *server_, const zlink_routing_id_t *rid_)
+void fill_stream_send_queue_until_backpressured_once (void *server_, const zlink_routing_id_t *rid_)
 {
     std::vector<unsigned char> payload (kPayloadSize, 0x5A);
     int sent = 0;
     while (true) {
         const int rc =
-          test_stream_send_bytes (server_, rid_, &payload[0], kPayloadSize,
-                                  ZLINK_DONTWAIT);
+          test_stream_send_bytes (server_, rid_, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
         if (rc == static_cast<int> (kPayloadSize)) {
             ++sent;
             continue;
@@ -373,12 +359,10 @@ bool drain_stream_until_send_reopens (void *server_,
 
     unsigned char drain_buf[64 * 1024];
     int drained = 0;
-    const int drain_target =
-      static_cast<int> (payload_size_ * ((kStreamHwm + 1) / 2 + 2));
+    const int drain_target = static_cast<int> (payload_size_ * ((kStreamHwm + 1) / 2 + 2));
     const auto drain_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
-    while (std::chrono::steady_clock::now () < drain_deadline
-           && drained < drain_target) {
+    while (std::chrono::steady_clock::now () < drain_deadline && drained < drain_target) {
         const int n = recv_raw (raw_fd_, drain_buf, sizeof (drain_buf));
         if (n > 0)
             drained += n;
@@ -387,8 +371,8 @@ bool drain_stream_until_send_reopens (void *server_,
     const auto reopen_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1500);
     while (std::chrono::steady_clock::now () < reopen_deadline) {
-        const int send_rc = test_stream_send_bytes (
-          server_, rid_, payload_, payload_size_, ZLINK_DONTWAIT);
+        const int send_rc =
+          test_stream_send_bytes (server_, rid_, payload_, payload_size_, ZLINK_DONTWAIT);
         if (send_rc == static_cast<int> (payload_size_))
             return true;
 
@@ -409,9 +393,8 @@ void test_stream_queue_reopens_after_peer_reads ()
     void *server = test_context_socket (ZLINK_SOCKET_STREAM);
     TEST_ASSERT_NOT_NULL (server);
     configure_stream_socket (server);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kWakeupSendTimeoutMs,
-                        sizeof (kWakeupSendTimeoutMs)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kWakeupSendTimeoutMs,
+                                                 sizeof (kWakeupSendTimeoutMs)));
 
     char endpoint[MAX_SOCKET_STRING];
     memset (endpoint, 0, sizeof (endpoint));
@@ -427,10 +410,8 @@ void test_stream_queue_reopens_after_peer_reads ()
 
     std::vector<unsigned char> payload (kPayloadSize, 0x33);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kProbeTimeoutMs,
-                        sizeof (kProbeTimeoutMs)));
-    TEST_ASSERT_EQUAL_INT (
-      -1, test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, 0));
+      zlink_set_option (server, ZLINK_OPT_SNDTIMEO, &kProbeTimeoutMs, sizeof (kProbeTimeoutMs)));
+    TEST_ASSERT_EQUAL_INT (-1, test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, 0));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     unsigned char drain_buf[64 * 1024];
@@ -438,8 +419,7 @@ void test_stream_queue_reopens_after_peer_reads ()
     const int drain_target = static_cast<int> (kPayloadSize * ((kStreamHwm + 1) / 2 + 2));
     const auto drain_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (1000);
-    while (std::chrono::steady_clock::now () < drain_deadline
-           && drained < drain_target) {
+    while (std::chrono::steady_clock::now () < drain_deadline && drained < drain_target) {
         const int n = recv_raw (raw_fd, drain_buf, sizeof (drain_buf));
         if (n > 0)
             drained += n;
@@ -488,15 +468,13 @@ void test_stream_send_ready_pollout_share_recovery_axis ()
     stream_send_ready_probe_t probe;
     g_stream_send_ready_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_send_ready_handler (server, &capture_stream_send_ready_callback,
-                                NULL));
+      zlink_send_ready_handler (server, &capture_stream_send_ready_callback, NULL));
 
     fill_stream_send_queue_until_backpressured_once (server, &rid);
 
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
 
     unsigned char drain_buf[64 * 1024];
     const auto drain_deadline =
@@ -509,8 +487,7 @@ void test_stream_send_ready_pollout_share_recovery_axis ()
     }
 
     bool pollout_ready = false;
-    const auto poll_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    const auto poll_deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < poll_deadline) {
         zlink_poller_event_t event;
         zlink_config_result_t error = ZLINK_CONFIG_OK;
@@ -524,19 +501,17 @@ void test_stream_send_ready_pollout_share_recovery_axis ()
     }
     TEST_ASSERT_TRUE (pollout_ready);
 
-    TEST_ASSERT_TRUE (
-      wait_stream_send_ready_count_at_least (&probe, 1, 3000));
+    TEST_ASSERT_TRUE (wait_stream_send_ready_count_at_least (&probe, 1, 3000));
 
     uint32_t ready_events = 0;
     size_t ready_events_size = sizeof (ready_events);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
-      server, ZLINK_OPT_EVENTS, &ready_events, &ready_events_size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (server, ZLINK_OPT_EVENTS, &ready_events, &ready_events_size));
     TEST_ASSERT_TRUE ((ready_events & ZLINK_POLLOUT) != 0);
 
     std::vector<unsigned char> payload (kPayloadSize, 0x77);
     const int retry_rc =
-      test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize,
-                              ZLINK_DONTWAIT);
+      test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, ZLINK_DONTWAIT);
     if (retry_rc != static_cast<int> (kPayloadSize)) {
         TEST_ASSERT_EQUAL_INT (-1, retry_rc);
         TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
@@ -571,8 +546,7 @@ void test_stream_pollout_only_observes_recovery_readiness ()
 
     void *poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
 
     zlink_poller_event_t event;
     zlink_config_result_t error = ZLINK_CONFIG_OK;
@@ -582,9 +556,7 @@ void test_stream_pollout_only_observes_recovery_readiness ()
 
     std::vector<unsigned char> payload (kPayloadSize, 0x21);
     TEST_ASSERT_EQUAL_INT (
-      -1,
-      test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize,
-                              ZLINK_DONTWAIT));
+      -1, test_stream_send_bytes (server, &rid, &payload[0], kPayloadSize, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     TEST_ASSERT_TRUE (wait_stream_poller_no_event (poller, &event, &error, 0));
@@ -601,8 +573,7 @@ void test_stream_pollout_only_observes_recovery_readiness ()
     }
 
     bool pollout_ready = false;
-    const auto poll_deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    const auto poll_deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < poll_deadline) {
         const int rc = zlink_poller_wait (poller, &event, 1, 50, &error);
         if (rc <= 0)
@@ -618,16 +589,15 @@ void test_stream_pollout_only_observes_recovery_readiness ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (poller);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, server, server, ZLINK_POLLOUT));
     TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &event, 1, 0, &error));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, error);
     TEST_ASSERT_EQUAL_PTR (server, event.socket);
     TEST_ASSERT_TRUE ((event.events & ZLINK_POLLOUT) != 0);
 
     std::vector<unsigned char> retry_payload (kPayloadSize, 0x29);
-    const int retry_rc = test_stream_send_bytes (
-      server, &rid, &retry_payload[0], kPayloadSize, ZLINK_DONTWAIT);
+    const int retry_rc =
+      test_stream_send_bytes (server, &rid, &retry_payload[0], kPayloadSize, ZLINK_DONTWAIT);
     if (retry_rc != static_cast<int> (kPayloadSize)) {
         TEST_ASSERT_EQUAL_INT (-1, retry_rc);
         TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
@@ -667,8 +637,7 @@ void test_stream_blocking_send_times_out_without_peer_reads ()
 
     TEST_ASSERT_EQUAL_INT (-1, send_rc);
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
-    TEST_ASSERT_TRUE (
-      elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 150));
+    TEST_ASSERT_TRUE (elapsed_ms >= static_cast<unsigned int> (kSendTimeoutMs - 150));
 
     close_raw_fd (raw_fd);
     test_context_socket_close (server);
@@ -700,25 +669,22 @@ void test_stream_nonblocking_send_preserves_message_for_retry ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&msg, kPayloadSize));
     memset (zlink_msg_data (&msg), 0x6C, kPayloadSize);
 
-    const zlink_submit_result_t send_rc =
-      zlink_send_rid (server, &rid, &msg, 1, ZLINK_DONTWAIT);
+    const zlink_submit_result_t send_rc = zlink_send_rid (server, &rid, &msg, 1, ZLINK_DONTWAIT);
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, send_rc);
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_EQUAL_UINT64 (kPayloadSize, zlink_msg_size (&msg));
 
-    const unsigned char *msg_data =
-      static_cast<const unsigned char *> (zlink_msg_data (&msg));
+    const unsigned char *msg_data = static_cast<const unsigned char *> (zlink_msg_data (&msg));
     TEST_ASSERT_NOT_NULL (msg_data);
     for (size_t i = 0; i < kPayloadSize; ++i)
         TEST_ASSERT_EQUAL_UINT8 (0x6C, msg_data[i]);
 
     std::vector<unsigned char> probe_payload (kPayloadSize, 0x41);
-    TEST_ASSERT_TRUE (drain_stream_until_send_reopens (
-      server, raw_fd, &rid, &probe_payload[0], probe_payload.size ()));
+    TEST_ASSERT_TRUE (drain_stream_until_send_reopens (server, raw_fd, &rid, &probe_payload[0],
+                                                       probe_payload.size ()));
 
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (kPayloadSize),
-      test_stream_send_single_msg (server, &rid, &msg, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (kPayloadSize),
+                           test_stream_send_single_msg (server, &rid, &msg, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&msg));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
@@ -758,8 +724,7 @@ void test_stream_part_nonblocking_backpressure_preserves_message ()
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_EQUAL_UINT64 (kPayloadSize, zlink_msg_size (&msg));
 
-    const unsigned char *msg_data =
-      static_cast<const unsigned char *> (zlink_msg_data (&msg));
+    const unsigned char *msg_data = static_cast<const unsigned char *> (zlink_msg_data (&msg));
     TEST_ASSERT_NOT_NULL (msg_data);
     for (size_t i = 0; i < kPayloadSize; ++i)
         TEST_ASSERT_EQUAL_UINT8 (0x73, msg_data[i]);

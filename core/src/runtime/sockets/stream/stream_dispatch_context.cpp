@@ -22,10 +22,9 @@ stream_dispatch_tls_t &stream_dispatch_tls ()
 }
 }
 
-zlink::stream_dispatch_context_t::stream_dispatch_context_t (
-  stream_t *socket_,
-  pipe_t *pipe_,
-  uint32_t routing_id_) :
+zlink::stream_dispatch_context_t::stream_dispatch_context_t (stream_t *socket_,
+                                                             pipe_t *pipe_,
+                                                             uint32_t routing_id_) :
     _previous_socket (stream_dispatch_tls ().socket),
     _previous_pipe (stream_dispatch_tls ().pipe),
     _previous_routing_id (stream_dispatch_tls ().routing_id)

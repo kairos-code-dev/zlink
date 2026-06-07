@@ -56,7 +56,8 @@ void test_copy_helpers_copy_payload ()
 
     std::vector<uint8_t> target (msg.size ());
     assert (msg.copy_to (std::span<uint8_t> (target.data (), target.size ())) == msg.size ());
-    assert ((target == std::vector<uint8_t>{'c', 'o', 'p', 'y', '-', 'p', 'a', 'y', 'l', 'o', 'a', 'd'}));
+    assert (
+      (target == std::vector<uint8_t>{'c', 'o', 'p', 'y', '-', 'p', 'a', 'y', 'l', 'o', 'a', 'd'}));
 
     bool threw = false;
     try {
@@ -94,7 +95,8 @@ void test_diagnostic_surface_uses_canonical_names ()
 
 void test_routing_id_hex_and_display_policy ()
 {
-    const zlink::routing_id_t rid = zlink::routing_id_t::from (std::vector<uint8_t>{0x00, 0x41, 0x42});
+    const zlink::routing_id_t rid =
+      zlink::routing_id_t::from (std::vector<uint8_t>{0x00, 0x41, 0x42});
     const zlink::routing_id_t parsed = zlink::routing_id_t::from_hex ("004142");
 
     assert (parsed == rid);

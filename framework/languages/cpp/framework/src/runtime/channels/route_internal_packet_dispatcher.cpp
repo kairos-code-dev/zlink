@@ -19,46 +19,51 @@ bool no_route_internal_packet_dispatcher_t::can_handle_request (std::string_view
     return false;
 }
 
-result_t<void> no_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
+result_t<void>
+no_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
 {
     (void) received;
     return result_t<void>::failure (framework_error_kind_t::route_handler_not_found,
                                     "no routed internal send dispatcher is configured");
 }
 
-result_t<zlink::message_t>
-no_route_internal_packet_dispatcher_t::dispatch_request (const route_received_packet_t &received,
-                                                         const runtime::messaging::envelope_header_t &header) const
+result_t<zlink::message_t> no_route_internal_packet_dispatcher_t::dispatch_request (
+  const route_received_packet_t &received,
+  const runtime::messaging::envelope_header_t &header) const
 {
     (void) received;
     (void) header;
-    return result_t<zlink::message_t>::failure (framework_error_kind_t::route_handler_not_found,
-                                                "no routed internal request dispatcher is configured");
+    return result_t<zlink::message_t>::failure (
+      framework_error_kind_t::route_handler_not_found,
+      "no routed internal request dispatcher is configured");
 }
 
-void composite_route_internal_packet_dispatcher_t::add (const route_internal_packet_dispatcher_t &dispatcher)
+void composite_route_internal_packet_dispatcher_t::add (
+  const route_internal_packet_dispatcher_t &dispatcher)
 {
     _dispatchers.push_back (&dispatcher);
 }
 
-bool composite_route_internal_packet_dispatcher_t::can_handle_send (std::string_view packet_name) const
+bool composite_route_internal_packet_dispatcher_t::can_handle_send (
+  std::string_view packet_name) const
 {
     return resolve_send (packet_name) != nullptr;
 }
 
-bool composite_route_internal_packet_dispatcher_t::can_handle_request (std::string_view packet_name) const
+bool composite_route_internal_packet_dispatcher_t::can_handle_request (
+  std::string_view packet_name) const
 {
     return resolve_request (packet_name) != nullptr;
 }
 
-result_t<void>
-composite_route_internal_packet_dispatcher_t::dispatch_send (const route_received_packet_t &received) const
+result_t<void> composite_route_internal_packet_dispatcher_t::dispatch_send (
+  const route_received_packet_t &received) const
 {
     auto header = runtime::messaging::envelope_codec_t{}.decode_header (received.parts);
     if (!header) {
-        return result_t<void>::failure (header.error_kind (), header.error ()
-                                                                ? header.error ()->what ()
-                                                                : "route internal send header decode failed");
+        return result_t<void>::failure (
+          header.error_kind (),
+          header.error () ? header.error ()->what () : "route internal send header decode failed");
     }
     const auto *dispatcher = resolve_send (header.value ().message_name);
     if (dispatcher == nullptr) {
@@ -69,12 +74,14 @@ composite_route_internal_packet_dispatcher_t::dispatch_send (const route_receive
 }
 
 result_t<zlink::message_t> composite_route_internal_packet_dispatcher_t::dispatch_request (
-  const route_received_packet_t &received, const runtime::messaging::envelope_header_t &header) const
+  const route_received_packet_t &received,
+  const runtime::messaging::envelope_header_t &header) const
 {
     const auto *dispatcher = resolve_request (header.message_name);
     if (dispatcher == nullptr) {
-        return result_t<zlink::message_t>::failure (framework_error_kind_t::route_handler_not_found,
-                                                    "routed internal request packet is not supported");
+        return result_t<zlink::message_t>::failure (
+          framework_error_kind_t::route_handler_not_found,
+          "routed internal request packet is not supported");
     }
     return dispatcher->dispatch_request (received, header);
 }

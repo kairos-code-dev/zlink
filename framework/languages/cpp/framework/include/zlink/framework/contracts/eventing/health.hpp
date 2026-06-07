@@ -60,14 +60,16 @@ class health_builder_t
     health_builder_t &add_stream_endpoint_check (std::string name);
     health_builder_t &add_hosted_service_check (std::string name);
 
-    health_builder_t &set_status (std::string name, health_status_t status, std::string message = {});
+    health_builder_t &
+    set_status (std::string name, health_status_t status, std::string message = {});
 
     health_report_t report () const;
 
   private:
     explicit health_builder_t (std::shared_ptr<detail::health_state_t> state);
 
-    health_builder_t &add_check (std::string component, std::string name, health_check_scope_t scope);
+    health_builder_t &
+    add_check (std::string component, std::string name, health_check_scope_t scope);
 
     std::shared_ptr<detail::health_state_t> _state;
 };

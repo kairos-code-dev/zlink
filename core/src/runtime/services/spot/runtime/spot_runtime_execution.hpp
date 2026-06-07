@@ -9,11 +9,7 @@ namespace zlink
 {
 struct spot_control_runtime_state_t
 {
-    spot_control_runtime_state_t () :
-        task_id (0),
-        connected_peer_version_seen (0)
-    {
-    }
+    spot_control_runtime_state_t () : task_id (0), connected_peer_version_seen (0) {}
 
     uint64_t task_id;
     uint64_t connected_peer_version_seen;
@@ -22,9 +18,7 @@ struct spot_control_runtime_state_t
 struct spot_runtime_execution_state_t
 {
     spot_runtime_execution_state_t () :
-        data_plane_running (false),
-        next_bootstrap_ms (0),
-        last_bootstrap_peer_version (UINT64_MAX)
+        data_plane_running (false), next_bootstrap_ms (0), last_bootstrap_peer_version (UINT64_MAX)
     {
     }
 

@@ -29,8 +29,8 @@ void *zlink_discovery_new (void *ctx_,
         errno = EINVAL;
         return NULL;
     }
-    void *discovery = zlink::discovery_access_t::create (
-      static_cast<zlink::ctx_t *> (ctx_), auto_connect_type_, channel_name_);
+    void *discovery = zlink::discovery_access_t::create (static_cast<zlink::ctx_t *> (ctx_),
+                                                         auto_connect_type_, channel_name_);
     register_discovery_handle (discovery);
     return discovery;
 }
@@ -38,21 +38,18 @@ void *zlink_discovery_new (void *ctx_,
 zlink_connect_result_t zlink_discovery_connect_registry (void *discovery_,
                                                          const char *registry_endpoint_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_ARGUMENT;
     }
     return zlink::connect_result_internal::from_rc (
-      zlink::discovery_access_t::connect_registry (discovery,
-                                                    registry_endpoint_));
+      zlink::discovery_access_t::connect_registry (discovery, registry_endpoint_));
 }
 
 zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -63,8 +60,7 @@ zlink_config_result_t zlink_discovery_set_value (void *discovery_, int64_t value
 
 zlink_config_result_t zlink_discovery_get_value (void *discovery_, int64_t *value_out_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -73,43 +69,37 @@ zlink_config_result_t zlink_discovery_get_value (void *discovery_, int64_t *valu
       zlink::discovery_access_t::get_value (discovery, value_out_));
 }
 
-zlink_config_result_t zlink_discovery_resolve_spot (
-  void *discovery_,
-  const zlink_routing_id_t *spot_rid_,
-  zlink_spot_route_t *route_out_)
+zlink_config_result_t zlink_discovery_resolve_spot (void *discovery_,
+                                                    const zlink_routing_id_t *spot_rid_,
+                                                    zlink_spot_route_t *route_out_)
 {
     if (!discovery_) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::resolve_spot (discovery, spot_rid_,
-                                               route_out_));
+      zlink::discovery_access_t::resolve_spot (discovery, spot_rid_, route_out_));
 }
 
-zlink_config_result_t zlink_discovery_bind_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  const void *value_,
-  size_t value_size_)
+zlink_config_result_t zlink_discovery_bind_route (void *discovery_,
+                                                  zlink_route_kind_t kind_,
+                                                  const void *key_,
+                                                  size_t key_size_,
+                                                  const void *value_,
+                                                  size_t value_size_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::bind_route (
-        discovery, kind_, key_, key_size_, value_, value_size_));
+    return zlink::config_result_internal::from_rc (zlink::discovery_access_t::bind_route (
+      discovery, kind_, key_, key_size_, value_, value_size_));
 }
 
 zlink_config_result_t zlink_discovery_unbind_route (void *discovery_,
@@ -117,46 +107,39 @@ zlink_config_result_t zlink_discovery_unbind_route (void *discovery_,
                                                     const void *key_,
                                                     size_t key_size_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::unbind_route (
-        discovery, kind_, key_, key_size_));
+      zlink::discovery_access_t::unbind_route (discovery, kind_, key_, key_size_));
 }
 
-zlink_config_result_t zlink_discovery_resolve_route (
-  void *discovery_,
-  zlink_route_kind_t kind_,
-  const void *key_,
-  size_t key_size_,
-  zlink_routing_id_t *owner_rid_out_,
-  zlink_msg_t *value_out_)
+zlink_config_result_t zlink_discovery_resolve_route (void *discovery_,
+                                                     zlink_route_kind_t kind_,
+                                                     const void *key_,
+                                                     size_t key_size_,
+                                                     zlink_routing_id_t *owner_rid_out_,
+                                                     zlink_msg_t *value_out_)
 {
     if (!owner_rid_out_ || !value_out_) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      zlink::discovery_access_t::resolve_route (
-        discovery, kind_, key_, key_size_, owner_rid_out_, value_out_));
+    return zlink::config_result_internal::from_rc (zlink::discovery_access_t::resolve_route (
+      discovery, kind_, key_, key_size_, owner_rid_out_, value_out_));
 }
 
-zlink_config_result_t zlink_discovery_member_peers (void *discovery_,
-                                                    zlink_member_peer_entry_t *entries_,
-                                                    size_t *count_)
+zlink_config_result_t
+zlink_discovery_member_peers (void *discovery_, zlink_member_peer_entry_t *entries_, size_t *count_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
     if (!discovery) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -170,30 +153,22 @@ int zlink_discovery_set_tls_client (void *discovery_,
                                     const char *hostname_,
                                     int trust_system_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    return discovery ? zlink::discovery_access_t::set_tls_client (
-                         discovery, ca_cert_, hostname_, trust_system_)
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
+    return discovery ? zlink::discovery_access_t::set_tls_client (discovery, ca_cert_, hostname_,
+                                                                  trust_system_)
                      : -1;
 }
 
-int zlink_discovery_set_routing_id (void *discovery_,
-                                    const void *data_,
-                                    size_t size_)
+int zlink_discovery_set_routing_id (void *discovery_, const void *data_, size_t size_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    return discovery ? zlink::discovery_access_t::set_routing_id (
-                         discovery, data_, size_)
-                     : -1;
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
+    return discovery ? zlink::discovery_access_t::set_routing_id (discovery, data_, size_) : -1;
 }
 
 int zlink_discovery_routing_id (void *discovery_, zlink_routing_id_t *out_)
 {
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (discovery_);
-    return discovery ? zlink::discovery_access_t::routing_id (discovery, out_)
-                     : -1;
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (discovery_);
+    return discovery ? zlink::discovery_access_t::routing_id (discovery, out_) : -1;
 }
 
 zlink_close_result_t zlink_discovery_destroy (void **discovery_p_)
@@ -202,8 +177,7 @@ zlink_close_result_t zlink_discovery_destroy (void **discovery_p_)
         errno = EFAULT;
         return ZLINK_CLOSE_INVALID_HANDLE;
     }
-    zlink::discovery_t *discovery =
-      zlink::discovery_access_t::from_handle (*discovery_p_);
+    zlink::discovery_t *discovery = zlink::discovery_access_t::from_handle (*discovery_p_);
     if (!discovery)
         return ZLINK_CLOSE_INVALID_HANDLE;
     if (zlink::discovery_access_t::destroy (discovery) != 0)

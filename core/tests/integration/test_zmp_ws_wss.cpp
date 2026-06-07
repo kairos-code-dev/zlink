@@ -18,10 +18,8 @@ void test_zmp_ws_pair_message ()
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
 
@@ -50,26 +48,22 @@ void test_zmp_wss_pair_message ()
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (), files.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_CERT, files.server_cert.c_str (),
-      files.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (),
-      files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+      server, ZLINK_OPT_TLS_KEY, files.server_key.c_str (), files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "wss://127.0.0.1:*"));
 
@@ -87,8 +81,8 @@ void test_zmp_wss_pair_message ()
     test_context_socket_close (server);
     cleanup_tls_test_files (files);
 }
-#endif  // ZLINK_HAVE_WSS
-#endif  // ZLINK_HAVE_WS
+#endif // ZLINK_HAVE_WSS
+#endif // ZLINK_HAVE_WS
 
 int main (void)
 {

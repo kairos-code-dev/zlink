@@ -25,30 +25,34 @@ class route_channel_registration_t
     route_channel_registration_t &set_routing_id (zlink::routing_id_t routing_id);
     route_channel_registration_t &connect (std::string endpoint);
     route_channel_registration_t &add_handler_group (std::string group_name);
-    route_channel_registration_t &enable_spot_route_egress (std::string target_spot_node_channel_name);
-    route_channel_registration_t &add_handler (framework::route_handler_registration_t registration);
+    route_channel_registration_t &
+    enable_spot_route_egress (std::string target_spot_node_channel_name);
+    route_channel_registration_t &
+    add_handler (framework::route_handler_registration_t registration);
 
     template <typename TOwner, typename TMessage>
-    route_channel_registration_t &add_send_handler (std::string packet_name,
-                                                    void (TOwner::*method) (const TMessage &,
-                                                                            const framework::route_handler_context_t &))
+    route_channel_registration_t &add_send_handler (
+      std::string packet_name,
+      void (TOwner::*method) (const TMessage &, const framework::route_handler_context_t &))
     {
-        _send_handlers.push_back ([packet = std::move (packet_name), method] (route_handler_registry_t &handlers,
-                                                                              const std::string &router_channel_id) {
-            handlers.on_send<TOwner, TMessage> (router_channel_id, packet, method);
-        });
+        _send_handlers.push_back (
+          [packet = std::move (packet_name), method] (route_handler_registry_t &handlers,
+                                                      const std::string &router_channel_id) {
+              handlers.on_send<TOwner, TMessage> (router_channel_id, packet, method);
+          });
         return *this;
     }
 
     template <typename TOwner, typename TRequest, typename TReply>
-    route_channel_registration_t &
-    add_request_handler (std::string packet_name,
-                         TReply (TOwner::*method) (const TRequest &, const framework::route_handler_context_t &))
+    route_channel_registration_t &add_request_handler (
+      std::string packet_name,
+      TReply (TOwner::*method) (const TRequest &, const framework::route_handler_context_t &))
     {
-        _request_handlers.push_back ([packet = std::move (packet_name), method] (route_handler_registry_t &handlers,
-                                                                                 const std::string &router_channel_id) {
-            handlers.on_request<TOwner, TRequest, TReply> (router_channel_id, packet, method);
-        });
+        _request_handlers.push_back (
+          [packet = std::move (packet_name), method] (route_handler_registry_t &handlers,
+                                                      const std::string &router_channel_id) {
+              handlers.on_request<TOwner, TRequest, TReply> (router_channel_id, packet, method);
+          });
         return *this;
     }
 
@@ -61,7 +65,8 @@ class route_channel_registration_t
     route_handler_registry_t create_handler_registry () const;
 
   private:
-    using handler_installer_t = std::function<void (route_handler_registry_t &, const std::string &)>;
+    using handler_installer_t =
+      std::function<void (route_handler_registry_t &, const std::string &)>;
 
     std::string _router_channel_id;
     std::string _bind_endpoint;

@@ -59,7 +59,8 @@ class envelope_codec_t
   public:
     static constexpr const char *default_content_type = "application/json";
 
-    message_parts_t encode_raw_body_parts (const envelope_header_t &header, zlink::message_t body) const;
+    message_parts_t encode_raw_body_parts (const envelope_header_t &header,
+                                           zlink::message_t body) const;
     message_parts_t encode_parts (const envelope_header_t &header,
                                   std::type_index body_type,
                                   const void *body,

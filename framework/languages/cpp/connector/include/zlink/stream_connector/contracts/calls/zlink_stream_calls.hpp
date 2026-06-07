@@ -96,8 +96,8 @@ template <typename TReply> class request_call_t
     task_t<TReply> submit ()
     {
         if (!_state) {
-            return task_t<TReply> (
-              result_t<TReply>::failure (error_code_t::configuration_error, "request call has no connector"));
+            return task_t<TReply> (result_t<TReply>::failure (error_code_t::configuration_error,
+                                                              "request call has no connector"));
         }
         return task_t<TReply> (submit_erased ().template as<TReply> ());
     }
@@ -114,13 +114,16 @@ template <typename TReply> class request_call_t
     class erased_result_t
     {
       public:
-        explicit erased_result_t (result_t<zlink::message_t> result) : _result (std::move (result)) {}
+        explicit erased_result_t (result_t<zlink::message_t> result) : _result (std::move (result))
+        {
+        }
 
         template <typename T> result_t<T> as () const
         {
             if (!_result) {
-                return result_t<T>::failure (_result.error_code (),
-                                             _result.error () ? _result.error ()->message : "request failed");
+                return result_t<T>::failure (_result.error_code (), _result.error ()
+                                                                      ? _result.error ()->message
+                                                                      : "request failed");
             }
             if constexpr (std::is_same_v<T, zlink::message_t>) {
                 return result_t<T>::success (_result.value ());
@@ -135,7 +138,9 @@ template <typename TReply> class request_call_t
         result_t<zlink::message_t> _result;
     };
 
-    request_call_t (std::shared_ptr<void> state, packet_t packet, std::chrono::milliseconds default_timeout) :
+    request_call_t (std::shared_ptr<void> state,
+                    packet_t packet,
+                    std::chrono::milliseconds default_timeout) :
         _state (std::move (state)), _packet (std::move (packet)), _timeout (default_timeout)
     {
     }

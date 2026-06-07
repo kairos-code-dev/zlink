@@ -70,7 +70,7 @@ struct scheduler_state_t
     size_t active_timers;
 };
 
-typedef std::map<void *, std::shared_ptr<scheduler_state_t> > spot_scheduler_map_t;
+typedef std::map<void *, std::shared_ptr<scheduler_state_t>> spot_scheduler_map_t;
 
 uint64_t monotonic_now_ns ();
 std::shared_ptr<scheduler_state_t> global_timer_scheduler ();

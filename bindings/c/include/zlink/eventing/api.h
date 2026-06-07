@@ -11,7 +11,8 @@ extern "C" {
 #endif
 
 /** @brief A single socket connection-lifecycle event reported by a monitor. */
-typedef struct {
+typedef struct
+{
     uint64_t event;
     uint64_t value;
     zlink_routing_id_t routing_id;
@@ -20,8 +21,7 @@ typedef struct {
 } zlink_monitor_event_t;
 
 /** @brief Callback invoked for each socket monitor event. */
-typedef void (*zlink_monitor_handler_fn) (
-  const zlink_monitor_event_t *event_, void *userdata_);
+typedef void (*zlink_monitor_handler_fn) (const zlink_monitor_event_t *event_, void *userdata_);
 
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
 typedef zlink_monitor_handler_fn zlink_socket_monitor_handler_fn;
@@ -38,8 +38,8 @@ typedef struct zlink_socket_monitor_open_options_t
  * Pass this when you want snapshot or direct polling on the returned monitor
  * handle without automatic callback dispatch.
  */
-ZLINK_EXPORT void zlink_monitor_ignore_handler (
-  const zlink_monitor_event_t *event_, void *userdata_);
+ZLINK_EXPORT void zlink_monitor_ignore_handler (const zlink_monitor_event_t *event_,
+                                                void *userdata_);
 
 /** @brief A snapshot of a monitored socket's state and auto-HWM telemetry. */
 typedef struct zlink_monitor_status_t
@@ -116,24 +116,21 @@ typedef struct zlink_monitor_status_t
  * @param events_  Event bitmask.
  * @return Monitor handle, or NULL on failure.
  */
-ZLINK_EXPORT void *zlink_socket_monitor_open (
-  void *s_, const zlink_socket_monitor_open_options_t *options_);
+ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
+                                              const zlink_socket_monitor_open_options_t *options_);
 
 /** @brief Register a handler for monitor events. */
 ZLINK_EXPORT zlink_handler_result_t zlink_socket_monitor_handler (
-  void *monitor_,
-  zlink_socket_monitor_handler_fn handler_,
-  void *userdata_);
+  void *monitor_, zlink_socket_monitor_handler_fn handler_, void *userdata_);
 
 /** @brief Receive one monitor event; use DONT_WAIT flag for non-blocking. */
-ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (
-  void *monitor_,
-  zlink_socket_monitor_event_t *out_,
-  zlink_recv_flags_t flags_);
+ZLINK_EXPORT zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,
+                                                            zlink_socket_monitor_event_t *out_,
+                                                            zlink_recv_flags_t flags_);
 
 /** @brief Read the current snapshot for a monitor handle. */
 ZLINK_EXPORT zlink_config_result_t zlink_monitor_status (void *monitor_,
-                                         zlink_monitor_status_t *out_);
+                                                         zlink_monitor_status_t *out_);
 
 ZLINK_EXPORT zlink_close_result_t zlink_monitor_close (void **monitor_p_);
 
@@ -179,26 +176,25 @@ ZLINK_EXPORT int zlink_poll (zlink_pollitem_t *items_,
 
 ZLINK_EXPORT void *zlink_poller_new (void);
 ZLINK_EXPORT zlink_close_result_t zlink_poller_destroy (void **poller_p_);
-ZLINK_EXPORT int zlink_poller_size (void *poller_,
-                                    zlink_config_result_t *error_out_);
+ZLINK_EXPORT int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_add (void *poller_,
-                                   void *socket_,
-                                   void *user_data_,
-                                   short events_);
+                                                     void *socket_,
+                                                     void *user_data_,
+                                                     short events_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_modify (void *poller_,
-                                      void *socket_,
-                                      short events_);
+                                                        void *socket_,
+                                                        short events_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_add_fd (void *poller_,
-                                      zlink_fd_t fd_,
-                                      void *user_data_,
-                                      short events_);
+                                                        zlink_fd_t fd_,
+                                                        void *user_data_,
+                                                        short events_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_add_timer (void *poller_,
-                                         void *timer_,
-                                         void *user_data_);
+                                                           void *timer_,
+                                                           void *user_data_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_modify_fd (void *poller_,
-                                         zlink_fd_t fd_,
-                                         short events_);
+                                                           zlink_fd_t fd_,
+                                                           short events_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
 ZLINK_EXPORT zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
 ZLINK_EXPORT int zlink_poller_wait (void *poller_,
@@ -210,22 +206,19 @@ ZLINK_EXPORT int zlink_poller_wait (void *poller_,
 /*  Timers                                                                    */
 /******************************************************************************/
 
-typedef void (*zlink_timer_handler_fn) (void *timer_,
-                                        uint64_t fire_count_,
-                                        void *userdata_);
+typedef void (*zlink_timer_handler_fn) (void *timer_, uint64_t fire_count_, void *userdata_);
 
 ZLINK_EXPORT void *zlink_timer_new (void);
 ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
 ZLINK_EXPORT zlink_close_result_t zlink_timer_destroy (void **timer_p_);
 ZLINK_EXPORT zlink_config_result_t zlink_timer_start (void *timer_,
-                                    uint64_t interval_ns_,
-                                    uint64_t repeat_count_);
+                                                      uint64_t interval_ns_,
+                                                      uint64_t repeat_count_);
 ZLINK_EXPORT zlink_config_result_t zlink_timer_stop (void *timer_);
-ZLINK_EXPORT zlink_recv_result_t zlink_timer_recv (void *timer_,
-                                   uint64_t *fire_count_out_);
+ZLINK_EXPORT zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_);
 ZLINK_EXPORT zlink_handler_result_t zlink_timer_handler (void *timer_,
-                                      zlink_timer_handler_fn handler_,
-                                      void *userdata_);
+                                                         zlink_timer_handler_fn handler_,
+                                                         void *userdata_);
 
 #ifdef __cplusplus
 }

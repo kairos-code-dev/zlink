@@ -17,7 +17,8 @@ transport_endpoint_t transport_endpoint_t::parse (std::string uri)
 {
     const auto scheme_end = uri.find ("://");
     if (scheme_end == std::string::npos) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "endpoint URI has no scheme");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "endpoint URI has no scheme");
     }
 
     const auto scheme = uri.substr (0, scheme_end);
@@ -37,7 +38,8 @@ transport_endpoint_t transport_endpoint_t::parse (std::string uri)
         return {transport_scheme_t::websocket_tls, std::move (uri)};
     }
 
-    throw framework_exception_t (framework_error_kind_t::request_protocol_error, "unsupported endpoint URI scheme");
+    throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                 "unsupported endpoint URI scheme");
 }
 
 } // namespace zlink::framework

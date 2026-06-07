@@ -19,7 +19,8 @@ namespace
 
 bool is_blank (const std::string &value)
 {
-    return std::all_of (value.begin (), value.end (), [] (unsigned char ch) { return std::isspace (ch) != 0; });
+    return std::all_of (value.begin (), value.end (),
+                        [] (unsigned char ch) { return std::isspace (ch) != 0; });
 }
 
 } // namespace
@@ -62,7 +63,8 @@ bool spot_rid_t::empty () const noexcept
     return _value.empty ();
 }
 
-spot_context_t::erased_request_call_t::erased_request_call_t (framework_exception_t error) : _error (std::move (error))
+spot_context_t::erased_request_call_t::erased_request_call_t (framework_exception_t error) :
+    _error (std::move (error))
 {
 }
 
@@ -70,7 +72,8 @@ spot_context_t::spot_context_t () : _state (std::make_shared<detail::spot_contex
 {
 }
 
-spot_context_t::spot_context_t (std::shared_ptr<detail::spot_context_state_t> state) : _state (std::move (state))
+spot_context_t::spot_context_t (std::shared_ptr<detail::spot_context_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -124,29 +127,33 @@ send_call_t spot_context_t::publish_erased (std::string topic)
 send_call_t spot_context_t::send_to_erased (node_rid_t node_rid, spot_rid_t spot_rid)
 {
     if (node_rid.empty () || spot_rid.empty ()) {
-        return send_call_t (
-          result_t<void>::failure (framework_error_kind_t::spot_route_not_found, "target spot route is empty"));
+        return send_call_t (result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
+                                                     "target spot route is empty"));
     }
     _state->ordering_log.push_back ("send_to:" + std::string (spot_rid.value ()));
     return send_call_t (result_t<void>::success ());
 }
 
-spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_rid_t node_rid, spot_rid_t spot_rid)
+spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_rid_t node_rid,
+                                                                         spot_rid_t spot_rid)
 {
     if (node_rid.empty () || spot_rid.empty ()) {
-        return erased_request_call_t (
-          framework_exception_t (framework_error_kind_t::spot_route_not_found, "target spot route is empty"));
+        return erased_request_call_t (framework_exception_t (
+          framework_error_kind_t::spot_route_not_found, "target spot route is empty"));
     }
     _state->ordering_log.push_back ("request_to:" + std::string (spot_rid.value ()));
-    return erased_request_call_t (framework_exception_t (
-      framework_error_kind_t::timeout, "spot-to-spot reply was not completed by the local test runtime"));
+    return erased_request_call_t (
+      framework_exception_t (framework_error_kind_t::timeout,
+                             "spot-to-spot reply was not completed by the local test runtime"));
 }
 
-spot_context_t &spot_context_t::register_packet_erased (std::string packet_name, std::type_index payload_type)
+spot_context_t &spot_context_t::register_packet_erased (std::string packet_name,
+                                                        std::type_index payload_type)
 {
-    const auto duplicate =
-      std::any_of (_state->packets.begin (), _state->packets.end (),
-                   [&] (const spot_packet_descriptor_t &descriptor) { return descriptor.packet_name == packet_name; });
+    const auto duplicate = std::any_of (_state->packets.begin (), _state->packets.end (),
+                                        [&] (const spot_packet_descriptor_t &descriptor) {
+                                            return descriptor.packet_name == packet_name;
+                                        });
     if (duplicate) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "duplicate spot packet registration");
@@ -160,18 +167,21 @@ std::vector<spot_packet_descriptor_t> spot_context_t::packet_registry () const
     return _state->packets;
 }
 
-spot_handler_registry_t::spot_handler_registry_t () : _state (std::make_shared<detail::spot_context_state_t> ())
+spot_handler_registry_t::spot_handler_registry_t () :
+    _state (std::make_shared<detail::spot_context_state_t> ())
 {
 }
 
-spot_handler_registry_t::spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state) :
+spot_handler_registry_t::spot_handler_registry_t (
+  std::shared_ptr<detail::spot_context_state_t> state) :
     _state (std::move (state))
 {
 }
 
 spot_handler_registry_t::~spot_handler_registry_t () = default;
 spot_handler_registry_t::spot_handler_registry_t (spot_handler_registry_t &&) noexcept = default;
-spot_handler_registry_t &spot_handler_registry_t::operator= (spot_handler_registry_t &&) noexcept = default;
+spot_handler_registry_t &
+spot_handler_registry_t::operator= (spot_handler_registry_t &&) noexcept = default;
 
 spot_handler_registry_t &spot_handler_registry_t::add_handler_erased (spot_handler_kind_t kind,
                                                                       std::string packet_name,
@@ -182,18 +192,20 @@ spot_handler_registry_t &spot_handler_registry_t::add_handler_erased (spot_handl
                                                                       std::type_index reply_type,
                                                                       invoker_t invoker)
 {
-    const auto duplicate = std::any_of (_state->handlers.begin (), _state->handlers.end (),
-                                        [&] (const spot_handler_descriptor_t &descriptor) {
-                                            return descriptor.kind == kind && descriptor.packet_name == packet_name
-                                                   && descriptor.topic == topic && descriptor.actor_type == actor_type;
-                                        });
+    const auto duplicate =
+      std::any_of (_state->handlers.begin (), _state->handlers.end (),
+                   [&] (const spot_handler_descriptor_t &descriptor) {
+                       return descriptor.kind == kind && descriptor.packet_name == packet_name
+                              && descriptor.topic == topic && descriptor.actor_type == actor_type;
+                   });
     if (duplicate) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "duplicate spot handler registration");
     }
 
-    _state->handlers.push_back (spot_handler_descriptor_t{kind, std::move (packet_name), std::move (topic),
-                                                          handler_type, payload_type, actor_type, reply_type});
+    _state->handlers.push_back (spot_handler_descriptor_t{kind, std::move (packet_name),
+                                                          std::move (topic), handler_type,
+                                                          payload_type, actor_type, reply_type});
     _state->handler_invokers.push_back (std::move (invoker));
     return *this;
 }
@@ -203,26 +215,29 @@ std::vector<spot_handler_descriptor_t> spot_handler_registry_t::descriptors () c
     return _state->handlers;
 }
 
-task_t<zlink::message_t> spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
-                                                                 std::string_view packet_name,
-                                                                 std::string_view topic,
-                                                                 std::type_index actor_type,
-                                                                 void *spot,
-                                                                 void *actor,
-                                                                 service_provider_t &services,
-                                                                 serializer_registry_t &serializers,
-                                                                 const zlink::message_t &message,
-                                                                 spot_actor_message_metadata_t metadata) const
+task_t<zlink::message_t>
+spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
+                                        std::string_view packet_name,
+                                        std::string_view topic,
+                                        std::type_index actor_type,
+                                        void *spot,
+                                        void *actor,
+                                        service_provider_t &services,
+                                        serializer_registry_t &serializers,
+                                        const zlink::message_t &message,
+                                        spot_actor_message_metadata_t metadata) const
 {
     for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
         const auto &descriptor = _state->handlers[index];
-        if (descriptor.kind == kind && descriptor.packet_name == packet_name && descriptor.topic == topic
-            && descriptor.actor_type == actor_type) {
+        if (descriptor.kind == kind && descriptor.packet_name == packet_name
+            && descriptor.topic == topic && descriptor.actor_type == actor_type) {
             auto owned_message = message;
             const auto handler_index = index;
             return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
-              [this, handler_index, spot, actor, &services, &serializers, owned_message = std::move (owned_message),
-               metadata = std::move (metadata)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
+              [this, handler_index, spot, actor, &services, &serializers,
+               owned_message = std::move (owned_message),
+               metadata =
+                 std::move (metadata)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
                   _state->enter_callback ();
                   try {
                       auto handler_task = _state->handler_invokers[handler_index](
@@ -239,21 +254,23 @@ task_t<zlink::message_t> spot_handler_registry_t::invoke_erased (spot_handler_ki
                   }
                   catch (...) {
                       _state->leave_callback ();
-                      co_return result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
-                                                                     "spot handler threw an exception");
+                      co_return result_t<zlink::message_t>::failure (
+                        framework_error_kind_t::request_failed, "spot handler threw an exception");
                   }
               });
         }
     }
-    return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (framework_error_kind_t::handler_not_found,
-                                                                          "spot handler is not registered"));
+    return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+      framework_error_kind_t::handler_not_found, "spot handler is not registered"));
 }
 
-spot_node_builder_t::spot_node_builder_t () : _state (std::make_shared<detail::spot_node_builder_state_t> (""))
+spot_node_builder_t::spot_node_builder_t () :
+    _state (std::make_shared<detail::spot_node_builder_state_t> (""))
 {
 }
 
-spot_node_builder_t::spot_node_builder_t (std::shared_ptr<detail::spot_node_builder_state_t> state) :
+spot_node_builder_t::spot_node_builder_t (
+  std::shared_ptr<detail::spot_node_builder_state_t> state) :
     _state (std::move (state))
 {
 }
@@ -277,7 +294,8 @@ spot_node_builder_t &spot_node_builder_t::enable_router (std::string endpoint)
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::enable_router (std::string endpoint, zlink::routing_id_t routing_id)
+spot_node_builder_t &spot_node_builder_t::enable_router (std::string endpoint,
+                                                         zlink::routing_id_t routing_id)
 {
     enable_router (std::move (endpoint));
     _state->snapshot.router_routing_id = std::move (routing_id);
@@ -303,7 +321,8 @@ spot_node_builder_t &spot_node_builder_t::enable_pub_sub (std::string endpoint)
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::enable_pub_sub (std::string endpoint, zlink::routing_id_t routing_id)
+spot_node_builder_t &spot_node_builder_t::enable_pub_sub (std::string endpoint,
+                                                          zlink::routing_id_t routing_id)
 {
     enable_pub_sub (std::move (endpoint));
     _state->snapshot.pub_routing_id = std::move (routing_id);
@@ -348,7 +367,8 @@ spot_node_builder_t &spot_node_builder_t::use_registry_spot_remote_addresses ()
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::use_registry_spot_remote_addresses (std::string route_channel_name)
+spot_node_builder_t &
+spot_node_builder_t::use_registry_spot_remote_addresses (std::string route_channel_name)
 {
     if (route_channel_name.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -364,8 +384,9 @@ spot_node_builder_t &spot_node_builder_t::use_registry_spot_remote_addresses (st
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
-                                                                      std::vector<std::string> manual_connections)
+spot_node_builder_t &
+spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
+                                                 std::vector<std::string> manual_connections)
 {
     if (route_channel_name.empty () || is_blank (route_channel_name)) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -378,19 +399,22 @@ spot_node_builder_t &spot_node_builder_t::accept_routes_from_channel (std::strin
         }
     }
     const auto duplicate =
-      std::any_of (_state->snapshot.accepted_route_channels.begin (), _state->snapshot.accepted_route_channels.end (),
-                   [&] (const auto &accepted) { return accepted.channel_name == route_channel_name; });
+      std::any_of (_state->snapshot.accepted_route_channels.begin (),
+                   _state->snapshot.accepted_route_channels.end (), [&] (const auto &accepted) {
+                       return accepted.channel_name == route_channel_name;
+                   });
     if (duplicate) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "duplicate accepted SPOT route channel");
     }
-    _state->snapshot.accepted_route_channels.push_back (
-      accepted_spot_route_channel_t{std::move (route_channel_name), std::move (manual_connections)});
+    _state->snapshot.accepted_route_channels.push_back (accepted_spot_route_channel_t{
+      std::move (route_channel_name), std::move (manual_connections)});
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::attach_channel_client (std::string channel_name,
-                                                                 std::vector<std::string> manual_connections)
+spot_node_builder_t &
+spot_node_builder_t::attach_channel_client (std::string channel_name,
+                                            std::vector<std::string> manual_connections)
 {
     if (channel_name.empty () || is_blank (channel_name)) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -408,8 +432,9 @@ spot_node_builder_t &spot_node_builder_t::attach_channel_client (std::string cha
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::attach_publisher (std::string channel_name,
-                                                            std::vector<std::string> manual_connections)
+spot_node_builder_t &
+spot_node_builder_t::attach_publisher (std::string channel_name,
+                                       std::vector<std::string> manual_connections)
 {
     if (channel_name.empty () || is_blank (channel_name)) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -427,8 +452,9 @@ spot_node_builder_t &spot_node_builder_t::attach_publisher (std::string channel_
     return *this;
 }
 
-spot_node_builder_t &
-spot_node_builder_t::add_spot_factory (std::string spot_name, std::type_index spot_type, bool entry_spot)
+spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_name,
+                                                            std::type_index spot_type,
+                                                            bool entry_spot)
 {
     const auto [_, inserted] = _state->spot_factories.emplace (spot_name, spot_type);
     if (!inserted) {
@@ -464,9 +490,8 @@ void spot_node_builder_t::register_lifecycle_erased (std::string spot_name,
     _state->spot_lifecycles[std::move (spot_name)] = std::move (callbacks);
 }
 
-spot_node_builder_t &
-spot_node_builder_t::add_spot_resolver (std::string name,
-                                        std::function<std::optional<spot_route_t> (spot_rid_t)> resolver)
+spot_node_builder_t &spot_node_builder_t::add_spot_resolver (
+  std::string name, std::function<std::optional<spot_route_t> (spot_rid_t)> resolver)
 {
     if (name.empty () || !resolver) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -495,21 +520,26 @@ spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name)
     return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name));
 }
 
-spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name, zlink::message_t request)
+spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name,
+                                                       zlink::message_t request)
 {
-    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name), std::move (request));
+    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name),
+                                                             std::move (request));
 }
 
-spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name, spot_rid_t spot_rid)
+spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid)
 {
-    return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name), std::move (spot_rid));
+    return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name),
+                                                                    std::move (spot_rid));
 }
 
-spot_create_result_t
-spot_node_builder_t::get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request)
+spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid,
+                                                              zlink::message_t request)
 {
-    return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name), std::move (spot_rid),
-                                                                    std::move (request));
+    return detail::spot_node_runtime_t (_state).get_or_create_spot (
+      std::move (spot_name), std::move (spot_rid), std::move (request));
 }
 
 std::optional<spot_info_t> spot_node_builder_t::find_spot (spot_rid_t spot_rid) const
@@ -537,8 +567,9 @@ std::optional<spot_route_t> spot_node_builder_t::resolve_spot (spot_rid_t spot_r
     return detail::spot_node_runtime_t (_state).resolve_spot (std::move (spot_rid));
 }
 
-zlink_builder_t &zlink_builder_t::add_spot_node (std::string spot_node_name,
-                                                 std::function<void (spot_node_builder_t &)> configure)
+zlink_builder_t &
+zlink_builder_t::add_spot_node (std::string spot_node_name,
+                                std::function<void (spot_node_builder_t &)> configure)
 {
     auto state = std::make_shared<detail::spot_node_builder_state_t> (std::move (spot_node_name));
     spot_node_builder_t builder (state);
@@ -564,7 +595,8 @@ std::vector<spot_node_snapshot_t> zlink_builder_t::spot_nodes () const
 namespace zlink::framework::detail
 {
 
-spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_state_t> state) : _state (std::move (state))
+spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -578,19 +610,21 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)
     return create_spot (std::move (spot_name), zlink::message_t{});
 }
 
-spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name, zlink::message_t request)
+spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
+                                                       zlink::message_t request)
 {
     const auto found = _state->spot_factories.find (spot_name);
     if (found == _state->spot_factories.end ()) {
-        throw framework_exception_t (framework_error_kind_t::spot_create_failed, "spot factory is not registered");
+        throw framework_exception_t (framework_error_kind_t::spot_create_failed,
+                                     "spot factory is not registered");
     }
     const auto lifecycle =
       _state->spot_lifecycles.find (spot_name) != _state->spot_lifecycles.end ()
         ? _state->spot_lifecycles.at (spot_name)
         : spot_lifecycle_callbacks_t{};
 
-    auto rid =
-      spot_rid_t::from_string (_state->snapshot.name + ":" + spot_name + ":" + std::to_string (_state->next_spot_id++));
+    auto rid = spot_rid_t::from_string (_state->snapshot.name + ":" + spot_name + ":"
+                                        + std::to_string (_state->next_spot_id++));
     auto context_state = std::make_shared<spot_context_state_t> ();
     context_state->node = _state;
     context_state->node_rid = node_rid_t::from_string (_state->snapshot.name);
@@ -613,7 +647,8 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name, zl
                                 ? lifecycle.on_create (context_state->spot_instance.get (), request)
                                 : spot_create_response_t::accept ();
         if (!response.accepted) {
-            return spot_create_result_t{rid, spot_create_state_t::rejected, response.reply, context};
+            return spot_create_result_t{rid, spot_create_state_t::rejected, response.reply,
+                                        context};
         }
         create_reply = response.reply;
         if (lifecycle.on_initialize) {
@@ -627,21 +662,26 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name, zl
     return spot_create_result_t{rid, spot_create_state_t::created, create_reply, context};
 }
 
-spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name, spot_rid_t spot_rid)
+spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid)
 {
     return get_or_create_spot (std::move (spot_name), std::move (spot_rid), zlink::message_t{});
 }
 
-spot_create_result_t
-spot_node_runtime_t::get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request)
+spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
+                                                              spot_rid_t spot_rid,
+                                                              zlink::message_t request)
 {
     const auto rid_value = std::string (spot_rid.value ());
-    if (const auto existing = _state->spot_contexts_by_rid.find (rid_value); existing != _state->spot_contexts_by_rid.end ()) {
-        return spot_create_result_t{spot_rid, spot_create_state_t::existing, std::nullopt, existing->second};
+    if (const auto existing = _state->spot_contexts_by_rid.find (rid_value);
+        existing != _state->spot_contexts_by_rid.end ()) {
+        return spot_create_result_t{spot_rid, spot_create_state_t::existing, std::nullopt,
+                                    existing->second};
     }
     const auto found = _state->spot_factories.find (spot_name);
     if (found == _state->spot_factories.end ()) {
-        throw framework_exception_t (framework_error_kind_t::spot_create_failed, "spot factory is not registered");
+        throw framework_exception_t (framework_error_kind_t::spot_create_failed,
+                                     "spot factory is not registered");
     }
     const auto lifecycle =
       _state->spot_lifecycles.find (spot_name) != _state->spot_lifecycles.end ()
@@ -670,7 +710,8 @@ spot_node_runtime_t::get_or_create_spot (std::string spot_name, spot_rid_t spot_
                                 ? lifecycle.on_create (context_state->spot_instance.get (), request)
                                 : spot_create_response_t::accept ();
         if (!response.accepted) {
-            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, response.reply, context};
+            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, response.reply,
+                                        context};
         }
         create_reply = response.reply;
         if (lifecycle.on_initialize) {
@@ -723,7 +764,8 @@ std::optional<std::string> spot_node_runtime_t::spot_name_for (spot_rid_t spot_r
 std::optional<spot_route_t> spot_node_runtime_t::resolve_spot (spot_rid_t spot_rid) const
 {
     if (const auto name = spot_name_for (spot_rid)) {
-        return spot_route_t{node_rid_t::from_string (_state->snapshot.name), std::move (spot_rid), *name};
+        return spot_route_t{node_rid_t::from_string (_state->snapshot.name), std::move (spot_rid),
+                            *name};
     }
     for (const auto &[_, resolver] : _state->resolvers) {
         if (auto route = resolver (spot_rid)) {
@@ -733,7 +775,8 @@ std::optional<spot_route_t> spot_node_runtime_t::resolve_spot (spot_rid_t spot_r
     return std::nullopt;
 }
 
-const std::vector<std::string> &spot_node_runtime_t::ordering_log (const spot_context_t &context) const
+const std::vector<std::string> &
+spot_node_runtime_t::ordering_log (const spot_context_t &context) const
 {
     return context._state->ordering_log;
 }

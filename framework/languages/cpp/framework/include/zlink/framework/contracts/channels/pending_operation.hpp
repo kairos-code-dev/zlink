@@ -15,7 +15,8 @@ struct pending_operation_state_t;
 pending_operation_t make_pending_operation ();
 bool complete_pending_operation (pending_operation_t &operation) noexcept;
 bool fail_pending_operation (pending_operation_t &operation, std::exception_ptr error) noexcept;
-bool same_pending_operation (const pending_operation_t &left, const pending_operation_t &right) noexcept;
+bool same_pending_operation (const pending_operation_t &left,
+                             const pending_operation_t &right) noexcept;
 } // namespace detail
 
 class pending_operation_t
@@ -31,13 +32,15 @@ class pending_operation_t
     bool cancel () noexcept;
 
   private:
-    explicit pending_operation_t (std::shared_ptr<detail::pending_operation_state_t> state) noexcept;
+    explicit pending_operation_t (
+      std::shared_ptr<detail::pending_operation_state_t> state) noexcept;
 
     std::shared_ptr<detail::pending_operation_state_t> _state;
 
     friend pending_operation_t detail::make_pending_operation ();
     friend bool detail::complete_pending_operation (pending_operation_t &operation) noexcept;
-    friend bool detail::fail_pending_operation (pending_operation_t &operation, std::exception_ptr error) noexcept;
+    friend bool detail::fail_pending_operation (pending_operation_t &operation,
+                                                std::exception_ptr error) noexcept;
     friend bool detail::same_pending_operation (const pending_operation_t &left,
                                                 const pending_operation_t &right) noexcept;
 };

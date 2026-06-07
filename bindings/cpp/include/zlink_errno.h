@@ -185,8 +185,8 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_INVALID_HANDLE = 603,   /* EFAULT    — NULL or invalid handle */
     ZLINK_CONNECT_INTERNAL_ERROR = 604,   /* internal errno that has no finer connect bucket */
     ZLINK_CONNECT_NOT_FOUND = 605,        /* ENOENT    — endpoint or peer routing id not found */
-    ZLINK_CONNECT_CONFLICT = 606,         /* EADDRINUSE — peer routing id matches more than one pipe */
-    ZLINK_CONNECT_BUSY = 607              /* EBUSY     — lifecycle owner rejects manual change */
+    ZLINK_CONNECT_CONFLICT = 606, /* EADDRINUSE — peer routing id matches more than one pipe */
+    ZLINK_CONNECT_BUSY = 607      /* EBUSY     — lifecycle owner rejects manual change */
 } zlink_connect_result_t;
 
 /*  Configuration result (701+).                                             */

@@ -41,17 +41,16 @@ class i_asio_transport;
 class asio_engine_t : public i_engine
 {
   public:
-    asio_engine_t (fd_t fd_,
-                   const options_t &options_,
-                   const endpoint_uri_pair_t &endpoint_uri_pair_,
-                   std::unique_ptr<i_asio_transport> transport_ =
-                     std::unique_ptr<i_asio_transport> ());
+    asio_engine_t (
+      fd_t fd_,
+      const options_t &options_,
+      const endpoint_uri_pair_t &endpoint_uri_pair_,
+      std::unique_ptr<i_asio_transport> transport_ = std::unique_ptr<i_asio_transport> ());
     ~asio_engine_t () ZLINK_OVERRIDE;
 
     //  i_engine interface implementation.
     bool has_handshake_stage () ZLINK_OVERRIDE { return _has_handshake_stage; }
-    void plug (zlink::io_thread_t *io_thread_,
-               zlink::session_base_t *session_) ZLINK_OVERRIDE;
+    void plug (zlink::io_thread_t *io_thread_, zlink::session_base_t *session_) ZLINK_OVERRIDE;
     void terminate () ZLINK_OVERRIDE;
     bool restart_input () ZLINK_OVERRIDE;
     void restart_output () ZLINK_OVERRIDE;
@@ -113,12 +112,10 @@ class asio_engine_t : public i_engine
     void speculative_write ();
 
     //  Handle read completion
-    void on_read_complete (const boost::system::error_code &ec,
-                           std::size_t bytes_transferred);
+    void on_read_complete (const boost::system::error_code &ec, std::size_t bytes_transferred);
 
     //  Handle write completion
-    void on_write_complete (const boost::system::error_code &ec,
-                            std::size_t bytes_transferred);
+    void on_write_complete (const boost::system::error_code &ec, std::size_t bytes_transferred);
 
     //  Set up handshake timer
     void set_handshake_timer ();
@@ -254,14 +251,14 @@ class asio_engine_t : public i_engine
         size_t offset;
 
         stream_rx_chunk_t () : offset (0) {}
-        size_t size () const
-        {
-            return data.size () > offset ? data.size () - offset : 0;
-        }
+        size_t size () const { return data.size () > offset ? data.size () - offset : 0; }
     };
 
     static const size_t read_buffer_size = 8192;
-    enum { pending_buffer_pool_max = 4 };
+    enum
+    {
+        pending_buffer_pool_max = 4
+    };
 
     //  Maximum total size of pending buffers (10MB default)
     static const size_t max_pending_buffer_size = 10 * 1024 * 1024;
@@ -313,9 +310,9 @@ class asio_engine_t : public i_engine
 
         std::vector<unsigned char> read_buffer;
         std::vector<unsigned char> write_buffer;
-        std::deque<std::vector<unsigned char> > pending_buffers;
+        std::deque<std::vector<unsigned char>> pending_buffers;
         std::deque<stream_rx_chunk_t> pending_stream_rx_chunks;
-        std::vector<std::vector<unsigned char> > pending_buffer_pool;
+        std::vector<std::vector<unsigned char>> pending_buffer_pool;
         std::vector<stream_rx_chunk_t> pending_stream_rx_chunk_pool;
         std::vector<unsigned char> pending_read_buffer;
         bool read_from_pending_pool;
@@ -352,11 +349,7 @@ class asio_engine_t : public i_engine
         };
 
         connection_facade_t () :
-            plugged (false),
-            handshaking (true),
-            terminating (false),
-            session (NULL),
-            socket (NULL)
+            plugged (false), handshaking (true), terminating (false), session (NULL), socket (NULL)
         {
         }
 
@@ -380,8 +373,8 @@ class asio_engine_t : public i_engine
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)
 };
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZLINK_ASIO_ENGINE_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_ENGINE_HPP_INCLUDED__

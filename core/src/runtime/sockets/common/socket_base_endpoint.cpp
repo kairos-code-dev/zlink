@@ -37,9 +37,7 @@
 #include "transports/pgm/pgm_socket.hpp"
 #endif
 
-int zlink::socket_base_t::parse_uri (const char *uri_,
-                                     std::string &scheme_,
-                                     std::string &path_)
+int zlink::socket_base_t::parse_uri (const char *uri_, std::string &scheme_, std::string &path_)
 {
     zlink_assert (uri_ != NULL);
 
@@ -77,8 +75,7 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
         && protocol_ != protocol_name::tls
 #endif
 #ifdef ZLINK_HAVE_OPENPGM
-        && protocol_ != protocol_name::pgm
-        && protocol_ != protocol_name::epgm
+        && protocol_ != protocol_name::pgm && protocol_ != protocol_name::epgm
 #endif
     ) {
         errno = EPROTONOSUPPORT;
@@ -90,8 +87,7 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
-    if (_service_attachment
-        && _service_attachment->on_public_bind_begin (endpoint_uri_) != 0) {
+    if (_service_attachment && _service_attachment->on_public_bind_begin (endpoint_uri_) != 0) {
         return -1;
     }
 
@@ -106,8 +102,7 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
     std::string protocol;
     std::string address;
-    if (parse_uri (endpoint_uri_, protocol, address)
-        || check_protocol (protocol)) {
+    if (parse_uri (endpoint_uri_, protocol, address) || check_protocol (protocol)) {
         return -1;
     }
 
@@ -157,8 +152,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 
     std::string protocol;
     std::string address;
-    if (parse_uri (endpoint_uri_, protocol, address)
-        || check_protocol (protocol)) {
+    if (parse_uri (endpoint_uri_, protocol, address) || check_protocol (protocol)) {
         return -1;
     }
 
@@ -188,8 +182,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         bool conflates[2] = {conflate, conflate};
         rc = pipepair (parents, new_pipes, hwms, conflates);
         if (!conflate) {
-            new_pipes[0]->set_hwms_boost (peer.options.sndhwm,
-                                          peer.options.rcvhwm);
+            new_pipes[0]->set_hwms_boost (peer.options.sndhwm, peer.options.rcvhwm);
             new_pipes[1]->set_hwms_boost (options.sndhwm, options.rcvhwm);
         }
 
@@ -212,8 +205,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 
             new_pipes[0]->set_peer_routing_id (peer.options.routing_id,
                                                peer.options.routing_id_size);
-            new_pipes[1]->set_peer_routing_id (options.routing_id,
-                                               options.routing_id_size);
+            new_pipes[1]->set_peer_routing_id (options.routing_id, options.routing_id_size);
 
             send_bind (peer.socket, new_pipes[1], false);
             peer.socket->emit_inproc_connection_ready (new_pipes[1]);
@@ -238,8 +230,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         return -1;
     }
 
-    address_t *paddr =
-      new (std::nothrow) address_t (protocol, address, this->get_ctx ());
+    address_t *paddr = new (std::nothrow) address_t (protocol, address, this->get_ctx ());
     alloc_assert (paddr);
 
     if (resolve_connect_address (protocol, address, paddr) != 0) {
@@ -261,13 +252,11 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
 #endif
 
-    session_base_t *session =
-      session_base_t::create (io_thread, true, this, options, paddr);
+    session_base_t *session = session_base_t::create (io_thread, true, this, options, paddr);
     errno_assert (session);
 
 #ifdef ZLINK_HAVE_OPENPGM
-    const bool subscribe_to_all = protocol == protocol_name::pgm
-                                  || protocol == protocol_name::epgm;
+    const bool subscribe_to_all = protocol == protocol_name::pgm || protocol == protocol_name::epgm;
 #else
     const bool subscribe_to_all = false;
 #endif
@@ -278,8 +267,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         pipe_t *new_pipes[2] = {NULL, NULL};
 
         const bool conflate = get_effective_conflate_option (options);
-        int hwms[2] = {conflate ? -1 : options.sndhwm,
-                       conflate ? -1 : options.rcvhwm};
+        int hwms[2] = {conflate ? -1 : options.sndhwm, conflate ? -1 : options.rcvhwm};
         bool conflates[2] = {conflate, conflate};
         rc = pipepair (parents, new_pipes, hwms, conflates);
         errno_assert (rc == 0);
@@ -297,8 +285,7 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
     return 0;
 }
 
-void zlink::socket_base_t::socket_bound_endpoints (
-  std::set<std::string> *out_) const
+void zlink::socket_base_t::socket_bound_endpoints (std::set<std::string> *out_) const
 {
     if (!out_)
         return;
@@ -328,9 +315,8 @@ bool zlink::socket_base_t::socket_has_attached_pipes () const
     return has_attached_pipes ();
 }
 
-std::string zlink::socket_base_t::resolve_tcp_addr (
-  std::string endpoint_uri_pair_,
-  const char *tcp_address_)
+std::string zlink::socket_base_t::resolve_tcp_addr (std::string endpoint_uri_pair_,
+                                                    const char *tcp_address_)
 {
     if (endpoint_runtime ().endpoints.find (endpoint_uri_pair_)
         == endpoint_runtime ().endpoints.end ()) {
@@ -358,8 +344,7 @@ void zlink::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pai
 {
     launch_child (endpoint_);
     endpoint_runtime ().endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (
-      endpoint_pair_.identifier (),
-      endpoint_pipe_t (endpoint_, pipe_, endpoint_pair_.local_type));
+      endpoint_pair_.identifier (), endpoint_pipe_t (endpoint_, pipe_, endpoint_pair_.local_type));
 
     if (pipe_ != NULL)
         pipe_->set_endpoint_pair (endpoint_pair_);
@@ -383,8 +368,7 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 
     std::string uri_protocol;
     std::string uri_path;
-    if (parse_uri (endpoint_uri_, uri_protocol, uri_path)
-        || check_protocol (uri_protocol)) {
+    if (parse_uri (endpoint_uri_, uri_protocol, uri_path) || check_protocol (uri_protocol)) {
         return -1;
     }
 
@@ -392,8 +376,7 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
     if (uri_protocol == protocol_name::inproc) {
         const int inproc_rc = unregister_endpoint (endpoint_uri_str, this) == 0
                                 ? 0
-                                : endpoint_runtime ().inprocs.erase_pipes (
-                                    endpoint_uri_str);
+                                : endpoint_runtime ().inprocs.erase_pipes (endpoint_uri_str);
         return inproc_rc;
     }
 
@@ -402,7 +385,7 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 #ifdef ZLINK_HAVE_TLS
        || uri_protocol == protocol_name::tls
 #endif
-      )
+       )
         ? resolve_tcp_addr (endpoint_uri_str, uri_path.c_str ())
         : endpoint_uri_str;
 
@@ -419,8 +402,7 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
         term_child (it->second.endpoint);
     }
 
-    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-         i != size; ++i) {
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
         pipe_t *const pipe = endpoint_runtime ().attached_pipe (i);
         if (!pipe)
             continue;
@@ -433,8 +415,7 @@ int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
 
 int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 {
-    if (_service_attachment
-        && _service_attachment->on_public_term_endpoint () != 0) {
+    if (_service_attachment && _service_attachment->on_public_term_endpoint () != 0) {
         return -1;
     }
 
@@ -446,8 +427,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
 int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
 {
-    if (_service_attachment
-        && _service_attachment->on_public_disconnect_rid () != 0) {
+    if (_service_attachment && _service_attachment->on_public_disconnect_rid () != 0) {
         return -1;
     }
 
@@ -472,8 +452,7 @@ int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
     return xterm_peer_rid (peer_rid_);
 }
 
-int zlink::socket_base_t::service_attachment_term_endpoint (
-  const char *endpoint_uri_)
+int zlink::socket_base_t::service_attachment_term_endpoint (const char *endpoint_uri_)
 {
     return term_endpoint_internal (endpoint_uri_);
 }

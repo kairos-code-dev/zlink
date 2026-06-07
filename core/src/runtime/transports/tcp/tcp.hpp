@@ -24,11 +24,8 @@ int set_tcp_send_buffer (fd_t sockfd_, int bufsize_);
 int set_tcp_receive_buffer (fd_t sockfd_, int bufsize_);
 
 //  Tunes TCP keep-alives
-int tune_tcp_keepalives (fd_t s_,
-                         int keepalive_,
-                         int keepalive_cnt_,
-                         int keepalive_idle_,
-                         int keepalive_intvl_);
+int tune_tcp_keepalives (
+  fd_t s_, int keepalive_, int keepalive_cnt_, int keepalive_idle_, int keepalive_intvl_);
 
 //  Tunes TCP max retransmit timeout
 int tune_tcp_maxrt (fd_t sockfd_, int timeout_);

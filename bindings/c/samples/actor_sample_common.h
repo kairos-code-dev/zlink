@@ -28,8 +28,7 @@ static inline void actor_sample_capture_init (actor_sample_capture_t *capture)
     memset (capture->payload, 0, sizeof (capture->payload));
 }
 
-static inline void actor_sample_capture_destroy (
-  actor_sample_capture_t *capture)
+static inline void actor_sample_capture_destroy (actor_sample_capture_t *capture)
 {
     callback_signal_destroy (&capture->actor_signal);
     callback_signal_destroy (&capture->join_signal);
@@ -43,8 +42,7 @@ static inline void actor_sample_capture_reset (actor_sample_capture_t *capture)
     capture->join_result = ZLINK_REQUEST_INTERNAL_ERROR;
 }
 
-static inline void actor_sample_capture_reset_actor (
-  actor_sample_capture_t *capture)
+static inline void actor_sample_capture_reset_actor (actor_sample_capture_t *capture)
 {
     pthread_mutex_lock (&capture->actor_signal.mutex);
     capture->actor_signal.ready = 0;
@@ -53,8 +51,7 @@ static inline void actor_sample_capture_reset_actor (
     memset (capture->payload, 0, sizeof (capture->payload));
 }
 
-static inline void actor_sample_set_rid (zlink_routing_id_t *rid,
-                                         const char *text)
+static inline void actor_sample_set_rid (zlink_routing_id_t *rid, const char *text)
 {
     size_t len = strlen (text);
     assert (len > 0 && len <= sizeof (rid->data));
@@ -66,21 +63,19 @@ static inline void actor_sample_set_rid (zlink_routing_id_t *rid,
 static inline int actor_sample_rid_equals (const zlink_routing_id_t *lhs,
                                            const zlink_routing_id_t *rhs)
 {
-    return lhs->size == rhs->size
-           && memcmp (lhs->data, rhs->data, lhs->size) == 0;
+    return lhs->size == rhs->size && memcmp (lhs->data, rhs->data, lhs->size) == 0;
 }
 
-static inline zlink_routing_id_t actor_sample_find_spot_rid_not (
-  void *node, const zlink_routing_id_t *excluded, size_t excluded_count)
+static inline zlink_routing_id_t actor_sample_find_spot_rid_not (void *node,
+                                                                 const zlink_routing_id_t *excluded,
+                                                                 size_t excluded_count)
 {
     size_t count = 0;
-    assert (zlink_spot_node_spots (node, NULL, &count)
-            == ZLINK_CONFIG_OK);
+    assert (zlink_spot_node_spots (node, NULL, &count) == ZLINK_CONFIG_OK);
     zlink_spot_node_spot_entry_t *rows =
       (zlink_spot_node_spot_entry_t *) calloc (count, sizeof (*rows));
     assert (rows != NULL);
-    assert (zlink_spot_node_spots (node, rows, &count)
-            == ZLINK_CONFIG_OK);
+    assert (zlink_spot_node_spots (node, rows, &count) == ZLINK_CONFIG_OK);
     for (size_t i = 0; i < count; ++i) {
         int skip = 0;
         for (size_t j = 0; j < excluded_count; ++j) {
@@ -127,9 +122,8 @@ static void actor_sample_join_reply (const zlink_actor_join_result_t *result,
     actor_sample_reply (result->result, parts, part_count, userdata);
 }
 
-static void actor_sample_dispatch (void *spot,
-                                   const zlink_spot_dispatch_info_t *info,
-                                   void *userdata)
+static void
+actor_sample_dispatch (void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)
 {
     actor_sample_capture_t *capture = (actor_sample_capture_t *) userdata;
     assert (capture != NULL);
@@ -137,13 +131,12 @@ static void actor_sample_dispatch (void *spot,
         zlink_actor_join_info_t join_info;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        assert (zlink_spot_actor_join_recv (
-                  spot, &join_info, &parts, &part_count, ZLINK_DONTWAIT)
+        assert (zlink_spot_actor_join_recv (spot, &join_info, &parts, &part_count, ZLINK_DONTWAIT)
                 == ZLINK_RECV_OK);
         zlink_multipart_close (parts, part_count);
-        assert (zlink_spot_actor_join_reply (
-                  spot, &join_info, capture->accept_join ? 0 : 1, NULL, 0)
-                == ZLINK_SUBMIT_OK);
+        assert (
+          zlink_spot_actor_join_reply (spot, &join_info, capture->accept_join ? 0 : 1, NULL, 0)
+          == ZLINK_SUBMIT_OK);
         return;
     }
 
@@ -155,16 +148,15 @@ static void actor_sample_dispatch (void *spot,
         zlink_actor_recv_info_t recv_info;
         zlink_msg_t part;
         zlink_part_flag_t flag = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc = zlink_spot_node_actor_recv_part (
-          capture->node, (const zlink_actor_ref_t *) info->subject, &recv_info,
-          &part, &flag, ZLINK_DONTWAIT);
+        zlink_recv_result_t rc =
+          zlink_spot_node_actor_recv_part (capture->node, (const zlink_actor_ref_t *) info->subject,
+                                           &recv_info, &part, &flag, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_NO_DATA)
             break;
         assert (rc == ZLINK_RECV_OK);
         size_t part_size = zlink_msg_size (&part);
         assert (capture->payload_len + part_size < sizeof (capture->payload));
-        memcpy (capture->payload + capture->payload_len, zlink_msg_data (&part),
-                part_size);
+        memcpy (capture->payload + capture->payload_len, zlink_msg_data (&part), part_size);
         capture->payload_len += part_size;
         capture->payload[capture->payload_len] = '\0';
         zlink_msg_close (&part);
@@ -172,8 +164,8 @@ static void actor_sample_dispatch (void *spot,
     callback_signal_set (&capture->actor_signal);
 }
 
-static void actor_sample_join_only_dispatch (
-  void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)
+static void
+actor_sample_join_only_dispatch (void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)
 {
     actor_sample_capture_t *capture = (actor_sample_capture_t *) userdata;
     assert (capture != NULL);
@@ -182,13 +174,11 @@ static void actor_sample_join_only_dispatch (
     zlink_actor_join_info_t join_info;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    assert (zlink_spot_actor_join_recv (info->subject, &join_info, &parts,
-                                        &part_count, ZLINK_DONTWAIT)
-            == ZLINK_RECV_OK);
+    assert (
+      zlink_spot_actor_join_recv (info->subject, &join_info, &parts, &part_count, ZLINK_DONTWAIT)
+      == ZLINK_RECV_OK);
     zlink_multipart_close (parts, part_count);
-    assert (zlink_spot_actor_join_reply (spot, &join_info,
-                                         capture->accept_join ? 0 : 1,
-                                         NULL, 0)
+    assert (zlink_spot_actor_join_reply (spot, &join_info, capture->accept_join ? 0 : 1, NULL, 0)
             == ZLINK_SUBMIT_OK);
 }
 

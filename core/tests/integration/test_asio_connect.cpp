@@ -156,10 +156,8 @@ void test_ipv6_connect ()
     void *client = test_context_socket (ZLINK_SOCKET_PAIR);
 
     int ipv6 = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_IPV6, &ipv6, sizeof (int)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://[::1]:15561"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://[::1]:15561"));
@@ -239,15 +237,14 @@ void test_tcp_keepalive ()
     int tcp_keepalive_cnt = 5;
     int tcp_keepalive_intvl = 10;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      client, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl,
-      sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -264,7 +261,7 @@ void test_tcp_keepalive ()
     test_context_socket_close (server);
 }
 
-#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO
+#else // !ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 void setUp ()
 {
@@ -280,7 +277,7 @@ void test_asio_connect_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {

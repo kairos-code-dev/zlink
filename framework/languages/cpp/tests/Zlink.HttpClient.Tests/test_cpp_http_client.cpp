@@ -84,9 +84,10 @@ http::response<http::string_body> make_response (const http::request<http::strin
         std::this_thread::sleep_for (std::chrono::milliseconds (250));
         response.body () = R"({"method":"GET","name":"slow"})";
     } else if (target == "/headers") {
-        response.body () = nlohmann::json{{"defaultHeader", std::string (request[http::field::from])},
-                                          {"overrideHeader", std::string (request["X-ZLink-Override"])}}
-                             .dump ();
+        response.body () =
+          nlohmann::json{{"defaultHeader", std::string (request[http::field::from])},
+                         {"overrideHeader", std::string (request["X-ZLink-Override"])}}
+            .dump ();
     } else {
         const auto method = std::string (request.method_string ());
         std::string name = method;
@@ -103,7 +104,8 @@ http::response<http::string_body> make_response (const http::request<http::strin
 class loopback_http_server_t
 {
   public:
-    loopback_http_server_t () : _acceptor (_io, tcp::endpoint (asio::ip::make_address ("127.0.0.1"), 0))
+    loopback_http_server_t () :
+        _acceptor (_io, tcp::endpoint (asio::ip::make_address ("127.0.0.1"), 0))
     {
         _port = _acceptor.local_endpoint ().port ();
         _thread = std::thread ([this] { run (); });
@@ -195,7 +197,10 @@ class loopback_https_server_t
 
     std::string base_url () const { return "https://localhost:" + std::to_string (_port); }
 
-    std::string mismatched_base_url () const { return "https://127.0.0.1:" + std::to_string (_port); }
+    std::string mismatched_base_url () const
+    {
+        return "https://127.0.0.1:" + std::to_string (_port);
+    }
 
   private:
     void run ()
@@ -241,11 +246,15 @@ class loopback_https_server_t
 };
 #endif
 
-zlink::http_client::client_t make_json_client (std::string base_url,
-                                               std::chrono::milliseconds timeout = std::chrono::milliseconds (500),
-                                               std::optional<std::string> trust_certificate_file = std::nullopt)
+zlink::http_client::client_t
+make_json_client (std::string base_url,
+                  std::chrono::milliseconds timeout = std::chrono::milliseconds (500),
+                  std::optional<std::string> trust_certificate_file = std::nullopt)
 {
-    auto builder = zlink::http_client::client_t::create ().base_url (std::move (base_url)).json ().timeout (timeout);
+    auto builder = zlink::http_client::client_t::create ()
+                     .base_url (std::move (base_url))
+                     .json ()
+                     .timeout (timeout);
     if (trust_certificate_file) {
         builder.trust_certificate_file (std::move (*trust_certificate_file));
     }
@@ -255,12 +264,14 @@ zlink::http_client::client_t make_json_client (std::string base_url,
 zlink::framework::task_t<zlink::http_client::http_response_t<create_game_reply_t>>
 create_game_with_coroutine_submit (const zlink::http_client::client_t &client)
 {
-    auto response =
-      co_await client.post ("/games").body (create_game_request_t{.name = "coawait"}).submit<create_game_reply_t> ();
+    auto response = co_await client.post ("/games")
+                      .body (create_game_request_t{.name = "coawait"})
+                      .submit<create_game_reply_t> ();
     co_return response;
 }
 
-template <typename TAction> bool throws_protocol_error (TAction &&action, const std::string &message_part)
+template <typename TAction>
+bool throws_protocol_error (TAction &&action, const std::string &message_part)
 {
     try {
         action ();
@@ -276,10 +287,12 @@ template <typename TAction> bool throws_protocol_error (TAction &&action, const 
 
 TEST (ZLinkHttpClient, ValidatesFluentInputAsProtocolErrors)
 {
-    EXPECT_TRUE (throws_protocol_error ([] { (void) zlink::http_client::client_t::create ().build (); }, "base_url"));
+    EXPECT_TRUE (throws_protocol_error (
+      [] { (void) zlink::http_client::client_t::create ().build (); }, "base_url"));
 
     EXPECT_TRUE (throws_protocol_error (
-      [] { (void) zlink::http_client::client_t::create ().base_url ("ftp://host").build (); }, "http:// or https://"));
+      [] { (void) zlink::http_client::client_t::create ().base_url ("ftp://host").build (); },
+      "http:// or https://"));
 
     EXPECT_TRUE (throws_protocol_error (
       [] {
@@ -291,19 +304,27 @@ TEST (ZLinkHttpClient, ValidatesFluentInputAsProtocolErrors)
 
     EXPECT_TRUE (throws_protocol_error (
       [] {
-          (void) zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").default_header (" ", "value");
+          (void) zlink::http_client::client_t::create ()
+            .base_url ("http://127.0.0.1")
+            .default_header (" ", "value");
       },
       "header name"));
 
     EXPECT_TRUE (throws_protocol_error (
-      [] { (void) zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").trust_certificate_file (" "); },
+      [] {
+          (void) zlink::http_client::client_t::create ()
+            .base_url ("http://127.0.0.1")
+            .trust_certificate_file (" ");
+      },
       "trust certificate"));
 
-    auto client = zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").json ().build ();
-    EXPECT_TRUE (throws_protocol_error ([&client] { (void) client.get ("missing-leading-slash"); }, "path"));
-
+    auto client =
+      zlink::http_client::client_t::create ().base_url ("http://127.0.0.1").json ().build ();
     EXPECT_TRUE (
-      throws_protocol_error ([&client] { (void) client.get ("/games").header (" ", "value"); }, "header name"));
+      throws_protocol_error ([&client] { (void) client.get ("missing-leading-slash"); }, "path"));
+
+    EXPECT_TRUE (throws_protocol_error (
+      [&client] { (void) client.get ("/games").header (" ", "value"); }, "header name"));
 }
 
 TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
@@ -311,8 +332,10 @@ TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    auto result =
-      client.post ("/games").body (create_game_request_t{.name = "match-1"}).submit<create_game_reply_t> ().result ();
+    auto result = client.post ("/games")
+                    .body (create_game_request_t{.name = "match-1"})
+                    .submit<create_game_reply_t> ()
+                    .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().status, 200);
@@ -338,7 +361,8 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    EXPECT_EQ (client.get ("/games").submit<create_game_reply_t> ().result ().value ().body.method, "GET");
+    EXPECT_EQ (client.get ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+               "GET");
     EXPECT_EQ (client.put ("/games")
                  .body (create_game_request_t{.name = "put"})
                  .submit<create_game_reply_t> ()
@@ -346,7 +370,9 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
                  .value ()
                  .body.method,
                "PUT");
-    EXPECT_EQ (client.delete_ ("/games").submit<create_game_reply_t> ().result ().value ().body.method, "DELETE");
+    EXPECT_EQ (
+      client.delete_ ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      "DELETE");
 
     bool callback_called = false;
     client.post ("/games")
@@ -359,11 +385,13 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
     EXPECT_TRUE (callback_called);
 
     bool failure_callback_called = false;
-    client.get ("/invalid-json").submit<create_game_reply_t> ([&failure_callback_called] (const auto &result) {
-        failure_callback_called = true;
-        ASSERT_FALSE (result);
-        EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::payload_decode_failed);
-    });
+    client.get ("/invalid-json")
+      .submit<create_game_reply_t> ([&failure_callback_called] (const auto &result) {
+          failure_callback_called = true;
+          ASSERT_FALSE (result);
+          EXPECT_EQ (result.error_kind (),
+                     zlink::framework::framework_error_kind_t::payload_decode_failed);
+      });
     EXPECT_TRUE (failure_callback_called);
 }
 
@@ -377,8 +405,10 @@ TEST (ZLinkHttpClient, SendsDefaultHeadersAndRequestOverride)
                     .default_header ("X-ZLink-Override", "default")
                     .build ();
 
-    auto result =
-      client.get ("/headers").header ("X-ZLink-Override", "request").submit<header_echo_reply_t> ().result ();
+    auto result = client.get ("/headers")
+                    .header ("X-ZLink-Override", "request")
+                    .submit<header_echo_reply_t> ()
+                    .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body.defaultHeader, "default@example.test");
@@ -400,11 +430,13 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 
     const auto server_error = client.get ("/server-error").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (server_error);
-    EXPECT_EQ (server_error.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_EQ (server_error.error_kind (),
+               zlink::framework::framework_error_kind_t::request_failed);
 
     const auto invalid_json = client.get ("/invalid-json").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (invalid_json);
-    EXPECT_EQ (invalid_json.error_kind (), zlink::framework::framework_error_kind_t::payload_decode_failed);
+    EXPECT_EQ (invalid_json.error_kind (),
+               zlink::framework::framework_error_kind_t::payload_decode_failed);
 
     const auto timeout = client.get ("/slow").submit_raw ().result ();
     ASSERT_FALSE (timeout);
@@ -415,11 +447,13 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
 TEST (ZLinkHttpClient, SupportsHttpsWithExplicitTrust)
 {
     loopback_https_server_t server;
-    auto client =
-      make_json_client (server.base_url (), std::chrono::milliseconds (500), std::string (ZLINK_HTTP_CLIENT_TEST_CERT));
+    auto client = make_json_client (server.base_url (), std::chrono::milliseconds (500),
+                                    std::string (ZLINK_HTTP_CLIENT_TEST_CERT));
 
-    auto result =
-      client.post ("/games").body (create_game_request_t{.name = "secure"}).submit<create_game_reply_t> ().result ();
+    auto result = client.post ("/games")
+                    .body (create_game_request_t{.name = "secure"})
+                    .submit<create_game_reply_t> ()
+                    .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body.method, "POST");

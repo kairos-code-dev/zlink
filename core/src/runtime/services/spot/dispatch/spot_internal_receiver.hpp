@@ -44,10 +44,7 @@ class spot_internal_receiver_t
         return _sub ? _sub->fill_monitor_snapshot (out_) : -1;
     }
 
-    socket_base_t *snapshot_socket () const
-    {
-        return _sub ? _sub->snapshot_socket () : NULL;
-    }
+    socket_base_t *snapshot_socket () const { return _sub ? _sub->snapshot_socket () : NULL; }
 
     int set_direct_handler (spot_sub_direct_handler_fn handler_, void *userdata_)
     {
@@ -79,15 +76,10 @@ class spot_node_default_handles_t
 
     spot_node_default_handles_t ();
 
-    static int validate_pub_option (int option_,
-                                    const void *optval_,
-                                    size_t optvallen_);
-    static int validate_sub_option (int option_,
-                                    const void *optval_,
-                                    size_t optvallen_);
-    static void copy_option_setting (option_setting_t *dst_,
-                                     const void *optval_,
-                                     size_t optvallen_);
+    static int validate_pub_option (int option_, const void *optval_, size_t optvallen_);
+    static int validate_sub_option (int option_, const void *optval_, size_t optvallen_);
+    static void
+    copy_option_setting (option_setting_t *dst_, const void *optval_, size_t optvallen_);
 
     int set_pub_option (int option_, const void *optval_, size_t optvallen_);
     int set_sub_option (int option_, const void *optval_, size_t optvallen_);
@@ -103,11 +95,10 @@ class spot_node_default_handles_t
     mutex_t &default_sub_init_lock () { return _default_sub_sync; }
 
     void publish_default_sub (spot_sub_t *sub_);
-    spot_internal_receiver_t *publish_internal_receiver (
-      spot_internal_receiver_t *receiver_,
-      spot_sub_t *created_sub_,
-      spot_sub_t *previous_default_sub_,
-      bool *installed_out_);
+    spot_internal_receiver_t *publish_internal_receiver (spot_internal_receiver_t *receiver_,
+                                                         spot_sub_t *created_sub_,
+                                                         spot_sub_t *previous_default_sub_,
+                                                         bool *installed_out_);
 
     void remove_spot_pub (spot_pub_t *pub_);
     bool remove_spot_sub (spot_sub_t *sub_);

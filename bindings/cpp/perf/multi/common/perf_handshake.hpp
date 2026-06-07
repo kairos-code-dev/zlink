@@ -26,7 +26,8 @@ struct start_signal_state_t
     std::condition_variable cv;
 };
 
-inline bool parse_size_command_line (const std::string &line_, const char *prefix_, size_t *value_out_)
+inline bool
+parse_size_command_line (const std::string &line_, const char *prefix_, size_t *value_out_)
 {
     if (!prefix_ || !*prefix_ || !value_out_)
         return false;
@@ -45,7 +46,9 @@ inline bool parse_size_command_line (const std::string &line_, const char *prefi
     return true;
 }
 
-inline bool parse_endpoint_command_line (const std::string &line_, const char *prefix_, std::string *endpoint_out_)
+inline bool parse_endpoint_command_line (const std::string &line_,
+                                         const char *prefix_,
+                                         std::string *endpoint_out_)
 {
     if (!prefix_ || !*prefix_ || !endpoint_out_)
         return false;
@@ -85,8 +88,10 @@ inline bool parse_size_endpoint_command_line (const std::string &line_,
     return !endpoint_out_->empty ();
 }
 
-inline bool
-parse_size_count_command_line (const std::string &line_, const char *prefix_, size_t *size_out_, size_t *count_out_)
+inline bool parse_size_count_command_line (const std::string &line_,
+                                           const char *prefix_,
+                                           size_t *size_out_,
+                                           size_t *count_out_)
 {
     if (!prefix_ || !*prefix_ || !size_out_ || !count_out_)
         return false;
@@ -166,9 +171,10 @@ inline bool wait_for_start (start_signal_state_t *state_, size_t msg_size_, int 
         return false;
     }
 
-    const bool signaled =
-      state_->cv.wait_for (lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1), [state_, msg_size_] () {
-          return state_->stopped || state_->pending_sizes.find (msg_size_) != state_->pending_sizes.end ();
+    const bool signaled = state_->cv.wait_for (
+      lock, std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1), [state_, msg_size_] () {
+          return state_->stopped
+                 || state_->pending_sizes.find (msg_size_) != state_->pending_sizes.end ();
       });
     ready = state_->pending_sizes.find (msg_size_);
     if (!signaled || ready == state_->pending_sizes.end ()) {
@@ -200,9 +206,11 @@ inline bool wait_for_start_from_stdin (size_t msg_size_)
     return false;
 }
 
-inline std::string make_size_count_command (const char *prefix_, size_t size_value_, size_t count_value_)
+inline std::string
+make_size_count_command (const char *prefix_, size_t size_value_, size_t count_value_)
 {
-    return std::string (prefix_) + std::to_string (size_value_) + "," + std::to_string (count_value_);
+    return std::string (prefix_) + std::to_string (size_value_) + ","
+           + std::to_string (count_value_);
 }
 
 inline std::string make_size_command (const char *prefix_, size_t size_value_)

@@ -56,7 +56,8 @@ class service_provider_t
         return *std::static_pointer_cast<T> (resolve (std::type_index (typeid (T))));
     }
 
-    service_scope_t create_scope (service_scope_kind_t kind = service_scope_kind_t::handler_invocation);
+    service_scope_t
+    create_scope (service_scope_kind_t kind = service_scope_kind_t::handler_invocation);
     void close () noexcept;
     bool is_closed () const noexcept;
 
@@ -109,7 +110,8 @@ class service_collection_t
 
     template <typename T> service_collection_t &add_singleton ()
     {
-        static_assert (std::is_default_constructible_v<T>, "add_singleton<T>() requires a default constructor");
+        static_assert (std::is_default_constructible_v<T>,
+                       "add_singleton<T>() requires a default constructor");
         return add_factory<T> ([] (service_provider_t &) { return std::make_unique<T> (); },
                                service_lifetime_t::singleton);
     }
@@ -129,7 +131,8 @@ class service_collection_t
 
     template <typename T> service_collection_t &add_scoped ()
     {
-        static_assert (std::is_default_constructible_v<T>, "add_scoped<T>() requires a default constructor");
+        static_assert (std::is_default_constructible_v<T>,
+                       "add_scoped<T>() requires a default constructor");
         return add_factory<T> ([] (service_provider_t &) { return std::make_unique<T> (); },
                                service_lifetime_t::scoped);
     }
@@ -142,7 +145,8 @@ class service_collection_t
 
     template <typename T> service_collection_t &add_transient ()
     {
-        static_assert (std::is_default_constructible_v<T>, "add_transient<T>() requires a default constructor");
+        static_assert (std::is_default_constructible_v<T>,
+                       "add_transient<T>() requires a default constructor");
         return add_factory<T> ([] (service_provider_t &) { return std::make_unique<T> (); },
                                service_lifetime_t::transient);
     }
@@ -154,19 +158,21 @@ class service_collection_t
     }
 
     template <typename T, typename TFactory>
-    service_collection_t &add_factory (TFactory factory, service_lifetime_t lifetime = service_lifetime_t::transient)
+    service_collection_t &add_factory (TFactory factory,
+                                       service_lifetime_t lifetime = service_lifetime_t::transient)
     {
-        return add_descriptor (std::type_index (typeid (T)), lifetime,
-                               [factory = std::move (factory)] (service_provider_t &provider) mutable {
-                                   using factory_result_t = decltype (factory (provider));
-                                   if constexpr (std::is_same_v<factory_result_t, std::unique_ptr<T>>) {
-                                       return std::shared_ptr<void> (factory (provider).release ());
-                                   } else if constexpr (std::is_same_v<factory_result_t, std::shared_ptr<T>>) {
-                                       return std::static_pointer_cast<void> (factory (provider));
-                                   } else {
-                                       return std::shared_ptr<void> (std::make_shared<T> (factory (provider)));
-                                   }
-                               });
+        return add_descriptor (
+          std::type_index (typeid (T)), lifetime,
+          [factory = std::move (factory)] (service_provider_t &provider) mutable {
+              using factory_result_t = decltype (factory (provider));
+              if constexpr (std::is_same_v<factory_result_t, std::unique_ptr<T>>) {
+                  return std::shared_ptr<void> (factory (provider).release ());
+              } else if constexpr (std::is_same_v<factory_result_t, std::shared_ptr<T>>) {
+                  return std::static_pointer_cast<void> (factory (provider));
+              } else {
+                  return std::shared_ptr<void> (std::make_shared<T> (factory (provider)));
+              }
+          });
     }
 
     service_provider_t build_provider () const;
@@ -202,7 +208,8 @@ class service_collection_t
         return *this;
     }
 
-    template <typename T, typename... TDependencies> service_collection_t &add_injected (service_lifetime_t lifetime)
+    template <typename T, typename... TDependencies>
+    service_collection_t &add_injected (service_lifetime_t lifetime)
     {
         static_assert (std::is_constructible_v<T, TDependencies &...>,
                        "injected service constructor must accept dependencies by reference");
@@ -214,7 +221,8 @@ class service_collection_t
           lifetime);
     }
 
-    service_collection_t &add_descriptor (std::type_index type, service_lifetime_t lifetime, service_factory_t factory);
+    service_collection_t &
+    add_descriptor (std::type_index type, service_lifetime_t lifetime, service_factory_t factory);
 
     std::shared_ptr<detail::service_registry_t> _registry;
 };

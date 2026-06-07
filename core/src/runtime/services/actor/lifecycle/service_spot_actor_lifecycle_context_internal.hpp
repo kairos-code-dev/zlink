@@ -25,8 +25,7 @@ struct context_t
 class handler_scope_t
 {
   public:
-    handler_scope_t (spot_handle_t *spot_,
-                     const zlink_spot_actor_lifecycle_info_t &info_);
+    handler_scope_t (spot_handle_t *spot_, const zlink_spot_actor_lifecycle_info_t &info_);
     ~handler_scope_t ();
 
   private:

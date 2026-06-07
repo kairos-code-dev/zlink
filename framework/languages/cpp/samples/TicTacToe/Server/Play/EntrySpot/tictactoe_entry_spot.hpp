@@ -37,7 +37,8 @@ class entry_spot_t : public zlink::framework::entry_spot_t
 
     void on_actor_left (const player_actor_t &actor)
     {
-        actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id), actor_ids.end ());
+        actor_ids.erase (std::remove (actor_ids.begin (), actor_ids.end (), actor.actor_id),
+                         actor_ids.end ());
     }
 
     tictactoe_match_room_t room{"entry-match"};

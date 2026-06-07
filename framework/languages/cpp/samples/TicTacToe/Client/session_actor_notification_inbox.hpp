@@ -12,7 +12,10 @@ namespace zlink::samples::tictactoe
 class notification_inbox_t
 {
   public:
-    void opponent_joined (opponent_joined_notify_t notify) { opponents.push_back (std::move (notify)); }
+    void opponent_joined (opponent_joined_notify_t notify)
+    {
+        opponents.push_back (std::move (notify));
+    }
 
     void turn_changed (turn_changed_notify_t notify) { turns.push_back (std::move (notify)); }
 

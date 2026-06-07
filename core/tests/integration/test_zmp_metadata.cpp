@@ -23,14 +23,12 @@ void set_recv_timeout (fd_t fd_, int timeout_ms_)
 #if defined ZLINK_HAVE_WINDOWS
     DWORD timeout = static_cast<DWORD> (timeout_ms_);
     TEST_ASSERT_SUCCESS_RAW_ERRNO (setsockopt (
-      fd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *> (&timeout),
-      sizeof (timeout)));
+      fd_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *> (&timeout), sizeof (timeout)));
 #else
     struct timeval tv;
     tv.tv_sec = timeout_ms_ / 1000;
     tv.tv_usec = (timeout_ms_ % 1000) * 1000;
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      setsockopt (fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof (tv)));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (setsockopt (fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof (tv)));
 #endif
 }
 
@@ -47,14 +45,12 @@ bool send_all (fd_t fd_, const unsigned char *buf_, size_t size_)
     size_t offset = 0;
     while (offset < size_) {
 #if defined ZLINK_HAVE_WINDOWS
-        const int rc = send (
-          fd_, reinterpret_cast<const char *> (buf_ + offset),
-          static_cast<int> (size_ - offset), 0);
+        const int rc = send (fd_, reinterpret_cast<const char *> (buf_ + offset),
+                             static_cast<int> (size_ - offset), 0);
         if (rc <= 0)
             return false;
 #else
-        const ssize_t rc =
-          send (fd_, buf_ + offset, size_ - offset, MSG_NOSIGNAL);
+        const ssize_t rc = send (fd_, buf_ + offset, size_ - offset, MSG_NOSIGNAL);
         if (rc <= 0)
             return false;
 #endif
@@ -68,9 +64,8 @@ recv_status_t recv_all (fd_t fd_, unsigned char *buf_, size_t size_)
     size_t offset = 0;
     while (offset < size_) {
 #if defined ZLINK_HAVE_WINDOWS
-        const int rc = recv (
-          fd_, reinterpret_cast<char *> (buf_ + offset),
-          static_cast<int> (size_ - offset), 0);
+        const int rc = recv (fd_, reinterpret_cast<char *> (buf_ + offset),
+                             static_cast<int> (size_ - offset), 0);
         if (rc == 0)
             return recv_closed;
         if (rc < 0) {
@@ -80,8 +75,7 @@ recv_status_t recv_all (fd_t fd_, unsigned char *buf_, size_t size_)
             return recv_error;
         }
 #else
-        const ssize_t rc = recv (fd_, buf_ + offset, size_ - offset,
-                                 MSG_NOSIGNAL);
+        const ssize_t rc = recv (fd_, buf_ + offset, size_ - offset, MSG_NOSIGNAL);
         if (rc == 0)
             return recv_closed;
         if (rc < 0) {
@@ -95,10 +89,7 @@ recv_status_t recv_all (fd_t fd_, unsigned char *buf_, size_t size_)
     return recv_ok;
 }
 
-bool send_zmp_frame (fd_t fd_,
-                     unsigned char flags_,
-                     const unsigned char *body_,
-                     size_t body_len_)
+bool send_zmp_frame (fd_t fd_, unsigned char flags_, const unsigned char *body_, size_t body_len_)
 {
     unsigned char header[zlink::zmp_header_size];
     header[0] = zlink::zmp_magic;
@@ -114,9 +105,7 @@ bool send_zmp_frame (fd_t fd_,
     return true;
 }
 
-bool send_zmp_control (fd_t fd_,
-                       const unsigned char *body_,
-                       size_t body_len_)
+bool send_zmp_control (fd_t fd_, const unsigned char *body_, size_t body_len_)
 {
     return send_zmp_frame (fd_, zlink::zmp_flag_control, body_, body_len_);
 }
@@ -264,8 +253,7 @@ void test_zmp_heartbeat_ttl_min ()
     ttl_local_ms = 1000;
 #endif
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_HEARTBEAT_TTL, &ttl_local_ms,
-                      sizeof (ttl_local_ms)));
+      zlink_set_option (server, ZLINK_OPT_HEARTBEAT_TTL, &ttl_local_ms, sizeof (ttl_local_ms)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -345,17 +333,15 @@ void test_zmp_heartbeat_ttl_min ()
 
 #if defined ZLINK_HAVE_WINDOWS
     if (!(saw_error || closed)) {
-        TEST_IGNORE_MESSAGE (
-          "Skipping TTL min assertion on Windows due timer jitter");
+        TEST_IGNORE_MESSAGE ("Skipping TTL min assertion on Windows due timer jitter");
         close (raw);
         test_context_socket_close (server);
         return;
     }
 #endif
 
-    TEST_ASSERT_TRUE_MESSAGE (
-      saw_error || closed,
-      "expected timeout disconnect within local TTL window");
+    TEST_ASSERT_TRUE_MESSAGE (saw_error || closed,
+                              "expected timeout disconnect within local TTL window");
 
     close (raw);
     test_context_socket_close (server);

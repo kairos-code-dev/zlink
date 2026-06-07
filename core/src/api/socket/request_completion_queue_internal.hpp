@@ -49,9 +49,7 @@ struct queue_state_t
     int poller_refs;
 };
 
-int ensure_signal_ready (queue_state_t *state_,
-                         zlink::ctx_t *ctx_,
-                         const char *prefix_);
+int ensure_signal_ready (queue_state_t *state_, zlink::ctx_t *ctx_, const char *prefix_);
 int enqueue (queue_state_t *state_,
              zlink::ctx_t *ctx_,
              const char *prefix_,

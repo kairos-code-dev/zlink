@@ -32,10 +32,12 @@ struct route_outbound_packet_t
 class route_channel_runtime_t
 {
   public:
-    using send_backend_t =
-      std::function<result_t<void> (const zlink::routing_id_t &, const runtime::messaging::message_parts_t &)>;
+    using send_backend_t = std::function<result_t<void> (
+      const zlink::routing_id_t &, const runtime::messaging::message_parts_t &)>;
     using request_backend_t = std::function<result_t<runtime::messaging::message_parts_t> (
-      const zlink::routing_id_t &, const runtime::messaging::message_parts_t &, std::chrono::milliseconds)>;
+      const zlink::routing_id_t &,
+      const runtime::messaging::message_parts_t &,
+      std::chrono::milliseconds)>;
 
     explicit route_channel_runtime_t (std::string router_channel_id);
 
@@ -59,9 +61,10 @@ class route_channel_runtime_t
                                 const serializer_registry_t &serializers)
     {
         runtime::messaging::client_call_codec_t codec;
-        auto header = codec.create_envelope (runtime::messaging::message_kind_t::command, _router_channel_id,
-                                             std::move (packet_name));
-        return submit_send_parts (target_node_rid, codec.encode_envelope_parts (header, message, serializers));
+        auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,
+                                             _router_channel_id, std::move (packet_name));
+        return submit_send_parts (target_node_rid,
+                                  codec.encode_envelope_parts (header, message, serializers));
     }
 
     template <typename TRequest>
@@ -72,9 +75,10 @@ class route_channel_runtime_t
                                             std::chrono::milliseconds timeout)
     {
         runtime::messaging::client_call_codec_t codec;
-        auto header = codec.create_envelope (runtime::messaging::message_kind_t::request, _router_channel_id,
-                                             std::move (packet_name), timeout);
-        return submit_request_parts (target_node_rid, codec.encode_envelope_parts (header, request, serializers));
+        auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
+                                             _router_channel_id, std::move (packet_name), timeout);
+        return submit_request_parts (target_node_rid,
+                                     codec.encode_envelope_parts (header, request, serializers));
     }
 
     result_t<void> submit_send_parts (const zlink::routing_id_t &target_node_rid,
@@ -83,9 +87,10 @@ class route_channel_runtime_t
     result_t<std::uint64_t> submit_request_parts (const zlink::routing_id_t &target_node_rid,
                                                   runtime::messaging::message_parts_t parts);
 
-    result_t<runtime::messaging::message_parts_t> request_reply_parts (const zlink::routing_id_t &target_node_rid,
-                                                                       runtime::messaging::message_parts_t parts,
-                                                                       std::chrono::milliseconds timeout);
+    result_t<runtime::messaging::message_parts_t>
+    request_reply_parts (const zlink::routing_id_t &target_node_rid,
+                         runtime::messaging::message_parts_t parts,
+                         std::chrono::milliseconds timeout);
 
     result_t<void> submit_spot_send_parts (const zlink::routing_id_t &target_node_rid,
                                            const zlink::routing_id_t &target_spot_rid,

@@ -8,10 +8,7 @@
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 
-int zlink_ctx_set_ext (void *ctx_,
-                       int option_,
-                       const void *optval_,
-                       size_t optvallen_);
+int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
 
 namespace
 {
@@ -40,12 +37,9 @@ static const public_ctx_option_descriptor_t public_ctx_options[] = {
   {ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, true, true},
 };
 
-static const public_ctx_option_descriptor_t *find_public_ctx_option (
-  int option_)
+static const public_ctx_option_descriptor_t *find_public_ctx_option (int option_)
 {
-    for (size_t i = 0; i < sizeof (public_ctx_options)
-                         / sizeof (public_ctx_options[0]);
-         ++i) {
+    for (size_t i = 0; i < sizeof (public_ctx_options) / sizeof (public_ctx_options[0]); ++i) {
         if (public_ctx_options[i].option == option_)
             return &public_ctx_options[i];
     }
@@ -54,15 +48,13 @@ static const public_ctx_option_descriptor_t *find_public_ctx_option (
 
 static bool is_public_ctx_set_option (int option_)
 {
-    const public_ctx_option_descriptor_t *descriptor =
-      find_public_ctx_option (option_);
+    const public_ctx_option_descriptor_t *descriptor = find_public_ctx_option (option_);
     return descriptor && descriptor->can_set;
 }
 
 static bool is_public_ctx_get_option (int option_)
 {
-    const public_ctx_option_descriptor_t *descriptor =
-      find_public_ctx_option (option_);
+    const public_ctx_option_descriptor_t *descriptor = find_public_ctx_option (option_);
     return descriptor && descriptor->can_get;
 }
 }
@@ -133,9 +125,7 @@ zlink_close_result_t zlink_ctx_shutdown (void *ctx_)
       (static_cast<zlink::ctx_t *> (ctx_))->shutdown ());
 }
 
-zlink_config_result_t zlink_ctx_set (void *ctx_,
-                                     zlink_ctx_option_t option_,
-                                     int optval_)
+zlink_config_result_t zlink_ctx_set (void *ctx_, zlink_ctx_option_t option_, int optval_)
 {
     if (!is_public_ctx_set_option (option_)) {
         errno = EINVAL;
@@ -145,10 +135,8 @@ zlink_config_result_t zlink_ctx_set (void *ctx_,
       zlink_ctx_set_ext (ctx_, option_, &optval_, sizeof (int)));
 }
 
-zlink_config_result_t zlink_ctx_set_data (void *ctx_,
-                                          zlink_ctx_option_t option_,
-                                          const void *optval_,
-                                          size_t optvallen_)
+zlink_config_result_t
+zlink_ctx_set_data (void *ctx_, zlink_ctx_option_t option_, const void *optval_, size_t optvallen_)
 {
     if (!is_public_ctx_set_option (option_)) {
         errno = EINVAL;
@@ -158,22 +146,16 @@ zlink_config_result_t zlink_ctx_set_data (void *ctx_,
       zlink_ctx_set_ext (ctx_, option_, optval_, optvallen_));
 }
 
-int zlink_ctx_set_ext (void *ctx_,
-                       int option_,
-                       const void *optval_,
-                       size_t optvallen_)
+int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return (static_cast<zlink::ctx_t *> (ctx_))
-      ->set (option_, optval_, optvallen_);
+    return (static_cast<zlink::ctx_t *> (ctx_))->set (option_, optval_, optvallen_);
 }
 
-int zlink_ctx_get (void *ctx_,
-                   zlink_ctx_option_t option_,
-                   zlink_config_result_t *error_out_)
+int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_)
 {
     if (!is_public_ctx_get_option (option_)) {
         errno = EINVAL;

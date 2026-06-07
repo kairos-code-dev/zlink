@@ -28,8 +28,7 @@ static const size_t spot_sub_queue_hwm_default = 16;
 static const int ctrl_timeout_ms = 2000;
 static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
 
-static int recv_ascii_command (socket_base_t *socket_,
-                               std::vector<std::string> *frames_)
+static int recv_ascii_command (socket_base_t *socket_, std::vector<std::string> *frames_)
 {
     if (!frames_)
         return -1;
@@ -42,8 +41,7 @@ static int recv_ascii_command (socket_base_t *socket_,
             frame.close ();
             return -1;
         }
-        frames_->push_back (std::string (
-          static_cast<const char *> (frame.data ()), frame.size ()));
+        frames_->push_back (std::string (static_cast<const char *> (frame.data ()), frame.size ()));
         const bool more = (frame.flags () & msg_t::more) != 0;
         frame.close ();
         if (!more)
@@ -112,8 +110,7 @@ bool spot_node_t::pubsub_enabled () const
            || _spot_node_mode == ZLINK_SPOT_NODE_MODE_ALL;
 }
 
-std::shared_ptr<part_helper_internal::handle_state_t>
-spot_node_t::part_helper_state () const
+std::shared_ptr<part_helper_internal::handle_state_t> spot_node_t::part_helper_state () const
 {
     scoped_lock_t lock (_sync);
     return _part_helper_state;
@@ -169,8 +166,7 @@ bool spot_node_t::peer_has_positive_weight (const zlink_routing_id_t *peer_rid_)
 
     const std::string key = zlink::routing_id_key (peer_rid_);
     scoped_lock_t lock (_sync);
-    std::map<std::string, uint32_t>::const_iterator it =
-      _peer_state.peer_weight_by_rid.find (key);
+    std::map<std::string, uint32_t>::const_iterator it = _peer_state.peer_weight_by_rid.find (key);
     return it == _peer_state.peer_weight_by_rid.end () || it->second > 0;
 }
 
@@ -198,8 +194,7 @@ int spot_node_t::apply_tls_client (socket_base_t *socket_,
     if (ca_cert_.empty () && hostname_.empty () && trust_system_ == 0)
         return 0;
     if (!ca_cert_.empty ()
-        && socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_.data (), ca_cert_.size ())
-             != 0)
+        && socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_.data (), ca_cert_.size ()) != 0)
         return -1;
     if (!hostname_.empty ()
         && socket_->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_.data (),
@@ -217,8 +212,7 @@ bool spot_node_t::validate_public_endpoint (const std::string &endpoint_)
 {
     if (endpoint_.empty ())
         return false;
-    if (endpoint_.find ("tcp://*:") == 0 || endpoint_.find ("tcp://0.0.0.0:")
-                                              == 0
+    if (endpoint_.find ("tcp://*:") == 0 || endpoint_.find ("tcp://0.0.0.0:") == 0
         || endpoint_.find ("tcp://[::]:") == 0)
         return false;
     return true;
@@ -230,8 +224,7 @@ bool spot_node_t::recv_ctrl_reply (socket_base_t *socket_, int *out_errno_)
     if (recv_ascii_command (socket_, &frames) != 0)
         return false;
     if (!frames.empty ()
-        && spot_control_protocol::command_is (
-             frames[0], spot_control_protocol::reply_ok)) {
+        && spot_control_protocol::command_is (frames[0], spot_control_protocol::reply_ok)) {
         if (out_errno_)
             *out_errno_ = 0;
         return true;
@@ -258,7 +251,8 @@ const std::string &spot_node_t::sub_fanout_endpoint () const
 std::string spot_node_t::public_endpoint () const
 {
     scoped_lock_t lock (_sync);
-    return _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
+    return _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint
+                                                        : _discovery_state.advertise_endpoint;
 }
 
 bool spot_node_t::has_active_peers () const
@@ -271,8 +265,7 @@ bool spot_node_t::has_local_filtered_subs () const
     return _endpoint_state.local_filtered_sub_count.load (std::memory_order_acquire) != 0;
 }
 
-void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
-                                                  bool has_filters_)
+void spot_node_t::note_local_sub_filters_changed (bool had_filters_, bool has_filters_)
 {
     if (had_filters_ == has_filters_)
         return;
@@ -285,8 +278,7 @@ void spot_node_t::note_local_sub_filters_changed (bool had_filters_,
     uint32_t current = _endpoint_state.local_filtered_sub_count.load (std::memory_order_acquire);
     while (current != 0
            && !_endpoint_state.local_filtered_sub_count.compare_exchange_weak (
-             current, current - 1, std::memory_order_acq_rel,
-             std::memory_order_acquire)) {
+             current, current - 1, std::memory_order_acq_rel, std::memory_order_acquire)) {
     }
 }
 
@@ -339,15 +331,12 @@ void spot_node_t::debug_mark_fault (int err_)
     }
 
     for (size_t i = 0; i < pubs.size (); ++i)
-        submit_pub_summary (pubs[i], ZLINK_TOPOLOGY_STATE_ERROR,
-                            _runtime->fault_errno);
+        submit_pub_summary (pubs[i], ZLINK_TOPOLOGY_STATE_ERROR, _runtime->fault_errno);
     for (size_t i = 0; i < subs.size (); ++i)
-        submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST,
-                            _runtime->fault_errno);
+        submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST, _runtime->fault_errno);
 }
 
-int spot_node_t::send_data_plane_command (const char *verb_,
-                                          const char *arg_) const
+int spot_node_t::send_data_plane_command (const char *verb_, const char *arg_) const
 {
     if (!_runtime) {
         errno = EFAULT;

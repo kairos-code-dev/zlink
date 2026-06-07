@@ -24,9 +24,7 @@ void test_create ()
 
 struct test_events_t : zlink::i_poll_events
 {
-    test_events_t (zlink::poller_t &poller_) : _poller (poller_)
-    {
-    }
+    test_events_t (zlink::poller_t &poller_) : _poller (poller_) {}
 
     void in_event () ZLINK_OVERRIDE
     {
@@ -66,8 +64,7 @@ void wait_in_events (test_events_t &events_)
     void *watch = zlink_stopwatch_start ();
     while (events_.in_events.get () < 1) {
         msleep (1);
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (event_timeout_ms,
-                                           zlink_stopwatch_intermediate (watch),
+        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (event_timeout_ms, zlink_stopwatch_intermediate (watch),
                                            "Timeout waiting for in event");
     }
     zlink_stopwatch_stop (watch);
@@ -81,19 +78,15 @@ void create_connected_tcp_pair (boost::asio::io_context &io_context_,
     boost::asio::ip::tcp::acceptor acceptor (io_context_);
     acceptor.open (boost::asio::ip::tcp::v4 (), ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
-    acceptor.set_option (boost::asio::ip::tcp::acceptor::reuse_address (true),
-                         ec);
+    acceptor.set_option (boost::asio::ip::tcp::acceptor::reuse_address (true), ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
-    acceptor.bind (
-      boost::asio::ip::tcp::endpoint (boost::asio::ip::address_v4::loopback (),
-                                      0),
-      ec);
+    acceptor.bind (boost::asio::ip::tcp::endpoint (boost::asio::ip::address_v4::loopback (), 0),
+                   ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
     acceptor.listen (boost::asio::socket_base::max_listen_connections, ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
 
-    const boost::asio::ip::tcp::endpoint endpoint =
-      acceptor.local_endpoint (ec);
+    const boost::asio::ip::tcp::endpoint endpoint = acceptor.local_endpoint (ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
 
     client_->connect (endpoint, ec);
@@ -106,8 +99,8 @@ void send_tcp_signal (boost::asio::ip::tcp::socket *socket_)
 {
     static const char msg[] = "test";
     boost::system::error_code ec;
-    const std::size_t bytes = boost::asio::write (
-      *socket_, boost::asio::buffer (msg, sizeof (msg)), ec);
+    const std::size_t bytes =
+      boost::asio::write (*socket_, boost::asio::buffer (msg, sizeof (msg)), ec);
     TEST_ASSERT_EQUAL_INT (0, ec.value ());
     TEST_ASSERT_EQUAL (sizeof (msg), bytes);
 }

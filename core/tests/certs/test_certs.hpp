@@ -176,7 +176,7 @@ static const char *client_key_pem =
   "Vp/sNGqEoYw8shE9mZTPDA==\n"
   "-----END PRIVATE KEY-----\n";
 
-}  // namespace test_certs
-}  // namespace zlink
+} // namespace test_certs
+} // namespace zlink
 
-#endif  // __ZLINK_TEST_CERTS_HPP_INCLUDED__
+#endif // __ZLINK_TEST_CERTS_HPP_INCLUDED__

@@ -20,8 +20,7 @@ namespace
 {
 size_t hash_combine (size_t seed_, size_t value_)
 {
-    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
-                    + (seed_ >> 2));
+    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6) + (seed_ >> 2));
 }
 }
 
@@ -43,15 +42,12 @@ size_t pending_key_hash_t::operator() (const pending_key_t &key_) const
     return hash_combine (seed, std::hash<std::string> () (key_.peer_rid));
 }
 
-dealer_reply_target_t::dealer_reply_target_t () :
-    pipe (NULL),
-    request_seq (0)
+dealer_reply_target_t::dealer_reply_target_t () : pipe (NULL), request_seq (0)
 {
 }
 
-socket_request_reply_state_t::socket_request_reply_state_t (
-  zlink::socket_base_t *socket_,
-  int socket_type_) :
+socket_request_reply_state_t::socket_request_reply_state_t (zlink::socket_base_t *socket_,
+                                                            int socket_type_) :
     socket (socket_),
     socket_type (socket_type_),
     dealer_next_reply_token (1),
@@ -59,8 +55,7 @@ socket_request_reply_state_t::socket_request_reply_state_t (
 {
 }
 
-int ensure_completion_queue_ready (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+int ensure_completion_queue_ready (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     if (!state_ || !state_->socket || !state_->socket->get_ctx ()) {
         errno = EFAULT;
@@ -68,17 +63,15 @@ int ensure_completion_queue_ready (
     }
 
     return zlink::request_completion::ensure_signal_ready (
-      &state_->completion, state_->socket->get_ctx (),
-      "zlink.router.reqrep.completion");
+      &state_->completion, state_->socket->get_ctx (), "zlink.router.reqrep.completion");
 }
 
-int queue_reply_completion (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  int errnum_,
-  zlink_msg_t *parts_,
-  size_t part_count_)
+int queue_reply_completion (const std::shared_ptr<socket_request_reply_state_t> &state_,
+                            zlink_reply_handler_fn handler_,
+                            void *userdata_,
+                            int errnum_,
+                            zlink_msg_t *parts_,
+                            size_t part_count_)
 {
     if (!state_ || !state_->socket || !state_->socket->get_ctx ()) {
         errno = EFAULT;
@@ -93,26 +86,22 @@ int queue_reply_completion (
     }
 
     const int rc = zlink::request_completion::enqueue (
-      &state_->completion, state_->socket->get_ctx (),
-      "zlink.router.reqrep.completion", handler_, userdata_, errnum_, parts_,
-      part_count_);
+      &state_->completion, state_->socket->get_ctx (), "zlink.router.reqrep.completion", handler_,
+      userdata_, errnum_, parts_, part_count_);
     if (rc != 0)
         return rc;
 
     for (size_t i = 0; i < observers.size (); ++i) {
-        std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-          spot_state =
-            zlink::spot_reqrep_internal::try_find_spot_state (observers[i]);
+        std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> spot_state =
+          zlink::spot_reqrep_internal::try_find_spot_state (observers[i]);
         if (spot_state)
-            (void) zlink::spot_reqrep_internal::signal_spot_completion_queue (
-              spot_state);
+            (void) zlink::spot_reqrep_internal::signal_spot_completion_queue (spot_state);
     }
     return 0;
 }
 
-int drain_reply_completions (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  void *owner_handle_)
+int drain_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_,
+                             void *owner_handle_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -121,24 +110,18 @@ int drain_reply_completions (
     return zlink::request_completion::drain (&state_->completion, owner_handle_);
 }
 
-bool has_pending_reply_completions (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+bool has_pending_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
-    return state_
-             ? zlink::request_completion::has_pending (&state_->completion)
-             : false;
+    return state_ ? zlink::request_completion::has_pending (&state_->completion) : false;
 }
 
-zlink::socket_base_t *completion_signal_socket (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+zlink::socket_base_t *
+completion_signal_socket (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
-    return state_
-             ? zlink::request_completion::signal_socket (&state_->completion)
-             : NULL;
+    return state_ ? zlink::request_completion::signal_socket (&state_->completion) : NULL;
 }
 
-void claim_completion_owner (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+void claim_completion_owner (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     if (!state_)
         return;
@@ -148,10 +131,8 @@ void claim_completion_owner (
 bool current_thread_is_completion_owner (
   const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
-    return state_
-             ? zlink::request_completion::current_thread_is_owner (
-                 &state_->completion)
-             : false;
+    return state_ ? zlink::request_completion::current_thread_is_owner (&state_->completion)
+                  : false;
 }
 
 bool in_socket_request_completion_callback (void *socket_)
@@ -160,8 +141,7 @@ bool in_socket_request_completion_callback (void *socket_)
 }
 
 void register_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  void *spot_)
+  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_)
 {
     if (!state_ || !spot_)
         return;
@@ -171,8 +151,7 @@ void register_spot_channel_dispatch_observer (
 }
 
 void unregister_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  void *spot_)
+  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_)
 {
     if (!state_ || !spot_)
         return;
@@ -200,9 +179,7 @@ void on_socket_request_timeout (void *userdata_)
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (ctx->state->mutex);
-        std::unordered_map<pending_key_t,
-                           pending_request_t,
-                           pending_key_hash_t>::iterator it =
+        std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
           ctx->state->pending_requests.find (ctx->key);
         if (it == ctx->state->pending_requests.end ())
             return;
@@ -214,8 +191,8 @@ void on_socket_request_timeout (void *userdata_)
     }
 
     if (found)
-        (void) queue_reply_completion (ctx->state, pending.handler,
-                                       pending.userdata, ETIMEDOUT, NULL, 0);
+        (void) queue_reply_completion (ctx->state, pending.handler, pending.userdata, ETIMEDOUT,
+                                       NULL, 0);
 }
 }
 
@@ -228,14 +205,12 @@ find_or_create_request_reply_state (socket_handle_t handle_)
     if (state)
         return state;
 
-    state.reset (
-      new socket_request_reply_state_t (handle_.socket, socket_type (handle_)));
+    state.reset (new socket_request_reply_state_t (handle_.socket, socket_type (handle_)));
     handle_.socket->set_request_reply_state (state);
     return state;
 }
 
-std::shared_ptr<socket_request_reply_state_t>
-find_request_reply_state (socket_handle_t handle_)
+std::shared_ptr<socket_request_reply_state_t> find_request_reply_state (socket_handle_t handle_)
 {
     return handle_.socket ? handle_.socket->request_reply_state ()
                           : std::shared_ptr<socket_request_reply_state_t> ();
@@ -263,8 +238,7 @@ int start_request (socket_handle_t handle_,
     {
         std::lock_guard<std::mutex> lock (state->mutex);
         const uint64_t request_seq =
-          zlink::request_reply_runtime::allocate_request_sequence (
-            state.get ());
+          zlink::request_reply_runtime::allocate_request_sequence (state.get ());
         if (request_seq == 0)
             return -1;
 
@@ -277,10 +251,9 @@ int start_request (socket_handle_t handle_,
         pending.key = key;
         pending.handler = handler_;
         pending.userdata = userdata_;
-        resolved_timeout_ms = zlink::request_reply::resolve_timeout_ms (
-          timeout_ms_, state->default_timeout_ms);
-        if (zlink::request_reply_runtime::schedule_timeout_task<
-              socket_timeout_callback_ctx_t> (
+        resolved_timeout_ms =
+          zlink::request_reply::resolve_timeout_ms (timeout_ms_, state->default_timeout_ms);
+        if (zlink::request_reply_runtime::schedule_timeout_task<socket_timeout_callback_ctx_t> (
               resolved_timeout_ms, &on_socket_request_timeout,
               [&] (socket_timeout_callback_ctx_t &ctx_) {
                   ctx_.state = state;
@@ -296,9 +269,8 @@ int start_request (socket_handle_t handle_,
     }
 
     const uint8_t message_type = zlink::request_reply::request_type;
-    const int rc =
-      send_request_reply_message (handle_.socket, peer_rid_, parts_, part_count_,
-                                  flags_, message_type, key.request_seq);
+    const int rc = send_request_reply_message (handle_.socket, peer_rid_, parts_, part_count_,
+                                               flags_, message_type, key.request_seq);
     if (rc != 0) {
         std::lock_guard<std::mutex> lock (state->mutex);
         zlink::request_timeout::cancel (pending.timeout_task);

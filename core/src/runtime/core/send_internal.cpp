@@ -22,8 +22,7 @@ int zlink::send_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
     if (rc < 0)
         return -1;
 
-    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
-                                                                   : INT_MAX);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
 }
 
 int zlink::send_msg_routed_internal (void *socket_,
@@ -38,12 +37,9 @@ int zlink::send_msg_routed_internal (void *socket_,
     }
 
     const size_t size = zlink_msg_size (msg_);
-    const int rc =
-      socket->send_routed (target_rid_, reinterpret_cast<msg_t *> (msg_),
-                           flags_);
+    const int rc = socket->send_routed (target_rid_, reinterpret_cast<msg_t *> (msg_), flags_);
     if (rc < 0)
         return -1;
 
-    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size
-                                                                   : INT_MAX);
+    return static_cast<int> (size < static_cast<size_t> (INT_MAX) ? size : INT_MAX);
 }

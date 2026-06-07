@@ -13,7 +13,8 @@ namespace
 
 bool is_blank (const std::string &value)
 {
-    return std::all_of (value.begin (), value.end (), [] (unsigned char ch) { return std::isspace (ch) != 0; });
+    return std::all_of (value.begin (), value.end (),
+                        [] (unsigned char ch) { return std::isspace (ch) != 0; });
 }
 
 } // namespace
@@ -22,7 +23,8 @@ route_channel_registration_t::route_channel_registration_t (std::string router_c
     _router_channel_id (std::move (router_channel_id))
 {
     if (_router_channel_id.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "route channel id is required");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel id is required");
     }
 }
 
@@ -41,7 +43,8 @@ route_channel_registration_t &route_channel_registration_t::bind (std::string en
     return *this;
 }
 
-route_channel_registration_t &route_channel_registration_t::set_routing_id (zlink::routing_id_t routing_id)
+route_channel_registration_t &
+route_channel_registration_t::set_routing_id (zlink::routing_id_t routing_id)
 {
     _routing_id = std::move (routing_id);
     return *this;
@@ -57,7 +60,8 @@ route_channel_registration_t &route_channel_registration_t::connect (std::string
     return *this;
 }
 
-route_channel_registration_t &route_channel_registration_t::add_handler_group (std::string group_name)
+route_channel_registration_t &
+route_channel_registration_t::add_handler_group (std::string group_name)
 {
     if (group_name.empty () || is_blank (group_name)) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -109,7 +113,8 @@ const std::vector<std::string> &route_channel_registration_t::handler_groups () 
     return _handler_groups;
 }
 
-const std::optional<std::string> &route_channel_registration_t::spot_route_egress_target () const noexcept
+const std::optional<std::string> &
+route_channel_registration_t::spot_route_egress_target () const noexcept
 {
     return _spot_route_egress_target;
 }
@@ -118,11 +123,13 @@ route_handler_registry_t route_channel_registration_t::create_handler_registry (
 {
     route_handler_registry_t handlers;
     for (const auto &handler : _handlers) {
-        runtime::messaging::message_kind_t kind = handler.kind == framework::route_handler_kind_t::send
-                                                    ? runtime::messaging::message_kind_t::command
-                                                    : runtime::messaging::message_kind_t::request;
-        handlers.add_handler (route_handler_descriptor_t{kind, _router_channel_id, handler.packet_name,
-                                                         handler.owner_type, handler.message_type, handler.reply_type},
+        runtime::messaging::message_kind_t kind =
+          handler.kind == framework::route_handler_kind_t::send
+            ? runtime::messaging::message_kind_t::command
+            : runtime::messaging::message_kind_t::request;
+        handlers.add_handler (route_handler_descriptor_t{kind, _router_channel_id,
+                                                         handler.packet_name, handler.owner_type,
+                                                         handler.message_type, handler.reply_type},
                               handler.invoker);
     }
     for (const auto &install : _send_handlers) {
@@ -151,7 +158,8 @@ route_channel_initializer_t::initialize (const route_channel_registration_t &reg
         runtime->connect (endpoint);
     }
     runtime->start ();
-    return initialized_route_channel_t{std::move (runtime), registration.create_handler_registry ()};
+    return initialized_route_channel_t{std::move (runtime),
+                                       registration.create_handler_registry ()};
 }
 
 } // namespace zlink::framework::detail

@@ -189,7 +189,8 @@ framework_error_kind_t map_registry_client_error (const std::exception &ex)
     return framework_error_kind_t::request_failed;
 }
 
-bool matches_service_summary_filter (const service_summary_entry_t &entry, const service_summary_filter_t &filter)
+bool matches_service_summary_filter (const service_summary_entry_t &entry,
+                                     const service_summary_filter_t &filter)
 {
     if (filter.name && entry.name != *filter.name) {
         return false;
@@ -231,7 +232,8 @@ bool matches_topology_filter (const topology_entry_t &entry, const topology_filt
 
 } // namespace
 
-registry_builder_t::registry_builder_t () : _state (std::make_shared<detail::registry_runtime_state_t> ())
+registry_builder_t::registry_builder_t () :
+    _state (std::make_shared<detail::registry_runtime_state_t> ())
 {
 }
 
@@ -287,7 +289,8 @@ registry_options_snapshot_t registry_builder_t::snapshot () const
     return _state->options;
 }
 
-discovery_builder_t::discovery_builder_t () : _state (std::make_shared<detail::registry_runtime_state_t> ())
+discovery_builder_t::discovery_builder_t () :
+    _state (std::make_shared<detail::registry_runtime_state_t> ())
 {
 }
 
@@ -315,7 +318,8 @@ discovery_snapshot_t discovery_builder_t::snapshot () const
     return _state->discovery;
 }
 
-registry_query_t::registry_query_t () : _state (std::make_shared<detail::registry_runtime_state_t> ())
+registry_query_t::registry_query_t () :
+    _state (std::make_shared<detail::registry_runtime_state_t> ())
 {
 }
 
@@ -330,9 +334,10 @@ registry_query_t &registry_query_t::operator= (registry_query_t &&) noexcept = d
 
 registry_status_t registry_query_t::status () const
 {
-    return registry_status_t{_state->embedded_registry_enabled ? registry_state_t::running : registry_state_t::stopped,
-                             _state->options.registry_id, _state->options.pub_endpoint, _state->options.router_endpoint,
-                             _state->options.peer_pub_endpoints.size ()};
+    return registry_status_t{
+      _state->embedded_registry_enabled ? registry_state_t::running : registry_state_t::stopped,
+      _state->options.registry_id, _state->options.pub_endpoint, _state->options.router_endpoint,
+      _state->options.peer_pub_endpoints.size ()};
 }
 
 std::vector<service_summary_entry_t> registry_query_t::service_summary () const
@@ -340,7 +345,8 @@ std::vector<service_summary_entry_t> registry_query_t::service_summary () const
     return _state->services;
 }
 
-std::vector<service_summary_entry_t> registry_query_t::service_summary (const service_summary_filter_t &filter) const
+std::vector<service_summary_entry_t>
+registry_query_t::service_summary (const service_summary_filter_t &filter) const
 {
     std::vector<service_summary_entry_t> result;
     for (const auto &entry : _state->services) {
@@ -401,7 +407,8 @@ registry_query_client_t::registry_query_client_t () : _impl (std::make_unique<im
 {
 }
 
-registry_query_client_t::registry_query_client_t (registry_query_client_options_t options) : registry_query_client_t ()
+registry_query_client_t::registry_query_client_t (registry_query_client_options_t options) :
+    registry_query_client_t ()
 {
     auto connected = connect (std::move (options));
     if (!connected) {
@@ -411,7 +418,8 @@ registry_query_client_t::registry_query_client_t (registry_query_client_options_
 
 registry_query_client_t::~registry_query_client_t () = default;
 registry_query_client_t::registry_query_client_t (registry_query_client_t &&) noexcept = default;
-registry_query_client_t &registry_query_client_t::operator= (registry_query_client_t &&) noexcept = default;
+registry_query_client_t &
+registry_query_client_t::operator= (registry_query_client_t &&) noexcept = default;
 
 result_t<void> registry_query_client_t::connect (registry_query_client_options_t options)
 {
@@ -440,8 +448,8 @@ result_t<void> registry_query_client_t::connect (std::string endpoint)
 result_t<std::vector<topology_entry_t>> registry_query_client_t::topology () const
 {
     if (!_impl->client) {
-        return result_t<std::vector<topology_entry_t>>::failure (framework_error_kind_t::disconnected,
-                                                                 "registry query client is not connected");
+        return result_t<std::vector<topology_entry_t>>::failure (
+          framework_error_kind_t::disconnected, "registry query client is not connected");
     }
     try {
         std::vector<topology_entry_t> mapped;
@@ -453,15 +461,17 @@ result_t<std::vector<topology_entry_t>> registry_query_client_t::topology () con
         return result_t<std::vector<topology_entry_t>>::success (std::move (mapped));
     }
     catch (const std::exception &ex) {
-        return result_t<std::vector<topology_entry_t>>::failure (map_registry_client_error (ex), ex.what ());
+        return result_t<std::vector<topology_entry_t>>::failure (map_registry_client_error (ex),
+                                                                 ex.what ());
     }
 }
 
-result_t<std::vector<topology_entry_t>> registry_query_client_t::topology (const topology_filter_t &filter) const
+result_t<std::vector<topology_entry_t>>
+registry_query_client_t::topology (const topology_filter_t &filter) const
 {
     if (!_impl->client) {
-        return result_t<std::vector<topology_entry_t>>::failure (framework_error_kind_t::disconnected,
-                                                                 "registry query client is not connected");
+        return result_t<std::vector<topology_entry_t>>::failure (
+          framework_error_kind_t::disconnected, "registry query client is not connected");
     }
     try {
         const auto native_filter = to_native_filter (filter);
@@ -474,7 +484,8 @@ result_t<std::vector<topology_entry_t>> registry_query_client_t::topology (const
         return result_t<std::vector<topology_entry_t>>::success (std::move (mapped));
     }
     catch (const std::exception &ex) {
-        return result_t<std::vector<topology_entry_t>>::failure (map_registry_client_error (ex), ex.what ());
+        return result_t<std::vector<topology_entry_t>>::failure (map_registry_client_error (ex),
+                                                                 ex.what ());
     }
 }
 
@@ -494,7 +505,8 @@ void registry_query_client_t::close () noexcept
     _impl->context.reset ();
 }
 
-zlink_builder_t &zlink_builder_t::enable_registry (std::function<void (registry_builder_t &)> configure)
+zlink_builder_t &
+zlink_builder_t::enable_registry (std::function<void (registry_builder_t &)> configure)
 {
     registry_builder_t builder (_state->registry_runtime);
     if (configure) {
@@ -515,20 +527,24 @@ zlink_builder_t &zlink_builder_t::discovery (std::function<void (discovery_build
 zlink_builder_t &zlink_builder_t::route_channel (std::string route_channel_name)
 {
     if (route_channel_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "route channel name is required");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel name is required");
     }
     auto &route_channels = _state->registry_runtime->route_channels;
-    if (std::find (route_channels.begin (), route_channels.end (), route_channel_name) == route_channels.end ()) {
+    if (std::find (route_channels.begin (), route_channels.end (), route_channel_name)
+        == route_channels.end ()) {
         route_channels.push_back (std::move (route_channel_name));
     }
     return *this;
 }
 
-zlink_builder_t &zlink_builder_t::route_channel (std::string route_channel_name,
-                                                 std::function<void (route_channel_builder_t &)> configure)
+zlink_builder_t &
+zlink_builder_t::route_channel (std::string route_channel_name,
+                                std::function<void (route_channel_builder_t &)> configure)
 {
     if (route_channel_name.empty ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "route channel name is required");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "route channel name is required");
     }
     auto state = std::make_shared<detail::route_channel_builder_state_t> (route_channel_name);
     route_channel_builder_t builder (state);
@@ -537,7 +553,8 @@ zlink_builder_t &zlink_builder_t::route_channel (std::string route_channel_name,
     }
     _state->route_channels[route_channel_name] = state;
     auto &route_channels = _state->registry_runtime->route_channels;
-    if (std::find (route_channels.begin (), route_channels.end (), route_channel_name) == route_channels.end ()) {
+    if (std::find (route_channels.begin (), route_channels.end (), route_channel_name)
+        == route_channels.end ()) {
         route_channels.push_back (std::move (route_channel_name));
     }
     return *this;
@@ -575,7 +592,8 @@ registry_query_t zlink_builder_t::registry_query () const
 namespace zlink::framework::detail
 {
 
-registry_runtime_t::registry_runtime_t (std::shared_ptr<registry_runtime_state_t> state) : _state (std::move (state))
+registry_runtime_t::registry_runtime_t (std::shared_ptr<registry_runtime_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -601,7 +619,8 @@ result_t<void> registry_runtime_t::validate_embedded_registry () const
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "embedded registry requires pub and router endpoints");
     }
-    if (_state->options.heartbeat_interval.count () <= 0 || _state->options.heartbeat_timeout.count () <= 0
+    if (_state->options.heartbeat_interval.count () <= 0
+        || _state->options.heartbeat_timeout.count () <= 0
         || _state->options.broadcast_interval.count () <= 0) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "embedded registry intervals must be positive");
@@ -609,25 +628,29 @@ result_t<void> registry_runtime_t::validate_embedded_registry () const
     return result_t<void>::success ();
 }
 
-result_t<void> registry_runtime_t::validate_spot_remote_lookup (const zlink_builder_state_t &builder) const
+result_t<void>
+registry_runtime_t::validate_spot_remote_lookup (const zlink_builder_state_t &builder) const
 {
     for (const auto &[_, spot_node] : builder.spot_nodes) {
         if (!spot_node->snapshot.registry_spot_remote_addresses_enabled) {
             continue;
         }
         if (_state->discovery.registry_endpoints.empty ()) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "registry spot remote address resolver requires discovery endpoints");
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "registry spot remote address resolver requires discovery endpoints");
         }
         if (_state->route_channels.empty ()) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "registry spot remote address resolver requires a route channel");
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "registry spot remote address resolver requires a route channel");
         }
         const auto route_channel = resolve_registry_route_channel (builder, spot_node->snapshot);
         if (!route_channel) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "registry spot remote address resolver requires an explicit route channel "
-                                            "when there is not exactly one route channel");
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "registry spot remote address resolver requires an explicit route channel "
+              "when there is not exactly one route channel");
         }
     }
 
@@ -640,8 +663,9 @@ registry_runtime_t::resolve_registry_route_channel (const zlink_builder_state_t 
 {
     (void) builder;
     if (spot_node.registry_spot_route_channel) {
-        const auto found = std::find (_state->route_channels.begin (), _state->route_channels.end (),
-                                      *spot_node.registry_spot_route_channel);
+        const auto found =
+          std::find (_state->route_channels.begin (), _state->route_channels.end (),
+                     *spot_node.registry_spot_route_channel);
         if (found == _state->route_channels.end ()) {
             return std::nullopt;
         }
@@ -672,13 +696,16 @@ void registry_runtime_t::project_channel (const zlink_builder_state_t &builder,
                                           const std::string &name,
                                           const channel_snapshot_t &channel)
 {
-    auto add_capability = [&] (const channel_capability_snapshot_t &capability, service_role_t role) {
+    auto add_capability = [&] (const channel_capability_snapshot_t &capability,
+                               service_role_t role) {
         if (!capability.enabled) {
             return;
         }
-        _state->services.push_back (service_summary_entry_t{name, service_kind_t::channel, role, 1});
-        _state->topology.push_back (topology_entry_t{builder.node_name, service_kind_t::channel, role, name,
-                                                     topology_source_t::embedded, topology_state_t::active});
+        _state->services.push_back (
+          service_summary_entry_t{name, service_kind_t::channel, role, 1});
+        _state->topology.push_back (topology_entry_t{builder.node_name, service_kind_t::channel,
+                                                     role, name, topology_source_t::embedded,
+                                                     topology_state_t::active});
         for (const auto &endpoint : capability.connect_endpoints) {
             _state->member_peers.push_back (member_peer_t{name, builder.node_name, endpoint});
         }
@@ -692,13 +719,15 @@ void registry_runtime_t::project_channel (const zlink_builder_state_t &builder,
     add_capability (channel.subscriber, service_role_t::subscriber);
 }
 
-void registry_runtime_t::project_spot_node (const zlink_builder_state_t &builder, const spot_node_snapshot_t &spot_node)
+void registry_runtime_t::project_spot_node (const zlink_builder_state_t &builder,
+                                            const spot_node_snapshot_t &spot_node)
 {
-    _state->services.push_back (service_summary_entry_t{spot_node.name, service_kind_t::spot, service_role_t::spot_node,
+    _state->services.push_back (service_summary_entry_t{spot_node.name, service_kind_t::spot,
+                                                        service_role_t::spot_node,
                                                         spot_node.spot_names.size ()});
-    _state->topology.push_back (topology_entry_t{builder.node_name, service_kind_t::spot, service_role_t::spot_node,
-                                                 spot_node.name, topology_source_t::embedded,
-                                                 topology_state_t::active});
+    _state->topology.push_back (
+      topology_entry_t{builder.node_name, service_kind_t::spot, service_role_t::spot_node,
+                       spot_node.name, topology_source_t::embedded, topology_state_t::active});
 }
 
 void registry_runtime_t::add_spot_route (spot_route_t route)

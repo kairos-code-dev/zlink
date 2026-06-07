@@ -43,8 +43,7 @@ void zlink::mailbox_t::send (const command_t &cmd_)
     const bool ok = _cpipe.flush ();
     if (!ok) {
         // Signal all registered signalers for ZLINK_INTERNAL_OPT_FD support
-        for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
-                                                 end = _signalers.end ();
+        for (std::vector<signaler_t *>::iterator it = _signalers.begin (), end = _signalers.end ();
              it != end; ++it) {
             (*it)->send ();
         }
@@ -104,9 +103,9 @@ bool zlink::mailbox_t::valid () const
 }
 
 void zlink::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
-                                     mailbox_handler_t handler_,
-                                     void *handler_arg_,
-                                     mailbox_pre_post_t pre_post_)
+                                       mailbox_handler_t handler_,
+                                       void *handler_arg_,
+                                       mailbox_pre_post_t pre_post_)
 {
     _io_context = io_context_;
     _handler = handler_;
@@ -122,7 +121,7 @@ void zlink::mailbox_t::schedule_if_needed ()
     if (!_scheduled.exchange (true, std::memory_order_acquire)) {
         if (_pre_post)
             _pre_post (_handler_arg);
-        boost::asio::post (*_io_context, [this]() {
+        boost::asio::post (*_io_context, [this] () {
             if (_handler)
                 _handler (_handler_arg);
         });
@@ -151,8 +150,7 @@ void zlink::mailbox_t::add_signaler (signaler_t *signaler_)
 void zlink::mailbox_t::remove_signaler (signaler_t *signaler_)
 {
     const std::vector<signaler_t *>::iterator end = _signalers.end ();
-    const std::vector<signaler_t *>::iterator it =
-      std::find (_signalers.begin (), end, signaler_);
+    const std::vector<signaler_t *>::iterator it = std::find (_signalers.begin (), end, signaler_);
     if (it != end)
         _signalers.erase (it);
 }

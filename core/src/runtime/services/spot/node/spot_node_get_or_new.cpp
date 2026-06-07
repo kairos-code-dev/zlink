@@ -9,8 +9,8 @@
 
 namespace zlink
 {
-std::shared_ptr<spot_logical_state_t> spot_node_t::get_or_new_spot_state (
-  const zlink_routing_id_t *spot_rid_, bool *created_out_)
+std::shared_ptr<spot_logical_state_t>
+spot_node_t::get_or_new_spot_state (const zlink_routing_id_t *spot_rid_, bool *created_out_)
 {
     if (created_out_)
         *created_out_ = false;
@@ -23,8 +23,8 @@ std::shared_ptr<spot_logical_state_t> spot_node_t::get_or_new_spot_state (
     const std::string key = zlink::routing_id_key (*spot_rid_);
     std::unique_lock<mutex_t> lock (_sync);
     for (;;) {
-        const std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
-          it = _handle_state.spots_by_rid.find (key);
+        const std::map<std::string, std::shared_ptr<spot_logical_state_t>>::iterator it =
+          _handle_state.spots_by_rid.find (key);
         if (it != _handle_state.spots_by_rid.end ()) {
             state = it->second;
             return state;
@@ -58,8 +58,8 @@ bool spot_node_t::publish_get_or_new_spot_state (
     const std::string key = zlink::routing_id_key (state_->routing_id);
     {
         scoped_lock_t lock (_sync);
-        std::map<std::string, std::shared_ptr<spot_logical_state_t> >::iterator
-          it = _handle_state.spots_by_rid.find (key);
+        std::map<std::string, std::shared_ptr<spot_logical_state_t>>::iterator it =
+          _handle_state.spots_by_rid.find (key);
         if (it == _handle_state.spots_by_rid.end ()) {
             _handle_state.spots_by_rid[key] = state_;
             published = true;
@@ -74,8 +74,7 @@ bool spot_node_t::publish_get_or_new_spot_state (
     return published;
 }
 
-void spot_node_t::cancel_get_or_new_spot_state (
-  const std::shared_ptr<spot_logical_state_t> &state_)
+void spot_node_t::cancel_get_or_new_spot_state (const std::shared_ptr<spot_logical_state_t> &state_)
 {
     if (!state_)
         return;

@@ -28,8 +28,7 @@ struct i_engine
     virtual bool has_handshake_stage () = 0;
 
     //  Plug the engine to the session.
-    virtual void plug (zlink::io_thread_t *io_thread_,
-                       class session_base_t *session_) = 0;
+    virtual void plug (zlink::io_thread_t *io_thread_, class session_base_t *session_) = 0;
 
     //  Terminate and deallocate the engine. Note that 'detached'
     //  events are not fired on termination.

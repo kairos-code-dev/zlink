@@ -61,16 +61,21 @@ struct stage_spot_t : public zlink::framework::spot_t
         packet_seen = message.value;
     }
 
-    void on_throwing_state_update (const state_update_t &) { throw std::runtime_error ("spot failure"); }
+    void on_throwing_state_update (const state_update_t &)
+    {
+        throw std::runtime_error ("spot failure");
+    }
 
     zlink::framework::spot_create_response_t on_create (const zlink::message_t &request)
     {
         ++create_count;
         last_create_request = request.to_string ();
         if (reject_create) {
-            return zlink::framework::spot_create_response_t::reject (zlink::message_t::from ("create-rejected"));
+            return zlink::framework::spot_create_response_t::reject (
+              zlink::message_t::from ("create-rejected"));
         }
-        return zlink::framework::spot_create_response_t::accept (zlink::message_t::from ("create-accepted"));
+        return zlink::framework::spot_create_response_t::accept (
+          zlink::message_t::from ("create-accepted"));
     }
 
     void on_initialize () { ++initialize_count; }
@@ -81,7 +86,8 @@ struct stage_spot_t : public zlink::framework::spot_t
         join_seen = std::stoi (request.to_string ());
         actor.joined_value = join_seen;
         if (!accept_join) {
-            return zlink::framework::spot_actor_join_response_t::reject (zlink::message_t::from ("rejected"));
+            return zlink::framework::spot_actor_join_response_t::reject (
+              zlink::message_t::from ("rejected"));
         }
         return zlink::framework::spot_actor_join_response_t::accept (
           zlink::message_t::from (std::to_string (join_seen + 1)));
@@ -195,14 +201,16 @@ int main ()
 
     zlink::framework::zlink_builder_t zlink;
     zlink.add_node ("stage-node")
-      .channel ("game.stage",
-                [] (zlink::framework::channel_builder_t &channel) {
-                    channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
-                        publisher.bind ("tcp://127.0.0.1:8101");
-                    });
-                    channel.enable_subscriber (
-                      [] (zlink::framework::capability_builder_t &subscriber) { subscriber.use_discovery (); });
-                })
+      .channel (
+        "game.stage",
+        [] (zlink::framework::channel_builder_t &channel) {
+            channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
+                publisher.bind ("tcp://127.0.0.1:8101");
+            });
+            channel.enable_subscriber ([] (zlink::framework::capability_builder_t &subscriber) {
+                subscriber.use_discovery ();
+            });
+        })
       .add_spot_node ("stage-spot-node", [] (zlink::framework::spot_node_builder_t &spot_node) {
           spot_node.bind ("tcp://0.0.0.0:9000")
             .enable_router ("tcp://0.0.0.0:9002")
@@ -223,12 +231,15 @@ int main ()
         || snapshots[0].bind_endpoint != "tcp://0.0.0.0:9000" || !snapshots[0].router_bind_endpoint
         || *snapshots[0].router_bind_endpoint != "tcp://0.0.0.0:9002"
         || snapshots[0].router_manual_connections.size () != 1
-        || snapshots[0].router_manual_connections[0] != "tcp://127.0.0.1:9003" || !snapshots[0].pub_bind_endpoint
+        || snapshots[0].router_manual_connections[0] != "tcp://127.0.0.1:9003"
+        || !snapshots[0].pub_bind_endpoint
         || *snapshots[0].pub_bind_endpoint != "tcp://0.0.0.0:9004"
         || snapshots[0].pub_sub_manual_connections.size () != 1
-        || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005" || !snapshots[0].actor_gateway_enabled
-        || !snapshots[0].discovery_channel_name || *snapshots[0].discovery_channel_name != "game.stage"
-        || snapshots[0].attached_channel_clients.size () != 1 || snapshots[0].attached_publishers.size () != 1
+        || snapshots[0].pub_sub_manual_connections[0] != "tcp://127.0.0.1:9005"
+        || !snapshots[0].actor_gateway_enabled || !snapshots[0].discovery_channel_name
+        || *snapshots[0].discovery_channel_name != "game.stage"
+        || snapshots[0].attached_channel_clients.size () != 1
+        || snapshots[0].attached_publishers.size () != 1
         || snapshots[0].attached_channel_client_details.size () != 1
         || snapshots[0].attached_channel_client_details[0].channel_name != "profile"
         || !snapshots[0].attached_channel_client_details[0].manual_connections.empty ()
@@ -242,20 +253,24 @@ int main ()
 
     zlink::framework::spot_node_builder_t builder;
     zlink::framework::zlink_builder_t manual_host;
-    manual_host.add_spot_node ("manual-stage", [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
-        spot_node.bind ("tcp://0.0.0.0:9001")
-          .use_discovery ("game.stage")
-          .attach_publisher ("game.stage")
-          .add_entry_spot<entry_spot_t> ()
-          .add_actor_factory<player_actor_factory_t> ("player")
-          .add_spot<stage_spot_t> ("stage")
-          .add_spot<factory_spot_t> ("factory", [] { return std::make_shared<factory_spot_t> ("factory-reply"); });
-        builder = spot_node;
-    });
+    manual_host.add_spot_node ("manual-stage",
+                               [&builder] (zlink::framework::spot_node_builder_t &spot_node) {
+                                   spot_node.bind ("tcp://0.0.0.0:9001")
+                                     .use_discovery ("game.stage")
+                                     .attach_publisher ("game.stage")
+                                     .add_entry_spot<entry_spot_t> ()
+                                     .add_actor_factory<player_actor_factory_t> ("player")
+                                     .add_spot<stage_spot_t> ("stage")
+                                     .add_spot<factory_spot_t> ("factory", [] {
+                                         return std::make_shared<factory_spot_t> ("factory-reply");
+                                     });
+                                   builder = spot_node;
+                               });
 
     const auto create_count_before = stage_spot_t::create_count;
     auto create_result = builder.create_spot ("stage");
-    if (create_result.state != zlink::framework::spot_create_state_t::created || create_result.context.spot_rid ().empty ()) {
+    if (create_result.state != zlink::framework::spot_create_state_t::created
+        || create_result.context.spot_rid ().empty ()) {
         return 46;
     }
     if (stage_spot_t::create_count != create_count_before + 1 || stage_spot_t::initialize_count < 1
@@ -263,7 +278,8 @@ int main ()
         return 53;
     }
     auto context = create_result.context;
-    if (context.node_rid ().empty () || context.spot_rid ().empty () || context.spot_name () != "stage") {
+    if (context.node_rid ().empty () || context.spot_rid ().empty ()
+        || context.spot_name () != "stage") {
         return 2;
     }
 
@@ -279,12 +295,14 @@ int main ()
 
     const auto remote_rid = zlink::framework::spot_rid_t::from_string ("remote-stage");
     builder.add_spot_resolver (
-      "remote", [remote_rid] (zlink::framework::spot_rid_t rid) -> std::optional<zlink::framework::spot_route_t> {
+      "remote",
+      [remote_rid] (
+        zlink::framework::spot_rid_t rid) -> std::optional<zlink::framework::spot_route_t> {
           if (std::string (rid.value ()) != std::string (remote_rid.value ())) {
               return std::nullopt;
           }
-          return zlink::framework::spot_route_t{zlink::framework::node_rid_t::from_string ("remote-node"), remote_rid,
-                                                "remote-stage"};
+          return zlink::framework::spot_route_t{
+            zlink::framework::node_rid_t::from_string ("remote-node"), remote_rid, "remote-stage"};
       });
     const auto remote_route = builder.resolve_spot (remote_rid);
     if (!remote_route || remote_route->spot_name != "remote-stage") {
@@ -306,10 +324,13 @@ int main ()
         return 51;
     }
 
-    const auto requested_rid = zlink::framework::spot_rid_t::from_string ("manual-stage:stage:requested");
+    const auto requested_rid =
+      zlink::framework::spot_rid_t::from_string ("manual-stage:stage:requested");
     const auto get_or_create_count_before = stage_spot_t::create_count;
-    auto created_once = builder.get_or_create_spot ("stage", requested_rid, zlink::message_t::from ("create-request"));
-    auto existing_once = builder.get_or_create_spot ("stage", requested_rid, zlink::message_t::from ("ignored"));
+    auto created_once = builder.get_or_create_spot ("stage", requested_rid,
+                                                    zlink::message_t::from ("create-request"));
+    auto existing_once =
+      builder.get_or_create_spot ("stage", requested_rid, zlink::message_t::from ("ignored"));
     if (created_once.state != zlink::framework::spot_create_state_t::created
         || existing_once.state != zlink::framework::spot_create_state_t::existing
         || existing_once.spot_rid.value () != requested_rid.value ()
@@ -320,19 +341,23 @@ int main ()
     stage_spot_t::reject_create = true;
     auto rejected_create = builder.create_spot ("stage", zlink::message_t::from ("reject-request"));
     stage_spot_t::reject_create = false;
-    if (rejected_create.state != zlink::framework::spot_create_state_t::rejected || !rejected_create.reply
-        || rejected_create.reply->to_string () != "create-rejected" || builder.find_spot (rejected_create.spot_rid)) {
+    if (rejected_create.state != zlink::framework::spot_create_state_t::rejected
+        || !rejected_create.reply || rejected_create.reply->to_string () != "create-rejected"
+        || builder.find_spot (rejected_create.spot_rid)) {
         return 54;
     }
 
-    auto factory_created = builder.create_spot ("factory", zlink::message_t::from ("factory-request"));
-    if (factory_created.state != zlink::framework::spot_create_state_t::created || !factory_created.reply
-        || factory_created.reply->to_string () != "factory-reply" || factory_spot_t::create_count != 1
-        || factory_spot_t::initialize_count != 1 || factory_spot_t::last_request != "factory-request"
+    auto factory_created =
+      builder.create_spot ("factory", zlink::message_t::from ("factory-request"));
+    if (factory_created.state != zlink::framework::spot_create_state_t::created
+        || !factory_created.reply || factory_created.reply->to_string () != "factory-reply"
+        || factory_spot_t::create_count != 1 || factory_spot_t::initialize_count != 1
+        || factory_spot_t::last_request != "factory-request"
         || factory_spot_t::configured_spot_rid != std::string (factory_created.spot_rid.value ())) {
         return 55;
     }
-    if (!factory_created.context.close ().result ().value () || factory_spot_t::closing_count != 1) {
+    if (!factory_created.context.close ().result ().value ()
+        || factory_spot_t::closing_count != 1) {
         return 56;
     }
     bool empty_factory_failed = false;
@@ -364,27 +389,32 @@ int main ()
     auto lifecycle_stage_spot = std::make_shared<stage_spot_t> ();
     zlink::framework::spot_node_builder_t lifecycle_builder;
     zlink::framework::zlink_builder_t lifecycle_host;
-    lifecycle_host.add_spot_node ("lifecycle-stage", [&] (zlink::framework::spot_node_builder_t &spot_node) {
-        spot_node.add_entry_spot<entry_spot_t> ([lifecycle_entry_spot] { return lifecycle_entry_spot; })
-          .add_actor_factory<player_actor_factory_t> ("player")
-          .add_spot<stage_spot_t> ("stage", [lifecycle_stage_spot] { return lifecycle_stage_spot; });
-        lifecycle_builder = spot_node;
-    });
+    lifecycle_host.add_spot_node (
+      "lifecycle-stage", [&] (zlink::framework::spot_node_builder_t &spot_node) {
+          spot_node
+            .add_entry_spot<entry_spot_t> ([lifecycle_entry_spot] { return lifecycle_entry_spot; })
+            .add_actor_factory<player_actor_factory_t> ("player")
+            .add_spot<stage_spot_t> ("stage",
+                                     [lifecycle_stage_spot] { return lifecycle_stage_spot; });
+          lifecycle_builder = spot_node;
+      });
     auto lifecycle_entry = lifecycle_builder.create_spot ("entry");
     auto lifecycle_stage = lifecycle_builder.create_spot ("stage");
-    auto lifecycle_runtime = zlink::framework::detail::spot_node_runtime_t::from (lifecycle_builder);
+    auto lifecycle_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (lifecycle_builder);
     zlink::framework::detail::actor_gateway_runtime_t lifecycle_gateway;
     auto lifecycle_actor = lifecycle_gateway.manager ().create ("player", "joined-player").value ();
     auto lifecycle_actor_context = lifecycle_actor.context ();
     player_actor_factory_t lifecycle_actor_state;
     player_actor_factory_t rejected_actor_state;
-    lifecycle_gateway.on_join_spot (
-      [&] (const zlink::framework::actor_ref_t &actor_ref, zlink::framework::spot_rid_t spot_rid,
-           const zlink::message_t &payload) {
-          auto &actor_state = actor_ref.actor_id () == "rejected-player" ? rejected_actor_state : lifecycle_actor_state;
-          return lifecycle_runtime.join_actor_to_spot<stage_spot_t> (
-            actor_ref, std::move (spot_rid), actor_state, payload);
-      });
+    lifecycle_gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor_ref,
+                                         zlink::framework::spot_rid_t spot_rid,
+                                         const zlink::message_t &payload) {
+        auto &actor_state =
+          actor_ref.actor_id () == "rejected-player" ? rejected_actor_state : lifecycle_actor_state;
+        return lifecycle_runtime.join_actor_to_spot<stage_spot_t> (actor_ref, std::move (spot_rid),
+                                                                   actor_state, payload);
+    });
     auto lifecycle_join =
       lifecycle_actor_context
         .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("41")))
@@ -403,7 +433,8 @@ int main ()
     }
 
     lifecycle_stage_spot->accept_join = false;
-    auto rejected_actor = lifecycle_gateway.manager ().create ("player", "rejected-player").value ();
+    auto rejected_actor =
+      lifecycle_gateway.manager ().create ("player", "rejected-player").value ();
     auto rejected_context = rejected_actor.context ();
     auto rejected_runtime_join =
       rejected_context
@@ -413,7 +444,8 @@ int main ()
     lifecycle_stage_spot->accept_join = true;
     if (!rejected_runtime_join || rejected_runtime_join.value ().result_code == 0
         || rejected_runtime_join.value ().reply.to_string () != "rejected"
-        || lifecycle_stage_spot->joined_count != 1 || rejected_context.actor_ref ().node_rid ().value () != "local") {
+        || lifecycle_stage_spot->joined_count != 1
+        || rejected_context.actor_ref ().node_rid ().value () != "local") {
         return 61;
     }
 
@@ -423,7 +455,8 @@ int main ()
             actor_ref, std::move (node_rid), lifecycle_actor_state);
       });
     auto lifecycle_entry_join =
-      lifecycle_actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"))
+      lifecycle_actor_context
+        .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"))
         .submit ()
         .result ();
     if (!lifecycle_entry_join || lifecycle_stage_spot->left_count != 1
@@ -441,12 +474,15 @@ int main ()
         || !lifecycle_builder.find_spot (lifecycle_entry.spot_rid)) {
         return 64;
     }
-    auto entry_leave = lifecycle_runtime.leave_actor (lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
-    if (!entry_leave || lifecycle_entry_spot->left_count != 1 || lifecycle_actor_state.moved_value != 110) {
+    auto entry_leave =
+      lifecycle_runtime.leave_actor (lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
+    if (!entry_leave || lifecycle_entry_spot->left_count != 1
+        || lifecycle_actor_state.moved_value != 110) {
         return 65;
     }
     auto close_empty_entry = lifecycle_entry.context.close ().result ();
-    if (!close_empty_entry || !close_empty_entry.value () || lifecycle_builder.find_spot (lifecycle_entry.spot_rid)) {
+    if (!close_empty_entry || !close_empty_entry.value ()
+        || lifecycle_builder.find_spot (lifecycle_entry.spot_rid)) {
         return 66;
     }
 
@@ -463,8 +499,9 @@ int main ()
 
     bool duplicate_resolver_failed = false;
     try {
-        builder.add_spot_resolver (
-          "remote", [] (zlink::framework::spot_rid_t) { return std::optional<zlink::framework::spot_route_t>{}; });
+        builder.add_spot_resolver ("remote", [] (zlink::framework::spot_rid_t) {
+            return std::optional<zlink::framework::spot_route_t>{};
+        });
     }
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_resolver_failed = error.kind () == framework_error_kind_t::request_protocol_error;
@@ -494,8 +531,9 @@ int main ()
 
     bool registry_conflict_failed = false;
     try {
-        registry.add_spot_resolver (
-          "custom", [] (zlink::framework::spot_rid_t) { return std::optional<zlink::framework::spot_route_t>{}; });
+        registry.add_spot_resolver ("custom", [] (zlink::framework::spot_rid_t) {
+            return std::optional<zlink::framework::spot_route_t>{};
+        });
     }
     catch (const zlink::framework::framework_exception_t &error) {
         registry_conflict_failed = error.kind () == framework_error_kind_t::request_protocol_error;
@@ -510,7 +548,8 @@ int main ()
         invalid.use_registry_spot_remote_addresses ("");
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_registry_route_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_registry_route_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_registry_route_failed) {
         return 11;
@@ -522,7 +561,8 @@ int main ()
         invalid.connect_router (" ");
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_router_manual_endpoint_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_router_manual_endpoint_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_router_manual_endpoint_failed) {
         return 40;
@@ -534,7 +574,8 @@ int main ()
         invalid.connect_pub_sub (" ");
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_pub_sub_manual_endpoint_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_pub_sub_manual_endpoint_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_pub_sub_manual_endpoint_failed) {
         return 41;
@@ -558,7 +599,8 @@ int main ()
         invalid.attach_channel_client ("profile", {" "});
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_attach_endpoint_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_attach_endpoint_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_attach_endpoint_failed) {
         return 32;
@@ -570,7 +612,8 @@ int main ()
         invalid.attach_publisher (" ");
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_publisher_attach_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_publisher_attach_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_publisher_attach_failed) {
         return 31;
@@ -582,14 +625,16 @@ int main ()
         invalid.attach_publisher ("events", {" "});
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        empty_publisher_attach_endpoint_failed = error.kind () == framework_error_kind_t::request_protocol_error;
+        empty_publisher_attach_endpoint_failed =
+          error.kind () == framework_error_kind_t::request_protocol_error;
     }
     if (!empty_publisher_attach_endpoint_failed) {
         return 33;
     }
 
     context.register_packet<state_update_t> ("state.update");
-    if (context.packet_registry ().size () != 1 || context.packet_registry ()[0].packet_name != "state.update") {
+    if (context.packet_registry ().size () != 1
+        || context.packet_registry ()[0].packet_name != "state.update") {
         return 12;
     }
 
@@ -599,13 +644,15 @@ int main ()
       .add_actor_packet<&stage_spot_t::on_move> ("move")
       .add_actor_disconnected<&stage_spot_t::on_actor_disconnected> ();
     const auto handler_descriptors = context.handlers ().descriptors ();
-    if (handler_descriptors.size () != 4 || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
+    if (handler_descriptors.size () != 4
+        || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[0].packet_name != "state.update"
         || handler_descriptors[1].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[1].packet_name != "state.throw"
         || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::actor_packet
         || handler_descriptors[2].packet_name != "move"
-        || handler_descriptors[3].kind != zlink::framework::spot_handler_kind_t::actor_disconnected) {
+        || handler_descriptors[3].kind
+             != zlink::framework::spot_handler_kind_t::actor_disconnected) {
         return 20;
     }
 
@@ -614,30 +661,46 @@ int main ()
 
     zlink::framework::serializer_registry_t spot_serializers;
     spot_serializers.add<state_update_t> (
-      [] (const state_update_t &value) { return zlink::message_t::from (std::to_string (value.value)); },
-      [] (const zlink::message_t &message) { return state_update_t{std::stoi (message.to_string ())}; });
+      [] (const state_update_t &value) {
+          return zlink::message_t::from (std::to_string (value.value));
+      },
+      [] (const zlink::message_t &message) {
+          return state_update_t{std::stoi (message.to_string ())};
+      });
     spot_serializers.add<move_request_t> (
-      [] (const move_request_t &value) { return zlink::message_t::from (std::to_string (value.value)); },
-      [] (const zlink::message_t &message) { return move_request_t{std::stoi (message.to_string ())}; });
+      [] (const move_request_t &value) {
+          return zlink::message_t::from (std::to_string (value.value));
+      },
+      [] (const zlink::message_t &message) {
+          return move_request_t{std::stoi (message.to_string ())};
+      });
     spot_serializers.add<move_reply_t> (
-      [] (const move_reply_t &value) { return zlink::message_t::from (std::to_string (value.value)); },
-      [] (const zlink::message_t &message) { return move_reply_t{std::stoi (message.to_string ())}; });
+      [] (const move_reply_t &value) {
+          return zlink::message_t::from (std::to_string (value.value));
+      },
+      [] (const zlink::message_t &message) {
+          return move_reply_t{std::stoi (message.to_string ())};
+      });
 
     stage_spot_t stage_spot;
     player_actor_factory_t actor;
     const auto packet_dispatch = context.handlers ().invoke_packet (
-      "state.update", stage_spot, spot_provider, spot_serializers, zlink::message_t::from (std::string ("30")));
+      "state.update", stage_spot, spot_provider, spot_serializers,
+      zlink::message_t::from (std::string ("30")));
     if (!packet_dispatch || stage_spot.last_value != 30 || stage_spot.packet_seen != 30) {
         return 22;
     }
 
-    const auto throwing_packet_dispatch = context.handlers ().invoke_packet (
-      "state.throw", stage_spot, spot_provider, spot_serializers, zlink::message_t::from (std::string ("31")));
-    if (throwing_packet_dispatch || throwing_packet_dispatch.error_kind () != framework_error_kind_t::request_failed) {
+    const auto throwing_packet_dispatch =
+      context.handlers ().invoke_packet ("state.throw", stage_spot, spot_provider, spot_serializers,
+                                         zlink::message_t::from (std::string ("31")));
+    if (throwing_packet_dispatch
+        || throwing_packet_dispatch.error_kind () != framework_error_kind_t::request_failed) {
         return 45;
     }
 
-    const auto join_dispatch = stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("41")));
+    const auto join_dispatch =
+      stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("41")));
     if (!join_dispatch.accepted || !join_dispatch.reply || join_dispatch.reply->to_string () != "42"
         || actor.joined_value != 41 || stage_spot.join_seen != 41) {
         return 23;
@@ -647,8 +710,10 @@ int main ()
         return 25;
     }
     stage_spot.accept_join = false;
-    const auto rejected_join = stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("50")));
-    if (rejected_join.accepted || !rejected_join.reply || rejected_join.reply->to_string () != "rejected") {
+    const auto rejected_join =
+      stage_spot.on_actor_join (actor, zlink::message_t::from (std::string ("50")));
+    if (rejected_join.accepted || !rejected_join.reply
+        || rejected_join.reply->to_string () != "rejected") {
         return 47;
     }
     if (stage_spot.joined_count != 1) {
@@ -656,7 +721,8 @@ int main ()
     }
 
     const auto move_dispatch = context.handlers ().invoke_actor_packet (
-      "move", stage_spot, actor, spot_provider, spot_serializers, zlink::message_t::from (std::string ("55")));
+      "move", stage_spot, actor, spot_provider, spot_serializers,
+      zlink::message_t::from (std::string ("55")));
     if (!move_dispatch || actor.moved_value != 55 || stage_spot.packet_seen != 55) {
         return 24;
     }
@@ -684,15 +750,17 @@ int main ()
             return 43;
         }
     }
-    std::map<std::string, std::string> stream_metadata{{"trace-id", "trace-1"}, {"tenant-id", "tenant-1"}};
+    std::map<std::string, std::string> stream_metadata{{"trace-id", "trace-1"},
+                                                       {"tenant-id", "tenant-1"}};
     const auto projected = metadata_policy.project (stream_metadata);
     const auto projected_trace = projected.find ("trace-id");
-    if (!projected_trace || *projected_trace != "trace-1" || projected.contains ("tenant-id") || projected.empty ()) {
+    if (!projected_trace || *projected_trace != "trace-1" || projected.contains ("tenant-id")
+        || projected.empty ()) {
         return 39;
     }
-    const auto metadata_dispatch =
-      context.handlers ().invoke_actor_packet ("move", stage_spot, actor, spot_provider, spot_serializers,
-                                               zlink::message_t::from (std::string ("56")), projected);
+    const auto metadata_dispatch = context.handlers ().invoke_actor_packet (
+      "move", stage_spot, actor, spot_provider, spot_serializers,
+      zlink::message_t::from (std::string ("56")), projected);
     if (!metadata_dispatch || actor.moved_value != 56 || stage_spot.last_trace_id != "trace-1"
         || stage_spot.saw_tenant_id) {
         return 40;
@@ -703,8 +771,8 @@ int main ()
         return 26;
     }
 
-    const auto disconnected_dispatch =
-      context.handlers ().invoke_actor_disconnected (stage_spot, actor, spot_provider, spot_serializers);
+    const auto disconnected_dispatch = context.handlers ().invoke_actor_disconnected (
+      stage_spot, actor, spot_provider, spot_serializers);
     if (!disconnected_dispatch || stage_spot.disconnected_count != 1) {
         return 27;
     }
@@ -731,45 +799,52 @@ int main ()
         return 21;
     }
 
-    auto publish_result = context.publish ("stage.state.updated", state_update_t{1}).submit ().result ();
+    auto publish_result =
+      context.publish ("stage.state.updated", state_update_t{1}).submit ().result ();
     if (!publish_result) {
         return 14;
     }
 
     auto send_result =
-      context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2}).submit ().result ();
+      context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2})
+        .submit ()
+        .result ();
     if (!send_result) {
         return 15;
     }
 
-    auto request_result =
-      context.request_to<move_reply_t> (remote_route->node_rid, remote_route->spot_rid, move_request_t{3})
-        .submit ()
-        .result ();
+    auto request_result = context
+                            .request_to<move_reply_t> (remote_route->node_rid,
+                                                       remote_route->spot_rid, move_request_t{3})
+                            .submit ()
+                            .result ();
     if (request_result || request_result.error_kind () != framework_error_kind_t::timeout) {
         return 16;
     }
 
     auto missing_route_result =
       context
-        .request_to<move_reply_t> (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{}, move_request_t{4})
+        .request_to<move_reply_t> (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{},
+                                   move_request_t{4})
         .submit ()
         .result ();
-    if (missing_route_result || missing_route_result.error_kind () != framework_error_kind_t::spot_route_not_found) {
+    if (missing_route_result
+        || missing_route_result.error_kind () != framework_error_kind_t::spot_route_not_found) {
         return 17;
     }
 
     const auto runtime = zlink::framework::detail::spot_node_runtime_t::from (builder);
     const auto &ordering = runtime.ordering_log (context);
-    if (ordering.size () != 3 || ordering[0] != "publish:stage.state.updated" || ordering[1] != "send_to:remote-stage"
-        || ordering[2] != "request_to:remote-stage") {
+    if (ordering.size () != 3 || ordering[0] != "publish:stage.state.updated"
+        || ordering[1] != "send_to:remote-stage" || ordering[2] != "request_to:remote-stage") {
         return 18;
     }
 
     stage_wrapper_t wrapper (context.node_rid (), context.spot_rid (), zlink.publisher (),
                              context.packet_registry ().size ());
     wrapper.apply (7);
-    if (wrapper.node_rid.empty () || wrapper.spot_rid.empty () || wrapper.packet_count != 1 || wrapper.state != 7) {
+    if (wrapper.node_rid.empty () || wrapper.spot_rid.empty () || wrapper.packet_count != 1
+        || wrapper.state != 7) {
         return 19;
     }
 

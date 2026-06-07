@@ -14,9 +14,7 @@ using zlink::spot_reqrep_internal::find_router_state_by_rid;
 using zlink::spot_reqrep_internal::parsed_spot_envelope_t;
 using zlink::spot_reqrep_internal::resolve_spot_node_routing_id;
 
-bool assign_routing_id_value_local (const char *data_,
-                                    size_t size_,
-                                    zlink_routing_id_t *out_rid_)
+bool assign_routing_id_value_local (const char *data_, size_t size_, zlink_routing_id_t *out_rid_)
 {
     if (!out_rid_)
         return false;
@@ -39,60 +37,49 @@ bool parse_packed_spot_routed_envelope (zlink_msg_t *parts_,
     if (!first_frame->check ())
         return false;
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
+    const unsigned char *data = static_cast<const unsigned char *> (zlink_msg_data (&parts_[0]));
     const size_t size = zlink_msg_size (&parts_[0]);
-    if (size < packed_header_prefix_size
-        || data[0] != zlink::spot_routed_protocol::protocol_id
+    if (size < packed_header_prefix_size || data[0] != zlink::spot_routed_protocol::protocol_id
         || data[1] != zlink::spot_routed_protocol::packed_frame_version
         || !zlink::spot_routed_protocol::is_endpoint_class (data[2])
         || !zlink::spot_routed_protocol::is_endpoint_class (data[3])) {
         return false;
     }
 
-    const uint32_t source_node_size =
-      zlink::request_reply::decode_u32_be (data + 4);
-    const uint32_t source_endpoint_size =
-      zlink::request_reply::decode_u32_be (data + 8);
-    const uint32_t destination_node_size =
-      zlink::request_reply::decode_u32_be (data + 12);
-    const uint32_t destination_endpoint_size =
-      zlink::request_reply::decode_u32_be (data + 16);
+    const uint32_t source_node_size = zlink::request_reply::decode_u32_be (data + 4);
+    const uint32_t source_endpoint_size = zlink::request_reply::decode_u32_be (data + 8);
+    const uint32_t destination_node_size = zlink::request_reply::decode_u32_be (data + 12);
+    const uint32_t destination_endpoint_size = zlink::request_reply::decode_u32_be (data + 16);
     const size_t total_header_size =
       packed_header_prefix_size + static_cast<size_t> (source_node_size)
-      + static_cast<size_t> (source_endpoint_size)
-      + static_cast<size_t> (destination_node_size)
+      + static_cast<size_t> (source_endpoint_size) + static_cast<size_t> (destination_node_size)
       + static_cast<size_t> (destination_endpoint_size);
     if (size < total_header_size)
         return false;
 
-    const char *cursor =
-      reinterpret_cast<const char *> (data) + packed_header_prefix_size;
+    const char *cursor = reinterpret_cast<const char *> (data) + packed_header_prefix_size;
     out_->source_class = data[2];
     out_->destination_class = data[3];
     out_->source_node_rid.assign (cursor, source_node_size);
-    if (!assign_routing_id_value_local (
-          cursor, source_node_size, &out_->source_node_rid_value)) {
+    if (!assign_routing_id_value_local (cursor, source_node_size, &out_->source_node_rid_value)) {
         return false;
     }
     cursor += source_node_size;
     out_->source_endpoint_rid.assign (cursor, source_endpoint_size);
-    if (!assign_routing_id_value_local (
-          cursor, source_endpoint_size, &out_->source_endpoint_rid_value)) {
+    if (!assign_routing_id_value_local (cursor, source_endpoint_size,
+                                        &out_->source_endpoint_rid_value)) {
         return false;
     }
     cursor += source_endpoint_size;
     out_->destination_node_rid.assign (cursor, destination_node_size);
-    if (!assign_routing_id_value_local (
-          cursor, destination_node_size, &out_->destination_node_rid_value)) {
+    if (!assign_routing_id_value_local (cursor, destination_node_size,
+                                        &out_->destination_node_rid_value)) {
         return false;
     }
     cursor += destination_node_size;
     out_->destination_endpoint_rid.assign (cursor, destination_endpoint_size);
-    if (!assign_routing_id_value_local (
-          cursor,
-          destination_endpoint_size,
-          &out_->destination_endpoint_rid_value)) {
+    if (!assign_routing_id_value_local (cursor, destination_endpoint_size,
+                                        &out_->destination_endpoint_rid_value)) {
         return false;
     }
     out_->payload_parts = parts_ + 1;
@@ -101,23 +88,17 @@ bool parse_packed_spot_routed_envelope (zlink_msg_t *parts_,
 }
 }
 
-bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  parsed_spot_envelope_t *out_)
+bool zlink::spot_reqrep_internal::parse_spot_routed_envelope (zlink_msg_t *parts_,
+                                                              size_t part_count_,
+                                                              parsed_spot_envelope_t *out_)
 {
     if (!parts_ || !out_ || part_count_ == 0)
         return false;
 
     memset (&out_->source_node_rid_value, 0, sizeof (out_->source_node_rid_value));
-    memset (&out_->source_endpoint_rid_value,
-            0,
-            sizeof (out_->source_endpoint_rid_value));
-    memset (&out_->destination_node_rid_value,
-            0,
-            sizeof (out_->destination_node_rid_value));
-    memset (&out_->destination_endpoint_rid_value,
-            0,
+    memset (&out_->source_endpoint_rid_value, 0, sizeof (out_->source_endpoint_rid_value));
+    memset (&out_->destination_node_rid_value, 0, sizeof (out_->destination_node_rid_value));
+    memset (&out_->destination_endpoint_rid_value, 0,
             sizeof (out_->destination_endpoint_rid_value));
 
     return parse_packed_spot_routed_envelope (parts_, part_count_, out_);
@@ -138,10 +119,9 @@ int zlink::spot_reqrep_internal::init_packed_spot_routed_header (
     }
 
     const size_t packed_header_prefix_size = 20;
-    const size_t total_size =
-      packed_header_prefix_size + source_node_rid_.size ()
-      + source_endpoint_rid_.size () + destination_node_rid_.size ()
-      + destination_endpoint_rid_.size ();
+    const size_t total_size = packed_header_prefix_size + source_node_rid_.size ()
+                              + source_endpoint_rid_.size () + destination_node_rid_.size ()
+                              + destination_endpoint_rid_.size ();
     if (zlink_msg_init_size (msg_, total_size) != 0)
         return -1;
 
@@ -150,14 +130,14 @@ int zlink::spot_reqrep_internal::init_packed_spot_routed_header (
     data[1] = zlink::spot_routed_protocol::packed_frame_version;
     data[2] = source_class_;
     data[3] = destination_class_;
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (source_node_rid_.size ()), data + 4);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (source_endpoint_rid_.size ()), data + 8);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (destination_node_rid_.size ()), data + 12);
-    zlink::request_reply::encode_u32_be (
-      static_cast<uint32_t> (destination_endpoint_rid_.size ()), data + 16);
+    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (source_node_rid_.size ()),
+                                         data + 4);
+    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (source_endpoint_rid_.size ()),
+                                         data + 8);
+    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (destination_node_rid_.size ()),
+                                         data + 12);
+    zlink::request_reply::encode_u32_be (static_cast<uint32_t> (destination_endpoint_rid_.size ()),
+                                         data + 16);
 
     unsigned char *cursor = data + packed_header_prefix_size;
     if (!source_node_rid_.empty ()) {
@@ -165,27 +145,22 @@ int zlink::spot_reqrep_internal::init_packed_spot_routed_header (
         cursor += source_node_rid_.size ();
     }
     if (!source_endpoint_rid_.empty ()) {
-        memcpy (
-          cursor, source_endpoint_rid_.data (), source_endpoint_rid_.size ());
+        memcpy (cursor, source_endpoint_rid_.data (), source_endpoint_rid_.size ());
         cursor += source_endpoint_rid_.size ();
     }
     if (!destination_node_rid_.empty ()) {
-        memcpy (
-          cursor, destination_node_rid_.data (), destination_node_rid_.size ());
+        memcpy (cursor, destination_node_rid_.data (), destination_node_rid_.size ());
         cursor += destination_node_rid_.size ();
     }
     if (!destination_endpoint_rid_.empty ()) {
-        memcpy (cursor,
-                destination_endpoint_rid_.data (),
-                destination_endpoint_rid_.size ());
+        memcpy (cursor, destination_endpoint_rid_.data (), destination_endpoint_rid_.size ());
     }
 
     return 0;
 }
 
-bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
-  spot_node_t *node_,
-  std::string *out_)
+bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (spot_node_t *node_,
+                                                                std::string *out_)
 {
     if (!node_ || !out_) {
         errno = EFAULT;
@@ -202,16 +177,13 @@ bool zlink::spot_reqrep_internal::resolve_spot_node_routing_id (
 }
 
 bool zlink::spot_reqrep_internal::should_process_spot_routed_locally (
-  spot_node_t *node_,
-  const parsed_spot_envelope_t &envelope_)
+  spot_node_t *node_, const parsed_spot_envelope_t &envelope_)
 {
     if (!node_)
         return false;
 
-    if (envelope_.destination_class
-        == zlink::spot_routed_protocol::router_endpoint_class) {
-        return static_cast<bool> (
-          find_router_state_by_rid (envelope_.destination_endpoint_rid));
+    if (envelope_.destination_class == zlink::spot_routed_protocol::router_endpoint_class) {
+        return static_cast<bool> (find_router_state_by_rid (envelope_.destination_endpoint_rid));
     }
 
     zlink_routing_id_t local_node_rid;
@@ -219,8 +191,7 @@ bool zlink::spot_reqrep_internal::should_process_spot_routed_locally (
     return node_->node_routing_id (&local_node_rid) == 0
            && local_node_rid.size == envelope_.destination_node_rid_value.size
            && local_node_rid.size > 0
-           && memcmp (local_node_rid.data,
-                      envelope_.destination_node_rid_value.data,
+           && memcmp (local_node_rid.data, envelope_.destination_node_rid_value.data,
                       local_node_rid.size)
                 == 0;
 }

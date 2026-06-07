@@ -14,12 +14,12 @@
 #include <string>
 #include <vector>
 
-namespace stream_echo {
+namespace stream_echo
+{
 
 inline uint16_t load_u16_be (const unsigned char *p)
 {
-    return (static_cast<uint16_t> (p[0]) << 8)
-           | static_cast<uint16_t> (p[1]);
+    return (static_cast<uint16_t> (p[0]) << 8) | static_cast<uint16_t> (p[1]);
 }
 
 inline void store_u16_be (unsigned char *p, uint16_t v)
@@ -30,10 +30,8 @@ inline void store_u16_be (unsigned char *p, uint16_t v)
 
 inline uint32_t load_u32_be (const unsigned char *p)
 {
-    return (static_cast<uint32_t> (p[0]) << 24)
-           | (static_cast<uint32_t> (p[1]) << 16)
-           | (static_cast<uint32_t> (p[2]) << 8)
-           | static_cast<uint32_t> (p[3]);
+    return (static_cast<uint32_t> (p[0]) << 24) | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8) | static_cast<uint32_t> (p[3]);
 }
 
 inline void store_u32_be (unsigned char *p, uint32_t v)
@@ -46,14 +44,10 @@ inline void store_u32_be (unsigned char *p, uint32_t v)
 
 inline uint64_t load_u64_be (const unsigned char *p)
 {
-    return (static_cast<uint64_t> (p[0]) << 56)
-           | (static_cast<uint64_t> (p[1]) << 48)
-           | (static_cast<uint64_t> (p[2]) << 40)
-           | (static_cast<uint64_t> (p[3]) << 32)
-           | (static_cast<uint64_t> (p[4]) << 24)
-           | (static_cast<uint64_t> (p[5]) << 16)
-           | (static_cast<uint64_t> (p[6]) << 8)
-           | static_cast<uint64_t> (p[7]);
+    return (static_cast<uint64_t> (p[0]) << 56) | (static_cast<uint64_t> (p[1]) << 48)
+           | (static_cast<uint64_t> (p[2]) << 40) | (static_cast<uint64_t> (p[3]) << 32)
+           | (static_cast<uint64_t> (p[4]) << 24) | (static_cast<uint64_t> (p[5]) << 16)
+           | (static_cast<uint64_t> (p[6]) << 8) | static_cast<uint64_t> (p[7]);
 }
 
 inline void store_u64_be (unsigned char *p, uint64_t v)
@@ -71,14 +65,12 @@ inline void store_u64_be (unsigned char *p, uint64_t v)
 inline constexpr size_t k_stream_packet_prefix_size = 6;
 inline constexpr size_t k_stream_max_payload_size = 4 * 1024 * 1024;
 inline constexpr char k_stream_msg_name[] = "stream.echo";
-inline constexpr size_t k_stream_msg_name_size =
-  sizeof (k_stream_msg_name) - 1;
+inline constexpr size_t k_stream_msg_name_size = sizeof (k_stream_msg_name) - 1;
 
 inline bool valid_frame_sizes (size_t header_size, size_t body_size)
 {
     const size_t max_size = k_stream_max_payload_size;
-    return header_size <= max_size && body_size <= max_size
-           && header_size <= max_size - body_size;
+    return header_size <= max_size && body_size <= max_size && header_size <= max_size - body_size;
 }
 
 inline bool is_msg_name (const unsigned char *data, size_t size)
@@ -97,13 +89,8 @@ struct frame_buffer_t
 
 struct frame_view_t
 {
-    frame_view_t ()
-        : data (NULL),
-          size (0),
-          header (NULL),
-          header_size (0),
-          payload (NULL),
-          payload_size (0)
+    frame_view_t () :
+        data (NULL), size (0), header (NULL), header_size (0), payload (NULL), payload_size (0)
     {
     }
 
@@ -123,9 +110,7 @@ inline void reset_frame_buffer (frame_buffer_t *buffer)
     buffer->consumed = 0;
 }
 
-inline void append_frame_bytes (frame_buffer_t *buffer,
-                                const unsigned char *data,
-                                size_t size)
+inline void append_frame_bytes (frame_buffer_t *buffer, const unsigned char *data, size_t size)
 {
     if (!buffer || !data || size == 0)
         return;
@@ -170,9 +155,8 @@ inline bool try_peek_frame (const frame_buffer_t *buffer, frame_view_t *frame_ou
     if (!valid_frame_sizes (header_size, body_size))
         return false;
 
-    const size_t frame_size =
-      k_stream_packet_prefix_size + static_cast<size_t> (header_size)
-      + static_cast<size_t> (body_size);
+    const size_t frame_size = k_stream_packet_prefix_size + static_cast<size_t> (header_size)
+                              + static_cast<size_t> (body_size);
     if (available < frame_size)
         return false;
 
@@ -214,28 +198,22 @@ inline void build_frame (const unsigned char *payload,
 {
     if (!frame_out)
         return;
-    frame_out->assign (k_stream_packet_prefix_size + k_stream_msg_name_size
-                         + payload_size,
-                       0);
+    frame_out->assign (k_stream_packet_prefix_size + k_stream_msg_name_size + payload_size, 0);
     store_u16_be (&(*frame_out)[0], static_cast<uint16_t> (k_stream_msg_name_size));
     store_u32_be (&(*frame_out)[2], static_cast<uint32_t> (payload_size));
     std::memcpy (&(*frame_out)[k_stream_packet_prefix_size], k_stream_msg_name,
                  k_stream_msg_name_size);
     if (payload && payload_size > 0) {
-        std::memcpy (&(*frame_out)[k_stream_packet_prefix_size
-                                   + k_stream_msg_name_size],
-                     payload, payload_size);
+        std::memcpy (&(*frame_out)[k_stream_packet_prefix_size + k_stream_msg_name_size], payload,
+                     payload_size);
     }
 }
 
 inline uint64_t now_ns ()
 {
-    const std::chrono::steady_clock::time_point now =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
     return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        now.time_since_epoch ())
-        .count ());
+      std::chrono::duration_cast<std::chrono::nanoseconds> (now.time_since_epoch ()).count ());
 }
 
 inline double percentile_us (std::vector<double> samples, double q)
@@ -360,12 +338,11 @@ inline std::string make_result_line (double throughput_msg_s,
                                      bool pass)
 {
     char buf[512];
-    std::snprintf (
-      buf, sizeof (buf),
-      "RESULT throughput_msg_s=%.2f throughput_mib_s=%.2f p50_us=%.2f "
-      "p95_us=%.2f p99_us=%.2f pass_fail=%s",
-      throughput_msg_s, throughput_mib, stats.p50_us, stats.p95_us, stats.p99_us,
-      pass ? "PASS" : "FAIL");
+    std::snprintf (buf, sizeof (buf),
+                   "RESULT throughput_msg_s=%.2f throughput_mib_s=%.2f p50_us=%.2f "
+                   "p95_us=%.2f p99_us=%.2f pass_fail=%s",
+                   throughput_msg_s, throughput_mib, stats.p50_us, stats.p95_us, stats.p99_us,
+                   pass ? "PASS" : "FAIL");
     return std::string (buf);
 }
 
@@ -378,12 +355,11 @@ inline std::string make_metric_line (const std::string &stack,
                                      long connections)
 {
     char buf[768];
-    std::snprintf (
-      buf, sizeof (buf),
-      "METRIC stack=%s mode=echo size=%zu recv_msgs=%ld parse_error=%ld "
-      "protocol_error=%ld send_error=%ld connections=%ld",
-      stack.c_str (), size, recv_msgs, parse_error, protocol_error, send_error,
-      connections);
+    std::snprintf (buf, sizeof (buf),
+                   "METRIC stack=%s mode=echo size=%zu recv_msgs=%ld parse_error=%ld "
+                   "protocol_error=%ld send_error=%ld connections=%ld",
+                   stack.c_str (), size, recv_msgs, parse_error, protocol_error, send_error,
+                   connections);
     return std::string (buf);
 }
 

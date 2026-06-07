@@ -15,9 +15,10 @@ template <typename SpotT> class has_subscribe_result_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().subscribe (std::declval<zlink::topic_message_t &> (),
-                                                                        std::declval<zlink::recv_flags_t> ()),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<T &> ().subscribe (std::declval<zlink::topic_message_t &> (),
+                                                   std::declval<zlink::recv_flags_t> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -29,11 +30,12 @@ template <typename SpotT> class has_subscribe_part_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().subscribe_part (std::declval<std::string &> (),
-                                                                             std::declval<zlink::message_t &> (),
-                                                                             std::declval<bool &> (),
-                                                                             std::declval<zlink::recv_flags_t> ()),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<T &> ().subscribe_part (std::declval<std::string &> (),
+                                                        std::declval<zlink::message_t &> (),
+                                                        std::declval<bool &> (),
+                                                        std::declval<zlink::recv_flags_t> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -45,7 +47,8 @@ template <typename SpotT> class has_try_subscribe_result_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().subscribe_no_wait (), std::true_type ());
+    static auto test (int) -> decltype (std::declval<T &> ().subscribe_no_wait (),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -57,10 +60,10 @@ template <typename SpotT> class has_try_publish_t
 {
   private:
     template <typename T>
-    static auto
-    test (int) -> decltype (std::declval<T &> ().publish_no_wait_result (std::declval<const std::string &> (),
-                                                                         std::declval<zlink::message_t &> ()),
-                            std::true_type ());
+    static auto test (int) -> decltype (std::declval<T &> ().publish_no_wait_result (
+                                          std::declval<const std::string &> (),
+                                          std::declval<zlink::message_t &> ()),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -72,8 +75,9 @@ template <typename SpotT> class has_spot_publish_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().publish (std::declval<const std::string &> ()),
-                                        std::true_type ());
+    static auto
+    test (int) -> decltype (std::declval<T &> ().publish (std::declval<const std::string &> ()),
+                            std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -85,9 +89,10 @@ template <typename SpotT> class has_topic_publish_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().publish (std::declval<const std::string &> (),
-                                                                      std::declval<zlink::message_t &> ()),
-                                        std::true_type ());
+    static auto
+    test (int) -> decltype (std::declval<T &> ().publish (std::declval<const std::string &> (),
+                                                          std::declval<zlink::message_t &> ()),
+                            std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -99,10 +104,10 @@ template <typename SpotT> class has_receive_subscription_event_t
 {
   private:
     template <typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().receive_subscription_event (std::declval<zlink::subscription_event_t &> (),
-                                                                    std::declval<zlink::recv_flags_t> ()),
-                   std::true_type ());
+    static auto test (int) -> decltype (std::declval<T &> ().receive_subscription_event (
+                                          std::declval<zlink::subscription_event_t &> (),
+                                          std::declval<zlink::recv_flags_t> ()),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -114,10 +119,10 @@ template <typename NodeT> class has_attach_channel_dealer_t
 {
   private:
     template <typename T>
-    static auto
-    test (int) -> decltype (std::declval<T &> ().attach_channel_dealer (std::declval<zlink::service::discovery_t &> (),
-                                                                        std::declval<zlink::dealer_socket_t &> ()),
-                            std::true_type ());
+    static auto test (int) -> decltype (std::declval<T &> ().attach_channel_dealer (
+                                          std::declval<zlink::service::discovery_t &> (),
+                                          std::declval<zlink::dealer_socket_t &> ()),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -129,10 +134,10 @@ template <typename NodeT> class has_attach_channel_dealer_manual_t
 {
   private:
     template <typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().attach_channel_dealer_manual (std::declval<const std::string &> (),
-                                                                      std::declval<zlink::dealer_socket_t &> ()),
-                   std::true_type ());
+    static auto test (int) -> decltype (std::declval<T &> ().attach_channel_dealer_manual (
+                                          std::declval<const std::string &> (),
+                                          std::declval<zlink::dealer_socket_t &> ()),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -145,7 +150,8 @@ template <typename NodeT> class has_attach_pub_ingress_t
   private:
     template <typename T>
     static auto test (int)
-      -> decltype (std::declval<T &> ().attach_pub_ingress (std::declval<zlink::pub_socket_t &> ()), std::true_type ());
+      -> decltype (std::declval<T &> ().attach_pub_ingress (std::declval<zlink::pub_socket_t &> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -157,9 +163,10 @@ template <typename NodeT> class has_attach_router_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().attach_router (std::declval<const std::string &> (),
-                                                                            std::declval<zlink::router_socket_t &> ()),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<T &> ().attach_router (std::declval<const std::string &> (),
+                                                       std::declval<zlink::router_socket_t &> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -171,10 +178,11 @@ template <typename NodeT> class has_attach_pubsub_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().attach_pubsub (std::declval<const std::string &> (),
-                                                                            std::declval<zlink::pub_socket_t &> (),
-                                                                            std::declval<zlink::sub_socket_t &> ()),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<T &> ().attach_pubsub (std::declval<const std::string &> (),
+                                                       std::declval<zlink::pub_socket_t &> (),
+                                                       std::declval<zlink::sub_socket_t &> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -186,8 +194,9 @@ template <typename SpotT> class has_filter_subscribe_alias_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().subscribe (std::declval<const std::string &> ()),
-                                        std::true_type ());
+    static auto
+    test (int) -> decltype (std::declval<T &> ().subscribe (std::declval<const std::string &> ()),
+                            std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -199,8 +208,9 @@ template <typename SpotT> class has_filter_unsubscribe_alias_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().unsubscribe (std::declval<const std::string &> ()),
-                                        std::true_type ());
+    static auto
+    test (int) -> decltype (std::declval<T &> ().unsubscribe (std::declval<const std::string &> ()),
+                            std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -211,7 +221,8 @@ template <typename SpotT> class has_filter_unsubscribe_alias_t
 template <typename T> class has_monitor_open_t
 {
   private:
-    template <typename U> static auto test (int) -> decltype (std::declval<U &> ().monitor_open (), std::true_type ());
+    template <typename U>
+    static auto test (int) -> decltype (std::declval<U &> ().monitor_open (), std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -222,7 +233,8 @@ template <typename T> class has_monitor_open_t
 template <typename T> class has_close_t
 {
   private:
-    template <typename U> static auto test (int) -> decltype (std::declval<U &> ().close (), std::true_type ());
+    template <typename U>
+    static auto test (int) -> decltype (std::declval<U &> ().close (), std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -234,9 +246,10 @@ template <typename T> class has_resolve_spot_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (std::declval<zlink::spot_route_t &> () = std::declval<U &> ().resolve_spot (
-                                          std::declval<const zlink::routing_id_t &> ()),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<zlink::spot_route_t &> () = std::declval<U &> ().resolve_spot (
+                     std::declval<const zlink::routing_id_t &> ()),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -276,7 +289,8 @@ template <typename T> class has_routing_id_getter_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (std::declval<const U &> ().routing_id (), std::true_type ());
+    static auto test (int) -> decltype (std::declval<const U &> ().routing_id (),
+                                        std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -288,16 +302,18 @@ template <typename T> class has_spot_node_hwm_options_t
 {
   private:
     template <typename U>
-    static auto
-    test (int) -> decltype (std::declval<const U &> ().router_admission_hwm_profile (),
-                            std::declval<U &> ().router_admission_hwm_profile (zlink::auto_hwm_profile::balanced),
-                            std::declval<const U &> ().router_admission_hwm (),
-                            std::declval<U &> ().router_admission_hwm (zlink::message_count_t::value (1)),
-                            std::declval<const U &> ().pubsub_admission_hwm_profile (),
-                            std::declval<U &> ().pubsub_admission_hwm_profile (zlink::auto_hwm_profile::balanced),
-                            std::declval<const U &> ().pubsub_admission_hwm (),
-                            std::declval<U &> ().pubsub_admission_hwm (zlink::message_count_t::value (1)),
-                            std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<const U &> ().router_admission_hwm_profile (),
+                   std::declval<U &> ().router_admission_hwm_profile (
+                     zlink::auto_hwm_profile::balanced),
+                   std::declval<const U &> ().router_admission_hwm (),
+                   std::declval<U &> ().router_admission_hwm (zlink::message_count_t::value (1)),
+                   std::declval<const U &> ().pubsub_admission_hwm_profile (),
+                   std::declval<U &> ().pubsub_admission_hwm_profile (
+                     zlink::auto_hwm_profile::balanced),
+                   std::declval<const U &> ().pubsub_admission_hwm (),
+                   std::declval<U &> ().pubsub_admission_hwm (zlink::message_count_t::value (1)),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -309,8 +325,9 @@ template <typename T> class has_auto_hwm_msg_unit_setter_t
 {
   private:
     template <typename U>
-    static auto test (int) -> decltype (std::declval<U &> ().auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64)),
-                                        std::true_type ());
+    static auto test (int)
+      -> decltype (std::declval<U &> ().auto_hwm_msg_unit_bytes (zlink::byte_size_t::bytes (64)),
+                   std::true_type ());
 
     template <typename> static std::false_type test (...);
 
@@ -318,30 +335,42 @@ template <typename T> class has_auto_hwm_msg_unit_setter_t
     static const bool value = decltype (test<T> (0))::value;
 };
 
-static_assert (has_subscribe_result_t<zlink::service::spot_t>::value, "spot_t must expose subscribe receive");
-static_assert (has_subscribe_part_t<zlink::service::spot_t>::value, "spot_t must expose single part subscribe receive");
-static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value, "spot_t must not expose subscribe_no_wait");
-static_assert (!has_try_publish_t<zlink::service::spot_t>::value, "spot_t must not expose publish_no_wait_result");
-static_assert (has_spot_publish_t<zlink::service::spot_t>::value, "spot_t must expose topic publish");
-static_assert (!has_topic_publish_t<zlink::service::spot_t>::value, "spot_t must not expose direct message publish");
+static_assert (has_subscribe_result_t<zlink::service::spot_t>::value,
+               "spot_t must expose subscribe receive");
+static_assert (has_subscribe_part_t<zlink::service::spot_t>::value,
+               "spot_t must expose single part subscribe receive");
+static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
+               "spot_t must not expose subscribe_no_wait");
+static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
+               "spot_t must not expose publish_no_wait_result");
+static_assert (has_spot_publish_t<zlink::service::spot_t>::value,
+               "spot_t must expose topic publish");
+static_assert (!has_topic_publish_t<zlink::service::spot_t>::value,
+               "spot_t must not expose direct message publish");
 static_assert (has_receive_subscription_event_t<zlink::service::spot_t>::value,
                "spot_t must expose receive_subscription_event");
 static_assert (!has_filter_subscribe_alias_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe(filter) alias");
 static_assert (!has_filter_unsubscribe_alias_t<zlink::service::spot_t>::value,
                "spot_t must not expose unsubscribe(filter) alias");
-static_assert (!has_monitor_open_t<zlink::service::spot_t>::value, "spot_t must not expose monitor_open");
-static_assert (!has_monitor_open_t<zlink::service::spot_node_t>::value, "spot_node_t must not expose monitor_open");
+static_assert (!has_monitor_open_t<zlink::service::spot_t>::value,
+               "spot_t must not expose monitor_open");
+static_assert (!has_monitor_open_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose monitor_open");
 static_assert (has_attach_channel_dealer_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose attach_channel_dealer");
 static_assert (has_attach_channel_dealer_manual_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose attach_channel_dealer_manual");
 static_assert (has_attach_pub_ingress_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose attach_pub_ingress");
-static_assert (!has_attach_router_t<zlink::service::spot_node_t>::value, "spot_node_t must not expose attach_router");
-static_assert (!has_attach_pubsub_t<zlink::service::spot_node_t>::value, "spot_node_t must not expose attach_pubsub");
-static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value, "discovery_t must not expose monitor_open");
-static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value, "discovery_t must expose resolve_spot");
+static_assert (!has_attach_router_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose attach_router");
+static_assert (!has_attach_pubsub_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must not expose attach_pubsub");
+static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value,
+               "discovery_t must not expose monitor_open");
+static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,
+               "discovery_t must expose resolve_spot");
 static_assert (has_spot_owner_sync_t<zlink::service::discovery_t>::value,
                "discovery_t must expose spot owner sync option");
 static_assert (has_actor_route_sync_t<zlink::service::discovery_t>::value,
@@ -349,8 +378,10 @@ static_assert (has_actor_route_sync_t<zlink::service::discovery_t>::value,
 static_assert (has_close_t<zlink::service::spot_t>::value, "spot_t must expose close");
 static_assert (has_close_t<zlink::service::spot_node_t>::value, "spot_node_t must expose close");
 static_assert (has_close_t<zlink::service::discovery_t>::value, "discovery_t must expose close");
-static_assert (has_routing_id_getter_t<zlink::service::spot_t>::value, "spot_t must expose routing_id()");
-static_assert (has_routing_id_getter_t<zlink::service::spot_node_t>::value, "spot_node_t must expose routing_id()");
+static_assert (has_routing_id_getter_t<zlink::service::spot_t>::value,
+               "spot_t must expose routing_id()");
+static_assert (has_routing_id_getter_t<zlink::service::spot_node_t>::value,
+               "spot_node_t must expose routing_id()");
 static_assert (has_spot_node_hwm_options_t<zlink::service::spot_node_t>::value,
                "spot_node_t must expose typed admission HWM options");
 static_assert (!has_auto_hwm_msg_unit_setter_t<zlink::service::spot_node_t>::value,
@@ -382,7 +413,8 @@ void test_registry_query_and_discovery_metadata ()
     const std::vector<zlink::member_peer_entry_t> peers = discovery.member_peers ();
     assert (peers.size () >= 0);
 
-    zlink::service::discovery_t socket_discovery (ctx, zlink::auto_connect_type::client_server, "orders-socket");
+    zlink::service::discovery_t socket_discovery (ctx, zlink::auto_connect_type::client_server,
+                                                  "orders-socket");
     assert (socket_discovery.valid ());
 }
 
@@ -411,8 +443,9 @@ void test_spot_node_snapshot_contract ()
     const zlink::routing_id_t node_rid =
       zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("spot-node-rid"), 13);
     node.set_routing_id (node_rid);
-    assert (node.routing_id ().to_bytes ()
-            == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 'n', 'o', 'd', 'e', '-', 'r', 'i', 'd'}));
+    assert (
+      node.routing_id ().to_bytes ()
+      == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 'n', 'o', 'd', 'e', '-', 'r', 'i', 'd'}));
 
     bool rejected_empty_channel = false;
     try {
@@ -458,13 +491,15 @@ void test_unified_spot_self_delivery_recv_contract ()
     const zlink::routing_id_t spot_rid =
       zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("spot-self-rid"), 13);
     spot.set_routing_id (spot_rid);
-    assert (spot.routing_id ().to_bytes ()
-            == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 's', 'e', 'l', 'f', '-', 'r', 'i', 'd'}));
+    assert (
+      spot.routing_id ().to_bytes ()
+      == std::vector<uint8_t> ({'s', 'p', 'o', 't', '-', 's', 'e', 'l', 'f', '-', 'r', 'i', 'd'}));
     spot.publish ("topic:service-self").message (outbound).submit ();
 
     zlink::topic_message_t inbound;
     bool received = false;
-    const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
     while (std::chrono::steady_clock::now () < deadline) {
         const int rc = spot.subscribe (inbound, zlink::recv_flags_t::dontwait);
         if (rc == static_cast<int> (zlink::recv_result_t::ok)) {
@@ -493,7 +528,8 @@ void test_spot_node_get_or_create_spot_contract ()
 {
     zlink::context_t ctx;
     zlink::service::spot_node_t node (ctx);
-    const zlink::routing_id_t spot_rid = zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("cpp-room"), 8);
+    const zlink::routing_id_t spot_rid =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("cpp-room"), 8);
 
     std::pair<zlink::service::spot_t, bool> first = node.get_or_create_spot (spot_rid);
     std::pair<zlink::service::spot_t, bool> second = node.get_or_create_spot (spot_rid);

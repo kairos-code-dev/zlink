@@ -30,9 +30,7 @@ struct stream_probe_t
 
 static stream_probe_t *g_stream_probe = NULL;
 
-static bool parse_tcp_endpoint (const char *endpoint_,
-                                char host_[64],
-                                int *port_)
+static bool parse_tcp_endpoint (const char *endpoint_, char host_[64], int *port_)
 {
     if (!endpoint_ || !host_ || !port_)
         return false;
@@ -93,9 +91,7 @@ static int connect_raw_tcp (const char *endpoint_)
         return -1;
     }
 
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
+    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr), sizeof (addr)) != 0) {
         const int err = errno;
         close (fd);
         errno = err;
@@ -133,9 +129,7 @@ static void close_raw_fd (int fd_)
 }
 #endif
 
-static int on_stream_packet (const zlink_routing_id_t *rid_,
-                             zlink_msg_t *msg_,
-                                   void *)
+static int on_stream_packet (const zlink_routing_id_t *rid_, zlink_msg_t *msg_, void *)
 {
     stream_probe_t *p = g_stream_probe;
     if (!p || !rid_ || !msg_)
@@ -145,8 +139,7 @@ static int on_stream_packet (const zlink_routing_id_t *rid_,
     if (rid_->size == stream_routing_id_size)
         p->rid_size_ok.store (1, std::memory_order_release);
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const unsigned char *payload = static_cast<const unsigned char *> (zlink_msg_data (msg_));
     const size_t payload_size = zlink_msg_size (msg_);
     if (payload_size == 1 && payload && payload[0] == 'x')
         p->payload_ok.store (1, std::memory_order_release);
@@ -174,8 +167,7 @@ void test_stream_auto_routing_id_size ()
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     g_stream_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &on_stream_handler, NULL));
@@ -187,8 +179,7 @@ void test_stream_auto_routing_id_size ()
     TEST_ASSERT_TRUE (client_fd >= 0);
 
     const char payload[] = "x";
-    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
-                                client_fd, payload, sizeof (payload) - 1));
+    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (client_fd, payload, sizeof (payload) - 1));
 
     for (int i = 0; i < 200; ++i) {
         if (probe.calls.load (std::memory_order_acquire) > 0)

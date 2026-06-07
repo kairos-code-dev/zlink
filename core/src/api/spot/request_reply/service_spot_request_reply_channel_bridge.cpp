@@ -29,24 +29,23 @@ struct channel_reply_bridge_ctx_t
 int request_result_to_errno (zlink_request_result_t result_)
 {
     switch (result_) {
-    case ZLINK_REQUEST_OK:
-        return 0;
-    case ZLINK_REQUEST_TIMED_OUT:
-        return ETIMEDOUT;
-    case ZLINK_REQUEST_NOT_FOUND:
-        return ENOENT;
-    case ZLINK_REQUEST_TERMINATED:
-        return ETERM;
-    case ZLINK_REQUEST_PROTOCOL_ERROR:
-        return EPROTO;
-    case ZLINK_REQUEST_INTERNAL_ERROR:
-    default:
-        return EIO;
+        case ZLINK_REQUEST_OK:
+            return 0;
+        case ZLINK_REQUEST_TIMED_OUT:
+            return ETIMEDOUT;
+        case ZLINK_REQUEST_NOT_FOUND:
+            return ENOENT;
+        case ZLINK_REQUEST_TERMINATED:
+            return ETERM;
+        case ZLINK_REQUEST_PROTOCOL_ERROR:
+            return EPROTO;
+        case ZLINK_REQUEST_INTERNAL_ERROR:
+        default:
+            return EIO;
     }
 }
 
-void decrement_pending_channel_requests (
-  const std::shared_ptr<spot_request_reply_state_t> &state_)
+void decrement_pending_channel_requests (const std::shared_ptr<spot_request_reply_state_t> &state_)
 {
     if (!state_)
         return;
@@ -74,24 +73,21 @@ void channel_reply_bridge_completion (zlink_request_result_t result_,
 
     const int errnum = request_result_to_errno (result_);
     (void) zlink::spot_reqrep_internal::queue_spot_channel_reply_completion (
-      state, bridge->dealer, bridge->handler, bridge->userdata, errnum, parts_,
-      part_count_);
+      state, bridge->dealer, bridge->handler, bridge->userdata, errnum, parts_, part_count_);
 }
 }
 
 zlink_submit_result_t
-zlink::spot_reqrep_internal::start_spot_channel_request_bridge (
-  void *spot_,
-  socket_base_t *router_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_)
+zlink::spot_reqrep_internal::start_spot_channel_request_bridge (void *spot_,
+                                                                socket_base_t *router_,
+                                                                zlink_msg_t *parts_,
+                                                                size_t part_count_,
+                                                                zlink_reply_handler_fn handler_,
+                                                                void *userdata_,
+                                                                zlink_send_flags_t flags_,
+                                                                uint32_t timeout_ms_)
 {
-    std::shared_ptr<spot_request_reply_state_t> state =
-      find_or_create_spot_state (spot_);
+    std::shared_ptr<spot_request_reply_state_t> state = find_or_create_spot_state (spot_);
     if (!state)
         return submit_result_internal::from_errno (errno);
 
@@ -109,8 +105,8 @@ zlink::spot_reqrep_internal::start_spot_channel_request_bridge (
       reqrep::find_or_create_request_reply_state (make_socket_handle (router_));
     reqrep::register_spot_channel_dispatch_observer (socket_state, spot_);
 
-    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (
-      new (std::nothrow) channel_reply_bridge_ctx_t ());
+    std::unique_ptr<channel_reply_bridge_ctx_t> bridge (new (std::nothrow)
+                                                          channel_reply_bridge_ctx_t ());
     if (!bridge.get ()) {
         decrement_pending_channel_requests (state);
         errno = ENOMEM;
@@ -121,9 +117,9 @@ zlink::spot_reqrep_internal::start_spot_channel_request_bridge (
     bridge->handler = handler_;
     bridge->userdata = userdata_;
 
-    const int rc = reqrep::start_request (
-      make_socket_handle (router_), NULL, parts_, part_count_, flags_,
-      timeout_ms_, &channel_reply_bridge_completion, bridge.release ());
+    const int rc =
+      reqrep::start_request (make_socket_handle (router_), NULL, parts_, part_count_, flags_,
+                             timeout_ms_, &channel_reply_bridge_completion, bridge.release ());
     if (rc != 0)
         decrement_pending_channel_requests (state);
 

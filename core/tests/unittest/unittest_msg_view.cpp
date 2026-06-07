@@ -32,12 +32,10 @@ void test_init_view_lmsg_shares_storage ()
     TEST_ASSERT_TRUE (std::memcmp (view.data (), src_data + 8, 64) == 0);
 
     src_data[10] = 0xAB;
-    TEST_ASSERT_EQUAL_UINT8 (0xAB,
-                             static_cast<unsigned char *> (view.data ())[2]);
+    TEST_ASSERT_EQUAL_UINT8 (0xAB, static_cast<unsigned char *> (view.data ())[2]);
 
     TEST_ASSERT_EQUAL_INT (0, src.close ());
-    TEST_ASSERT_EQUAL_UINT8 (0xAB,
-                             static_cast<unsigned char *> (view.data ())[2]);
+    TEST_ASSERT_EQUAL_UINT8 (0xAB, static_cast<unsigned char *> (view.data ())[2]);
     TEST_ASSERT_EQUAL_INT (0, view.close ());
 }
 
@@ -93,14 +91,13 @@ void test_init_view_from_zcmsg ()
     zlink::msg_t::content_t content;
     int free_counter = 0;
 
-    unsigned char *payload =
-      static_cast<unsigned char *> (std::malloc (96));
+    unsigned char *payload = static_cast<unsigned char *> (std::malloc (96));
     TEST_ASSERT_TRUE (payload != NULL);
     std::memset (payload, 0x42, 96);
 
     TEST_ASSERT_EQUAL_INT (0, src.init ());
-    TEST_ASSERT_EQUAL_INT (
-      0, src.init (payload, 96, on_msg_view_test_free, &free_counter, &content));
+    TEST_ASSERT_EQUAL_INT (0,
+                           src.init (payload, 96, on_msg_view_test_free, &free_counter, &content));
     TEST_ASSERT_TRUE (src.is_zcmsg ());
 
     TEST_ASSERT_EQUAL_INT (0, view.init ());

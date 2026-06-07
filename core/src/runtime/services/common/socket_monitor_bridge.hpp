@@ -11,8 +11,7 @@
 
 namespace zlink
 {
-static inline void *open_socket_monitor_bridge (socket_base_t *socket_,
-                                                int events_)
+static inline void *open_socket_monitor_bridge (socket_base_t *socket_, int events_)
 {
     if (!socket_) {
         errno = EINVAL;
@@ -20,8 +19,8 @@ static inline void *open_socket_monitor_bridge (socket_base_t *socket_,
     }
 
     char endpoint[128];
-    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
-              static_cast<void *> (socket_), generate_random ());
+    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u", static_cast<void *> (socket_),
+              generate_random ());
 
     if (socket_->monitor (endpoint, events_, 4, ZLINK_CORE_SOCKET_PAIR) != 0)
         return NULL;

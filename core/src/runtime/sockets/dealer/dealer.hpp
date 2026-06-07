@@ -20,39 +20,28 @@ class socket_base_t;
 class dealer_t : public socket_base_t
 {
   public:
-    dealer_t (zlink::ctx_t *parent_,
-              uint32_t tid_,
-              int sid_);
+    dealer_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~dealer_t () ZLINK_OVERRIDE;
 
-    int sendpipe_to (zlink::pipe_t *pipe_,
-                     zlink::msg_t *msg_,
-                     int flags_);
+    int sendpipe_to (zlink::pipe_t *pipe_, zlink::msg_t *msg_, int flags_);
 
   protected:
     //  Overrides of functions from socket_base_t.
     void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
                        bool locally_initiated_) ZLINK_FINAL;
-    int xsetsockopt (int option_,
-                     const void *optval_,
-                     size_t optvallen_) ZLINK_OVERRIDE;
-    int xgetsockopt (int option_,
-                     void *optval_,
-                     size_t *optvallen_) ZLINK_OVERRIDE;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_OVERRIDE;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_OVERRIDE;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
-    int xrecv_pipe (zlink::msg_t *msg_,
-                    zlink::pipe_t **pipe_out_) ZLINK_OVERRIDE;
+    int xrecv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
-    int xsocket_msg_dispatch (zlink::msg_t *msg_,
-                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
-    int xpeer_command (zlink::msg_t *msg_,
-                       zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     void xlocal_peer_weight_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;

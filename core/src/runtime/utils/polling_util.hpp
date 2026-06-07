@@ -87,10 +87,9 @@ template <typename T, size_t S> class resizable_fast_vector_t
 #if defined ZLINK_POLL_BASED_ON_POLL
 typedef int timeout_t;
 
-timeout_t
-compute_timeout (bool first_pass_, long timeout_, uint64_t now_, uint64_t end_);
+timeout_t compute_timeout (bool first_pass_, long timeout_, uint64_t now_, uint64_t end_);
 #endif
-#if (!defined ZLINK_POLL_BASED_ON_POLL && defined ZLINK_POLL_BASED_ON_SELECT)      \
+#if (!defined ZLINK_POLL_BASED_ON_POLL && defined ZLINK_POLL_BASED_ON_SELECT)                      \
   || defined ZLINK_HAVE_PPOLL
 #if defined ZLINK_HAVE_WINDOWS
 inline size_t valid_pollset_bytes (const fd_set &pollset_)
@@ -99,8 +98,7 @@ inline size_t valid_pollset_bytes (const fd_set &pollset_)
     // SOCKETS are continuous from the beginning of fd_array in fd_set.
     // We just need to copy fd_count elements of fd_array.
     // We gain huge memcpy() improvement if number of used SOCKETs is much lower than FD_SETSIZE.
-    return reinterpret_cast<const char *> (
-             &pollset_.fd_array[pollset_.fd_count])
+    return reinterpret_cast<const char *> (&pollset_.fd_array[pollset_.fd_count])
            - reinterpret_cast<const char *> (&pollset_);
 }
 #else

@@ -39,9 +39,7 @@ zlink::pair_t::~pair_t ()
     zlink_assert (!_pipe);
 }
 
-void zlink::pair_t::xattach_pipe (pipe_t *pipe_,
-                                bool subscribe_to_all_,
-                                bool locally_initiated_)
+void zlink::pair_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
     LIBZLINK_UNUSED (locally_initiated_);
@@ -82,8 +80,7 @@ void zlink::pair_t::xwrite_activated (pipe_t *)
 int zlink::pair_t::xsend (msg_t *msg_)
 {
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    const bool ok =
-      _pipe ? (more ? _pipe->write (msg_) : _pipe->write_and_flush (msg_)) : false;
+    const bool ok = _pipe ? (more ? _pipe->write (msg_) : _pipe->write_and_flush (msg_)) : false;
     if (!ok) {
         errno = EAGAIN;
         return -1;
@@ -135,9 +132,7 @@ int zlink::pair_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         return 0;
 
     store_socket_msg_part (&_dispatch_parts, msg_);
-    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags ()
-         & msg_t::more)
-        != 0) {
+    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags () & msg_t::more) != 0) {
         return 1;
     }
 
@@ -149,8 +144,7 @@ int zlink::pair_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
     zlink_routing_id_t source_rid;
     resolve_socket_msg_source_rid (pipe_, &source_rid);
-    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
-                               _dispatch_parts.size ());
+    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0], _dispatch_parts.size ());
     _dispatch_parts.clear ();
     return 1;
 }

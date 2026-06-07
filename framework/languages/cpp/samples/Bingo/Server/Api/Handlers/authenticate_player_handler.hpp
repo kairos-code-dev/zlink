@@ -17,7 +17,10 @@ class authenticate_player_handler_t
     using reply_type = authenticate_player_res_t;
     static constexpr const char *topic_name = "AuthenticatePlayer";
 
-    explicit authenticate_player_handler_t (zlink::framework::logger_t<> logger = {}) : _logger (std::move (logger)) {}
+    explicit authenticate_player_handler_t (zlink::framework::logger_t<> logger = {}) :
+        _logger (std::move (logger))
+    {
+    }
 
     authenticate_player_res_t handle (const authenticate_player_req_t &request)
     {

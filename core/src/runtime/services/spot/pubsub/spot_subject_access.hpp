@@ -20,14 +20,10 @@ spot_handle_t *as_spot_handle (void *spot_);
 
 zlink::socket_base_t *spot_pub_poller_socket (void *spot_pub_);
 zlink::socket_base_t *spot_sub_poller_socket (void *spot_sub_);
-zlink::socket_base_t *
-resolve_spot_pub_subject_poller_socket (void *spot_or_node_);
-int resolve_spot_pub_subject_poller_fd (void *spot_or_node_,
-                                        zlink_fd_t *fd_out_);
-zlink::socket_base_t *
-resolve_spot_sub_subject_poller_socket (void *spot_or_node_);
-int resolve_spot_sub_subject_poller_fd (void *spot_or_node_,
-                                        zlink_fd_t *fd_out_);
+zlink::socket_base_t *resolve_spot_pub_subject_poller_socket (void *spot_or_node_);
+int resolve_spot_pub_subject_poller_fd (void *spot_or_node_, zlink_fd_t *fd_out_);
+zlink::socket_base_t *resolve_spot_sub_subject_poller_socket (void *spot_or_node_);
+int resolve_spot_sub_subject_poller_fd (void *spot_or_node_, zlink_fd_t *fd_out_);
 void drain_spot_send_ready_signal (void *spot_or_node_);
 void notify_spot_send_ready_recovery (zlink::spot_node_t *node_);
 int resolve_spot_send_timeout_ms (void *spot_or_node_);
@@ -82,9 +78,7 @@ int spot_subject_get_sub_option (void *handle_,
                                  zlink_sub_option_t option_,
                                  void *optval_,
                                  size_t *optvallen_);
-int spot_subject_set_routing_id (void *handle_,
-                                 const void *data_,
-                                 size_t size_);
+int spot_subject_set_routing_id (void *handle_, const void *data_, size_t size_);
 int spot_subject_get_routing_id (void *handle_, zlink_routing_id_t *out_);
 int spot_subject_set_tls_server (void *handle_,
                                  const char *cert_,
@@ -96,27 +90,22 @@ int spot_subject_set_tls_client (void *handle_,
                                  int trust_system_);
 int spot_subject_set_subscription (void *handle_, const char *filter_);
 int spot_subject_unset_subscription (void *handle_, const char *filter_);
-int spot_subject_subscription_at (void *handle_,
-                                  size_t index_,
-                                  char *filter_out_,
-                                  size_t *filter_len_inout_,
-                                  int *is_pattern_out_);
+int spot_subject_subscription_at (
+  void *handle_, size_t index_, char *filter_out_, size_t *filter_len_inout_, int *is_pattern_out_);
 int spot_pub_install_send_ready_handler (void *spot_pub_,
                                          zlink_send_ready_handler_fn handler_,
                                          void *userdata_);
 
 bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_);
-zlink::spot_node_t *enter_spot_node_send_ready_callback (
-  zlink::spot_node_t *node_);
+zlink::spot_node_t *enter_spot_node_send_ready_callback (zlink::spot_node_t *node_);
 void leave_spot_node_send_ready_callback (zlink::spot_node_t *previous_);
 void clear_spot_node_handler_registration (zlink::spot_node_t *node_);
-void spot_subject_composite_sub_handler_adapter (
-  const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
+void spot_subject_composite_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
+                                                 const char *topic_,
+                                                 size_t topic_len_,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_,
+                                                 void *userdata_);
 int spot_install_handler (spot_handle_t *spot_,
                           zlink_subscribe_handler_fn handler_,
                           void *userdata_);

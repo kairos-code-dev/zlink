@@ -78,10 +78,8 @@ bool set_zero_linger (void *handle_)
 
 bool set_ctx_socket_limit (void *ctx_, int total_spots_)
 {
-    const int desired_limit =
-      total_spots_ > 12000 ? total_spots_ * 8 : 100000;
-    return zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, desired_limit)
-           == ZLINK_CONFIG_OK;
+    const int desired_limit = total_spots_ > 12000 ? total_spots_ * 8 : 100000;
+    return zlink_ctx_set (ctx_, ZLINK_MAX_SOCKETS, desired_limit) == ZLINK_CONFIG_OK;
 }
 
 bool raise_nofile_limit_for_bench (int total_spots_)
@@ -90,8 +88,7 @@ bool raise_nofile_limit_for_bench (int total_spots_)
     (void) total_spots_;
     return true;
 #else
-    const rlim_t desired =
-      static_cast<rlim_t> (total_spots_ > 12000 ? total_spots_ * 16 : 100000);
+    const rlim_t desired = static_cast<rlim_t> (total_spots_ > 12000 ? total_spots_ * 16 : 100000);
 
     struct rlimit current;
     if (getrlimit (RLIMIT_NOFILE, &current) != 0)
@@ -113,17 +110,14 @@ bool raise_nofile_limit_for_bench (int total_spots_)
 bool publish_one_part (void *spot_, const char *payload_)
 {
     zlink_msg_t part;
-    if (zlink_msg_init_size (&part, payload_ ? strlen (payload_) : 0)
-        != ZLINK_CONFIG_OK) {
+    if (zlink_msg_init_size (&part, payload_ ? strlen (payload_) : 0) != ZLINK_CONFIG_OK) {
         return false;
     }
 
     if (payload_ && *payload_)
         memcpy (zlink_msg_data (&part), payload_, strlen (payload_));
 
-    if (spot_subject_publish (spot_, kTopic, &part, 1,
-                              static_cast<zlink_send_flags_t> (0))
-        != 0) {
+    if (spot_subject_publish (spot_, kTopic, &part, 1, static_cast<zlink_send_flags_t> (0)) != 0) {
         const int saved_errno = errno;
         zlink_msg_close (&part);
         errno = saved_errno;
@@ -141,8 +135,7 @@ bool try_recv_one_part (void *spot_, const char *expected_payload_)
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
 
-    if (spot_subject_recv (spot_, NULL, &parts, &part_count, topic_name,
-                           &topic_name_len,
+    if (spot_subject_recv (spot_, NULL, &parts, &part_count, topic_name, &topic_name_len,
                            static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT))
         != 0) {
         if (errno == EAGAIN)
@@ -154,9 +147,7 @@ bool try_recv_one_part (void *spot_, const char *expected_payload_)
       part_count == 1 && topic_name_len == strlen (kTopic)
       && memcmp (topic_name, kTopic, topic_name_len) == 0
       && zlink_msg_size (&parts[0]) == strlen (expected_payload_)
-      && memcmp (zlink_msg_data (&parts[0]), expected_payload_,
-                 strlen (expected_payload_))
-           == 0;
+      && memcmp (zlink_msg_data (&parts[0]), expected_payload_, strlen (expected_payload_)) == 0;
 
     zlink_multipart_close (parts, part_count);
 
@@ -175,15 +166,13 @@ publish_run_result_t publish_and_collect (void *publisher_,
 {
     publish_run_result_t result = {false, 0.0, 0};
     if (!publish_one_part (publisher_, payload_)) {
-        fprintf (stderr, "publish failed errno=%d (%s)\n", errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "publish failed errno=%d (%s)\n", errno, zlink_strerror (errno));
         return result;
     }
 
     std::vector<unsigned char> delivered (subscribers_.size (), 0);
     size_t remaining = subscribers_.size ();
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
     const std::chrono::steady_clock::time_point deadline =
       start + std::chrono::milliseconds (timeout_ms_);
 
@@ -208,8 +197,7 @@ publish_run_result_t publish_and_collect (void *publisher_,
     }
 
     result.elapsed_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start)
         .count ();
     result.ok = remaining == 0;
     return result;
@@ -237,8 +225,7 @@ int main (int, char **)
 
     const int total_spots = env_int_or_default ("ZLINK_SPOT_BENCH_SPOTS", 10000);
     const int settle_ms = env_int_or_default ("ZLINK_SPOT_BENCH_SETTLE_MS", 200);
-    const int timeout_ms =
-      env_int_or_default ("ZLINK_SPOT_BENCH_TIMEOUT_MS", 30000);
+    const int timeout_ms = env_int_or_default ("ZLINK_SPOT_BENCH_TIMEOUT_MS", 30000);
 
     if (total_spots < 2) {
         fprintf (stderr, "need at least 2 spots\n");
@@ -247,16 +234,15 @@ int main (int, char **)
 
     void *ctx = zlink_ctx_new ();
     if (!ctx) {
-        fprintf (stderr, "zlink_ctx_new failed errno=%d (%s)\n", errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "zlink_ctx_new failed errno=%d (%s)\n", errno, zlink_strerror (errno));
         return 1;
     }
 
     (void) raise_nofile_limit_for_bench (total_spots);
 
     if (!set_ctx_socket_limit (ctx, total_spots)) {
-        fprintf (stderr, "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed errno=%d (%s)\n",
-                 errno, zlink_strerror (errno));
+        fprintf (stderr, "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed errno=%d (%s)\n", errno,
+                 zlink_strerror (errno));
         zlink_ctx_term (ctx);
         return 1;
     }
@@ -275,13 +261,12 @@ int main (int, char **)
     std::vector<void *> subscribers;
     subscribers.reserve (subscriber_count);
 
-    const std::chrono::steady_clock::time_point create_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point create_start = std::chrono::steady_clock::now ();
 
     void *publisher = zlink_spot_new (node);
     if (!publisher) {
-        fprintf (stderr, "zlink_spot_new(publisher) failed errno=%d (%s)\n",
-                 errno, zlink_strerror (errno));
+        fprintf (stderr, "zlink_spot_new(publisher) failed errno=%d (%s)\n", errno,
+                 zlink_strerror (errno));
         zlink_spot_node_destroy (&node);
         zlink_ctx_term (ctx);
         return 1;
@@ -291,9 +276,8 @@ int main (int, char **)
     for (size_t i = 0; i < subscriber_count; ++i) {
         void *spot = zlink_spot_new (node);
         if (!spot) {
-            fprintf (stderr,
-                     "zlink_spot_new(subscriber %zu) failed errno=%d (%s)\n", i,
-                     errno, zlink_strerror (errno));
+            fprintf (stderr, "zlink_spot_new(subscriber %zu) failed errno=%d (%s)\n", i, errno,
+                     zlink_strerror (errno));
             destroy_spots (&subscribers);
             zlink_spot_destroy (&publisher);
             zlink_spot_node_destroy (&node);
@@ -305,18 +289,15 @@ int main (int, char **)
     }
 
     const double create_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - create_start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - create_start)
         .count ();
     const size_t rss_after_create_kb = read_rss_kb ();
 
-    const std::chrono::steady_clock::time_point subscribe_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point subscribe_start = std::chrono::steady_clock::now ();
     for (size_t i = 0; i < subscribers.size (); ++i) {
         if (zlink_set_subscription (subscribers[i], kTopic) != ZLINK_CONFIG_OK) {
-            fprintf (stderr,
-                     "zlink_set_subscription(subscriber %zu) failed errno=%d (%s)\n",
-                     i, errno, zlink_strerror (errno));
+            fprintf (stderr, "zlink_set_subscription(subscriber %zu) failed errno=%d (%s)\n", i,
+                     errno, zlink_strerror (errno));
             destroy_spots (&subscribers);
             zlink_spot_destroy (&publisher);
             zlink_spot_node_destroy (&node);
@@ -325,20 +306,17 @@ int main (int, char **)
         }
     }
 
-    const double subscribe_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - subscribe_start)
-        .count ();
+    const double subscribe_ms = std::chrono::duration<double, std::milli> (
+                                  std::chrono::steady_clock::now () - subscribe_start)
+                                  .count ();
     msleep (settle_ms);
     const size_t rss_after_subscribe_kb = read_rss_kb ();
 
     const publish_run_result_t warmup =
       publish_and_collect (publisher, subscribers, kWarmupPayload, timeout_ms);
     if (!warmup.ok) {
-        fprintf (stderr,
-                 "warmup publish timed out delivered=%zu/%zu errno=%d (%s)\n",
-                 warmup.delivered, subscribers.size (), errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "warmup publish timed out delivered=%zu/%zu errno=%d (%s)\n",
+                 warmup.delivered, subscribers.size (), errno, zlink_strerror (errno));
         destroy_spots (&subscribers);
         zlink_spot_destroy (&publisher);
         zlink_spot_node_destroy (&node);
@@ -349,10 +327,8 @@ int main (int, char **)
     const publish_run_result_t measured =
       publish_and_collect (publisher, subscribers, kMeasuredPayload, timeout_ms);
     if (!measured.ok) {
-        fprintf (stderr,
-                 "measured publish timed out delivered=%zu/%zu errno=%d (%s)\n",
-                 measured.delivered, subscribers.size (), errno,
-                 zlink_strerror (errno));
+        fprintf (stderr, "measured publish timed out delivered=%zu/%zu errno=%d (%s)\n",
+                 measured.delivered, subscribers.size (), errno, zlink_strerror (errno));
         destroy_spots (&subscribers);
         zlink_spot_destroy (&publisher);
         zlink_spot_node_destroy (&node);
@@ -362,21 +338,18 @@ int main (int, char **)
 
     const size_t rss_after_publish_kb = read_rss_kb ();
 
-    const std::chrono::steady_clock::time_point destroy_start =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point destroy_start = std::chrono::steady_clock::now ();
     destroy_spots (&subscribers);
     zlink_spot_destroy (&publisher);
     zlink_spot_node_destroy (&node);
     zlink_ctx_term (ctx);
     const double destroy_ms =
-      std::chrono::duration<double, std::milli> (
-        std::chrono::steady_clock::now () - destroy_start)
+      std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - destroy_start)
         .count ();
 
     printf ("spot_total=%d\n", total_spots);
     printf ("subscriber_spots=%zu\n", subscriber_count);
-    printf ("ctx_max_sockets=%d\n",
-            total_spots > 12000 ? total_spots * 4 : 50000);
+    printf ("ctx_max_sockets=%d\n", total_spots > 12000 ? total_spots * 4 : 50000);
     printf ("create_ms=%.3f\n", create_ms);
     printf ("rss_after_create_kb=%zu\n", rss_after_create_kb);
     printf ("subscribe_ms=%.3f\n", subscribe_ms);

@@ -38,10 +38,8 @@ class thread_ctx_t
     thread_ctx_t ();
 
     //  Start a new thread with proper scheduling parameters.
-    void start_thread (thread_t &thread_,
-                       thread_fn *tfn_,
-                       void *arg_,
-                       const char *name_ = NULL) const;
+    void
+    start_thread (thread_t &thread_, thread_fn *tfn_, void *arg_, const char *name_ = NULL) const;
 
     int set (int option_, const void *optval_, size_t optvallen_);
     int get (int option_, void *optval_, const size_t *optvallen_);
@@ -93,10 +91,8 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Create and destroy a socket.
     zlink::socket_base_t *create_socket (int type_);
     void destroy_socket (zlink::socket_base_t *socket_);
-    int wait_for_socket_removal (const zlink::socket_base_t *socket_,
-                                 int timeout_ms_);
-    int close_socket_and_wait (zlink::socket_base_t *&socket_,
-                               int timeout_ms_);
+    int wait_for_socket_removal (const zlink::socket_base_t *socket_, int timeout_ms_);
+    int close_socket_and_wait (zlink::socket_base_t *&socket_, int timeout_ms_);
     size_t socket_count () const;
     int wait_for_socket_count_at_most (size_t max_count_, int timeout_ms_);
 
@@ -119,13 +115,10 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     //  Management of inproc endpoints.
     int register_endpoint (const char *addr_, const endpoint_t &endpoint_);
-    int unregister_endpoint (const std::string &addr_,
-                             const socket_base_t *socket_);
+    int unregister_endpoint (const std::string &addr_, const socket_base_t *socket_);
     void unregister_endpoints (const zlink::socket_base_t *socket_);
     endpoint_t find_endpoint (const char *addr_);
-    bool pend_connection (const std::string &addr_,
-                          const endpoint_t &endpoint_,
-                          pipe_t **pipes_);
+    bool pend_connection (const std::string &addr_, const endpoint_t &endpoint_, pipe_t **pipes_);
     void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);
 
 

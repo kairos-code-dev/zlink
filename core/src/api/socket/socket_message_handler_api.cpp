@@ -10,10 +10,9 @@
 
 namespace
 {
-int socket_send_ready_handler_internal (
-  void *s_,
-  zlink_send_ready_handler_fn handler_,
-  void *userdata_)
+int socket_send_ready_handler_internal (void *s_,
+                                        zlink_send_ready_handler_fn handler_,
+                                        void *userdata_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -38,14 +37,12 @@ int socket_send_ready_handler_internal (
             return -1;
     }
 
-    return handle.socket->socket_set_send_ready_handler_with_userdata (
-      handler_, NULL, userdata_);
+    return handle.socket->socket_set_send_ready_handler_with_userdata (handler_, NULL, userdata_);
 }
 }
 
-zlink_handler_result_t zlink_recv_handler (void *s_,
-                                          zlink_socket_msg_handler_fn handler_,
-                                          void *userdata_)
+zlink_handler_result_t
+zlink_recv_handler (void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_)
 {
     if (!handler_) {
         errno = EINVAL;
@@ -63,14 +60,12 @@ zlink_handler_result_t zlink_recv_handler (void *s_,
     }
 
     return zlink::handler_result_internal::from_rc (
-      handle.socket->stream_set_msg_handler_with_userdata (handler_,
-                                                           userdata_));
+      handle.socket->stream_set_msg_handler_with_userdata (handler_, userdata_));
 }
 
-zlink_handler_result_t zlink_stream_packet_handler (
-  void *stream_,
-  zlink_stream_packet_handler_fn handler_,
-  void *userdata_)
+zlink_handler_result_t zlink_stream_packet_handler (void *stream_,
+                                                    zlink_stream_packet_handler_fn handler_,
+                                                    void *userdata_)
 {
     if (!handler_) {
         errno = EINVAL;
@@ -88,21 +83,18 @@ zlink_handler_result_t zlink_stream_packet_handler (
     }
 
     return zlink::handler_result_internal::from_rc (
-      handle.socket->stream_set_packet_msg_handler_with_userdata (handler_,
-                                                                  userdata_));
+      handle.socket->stream_set_packet_msg_handler_with_userdata (handler_, userdata_));
 }
 
-zlink_handler_result_t zlink_send_ready_handler (void *s_,
-                                                zlink_send_ready_handler_fn handler_,
-                                                void *userdata_)
+zlink_handler_result_t
+zlink_send_ready_handler (void *s_, zlink_send_ready_handler_fn handler_, void *userdata_)
 {
     if (!handler_) {
         errno = EINVAL;
         return ZLINK_HANDLER_INVALID_ARGUMENT;
     }
 
-    const int service_rc =
-      zlink_service_send_ready_handler_internal (s_, handler_, userdata_);
+    const int service_rc = zlink_service_send_ready_handler_internal (s_, handler_, userdata_);
     if (service_rc == 0 || errno != EFAULT)
         return zlink::handler_result_internal::from_rc (service_rc);
 
@@ -110,8 +102,7 @@ zlink_handler_result_t zlink_send_ready_handler (void *s_,
       socket_send_ready_handler_internal (s_, handler_, userdata_));
 }
 
-int validate_socket_callback_poller_events (socket_handle_t handle_,
-                                            short events_)
+int validate_socket_callback_poller_events (socket_handle_t handle_, short events_)
 {
     if (!handle_.socket)
         return 0;
@@ -119,25 +110,19 @@ int validate_socket_callback_poller_events (socket_handle_t handle_,
     if ((events_ & ZLINK_POLLIN) != 0) {
         bool allow_request_reply_progress = false;
         if (handle_.socket->socket_msg_dispatch_active ()
-            && (type == ZLINK_CORE_SOCKET_DEALER
-                || type == ZLINK_CORE_SOCKET_ROUTER)) {
-            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-              state =
-                zlink::socket_reqrep_internal::find_request_reply_state (
-                  handle_);
+            && (type == ZLINK_CORE_SOCKET_DEALER || type == ZLINK_CORE_SOCKET_ROUTER)) {
+            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
+              zlink::socket_reqrep_internal::find_request_reply_state (handle_);
             if (state) {
                 std::lock_guard<std::mutex> lock (state->mutex);
                 allow_request_reply_progress = state->internal_dispatch_installed;
             }
         }
 
-        if ((handle_.socket->socket_msg_dispatch_active ()
-             && !allow_request_reply_progress)
-            || ((type == ZLINK_CORE_SOCKET_SUB
-                 || type == ZLINK_CORE_SOCKET_XSUB)
+        if ((handle_.socket->socket_msg_dispatch_active () && !allow_request_reply_progress)
+            || ((type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB)
                 && handle_.socket->sub_dispatch_active ())
-            || (type == ZLINK_CORE_SOCKET_STREAM
-                && handle_.socket->stream_dispatch_active ())) {
+            || (type == ZLINK_CORE_SOCKET_STREAM && handle_.socket->stream_dispatch_active ())) {
             errno = EBUSY;
             return -1;
         }

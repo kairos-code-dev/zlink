@@ -25,7 +25,8 @@ class serializer_registry_state_t
 namespace zlink::framework
 {
 
-serializer_registry_t::serializer_registry_t () : _state (std::make_unique<detail::serializer_registry_state_t> ())
+serializer_registry_t::serializer_registry_t () :
+    _state (std::make_unique<detail::serializer_registry_state_t> ())
 {
 }
 
@@ -33,10 +34,12 @@ serializer_registry_t::~serializer_registry_t () = default;
 
 serializer_registry_t::serializer_registry_t (serializer_registry_t &&) noexcept = default;
 
-serializer_registry_t &serializer_registry_t::operator= (serializer_registry_t &&) noexcept = default;
-
 serializer_registry_t &
-serializer_registry_t::add_erased (std::type_index type, serialize_any_fn_t serialize, deserialize_any_fn_t deserialize)
+serializer_registry_t::operator= (serializer_registry_t &&) noexcept = default;
+
+serializer_registry_t &serializer_registry_t::add_erased (std::type_index type,
+                                                          serialize_any_fn_t serialize,
+                                                          deserialize_any_fn_t deserialize)
 {
     const auto [_, inserted] = _state->serializers.emplace (
       type, detail::serializer_descriptor_t{std::move (serialize), std::move (deserialize)});
@@ -51,7 +54,8 @@ zlink::message_t serializer_registry_t::serialize (std::type_index type, const v
 {
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed, "serializer is not registered");
+        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                     "serializer is not registered");
     }
     try {
         return found->second.serialize (value);
@@ -60,15 +64,19 @@ zlink::message_t serializer_registry_t::serialize (std::type_index type, const v
         throw;
     }
     catch (...) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed, "payload serialization failed");
+        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                     "payload serialization failed");
     }
 }
 
-void serializer_registry_t::deserialize (std::type_index type, const zlink::message_t &message, void *out) const
+void serializer_registry_t::deserialize (std::type_index type,
+                                         const zlink::message_t &message,
+                                         void *out) const
 {
     const auto found = _state->serializers.find (type);
     if (found == _state->serializers.end ()) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed, "serializer is not registered");
+        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                     "serializer is not registered");
     }
     try {
         found->second.deserialize (message, out);
@@ -77,7 +85,8 @@ void serializer_registry_t::deserialize (std::type_index type, const zlink::mess
         throw;
     }
     catch (...) {
-        throw framework_exception_t (framework_error_kind_t::payload_decode_failed, "payload deserialization failed");
+        throw framework_exception_t (framework_error_kind_t::payload_decode_failed,
+                                     "payload deserialization failed");
     }
 }
 

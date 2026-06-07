@@ -41,18 +41,21 @@ class http_route_invoker_access_t
         auto owned_request = request;
         return handler_coroutine_executor ().submit<http_response_t> (
           [&route, &services, &context, owned_request = std::move (owned_request),
-           owned_body = std::move (owned_body)] () -> boost::asio::awaitable<result_t<http_response_t>> {
+           owned_body =
+             std::move (owned_body)] () -> boost::asio::awaitable<result_t<http_response_t>> {
               try {
                   auto route_task = route.invoke (services, context, owned_request, owned_body);
                   co_return result_t<http_response_t>::success (
                     (co_await await_task_result (std::move (route_task))).value ());
               }
               catch (const framework_exception_t &error) {
-                  co_return result_t<http_response_t>::failure (error.kind (), error.what (), error.is_retriable ());
+                  co_return result_t<http_response_t>::failure (error.kind (), error.what (),
+                                                                error.is_retriable ());
               }
               catch (...) {
-                  co_return result_t<http_response_t>::failure (framework_error_kind_t::request_failed,
-                                                                "HTTP route handler threw an exception");
+                  co_return result_t<http_response_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "HTTP route handler threw an exception");
               }
           });
     }
@@ -185,7 +188,8 @@ std::string url_decode (std::string_view value)
         }
         if (value[index] == '%' && index + 2 < value.size () && is_hex (value[index + 1])
             && is_hex (value[index + 2])) {
-            decoded.push_back (static_cast<char> ((hex_value (value[index + 1]) << 4) | hex_value (value[index + 2])));
+            decoded.push_back (static_cast<char> ((hex_value (value[index + 1]) << 4)
+                                                  | hex_value (value[index + 2])));
             index += 2;
             continue;
         }
@@ -247,7 +251,8 @@ bool header_name_equals (std::string_view left, std::string_view right)
     return true;
 }
 
-std::optional<std::string> find_header (const std::map<std::string, std::string> &headers, std::string_view name)
+std::optional<std::string> find_header (const std::map<std::string, std::string> &headers,
+                                        std::string_view name)
 {
     for (const auto &[key, value] : headers) {
         if (header_name_equals (key, name)) {
@@ -272,14 +277,16 @@ bool content_type_is_json (std::string value)
     return header_name_equals (value, "application/json");
 }
 
-void validate_json_content_type (const http::request<http::string_body> &request, const http_context_t &context)
+void validate_json_content_type (const http::request<http::string_body> &request,
+                                 const http_context_t &context)
 {
     if (request.body ().empty ()) {
         return;
     }
     const auto content_type = find_header (context.request_headers, "content-type");
     if (!content_type || !content_type_is_json (*content_type)) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "unsupported content type");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "unsupported content type");
     }
 }
 
@@ -298,9 +305,11 @@ bool route_matches (const std::string &pattern,
     for (std::size_t index = 0; index < pattern_parts.size (); ++index) {
         const auto &pattern_part = pattern_parts[index];
         const auto &target_part = target_parts[index];
-        const bool parameter = pattern_part.size () >= 3 && pattern_part.front () == '{' && pattern_part.back () == '}';
+        const bool parameter =
+          pattern_part.size () >= 3 && pattern_part.front () == '{' && pattern_part.back () == '}';
         if (parameter) {
-            route_values[pattern_part.substr (1, pattern_part.size () - 2)] = url_decode (target_part);
+            route_values[pattern_part.substr (1, pattern_part.size () - 2)] =
+              url_decode (target_part);
             continue;
         }
         if (pattern_part != target_part) {
@@ -310,8 +319,9 @@ bool route_matches (const std::string &pattern,
     return true;
 }
 
-matched_route_t
-find_route (const http_options_snapshot_t &options, std::optional<http_method_t> method, const std::string &target)
+matched_route_t find_route (const http_options_snapshot_t &options,
+                            std::optional<http_method_t> method,
+                            const std::string &target)
 {
     const auto query = target.find ('?');
     const auto path = query == std::string::npos ? target : target.substr (0, query);
@@ -420,7 +430,8 @@ std::map<std::string, std::string> copy_headers (const http::request<http::strin
     return headers;
 }
 
-http_context_t make_context (std::optional<http_method_t> method, const http::request<http::string_body> &request)
+http_context_t make_context (std::optional<http_method_t> method,
+                             const http::request<http::string_body> &request)
 {
     http_context_t context;
     context.method = method.value_or (http_method_t::get);
@@ -434,7 +445,8 @@ http_context_t make_context (std::optional<http_method_t> method, const http::re
         context.correlation_id = *request_id;
     } else {
         context.correlation_id =
-          "http-" + std::to_string (g_correlation_sequence.fetch_add (1, std::memory_order_relaxed));
+          "http-"
+          + std::to_string (g_correlation_sequence.fetch_add (1, std::memory_order_relaxed));
     }
     context.response_header ("X-Correlation-Id", context.correlation_id);
     return context;
@@ -450,7 +462,8 @@ http_request_t make_http_request (const http_context_t &context,
     http_request.path = context.path;
     http_request.target = std::string (request.target ());
     const auto query = http_request.target.find ('?');
-    http_request.query_string = query == std::string::npos ? std::string{} : http_request.target.substr (query + 1);
+    http_request.query_string =
+      query == std::string::npos ? std::string{} : http_request.target.substr (query + 1);
     http_request.correlation_id = context.correlation_id;
     http_request.headers = context.request_headers;
     http_request.route_values = std::move (route_values);
@@ -537,10 +550,11 @@ void apply_framework_error (http::response<http::string_body> &response,
     apply_context_response (response, context, false);
 }
 
-http::response<http::string_body> make_health_response (health_builder_t &health,
-                                                        health_route_kind_t kind,
-                                                        const http::request<http::string_body> &request,
-                                                        http_context_t &context)
+http::response<http::string_body>
+make_health_response (health_builder_t &health,
+                      health_route_kind_t kind,
+                      const http::request<http::string_body> &request,
+                      http_context_t &context)
 {
     const auto report = health.report ();
     health_status_t status = report.status;
@@ -560,7 +574,8 @@ http::response<http::string_body> make_health_response (health_builder_t &health
                         {"checks", checks}};
 
     http::response<http::string_body> response{
-      status == health_status_t::unhealthy ? http::status::service_unavailable : http::status::ok, request.version ()};
+      status == health_status_t::unhealthy ? http::status::service_unavailable : http::status::ok,
+      request.version ()};
     response.set (http::field::content_type, "application/json");
     response.body () = body.dump ();
     apply_context_response (response, context, false);
@@ -568,7 +583,8 @@ http::response<http::string_body> make_health_response (health_builder_t &health
     return response;
 }
 
-http::response<http::string_body> make_json_response (http::status status, unsigned version, std::string body)
+http::response<http::string_body>
+make_json_response (http::status status, unsigned version, std::string body)
 {
     http::response<http::string_body> response{status, version};
     response.set (http::field::content_type, "application/json");
@@ -606,9 +622,10 @@ void apply_unhandled_route_error (http::response<http::string_body> &response,
                                   const http_context_t &context)
 {
     response.result (http::status::internal_server_error);
-    response.body () =
-      nlohmann::json{{"error", "request_failed"}, {"message", error.what ()}, {"correlationId", context.correlation_id}}
-        .dump ();
+    response.body () = nlohmann::json{{"error", "request_failed"},
+                                      {"message", error.what ()},
+                                      {"correlationId", context.correlation_id}}
+                         .dump ();
     apply_context_response (response, context, false);
 }
 
@@ -651,19 +668,23 @@ void invoke_matched_route (http::response<http::string_body> &response,
             std::string bound_body = request.body ();
             if (match.route->validates_json_content_type) {
                 validate_json_content_type (request, context);
-                bound_body = bind_http_request_body (request.body (), match.route_values, match.query_values);
+                bound_body =
+                  bind_http_request_body (request.body (), match.route_values, match.query_values);
             }
-            const auto http_request = make_http_request (context, request, match.route_values, match.query_values);
-            auto route_result =
-              http_route_invoker_access_t::invoke (*match.route, request_services, context, http_request, bound_body)
-                .result ();
+            const auto http_request =
+              make_http_request (context, request, match.route_values, match.query_values);
+            auto route_result = http_route_invoker_access_t::invoke (
+                                  *match.route, request_services, context, http_request, bound_body)
+                                  .result ();
             if (!route_result) {
                 throw *route_result.error ();
             }
-            apply_http_response (response, route_result.value (), context, match.route->context_response_precedence);
+            apply_http_response (response, route_result.value (), context,
+                                 match.route->context_response_precedence);
         }
         run_after_middleware_once ();
-        apply_context_response (response, context, context_short_circuit || match.route->context_response_precedence);
+        apply_context_response (response, context,
+                                context_short_circuit || match.route->context_response_precedence);
     }
     catch (const framework_exception_t &ex) {
         run_after_middleware_once ();
@@ -675,10 +696,11 @@ void invoke_matched_route (http::response<http::string_body> &response,
     }
 }
 
-http::response<http::string_body> handle_http_request (const http_options_snapshot_t &options,
-                                                       service_provider_t &services,
-                                                       health_builder_t &health,
-                                                       const http::request<http::string_body> &request)
+http::response<http::string_body>
+handle_http_request (const http_options_snapshot_t &options,
+                     service_provider_t &services,
+                     health_builder_t &health,
+                     const http::request<http::string_body> &request)
 {
     const auto method = from_beast_method (request.method ());
     auto context = make_context (method, request);
@@ -690,7 +712,8 @@ http::response<http::string_body> handle_http_request (const http_options_snapsh
         response.prepare_payload ();
         return response;
     }
-    if (const auto health_route = match_health_route (options, method, std::string (request.target ()))) {
+    if (const auto health_route =
+          match_health_route (options, method, std::string (request.target ()))) {
         return make_health_response (health, *health_route, request, context);
     }
     const auto match = find_route (options, method, std::string (request.target ()));
@@ -715,7 +738,8 @@ make_http_status_response (http::status status, unsigned version, std::string bo
     return response;
 }
 
-http::response<http::string_body> make_http_parser_error_response (beast::error_code ec, unsigned version)
+http::response<http::string_body> make_http_parser_error_response (beast::error_code ec,
+                                                                   unsigned version)
 {
     if (ec == http::error::body_limit) {
         return make_http_status_response (http::status::payload_too_large, version,
@@ -725,7 +749,8 @@ http::response<http::string_body> make_http_parser_error_response (beast::error_
         return make_http_status_response (http::status::request_header_fields_too_large, version,
                                           R"({"error":"request header too large"})", false);
     }
-    return make_http_status_response (http::status::bad_request, version, R"({"error":"bad request"})", false);
+    return make_http_status_response (http::status::bad_request, version,
+                                      R"({"error":"bad request"})", false);
 }
 
 } // namespace zlink::framework::runtime

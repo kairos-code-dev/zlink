@@ -8,8 +8,7 @@
 #include "utils/likely.hpp"
 #include "core/msg.hpp"
 
-#if defined ZLINK_POLL_BASED_ON_POLL && !defined ZLINK_HAVE_WINDOWS                \
-  && !defined ZLINK_HAVE_AIX
+#if defined ZLINK_POLL_BASED_ON_POLL && !defined ZLINK_HAVE_WINDOWS && !defined ZLINK_HAVE_AIX
 #include <poll.h>
 #endif
 
@@ -19,8 +18,8 @@
 #include "utils/err.hpp"
 
 int zlink::proxy (class socket_base_t *frontend_,
-                class socket_base_t *backend_,
-                class socket_base_t *capture_)
+                  class socket_base_t *backend_,
+                  class socket_base_t *capture_)
 {
     return zlink::proxy_steerable (frontend_, backend_, capture_, NULL);
 }
@@ -32,30 +31,29 @@ int zlink::proxy (class socket_base_t *frontend_,
 //  Macros for repetitive code.
 
 //  PROXY_CLEANUP() must not be used before these variables are initialized.
-#define PROXY_CLEANUP()                                                        \
-    do {                                                                       \
-        delete poller_all;                                                     \
-        delete poller_in;                                                      \
-        delete poller_receive_blocked;                                         \
-        delete poller_send_blocked;                                            \
-        delete poller_both_blocked;                                            \
-        delete poller_frontend_only;                                           \
-        delete poller_backend_only;                                            \
+#define PROXY_CLEANUP()                                                                            \
+    do {                                                                                           \
+        delete poller_all;                                                                         \
+        delete poller_in;                                                                          \
+        delete poller_receive_blocked;                                                             \
+        delete poller_send_blocked;                                                                \
+        delete poller_both_blocked;                                                                \
+        delete poller_frontend_only;                                                               \
+        delete poller_backend_only;                                                                \
     } while (false)
 
 
-#define CHECK_RC_EXIT_ON_FAILURE()                                             \
-    do {                                                                       \
-        if (rc < 0) {                                                          \
-            PROXY_CLEANUP ();                                                  \
-            return close_and_return (&msg, -1);                                \
-        }                                                                      \
+#define CHECK_RC_EXIT_ON_FAILURE()                                                                 \
+    do {                                                                                           \
+        if (rc < 0) {                                                                              \
+            PROXY_CLEANUP ();                                                                      \
+            return close_and_return (&msg, -1);                                                    \
+        }                                                                                          \
     } while (false)
 
 #endif //  ZLINK_HAVE_POLLER
 
-static int
-capture (class zlink::socket_base_t *capture_, zlink::msg_t *msg_, int more_ = 0)
+static int capture (class zlink::socket_base_t *capture_, zlink::msg_t *msg_, int more_ = 0)
 {
     //  Copy message to capture socket if any
     if (capture_) {
@@ -166,11 +164,10 @@ static int handle_control (class zlink::socket_base_t *control_,
         // (frn, frb, fsn, fsb, brn, brb, bsn, bsb)
         //
         // f=front/b=back, r=recv/s=send, n=number/b=bytes.
-        const uint64_t stat_vals[8] = {
-          stats.frontend.recv.count, stats.frontend.recv.bytes,
-          stats.frontend.send.count, stats.frontend.send.bytes,
-          stats.backend.recv.count,  stats.backend.recv.bytes,
-          stats.backend.send.count,  stats.backend.send.bytes};
+        const uint64_t stat_vals[8] = {stats.frontend.recv.count, stats.frontend.recv.bytes,
+                                       stats.frontend.send.count, stats.frontend.send.bytes,
+                                       stats.backend.recv.count,  stats.backend.recv.bytes,
+                                       stats.backend.send.count,  stats.backend.send.bytes};
 
         for (size_t ind = 0; ind < 8; ++ind) {
             cmsg.init_size (sizeof (uint64_t));
@@ -202,9 +199,9 @@ static int handle_control (class zlink::socket_base_t *control_,
 
 #ifdef ZLINK_HAVE_POLLER
 int zlink::proxy_steerable (class socket_base_t *frontend_,
-                          class socket_base_t *backend_,
-                          class socket_base_t *capture_,
-                          class socket_base_t *control_)
+                            class socket_base_t *backend_,
+                            class socket_base_t *capture_,
+                            class socket_base_t *control_)
 {
     msg_t msg;
     int rc = msg.init ();
@@ -234,15 +231,14 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
       new (std::nothrow) zlink::socket_poller_t; //  Poll for everything.
     zlink::socket_poller_t *poller_in = new (std::nothrow) zlink::
       socket_poller_t; //  Poll only 'ZLINK_POLLIN' on all sockets. Initial blocking poll in loop.
-    zlink::socket_poller_t *poller_receive_blocked = new (std::nothrow)
-      zlink::socket_poller_t; //  All except 'ZLINK_POLLIN' on 'frontend_'.
+    zlink::socket_poller_t *poller_receive_blocked =
+      new (std::nothrow) zlink::socket_poller_t; //  All except 'ZLINK_POLLIN' on 'frontend_'.
 
     //  If frontend_==backend_ 'poller_send_blocked' and 'poller_receive_blocked' are the same, 'ZLINK_POLLIN' is ignored.
     //  In that case 'poller_send_blocked' is not used. We need only 'poller_receive_blocked'.
     //  We also don't need 'poller_both_blocked', 'poller_backend_only' nor 'poller_frontend_only' no need to initialize it.
     //  We save some RAM and time for initialization.
-    zlink::socket_poller_t *poller_send_blocked =
-      NULL; //  All except 'ZLINK_POLLIN' on 'backend_'.
+    zlink::socket_poller_t *poller_send_blocked = NULL; //  All except 'ZLINK_POLLIN' on 'backend_'.
     zlink::socket_poller_t *poller_both_blocked =
       NULL; //  All except 'ZLINK_POLLIN' on both 'frontend_' and 'backend_'.
     zlink::socket_poller_t *poller_frontend_only =
@@ -251,20 +247,19 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
       NULL; //  Only 'ZLINK_POLLIN' and 'ZLINK_POLLOUT' on 'backend_'.
 
     if (frontend_ != backend_) {
-        poller_send_blocked = new (std::nothrow)
-          zlink::socket_poller_t; //  All except 'ZLINK_POLLIN' on 'backend_'.
-        poller_both_blocked = new (std::nothrow) zlink::
-          socket_poller_t; //  All except 'ZLINK_POLLIN' on both 'frontend_' and 'backend_'.
-        poller_frontend_only = new (std::nothrow) zlink::
-          socket_poller_t; //  Only 'ZLINK_POLLIN' and 'ZLINK_POLLOUT' on 'frontend_'.
-        poller_backend_only = new (std::nothrow) zlink::
-          socket_poller_t; //  Only 'ZLINK_POLLIN' and 'ZLINK_POLLOUT' on 'backend_'.
+        poller_send_blocked =
+          new (std::nothrow) zlink::socket_poller_t; //  All except 'ZLINK_POLLIN' on 'backend_'.
+        poller_both_blocked = new (std::nothrow)
+          zlink::socket_poller_t; //  All except 'ZLINK_POLLIN' on both 'frontend_' and 'backend_'.
+        poller_frontend_only = new (std::nothrow)
+          zlink::socket_poller_t; //  Only 'ZLINK_POLLIN' and 'ZLINK_POLLOUT' on 'frontend_'.
+        poller_backend_only = new (std::nothrow)
+          zlink::socket_poller_t; //  Only 'ZLINK_POLLIN' and 'ZLINK_POLLOUT' on 'backend_'.
         frontend_equal_to_backend = false;
     } else
         frontend_equal_to_backend = true;
 
-    if (poller_all == NULL || poller_in == NULL
-        || poller_receive_blocked == NULL
+    if (poller_all == NULL || poller_in == NULL || poller_receive_blocked == NULL
         || ((poller_send_blocked == NULL || poller_both_blocked == NULL)
             && !frontend_equal_to_backend)) {
         PROXY_CLEANUP ();
@@ -293,33 +288,30 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
         CHECK_RC_EXIT_ON_FAILURE ();
         rc = poller_in->add (backend_, NULL, ZLINK_POLLIN); //  All 'ZLINK_POLLIN's.
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc = poller_both_blocked->add (
-          frontend_, NULL, ZLINK_POLLOUT); //  Waiting only for 'ZLINK_POLLOUT'.
+        rc = poller_both_blocked->add (frontend_, NULL,
+                                       ZLINK_POLLOUT); //  Waiting only for 'ZLINK_POLLOUT'.
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc = poller_both_blocked->add (
-          backend_, NULL, ZLINK_POLLOUT); //  Waiting only for 'ZLINK_POLLOUT'.
+        rc = poller_both_blocked->add (backend_, NULL,
+                                       ZLINK_POLLOUT); //  Waiting only for 'ZLINK_POLLOUT'.
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc = poller_send_blocked->add (
-          backend_, NULL,
-          ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'backend_'.
+        rc = poller_send_blocked->add (backend_, NULL,
+                                       ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'backend_'.
         CHECK_RC_EXIT_ON_FAILURE ();
         rc = poller_send_blocked->add (
           frontend_, NULL,
           ZLINK_POLLIN | ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'backend_'.
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc = poller_receive_blocked->add (
-          frontend_, NULL,
-          ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'frontend_'.
+        rc =
+          poller_receive_blocked->add (frontend_, NULL,
+                                       ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'frontend_'.
         CHECK_RC_EXIT_ON_FAILURE ();
         rc = poller_receive_blocked->add (
           backend_, NULL,
           ZLINK_POLLIN | ZLINK_POLLOUT); //  All except 'ZLINK_POLLIN' on 'frontend_'.
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc =
-          poller_frontend_only->add (frontend_, NULL, ZLINK_POLLIN | ZLINK_POLLOUT);
+        rc = poller_frontend_only->add (frontend_, NULL, ZLINK_POLLIN | ZLINK_POLLOUT);
         CHECK_RC_EXIT_ON_FAILURE ();
-        rc =
-          poller_backend_only->add (backend_, NULL, ZLINK_POLLIN | ZLINK_POLLOUT);
+        rc = poller_backend_only->add (backend_, NULL, ZLINK_POLLIN | ZLINK_POLLOUT);
         CHECK_RC_EXIT_ON_FAILURE ();
     }
 
@@ -391,8 +383,8 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
             //  Process a request, 'ZLINK_POLLIN' on 'frontend_' and 'ZLINK_POLLOUT' on 'backend_'.
             //  In case of frontend_==backend_ there's no 'ZLINK_POLLOUT' event.
             if (frontend_in && (backend_out || frontend_equal_to_backend)) {
-                rc = forward (frontend_, backend_, capture_, &msg,
-                              stats.frontend.recv, stats.backend.send);
+                rc = forward (frontend_, backend_, capture_, &msg, stats.frontend.recv,
+                              stats.backend.send);
                 CHECK_RC_EXIT_ON_FAILURE ();
                 request_processed = true;
                 frontend_in = backend_out = false;
@@ -404,8 +396,8 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
             //  covers all of the cases. 'backend_in' is always false if frontend_==backend_ due to
             //  design in 'for' event processing loop.
             if (backend_in && frontend_out) {
-                rc = forward (backend_, frontend_, capture_, &msg,
-                              stats.backend.recv, stats.frontend.send);
+                rc = forward (backend_, frontend_, capture_, &msg, stats.backend.recv,
+                              stats.frontend.send);
                 CHECK_RC_EXIT_ON_FAILURE ();
                 reply_processed = true;
                 backend_in = frontend_out = false;
@@ -473,9 +465,9 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
 #else //  ZLINK_HAVE_POLLER
 
 int zlink::proxy_steerable (class socket_base_t *frontend_,
-                          class socket_base_t *backend_,
-                          class socket_base_t *capture_,
-                          class socket_base_t *control_)
+                            class socket_base_t *backend_,
+                            class socket_base_t *capture_,
+                            class socket_base_t *control_)
 {
     msg_t msg;
     int rc = msg.init ();
@@ -486,12 +478,12 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
     //  under full load to be 1:1.
 
     zlink_pollitem_t items[] = {{frontend_, 0, ZLINK_POLLIN, 0},
-                              {backend_, 0, ZLINK_POLLIN, 0},
-                              {control_, 0, ZLINK_POLLIN, 0}};
+                                {backend_, 0, ZLINK_POLLIN, 0},
+                                {control_, 0, ZLINK_POLLIN, 0}};
     const int qt_poll_items = control_ ? 3 : 2;
 
     zlink_pollitem_t itemsout[] = {{frontend_, 0, ZLINK_POLLOUT, 0},
-                                 {backend_, 0, ZLINK_POLLOUT, 0}};
+                                   {backend_, 0, ZLINK_POLLOUT, 0}};
 
     stats_proxy stats = {0};
 
@@ -522,17 +514,16 @@ int zlink::proxy_steerable (class socket_base_t *frontend_,
 
         if (state == active && items[0].revents & ZLINK_POLLIN
             && (frontend_ == backend_ || itemsout[1].revents & ZLINK_POLLOUT)) {
-            rc = forward (frontend_, backend_, capture_, &msg,
-                          stats.frontend.recv, stats.backend.send);
+            rc = forward (frontend_, backend_, capture_, &msg, stats.frontend.recv,
+                          stats.backend.send);
             if (unlikely (rc < 0))
                 return close_and_return (&msg, -1);
         }
         //  Process a reply
-        if (state == active && frontend_ != backend_
-            && items[1].revents & ZLINK_POLLIN
+        if (state == active && frontend_ != backend_ && items[1].revents & ZLINK_POLLIN
             && itemsout[0].revents & ZLINK_POLLOUT) {
-            rc = forward (backend_, frontend_, capture_, &msg,
-                          stats.backend.recv, stats.frontend.send);
+            rc = forward (backend_, frontend_, capture_, &msg, stats.backend.recv,
+                          stats.frontend.send);
             if (unlikely (rc < 0))
                 return close_and_return (&msg, -1);
         }

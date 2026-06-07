@@ -40,8 +40,7 @@ struct discovery_registered_service_snapshot_t
 class discovery_t
 {
   public:
-    discovery_t (ctx_t *ctx_, uint16_t auto_connect_type_,
-                 const std::string &channel_name_);
+    discovery_t (ctx_t *ctx_, uint16_t auto_connect_type_, const std::string &channel_name_);
     ~discovery_t ();
 
     bool check_tag () const;
@@ -51,28 +50,22 @@ class discovery_t
     int routing_id (zlink_routing_id_t *out_) const;
     int set_option (int option_, const void *optval_, size_t optvallen_);
     int get_option (int option_, void *optval_, size_t *optvallen_) const;
-    int set_tls_client (const char *ca_cert_,
-                        const char *hostname_,
-                        int trust_system_);
+    int set_tls_client (const char *ca_cert_, const char *hostname_, int trust_system_);
     int set_value (int64_t value_);
     int get_value (int64_t *value_out_) const;
-    int resolve_spot (const zlink_routing_id_t *spot_rid_,
-                      zlink_spot_route_t *route_out_);
+    int resolve_spot (const zlink_routing_id_t *spot_rid_, zlink_spot_route_t *route_out_);
     int bind_route (zlink_route_kind_t kind_,
                     const void *key_,
                     size_t key_size_,
                     const void *value_,
                     size_t value_size_);
-    int unbind_route (zlink_route_kind_t kind_,
-                      const void *key_,
-                      size_t key_size_);
+    int unbind_route (zlink_route_kind_t kind_, const void *key_, size_t key_size_);
     int resolve_route (zlink_route_kind_t kind_,
                        const void *key_,
                        size_t key_size_,
                        zlink_routing_id_t *owner_rid_out_,
                        zlink_msg_t *value_out_);
-    void snapshot_member_peers (
-      std::vector<zlink_member_peer_entry_t> *out_) const;
+    void snapshot_member_peers (std::vector<zlink_member_peer_entry_t> *out_) const;
     int member_peers (zlink_member_peer_entry_t *entries_, size_t *count_) const;
     int destroy ();
     int register_service (const char *endpoint_,
@@ -87,16 +80,14 @@ class discovery_t
                                    int64_t value_,
                                    const std::vector<unsigned char> *metadata_,
                                    uint16_t service_role_ = 0);
-    int unregister_service (const char *endpoint_,
-                            uint16_t service_role_ = 0);
+    int unregister_service (const char *endpoint_, uint16_t service_role_ = 0);
 
     uint16_t auto_connect_type () const { return _auto_connect_type; }
     const std::string &channel_name () const { return _channel_name; }
     bool spot_owner_sync_enabled () const;
     bool actor_route_sync_enabled () const;
 
-    void snapshot_providers (const std::string &channel_name_,
-                             std::vector<provider_info_t> *out_);
+    void snapshot_providers (const std::string &channel_name_, std::vector<provider_info_t> *out_);
     bool latest_registry_uplink (std::string *out_);
     uint64_t update_seq ();
     uint64_t service_update_seq (const std::string &channel_name_);
@@ -118,22 +109,17 @@ class discovery_t
     service_control_runtime_t *control_runtime () const;
     int ensure_control_task_active ();
     bool bootstrap_socket_config_locked (bool routing_id_locked_) const;
-    void apply_socket_option_to_sub_socket (int option_,
-                                            const void *optval_,
-                                            size_t optvallen_);
-    bool should_publish_summary_entry (
-      const zlink_registry_topology_entry_t &entry_) const;
-    void collect_dirty_summary_entries (
-      std::vector<zlink_registry_topology_entry_t> *out_);
-    void mark_summary_entries_sent (
-      const std::vector<zlink_registry_topology_entry_t> &entries_,
-      const std::vector<bool> &sent_);
+    void apply_socket_option_to_sub_socket (int option_, const void *optval_, size_t optvallen_);
+    bool should_publish_summary_entry (const zlink_registry_topology_entry_t &entry_) const;
+    void collect_dirty_summary_entries (std::vector<zlink_registry_topology_entry_t> *out_);
+    void mark_summary_entries_sent (const std::vector<zlink_registry_topology_entry_t> &entries_,
+                                    const std::vector<bool> &sent_);
     void collect_registered_services_for_heartbeat (
       uint64_t now_ms_,
       uint32_t heartbeat_interval_ms_,
       std::vector<discovery_registered_service_snapshot_t> *out_) const;
-    void mark_registered_service_heartbeat (
-      const discovery_registered_service_snapshot_t &service_, uint64_t now_ms_);
+    void mark_registered_service_heartbeat (const discovery_registered_service_snapshot_t &service_,
+                                            uint64_t now_ms_);
 
   private:
     static void control_task (void *arg_);
@@ -182,24 +168,20 @@ class discovery_t
                                      bool dirty_,
                                      bool tombstone_,
                                      uint64_t validated_service_seq_);
-    bool should_publish_summary_entry_locked (
-      const zlink_registry_topology_entry_t &entry_) const;
-    void mark_spot_owner_summaries_dirty_locked (bool stopped_,
-                                                 uint64_t now_ms_);
-    topology_key_t make_spot_topology_key (
-      const zlink_routing_id_t &spot_rid_) const;
-    bool resolve_owner_node_from_endpoint_locked (
-      const char *endpoint_, zlink_routing_id_t *owner_node_rid_out_) const;
-    bool try_resolve_spot_from_cache_locked (
-      const topology_key_t &key_,
-      uint64_t now_ms_,
-      zlink_spot_route_t *route_out_) const;
+    bool should_publish_summary_entry_locked (const zlink_registry_topology_entry_t &entry_) const;
+    void mark_spot_owner_summaries_dirty_locked (bool stopped_, uint64_t now_ms_);
+    topology_key_t make_spot_topology_key (const zlink_routing_id_t &spot_rid_) const;
+    bool resolve_owner_node_from_endpoint_locked (const char *endpoint_,
+                                                  zlink_routing_id_t *owner_node_rid_out_) const;
+    bool try_resolve_spot_from_cache_locked (const topology_key_t &key_,
+                                             uint64_t now_ms_,
+                                             zlink_spot_route_t *route_out_) const;
     int query_spot_owner_entries_from_registry (
       const zlink_routing_id_t *spot_rid_,
       std::vector<zlink_registry_topology_entry_t> *entries_out_);
-    void refresh_spot_owner_cache_locked (
-      const topology_key_t &key_,
-      const std::vector<zlink_registry_topology_entry_t> &entries_);
+    void
+    refresh_spot_owner_cache_locked (const topology_key_t &key_,
+                                     const std::vector<zlink_registry_topology_entry_t> &entries_);
 
     struct registered_service_key_t
     {
@@ -243,12 +225,10 @@ class discovery_t
         }
     };
 
-    void snapshot_registered_service_updates (
-      std::vector<registered_service_t> *services_out_,
-      int64_t *value_out_) const;
-    int propagate_registered_service_updates (
-      const std::vector<registered_service_t> &services_,
-      int64_t value_);
+    void snapshot_registered_service_updates (std::vector<registered_service_t> *services_out_,
+                                              int64_t *value_out_) const;
+    int propagate_registered_service_updates (const std::vector<registered_service_t> &services_,
+                                              int64_t value_);
     bool select_route_owner_locked (registered_service_t *owner_out_) const;
 
     ctx_t *_ctx;

@@ -58,8 +58,7 @@ bool parse_tcp_endpoint (const char *endpoint_, char host_[64], int *port_)
 
     char proto[8] = {0};
     int port = 0;
-    if (std::sscanf (endpoint_, "%7[^:]://%63[^:]:%d", proto, host_, &port)
-        != 3) {
+    if (std::sscanf (endpoint_, "%7[^:]://%63[^:]:%d", proto, host_, &port) != 3) {
         return false;
     }
     if (std::strcmp (proto, "tcp") != 0 || port <= 0 || port > 65535)
@@ -92,9 +91,7 @@ int connect_raw_tcp (const char *endpoint_)
         return -1;
     }
 
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
+    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr), sizeof (addr)) != 0) {
         const int err = errno;
         close (fd);
         errno = err;
@@ -170,8 +167,7 @@ std::vector<unsigned char> make_frame (const char *payload_)
     std::vector<unsigned char> frame (6 + payload_size);
     frame[0] = 0;
     frame[1] = 0;
-    test_stream_common::store_u32_be (
-      &frame[2], static_cast<uint32_t> (payload_size));
+    test_stream_common::store_u32_be (&frame[2], static_cast<uint32_t> (payload_size));
     std::memcpy (&frame[6], payload_, payload_size);
     return frame;
 }
@@ -194,14 +190,12 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
     packet_handler_ctx.stop_token = "STOP";
     TEST_ASSERT_EQUAL_INT (
       ZLINK_HANDLER_OK,
-      zlink_stream_packet_handler (
-        server, &test_multi_stream::stream_packet_handler_callback,
-        &packet_handler_ctx));
+      zlink_stream_packet_handler (server, &test_multi_stream::stream_packet_handler_callback,
+                                   &packet_handler_ctx));
     int server_rc = -1;
 
     std::thread server_thread ([&session, server, &server_rc] () {
-        server_rc = test_multi_stream::run_server_event_loop (
-          &session, server, "STOP", NULL, NULL);
+        server_rc = test_multi_stream::run_server_event_loop (&session, server, "STOP", NULL, NULL);
     });
 
     const int client_a = connect_raw_tcp (endpoint);
@@ -221,28 +215,20 @@ void test_multi_stream_server_reassembles_complete_frames_per_connection ()
     TEST_ASSERT_EQUAL_INT (0, send_all (client_b, &frame_b[0], 4));
     TEST_ASSERT_TRUE (recv_should_timeout (client_b));
 
-    TEST_ASSERT_EQUAL_INT (
-      0,
-      send_all (client_a, &frame_a[2], static_cast<size_t> (4)));
+    TEST_ASSERT_EQUAL_INT (0, send_all (client_a, &frame_a[2], static_cast<size_t> (4)));
     TEST_ASSERT_TRUE (recv_should_timeout (client_a));
 
-    TEST_ASSERT_EQUAL_INT (
-      0,
-      send_all (client_b, &frame_b[4], frame_b.size () - 4));
+    TEST_ASSERT_EQUAL_INT (0, send_all (client_b, &frame_b[4], frame_b.size () - 4));
 
     std::vector<unsigned char> echo_b (frame_b.size ());
-    TEST_ASSERT_EQUAL_INT (
-      0, recv_exact (client_b, &echo_b[0], echo_b.size ()));
+    TEST_ASSERT_EQUAL_INT (0, recv_exact (client_b, &echo_b[0], echo_b.size ()));
     TEST_ASSERT_EQUAL_MEMORY (&frame_b[0], &echo_b[0], frame_b.size ());
     TEST_ASSERT_TRUE (recv_should_timeout (client_a));
 
-    TEST_ASSERT_EQUAL_INT (
-      0,
-      send_all (client_a, &frame_a[6], frame_a.size () - 6));
+    TEST_ASSERT_EQUAL_INT (0, send_all (client_a, &frame_a[6], frame_a.size () - 6));
 
     std::vector<unsigned char> echo_a (frame_a.size ());
-    TEST_ASSERT_EQUAL_INT (
-      0, recv_exact (client_a, &echo_a[0], echo_a.size ()));
+    TEST_ASSERT_EQUAL_INT (0, recv_exact (client_a, &echo_a[0], echo_a.size ()));
     TEST_ASSERT_EQUAL_MEMORY (&frame_a[0], &echo_a[0], frame_a.size ());
 
     test_multi_stream::stop_requested ().store (true, std::memory_order_release);

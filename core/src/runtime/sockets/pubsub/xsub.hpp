@@ -35,21 +35,16 @@ class xsub_t : public socket_base_t
         bool is_pattern;
     };
 
-    xsub_t (zlink::ctx_t *parent_,
-            uint32_t tid_,
-            int sid_);
+    xsub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~xsub_t () ZLINK_OVERRIDE;
-    void snapshot_subscriptions (
-      std::vector<subscription_descriptor_t> *out_) const;
+    void snapshot_subscriptions (std::vector<subscription_descriptor_t> *out_) const;
 
   protected:
     //  Overrides of functions from socket_base_t.
     void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
                        bool locally_initiated_) ZLINK_FINAL;
-    int xsetsockopt (int option_,
-                     const void *optval_,
-                     size_t optvallen_) ZLINK_OVERRIDE;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_OVERRIDE;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
@@ -57,12 +52,10 @@ class xsub_t : public socket_base_t
     bool xhas_in () ZLINK_FINAL;
     void xdispatch_io () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int sub_dispatch_start (spot_sub_io_handler_fn callback_,
-                            void *userdata_) ZLINK_OVERRIDE;
+    int sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_) ZLINK_OVERRIDE;
     int sub_dispatch_stop () ZLINK_OVERRIDE;
     bool sub_dispatch_active () const ZLINK_OVERRIDE;
-    int xsocket_msg_dispatch (zlink::msg_t *msg_,
-                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xhiccuped (pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
@@ -74,14 +67,12 @@ class xsub_t : public socket_base_t
 
     //  Function to be applied to the trie to send all the subsciptions
     //  upstream.
-    static void
-    send_subscription (unsigned char *data_, size_t size_, void *arg_);
+    static void send_subscription (unsigned char *data_, size_t size_, void *arg_);
     int dispatch_ready_messages ();
     int dispatch_ready_messages_serialized ();
     int dispatch_message (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     void notify_dispatch_stopped ();
-    void refresh_delivery_ready_state (
-      const endpoint_uri_pair_t &endpoint_uri_pair_);
+    void refresh_delivery_ready_state (const endpoint_uri_pair_t &endpoint_uri_pair_);
     uint32_t compute_delivery_ready_count () const;
     bool compute_delivery_ready_state () const;
 

@@ -16,77 +16,69 @@ zlink_submit_result_t spot_send_channel_impl (void *spot_,
                                               zlink_msg_t *parts_,
                                               size_t part_count_,
                                               zlink_send_flags_t flags_);
-zlink_submit_result_t spot_request_spot_impl (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-zlink_submit_result_t spot_request_router_impl (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-zlink_submit_result_t spot_request_channel_impl (
-  void *spot_,
-  const char *channel_name_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
+zlink_submit_result_t spot_request_spot_impl (void *spot_,
+                                              const zlink_routing_id_t *dest_node_rid_,
+                                              const zlink_routing_id_t *dest_spot_rid_,
+                                              zlink_msg_t *parts_,
+                                              size_t part_count_,
+                                              zlink_reply_handler_fn handler_,
+                                              void *userdata_,
+                                              zlink_send_flags_t flags_,
+                                              uint32_t timeout_ms_);
+zlink_submit_result_t spot_request_router_impl (void *spot_,
+                                                const zlink_routing_id_t *peer_rid_,
+                                                zlink_msg_t *parts_,
+                                                size_t part_count_,
+                                                zlink_reply_handler_fn handler_,
+                                                void *userdata_,
+                                                zlink_send_flags_t flags_,
+                                                uint32_t timeout_ms_);
+zlink_submit_result_t spot_request_channel_impl (void *spot_,
+                                                 const char *channel_name_,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_,
+                                                 zlink_reply_handler_fn handler_,
+                                                 void *userdata_,
+                                                 zlink_send_flags_t flags_,
+                                                 uint32_t timeout_ms_);
 zlink_submit_result_t spot_send_spot_impl (void *spot_,
                                            const zlink_routing_id_t *dest_node_rid_,
                                            const zlink_routing_id_t *dest_spot_rid_,
                                            zlink_msg_t *parts_,
                                            size_t part_count_,
                                            zlink_send_flags_t flags_);
-zlink_submit_result_t spot_reply_spot_impl (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
-zlink_submit_result_t spot_reply_router_impl (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
-zlink_submit_result_t router_request_spot_impl (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_);
-zlink_submit_result_t router_reply_spot_impl (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_);
-zlink_submit_result_t router_send_spot_impl (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_);
+zlink_submit_result_t spot_reply_spot_impl (void *spot_,
+                                            const zlink_routing_id_t *dest_node_rid_,
+                                            const zlink_routing_id_t *dest_spot_rid_,
+                                            uint64_t request_seq_,
+                                            zlink_msg_t *parts_,
+                                            size_t part_count_);
+zlink_submit_result_t spot_reply_router_impl (void *spot_,
+                                              const zlink_routing_id_t *peer_rid_,
+                                              uint64_t request_seq_,
+                                              zlink_msg_t *parts_,
+                                              size_t part_count_);
+zlink_submit_result_t router_request_spot_impl (void *router_,
+                                                const zlink_routing_id_t *dest_node_rid_,
+                                                const zlink_routing_id_t *dest_spot_rid_,
+                                                zlink_msg_t *parts_,
+                                                size_t part_count_,
+                                                zlink_reply_handler_fn handler_,
+                                                void *userdata_,
+                                                zlink_send_flags_t flags_,
+                                                uint32_t timeout_ms_);
+zlink_submit_result_t router_reply_spot_impl (void *router_,
+                                              const zlink_routing_id_t *dest_node_rid_,
+                                              const zlink_routing_id_t *dest_spot_rid_,
+                                              uint64_t request_seq_,
+                                              zlink_msg_t *parts_,
+                                              size_t part_count_);
+zlink_submit_result_t router_send_spot_impl (void *router_,
+                                             const zlink_routing_id_t *dest_node_rid_,
+                                             const zlink_routing_id_t *dest_spot_rid_,
+                                             zlink_msg_t *parts_,
+                                             size_t part_count_,
+                                             zlink_send_flags_t flags_);
 
 namespace
 {
@@ -135,8 +127,7 @@ int prepare_staged_send_step (
         state->send.owner_thread = current_thread;
         *first_part_out_ = true;
     } else {
-        if (!zlink::part_helper_internal::send_spec_equals (
-              state->send.spec, spec_)) {
+        if (!zlink::part_helper_internal::send_spec_equals (state->send.spec, spec_)) {
             errno = EINVAL;
             return -1;
         }
@@ -147,9 +138,7 @@ int prepare_staged_send_step (
     return 0;
 }
 
-int stage_staged_send_part (
-  zlink::part_helper_internal::handle_state_t *state_,
-  zlink_msg_t *part_)
+int stage_staged_send_part (zlink::part_helper_internal::handle_state_t *state_, zlink_msg_t *part_)
 {
     if (!state_ || !part_) {
         errno = EFAULT;
@@ -230,12 +219,12 @@ zlink_submit_result_t finalize_staged_spot_submit (
 }
 
 template <typename FinalSubmit>
-zlink_submit_result_t submit_staged_sequence (
-  void *handle_,
-  const zlink::part_helper_internal::send_sequence_spec_t &spec_,
-  zlink_msg_t *part_,
-  zlink_part_flag_t part_flag_,
-  FinalSubmit final_submit_)
+zlink_submit_result_t
+submit_staged_sequence (void *handle_,
+                        const zlink::part_helper_internal::send_sequence_spec_t &spec_,
+                        zlink_msg_t *part_,
+                        zlink_part_flag_t part_flag_,
+                        FinalSubmit final_submit_)
 {
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;
     bool first_part = false;
@@ -244,13 +233,11 @@ zlink_submit_result_t submit_staged_sequence (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    return finalize_staged_spot_submit (
-      state, part_, part_flag_, final_submit_);
+    return finalize_staged_spot_submit (state, part_, part_flag_, final_submit_);
 }
 
-send_sequence_spec_t make_send_spec (
-  zlink::part_helper_internal::send_family_t family_,
-  zlink_send_flags_t flags_)
+send_sequence_spec_t make_send_spec (zlink::part_helper_internal::send_family_t family_,
+                                     zlink_send_flags_t flags_)
 {
     send_sequence_spec_t spec;
     spec.family = family_;
@@ -258,12 +245,11 @@ send_sequence_spec_t make_send_spec (
     return spec;
 }
 
-send_sequence_spec_t make_request_spec (
-  zlink::part_helper_internal::send_family_t family_,
-  zlink_send_flags_t flags_,
-  uint32_t timeout_ms_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_)
+send_sequence_spec_t make_request_spec (zlink::part_helper_internal::send_family_t family_,
+                                        zlink_send_flags_t flags_,
+                                        uint32_t timeout_ms_,
+                                        zlink_reply_handler_fn handler_,
+                                        void *userdata_)
 {
     send_sequence_spec_t spec = make_send_spec (family_, flags_);
     spec.timeout_ms = timeout_ms_;
@@ -273,12 +259,10 @@ send_sequence_spec_t make_request_spec (
     return spec;
 }
 
-send_sequence_spec_t make_reply_spec (
-  zlink::part_helper_internal::send_family_t family_,
-  uint64_t request_seq_)
+send_sequence_spec_t make_reply_spec (zlink::part_helper_internal::send_family_t family_,
+                                      uint64_t request_seq_)
 {
-    send_sequence_spec_t spec = make_send_spec (
-      family_, ZLINK_SEND_FLAGS_NONE);
+    send_sequence_spec_t spec = make_send_spec (family_, ZLINK_SEND_FLAGS_NONE);
     spec.request_like = true;
     spec.request_seq = request_seq_;
     return spec;
@@ -306,12 +290,11 @@ void set_rid_pair (send_sequence_spec_t *spec_,
 }
 }
 
-zlink_submit_result_t zlink_spot_send_channel_part (
-  void *spot_,
-  const char *channel_name_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_spot_send_channel_part (void *spot_,
+                                                    const char *channel_name_,
+                                                    zlink_msg_t *part_,
+                                                    zlink_send_flags_t flags_,
+                                                    zlink_part_flag_t part_flag_)
 {
     if (!channel_name_ || channel_name_[0] == '\0') {
         errno = EINVAL;
@@ -324,28 +307,27 @@ zlink_submit_result_t zlink_spot_send_channel_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_send_spec (
-      zlink::part_helper_internal::send_family_spot_send_channel, flags_);
+    send_sequence_spec_t spec =
+      make_send_spec (zlink::part_helper_internal::send_family_spot_send_channel, flags_);
     set_text1 (&spec, channel_name_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
       [spot_, channel_name_, flags_] (std::vector<zlink_msg_t> &parts_) {
-          return spot_send_channel_impl (spot_, channel_name_, parts_.data (),
-                                         parts_.size (), flags_);
+          return spot_send_channel_impl (spot_, channel_name_, parts_.data (), parts_.size (),
+                                         flags_);
       });
 }
 
-zlink_submit_result_t zlink_spot_request_spot_part (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *part_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_,
-  uint32_t timeout_ms_)
+zlink_submit_result_t zlink_spot_request_spot_part (void *spot_,
+                                                    const zlink_routing_id_t *dest_node_rid_,
+                                                    const zlink_routing_id_t *dest_spot_rid_,
+                                                    zlink_msg_t *part_,
+                                                    zlink_reply_handler_fn handler_,
+                                                    void *userdata_,
+                                                    zlink_send_flags_t flags_,
+                                                    zlink_part_flag_t part_flag_,
+                                                    uint32_t timeout_ms_)
 {
     if (!handler_ || !has_valid_routing_id (dest_node_rid_)
         || !has_valid_routing_id (dest_spot_rid_)
@@ -355,30 +337,28 @@ zlink_submit_result_t zlink_spot_request_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_request_spec (
-      zlink::part_helper_internal::send_family_spot_request_spot, flags_,
-      timeout_ms_, handler_, userdata_);
+    send_sequence_spec_t spec =
+      make_request_spec (zlink::part_helper_internal::send_family_spot_request_spot, flags_,
+                         timeout_ms_, handler_, userdata_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
-    return submit_staged_sequence (
-      spot_, spec, part_, part_flag_,
-      [spot_, dest_node_rid_, dest_spot_rid_, handler_, userdata_, flags_,
-       timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
-          return spot_request_spot_impl (
-            spot_, dest_node_rid_, dest_spot_rid_, parts_.data (),
-            parts_.size (), handler_, userdata_, flags_, timeout_ms_);
-      });
+    return submit_staged_sequence (spot_, spec, part_, part_flag_,
+                                   [spot_, dest_node_rid_, dest_spot_rid_, handler_, userdata_,
+                                    flags_, timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
+                                       return spot_request_spot_impl (
+                                         spot_, dest_node_rid_, dest_spot_rid_, parts_.data (),
+                                         parts_.size (), handler_, userdata_, flags_, timeout_ms_);
+                                   });
 }
 
-zlink_submit_result_t zlink_spot_request_router_part (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_,
-  uint32_t timeout_ms_)
+zlink_submit_result_t zlink_spot_request_router_part (void *spot_,
+                                                      const zlink_routing_id_t *peer_rid_,
+                                                      zlink_msg_t *part_,
+                                                      zlink_reply_handler_fn handler_,
+                                                      void *userdata_,
+                                                      zlink_send_flags_t flags_,
+                                                      zlink_part_flag_t part_flag_,
+                                                      uint32_t timeout_ms_)
 {
     if (!handler_ || !has_valid_routing_id (peer_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
@@ -387,30 +367,28 @@ zlink_submit_result_t zlink_spot_request_router_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_request_spec (
-      zlink::part_helper_internal::send_family_spot_request_router, flags_,
-      timeout_ms_, handler_, userdata_);
+    send_sequence_spec_t spec =
+      make_request_spec (zlink::part_helper_internal::send_family_spot_request_router, flags_,
+                         timeout_ms_, handler_, userdata_);
     set_rid1 (&spec, peer_rid_);
 
-    return submit_staged_sequence (
-      spot_, spec, part_, part_flag_,
-      [spot_, peer_rid_, handler_, userdata_, flags_,
-       timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
-          return spot_request_router_impl (spot_, peer_rid_, parts_.data (),
-                                           parts_.size (), handler_, userdata_,
-                                           flags_, timeout_ms_);
-      });
+    return submit_staged_sequence (spot_, spec, part_, part_flag_,
+                                   [spot_, peer_rid_, handler_, userdata_, flags_,
+                                    timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
+                                       return spot_request_router_impl (
+                                         spot_, peer_rid_, parts_.data (), parts_.size (), handler_,
+                                         userdata_, flags_, timeout_ms_);
+                                   });
 }
 
-zlink_submit_result_t zlink_spot_request_channel_part (
-  void *spot_,
-  const char *channel_name_,
-  zlink_msg_t *part_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_,
-  uint32_t timeout_ms_)
+zlink_submit_result_t zlink_spot_request_channel_part (void *spot_,
+                                                       const char *channel_name_,
+                                                       zlink_msg_t *part_,
+                                                       zlink_reply_handler_fn handler_,
+                                                       void *userdata_,
+                                                       zlink_send_flags_t flags_,
+                                                       zlink_part_flag_t part_flag_,
+                                                       uint32_t timeout_ms_)
 {
     if (!handler_ || !channel_name_ || channel_name_[0] == '\0'
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
@@ -419,85 +397,76 @@ zlink_submit_result_t zlink_spot_request_channel_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_request_spec (
-      zlink::part_helper_internal::send_family_spot_request_channel, flags_,
-      timeout_ms_, handler_, userdata_);
+    send_sequence_spec_t spec =
+      make_request_spec (zlink::part_helper_internal::send_family_spot_request_channel, flags_,
+                         timeout_ms_, handler_, userdata_);
     set_text1 (&spec, channel_name_);
 
-    return submit_staged_sequence (
-      spot_, spec, part_, part_flag_,
-      [spot_, channel_name_, handler_, userdata_, flags_,
-       timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
-          return spot_request_channel_impl (spot_, channel_name_, parts_.data (),
-                                            parts_.size (), handler_, userdata_,
-                                            flags_, timeout_ms_);
-      });
+    return submit_staged_sequence (spot_, spec, part_, part_flag_,
+                                   [spot_, channel_name_, handler_, userdata_, flags_,
+                                    timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
+                                       return spot_request_channel_impl (
+                                         spot_, channel_name_, parts_.data (), parts_.size (),
+                                         handler_, userdata_, flags_, timeout_ms_);
+                                   });
 }
 
-zlink_submit_result_t zlink_spot_send_spot_part (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_spot_send_spot_part (void *spot_,
+                                                 const zlink_routing_id_t *dest_node_rid_,
+                                                 const zlink_routing_id_t *dest_spot_rid_,
+                                                 zlink_msg_t *part_,
+                                                 zlink_send_flags_t flags_,
+                                                 zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_)
+    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_send_spec (
-      zlink::part_helper_internal::send_family_spot_send_spot, flags_);
+    send_sequence_spec_t spec =
+      make_send_spec (zlink::part_helper_internal::send_family_spot_send_spot, flags_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
-      [spot_, dest_node_rid_, dest_spot_rid_, flags_] (
-        std::vector<zlink_msg_t> &parts_) {
-          return spot_send_spot_impl (spot_, dest_node_rid_, dest_spot_rid_,
-                                      parts_.data (), parts_.size (), flags_);
+      [spot_, dest_node_rid_, dest_spot_rid_, flags_] (std::vector<zlink_msg_t> &parts_) {
+          return spot_send_spot_impl (spot_, dest_node_rid_, dest_spot_rid_, parts_.data (),
+                                      parts_.size (), flags_);
       });
 }
 
-zlink_submit_result_t zlink_spot_reply_spot_part (
-  void *spot_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *part_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_spot_reply_spot_part (void *spot_,
+                                                  const zlink_routing_id_t *dest_node_rid_,
+                                                  const zlink_routing_id_t *dest_spot_rid_,
+                                                  uint64_t request_seq_,
+                                                  zlink_msg_t *part_,
+                                                  zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_) || request_seq_ == 0
-        || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
+    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+        || request_seq_ == 0 || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_reply_spec (
-      zlink::part_helper_internal::send_family_spot_reply_spot, request_seq_);
+    send_sequence_spec_t spec =
+      make_reply_spec (zlink::part_helper_internal::send_family_spot_reply_spot, request_seq_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
-      [spot_, dest_node_rid_, dest_spot_rid_, request_seq_] (
-        std::vector<zlink_msg_t> &parts_) {
-          return spot_reply_spot_impl (
-            spot_, dest_node_rid_, dest_spot_rid_, request_seq_, parts_.data (),
-            parts_.size ());
+      [spot_, dest_node_rid_, dest_spot_rid_, request_seq_] (std::vector<zlink_msg_t> &parts_) {
+          return spot_reply_spot_impl (spot_, dest_node_rid_, dest_spot_rid_, request_seq_,
+                                       parts_.data (), parts_.size ());
       });
 }
 
-zlink_submit_result_t zlink_spot_reply_router_part (
-  void *spot_,
-  const zlink_routing_id_t *peer_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *part_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_spot_reply_router_part (void *spot_,
+                                                    const zlink_routing_id_t *peer_rid_,
+                                                    uint64_t request_seq_,
+                                                    zlink_msg_t *part_,
+                                                    zlink_part_flag_t part_flag_)
 {
     if (!has_valid_routing_id (peer_rid_) || request_seq_ == 0
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
@@ -505,28 +474,27 @@ zlink_submit_result_t zlink_spot_reply_router_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_reply_spec (
-      zlink::part_helper_internal::send_family_spot_reply_router, request_seq_);
+    send_sequence_spec_t spec =
+      make_reply_spec (zlink::part_helper_internal::send_family_spot_reply_router, request_seq_);
     set_rid1 (&spec, peer_rid_);
 
     return submit_staged_sequence (
       spot_, spec, part_, part_flag_,
       [spot_, peer_rid_, request_seq_] (std::vector<zlink_msg_t> &parts_) {
-          return spot_reply_router_impl (spot_, peer_rid_, request_seq_,
-                                         parts_.data (), parts_.size ());
+          return spot_reply_router_impl (spot_, peer_rid_, request_seq_, parts_.data (),
+                                         parts_.size ());
       });
 }
 
-zlink_submit_result_t zlink_router_request_spot_part (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *part_,
-  zlink_reply_handler_fn handler_,
-  void *userdata_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_,
-  uint32_t timeout_ms_)
+zlink_submit_result_t zlink_router_request_spot_part (void *router_,
+                                                      const zlink_routing_id_t *dest_node_rid_,
+                                                      const zlink_routing_id_t *dest_spot_rid_,
+                                                      zlink_msg_t *part_,
+                                                      zlink_reply_handler_fn handler_,
+                                                      void *userdata_,
+                                                      zlink_send_flags_t flags_,
+                                                      zlink_part_flag_t part_flag_,
+                                                      uint32_t timeout_ms_)
 {
     if (!handler_ || !has_valid_routing_id (dest_node_rid_)
         || !has_valid_routing_id (dest_spot_rid_)
@@ -536,75 +504,67 @@ zlink_submit_result_t zlink_router_request_spot_part (
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_request_spec (
-      zlink::part_helper_internal::send_family_router_request_spot, flags_,
-      timeout_ms_, handler_, userdata_);
+    send_sequence_spec_t spec =
+      make_request_spec (zlink::part_helper_internal::send_family_router_request_spot, flags_,
+                         timeout_ms_, handler_, userdata_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
-    return submit_staged_sequence (
-      router_, spec, part_, part_flag_,
-      [router_, dest_node_rid_, dest_spot_rid_, handler_, userdata_, flags_,
-       timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
-          return router_request_spot_impl (
-            router_, dest_node_rid_, dest_spot_rid_, parts_.data (),
-            parts_.size (), handler_, userdata_, flags_, timeout_ms_);
-      });
+    return submit_staged_sequence (router_, spec, part_, part_flag_,
+                                   [router_, dest_node_rid_, dest_spot_rid_, handler_, userdata_,
+                                    flags_, timeout_ms_] (std::vector<zlink_msg_t> &parts_) {
+                                       return router_request_spot_impl (
+                                         router_, dest_node_rid_, dest_spot_rid_, parts_.data (),
+                                         parts_.size (), handler_, userdata_, flags_, timeout_ms_);
+                                   });
 }
 
-zlink_submit_result_t zlink_router_reply_spot_part (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *part_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_router_reply_spot_part (void *router_,
+                                                    const zlink_routing_id_t *dest_node_rid_,
+                                                    const zlink_routing_id_t *dest_spot_rid_,
+                                                    uint64_t request_seq_,
+                                                    zlink_msg_t *part_,
+                                                    zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_) || request_seq_ == 0
-        || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
+    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
+        || request_seq_ == 0 || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_reply_spec (
-      zlink::part_helper_internal::send_family_router_reply_spot, request_seq_);
+    send_sequence_spec_t spec =
+      make_reply_spec (zlink::part_helper_internal::send_family_router_reply_spot, request_seq_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       router_, spec, part_, part_flag_,
-      [router_, dest_node_rid_, dest_spot_rid_, request_seq_] (
-        std::vector<zlink_msg_t> &parts_) {
-          return router_reply_spot_impl (
-            router_, dest_node_rid_, dest_spot_rid_, request_seq_, parts_.data (),
-            parts_.size ());
+      [router_, dest_node_rid_, dest_spot_rid_, request_seq_] (std::vector<zlink_msg_t> &parts_) {
+          return router_reply_spot_impl (router_, dest_node_rid_, dest_spot_rid_, request_seq_,
+                                         parts_.data (), parts_.size ());
       });
 }
 
-zlink_submit_result_t zlink_router_send_spot_part (
-  void *router_,
-  const zlink_routing_id_t *dest_node_rid_,
-  const zlink_routing_id_t *dest_spot_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_router_send_spot_part (void *router_,
+                                                   const zlink_routing_id_t *dest_node_rid_,
+                                                   const zlink_routing_id_t *dest_spot_rid_,
+                                                   zlink_msg_t *part_,
+                                                   zlink_send_flags_t flags_,
+                                                   zlink_part_flag_t part_flag_)
 {
-    if (!has_valid_routing_id (dest_node_rid_)
-        || !has_valid_routing_id (dest_spot_rid_)
+    if (!has_valid_routing_id (dest_node_rid_) || !has_valid_routing_id (dest_spot_rid_)
         || zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || validate_request_send_flags (flags_) != 0) {
         zlink::part_helper_internal::consume_send_part (part_);
         return zlink::submit_result_internal::from_errno (errno);
     }
 
-    send_sequence_spec_t spec = make_send_spec (
-      zlink::part_helper_internal::send_family_router_send_spot, flags_);
+    send_sequence_spec_t spec =
+      make_send_spec (zlink::part_helper_internal::send_family_router_send_spot, flags_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);
 
     return submit_staged_sequence (
       router_, spec, part_, part_flag_,
-      [router_, dest_node_rid_, dest_spot_rid_, flags_] (
-        std::vector<zlink_msg_t> &parts_) {
-          return router_send_spot_impl (router_, dest_node_rid_, dest_spot_rid_,
-                                        parts_.data (), parts_.size (), flags_);
+      [router_, dest_node_rid_, dest_spot_rid_, flags_] (std::vector<zlink_msg_t> &parts_) {
+          return router_send_spot_impl (router_, dest_node_rid_, dest_spot_rid_, parts_.data (),
+                                        parts_.size (), flags_);
       });
 }

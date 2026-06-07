@@ -46,8 +46,7 @@ static inline const char *socket_type_string (int socket_type_)
     }
 }
 
-static inline void append_u32 (std::vector<unsigned char> &buf_,
-                               uint32_t value_)
+static inline void append_u32 (std::vector<unsigned char> &buf_, uint32_t value_)
 {
     const size_t offset = buf_.size ();
     buf_.resize (offset + 4);
@@ -66,8 +65,7 @@ static inline void append_property (std::vector<unsigned char> &buf_,
     zlink_assert (value_len_ <= 0x7FFFFFFF);
     append_u32 (buf_, static_cast<uint32_t> (value_len_));
     if (value_len_ > 0) {
-        const unsigned char *src =
-          static_cast<const unsigned char *> (value_);
+        const unsigned char *src = static_cast<const unsigned char *> (value_);
         buf_.insert (buf_.end (), src, src + value_len_);
     }
 }
@@ -79,14 +77,11 @@ static inline void add_basic_properties (const options_t &options_,
     append_property (buf_, "Socket-Type", socket_type, strlen (socket_type));
 
     if (options_.type == ZLINK_CORE_SOCKET_DEALER || options_.type == ZLINK_CORE_SOCKET_ROUTER) {
-        append_property (buf_, "Routing-Id", options_.routing_id,
-                         options_.routing_id_size);
+        append_property (buf_, "Routing-Id", options_.routing_id, options_.routing_id_size);
     }
 }
 
-static inline int parse (const unsigned char *ptr_,
-                         size_t length_,
-                         properties_t &out_)
+static inline int parse (const unsigned char *ptr_, size_t length_, properties_t &out_)
 {
     size_t bytes_left = length_;
     while (bytes_left > 1) {
@@ -96,15 +91,13 @@ static inline int parse (const unsigned char *ptr_,
         if (bytes_left < name_length)
             break;
 
-        const std::string name (
-          reinterpret_cast<const char *> (ptr_), name_length);
+        const std::string name (reinterpret_cast<const char *> (ptr_), name_length);
         ptr_ += name_length;
         bytes_left -= name_length;
         if (bytes_left < 4)
             break;
 
-        const size_t value_length =
-          static_cast<size_t> (get_uint32 (ptr_));
+        const size_t value_length = static_cast<size_t> (get_uint32 (ptr_));
         ptr_ += 4;
         bytes_left -= 4;
         if (bytes_left < value_length)

@@ -29,8 +29,7 @@ static void spot_control_diagf (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_,
-                    args);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_, args);
     va_end (args);
 }
 
@@ -38,8 +37,7 @@ static void spot_ready_ack_debugf (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK",
-                              "[spot-ready-ack] ",
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK", "[spot-ready-ack] ",
                               spot_debug::ready_ack_log_path (), fmt_, args);
     va_end (args);
 }
@@ -110,8 +108,7 @@ void spot_node_t::emit_pending_subscription_replays ()
 
     if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] emit pending replay\n");
-    if (send_data_plane_command (
-          spot_control_protocol::cmd_replay_handle_state_subscriptions)
+    if (send_data_plane_command (spot_control_protocol::cmd_replay_handle_state_subscriptions)
         != 0) {
         debug_mark_fault (errno);
         return;
@@ -126,8 +123,7 @@ std::string spot_node_t::first_connected_peer_endpoint () const
     return *_peer_state.connected_endpoints.begin ();
 }
 
-int spot_node_t::send_subscription_update (const std::string &raw_filter_,
-                                           bool subscribe_)
+int spot_node_t::send_subscription_update (const std::string &raw_filter_, bool subscribe_)
 {
     if (raw_filter_.empty ()) {
         errno = EINVAL;

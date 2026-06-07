@@ -34,8 +34,7 @@ void zlink::poller_base_t::add_timer (int timeout_, i_poll_events *sink_, int id
 void zlink::poller_base_t::cancel_timer (i_poll_events *sink_, int id_)
 {
     //  Complexity of this operation is O(n). We assume it is rarely used.
-    for (timers_t::iterator it = _timers.begin (), end = _timers.end ();
-         it != end; ++it)
+    for (timers_t::iterator it = _timers.begin (), end = _timers.end (); it != end; ++it)
         if (it->second.sink == sink_ && it->second.id == id_) {
             _timers.erase (it);
             return;
@@ -91,8 +90,7 @@ uint64_t zlink::poller_base_t::execute_timers ()
     return res;
 }
 
-zlink::worker_poller_base_t::worker_poller_base_t (const thread_ctx_t &ctx_) :
-    _ctx (ctx_)
+zlink::worker_poller_base_t::worker_poller_base_t (const thread_ctx_t &ctx_) : _ctx (ctx_)
 {
 }
 

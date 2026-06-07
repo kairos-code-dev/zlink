@@ -14,8 +14,7 @@
 #ifdef ZLINK_HAVE_LIBBSD
 #include <bsd/string.h>
 #else
-static inline size_t
-strlcpy (char *dest_, const char *src_, const size_t dest_size_)
+static inline size_t strlcpy (char *dest_, const char *src_, const size_t dest_size_)
 {
     size_t remain = dest_size_;
     for (; remain && *src_; --remain, ++src_, ++dest_) {
@@ -25,8 +24,7 @@ strlcpy (char *dest_, const char *src_, const size_t dest_size_)
 }
 #endif
 #endif
-template <size_t size>
-static inline int strcpy_s (char (&dest_)[size], const char *const src_)
+template <size_t size> static inline int strcpy_s (char (&dest_)[size], const char *const src_)
 {
     const size_t res = strlcpy (dest_, src_, size);
     return res >= size ? ERANGE : 0;

@@ -40,17 +40,13 @@ void test_spot_multi_service_discovery_scale_and_churn ()
 
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_set_broadcast_interval (registry, 50));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_set_broadcast_interval (registry, 50));
 
     char registry_pub[MAX_SOCKET_STRING];
     char registry_router[MAX_SOCKET_STRING];
-    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d",
-              test_port (6030));
-    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d",
-              test_port (6031));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, registry_pub, registry_router));
+    snprintf (registry_pub, sizeof (registry_pub), "tcp://127.0.0.1:%d", test_port (6030));
+    snprintf (registry_router, sizeof (registry_router), "tcp://127.0.0.1:%d", test_port (6031));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_bind (registry, registry_pub, registry_router));
 
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
@@ -64,8 +60,7 @@ void test_spot_multi_service_discovery_scale_and_churn ()
 
     for (int service_index = 0; service_index < 3; ++service_index) {
         char channel_name[32];
-        snprintf (channel_name, sizeof (channel_name), "spot-scale-%d",
-                  service_index);
+        snprintf (channel_name, sizeof (channel_name), "spot-scale-%d", service_index);
         channel_names.push_back (channel_name);
 
         void *consumer_discovery =
@@ -74,24 +69,21 @@ void test_spot_multi_service_discovery_scale_and_churn ()
           zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_CLIENT_SERVER, channel_name);
         TEST_ASSERT_NOT_NULL (consumer_discovery);
         TEST_ASSERT_NOT_NULL (provider_discovery);
-        TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-          consumer_discovery, registry_router, 3000));
-        TEST_ASSERT_TRUE (connect_discovery_registry_with_retry_local (
-          provider_discovery, registry_router, 3000));
-        TEST_ASSERT_EQUAL_INT (
-          ZLINK_CONFIG_OK,
-          zlink_spot_node_attach_discovery (node, consumer_discovery));
+        TEST_ASSERT_TRUE (
+          connect_discovery_registry_with_retry_local (consumer_discovery, registry_router, 3000));
+        TEST_ASSERT_TRUE (
+          connect_discovery_registry_with_retry_local (provider_discovery, registry_router, 3000));
+        TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                               zlink_spot_node_attach_discovery (node, consumer_discovery));
         consumer_discoveries.push_back (consumer_discovery);
         provider_discoveries.push_back (provider_discovery);
 
         for (int router_index = 0; router_index < 4; ++router_index) {
             char router_endpoint[MAX_SOCKET_STRING];
             char routing_id[32];
-            snprintf (router_endpoint, sizeof (router_endpoint),
-                      "tcp://127.0.0.1:%d",
+            snprintf (router_endpoint, sizeof (router_endpoint), "tcp://127.0.0.1:%d",
                       test_port (6032 + service_index * 8 + router_index));
-            snprintf (routing_id, sizeof (routing_id), "scale-%d-%d",
-                      service_index, router_index);
+            snprintf (routing_id, sizeof (routing_id), "scale-%d-%d", service_index, router_index);
 
             void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
             TEST_ASSERT_NOT_NULL (router);
@@ -101,23 +93,20 @@ void test_spot_multi_service_discovery_scale_and_churn ()
             routers.push_back (router);
 
             std::string resolved_endpoint;
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink::discovery_owned_service::register_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discovery), router_endpoint, &resolved_endpoint, NULL,
-                service_role_router));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink::discovery_owned_service::register_endpoint (
+              static_cast<zlink::discovery_t *> (provider_discovery), router_endpoint,
+              &resolved_endpoint, NULL, service_role_router));
         }
     }
 
-    for (size_t service_index = 0; service_index < channel_names.size ();
-         ++service_index) {
-        TEST_ASSERT_TRUE (wait_for_service_summary_count_local (
-          consumer_discoveries[service_index], service_role_router, 4, 5000));
+    for (size_t service_index = 0; service_index < channel_names.size (); ++service_index) {
+        TEST_ASSERT_TRUE (wait_for_service_summary_count_local (consumer_discoveries[service_index],
+                                                                service_role_router, 4, 5000));
         TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
           node, channel_names[service_index].c_str (), 4, 0, 0, 5000));
     }
 
-    for (size_t service_index = 0; service_index < channel_names.size ();
-         ++service_index) {
+    for (size_t service_index = 0; service_index < channel_names.size (); ++service_index) {
         std::vector<void *> service_routers;
         for (size_t router_index = 0; router_index < 4; ++router_index)
             service_routers.push_back (routers[service_index * 4 + router_index]);
@@ -129,8 +118,7 @@ void test_spot_multi_service_discovery_scale_and_churn ()
         for (size_t service_index = 0; service_index < provider_discoveries.size ();
              ++service_index) {
             char router_endpoint[MAX_SOCKET_STRING];
-            snprintf (router_endpoint, sizeof (router_endpoint),
-                      "tcp://127.0.0.1:%d",
+            snprintf (router_endpoint, sizeof (router_endpoint), "tcp://127.0.0.1:%d",
                       test_port (6060 + round * 8 + static_cast<int> (service_index)));
             void *router = zlink_socket (ctx, ZLINK_SOCKET_ROUTER);
             TEST_ASSERT_NOT_NULL (router);
@@ -138,15 +126,14 @@ void test_spot_multi_service_discovery_scale_and_churn ()
             routers.push_back (router);
 
             std::string resolved_endpoint;
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink::discovery_owned_service::register_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), router_endpoint, &resolved_endpoint, NULL,
-                service_role_router));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink::discovery_owned_service::register_endpoint (
+              static_cast<zlink::discovery_t *> (provider_discoveries[service_index]),
+              router_endpoint, &resolved_endpoint, NULL, service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
               node, channel_names[service_index].c_str (), 5, 0, 0, 5000));
-            TEST_ASSERT_SUCCESS_ERRNO (
-              zlink::discovery_owned_service::unregister_endpoint (
-                static_cast<zlink::discovery_t *> (provider_discoveries[service_index]), resolved_endpoint.c_str (), service_role_router));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink::discovery_owned_service::unregister_endpoint (
+              static_cast<zlink::discovery_t *> (provider_discoveries[service_index]),
+              resolved_endpoint.c_str (), service_role_router));
             TEST_ASSERT_TRUE (wait_for_service_attachment_shape_local (
               node, channel_names[service_index].c_str (), 4, 0, 0, 5000));
         }

@@ -2,17 +2,20 @@
 
 #include "api_server/api_service.hpp"
 
-namespace sample {
+namespace sample
+{
 
-ApiService::ApiService(const std::string &server_id) : server_id_(server_id) {}
+ApiService::ApiService (const std::string &server_id) : server_id_ (server_id)
+{
+}
 
-std::string ApiService::handle_request(const std::string &op,
-                                       const std::string &req_id,
-                                       const std::string &payload)
+std::string ApiService::handle_request (const std::string &op,
+                                        const std::string &req_id,
+                                        const std::string &payload)
 {
     (void) req_id; // req_id is used for routing/logging, not for response body
 
-    std::string player = payload.empty() ? "unknown" : payload;
+    std::string player = payload.empty () ? "unknown" : payload;
 
     if (op == "PROFILE") {
         return "OK|" + player + "|lv10|hp100|" + server_id_;

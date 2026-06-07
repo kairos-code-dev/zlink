@@ -32,12 +32,10 @@ uint64_t spot_runtime_t::clear_control_task_id ()
     return task_id;
 }
 
-bool spot_runtime_t::note_connected_peer_version (
-  uint64_t connected_peer_version_)
+bool spot_runtime_t::note_connected_peer_version (uint64_t connected_peer_version_)
 {
     scoped_lock_t lock (execution_sync);
-    if (execution.control_state.connected_peer_version_seen
-        == connected_peer_version_)
+    if (execution.control_state.connected_peer_version_seen == connected_peer_version_)
         return false;
     execution.control_state.connected_peer_version_seen = connected_peer_version_;
     return true;

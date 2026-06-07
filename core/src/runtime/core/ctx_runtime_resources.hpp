@@ -34,10 +34,8 @@ class ctx_runtime_resources_t
     io_thread_t *choose_io_thread_stream (uint64_t affinity_);
 
   private:
-    void cleanup_failed_start_locked (ctx_t &ctx_,
-                                      ctx_socket_registry_t &socket_registry_);
-    bool start_reaper_locked (ctx_t &ctx_,
-                              ctx_socket_registry_t &socket_registry_);
+    void cleanup_failed_start_locked (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_);
+    bool start_reaper_locked (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_);
     bool start_service_runtime_locked (ctx_t &ctx_);
     bool start_io_threads_locked (ctx_t &ctx_,
                                   ctx_socket_registry_t &socket_registry_,

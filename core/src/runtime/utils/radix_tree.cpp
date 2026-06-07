@@ -155,13 +155,10 @@ node_t node_t::node_at (size_t index_) const
 void node_t::set_node_at (size_t index_, node_t node_)
 {
     zlink_assert (index_ < edgecount ());
-    memcpy (node_pointers () + index_ * sizeof (void *), &node_._data,
-            sizeof (node_._data));
+    memcpy (node_pointers () + index_ * sizeof (void *), &node_._data, sizeof (node_._data));
 }
 
-void node_t::set_edge_at (size_t index_,
-                          unsigned char first_byte_,
-                          node_t node_)
+void node_t::set_edge_at (size_t index_, unsigned char first_byte_, node_t node_)
 {
     set_first_byte_at (index_, first_byte_);
     set_node_at (index_, node_);
@@ -179,10 +176,9 @@ bool node_t::operator!= (node_t other_) const
 
 void node_t::resize (size_t prefix_length_, size_t edgecount_)
 {
-    const size_t node_size = 3 * sizeof (uint32_t) + prefix_length_
-                             + edgecount_ * (1 + sizeof (void *));
-    unsigned char *new_data =
-      static_cast<unsigned char *> (realloc (_data, node_size));
+    const size_t node_size =
+      3 * sizeof (uint32_t) + prefix_length_ + edgecount_ * (1 + sizeof (void *));
+    unsigned char *new_data = static_cast<unsigned char *> (realloc (_data, node_size));
     zlink_assert (new_data);
     _data = new_data;
     set_prefix_length (static_cast<uint32_t> (prefix_length_));
@@ -191,8 +187,8 @@ void node_t::resize (size_t prefix_length_, size_t edgecount_)
 
 node_t make_node (size_t refcount_, size_t prefix_length_, size_t edgecount_)
 {
-    const size_t node_size = 3 * sizeof (uint32_t) + prefix_length_
-                             + edgecount_ * (1 + sizeof (void *));
+    const size_t node_size =
+      3 * sizeof (uint32_t) + prefix_length_ + edgecount_ * (1 + sizeof (void *));
 
     unsigned char *data = static_cast<unsigned char *> (malloc (node_size));
     zlink_assert (data);
@@ -240,8 +236,8 @@ match_result_t::match_result_t (size_t key_bytes_matched_,
 }
 
 match_result_t zlink::radix_tree_t::match (const unsigned char *key_,
-                                         size_t key_size_,
-                                         bool is_lookup_ = false) const
+                                           size_t key_size_,
+                                           bool is_lookup_ = false) const
 {
     zlink_assert (key_);
 
@@ -262,8 +258,7 @@ match_result_t zlink::radix_tree_t::match (const unsigned char *key_,
         const unsigned char *const prefix = current_node.prefix ();
         const size_t prefix_length = current_node.prefix_length ();
 
-        for (prefix_byte_index = 0;
-             prefix_byte_index < prefix_length && key_byte_index < key_size_;
+        for (prefix_byte_index = 0; prefix_byte_index < prefix_length && key_byte_index < key_size_;
              ++prefix_byte_index, ++key_byte_index) {
             if (prefix[prefix_byte_index] != key_[key_byte_index])
                 break;
@@ -271,8 +266,7 @@ match_result_t zlink::radix_tree_t::match (const unsigned char *key_,
 
         // Even if a prefix of the key matches and we're doing a
         // lookup, this means we've found a matching subscription.
-        if (is_lookup_ && prefix_byte_index == prefix_length
-            && current_node.refcount () > 0) {
+        if (is_lookup_ && prefix_byte_index == prefix_length && current_node.refcount () > 0) {
             key_byte_index = key_size_;
             break;
         }
@@ -285,8 +279,7 @@ match_result_t zlink::radix_tree_t::match (const unsigned char *key_,
         // We need to match the rest of the key. Check if there's an
         // outgoing edge from this node.
         node_t next_node = current_node;
-        for (size_t i = 0, edgecount = current_node.edgecount (); i < edgecount;
-             ++i) {
+        for (size_t i = 0, edgecount = current_node.edgecount (); i < edgecount; ++i) {
             if (current_node.first_byte_at (i) == key_[key_byte_index]) {
                 parent_edge_index = edge_index;
                 edge_index = i;
@@ -302,9 +295,8 @@ match_result_t zlink::radix_tree_t::match (const unsigned char *key_,
         current_node = next_node;
     }
 
-    return match_result_t (key_byte_index, prefix_byte_index, edge_index,
-                           parent_edge_index, current_node, parent_node,
-                           grandparent_node);
+    return match_result_t (key_byte_index, prefix_byte_index, edge_index, parent_edge_index,
+                           current_node, parent_node, grandparent_node);
 }
 
 bool zlink::radix_tree_t::add (const unsigned char *key_, size_t key_size_)
@@ -326,8 +318,7 @@ bool zlink::radix_tree_t::add (const unsigned char *key_, size_t key_size_)
             key_node.set_prefix (key_ + key_bytes_matched);
 
             // Reallocate for one more edge.
-            current_node.resize (current_node.prefix_length (),
-                                 current_node.edgecount () + 1);
+            current_node.resize (current_node.prefix_length (), current_node.edgecount () + 1);
 
             // Make room for the new edge. We need to shift the chunk
             // of node pointers one byte to the right. Since resize()
@@ -336,13 +327,12 @@ bool zlink::radix_tree_t::add (const unsigned char *key_, size_t key_size_)
             // at one byte to the left of this destination.
             //
             // Since the regions can overlap, we use memmove.
-            memmove (current_node.node_pointers (),
-                     current_node.node_pointers () - 1,
+            memmove (current_node.node_pointers (), current_node.node_pointers () - 1,
                      (current_node.edgecount () - 1) * sizeof (void *));
 
             // Add an edge to the new node.
-            current_node.set_edge_at (current_node.edgecount () - 1,
-                                      key_[key_bytes_matched], key_node);
+            current_node.set_edge_at (current_node.edgecount () - 1, key_[key_bytes_matched],
+                                      key_node);
 
             // We need to update all pointers to the current node
             // after the call to resize().
@@ -362,8 +352,7 @@ bool zlink::radix_tree_t::add (const unsigned char *key_, size_t key_size_)
         // from the current node's prefix.
         node_t key_node = make_node (1, key_size_ - key_bytes_matched, 0);
         node_t split_node =
-          make_node (current_node.refcount (),
-                     current_node.prefix_length () - prefix_bytes_matched,
+          make_node (current_node.refcount (), current_node.prefix_length () - prefix_bytes_matched,
                      current_node.edgecount ());
 
         // Copy the prefix chunks to the new nodes.
@@ -400,8 +389,7 @@ bool zlink::radix_tree_t::add (const unsigned char *key_, size_t key_size_)
         // the current node's prefix and the outgoing edges from the
         // current node.
         node_t split_node =
-          make_node (current_node.refcount (),
-                     current_node.prefix_length () - prefix_bytes_matched,
+          make_node (current_node.refcount (), current_node.prefix_length () - prefix_bytes_matched,
                      current_node.edgecount ());
         split_node.set_prefix (current_node.prefix () + prefix_bytes_matched);
         split_node.set_first_bytes (current_node.first_bytes ());
@@ -442,8 +430,7 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
     node_t parent_node = match_result._parent_node;
     node_t grandparent_node = match_result._grandparent_node;
 
-    if (key_bytes_matched != key_size_
-        || prefix_bytes_matched != current_node.prefix_length ()
+    if (key_bytes_matched != key_size_ || prefix_bytes_matched != current_node.prefix_length ()
         || current_node.refcount () == 0)
         return false;
 
@@ -470,8 +457,7 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
         // keep the old prefix length since resize() will overwrite
         // it.
         const uint32_t old_prefix_length = current_node.prefix_length ();
-        current_node.resize (old_prefix_length + child.prefix_length (),
-                             child.edgecount ());
+        current_node.resize (old_prefix_length + child.prefix_length (), child.edgecount ());
 
         // Append the child node's prefix to the current node.
         memcpy (current_node.prefix () + old_prefix_length, child.prefix (),
@@ -487,8 +473,7 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
         return true;
     }
 
-    if (parent_node.edgecount () == 2 && parent_node.refcount () == 0
-        && parent_node != _root) {
+    if (parent_node.edgecount () == 2 && parent_node.refcount () == 0 && parent_node != _root) {
         // Removing this node leaves the parent with one child.
         // If the parent doesn't hold a key or if it isn't the root,
         // we can merge it with its single child node.
@@ -503,8 +488,8 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
                             other_child.edgecount ());
 
         // Append the child node's prefix to the current node.
-        memcpy (parent_node.prefix () + old_prefix_length,
-                other_child.prefix (), other_child.prefix_length ());
+        memcpy (parent_node.prefix () + old_prefix_length, other_child.prefix (),
+                other_child.prefix_length ());
 
         // Copy the rest of child node's data to the current node.
         parent_node.set_first_bytes (other_child.first_bytes ());
@@ -538,8 +523,7 @@ bool zlink::radix_tree_t::rm (const unsigned char *key_, size_t key_size_)
 
     // Shrink the parent node to the new size, which "deletes" the
     // last pointer in the chunk of node pointers.
-    parent_node.resize (parent_node.prefix_length (),
-                        parent_node.edgecount () - 1);
+    parent_node.resize (parent_node.prefix_length (), parent_node.edgecount () - 1);
 
     // Nothing points to this node now, so we can reclaim it.
     free (current_node._data);
@@ -558,21 +542,18 @@ bool zlink::radix_tree_t::check (const unsigned char *key_, size_t key_size_) co
 
     match_result_t match_result = match (key_, key_size_, true);
     return match_result._key_bytes_matched == key_size_
-           && match_result._prefix_bytes_matched
-                == match_result._current_node.prefix_length ()
+           && match_result._prefix_bytes_matched == match_result._current_node.prefix_length ()
            && match_result._current_node.refcount () > 0;
 }
 
-static void
-visit_keys (node_t node_,
-            std::vector<unsigned char> &buffer_,
-            void (*func_) (unsigned char *data_, size_t size_, void *arg_),
-            void *arg_)
+static void visit_keys (node_t node_,
+                        std::vector<unsigned char> &buffer_,
+                        void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+                        void *arg_)
 {
     const size_t prefix_length = node_.prefix_length ();
     buffer_.reserve (buffer_.size () + prefix_length);
-    std::copy (node_.prefix (), node_.prefix () + prefix_length,
-               std::back_inserter (buffer_));
+    std::copy (node_.prefix (), node_.prefix () + prefix_length, std::back_inserter (buffer_));
 
     if (node_.refcount () > 0) {
         zlink_assert (!buffer_.empty ());
@@ -585,9 +566,8 @@ visit_keys (node_t node_,
     buffer_.resize (static_cast<uint32_t> (buffer_.size () - prefix_length));
 }
 
-void zlink::radix_tree_t::apply (
-  void (*func_) (unsigned char *data_, size_t size_, void *arg_),
-  void *arg_) const
+void zlink::radix_tree_t::apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+                                 void *arg_) const
 {
     if (_root.refcount () > 0)
         func_ (NULL, 0, arg_); // Root node is always empty.

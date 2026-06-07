@@ -26,7 +26,8 @@ zlink::framework::health_status_t combine (zlink::framework::health_status_t cur
         || next == zlink::framework::health_status_t::unhealthy) {
         return zlink::framework::health_status_t::unhealthy;
     }
-    if (current == zlink::framework::health_status_t::degraded || next == zlink::framework::health_status_t::degraded) {
+    if (current == zlink::framework::health_status_t::degraded
+        || next == zlink::framework::health_status_t::degraded) {
         return zlink::framework::health_status_t::degraded;
     }
     return zlink::framework::health_status_t::healthy;
@@ -53,7 +54,8 @@ health_builder_t::health_builder_t () : _state (std::make_shared<detail::health_
 {
 }
 
-health_builder_t::health_builder_t (std::shared_ptr<detail::health_state_t> state) : _state (std::move (state))
+health_builder_t::health_builder_t (std::shared_ptr<detail::health_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -83,16 +85,20 @@ health_builder_t &health_builder_t::add_stream_endpoint_check (std::string name)
 
 health_builder_t &health_builder_t::add_hosted_service_check (std::string name)
 {
-    return add_check ("hosted_service", std::move (name), health_check_scope_t::readiness_and_liveness);
+    return add_check ("hosted_service", std::move (name),
+                      health_check_scope_t::readiness_and_liveness);
 }
 
-health_builder_t &health_builder_t::set_status (std::string name, health_status_t status, std::string message)
+health_builder_t &
+health_builder_t::set_status (std::string name, health_status_t status, std::string message)
 {
-    auto found = std::find_if (_state->checks.begin (), _state->checks.end (),
-                               [&] (const health_check_result_t &check) { return check.name == name; });
+    auto found =
+      std::find_if (_state->checks.begin (), _state->checks.end (),
+                    [&] (const health_check_result_t &check) { return check.name == name; });
     if (found == _state->checks.end ()) {
-        _state->checks.push_back (health_check_result_t{
-          std::move (name), "custom", status, health_check_scope_t::readiness_and_liveness, std::move (message)});
+        _state->checks.push_back (
+          health_check_result_t{std::move (name), "custom", status,
+                                health_check_scope_t::readiness_and_liveness, std::move (message)});
         return *this;
     }
 
@@ -117,13 +123,15 @@ health_report_t health_builder_t::report () const
     return report;
 }
 
-health_builder_t &health_builder_t::add_check (std::string component, std::string name, health_check_scope_t scope)
+health_builder_t &
+health_builder_t::add_check (std::string component, std::string name, health_check_scope_t scope)
 {
-    auto found = std::find_if (_state->checks.begin (), _state->checks.end (),
-                               [&] (const health_check_result_t &check) { return check.name == name; });
+    auto found =
+      std::find_if (_state->checks.begin (), _state->checks.end (),
+                    [&] (const health_check_result_t &check) { return check.name == name; });
     if (found == _state->checks.end ()) {
-        _state->checks.push_back (
-          health_check_result_t{std::move (name), std::move (component), health_status_t::healthy, scope, {}});
+        _state->checks.push_back (health_check_result_t{
+          std::move (name), std::move (component), health_status_t::healthy, scope, {}});
     }
     return *this;
 }

@@ -17,9 +17,7 @@ struct bench_settings_t
     int connect_ready_timeout_ms;
 };
 
-inline int resolve_int_env (const char *env_name,
-                                  int default_value,
-                                  int min_value)
+inline int resolve_int_env (const char *env_name, int default_value, int min_value)
 {
     if (!env_name)
         return default_value;
@@ -39,8 +37,7 @@ inline int resolve_int_env (const char *env_name,
     return static_cast<int> (parsed);
 }
 
-inline const char *resolve_multi_env_value (const char *env_name,
-                                            const char *legacy_name = NULL)
+inline const char *resolve_multi_env_value (const char *env_name, const char *legacy_name = NULL)
 {
     if (env_name && *env_name) {
         const char *value = std::getenv (env_name);
@@ -83,8 +80,7 @@ inline std::string normalize_multi_pattern_name (const char *pattern)
         return std::string ();
 
     std::string normalized (pattern);
-    std::transform (normalized.begin (), normalized.end (), normalized.begin (),
-                    ::toupper);
+    std::transform (normalized.begin (), normalized.end (), normalized.begin (), ::toupper);
     if (normalized.compare (0, 6, "MULTI_") == 0)
         normalized.erase (0, 6);
     return normalized;
@@ -108,44 +104,27 @@ inline int resolve_default_clients (const char *pattern)
 
 inline size_t resolve_service_clients (size_t requested_clients)
 {
-    const int override_clients = resolve_multi_int_env_with_fallback (
-      "PERF_MULTI_SERVICE_CLIENTS",
-      "PERF_SERVICE_CLIENTS",
-      0,
-      1);
+    const int override_clients = resolve_multi_int_env_with_fallback ("PERF_MULTI_SERVICE_CLIENTS",
+                                                                      "PERF_SERVICE_CLIENTS", 0, 1);
     if (override_clients <= 0)
         return requested_clients;
 
-    return std::min (
-      requested_clients,
-      static_cast<size_t> (override_clients));
+    return std::min (requested_clients, static_cast<size_t> (override_clients));
 }
 
 inline bench_settings_t resolve_bench_settings ()
 {
     bench_settings_t settings;
-    const char *pattern =
-      resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
+    const char *pattern = resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
     const int resolved_clients = resolve_multi_int_env_with_fallback (
-      "PERF_MULTI_CLIENTS",
-      "PERF_CLIENTS",
-      resolve_default_clients (pattern),
-      1);
+      "PERF_MULTI_CLIENTS", "PERF_CLIENTS", resolve_default_clients (pattern), 1);
     settings.clients = static_cast<size_t> (resolved_clients);
     settings.hwm = resolve_multi_int_env_with_fallback (
-      "PERF_MULTI_HWM",
-      "PERF_HWM",
-      resolve_default_hwm (pattern, resolved_clients),
-      0);
-    settings.duration_seconds =
-      resolve_multi_int_env_with_fallback (
-        "PERF_MULTI_DURATION_SECONDS", "PERF_DURATION_SECONDS", 5, 1);
-    settings.connect_ready_timeout_ms =
-      resolve_multi_int_env_with_fallback (
-        "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
-        "PERF_CONNECT_READY_TIMEOUT_MS",
-        1000,
-        0);
+      "PERF_MULTI_HWM", "PERF_HWM", resolve_default_hwm (pattern, resolved_clients), 0);
+    settings.duration_seconds = resolve_multi_int_env_with_fallback ("PERF_MULTI_DURATION_SECONDS",
+                                                                     "PERF_DURATION_SECONDS", 5, 1);
+    settings.connect_ready_timeout_ms = resolve_multi_int_env_with_fallback (
+      "PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "PERF_CONNECT_READY_TIMEOUT_MS", 1000, 0);
     return settings;
 }
 
@@ -167,26 +146,21 @@ inline bench_settings_t resolve_multi_bench_settings ()
     return resolve_bench_settings ();
 }
 
-inline int resolve_multi_int_env (const char *env_name,
-                                   int default_value,
-                                   int min_value)
+inline int resolve_multi_int_env (const char *env_name, int default_value, int min_value)
 {
-    return resolve_multi_int_env_with_fallback (
-      env_name, NULL, default_value, min_value);
+    return resolve_multi_int_env_with_fallback (env_name, NULL, default_value, min_value);
 }
 
 inline std::string resolve_multi_perf_recv_mode ()
 {
-    const char *env =
-      resolve_multi_env_value ("PERF_RECV_MODE", NULL);
+    const char *env = resolve_multi_env_value ("PERF_RECV_MODE", NULL);
     if (!env || !*env)
         return "recv";
 
     std::string mode (env);
     std::transform (mode.begin (), mode.end (), mode.begin (), ::tolower);
     if (mode != "recv") {
-        std::cerr << "policy violation: multi perf supports recv only"
-                  << std::endl;
+        std::cerr << "policy violation: multi perf supports recv only" << std::endl;
         std::exit (1);
     }
     return "recv";

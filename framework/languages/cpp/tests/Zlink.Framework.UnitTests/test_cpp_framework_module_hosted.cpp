@@ -153,7 +153,10 @@ class late_options_request_handler_t
     using reply_type = late_options_reply_t;
     static constexpr const char *topic_name = "LateOptionsRequest";
 
-    late_options_reply_t handle (const late_options_request_t &request) { return {"late:" + request.value}; }
+    late_options_reply_t handle (const late_options_request_t &request)
+    {
+        return {"late:" + request.value};
+    }
 };
 
 class context_options_request_handler_t
@@ -203,7 +206,8 @@ class options_publish_handler_t
 
     void handle (const options_event_t &event, const zlink::framework::publish_context_t &context)
     {
-        last_value = context.channel_name + ":" + context.topic + ":" + context.packet_name + ":" + event.value;
+        last_value = context.channel_name + ":" + context.topic + ":" + context.packet_name + ":"
+                     + event.value;
     }
 
     static inline std::string last_value;
@@ -241,8 +245,9 @@ class options_stream_session_t final : public zlink::framework::packet_stream_se
 class options_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t> invoke (const zlink::framework::handler_invocation_context_t &,
-                                                       zlink::framework::handler_next_t next)
+    zlink::framework::task_t<zlink::message_t>
+    invoke (const zlink::framework::handler_invocation_context_t &,
+            zlink::framework::handler_next_t next)
     {
         ++invoke_count;
         auto message = co_await next ();
@@ -294,16 +299,19 @@ class game_module_t final : public zlink::framework::module_t
 
     void configure_zlink (zlink::framework::zlink_builder_t &zlink) override
     {
-        zlink.add_node ("module-node").channel ("stage.events", [] (zlink::framework::channel_builder_t &channel) {
-            channel.enable_publisher (
-              [] (zlink::framework::capability_builder_t &publisher) { publisher.bind ("tcp://127.0.0.1:9101"); });
-        });
+        zlink.add_node ("module-node")
+          .channel ("stage.events", [] (zlink::framework::channel_builder_t &channel) {
+              channel.enable_publisher ([] (zlink::framework::capability_builder_t &publisher) {
+                  publisher.bind ("tcp://127.0.0.1:9101");
+              });
+          });
 
         zlink::framework::spot_node_builder_t spot_builder;
-        zlink.add_spot_node ("stage-node", [&spot_builder] (zlink::framework::spot_node_builder_t &spot_node) {
-            spot_node.add_spot<stage_spot_t> ("stage");
-            spot_builder = spot_node;
-        });
+        zlink.add_spot_node ("stage-node",
+                             [&spot_builder] (zlink::framework::spot_node_builder_t &spot_node) {
+                                 spot_node.add_spot<stage_spot_t> ("stage");
+                                 spot_builder = spot_node;
+                             });
         auto context = spot_builder.create_spot ("stage").context;
         context.register_packet<stage_packet_t> ("stage.packet");
 
@@ -358,7 +366,10 @@ class options_module_t
         ++options_module_counters_t::zlink;
     }
 
-    void configure_handlers (zlink::framework::handler_registry_t &) { ++options_module_counters_t::handlers; }
+    void configure_handlers (zlink::framework::handler_registry_t &)
+    {
+        ++options_module_counters_t::handlers;
+    }
 
     void configure_monitoring (zlink::framework::monitoring_builder_t &monitoring)
     {
@@ -397,8 +408,8 @@ class failing_start_hosted_service_t final : public zlink::framework::hosted_ser
     void start (zlink::framework::service_provider_t &) override
     {
         _events.push_back ("start:failing");
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_failed,
-                                                       "hosted service start failed");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_failed, "hosted service start failed");
     }
 
     void stop () noexcept override { _events.push_back ("stop:failing"); }
@@ -423,9 +434,10 @@ int main ()
         || !module.monitoring_configured || !module.wrapper) {
         return 1;
     }
-    if (module.wrapper->packet_count != 1 || module.wrapper->state.value != 3 || module.wrapper->node_rid.empty ()
-        || module.wrapper->spot_rid.empty ()
-        || module.wrapper->timer_options.overrun_policy != zlink::framework::timer_overrun_policy_t::catch_up_bounded) {
+    if (module.wrapper->packet_count != 1 || module.wrapper->state.value != 3
+        || module.wrapper->node_rid.empty () || module.wrapper->spot_rid.empty ()
+        || module.wrapper->timer_options.overrun_policy
+             != zlink::framework::timer_overrun_policy_t::catch_up_bounded) {
         return 2;
     }
 
@@ -441,7 +453,8 @@ int main ()
         return 3;
     }
     stopper.join ();
-    const std::vector<std::string> expected{"start:first", "start:second", "stop:second", "stop:first"};
+    const std::vector<std::string> expected{"start:first", "start:second", "stop:second",
+                                            "stop:first"};
     if (lifecycle != expected) {
         return 4;
     }
@@ -452,7 +465,8 @@ int main ()
         invalid.add_hosted_service (nullptr);
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        null_hosted_service_failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        null_hosted_service_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!null_hosted_service_failed) {
         return 5;
@@ -463,13 +477,17 @@ int main ()
     try {
         zlink::framework::app_t failure_app = zlink::framework::app_t::create ();
         failure_app.advanced ().services ().add_singleton<stage_state_t> ();
-        failure_app.add_hosted_service (std::make_unique<recording_hosted_service_t> ("started", failed_lifecycle))
+        failure_app
+          .add_hosted_service (
+            std::make_unique<recording_hosted_service_t> ("started", failed_lifecycle))
           .add_hosted_service (std::make_unique<failing_start_hosted_service_t> (failed_lifecycle))
-          .add_hosted_service (std::make_unique<recording_hosted_service_t> ("never", failed_lifecycle));
+          .add_hosted_service (
+            std::make_unique<recording_hosted_service_t> ("never", failed_lifecycle));
         failure_app.run (argc, argv);
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        const std::vector<std::string> expected_failed_lifecycle{"start:started", "start:failing", "stop:started"};
+        const std::vector<std::string> expected_failed_lifecycle{"start:started", "start:failing",
+                                                                 "stop:started"};
         start_failure_cleaned_up_started_services =
           error.kind () == zlink::framework::framework_error_kind_t::request_failed
           && failed_lifecycle == expected_failed_lifecycle;
@@ -490,7 +508,8 @@ int main ()
     zlink::framework::serializer_registry_t serializers;
     zlink::framework::zlink_builder_t zlink;
     zlink::framework::monitoring_builder_t monitoring;
-    zlink::framework::zlink_framework_options_t options (services, handlers, serializers, zlink, monitoring);
+    zlink::framework::zlink_framework_options_t options (services, handlers, serializers, zlink,
+                                                         monitoring);
 
     options_filter_t::invoke_count = 0;
     options_send_handler_t::last_value.clear ();
@@ -509,7 +528,8 @@ int main ()
         dispatch.unhandled.request = zlink::framework::unhandled_dispatch_action_t::reply_error;
         dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::log_and_drop;
         dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
-        dispatch.diagnostics.message_flow = zlink::framework::message_flow_log_mode_t::key_transitions;
+        dispatch.diagnostics.message_flow =
+          zlink::framework::message_flow_log_mode_t::key_transitions;
         dispatch.diagnostics.sample_rate = 0.5;
         dispatch.diagnostics.include_message_sizes = true;
         dispatch.diagnostics.include_native_diagnostics = true;
@@ -537,8 +557,10 @@ int main ()
       .register_session<options_stream_session_t> ();
     options.apply ();
 
-    const auto *descriptor = handlers.find ("api-channel", "OptionsRequest", options_request_t::packet_name);
-    if (descriptor == nullptr || descriptor->execution != zlink::framework::handler_execution_t::offload) {
+    const auto *descriptor =
+      handlers.find ("api-channel", "OptionsRequest", options_request_t::packet_name);
+    if (descriptor == nullptr
+        || descriptor->execution != zlink::framework::handler_execution_t::offload) {
         return 7;
     }
 
@@ -548,10 +570,12 @@ int main ()
         || streams[0].packet_session_name != "options.session") {
         return 63;
     }
-    auto stream_scope = provider.create_scope (zlink::framework::service_scope_kind_t::stream_session);
+    auto stream_scope =
+      provider.create_scope (zlink::framework::service_scope_kind_t::stream_session);
     (void) stream_scope.get_required<options_stream_session_t> ();
-    auto result = handlers.invoke ("api-channel", "OptionsRequest", options_request_t::packet_name, provider,
-                                   serializers, zlink::message_t::from_json (options_request_t{"request"}));
+    auto result =
+      handlers.invoke ("api-channel", "OptionsRequest", options_request_t::packet_name, provider,
+                       serializers, zlink::message_t::from_json (options_request_t{"request"}));
     if (!result) {
         return 8;
     }
@@ -559,9 +583,9 @@ int main ()
     if (reply.value != "reply:request") {
         return 9;
     }
-    auto late_result =
-      handlers.invoke ("api-channel", "LateOptionsRequest", late_options_request_t::packet_name, provider, serializers,
-                       zlink::message_t::from_json (late_options_request_t{"request"}));
+    auto late_result = handlers.invoke (
+      "api-channel", "LateOptionsRequest", late_options_request_t::packet_name, provider,
+      serializers, zlink::message_t::from_json (late_options_request_t{"request"}));
     if (!late_result) {
         return 13;
     }
@@ -569,43 +593,50 @@ int main ()
     if (late_reply.value != "late:request") {
         return 14;
     }
-    auto context_result =
-      handlers.invoke ("api-channel", "ContextOptionsRequest", context_options_request_t::packet_name, provider,
-                       serializers, zlink::message_t::from_json (context_options_request_t{"request"}));
+    auto context_result = handlers.invoke (
+      "api-channel", "ContextOptionsRequest", context_options_request_t::packet_name, provider,
+      serializers, zlink::message_t::from_json (context_options_request_t{"request"}));
     if (!context_result) {
         return 15;
     }
     const auto context_reply = context_result.value ().parse_json<options_reply_t> ();
-    if (context_reply.value != "api-channel:" + std::string (context_options_request_t::packet_name) + ":request") {
+    if (context_reply.value
+        != "api-channel:" + std::string (context_options_request_t::packet_name) + ":request") {
         return 16;
     }
-    auto send_result = handlers.invoke ("api-channel", "OptionsSend", options_send_t::packet_name, provider,
-                                        serializers, zlink::message_t::from_json (options_send_t{"sent"}));
+    auto send_result =
+      handlers.invoke ("api-channel", "OptionsSend", options_send_t::packet_name, provider,
+                       serializers, zlink::message_t::from_json (options_send_t{"sent"}));
     if (!send_result || options_send_handler_t::last_value != "api-channel:OptionsSend:sent") {
         return 17;
     }
-    auto publish_result = handlers.invoke ("event-channel", "OptionsEvent", options_event_t::packet_name, provider,
-                                           serializers, zlink::message_t::from_json (options_event_t{"published"}));
+    auto publish_result =
+      handlers.invoke ("event-channel", "OptionsEvent", options_event_t::packet_name, provider,
+                       serializers, zlink::message_t::from_json (options_event_t{"published"}));
     if (!publish_result
-        || options_publish_handler_t::last_value != "event-channel:OptionsEvent:OptionsEvent:published") {
+        || options_publish_handler_t::last_value
+             != "event-channel:OptionsEvent:OptionsEvent:published") {
         return 18;
     }
     if (options_filter_t::invoke_count != 5) {
         return 19;
     }
-    const auto &metadata_policy = provider.get_required<zlink::framework::message_metadata_policy_t> ();
-    std::map<std::string, std::string> metadata{{"trace-id", "trace-options"}, {"tenant-id", "tenant-options"}};
+    const auto &metadata_policy =
+      provider.get_required<zlink::framework::message_metadata_policy_t> ();
+    std::map<std::string, std::string> metadata{{"trace-id", "trace-options"},
+                                                {"tenant-id", "tenant-options"}};
     const auto projected_metadata = metadata_policy.project (metadata);
     const auto projected_trace = projected_metadata.find ("trace-id");
-    if (!projected_trace || *projected_trace != "trace-options" || projected_metadata.contains ("tenant-id")
-        || metadata_policy.can_forward ("tenant-id")) {
+    if (!projected_trace || *projected_trace != "trace-options"
+        || projected_metadata.contains ("tenant-id") || metadata_policy.can_forward ("tenant-id")) {
         return 20;
     }
     const auto dispatch = options.dispatch_options ();
     if (dispatch.spot_dispatch_mode != zlink::framework::dispatch_mode_t::compiled
         || dispatch.stream_dispatch_mode != zlink::framework::dispatch_mode_t::dynamic
         || dispatch.unhandled.publish != zlink::framework::unhandled_dispatch_action_t::drop
-        || dispatch.diagnostics.message_flow != zlink::framework::message_flow_log_mode_t::key_transitions
+        || dispatch.diagnostics.message_flow
+             != zlink::framework::message_flow_log_mode_t::key_transitions
         || dispatch.diagnostics.sample_rate != 0.5 || !dispatch.diagnostics.include_message_sizes
         || !dispatch.diagnostics.include_native_diagnostics) {
         return 21;
@@ -618,12 +649,15 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.configure_dispatch (
-          [] (zlink::framework::dispatch_options_t &dispatch) { dispatch.diagnostics.sample_rate = 1.5; });
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
+        invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
+            dispatch.diagnostics.sample_rate = 1.5;
+        });
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        invalid_dispatch_failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        invalid_dispatch_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!invalid_dispatch_failed) {
         return 22;
@@ -637,7 +671,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
             dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::reply_error;
         });
@@ -659,7 +694,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
             dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::reply_error;
         });
@@ -681,7 +717,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.configure_dispatch ([] (zlink::framework::dispatch_options_t &dispatch) {
             dispatch.diagnostics.sample_rate = std::numeric_limits<double>::quiet_NaN ();
         });
@@ -702,7 +739,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.handlers ().add_send<options_send_handler_t> ("commands");
         invalid_options.add_fanout_channel ("bad-events").use_handler_group ("commands");
     }
@@ -723,7 +761,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_client_server_channel ("bad-api").use_handler_group ("events");
         invalid_options.handlers ().add_publish<options_publish_handler_t> ("events");
     }
@@ -744,14 +783,16 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_client_server_channel ("empty-channel");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_client_server_capability_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("must enable server or client capability") != std::string::npos;
+          && std::string (error.what ()).find ("must enable server or client capability")
+               != std::string::npos;
     }
     if (!missing_client_server_capability_failed) {
         return 55;
@@ -765,14 +806,16 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_fanout_channel ("empty-fanout");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_fanout_capability_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("must enable publisher or subscriber capability") != std::string::npos;
+          && std::string (error.what ()).find ("must enable publisher or subscriber capability")
+               != std::string::npos;
     }
     if (!missing_fanout_capability_failed) {
         return 56;
@@ -786,7 +829,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_client_server_channel ("duplicate-api")
           .enable_server ("tcp://127.0.0.1:9340")
           .use_handler_group ("api");
@@ -796,7 +840,8 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_high_level_send_handler_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("duplicate handler registration") != std::string::npos;
+          && std::string (error.what ()).find ("duplicate handler registration")
+               != std::string::npos;
     }
     if (!duplicate_high_level_send_handler_failed) {
         return 57;
@@ -810,7 +855,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.handlers ().add<options_request_handler_t> ("api");
         invalid_options.handlers ().add<options_request_handler_t> ("api");
         invalid_options.add_client_server_channel ("late-duplicate-api")
@@ -820,7 +866,8 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_late_high_level_request_handler_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("duplicate handler registration") != std::string::npos;
+          && std::string (error.what ()).find ("duplicate handler registration")
+               != std::string::npos;
     }
     if (!duplicate_late_high_level_request_handler_failed) {
         return 58;
@@ -834,7 +881,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.handlers ().add_send<options_send_handler_t> ("api");
         invalid_options.handlers ().add_send<alias_options_send_handler_t> ("api-alias");
         invalid_options.add_client_server_channel ("duplicate-packet-api")
@@ -846,7 +894,8 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         duplicate_cross_group_packet_handler_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("duplicate handler registration") != std::string::npos;
+          && std::string (error.what ()).find ("duplicate handler registration")
+               != std::string::npos;
     }
     if (!duplicate_cross_group_packet_handler_failed) {
         return 59;
@@ -860,14 +909,17 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.add_client_server_channel ("empty-server").enable_server ("tcp://127.0.0.1:9300");
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
+        invalid_options.add_client_server_channel ("empty-server")
+          .enable_server ("tcp://127.0.0.1:9300");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_server_handler_group_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("server must map a request or send handler group") != std::string::npos;
+          && std::string (error.what ()).find ("server must map a request or send handler group")
+               != std::string::npos;
     }
     if (!missing_server_handler_group_failed) {
         return 31;
@@ -880,10 +932,11 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
         valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9304");
-        valid_options.add_client_server_channel ("spot-route").enable_server ("tcp://127.0.0.1:9301");
+        valid_options.add_client_server_channel ("spot-route")
+          .enable_server ("tcp://127.0.0.1:9301");
         valid_options.add_spot_mesh ("spot-routes")
           .add_node ("route-node")
           .enable_router ("tcp://127.0.0.1:9302")
@@ -904,16 +957,18 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
-        valid_options.add_client_server_channel ("manual-spot-route").enable_server ("tcp://127.0.0.1:9343");
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
+        valid_options.add_client_server_channel ("manual-spot-route")
+          .enable_server ("tcp://127.0.0.1:9343");
         valid_options.add_spot_mesh ("manual-spots")
           .add_node ("route-node")
           .enable_router ("tcp://127.0.0.1:9344")
-          .accept_routes_from_channel ("manual-spot-route",
-                                       [] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
-                                           routes.connect ("tcp://127.0.0.1:9343");
-                                       });
+          .accept_routes_from_channel (
+            "manual-spot-route",
+            [] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
+                routes.connect ("tcp://127.0.0.1:9343");
+            });
         valid_options.apply ();
         const auto spots = valid_zlink.spot_nodes ();
         accepted_spot_route_manual_without_discovery_succeeded =
@@ -937,7 +992,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9303");
         invalid_options.add_fanout_channel ("empty-events").enable_subscriber ();
         invalid_options.apply ();
@@ -945,7 +1001,8 @@ int main ()
     catch (const zlink::framework::framework_exception_t &error) {
         missing_subscriber_handler_group_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("subscriber must map a publish handler group") != std::string::npos;
+          && std::string (error.what ()).find ("subscriber must map a publish handler group")
+               != std::string::npos;
     }
     if (!missing_subscriber_handler_group_failed) {
         return 33;
@@ -959,8 +1016,10 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.add_route_mesh_channel ("missing-route").set_routing_id (zlink::routing_id_t::from ("missing"));
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
+        invalid_options.add_route_mesh_channel ("missing-route")
+          .set_routing_id (zlink::routing_id_t::from ("missing"));
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
@@ -980,14 +1039,18 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
-        invalid_options.add_spot_mesh ("empty-spots").add_node ("empty-node").add_spot<stage_spot_t> ("stage");
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
+        invalid_options.add_spot_mesh ("empty-spots")
+          .add_node ("empty-node")
+          .add_spot<stage_spot_t> ("stage");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_spot_capability_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("must enable router or pub/sub capability") != std::string::npos;
+          && std::string (error.what ()).find ("must enable router or pub/sub capability")
+               != std::string::npos;
     }
     if (!missing_spot_capability_failed) {
         return 35;
@@ -1002,13 +1065,15 @@ int main ()
             zlink::framework::zlink_builder_t invalid_zlink;
             zlink::framework::monitoring_builder_t invalid_monitoring;
             zlink::framework::zlink_framework_options_t invalid_options (
-              invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+              invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+              invalid_monitoring);
             configure (invalid_options);
             invalid_options.apply ();
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-                     && std::string (error.what ()).find (needle) != std::string::npos;
+            failed =
+              error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
+              && std::string (error.what ()).find (needle) != std::string::npos;
         }
         return failed;
     };
@@ -1022,13 +1087,15 @@ int main ()
             zlink::framework::zlink_builder_t invalid_zlink;
             zlink::framework::monitoring_builder_t invalid_monitoring;
             zlink::framework::zlink_framework_options_t invalid_options (
-              invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+              invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+              invalid_monitoring);
             configure (invalid_options);
             invalid_options.apply ();
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-                     && std::string (error.what ()).find (needle) != std::string::npos;
+            failed =
+              error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
+              && std::string (error.what ()).find (needle) != std::string::npos;
         }
         return failed;
     };
@@ -1058,13 +1125,17 @@ int main ()
     }
 
     if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.add_spot_mesh (" "); },
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_spot_mesh (" ");
+          },
           "SPOT mesh channel name is required")) {
         return 44;
     }
 
     if (!options_failure_contains (
-          [] (zlink::framework::zlink_framework_options_t &invalid_options) { invalid_options.add_stream_node (" "); },
+          [] (zlink::framework::zlink_framework_options_t &invalid_options) {
+              invalid_options.add_stream_node (" ");
+          },
           "STREAM node name is required")) {
         return 45;
     }
@@ -1110,8 +1181,8 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
         valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9319");
         valid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9320");
         valid_options.add_spot_mesh ("spots")
@@ -1120,7 +1191,8 @@ int main ()
           .attach_publisher ("events");
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
-        attach_publisher_succeeded = snapshots.size () == 1 && snapshots[0].attached_publishers.size () == 1
+        attach_publisher_succeeded = snapshots.size () == 1
+                                     && snapshots[0].attached_publishers.size () == 1
                                      && snapshots[0].attached_publishers[0] == "events";
     }
     catch (const zlink::framework::framework_exception_t &) {
@@ -1137,8 +1209,8 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
         valid_options.handlers ().add_send<options_send_handler_t> ("api");
         valid_options.add_client_server_channel ("manual-api")
           .enable_server ("tcp://127.0.0.1:9345")
@@ -1146,9 +1218,10 @@ int main ()
         valid_options.add_spot_mesh ("spots")
           .add_node ("spot-node")
           .enable_router ("tcp://127.0.0.1:9346")
-          .attach_channel_client ("manual-api", [] (zlink::framework::attached_channel_client_builder_t &client) {
-              client.connect ("tcp://127.0.0.1:9345");
-          });
+          .attach_channel_client ("manual-api",
+                                  [] (zlink::framework::attached_channel_client_builder_t &client) {
+                                      client.connect ("tcp://127.0.0.1:9345");
+                                  });
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
         attach_channel_client_manual_succeeded =
@@ -1157,7 +1230,8 @@ int main ()
           && snapshots[0].attached_channel_client_details.size () == 1
           && snapshots[0].attached_channel_client_details[0].channel_name == "manual-api"
           && snapshots[0].attached_channel_client_details[0].manual_connections.size () == 1
-          && snapshots[0].attached_channel_client_details[0].manual_connections[0] == "tcp://127.0.0.1:9345";
+          && snapshots[0].attached_channel_client_details[0].manual_connections[0]
+               == "tcp://127.0.0.1:9345";
     }
     catch (const zlink::framework::framework_exception_t &) {
         attach_channel_client_manual_succeeded = false;
@@ -1173,15 +1247,17 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
-        valid_options.add_fanout_channel ("manual-events").enable_publisher ("tcp://127.0.0.1:9347");
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
+        valid_options.add_fanout_channel ("manual-events")
+          .enable_publisher ("tcp://127.0.0.1:9347");
         valid_options.add_spot_mesh ("spots")
           .add_node ("spot-node")
           .enable_pub_sub ("tcp://127.0.0.1:9348")
-          .attach_publisher ("manual-events", [] (zlink::framework::attached_publisher_builder_t &publisher) {
-              publisher.connect ("tcp://127.0.0.1:9347");
-          });
+          .attach_publisher ("manual-events",
+                             [] (zlink::framework::attached_publisher_builder_t &publisher) {
+                                 publisher.connect ("tcp://127.0.0.1:9347");
+                             });
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
         attach_publisher_manual_succeeded =
@@ -1190,7 +1266,8 @@ int main ()
           && snapshots[0].attached_publisher_details.size () == 1
           && snapshots[0].attached_publisher_details[0].channel_name == "manual-events"
           && snapshots[0].attached_publisher_details[0].manual_connections.size () == 1
-          && snapshots[0].attached_publisher_details[0].manual_connections[0] == "tcp://127.0.0.1:9347";
+          && snapshots[0].attached_publisher_details[0].manual_connections[0]
+               == "tcp://127.0.0.1:9347";
     }
     catch (const zlink::framework::framework_exception_t &) {
         attach_publisher_manual_succeeded = false;
@@ -1218,8 +1295,8 @@ int main ()
         zlink::framework::serializer_registry_t valid_serializers;
         zlink::framework::zlink_builder_t valid_zlink;
         zlink::framework::monitoring_builder_t valid_monitoring;
-        zlink::framework::zlink_framework_options_t valid_options (valid_services, valid_handlers, valid_serializers,
-                                                                   valid_zlink, valid_monitoring);
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
         valid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9324");
         valid_options.handlers ().add_send<options_send_handler_t> ("api");
         valid_options.add_client_server_channel ("api")
@@ -1231,9 +1308,9 @@ int main ()
           .attach_channel_client ("api");
         valid_options.apply ();
         const auto snapshots = valid_zlink.spot_nodes ();
-        attach_channel_client_server_with_discovery_succeeded = snapshots.size () == 1
-                                                                && snapshots[0].attached_channel_clients.size () == 1
-                                                                && snapshots[0].attached_channel_clients[0] == "api";
+        attach_channel_client_server_with_discovery_succeeded =
+          snapshots.size () == 1 && snapshots[0].attached_channel_clients.size () == 1
+          && snapshots[0].attached_channel_clients[0] == "api";
     }
     catch (const zlink::framework::framework_exception_t &) {
         attach_channel_client_server_with_discovery_succeeded = false;
@@ -1244,7 +1321,8 @@ int main ()
 
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9327");
+              invalid_options.add_client_server_channel ("api").enable_server (
+                "tcp://127.0.0.1:9327");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9328")
@@ -1257,7 +1335,8 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9328");
-              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9329");
+              invalid_options.add_fanout_channel ("events").enable_publisher (
+                "tcp://127.0.0.1:9329");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9330")
@@ -1282,7 +1361,8 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9333");
-              invalid_options.add_fanout_channel ("events").enable_subscriber ("tcp://127.0.0.1:9334");
+              invalid_options.add_fanout_channel ("events").enable_subscriber (
+                "tcp://127.0.0.1:9334");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9335")
@@ -1295,7 +1375,8 @@ int main ()
     if (!options_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9336");
-              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9337");
+              invalid_options.add_fanout_channel ("events").enable_publisher (
+                "tcp://127.0.0.1:9337");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("first")
                 .enable_pub_sub ("tcp://127.0.0.1:9338")
@@ -1311,7 +1392,8 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9305");
-              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9306");
+              invalid_options.add_client_server_channel ("api").enable_server (
+                "tcp://127.0.0.1:9306");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_pub_sub ("tcp://127.0.0.1:9307")
@@ -1336,7 +1418,8 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9310");
-              invalid_options.add_fanout_channel ("events").enable_publisher ("tcp://127.0.0.1:9311");
+              invalid_options.add_fanout_channel ("events").enable_publisher (
+                "tcp://127.0.0.1:9311");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9312")
@@ -1349,7 +1432,8 @@ int main ()
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
               invalid_options.use_discovery ().add_registry_endpoint ("tcp://127.0.0.1:9313");
-              invalid_options.add_client_server_channel ("route").enable_server ("tcp://127.0.0.1:9314");
+              invalid_options.add_client_server_channel ("route").enable_server (
+                "tcp://127.0.0.1:9314");
               invalid_options.add_route_mesh_channel ("route").bind ("tcp://127.0.0.1:9315");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
@@ -1362,7 +1446,8 @@ int main ()
 
     if (!accepted_route_failure_contains (
           [] (zlink::framework::zlink_framework_options_t &invalid_options) {
-              invalid_options.add_client_server_channel ("api").enable_server ("tcp://127.0.0.1:9317");
+              invalid_options.add_client_server_channel ("api").enable_server (
+                "tcp://127.0.0.1:9317");
               invalid_options.add_spot_mesh ("spots")
                 .add_node ("spot-node")
                 .enable_router ("tcp://127.0.0.1:9318")
@@ -1380,7 +1465,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_client_server_channel ("missing-discovery").enable_client ();
         invalid_options.apply ();
     }
@@ -1401,7 +1487,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_stream_node ("client.stream")
           .bind ("tcp://127.0.0.1:9200")
           .register_session ("first")
@@ -1424,7 +1511,8 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_stream_node ("typed.stream")
           .bind ("tcp://127.0.0.1:9201")
           .register_session<options_stream_session_t> ()
@@ -1447,45 +1535,58 @@ int main ()
         zlink::framework::zlink_builder_t invalid_zlink;
         zlink::framework::monitoring_builder_t invalid_monitoring;
         zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink, invalid_monitoring);
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
         invalid_options.add_dealer_mesh_channel ("missing-mesh");
         invalid_options.apply ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
         missing_dealer_peer_path_failed =
           error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("requires a bind or connect endpoint") != std::string::npos;
+          && std::string (error.what ()).find ("requires a bind or connect endpoint")
+               != std::string::npos;
     }
     if (!missing_dealer_peer_path_failed) {
         return 28;
     }
 
     const auto discovery = zlink.discovery_options ();
-    if (discovery.registry_endpoints.size () != 1 || discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
+    if (discovery.registry_endpoints.size () != 1
+        || discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
         return 10;
     }
     const auto channels = zlink.channels ();
-    const auto api_channel = std::find_if (channels.begin (), channels.end (),
-                                           [] (const auto &channel) { return channel.name == "api-channel"; });
-    const auto play_channel = std::find_if (channels.begin (), channels.end (),
-                                            [] (const auto &channel) { return channel.name == "play-channel"; });
-    const auto event_channel = std::find_if (channels.begin (), channels.end (),
-                                             [] (const auto &channel) { return channel.name == "event-channel"; });
-    const auto mesh_channel = std::find_if (channels.begin (), channels.end (),
-                                            [] (const auto &channel) { return channel.name == "mesh-channel"; });
-    const auto profile_channel = std::find_if (channels.begin (), channels.end (),
-                                               [] (const auto &channel) { return channel.name == "profile-channel"; });
+    const auto api_channel =
+      std::find_if (channels.begin (), channels.end (),
+                    [] (const auto &channel) { return channel.name == "api-channel"; });
+    const auto play_channel =
+      std::find_if (channels.begin (), channels.end (),
+                    [] (const auto &channel) { return channel.name == "play-channel"; });
+    const auto event_channel =
+      std::find_if (channels.begin (), channels.end (),
+                    [] (const auto &channel) { return channel.name == "event-channel"; });
+    const auto mesh_channel =
+      std::find_if (channels.begin (), channels.end (),
+                    [] (const auto &channel) { return channel.name == "mesh-channel"; });
+    const auto profile_channel =
+      std::find_if (channels.begin (), channels.end (),
+                    [] (const auto &channel) { return channel.name == "profile-channel"; });
     if (channels.size () != 5 || api_channel == channels.end () || play_channel == channels.end ()
-        || event_channel == channels.end () || mesh_channel == channels.end () || profile_channel == channels.end ()
-        || !api_channel->server.enabled || api_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9103"
-        || !api_channel->client.enabled || !api_channel->client.discovery || !event_channel->publisher.enabled
+        || event_channel == channels.end () || mesh_channel == channels.end ()
+        || profile_channel == channels.end () || !api_channel->server.enabled
+        || api_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9103"
+        || !api_channel->client.enabled || !api_channel->client.discovery
+        || !event_channel->publisher.enabled
         || event_channel->publisher.bind_endpoints.front () != "tcp://127.0.0.1:9104"
-        || !event_channel->subscriber.enabled || event_channel->subscriber.connect_endpoints.size () != 2
+        || !event_channel->subscriber.enabled
+        || event_channel->subscriber.connect_endpoints.size () != 2
         || event_channel->subscriber.connect_endpoints[0] != "tcp://127.0.0.1:9105"
-        || event_channel->subscriber.connect_endpoints[1] != "tcp://127.0.0.1:9108" || !mesh_channel->client.enabled
+        || event_channel->subscriber.connect_endpoints[1] != "tcp://127.0.0.1:9108"
+        || !mesh_channel->client.enabled
         || mesh_channel->client.bind_endpoints.front () != "tcp://127.0.0.1:9106"
-        || mesh_channel->client.connect_endpoints.front () != "tcp://127.0.0.1:9107" || !play_channel->client.enabled
-        || !play_channel->client.discovery || !profile_channel->client.enabled || profile_channel->client.discovery
+        || mesh_channel->client.connect_endpoints.front () != "tcp://127.0.0.1:9107"
+        || !play_channel->client.enabled || !play_channel->client.discovery
+        || !profile_channel->client.enabled || profile_channel->client.discovery
         || profile_channel->client.connect_endpoints.size () != 2
         || profile_channel->client.connect_endpoints[0] != "tcp://127.0.0.1:9109"
         || profile_channel->client.connect_endpoints[1] != "tcp://127.0.0.1:9110") {

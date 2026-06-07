@@ -122,8 +122,8 @@ class request_builder_t
             raw = co_await raw_task;
         }
         catch (const zlink::framework::framework_exception_t &error) {
-            co_return zlink::framework::result_t<http_response_t<T>>::failure (error.kind (), error.what (),
-                                                                               error.is_retriable ());
+            co_return zlink::framework::result_t<http_response_t<T>>::failure (
+              error.kind (), error.what (), error.is_retriable ());
         }
 
         if (raw.status >= 400) {
@@ -134,10 +134,11 @@ class request_builder_t
         }
 
         try {
-            http_response_t<T> response{.status = raw.status,
-                                        .headers = raw.headers,
-                                        .body = zlink::message_t::from (raw.body).template parse_json<T> (),
-                                        .raw_body = raw.body};
+            http_response_t<T> response{
+              .status = raw.status,
+              .headers = raw.headers,
+              .body = zlink::message_t::from (raw.body).template parse_json<T> (),
+              .raw_body = raw.body};
             co_return response;
         }
         catch (const std::exception &ex) {
@@ -149,7 +150,8 @@ class request_builder_t
     template <typename T, typename TCallback> void submit (TCallback &&callback) const
     {
         auto task = submit<T> ();
-        zlink::framework::detail::observe_task_completion (task, std::forward<TCallback> (callback));
+        zlink::framework::detail::observe_task_completion (task,
+                                                           std::forward<TCallback> (callback));
     }
 
   private:

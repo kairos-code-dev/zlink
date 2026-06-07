@@ -24,8 +24,7 @@ typedef struct
     stream_callback_ctx_t callback_ctx;
 } stream_packet_sample_t;
 
-static int parse_tcp_endpoint (const char *endpoint, char *host,
-                               size_t host_size, int *port)
+static int parse_tcp_endpoint (const char *endpoint, char *host, size_t host_size, int *port)
 {
     char proto[8] = {0};
     char addr[64] = {0};
@@ -136,9 +135,9 @@ static void stream_packet_server_thread (void *arg_)
 {
     stream_packet_sample_t *sample = (stream_packet_sample_t *) arg_;
 
-    assert (zlink_stream_packet_handler (
-              sample->server, &stream_packet_callback, &sample->callback_ctx)
-            == ZLINK_HANDLER_OK);
+    assert (
+      zlink_stream_packet_handler (sample->server, &stream_packet_callback, &sample->callback_ctx)
+      == ZLINK_HANDLER_OK);
     assert (callback_signal_wait (&sample->callback_ctx.signal, 2000));
 }
 
@@ -148,9 +147,8 @@ static void stream_packet_client_thread (void *arg_)
     int client_fd = raw_tcp_connect (sample->endpoint);
 
     assert (callback_signal_wait (&sample->send_signal, 2000));
-    assert (send_stream_packet_frame (
-              client_fd, NULL, 0, (const unsigned char *) k_stream_payload,
-              strlen (k_stream_payload))
+    assert (send_stream_packet_frame (client_fd, NULL, 0, (const unsigned char *) k_stream_payload,
+                                      strlen (k_stream_payload))
             == 0);
     close (client_fd);
 }
@@ -166,12 +164,12 @@ int main (void)
     assert (sample.server != NULL);
 
     int notify_off = 0;
-    assert (zlink_set_stream_option (sample.server, ZLINK_STREAM_OPT_NOTIFY,
-                                     &notify_off, sizeof (notify_off))
+    assert (zlink_set_stream_option (sample.server, ZLINK_STREAM_OPT_NOTIFY, &notify_off,
+                                     sizeof (notify_off))
             == 0);
 
-    sample.server_monitor = open_socket_monitor (
-      sample.server, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED);
+    sample.server_monitor =
+      open_socket_monitor (sample.server, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED);
 
     assert (zlink_bind (sample.server, "tcp://127.0.0.1:0") == ZLINK_BIND_OK);
     get_last_endpoint (sample.server, sample.endpoint, sizeof (sample.endpoint));
@@ -191,9 +189,8 @@ int main (void)
     zlink_thread_join (server);
 
     assert (strcmp (sample.callback_ctx.payload, k_stream_payload) == 0);
-    printf ("[stream/packet-callback] send: \"%s\" -> recv: \"%.*s\"\n",
-            k_stream_payload, (int) sample.callback_ctx.payload_len,
-            sample.callback_ctx.payload);
+    printf ("[stream/packet-callback] send: \"%s\" -> recv: \"%.*s\"\n", k_stream_payload,
+            (int) sample.callback_ctx.payload_len, sample.callback_ctx.payload);
 
     callback_signal_destroy (&sample.send_signal);
     callback_signal_destroy (&sample.callback_ctx.signal);

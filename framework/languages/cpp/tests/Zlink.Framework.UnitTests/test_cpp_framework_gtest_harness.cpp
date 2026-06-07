@@ -27,7 +27,8 @@ TEST (FrameworkGoogleTestHarness, SupportsGoogleMockBoundaries)
 TEST (FrameworkGoogleTestHarness, CanAssertFrameworkContracts)
 {
     zlink::framework::assembly_catalog_t catalog;
-    catalog.add_module ({.name = "sample", .provided_services = {"service"}, .provided_handlers = {"handler"}});
+    catalog.add_module (
+      {.name = "sample", .provided_services = {"service"}, .provided_handlers = {"handler"}});
 
     ASSERT_EQ (catalog.modules ().size (), 1U);
     EXPECT_EQ (catalog.modules ().front ().name, "sample");

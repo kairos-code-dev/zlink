@@ -7,9 +7,7 @@
 #include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 
-timer_handle_t::timer_handle_t (backend_kind_t backend_,
-                                void *owner_spot_,
-                                void *owner_node_) :
+timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_spot_, void *owner_node_) :
     tag (0x74696d72),
     backend (backend_),
     owner_spot (owner_spot_),
@@ -34,9 +32,7 @@ timer_handle_t::timer_handle_t (backend_kind_t backend_,
 }
 
 scheduler_state_t::scheduler_state_t () :
-    started (false),
-    shutdown_requested (false),
-    active_timers (0)
+    started (false), shutdown_requested (false), active_timers (0)
 {
 }
 
@@ -53,10 +49,9 @@ spot_scheduler_map_t g_spot_schedulers;
 
 uint64_t monotonic_now_ns ()
 {
-    return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::steady_clock::now ().time_since_epoch ())
-        .count ());
+    return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::nanoseconds> (
+                                    std::chrono::steady_clock::now ().time_since_epoch ())
+                                    .count ());
 }
 
 std::shared_ptr<scheduler_state_t> global_timer_scheduler ()
@@ -150,14 +145,12 @@ void scheduler_fire_timer (timer_handle_t *timer_)
         handler (timer_, fire_count, handler_userdata);
 
     if (notify_spot)
-        zlink_spot_notify_dispatch_info (
-          owner_spot, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
-          ZLINK_SPOT_DISPATCH_SUBJECT_TIMER, timer_);
+        zlink_spot_notify_dispatch_info (owner_spot, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
+                                         ZLINK_SPOT_DISPATCH_SUBJECT_TIMER, timer_);
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);
-    if (reschedule && !timer_->destroyed && timer_->running
-        && !timer_->stop_requested) {
+    if (reschedule && !timer_->destroyed && timer_->running && !timer_->stop_requested) {
         schedule_timer_locked (timer_, next_deadline_ns);
         scheduler->cv.notify_all ();
     }
@@ -191,9 +184,8 @@ void run_scheduler_loop (std::shared_ptr<scheduler_state_t> scheduler_)
                 const std::multimap<uint64_t, timer_handle_t *>::iterator next =
                   scheduler_->schedule.begin ();
                 if (next->first > now_ns) {
-                    scheduler_->cv.wait_for (
-                      scheduler_lock,
-                      std::chrono::nanoseconds (next->first - now_ns));
+                    scheduler_->cv.wait_for (scheduler_lock,
+                                             std::chrono::nanoseconds (next->first - now_ns));
                     continue;
                 }
 
@@ -276,8 +268,7 @@ extern "C" void zlink_timer_cleanup_spot (void *spot_)
          sit != g_spot_schedulers.end (); ++sit) {
         std::shared_ptr<scheduler_state_t> scheduler = sit->second;
         std::lock_guard<std::mutex> scheduler_lock (scheduler->mutex);
-        for (std::multimap<uint64_t, timer_handle_t *>::iterator it =
-               scheduler->schedule.begin ();
+        for (std::multimap<uint64_t, timer_handle_t *>::iterator it = scheduler->schedule.begin ();
              it != scheduler->schedule.end (); ++it) {
             timer_handle_t *timer = it->second;
             std::lock_guard<std::mutex> timer_lock (timer->mutex);

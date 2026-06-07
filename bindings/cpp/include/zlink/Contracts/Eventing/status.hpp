@@ -38,7 +38,8 @@ enum class monitor_status_detail : uint32_t
 
 inline monitor_status_detail operator| (monitor_status_detail a, monitor_status_detail b)
 {
-    return static_cast<monitor_status_detail> (static_cast<uint32_t> (a) | static_cast<uint32_t> (b));
+    return static_cast<monitor_status_detail> (static_cast<uint32_t> (a)
+                                               | static_cast<uint32_t> (b));
 }
 
 /// @brief Reason a connection was disconnected.

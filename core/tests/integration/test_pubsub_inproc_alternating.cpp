@@ -8,10 +8,7 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-static bool recv_byte_with_deadline (void *socket_,
-                                     char *out_,
-                                     int timeout_ms_,
-                                     int *attempts_out_)
+static bool recv_byte_with_deadline (void *socket_, char *out_, int timeout_ms_, int *attempts_out_)
 {
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
@@ -42,14 +39,10 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
     const int timeout_ms = 1000;
     const int hwm = 1000;
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sub, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sub, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (pub, ZLINK_OPT_SNDTIMEO, &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -57,8 +50,7 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, ""));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://pubsub-alternating"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (sub, "inproc://pubsub-alternating"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://pubsub-alternating"));
 
     msleep (SETTLE_TIME);
 
@@ -67,9 +59,8 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
     int attempts = 0;
     msleep (SETTLE_TIME * 4);
     TEST_ASSERT_EQUAL_INT (1, zlink_send (pub, &send_ch, 1, 0));
-    TEST_ASSERT_TRUE_MESSAGE (
-      recv_byte_with_deadline (sub, &recv_ch, timeout_ms, &attempts),
-      "subscriber never became ready");
+    TEST_ASSERT_TRUE_MESSAGE (recv_byte_with_deadline (sub, &recv_ch, timeout_ms, &attempts),
+                              "subscriber never became ready");
     TEST_ASSERT_EQUAL_UINT8 ((uint8_t) send_ch, (uint8_t) recv_ch);
 
     int received_count = 0;
@@ -83,8 +74,7 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
                 snprintf (msg, sizeof (msg),
                           "recv stalled at iter=%d errno=%d attempts=%d "
                           "received=%d consecutive_timeouts=%d",
-                          i, errno, attempts, received_count,
-                          consecutive_timeouts);
+                          i, errno, attempts, received_count, consecutive_timeouts);
                 TEST_FAIL_MESSAGE (msg);
             }
             continue;
@@ -95,9 +85,8 @@ void test_inproc_pubsub_alternating_does_not_timeout ()
         TEST_ASSERT_EQUAL_UINT8 ((uint8_t) send_ch, (uint8_t) recv_ch);
     }
 
-    TEST_ASSERT_TRUE_MESSAGE (
-      received_count >= 4500,
-      "alternating pub/sub lost too many messages while checking progress");
+    TEST_ASSERT_TRUE_MESSAGE (received_count >= 4500,
+                              "alternating pub/sub lost too many messages while checking progress");
 
     test_context_socket_close (sub);
     test_context_socket_close (pub);

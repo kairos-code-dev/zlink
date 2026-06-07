@@ -77,10 +77,8 @@ enum service_role_t
 
 inline bool is_valid_service_role (uint16_t service_role_)
 {
-    return service_role_ == service_role_spot
-           || service_role_ == service_role_router
-           || service_role_ == service_role_dealer
-           || service_role_ == service_role_pub
+    return service_role_ == service_role_spot || service_role_ == service_role_router
+           || service_role_ == service_role_dealer || service_role_ == service_role_pub
            || service_role_ == service_role_sub;
 }
 
@@ -93,8 +91,7 @@ inline bool is_valid_auto_connect_type (uint16_t auto_connect_type_)
            || auto_connect_type_ == ZLINK_AUTO_CONNECT_SPOT_MESH;
 }
 
-inline bool auto_connect_type_allows_role (uint16_t auto_connect_type_,
-                                           uint16_t service_role_)
+inline bool auto_connect_type_allows_role (uint16_t auto_connect_type_, uint16_t service_role_)
 {
     if (!is_valid_auto_connect_type (auto_connect_type_)
         || !is_valid_service_role (service_role_)) {
@@ -105,16 +102,13 @@ inline bool auto_connect_type_allows_role (uint16_t auto_connect_type_,
         case ZLINK_AUTO_CONNECT_ROUTE_MESH:
             return service_role_ == service_role_router;
         case ZLINK_AUTO_CONNECT_CLIENT_SERVER:
-            return service_role_ == service_role_router
-                   || service_role_ == service_role_dealer;
+            return service_role_ == service_role_router || service_role_ == service_role_dealer;
         case ZLINK_AUTO_CONNECT_DEALER_MESH:
             return service_role_ == service_role_dealer;
         case ZLINK_AUTO_CONNECT_FANOUT:
-            return service_role_ == service_role_pub
-                   || service_role_ == service_role_sub;
+            return service_role_ == service_role_pub || service_role_ == service_role_sub;
         case ZLINK_AUTO_CONNECT_SPOT_MESH:
-            return service_role_ == service_role_spot
-                   || service_role_ == service_role_router;
+            return service_role_ == service_role_spot || service_role_ == service_role_router;
         default:
             return false;
     }
@@ -133,8 +127,7 @@ inline uint16_t derive_socket_service_role (int socket_type_)
     return service_role_invalid;
 }
 
-inline bool auto_connect_type_allows_raw_socket (
-  uint16_t auto_connect_type_)
+inline bool auto_connect_type_allows_raw_socket (uint16_t auto_connect_type_)
 {
     return auto_connect_type_ == ZLINK_AUTO_CONNECT_ROUTE_MESH
            || auto_connect_type_ == ZLINK_AUTO_CONNECT_CLIENT_SERVER
@@ -142,8 +135,7 @@ inline bool auto_connect_type_allows_raw_socket (
            || auto_connect_type_ == ZLINK_AUTO_CONNECT_FANOUT;
 }
 
-inline int compare_routing_id_bytes (const zlink_routing_id_t &lhs_,
-                                     const zlink_routing_id_t &rhs_)
+inline int compare_routing_id_bytes (const zlink_routing_id_t &lhs_, const zlink_routing_id_t &rhs_)
 {
     const size_t lhs_size = lhs_.size;
     const size_t rhs_size = rhs_.size;
@@ -178,14 +170,13 @@ inline int compare_connect_keys (const zlink_routing_id_t &local_rid_,
     return 0;
 }
 
-inline bool socket_auto_connect_target_matches (
-  uint16_t auto_connect_type_,
-  uint16_t local_role_,
-  uint16_t remote_role_,
-  const zlink_routing_id_t &local_rid_,
-  const zlink_routing_id_t &remote_rid_,
-  const std::string &local_endpoint_,
-  const std::string &remote_endpoint_)
+inline bool socket_auto_connect_target_matches (uint16_t auto_connect_type_,
+                                                uint16_t local_role_,
+                                                uint16_t remote_role_,
+                                                const zlink_routing_id_t &local_rid_,
+                                                const zlink_routing_id_t &remote_rid_,
+                                                const std::string &local_endpoint_,
+                                                const std::string &remote_endpoint_)
 {
     if (!auto_connect_type_allows_role (auto_connect_type_, local_role_)
         || !auto_connect_type_allows_role (auto_connect_type_, remote_role_)) {
@@ -194,28 +185,23 @@ inline bool socket_auto_connect_target_matches (
 
     switch (auto_connect_type_) {
         case ZLINK_AUTO_CONNECT_ROUTE_MESH:
-            return local_role_ == service_role_router
-                   && remote_role_ == service_role_router
-                   && compare_connect_keys (local_rid_, remote_rid_,
-                                            local_endpoint_, remote_endpoint_)
+            return local_role_ == service_role_router && remote_role_ == service_role_router
+                   && compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
+                                            remote_endpoint_)
                         < 0;
         case ZLINK_AUTO_CONNECT_CLIENT_SERVER:
-            return local_role_ == service_role_dealer
-                   && remote_role_ == service_role_router;
+            return local_role_ == service_role_dealer && remote_role_ == service_role_router;
         case ZLINK_AUTO_CONNECT_DEALER_MESH:
-            return local_role_ == service_role_dealer
-                   && remote_role_ == service_role_dealer
-                   && compare_connect_keys (local_rid_, remote_rid_,
-                                            local_endpoint_, remote_endpoint_)
+            return local_role_ == service_role_dealer && remote_role_ == service_role_dealer
+                   && compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
+                                            remote_endpoint_)
                         < 0;
         case ZLINK_AUTO_CONNECT_FANOUT:
-            return local_role_ == service_role_sub
-                   && remote_role_ == service_role_pub;
+            return local_role_ == service_role_sub && remote_role_ == service_role_pub;
         case ZLINK_AUTO_CONNECT_SPOT_MESH:
-            return local_role_ == service_role_spot
-                   && remote_role_ == service_role_spot
-                   && compare_connect_keys (local_rid_, remote_rid_,
-                                            local_endpoint_, remote_endpoint_)
+            return local_role_ == service_role_spot && remote_role_ == service_role_spot
+                   && compare_connect_keys (local_rid_, remote_rid_, local_endpoint_,
+                                            remote_endpoint_)
                         < 0;
         default:
             return false;
@@ -244,12 +230,7 @@ struct bootstrap_rep_t
 
 struct status_ack_t
 {
-    status_ack_t () :
-        status (status_invalid),
-        source_registry (0),
-        registration_id (0)
-    {
-    }
+    status_ack_t () : status (status_invalid), source_registry (0), registration_id (0) {}
 
     uint8_t status;
     std::string resolved_endpoint;
@@ -289,20 +270,12 @@ struct service_record_t
     uint64_t contract_created_at;
     std::vector<service_provider_record_t> providers;
 
-    service_record_t () :
-        auto_connect_type (0),
-        contract_created_at (0)
-    {
-    }
+    service_record_t () : auto_connect_type (0), contract_created_at (0) {}
 };
 
 struct service_list_t
 {
-    service_list_t () :
-        registry_id (0),
-        list_seq (0)
-    {
-    }
+    service_list_t () : registry_id (0), list_seq (0) {}
 
     uint32_t registry_id;
     uint64_t list_seq;
@@ -336,13 +309,7 @@ struct route_record_t
 
 struct route_list_t
 {
-    route_list_t () :
-        registry_id (0),
-        list_seq (0),
-        chunk_index (0),
-        chunk_count (0)
-    {
-    }
+    route_list_t () : registry_id (0), list_seq (0), chunk_index (0), chunk_count (0) {}
 
     uint32_t registry_id;
     uint64_t list_seq;
@@ -361,8 +328,8 @@ inline bool decode_status_ack (const std::vector<zlink_msg_t> &frames_,
     }
 
     uint16_t msg_id = 0;
-    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id)
-        || msg_id != expected_msg_id_ || !read_u8 (frames_[1], &out_->status)) {
+    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id) || msg_id != expected_msg_id_
+        || !read_u8 (frames_[1], &out_->status)) {
         errno = EPROTO;
         return false;
     }
@@ -375,13 +342,11 @@ inline bool decode_status_ack (const std::vector<zlink_msg_t> &frames_,
     if (expected_msg_id_ == msg_register_ack) {
         if (frames_.size () >= 3)
             out_->resolved_endpoint = read_string (frames_[2]);
-        if (frames_.size () >= 4 && !read_u32 (frames_[3],
-                                               &out_->source_registry)) {
+        if (frames_.size () >= 4 && !read_u32 (frames_[3], &out_->source_registry)) {
             errno = EPROTO;
             return false;
         }
-        if (frames_.size () >= 5 && !read_u64 (frames_[4],
-                                               &out_->registration_id)) {
+        if (frames_.size () >= 5 && !read_u64 (frames_[4], &out_->registration_id)) {
             errno = EPROTO;
             return false;
         }
@@ -393,8 +358,7 @@ inline bool decode_status_ack (const std::vector<zlink_msg_t> &frames_,
     return true;
 }
 
-inline bool decode_service_list (const std::vector<zlink_msg_t> &frames_,
-                                 service_list_t *out_)
+inline bool decode_service_list (const std::vector<zlink_msg_t> &frames_, service_list_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
@@ -404,10 +368,8 @@ inline bool decode_service_list (const std::vector<zlink_msg_t> &frames_,
     out_->services.clear ();
     uint16_t msg_id = 0;
     uint32_t service_count = 0;
-    if (frames_.size () < 4 || !read_u16 (frames_[0], &msg_id)
-        || msg_id != msg_service_list || !read_u32 (frames_[1],
-                                                    &out_->registry_id)
-        || !read_u64 (frames_[2], &out_->list_seq)
+    if (frames_.size () < 4 || !read_u16 (frames_[0], &msg_id) || msg_id != msg_service_list
+        || !read_u32 (frames_[1], &out_->registry_id) || !read_u64 (frames_[2], &out_->list_seq)
         || !read_u32 (frames_[3], &service_count)) {
         errno = EPROTO;
         return false;
@@ -472,8 +434,7 @@ inline bool decode_service_list (const std::vector<zlink_msg_t> &frames_,
     return true;
 }
 
-inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_,
-                               route_list_t *out_)
+inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_, route_list_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
@@ -483,14 +444,11 @@ inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_,
     out_->routes.clear ();
     uint16_t msg_id = 0;
     uint32_t route_count = 0;
-    if (frames_.size () < 6 || !read_u16 (frames_[0], &msg_id)
-        || msg_id != msg_registry_sync || !read_u32 (frames_[1],
-                                                     &out_->registry_id)
-        || !read_u64 (frames_[2], &out_->list_seq)
-        || !read_u32 (frames_[3], &out_->chunk_index)
-        || !read_u32 (frames_[4], &out_->chunk_count)
-        || !read_u32 (frames_[5], &route_count)
-        || out_->chunk_count == 0 || out_->chunk_index >= out_->chunk_count) {
+    if (frames_.size () < 6 || !read_u16 (frames_[0], &msg_id) || msg_id != msg_registry_sync
+        || !read_u32 (frames_[1], &out_->registry_id) || !read_u64 (frames_[2], &out_->list_seq)
+        || !read_u32 (frames_[3], &out_->chunk_index) || !read_u32 (frames_[4], &out_->chunk_count)
+        || !read_u32 (frames_[5], &route_count) || out_->chunk_count == 0
+        || out_->chunk_index >= out_->chunk_count) {
         errno = EPROTO;
         return false;
     }
@@ -525,8 +483,7 @@ inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_,
             return false;
         }
         read_bytes (frames_[index++], &route.owner_routing_id_key);
-        if (route.owner_routing_id_key.size ()
-            > sizeof (route.owner_routing_id.data)) {
+        if (route.owner_routing_id_key.size () > sizeof (route.owner_routing_id.data)) {
             errno = EPROTO;
             return false;
         }
@@ -547,9 +504,8 @@ inline bool decode_route_list (const std::vector<zlink_msg_t> &frames_,
     return true;
 }
 
-inline bool decode_topology_reply (
-  const std::vector<zlink_msg_t> &frames_,
-  std::vector<zlink_registry_topology_entry_t> *entries_out_)
+inline bool decode_topology_reply (const std::vector<zlink_msg_t> &frames_,
+                                   std::vector<zlink_registry_topology_entry_t> *entries_out_)
 {
     if (!entries_out_) {
         errno = EINVAL;
@@ -559,9 +515,8 @@ inline bool decode_topology_reply (
     entries_out_->clear ();
     uint16_t msg_id = 0;
     uint32_t count = 0;
-    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id)
-        || msg_id != msg_topology_reply || !read_u32 (frames_[1], &count)
-        || frames_.size () != static_cast<size_t> (count) + 2) {
+    if (frames_.size () < 2 || !read_u16 (frames_[0], &msg_id) || msg_id != msg_topology_reply
+        || !read_u32 (frames_[1], &count) || frames_.size () != static_cast<size_t> (count) + 2) {
         errno = EPROTO;
         return false;
     }
@@ -574,8 +529,7 @@ inline bool decode_topology_reply (
             errno = EPROTO;
             return false;
         }
-        memcpy (&entry, zlink_msg_data (const_cast<zlink_msg_t *> (
-                         &frames_[i + 2])),
+        memcpy (&entry, zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[i + 2])),
                 sizeof (entry));
         entries_out_->push_back (entry);
     }
@@ -588,9 +542,8 @@ inline bool decode_route_reply (const std::vector<zlink_msg_t> &frames_,
 {
     uint16_t msg_id = 0;
     uint8_t status = status_invalid;
-    if (frames_.size () < 5 || !read_u16 (frames_[0], &msg_id)
-        || msg_id != msg_resolve_route_reply || !read_u8 (frames_[1],
-                                                          &status)) {
+    if (frames_.size () < 5 || !read_u16 (frames_[0], &msg_id) || msg_id != msg_resolve_route_reply
+        || !read_u8 (frames_[1], &status)) {
         errno = EPROTO;
         return false;
     }
@@ -610,8 +563,7 @@ inline bool decode_route_reply (const std::vector<zlink_msg_t> &frames_,
             return false;
         if (value_size > 0)
             memcpy (zlink_msg_data (value_out_),
-                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[3])),
-                    value_size);
+                    zlink_msg_data (const_cast<zlink_msg_t *> (&frames_[3])), value_size);
     }
     return true;
 }

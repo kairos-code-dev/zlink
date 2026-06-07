@@ -8,12 +8,11 @@
 
 namespace zlink
 {
-bool registry_t::find_provider_owner_locked (
-  const std::string &channel_name_,
-  uint16_t service_role_,
-  const std::string &endpoint_,
-  owner_identity_t *owner_out_,
-  zlink_routing_id_t *routing_id_out_) const
+bool registry_t::find_provider_owner_locked (const std::string &channel_name_,
+                                             uint16_t service_role_,
+                                             const std::string &endpoint_,
+                                             owner_identity_t *owner_out_,
+                                             zlink_routing_id_t *routing_id_out_) const
 {
     service_key_t service_key;
     service_key.channel_name = channel_name_;
@@ -73,8 +72,7 @@ bool registry_t::route_entry_wins_locked (const route_entry_t &candidate_,
 
     const bool candidate_direct =
       candidate_.advertising_registry == candidate_.owner.source_registry;
-    const bool current_direct =
-      current_.advertising_registry == current_.owner.source_registry;
+    const bool current_direct = current_.advertising_registry == current_.owner.source_registry;
     if (candidate_direct != current_direct)
         return candidate_direct;
 
@@ -89,9 +87,8 @@ bool registry_t::route_entry_wins_locked (const route_entry_t &candidate_,
 
 size_t registry_t::route_entry_memory_bytes (const route_entry_t &entry_) const
 {
-    return sizeof (route_entry_t) + entry_.key.channel_name.size ()
-           + entry_.key.key.size () + entry_.value.size ()
-           + entry_.owner.channel_name.size ()
+    return sizeof (route_entry_t) + entry_.key.channel_name.size () + entry_.key.key.size ()
+           + entry_.value.size () + entry_.owner.channel_name.size ()
            + entry_.owner.routing_id_key.size () + 128;
 }
 
@@ -101,7 +98,8 @@ bool registry_t::route_store_can_fit_locked (const route_entry_t &entry_,
 {
     const size_t entry_bytes = route_entry_memory_bytes (entry_);
     const size_t owner_count =
-      _projection_state.routes_by_owner.find (entry_.owner) == _projection_state.routes_by_owner.end ()
+      _projection_state.routes_by_owner.find (entry_.owner)
+          == _projection_state.routes_by_owner.end ()
         ? 0
         : _projection_state.routes_by_owner.find (entry_.owner)->second.size ();
 
@@ -112,7 +110,8 @@ bool registry_t::route_store_can_fit_locked (const route_entry_t &entry_,
         return false;
     }
     if (_projection_state.routes.find (entry_.key) == _projection_state.routes.end ()
-        && _projection_state.routes.size () >= _projection_state.route_limits.max_materialized_routes) {
+        && _projection_state.routes.size ()
+             >= _projection_state.route_limits.max_materialized_routes) {
         if (err_out_)
             *err_out_ = ENOSPC;
         return false;
@@ -132,9 +131,8 @@ bool registry_t::route_store_can_fit_locked (const route_entry_t &entry_,
     return true;
 }
 
-void registry_t::erase_route_observation_locked (
-  const route_observation_key_t &key_,
-  route_key_set_t *dirty_routes_)
+void registry_t::erase_route_observation_locked (const route_observation_key_t &key_,
+                                                 route_key_set_t *dirty_routes_)
 {
     route_observation_map_t::iterator it = _projection_state.route_observations.find (key_);
     if (it == _projection_state.route_observations.end ())
@@ -165,18 +163,16 @@ void registry_t::erase_route_observation_locked (
     }
 
     _projection_state.route_stats.memory_bytes =
-      _projection_state.route_stats.memory_bytes > entry_bytes ? _projection_state.route_stats.memory_bytes
-                                                  - entry_bytes
-                                              : 0;
+      _projection_state.route_stats.memory_bytes > entry_bytes
+        ? _projection_state.route_stats.memory_bytes - entry_bytes
+        : 0;
     _projection_state.route_observations.erase (it);
     if (dirty_routes_)
         dirty_routes_->insert (key_.route_key);
 }
 
 void registry_t::erase_route_observations_by_route_advertiser_locked (
-  const route_key_t &route_key_,
-  uint32_t advertising_registry_,
-  route_key_set_t *dirty_routes_)
+  const route_key_t &route_key_, uint32_t advertising_registry_, route_key_set_t *dirty_routes_)
 {
     route_observations_by_route_t::const_iterator route_it =
       _projection_state.route_observations_by_route.find (route_key_);
@@ -184,22 +180,19 @@ void registry_t::erase_route_observations_by_route_advertiser_locked (
         return;
 
     std::vector<route_observation_key_t> remove_keys;
-    for (route_observation_key_set_t::const_iterator it =
-           route_it->second.begin ();
+    for (route_observation_key_set_t::const_iterator it = route_it->second.begin ();
          it != route_it->second.end (); ++it) {
         if (it->advertising_registry == advertising_registry_)
             remove_keys.push_back (*it);
     }
-    for (std::vector<route_observation_key_t>::const_iterator it =
-           remove_keys.begin ();
+    for (std::vector<route_observation_key_t>::const_iterator it = remove_keys.begin ();
          it != remove_keys.end (); ++it) {
         erase_route_observation_locked (*it, dirty_routes_);
     }
 }
 
-void registry_t::upsert_route_observation_locked (
-  const route_entry_t &entry_,
-  route_key_set_t *dirty_routes_)
+void registry_t::upsert_route_observation_locked (const route_entry_t &entry_,
+                                                  route_key_set_t *dirty_routes_)
 {
     route_observation_key_t obs_key;
     obs_key.route_key = entry_.key;
@@ -235,8 +228,7 @@ void registry_t::materialize_route_winner_locked (const route_key_t &route_key_)
 
     bool have_winner = false;
     route_entry_t winner;
-    for (route_observation_key_set_t::const_iterator it =
-           route_it->second.begin ();
+    for (route_observation_key_set_t::const_iterator it = route_it->second.begin ();
          it != route_it->second.end (); ++it) {
         route_observation_map_t::const_iterator observation =
           _projection_state.route_observations.find (*it);
@@ -245,8 +237,7 @@ void registry_t::materialize_route_winner_locked (const route_key_t &route_key_)
         _projection_state.route_stats.winner_recompute_observation_visits++;
         if (!owner_is_live_locked (observation->second.owner))
             continue;
-        if (!have_winner
-            || route_entry_wins_locked (observation->second, winner)) {
+        if (!have_winner || route_entry_wins_locked (observation->second, winner)) {
             winner = observation->second;
             have_winner = true;
         }
@@ -258,28 +249,24 @@ void registry_t::materialize_route_winner_locked (const route_key_t &route_key_)
         _projection_state.routes.erase (route_key_);
 }
 
-void registry_t::materialize_dirty_routes_locked (
-  const route_key_set_t &dirty_routes_)
+void registry_t::materialize_dirty_routes_locked (const route_key_set_t &dirty_routes_)
 {
-    for (route_key_set_t::const_iterator it = dirty_routes_.begin ();
-         it != dirty_routes_.end (); ++it) {
+    for (route_key_set_t::const_iterator it = dirty_routes_.begin (); it != dirty_routes_.end ();
+         ++it) {
         materialize_route_winner_locked (*it);
     }
 }
 
-void registry_t::promote_owner_route_records_locked (
-  const owner_identity_t &owner_)
+void registry_t::promote_owner_route_records_locked (const owner_identity_t &owner_)
 {
-    route_owner_index_t::const_iterator owner_it =
-      _projection_state.routes_by_owner.find (owner_);
+    route_owner_index_t::const_iterator owner_it = _projection_state.routes_by_owner.find (owner_);
     if (owner_it == _projection_state.routes_by_owner.end ())
         return;
     materialize_dirty_routes_locked (owner_it->second);
 }
 
-void registry_t::remove_topology_owner_index_locked (
-  const topology_key_t &key_,
-  const topology_entry_t &entry_)
+void registry_t::remove_topology_owner_index_locked (const topology_key_t &key_,
+                                                     const topology_entry_t &entry_)
 {
     if (!entry_.has_owner)
         return;
@@ -292,36 +279,31 @@ void registry_t::remove_topology_owner_index_locked (
         _projection_state.topology_by_owner.erase (owner_it);
 }
 
-void registry_t::index_topology_owner_locked (
-  const topology_key_t &key_,
-  const topology_entry_t &entry_)
+void registry_t::index_topology_owner_locked (const topology_key_t &key_,
+                                              const topology_entry_t &entry_)
 {
     if (entry_.has_owner)
         _projection_state.topology_by_owner[entry_.owner].insert (key_);
 }
 
-void registry_t::cleanup_owner_records_locked (const owner_identity_t &owner_,
-                                               uint64_t now_ms_)
+void registry_t::cleanup_owner_records_locked (const owner_identity_t &owner_, uint64_t now_ms_)
 {
     route_owner_index_t::iterator rit = _projection_state.routes_by_owner.find (owner_);
     if (rit != _projection_state.routes_by_owner.end ()) {
         route_key_set_t dirty_routes;
         route_key_set_t owned = rit->second;
-        for (route_key_set_t::const_iterator it = owned.begin ();
-             it != owned.end (); ++it) {
+        for (route_key_set_t::const_iterator it = owned.begin (); it != owned.end (); ++it) {
             route_observations_by_route_t::const_iterator route_it =
               _projection_state.route_observations_by_route.find (*it);
             if (route_it == _projection_state.route_observations_by_route.end ())
                 continue;
             std::vector<route_observation_key_t> remove_keys;
-            for (route_observation_key_set_t::const_iterator obs =
-                   route_it->second.begin ();
+            for (route_observation_key_set_t::const_iterator obs = route_it->second.begin ();
                  obs != route_it->second.end (); ++obs) {
                 if (obs->owner == owner_)
                     remove_keys.push_back (*obs);
             }
-            for (std::vector<route_observation_key_t>::const_iterator obs =
-                   remove_keys.begin ();
+            for (std::vector<route_observation_key_t>::const_iterator obs = remove_keys.begin ();
                  obs != remove_keys.end (); ++obs) {
                 erase_route_observation_locked (*obs, &dirty_routes);
                 _projection_state.route_stats.owner_cleanup_observation_visits++;
@@ -335,8 +317,7 @@ void registry_t::cleanup_owner_records_locked (const owner_identity_t &owner_,
       _projection_state.topology_by_owner.find (owner_);
     if (topology_it != _projection_state.topology_by_owner.end ()) {
         topology_key_set_t owned = topology_it->second;
-        for (topology_key_set_t::const_iterator it = owned.begin ();
-             it != owned.end (); ++it) {
+        for (topology_key_set_t::const_iterator it = owned.begin (); it != owned.end (); ++it) {
             std::map<topology_key_t, topology_entry_t>::iterator row_it =
               _projection_state.topology.find (*it);
             if (row_it == _projection_state.topology.end ())
@@ -350,8 +331,7 @@ void registry_t::cleanup_owner_records_locked (const owner_identity_t &owner_,
     }
 }
 
-void registry_t::cleanup_advertised_route_records_locked (
-  uint32_t advertising_registry_)
+void registry_t::cleanup_advertised_route_records_locked (uint32_t advertising_registry_)
 {
     route_advertiser_index_t::iterator ait =
       _projection_state.routes_by_advertiser.find (advertising_registry_);
@@ -360,21 +340,18 @@ void registry_t::cleanup_advertised_route_records_locked (
 
     route_key_set_t advertised = ait->second;
     route_key_set_t dirty_routes;
-    for (route_key_set_t::const_iterator it = advertised.begin ();
-         it != advertised.end (); ++it) {
+    for (route_key_set_t::const_iterator it = advertised.begin (); it != advertised.end (); ++it) {
         route_observations_by_route_t::const_iterator route_it =
           _projection_state.route_observations_by_route.find (*it);
         if (route_it == _projection_state.route_observations_by_route.end ())
             continue;
         std::vector<route_observation_key_t> remove_keys;
-        for (route_observation_key_set_t::const_iterator obs =
-               route_it->second.begin ();
+        for (route_observation_key_set_t::const_iterator obs = route_it->second.begin ();
              obs != route_it->second.end (); ++obs) {
             if (obs->advertising_registry == advertising_registry_)
                 remove_keys.push_back (*obs);
         }
-        for (std::vector<route_observation_key_t>::const_iterator obs =
-               remove_keys.begin ();
+        for (std::vector<route_observation_key_t>::const_iterator obs = remove_keys.begin ();
              obs != remove_keys.end (); ++obs) {
             erase_route_observation_locked (*obs, &dirty_routes);
             _projection_state.route_stats.advertiser_cleanup_observation_visits++;
@@ -384,9 +361,8 @@ void registry_t::cleanup_advertised_route_records_locked (
     materialize_dirty_routes_locked (dirty_routes);
 }
 
-void registry_t::upsert_topology_entry (
-  const zlink_registry_topology_entry_t &entry_,
-  uint64_t now_ms_)
+void registry_t::upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
+                                        uint64_t now_ms_)
 {
     topology_key_t key;
     key.service_kind = entry_.service_kind;
@@ -403,13 +379,13 @@ void registry_t::upsert_topology_entry (
     if (entry_.auto_connect_type == ZLINK_AUTO_CONNECT_SPOT_MESH
         && entry_.service_kind == ZLINK_SERVICE_KIND_SPOT_PUB
         && entry_.service_role == ZLINK_SERVICE_ROLE_SPOT) {
-        stored.has_owner = find_provider_owner_locked (
-          entry_.channel_name, discovery_protocol::service_role_spot,
-          entry_.endpoint, &stored.owner, NULL);
+        stored.has_owner =
+          find_provider_owner_locked (entry_.channel_name, discovery_protocol::service_role_spot,
+                                      entry_.endpoint, &stored.owner, NULL);
         if (!stored.has_owner) {
-            stored.has_owner = find_provider_owner_locked (
-              entry_.channel_name, discovery_protocol::service_role_router,
-              entry_.endpoint, &stored.owner, NULL);
+            stored.has_owner = find_provider_owner_locked (entry_.channel_name,
+                                                           discovery_protocol::service_role_router,
+                                                           entry_.endpoint, &stored.owner, NULL);
         }
     }
     index_topology_owner_locked (key, stored);
@@ -426,8 +402,7 @@ void registry_t::send_service_list (void *pub_)
             registry_id = 1;
     }
 
-    discovery_protocol::send_u16 (pub_, discovery_protocol::msg_service_list,
-                                  ZLINK_SNDMORE);
+    discovery_protocol::send_u16 (pub_, discovery_protocol::msg_service_list, ZLINK_SNDMORE);
     discovery_protocol::send_u32 (pub_, registry_id, ZLINK_SNDMORE);
     discovery_protocol::send_u64 (pub_, _coordination_state.list_seq, ZLINK_SNDMORE);
 
@@ -438,8 +413,7 @@ void registry_t::send_service_list (void *pub_)
             service_count++;
     }
 
-    discovery_protocol::send_u32 (pub_, service_count,
-                                  service_count == 0 ? 0 : ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (pub_, service_count, service_count == 0 ? 0 : ZLINK_SNDMORE);
 
     if (service_count == 0)
         return;
@@ -453,49 +427,37 @@ void registry_t::send_service_list (void *pub_)
         const service_key_t &service_key = it->first;
         const service_entry_t &service = it->second;
         const provider_map_t &providers = service.providers;
-        const uint32_t provider_count =
-          static_cast<uint32_t> (providers.size ());
+        const uint32_t provider_count = static_cast<uint32_t> (providers.size ());
         uint64_t contract_created_at = 0;
         std::map<std::string, channel_contract_t>::const_iterator cit =
           _projection_state.channel_contracts.find (service_key.channel_name);
         if (cit != _projection_state.channel_contracts.end ())
             contract_created_at = cit->second.created_at;
 
-        discovery_protocol::send_u16 (pub_, service.auto_connect_type,
-                                      ZLINK_SNDMORE);
-        discovery_protocol::send_string (pub_, service_key.channel_name,
-                                         ZLINK_SNDMORE);
-        discovery_protocol::send_u64 (pub_, contract_created_at,
-                                      ZLINK_SNDMORE);
-        discovery_protocol::send_u32 (pub_, provider_count,
-                                      ZLINK_SNDMORE);
+        discovery_protocol::send_u16 (pub_, service.auto_connect_type, ZLINK_SNDMORE);
+        discovery_protocol::send_string (pub_, service_key.channel_name, ZLINK_SNDMORE);
+        discovery_protocol::send_u64 (pub_, contract_created_at, ZLINK_SNDMORE);
+        discovery_protocol::send_u32 (pub_, provider_count, ZLINK_SNDMORE);
 
         uint32_t provider_index = 0;
-        for (provider_map_t::const_iterator pit = providers.begin ();
-             pit != providers.end (); ++pit, ++provider_index) {
+        for (provider_map_t::const_iterator pit = providers.begin (); pit != providers.end ();
+             ++pit, ++provider_index) {
             const provider_entry_t &entry = pit->second;
             const bool last_provider =
-              (provider_index + 1) == provider_count
-              && (emitted + 1) == service_count;
+              (provider_index + 1) == provider_count && (emitted + 1) == service_count;
 
-            discovery_protocol::send_u16 (pub_, entry.service_role,
+            discovery_protocol::send_u16 (pub_, entry.service_role, ZLINK_SNDMORE);
+            discovery_protocol::send_string (pub_, entry.endpoint, ZLINK_SNDMORE);
+            discovery_protocol::send_routing_id (pub_, entry.routing_id, ZLINK_SNDMORE);
+            discovery_protocol::send_u32 (pub_, entry.source_registry, ZLINK_SNDMORE);
+            discovery_protocol::send_u64 (pub_, entry.registration_id, ZLINK_SNDMORE);
+            discovery_protocol::send_u64 (pub_, entry.provider_update_seq, ZLINK_SNDMORE);
+            discovery_protocol::send_u16 (pub_, static_cast<uint16_t> (entry.weight),
                                           ZLINK_SNDMORE);
-            discovery_protocol::send_string (pub_, entry.endpoint,
-                                             ZLINK_SNDMORE);
-            discovery_protocol::send_routing_id (pub_, entry.routing_id,
-                                                 ZLINK_SNDMORE);
-            discovery_protocol::send_u32 (pub_, entry.source_registry,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_u64 (pub_, entry.registration_id,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_u64 (pub_, entry.provider_update_seq,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_u16 (
-              pub_, static_cast<uint16_t> (entry.weight), ZLINK_SNDMORE);
             discovery_protocol::send_i64 (pub_, entry.value, ZLINK_SNDMORE);
             discovery_protocol::send_frame (
-              pub_, entry.metadata.empty () ? NULL : &entry.metadata[0],
-              entry.metadata.size (), last_provider ? 0 : ZLINK_SNDMORE);
+              pub_, entry.metadata.empty () ? NULL : &entry.metadata[0], entry.metadata.size (),
+              last_provider ? 0 : ZLINK_SNDMORE);
         }
 
         emitted++;
@@ -535,50 +497,36 @@ void registry_t::send_route_list (void *pub_)
             route_map_t::rehash_pause_guard_t pause (_projection_state.routes);
             cursor = _projection_state.routes.snapshot_values (cursor, chunk_records, &routes);
         }
-        const uint32_t route_count =
-          static_cast<uint32_t> (routes.size ());
+        const uint32_t route_count = static_cast<uint32_t> (routes.size ());
 
-        discovery_protocol::send_u16 (pub_,
-                                      discovery_protocol::msg_registry_sync,
-                                      ZLINK_SNDMORE);
+        discovery_protocol::send_u16 (pub_, discovery_protocol::msg_registry_sync, ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, registry_id, ZLINK_SNDMORE);
         discovery_protocol::send_u64 (pub_, list_seq, ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, chunk_index, ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, chunk_count, ZLINK_SNDMORE);
-        discovery_protocol::send_u32 (
-          pub_, route_count, route_count == 0 ? 0 : ZLINK_SNDMORE);
+        discovery_protocol::send_u32 (pub_, route_count, route_count == 0 ? 0 : ZLINK_SNDMORE);
 
         for (size_t index = 0; index < routes.size (); ++index) {
             const route_entry_t &entry = routes[index];
             const bool last_route = index + 1 == routes.size ();
 
-            discovery_protocol::send_string (pub_, entry.key.channel_name,
-                                             ZLINK_SNDMORE);
+            discovery_protocol::send_string (pub_, entry.key.channel_name, ZLINK_SNDMORE);
             discovery_protocol::send_u32 (pub_, entry.key.kind, ZLINK_SNDMORE);
-            discovery_protocol::send_frame (
-              pub_, entry.key.key.data (), entry.key.key.size (),
-              ZLINK_SNDMORE);
-            discovery_protocol::send_frame (
-              pub_, entry.value.empty () ? NULL : &entry.value[0],
-              entry.value.size (), ZLINK_SNDMORE);
-            discovery_protocol::send_string (pub_, entry.owner.channel_name,
-                                             ZLINK_SNDMORE);
-            discovery_protocol::send_u16 (pub_, entry.owner.service_role,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_frame (
-              pub_, entry.owner.routing_id_key.data (),
-              entry.owner.routing_id_key.size (), ZLINK_SNDMORE);
-            discovery_protocol::send_u32 (pub_, entry.owner.source_registry,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_u64 (pub_, entry.owner.registration_id,
-                                          ZLINK_SNDMORE);
-            discovery_protocol::send_u64 (pub_, entry.updated_at_ms,
-                                          ZLINK_SNDMORE);
+            discovery_protocol::send_frame (pub_, entry.key.key.data (), entry.key.key.size (),
+                                            ZLINK_SNDMORE);
+            discovery_protocol::send_frame (pub_, entry.value.empty () ? NULL : &entry.value[0],
+                                            entry.value.size (), ZLINK_SNDMORE);
+            discovery_protocol::send_string (pub_, entry.owner.channel_name, ZLINK_SNDMORE);
+            discovery_protocol::send_u16 (pub_, entry.owner.service_role, ZLINK_SNDMORE);
+            discovery_protocol::send_frame (pub_, entry.owner.routing_id_key.data (),
+                                            entry.owner.routing_id_key.size (), ZLINK_SNDMORE);
+            discovery_protocol::send_u32 (pub_, entry.owner.source_registry, ZLINK_SNDMORE);
+            discovery_protocol::send_u64 (pub_, entry.owner.registration_id, ZLINK_SNDMORE);
+            discovery_protocol::send_u64 (pub_, entry.updated_at_ms, ZLINK_SNDMORE);
             zlink_routing_id_t owner_rid;
             if (!owner_routing_id_from_key (entry.owner, &owner_rid))
                 memset (&owner_rid, 0, sizeof (owner_rid));
-            discovery_protocol::send_routing_id (
-              pub_, owner_rid, last_route ? 0 : ZLINK_SNDMORE);
+            discovery_protocol::send_routing_id (pub_, owner_rid, last_route ? 0 : ZLINK_SNDMORE);
         }
     }
 }
@@ -590,8 +538,7 @@ void registry_t::remove_expired (uint64_t now_ms_)
     for (service_map_t::iterator sit = _projection_state.services.begin ();
          sit != _projection_state.services.end ();) {
         provider_map_t &providers = sit->second.providers;
-        for (provider_map_t::iterator pit = providers.begin ();
-             pit != providers.end ();) {
+        for (provider_map_t::iterator pit = providers.begin (); pit != providers.end ();) {
             if (pit->second.source_registry != local_registry_id) {
                 ++pit;
                 continue;
@@ -602,8 +549,7 @@ void registry_t::remove_expired (uint64_t now_ms_)
                 owner_identity_t removed_owner;
                 removed_owner.channel_name = sit->first.channel_name;
                 removed_owner.service_role = pit->second.service_role;
-                removed_owner.routing_id_key =
-                  routing_id_key (pit->second.routing_id);
+                removed_owner.routing_id_key = routing_id_key (pit->second.routing_id);
                 removed_owner.source_registry = pit->second.source_registry;
                 removed_owner.registration_id = pit->second.registration_id;
                 cleanup_owner_records_locked (removed_owner, now_ms_);
@@ -632,18 +578,14 @@ void registry_t::remove_expired (uint64_t now_ms_)
             for (service_map_t::iterator sit = _projection_state.services.begin ();
                  sit != _projection_state.services.end ();) {
                 provider_map_t &providers = sit->second.providers;
-                for (provider_map_t::iterator eit = providers.begin ();
-                     eit != providers.end ();) {
+                for (provider_map_t::iterator eit = providers.begin (); eit != providers.end ();) {
                     if (eit->second.source_registry == peer_id) {
                         owner_identity_t removed_owner;
                         removed_owner.channel_name = sit->first.channel_name;
                         removed_owner.service_role = eit->second.service_role;
-                        removed_owner.routing_id_key =
-                          routing_id_key (eit->second.routing_id);
-                        removed_owner.source_registry =
-                          eit->second.source_registry;
-                        removed_owner.registration_id =
-                          eit->second.registration_id;
+                        removed_owner.routing_id_key = routing_id_key (eit->second.routing_id);
+                        removed_owner.source_registry = eit->second.source_registry;
+                        removed_owner.registration_id = eit->second.registration_id;
                         cleanup_owner_records_locked (removed_owner, now_ms_);
                         eit = providers.erase (eit);
                         changed = true;
@@ -687,8 +629,7 @@ void registry_t::remove_expired (uint64_t now_ms_)
             it = _projection_state.topology.erase (it);
             changed = true;
             continue;
-        } else if (age > report_timeout_ms
-                   && entry.state == ZLINK_TOPOLOGY_STATE_READY) {
+        } else if (age > report_timeout_ms && entry.state == ZLINK_TOPOLOGY_STATE_READY) {
             entry.state = ZLINK_TOPOLOGY_STATE_LOST;
             changed = true;
         }

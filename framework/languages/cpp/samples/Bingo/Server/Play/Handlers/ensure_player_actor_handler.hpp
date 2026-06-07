@@ -16,7 +16,9 @@ class ensure_player_actor_handler_t
 
     ensure_player_actor_res_t handle (const ensure_player_actor_req_t &request)
     {
-        return {request.actor_id, sample_names_t::player_actor_type, {{}, request.actor_id, ++_generation}};
+        return {request.actor_id,
+                sample_names_t::player_actor_type,
+                {{}, request.actor_id, ++_generation}};
     }
 
   private:

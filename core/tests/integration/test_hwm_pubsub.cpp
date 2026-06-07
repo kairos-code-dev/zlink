@@ -18,14 +18,12 @@ void test_default_socket_hwm_is_1000 ()
 
     int sndhwm = 0;
     size_t sndhwm_size = sizeof (sndhwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, &sndhwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (socket, ZLINK_OPT_SNDHWM, &sndhwm, &sndhwm_size));
     TEST_ASSERT_EQUAL_INT (4, sndhwm);
 
     int rcvhwm = 0;
     size_t rcvhwm_size = sizeof (rcvhwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, &rcvhwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (socket, ZLINK_OPT_RCVHWM, &rcvhwm, &rcvhwm_size));
     TEST_ASSERT_EQUAL_INT (4, rcvhwm);
 
     test_context_socket_close (socket);
@@ -45,8 +43,7 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_socket, ""));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_socket, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
@@ -118,10 +115,8 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
       zlink_set_pub_option (pub_socket, ZLINK_PUB_OPT_NODROP, &wait, sizeof (wait)));
     int timeout_ms = 10;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_socket, ZLINK_OPT_RCVTIMEO, &timeout_ms,
-                        sizeof (timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_socket, ""));
+      zlink_set_option (sub_socket, ZLINK_OPT_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_socket, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
@@ -135,8 +130,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     int blocked_count = 0;
     int is_termination = 0;
     while (send_count < msg_cnt_) {
-        const int rc = zlink_send (pub_socket, static_cast<const void *> (NULL),
-                                   0, ZLINK_DONTWAIT);
+        const int rc = zlink_send (pub_socket, static_cast<const void *> (NULL), 0, ZLINK_DONTWAIT);
         if (rc == 0) {
             ++send_count;
         } else if (-1 == rc) {
@@ -149,8 +143,8 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
 
     // if send_hwm_ < msg_cnt_, we should block at least once:
     char counts_string[128];
-    snprintf (counts_string, sizeof counts_string - 1,
-              "sent = %i, received = %i", send_count, recv_count);
+    snprintf (counts_string, sizeof counts_string - 1, "sent = %i, received = %i", send_count,
+              recv_count);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE (0, blocked_count, counts_string);
 
     // dequeue SUB socket again, to make sure XPUB has space to send the termination message
@@ -186,25 +180,21 @@ void test_reset_hwm ()
 
     // Set up bind socket
     void *pub_socket = test_context_socket (ZLINK_SOCKET_PUB);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (pub_socket, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
     bind_loopback_ipv4 (pub_socket, my_endpoint, MAX_SOCKET_STRING);
 
     // Set up connect socket
     void *sub_socket = test_context_socket (ZLINK_SOCKET_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (sub_socket, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, my_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_socket, ""));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_socket, ""));
 
     msleep (SETTLE_TIME);
 
     // Send messages
     int send_count = 0;
     while (send_count < first_count
-           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0,
-                          ZLINK_DONTWAIT) == 0)
+           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0, ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (first_count, send_count);
 
@@ -222,8 +212,7 @@ void test_reset_hwm ()
     // Send messages
     send_count = 0;
     while (send_count < second_count
-           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0,
-                          ZLINK_DONTWAIT) == 0)
+           && zlink_send (pub_socket, static_cast<const void *> (NULL), 0, ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (second_count, send_count);
 
@@ -259,25 +248,25 @@ void test_blocking (const char *bind_endpoint_)
     TEST_ASSERT_EQUAL_INT (6000, test_blocking (2000, 6000, bind_endpoint_));
 }
 
-#define DEFINE_REGULAR_TEST_CASES(name, bind_endpoint)                         \
-    void test_defaults_large_##name ()                                         \
-    {                                                                          \
-        test_defaults_large (bind_endpoint);                                   \
-    }                                                                          \
-                                                                               \
-    void test_defaults_small_##name ()                                         \
-    {                                                                          \
-        test_defaults_small (bind_endpoint);                                   \
-    }                                                                          \
-                                                                               \
-    void test_blocking_##name ()                                               \
-    {                                                                          \
-        test_blocking (bind_endpoint);                                         \
+#define DEFINE_REGULAR_TEST_CASES(name, bind_endpoint)                                             \
+    void test_defaults_large_##name ()                                                             \
+    {                                                                                              \
+        test_defaults_large (bind_endpoint);                                                       \
+    }                                                                                              \
+                                                                                                   \
+    void test_defaults_small_##name ()                                                             \
+    {                                                                                              \
+        test_defaults_small (bind_endpoint);                                                       \
+    }                                                                                              \
+                                                                                                   \
+    void test_blocking_##name ()                                                                   \
+    {                                                                                              \
+        test_blocking (bind_endpoint);                                                             \
     }
 
-#define RUN_REGULAR_TEST_CASES(name)                                           \
-    RUN_TEST (test_defaults_large_##name);                                     \
-    RUN_TEST (test_defaults_small_##name);                                     \
+#define RUN_REGULAR_TEST_CASES(name)                                                               \
+    RUN_TEST (test_defaults_large_##name);                                                         \
+    RUN_TEST (test_defaults_small_##name);                                                         \
     RUN_TEST (test_blocking_##name)
 
 DEFINE_REGULAR_TEST_CASES (tcp, "tcp://127.0.0.1:*")

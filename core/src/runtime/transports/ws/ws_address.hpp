@@ -65,8 +65,8 @@ class ws_address_t
     uint16_t _port;
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_HAVE_WS
+#endif // ZLINK_HAVE_WS
 
-#endif  // __ZLINK_WS_ADDRESS_HPP_INCLUDED__
+#endif // __ZLINK_WS_ADDRESS_HPP_INCLUDED__

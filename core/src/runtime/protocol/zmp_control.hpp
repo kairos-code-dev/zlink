@@ -31,11 +31,7 @@ enum heartbeat_action_kind_t
 struct heartbeat_action_t
 {
     heartbeat_action_t () :
-        kind (heartbeat_action_none),
-        ttl_ds (0),
-        ctx (NULL),
-        ctx_len (0),
-        error_reason (NULL)
+        kind (heartbeat_action_none), ttl_ds (0), ctx (NULL), ctx_len (0), error_reason (NULL)
     {
     }
 
@@ -71,20 +67,15 @@ inline bool socket_types_compatible (int local_type_, int peer_type_)
     switch (local_type_) {
         case ZLINK_CORE_SOCKET_DEALER:
         case ZLINK_CORE_SOCKET_ROUTER:
-            return peer_type_ == ZLINK_CORE_SOCKET_DEALER
-                   || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
+            return peer_type_ == ZLINK_CORE_SOCKET_DEALER || peer_type_ == ZLINK_CORE_SOCKET_ROUTER;
         case ZLINK_CORE_SOCKET_PUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_SUB
-                   || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
         case ZLINK_CORE_SOCKET_SUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_PUB
-                   || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
         case ZLINK_CORE_SOCKET_XPUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_SUB
-                   || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
+            return peer_type_ == ZLINK_CORE_SOCKET_SUB || peer_type_ == ZLINK_CORE_SOCKET_XSUB;
         case ZLINK_CORE_SOCKET_XSUB:
-            return peer_type_ == ZLINK_CORE_SOCKET_PUB
-                   || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
+            return peer_type_ == ZLINK_CORE_SOCKET_PUB || peer_type_ == ZLINK_CORE_SOCKET_XPUB;
         case ZLINK_CORE_SOCKET_PAIR:
             return peer_type_ == ZLINK_CORE_SOCKET_PAIR;
         default:
@@ -165,9 +156,8 @@ inline int parse_hello_frame (const unsigned char *data_,
     return 0;
 }
 
-inline int parse_ready_metadata (msg_t *msg_,
-                                 metadata_t::dict_t *properties_,
-                                 const char **error_reason_out_)
+inline int
+parse_ready_metadata (msg_t *msg_, metadata_t::dict_t *properties_, const char **error_reason_out_)
 {
     if (error_reason_out_)
         *error_reason_out_ = NULL;
@@ -186,8 +176,7 @@ inline int parse_ready_metadata (msg_t *msg_,
 
     if (size > 1) {
         metadata_t::dict_t peer_props;
-        const unsigned char *data =
-          static_cast<const unsigned char *> (msg_->data ());
+        const unsigned char *data = static_cast<const unsigned char *> (msg_->data ());
         if (zmp_metadata::parse (data + 1, size - 1, peer_props) == -1) {
             if (error_reason_out_)
                 *error_reason_out_ = "ready metadata invalid";
@@ -199,9 +188,7 @@ inline int parse_ready_metadata (msg_t *msg_,
     return 0;
 }
 
-inline int parse_error_frame (msg_t *msg_,
-                              uint8_t *code_out_,
-                              const char **error_reason_out_)
+inline int parse_error_frame (msg_t *msg_, uint8_t *code_out_, const char **error_reason_out_)
 {
     if (error_reason_out_)
         *error_reason_out_ = NULL;
@@ -218,8 +205,7 @@ inline int parse_error_frame (msg_t *msg_,
         return -1;
     }
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (msg_->data ());
+    const unsigned char *data = static_cast<const unsigned char *> (msg_->data ());
     const uint8_t code = data[1];
     const size_t reason_len = data[2];
     if (size < 3 + reason_len) {
@@ -254,8 +240,7 @@ inline int build_heartbeat_ping (msg_t *msg_, uint16_t ttl_ds_)
     return 0;
 }
 
-inline int build_heartbeat_ack (msg_t *msg_,
-                                const std::vector<unsigned char> &ctx_)
+inline int build_heartbeat_ack (msg_t *msg_, const std::vector<unsigned char> &ctx_)
 {
     if (!msg_) {
         errno = EFAULT;
@@ -276,9 +261,7 @@ inline int build_heartbeat_ack (msg_t *msg_,
     return 0;
 }
 
-inline int parse_heartbeat (msg_t *msg_,
-                            uint16_t local_ttl_ds_,
-                            heartbeat_action_t *action_out_)
+inline int parse_heartbeat (msg_t *msg_, uint16_t local_ttl_ds_, heartbeat_action_t *action_out_)
 {
     if (!msg_ || !action_out_) {
         errno = EFAULT;
@@ -292,8 +275,7 @@ inline int parse_heartbeat (msg_t *msg_,
         return -1;
     }
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (msg_->data ());
+    const unsigned char *data = static_cast<const unsigned char *> (msg_->data ());
     const uint8_t type = data[0];
 
     if (type == zmp_control_heartbeat) {
@@ -319,8 +301,7 @@ inline int parse_heartbeat (msg_t *msg_,
         }
 
         action_out_->kind = heartbeat_action_send_ack;
-        action_out_->ttl_ds =
-          zmp_effective_ttl_ds (local_ttl_ds_, remote_ttl_ds);
+        action_out_->ttl_ds = zmp_effective_ttl_ds (local_ttl_ds_, remote_ttl_ds);
         action_out_->ctx = data + 4;
         action_out_->ctx_len = ctx_len;
         return 0;

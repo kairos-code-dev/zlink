@@ -40,7 +40,8 @@ typedef enum zlink_part_flag_t
     ZLINK_PART_MORE = 1
 } zlink_part_flag_t;
 
-enum {
+enum
+{
     ZLINK_CONFIG_OK = 0,
     ZLINK_CONFIG_INVALID_ARGUMENT = 702,
     ZLINK_SUBMIT_OK = 0,
@@ -117,8 +118,7 @@ inline int recv_tls_push (zlink_msg_t *src_)
     return 0;
 }
 
-inline int recv_tls_take_part (zlink_msg_t *part_out_,
-                               zlink_part_flag_t *has_more_out_)
+inline int recv_tls_take_part (zlink_msg_t *part_out_, zlink_part_flag_t *has_more_out_)
 {
     if (!part_out_ || !has_more_out_) {
         errno = EINVAL;
@@ -215,13 +215,12 @@ typedef struct zlink_monitor_event_t
 } zlink_monitor_event_t;
 
 typedef zlink_monitor_event_t zlink_socket_monitor_event_t;
-typedef void (*zlink_socket_monitor_handler_fn) (
-  const zlink_monitor_event_t *event_, void *userdata_);
-typedef void (*zlink_socket_msg_handler_fn) (
-  const zlink_routing_id_t *source_rid_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_);
+typedef void (*zlink_socket_monitor_handler_fn) (const zlink_monitor_event_t *event_,
+                                                 void *userdata_);
+typedef void (*zlink_socket_msg_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                             zlink_msg_t *parts_,
+                                             size_t part_count_,
+                                             void *userdata_);
 typedef void (*zlink_send_ready_handler_fn) (void *subject_, void *userdata_);
 
 typedef struct zlink_socket_monitor_open_options_t
@@ -458,22 +457,16 @@ inline int zlink_has (const char *capability_)
     return zmq_has (capability_);
 }
 
-inline int zlink_set_option (void *socket_,
-                             zlink_option_t option_,
-                             const void *optval_,
-                             size_t optvallen_)
+inline int
+zlink_set_option (void *socket_, zlink_option_t option_, const void *optval_, size_t optvallen_)
 {
-    return zmq_setsockopt (
-      zlink_resolve_socket_handle (socket_), option_, optval_, optvallen_);
+    return zmq_setsockopt (zlink_resolve_socket_handle (socket_), option_, optval_, optvallen_);
 }
 
-inline int zlink_get_option (void *socket_,
-                             zlink_option_t option_,
-                             void *optval_,
-                             size_t *optvallen_)
+inline int
+zlink_get_option (void *socket_, zlink_option_t option_, void *optval_, size_t *optvallen_)
 {
-    return zmq_getsockopt (
-      zlink_resolve_socket_handle (socket_), option_, optval_, optvallen_);
+    return zmq_getsockopt (zlink_resolve_socket_handle (socket_), option_, optval_, optvallen_);
 }
 
 inline int zlink_set_pub_option (void *socket_,
@@ -500,11 +493,8 @@ inline int zlink_unset_subscription (void *handle_, const char *filter_)
                            filter_ ? std::strlen (filter_) : 0);
 }
 
-inline int zlink_subscription_at (void *handle_,
-                                  size_t index_,
-                                  char *filter_out_,
-                                  size_t *filter_len_inout_,
-                                  int *is_pattern_out_)
+inline int zlink_subscription_at (
+  void *handle_, size_t index_, char *filter_out_, size_t *filter_len_inout_, int *is_pattern_out_)
 {
     (void) handle_;
     (void) index_;
@@ -515,17 +505,13 @@ inline int zlink_subscription_at (void *handle_,
     return -1;
 }
 
-inline int zlink_set_routing_id (void *socket_,
-                                 const void *data_,
-                                 size_t size_)
+inline int zlink_set_routing_id (void *socket_, const void *data_, size_t size_)
 {
     return zmq_setsockopt (socket_, ZMQ_ROUTING_ID, data_, size_);
 }
 
-inline int zlink_set_router_option (void *socket_,
-                                    int option_,
-                                    const void *optval_,
-                                    size_t optvallen_)
+inline int
+zlink_set_router_option (void *socket_, int option_, const void *optval_, size_t optvallen_)
 {
     return zmq_setsockopt (socket_, option_, optval_, optvallen_);
 }
@@ -540,11 +526,8 @@ inline int zlink_msg_init_size (zlink_msg_t *msg_, size_t size_)
     return zmq_msg_init_size (msg_, size_);
 }
 
-inline int zlink_msg_init_data (zlink_msg_t *msg_,
-                                void *data_,
-                                size_t size_,
-                                zmq_free_fn *ffn_,
-                                void *hint_)
+inline int
+zlink_msg_init_data (zlink_msg_t *msg_, void *data_, size_t size_, zmq_free_fn *ffn_, void *hint_)
 {
     return zmq_msg_init_data (msg_, data_, size_, ffn_, hint_);
 }
@@ -577,8 +560,10 @@ inline void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
         zmq_msg_close (&parts_[i]);
 }
 
-inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_,
-                      zlink_config_result_t *error_out_ = NULL)
+inline int zlink_poll (zlink_pollitem_t *items_,
+                       int nitems_,
+                       long timeout_,
+                       zlink_config_result_t *error_out_ = NULL)
 {
     std::vector<zmq_pollitem_t> raw_items (nitems_);
     for (int i = 0; i < nitems_; ++i) {
@@ -599,18 +584,15 @@ inline int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_,
     return rc;
 }
 
-inline int zlink_std_compat_send (void *s_,
-                       zlink_msg_t *parts_,
-                       size_t part_count_,
-                       zlink_send_flags_t flags_)
+inline int
+zlink_std_compat_send (void *s_, zlink_msg_t *parts_, size_t part_count_, zlink_send_flags_t flags_)
 {
     if (!parts_ || part_count_ == 0) {
         errno = EINVAL;
         return -1;
     }
     for (size_t i = 0; i < part_count_; ++i) {
-        const int flags = static_cast<int> (
-          flags_ | ((i + 1 < part_count_) ? ZMQ_SNDMORE : 0));
+        const int flags = static_cast<int> (flags_ | ((i + 1 < part_count_) ? ZMQ_SNDMORE : 0));
         if (zmq_msg_send (&parts_[i], s_, flags) < 0)
             return -1;
     }
@@ -618,10 +600,10 @@ inline int zlink_std_compat_send (void *s_,
 }
 
 inline int zlink_std_compat_send_rid (void *s_,
-                           const zlink_routing_id_t *target_rid_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_,
-                           zlink_send_flags_t flags_)
+                                      const zlink_routing_id_t *target_rid_,
+                                      zlink_msg_t *parts_,
+                                      size_t part_count_,
+                                      zlink_send_flags_t flags_)
 {
     if (!target_rid_ || !parts_ || part_count_ == 0) {
         errno = EINVAL;
@@ -632,8 +614,7 @@ inline int zlink_std_compat_send_rid (void *s_,
     if (zmq_msg_init_size (&rid_msg, target_rid_->size) != 0)
         return -1;
     if (target_rid_->size > 0) {
-        std::memcpy (
-          zmq_msg_data (&rid_msg), target_rid_->data, target_rid_->size);
+        std::memcpy (zmq_msg_data (&rid_msg), target_rid_->data, target_rid_->size);
     }
     if (zmq_msg_send (&rid_msg, s_, static_cast<int> (flags_ | ZMQ_SNDMORE)) < 0) {
         zmq_msg_close (&rid_msg);
@@ -643,10 +624,10 @@ inline int zlink_std_compat_send_rid (void *s_,
 }
 
 inline int zlink_std_compat_recv (void *s_,
-                       zlink_routing_id_t *source_rid_out_,
-                       zlink_msg_t **parts_out_,
-                       size_t *part_count_out_,
-                       zlink_send_flags_t flags_)
+                                  zlink_routing_id_t *source_rid_out_,
+                                  zlink_msg_t **parts_out_,
+                                  size_t *part_count_out_,
+                                  zlink_send_flags_t flags_)
 {
     if (!parts_out_ || !part_count_out_) {
         errno = EINVAL;
@@ -658,10 +639,8 @@ inline int zlink_std_compat_recv (void *s_,
     *part_count_out_ = 0;
     if (source_rid_out_)
         source_rid_out_->size = 0;
-    std::memset (&zlink_std_compat::recv_tls_source_rid (), 0,
-                 sizeof (zlink_routing_id_t));
-    std::memset (&zlink_std_compat::recv_tls_source_spot_rid (), 0,
-                 sizeof (zlink_routing_id_t));
+    std::memset (&zlink_std_compat::recv_tls_source_rid (), 0, sizeof (zlink_routing_id_t));
+    std::memset (&zlink_std_compat::recv_tls_source_spot_rid (), 0, sizeof (zlink_routing_id_t));
     zlink_std_compat::recv_tls_request_seq () = 0;
 
     int socket_type = 0;
@@ -682,8 +661,7 @@ inline int zlink_std_compat_recv (void *s_,
             return -1;
         }
 
-        const int rc =
-          zmq_msg_recv (&frames[frame_count], s_, static_cast<int> (flags_));
+        const int rc = zmq_msg_recv (&frames[frame_count], s_, static_cast<int> (flags_));
         if (rc < 0) {
             zmq_msg_close (&frames[frame_count]);
             zlink_std_compat::close_frame_range (frames, frame_count);
@@ -698,15 +676,12 @@ inline int zlink_std_compat_recv (void *s_,
     }
 
     size_t start_index = 0;
-    if (frame_count > 0
-        && (socket_type == ZMQ_ROUTER || socket_type == ZMQ_STREAM)) {
+    if (frame_count > 0 && (socket_type == ZMQ_ROUTER || socket_type == ZMQ_STREAM)) {
         if (source_rid_out_) {
-            const size_t rid_size =
-              std::min (static_cast<size_t> (255), zmq_msg_size (&frames[0]));
+            const size_t rid_size = std::min (static_cast<size_t> (255), zmq_msg_size (&frames[0]));
             source_rid_out_->size = static_cast<uint8_t> (rid_size);
             if (rid_size > 0) {
-                std::memcpy (
-                  source_rid_out_->data, zmq_msg_data (&frames[0]), rid_size);
+                std::memcpy (source_rid_out_->data, zmq_msg_data (&frames[0]), rid_size);
             }
         }
         zlink_std_compat::recv_tls_source_rid () = *source_rid_out_;
@@ -733,12 +708,12 @@ inline int zlink_std_compat_recv (void *s_,
 }
 
 inline int zlink_std_compat_router_recv (void *router_,
-                              const zlink_routing_id_t **peer_rid_out_,
-                              const zlink_routing_id_t **source_spot_rid_out_,
-                              uint64_t *request_seq_out_,
-                              zlink_msg_t **parts_out_,
-                              size_t *part_count_out_,
-                              zlink_recv_flags_t flags_)
+                                         const zlink_routing_id_t **peer_rid_out_,
+                                         const zlink_routing_id_t **source_spot_rid_out_,
+                                         uint64_t *request_seq_out_,
+                                         zlink_msg_t **parts_out_,
+                                         size_t *part_count_out_,
+                                         zlink_recv_flags_t flags_)
 {
     static thread_local zlink_routing_id_t tls_peer_rid;
     static thread_local zlink_routing_id_t tls_source_spot_rid;
@@ -747,9 +722,8 @@ inline int zlink_std_compat_router_recv (void *router_,
         *request_seq_out_ = 0;
     std::memset (&tls_source_spot_rid, 0, sizeof (tls_source_spot_rid));
 
-    const int rc =
-      zlink_std_compat_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
-                  static_cast<zlink_send_flags_t> (flags_));
+    const int rc = zlink_std_compat_recv (router_, &tls_peer_rid, parts_out_, part_count_out_,
+                                          static_cast<zlink_send_flags_t> (flags_));
     if (rc != 0) {
         if (peer_rid_out_)
             *peer_rid_out_ = NULL;
@@ -764,8 +738,7 @@ inline int zlink_std_compat_router_recv (void *router_,
         *source_spot_rid_out_ = &tls_source_spot_rid;
     zlink_std_compat::recv_tls_source_rid () = tls_peer_rid;
     zlink_std_compat::recv_tls_source_spot_rid () = tls_source_spot_rid;
-    zlink_std_compat::recv_tls_request_seq () =
-      request_seq_out_ ? *request_seq_out_ : 0;
+    zlink_std_compat::recv_tls_request_seq () = request_seq_out_ ? *request_seq_out_ : 0;
     return 0;
 }
 
@@ -793,22 +766,20 @@ inline int zlink_recv_part (void *s_,
     }
 
     if (source_rid_out_) {
-        *source_rid_out_ =
-          zlink_std_compat::recv_tls_source_rid ().size > 0
-            ? &zlink_std_compat::recv_tls_source_rid ()
-            : NULL;
+        *source_rid_out_ = zlink_std_compat::recv_tls_source_rid ().size > 0
+                             ? &zlink_std_compat::recv_tls_source_rid ()
+                             : NULL;
     }
     return zlink_std_compat::recv_tls_take_part (part_out_, has_more_out_);
 }
 
-inline int zlink_router_recv_part (
-  void *router_,
-  const zlink_routing_id_t **peer_rid_out_,
-  const zlink_routing_id_t **source_spot_rid_out_,
-  uint64_t *request_seq_out_,
-  zlink_msg_t *part_out_,
-  zlink_part_flag_t *has_more_out_,
-  zlink_recv_flags_t flags_)
+inline int zlink_router_recv_part (void *router_,
+                                   const zlink_routing_id_t **peer_rid_out_,
+                                   const zlink_routing_id_t **source_spot_rid_out_,
+                                   uint64_t *request_seq_out_,
+                                   zlink_msg_t *part_out_,
+                                   zlink_part_flag_t *has_more_out_,
+                                   zlink_recv_flags_t flags_)
 {
     if (!part_out_ || !has_more_out_) {
         errno = EINVAL;
@@ -819,7 +790,7 @@ inline int zlink_router_recv_part (
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         if (zlink_std_compat_router_recv (router_, peer_rid_out_, source_spot_rid_out_,
-                               request_seq_out_, &parts, &part_count, flags_)
+                                          request_seq_out_, &parts, &part_count, flags_)
             != 0) {
             if (peer_rid_out_)
                 *peer_rid_out_ = NULL;
@@ -832,14 +803,12 @@ inline int zlink_router_recv_part (
     }
 
     if (peer_rid_out_) {
-        *peer_rid_out_ =
-          zlink_std_compat::recv_tls_source_rid ().size > 0
-            ? &zlink_std_compat::recv_tls_source_rid ()
-            : NULL;
+        *peer_rid_out_ = zlink_std_compat::recv_tls_source_rid ().size > 0
+                           ? &zlink_std_compat::recv_tls_source_rid ()
+                           : NULL;
     }
     if (source_spot_rid_out_) {
-        *source_spot_rid_out_ =
-          &zlink_std_compat::recv_tls_source_spot_rid ();
+        *source_spot_rid_out_ = &zlink_std_compat::recv_tls_source_spot_rid ();
     }
     if (request_seq_out_)
         *request_seq_out_ = zlink_std_compat::recv_tls_request_seq ();
@@ -847,10 +816,10 @@ inline int zlink_router_recv_part (
 }
 
 inline int zlink_std_compat_publish (void *subject_,
-                          const char *topic_id_,
-                          zlink_msg_t *parts_,
-                          size_t part_count_,
-                          zlink_send_flags_t flags_)
+                                     const char *topic_id_,
+                                     zlink_msg_t *parts_,
+                                     size_t part_count_,
+                                     zlink_send_flags_t flags_)
 {
     zlink_msg_t topic_msg;
     const size_t topic_size = topic_id_ ? std::strlen (topic_id_) : 0;
@@ -858,8 +827,7 @@ inline int zlink_std_compat_publish (void *subject_,
         return -1;
     if (topic_size > 0)
         std::memcpy (zmq_msg_data (&topic_msg), topic_id_, topic_size);
-    if (zmq_msg_send (&topic_msg, subject_, static_cast<int> (flags_ | ZMQ_SNDMORE))
-        < 0) {
+    if (zmq_msg_send (&topic_msg, subject_, static_cast<int> (flags_ | ZMQ_SNDMORE)) < 0) {
         zmq_msg_close (&topic_msg);
         return -1;
     }
@@ -867,12 +835,12 @@ inline int zlink_std_compat_publish (void *subject_,
 }
 
 inline int zlink_std_compat_subscribe (void *subject_,
-                            zlink_routing_id_t *source_rid_out_,
-                            zlink_msg_t **parts_out_,
-                            size_t *part_count_out_,
-                            char *topic_id_out_,
-                            size_t *topic_id_len_out_,
-                            zlink_send_flags_t flags_)
+                                       zlink_routing_id_t *source_rid_out_,
+                                       zlink_msg_t **parts_out_,
+                                       size_t *part_count_out_,
+                                       char *topic_id_out_,
+                                       size_t *topic_id_len_out_,
+                                       zlink_send_flags_t flags_)
 {
     if (!parts_out_ || !part_count_out_) {
         errno = EINVAL;
@@ -917,8 +885,7 @@ inline int zlink_std_compat_subscribe (void *subject_,
             return -1;
         }
 
-        const int payload_rc =
-          zmq_msg_recv (&payload_frame, subject_, static_cast<int> (flags_));
+        const int payload_rc = zmq_msg_recv (&payload_frame, subject_, static_cast<int> (flags_));
         if (payload_rc < 0) {
             const int saved_errno = errno;
             zmq_msg_close (&payload_frame);
@@ -949,10 +916,8 @@ inline int zlink_std_compat_subscribe (void *subject_,
     return 0;
 }
 
-inline int zlink_set_tls_server (void *socket_,
-                                 const char *cert_,
-                                 const char *key_,
-                                 int trust_system_)
+inline int
+zlink_set_tls_server (void *socket_, const char *cert_, const char *key_, int trust_system_)
 {
     (void) socket_;
     (void) cert_;
@@ -961,10 +926,8 @@ inline int zlink_set_tls_server (void *socket_,
     return 0;
 }
 
-inline int zlink_set_tls_client (void *socket_,
-                                 const char *ca_,
-                                 const char *hostname_,
-                                 int trust_system_)
+inline int
+zlink_set_tls_client (void *socket_, const char *ca_, const char *hostname_, int trust_system_)
 {
     (void) socket_;
     (void) ca_;
@@ -1054,8 +1017,7 @@ inline int zlink_recv_monitor_event_raw (zlink_monitor_handle_t *handle_,
         std::memcpy (&raw_event, zmq_msg_data (&part1), sizeof (uint16_t));
     if (zmq_msg_size (&part1) >= sizeof (uint16_t) + sizeof (int32_t)) {
         std::memcpy (&raw_value,
-                     static_cast<const char *> (zmq_msg_data (&part1))
-                       + sizeof (uint16_t),
+                     static_cast<const char *> (zmq_msg_data (&part1)) + sizeof (uint16_t),
                      sizeof (int32_t));
     }
 
@@ -1069,8 +1031,7 @@ inline int zlink_recv_monitor_event_raw (zlink_monitor_handle_t *handle_,
         out_->value = raw_value > 0 ? static_cast<uint64_t> (raw_value) : 0;
     }
 
-    const size_t remote_size =
-      std::min (static_cast<size_t> (255), zmq_msg_size (&part2));
+    const size_t remote_size = std::min (static_cast<size_t> (255), zmq_msg_size (&part2));
     if (remote_size > 0) {
         std::memcpy (out_->remote_addr, zmq_msg_data (&part2), remote_size);
         out_->remote_addr[remote_size] = '\0';
@@ -1100,8 +1061,8 @@ inline void zlink_monitor_thread_main (zlink_monitor_handle_t *handle_)
     }
 }
 
-inline void *zlink_socket_monitor_open (
-  void *s_, const zlink_socket_monitor_open_options_t *options_)
+inline void *zlink_socket_monitor_open (void *s_,
+                                        const zlink_socket_monitor_open_options_t *options_)
 {
     (void) options_;
     void *ctx = g_zlink_last_ctx.load (std::memory_order_acquire);
@@ -1115,10 +1076,8 @@ inline void *zlink_socket_monitor_open (
     (void) zmq_getsockopt (s_, ZMQ_TYPE, &socket_type, &socket_type_size);
 
     char endpoint[128];
-    const unsigned long seq =
-      g_zlink_monitor_seq.fetch_add (1, std::memory_order_relaxed);
-    std::snprintf (endpoint, sizeof (endpoint), "inproc://zlink-compat-mon-%lu",
-                   seq);
+    const unsigned long seq = g_zlink_monitor_seq.fetch_add (1, std::memory_order_relaxed);
+    std::snprintf (endpoint, sizeof (endpoint), "inproc://zlink-compat-mon-%lu", seq);
 
     int raw_events = ZMQ_EVENT_CONNECTED | ZMQ_EVENT_BIND_FAILED;
 #ifdef ZMQ_EVENT_ACCEPTED
@@ -1168,13 +1127,11 @@ inline void *zlink_socket_monitor_open (
     return handle;
 }
 
-inline int zlink_socket_monitor_handler (
-  void *monitor_,
-  zlink_socket_monitor_handler_fn handler_,
-  void *userdata_)
+inline int zlink_socket_monitor_handler (void *monitor_,
+                                         zlink_socket_monitor_handler_fn handler_,
+                                         void *userdata_)
 {
-    zlink_monitor_handle_t *handle =
-      static_cast<zlink_monitor_handle_t *> (monitor_);
+    zlink_monitor_handle_t *handle = static_cast<zlink_monitor_handle_t *> (monitor_);
     if (!handle) {
         errno = EINVAL;
         return -1;
@@ -1191,15 +1148,12 @@ inline int zlink_socket_monitor_recv (void *monitor_,
                                       zlink_send_flags_t flags_)
 {
     (void) flags_;
-    return zlink_recv_monitor_event_raw (
-      static_cast<zlink_monitor_handle_t *> (monitor_), out_);
+    return zlink_recv_monitor_event_raw (static_cast<zlink_monitor_handle_t *> (monitor_), out_);
 }
 
-inline int zlink_monitor_status (void *monitor_,
-                                   zlink_monitor_status_t *out_)
+inline int zlink_monitor_status (void *monitor_, zlink_monitor_status_t *out_)
 {
-    zlink_monitor_handle_t *handle =
-      static_cast<zlink_monitor_handle_t *> (monitor_);
+    zlink_monitor_handle_t *handle = static_cast<zlink_monitor_handle_t *> (monitor_);
     if (!handle || !out_) {
         errno = EINVAL;
         return -1;
@@ -1213,8 +1167,7 @@ inline int zlink_monitor_close (void **monitor_p_)
 {
     if (!monitor_p_ || !*monitor_p_)
         return 0;
-    zlink_monitor_handle_t *handle =
-      static_cast<zlink_monitor_handle_t *> (*monitor_p_);
+    zlink_monitor_handle_t *handle = static_cast<zlink_monitor_handle_t *> (*monitor_p_);
     *monitor_p_ = NULL;
     {
         std::lock_guard<std::mutex> lock (g_zlink_monitor_registry_sync);
@@ -1249,17 +1202,12 @@ inline int zlink_poller_size (void *poller_)
 {
     if (!poller_)
         return 0;
-    return static_cast<int> (
-      static_cast<zlink_poller_handle_t *> (poller_)->items.size ());
+    return static_cast<int> (static_cast<zlink_poller_handle_t *> (poller_)->items.size ());
 }
 
-inline int zlink_poller_add (void *poller_,
-                             void *socket_,
-                             void *user_data_,
-                             short events_)
+inline int zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_)
 {
-    zlink_poller_handle_t *poller =
-      static_cast<zlink_poller_handle_t *> (poller_);
+    zlink_poller_handle_t *poller = static_cast<zlink_poller_handle_t *> (poller_);
     if (!poller)
         return -1;
     zlink_poller_item_t item;
@@ -1272,8 +1220,7 @@ inline int zlink_poller_add (void *poller_,
 
 inline int zlink_poller_modify (void *poller_, void *socket_, short events_)
 {
-    zlink_poller_handle_t *poller =
-      static_cast<zlink_poller_handle_t *> (poller_);
+    zlink_poller_handle_t *poller = static_cast<zlink_poller_handle_t *> (poller_);
     if (!poller)
         return -1;
     for (size_t i = 0; i < poller->items.size (); ++i) {
@@ -1288,8 +1235,7 @@ inline int zlink_poller_modify (void *poller_, void *socket_, short events_)
 
 inline int zlink_poller_remove (void *poller_, void *socket_)
 {
-    zlink_poller_handle_t *poller =
-      static_cast<zlink_poller_handle_t *> (poller_);
+    zlink_poller_handle_t *poller = static_cast<zlink_poller_handle_t *> (poller_);
     if (!poller)
         return -1;
     for (std::vector<zlink_poller_item_t>::iterator it = poller->items.begin ();
@@ -1310,8 +1256,7 @@ inline int zlink_poller_wait (void *poller_,
                               zlink_config_result_t *error_out_ = NULL)
 {
     (void) error_out_;
-    zlink_poller_handle_t *poller =
-      static_cast<zlink_poller_handle_t *> (poller_);
+    zlink_poller_handle_t *poller = static_cast<zlink_poller_handle_t *> (poller_);
     if (!poller)
         return -1;
     if (poller->items.empty ())
@@ -1324,8 +1269,7 @@ inline int zlink_poller_wait (void *poller_,
         items[i].events = poller->items[i].events;
         items[i].revents = 0;
     }
-    const int rc =
-      zlink_poll (&items[0], static_cast<int> (items.size ()), timeout_);
+    const int rc = zlink_poll (&items[0], static_cast<int> (items.size ()), timeout_);
     if (rc <= 0)
         return rc;
 
@@ -1342,9 +1286,7 @@ inline int zlink_poller_wait (void *poller_,
     return out;
 }
 
-inline int zlink_recv_handler (void *socket_,
-                               zlink_socket_msg_handler_fn handler_,
-                               void *userdata_)
+inline int zlink_recv_handler (void *socket_, zlink_socket_msg_handler_fn handler_, void *userdata_)
 {
     (void) socket_;
     (void) handler_;
@@ -1352,9 +1294,8 @@ inline int zlink_recv_handler (void *socket_,
     return 0;
 }
 
-inline int zlink_send_ready_handler (void *socket_,
-                                     zlink_send_ready_handler_fn handler_,
-                                     void *userdata_)
+inline int
+zlink_send_ready_handler (void *socket_, zlink_send_ready_handler_fn handler_, void *userdata_)
 {
     (void) socket_;
     (void) handler_;

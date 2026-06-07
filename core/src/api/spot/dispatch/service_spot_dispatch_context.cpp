@@ -13,15 +13,14 @@ void *&spot_dispatch_event_handle_tls ()
 }
 }
 
-zlink::spot_dispatch_event_callback_context_t::
-  spot_dispatch_event_callback_context_t (void *spot_) :
+zlink::spot_dispatch_event_callback_context_t::spot_dispatch_event_callback_context_t (
+  void *spot_) :
     _previous_handle (spot_dispatch_event_handle_tls ())
 {
     spot_dispatch_event_handle_tls () = spot_;
 }
 
-zlink::spot_dispatch_event_callback_context_t::
-  ~spot_dispatch_event_callback_context_t ()
+zlink::spot_dispatch_event_callback_context_t::~spot_dispatch_event_callback_context_t ()
 {
     spot_dispatch_event_handle_tls () = _previous_handle;
 }

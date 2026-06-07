@@ -16,9 +16,8 @@ namespace request_timeout
 {
 namespace
 {
-typedef std::multimap<uint64_t, std::shared_ptr<struct task_t> > schedule_map_t;
-const uint64_t idle_exit_wait_ns =
-  static_cast<uint64_t> (100) * static_cast<uint64_t> (1000000);
+typedef std::multimap<uint64_t, std::shared_ptr<struct task_t>> schedule_map_t;
+const uint64_t idle_exit_wait_ns = static_cast<uint64_t> (100) * static_cast<uint64_t> (1000000);
 }
 
 struct task_t
@@ -82,9 +81,8 @@ void run_timeout_loop ()
         {
             std::unique_lock<std::mutex> lock (state.mutex);
             while (state.schedule.empty ()) {
-                if (state.cv.wait_for (
-                      lock, std::chrono::nanoseconds (idle_exit_wait_ns))
-                    == std::cv_status::timeout
+                if (state.cv.wait_for (lock, std::chrono::nanoseconds (idle_exit_wait_ns))
+                      == std::cv_status::timeout
                     && state.schedule.empty ()) {
                     state.started = false;
                     return;
@@ -98,8 +96,7 @@ void run_timeout_loop ()
                 const uint64_t now_ns = monotonic_now_ns ();
                 const schedule_map_t::iterator next = state.schedule.begin ();
                 if (next->first > now_ns) {
-                    state.cv.wait_for (
-                      lock, std::chrono::nanoseconds (next->first - now_ns));
+                    state.cv.wait_for (lock, std::chrono::nanoseconds (next->first - now_ns));
                     continue;
                 }
 
@@ -151,10 +148,8 @@ void ensure_started ()
 }
 }
 
-std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
-                                  handler_fn handler_,
-                                  void *userdata_,
-                                  cleanup_fn cleanup_)
+std::shared_ptr<task_t>
+schedule (uint32_t timeout_ms_, handler_fn handler_, void *userdata_, cleanup_fn cleanup_)
 {
     if (timeout_ms_ == 0 || !handler_)
         return std::shared_ptr<task_t> ();
@@ -171,8 +166,7 @@ std::shared_ptr<task_t> schedule (uint32_t timeout_ms_,
     {
         scheduler_state_t &state = scheduler_state ();
         std::lock_guard<std::mutex> lock (state.mutex);
-        task->schedule_it =
-          state.schedule.insert (std::make_pair (task->deadline_ns, task));
+        task->schedule_it = state.schedule.insert (std::make_pair (task->deadline_ns, task));
     }
     scheduler_state ().cv.notify_all ();
     return task;
@@ -207,17 +201,15 @@ void cancel (const std::shared_ptr<task_t> &task_)
 
 uint64_t monotonic_now_ns ()
 {
-    return static_cast<uint64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (
-        std::chrono::steady_clock::now ().time_since_epoch ())
-        .count ());
+    return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::nanoseconds> (
+                                    std::chrono::steady_clock::now ().time_since_epoch ())
+                                    .count ());
 }
 
 uint64_t deadline_after_ms (uint32_t timeout_ms_)
 {
     return monotonic_now_ns ()
-           + static_cast<uint64_t> (timeout_ms_)
-               * static_cast<uint64_t> (1000000);
+           + static_cast<uint64_t> (timeout_ms_) * static_cast<uint64_t> (1000000);
 }
 }
 }

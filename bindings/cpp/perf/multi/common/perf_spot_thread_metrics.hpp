@@ -18,7 +18,13 @@ namespace multi
 template <typename OwnerT> struct spot_thread_metrics_t
 {
     spot_thread_metrics_t () :
-        owner (NULL), registered (false), epoch (0), active_received (0), sample_index (0), latency (), latency_mutex ()
+        owner (NULL),
+        registered (false),
+        epoch (0),
+        active_received (0),
+        sample_index (0),
+        latency (),
+        latency_mutex ()
     {
     }
 
@@ -52,7 +58,8 @@ bind_spot_thread_metrics (OwnerT *owner_,
         std::lock_guard<std::mutex> lock (*metrics_mutex_);
         metrics.owner = owner_;
         metrics.registered = true;
-        if (std::find (thread_metrics_->begin (), thread_metrics_->end (), &metrics) == thread_metrics_->end ()) {
+        if (std::find (thread_metrics_->begin (), thread_metrics_->end (), &metrics)
+            == thread_metrics_->end ()) {
             thread_metrics_->push_back (&metrics);
         }
     }
@@ -77,12 +84,13 @@ bind_spot_thread_metrics (OwnerT *owner_,
 }
 
 template <typename OwnerT>
-inline void collect_spot_thread_metrics (OwnerT *owner_,
-                                         std::mutex *metrics_mutex_,
-                                         std::vector<spot_thread_metrics_t<OwnerT> *> *thread_metrics_,
-                                         std::atomic<uint64_t> *metrics_epoch_,
-                                         unsigned long long *active_received_out_,
-                                         latency_sampler_stats_t *latency_out_)
+inline void
+collect_spot_thread_metrics (OwnerT *owner_,
+                             std::mutex *metrics_mutex_,
+                             std::vector<spot_thread_metrics_t<OwnerT> *> *thread_metrics_,
+                             std::atomic<uint64_t> *metrics_epoch_,
+                             unsigned long long *active_received_out_,
+                             latency_sampler_stats_t *latency_out_)
 {
     if (active_received_out_)
         *active_received_out_ = 0;

@@ -106,9 +106,7 @@ void cleanup_child (process_capture_t *proc_)
     close_process_capture (proc_);
 }
 
-void reader_loop (FILE *stream_,
-                  process_capture_t *proc_,
-                  bool stdout_stream_)
+void reader_loop (FILE *stream_, process_capture_t *proc_, bool stdout_stream_)
 {
     char buffer[512];
     while (stream_ && fgets (buffer, sizeof (buffer), stream_)) {
@@ -140,8 +138,7 @@ bool start_process (const std::string &path_,
     int stdin_pipe[2] = {-1, -1};
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
-    if (pipe (stdin_pipe) != 0 || pipe (stdout_pipe) != 0
-        || pipe (stderr_pipe) != 0) {
+    if (pipe (stdin_pipe) != 0 || pipe (stdout_pipe) != 0 || pipe (stderr_pipe) != 0) {
         return false;
     }
 
@@ -171,8 +168,7 @@ bool start_process (const std::string &path_,
         std::vector<std::string> env_storage;
         for (char **it = environ; it && *it; ++it)
             env_storage.push_back (*it);
-        env_storage.insert (env_storage.end (), env_overrides_.begin (),
-                            env_overrides_.end ());
+        env_storage.insert (env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
 
         std::vector<char *> envp;
         for (size_t i = 0; i < env_storage.size (); ++i)
@@ -202,10 +198,8 @@ bool start_process (const std::string &path_,
         return false;
     }
 
-    out_->stdout_thread =
-      std::thread (&reader_loop, out_->stdout_file, out_, true);
-    out_->stderr_thread =
-      std::thread (&reader_loop, out_->stderr_file, out_, false);
+    out_->stdout_thread = std::thread (&reader_loop, out_->stdout_file, out_, true);
+    out_->stderr_thread = std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
 }
 
@@ -224,9 +218,7 @@ bool wait_for_stdout_prefix (process_capture_t *proc_,
 
     while (std::chrono::steady_clock::now () < deadline) {
         for (size_t i = 0; i < proc_->stdout_lines.size (); ++i) {
-            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_),
-                                                prefix_)
-                == 0) {
+            if (proc_->stdout_lines[i].compare (0, std::strlen (prefix_), prefix_) == 0) {
                 if (line_out_)
                     *line_out_ = proc_->stdout_lines[i];
                 return true;
@@ -276,9 +268,8 @@ void write_stdin_line (process_capture_t *proc_, const char *line_)
     TEST_ASSERT_NOT_NULL (line_);
     TEST_ASSERT_TRUE (proc_->stdin_fd >= 0);
     const size_t size = std::strlen (line_);
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (size),
-      static_cast<int> (write (proc_->stdin_fd, line_, size)));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (size),
+                           static_cast<int> (write (proc_->stdin_fd, line_, size)));
 }
 
 void run_multi_pubsub_process_case (const char *self_path_,
@@ -290,10 +281,8 @@ void run_multi_pubsub_process_case (const char *self_path_,
     process_capture_t server;
     process_capture_t client;
 
-    const std::string server_path =
-      sibling_binary_path (self_path_, "comp_src_pubsub_server");
-    const std::string client_path =
-      sibling_binary_path (self_path_, "comp_src_pubsub_client");
+    const std::string server_path = sibling_binary_path (self_path_, "comp_src_pubsub_server");
+    const std::string client_path = sibling_binary_path (self_path_, "comp_src_pubsub_client");
 
     std::vector<std::string> server_env;
     server_env.push_back (std::string ("PERF_MSG_SIZES=") + msg_size_);
@@ -307,19 +296,16 @@ void run_multi_pubsub_process_case (const char *self_path_,
     }
     {
         char buf[64];
-        snprintf (buf, sizeof (buf), "PERF_CONNECT_READY_TIMEOUT_MS=%d",
-                  connect_ready_timeout_ms_);
+        snprintf (buf, sizeof (buf), "PERF_CONNECT_READY_TIMEOUT_MS=%d", connect_ready_timeout_ms_);
         server_env.push_back (buf);
     }
     std::vector<std::string> server_args;
     server_args.push_back ("zlink");
     server_args.push_back ("tcp");
-    TEST_ASSERT_TRUE (
-      start_process (server_path, server_args, server_env, &server));
+    TEST_ASSERT_TRUE (start_process (server_path, server_args, server_env, &server));
 
     std::string ready_line;
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line));
+    TEST_ASSERT_TRUE (wait_for_stdout_prefix (&server, "READY,", 10000, &ready_line));
     std::string endpoint = ready_line.substr (strlen ("READY,"));
     if (!endpoint.empty () && endpoint[endpoint.size () - 1] == '\n')
         endpoint.erase (endpoint.size () - 1);
@@ -333,11 +319,9 @@ void run_multi_pubsub_process_case (const char *self_path_,
 
     std::vector<std::string> client_env = server_env;
     client_env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, client_env, &client));
+    TEST_ASSERT_TRUE (start_process (client_path, client_args, client_env, &client));
 
-    TEST_ASSERT_TRUE (
-      wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
+    TEST_ASSERT_TRUE (wait_for_stdout_prefix (&client, "CLIENT_READY,", 10000, NULL));
     const std::string start_line = std::string ("START,") + msg_size_ + "\n";
     write_stdin_line (&server, start_line.c_str ());
     write_stdin_line (&client, start_line.c_str ());
@@ -367,8 +351,7 @@ void run_multi_pubsub_process_case (const char *self_path_,
 void run_multi_pubsub_callback_reject_case (const char *self_path_)
 {
     process_capture_t client;
-    const std::string client_path =
-      sibling_binary_path (self_path_, "comp_src_pubsub_client");
+    const std::string client_path = sibling_binary_path (self_path_, "comp_src_pubsub_client");
 
     std::vector<std::string> client_args;
     client_args.push_back ("zlink");
@@ -381,15 +364,13 @@ void run_multi_pubsub_callback_reject_case (const char *self_path_)
     client_env.push_back ("PERF_RECV_MODE=callback");
     client_env.push_back ("PERF_MULTI_PATTERN=MULTI_PUBSUB");
 
-    TEST_ASSERT_TRUE (
-      start_process (client_path, client_args, client_env, &client));
+    TEST_ASSERT_TRUE (start_process (client_path, client_args, client_env, &client));
 
     int client_rc = INT_MIN;
     TEST_ASSERT_TRUE (wait_for_exit_code (&client, 15000, &client_rc));
     close_process_capture (&client);
     TEST_ASSERT_NOT_EQUAL (0, client_rc);
-    TEST_ASSERT_TRUE (
-      client.stderr_text.find ("policy violation") != std::string::npos);
+    TEST_ASSERT_TRUE (client.stderr_text.find ("policy violation") != std::string::npos);
 }
 }
 
@@ -418,10 +399,10 @@ int main (int argc, char **argv)
     signal (SIGPIPE, SIG_IGN);
     g_self_path = argc > 0 ? argv[0] : NULL;
     UNITY_BEGIN ();
-#define RUN_PUBSUB_PROCESS_TEST(name)                                          \
-    do {                                                                       \
-        if (should_run_pubsub_process_test (#name))                            \
-            RUN_TEST (name);                                                   \
+#define RUN_PUBSUB_PROCESS_TEST(name)                                                              \
+    do {                                                                                           \
+        if (should_run_pubsub_process_test (#name))                                                \
+            RUN_TEST (name);                                                                       \
     } while (0)
     RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_recv_preserves_settle_and_active_window);
     RUN_PUBSUB_PROCESS_TEST (test_multi_pubsub_process_recv_large_size_completes);

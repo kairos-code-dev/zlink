@@ -16,8 +16,8 @@ class session_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         } else {
-            app.add_hosted_service (std::make_unique<sample_stream_server_service_t> (app, topology.stream_endpoint,
-                                                                                      run_client_e2e_stream_server));
+            app.add_hosted_service (std::make_unique<sample_stream_server_service_t> (
+              app, topology.stream_endpoint, run_client_e2e_stream_server));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.codecs ().add_json ();

@@ -12,26 +12,22 @@ void test ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, "W", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, "W", 1));
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &enabled,
-                             sizeof (enabled)));
+      zlink_set_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &enabled, sizeof (enabled)));
 
     char welcome[2] = {};
     size_t welcome_size = sizeof (welcome);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, welcome,
-                            &welcome_size));
+      zlink_get_pub_option (pub, ZLINK_PUB_OPT_WELCOME_MSG, welcome, &welcome_size));
     TEST_ASSERT_EQUAL_UINT (1, welcome_size);
     TEST_ASSERT_EQUAL_CHAR ('W', welcome[0]);
 
     int verbose = 0;
     size_t verbose_size = sizeof (verbose);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &verbose,
-                            &verbose_size));
+      zlink_get_pub_option (pub, ZLINK_PUB_OPT_VERBOSE, &verbose, &verbose_size));
     TEST_ASSERT_EQUAL_INT (1, verbose);
 
     //  Create a subscriber

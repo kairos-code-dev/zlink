@@ -11,12 +11,8 @@ namespace
 const int max_submit_retry_attempts = 16;
 }
 
-int zlink::options_setsockopt_core_socket (options_t *self_,
-                                           int option_,
-                                           const void *optval_,
-                                           size_t optvallen_,
-                                           bool is_int_,
-                                           int value_)
+int zlink::options_setsockopt_core_socket (
+  options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
@@ -41,8 +37,7 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_AFFINITY:
-            return options_do_setsockopt_value (optval_, optvallen_,
-                                                &self_->affinity);
+            return options_do_setsockopt_value (optval_, optvallen_, &self_->affinity);
 
         case ZLINK_INTERNAL_OPT_ROUTING_ID:
             if (optvallen_ > 0 && optvallen_ <= UCHAR_MAX) {
@@ -67,8 +62,7 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_MAXMSGSIZE:
-            return options_do_setsockopt_value (optval_, optvallen_,
-                                                &self_->maxmsgsize);
+            return options_do_setsockopt_value (optval_, optvallen_, &self_->maxmsgsize);
 
         case ZLINK_INTERNAL_OPT_MULTICAST_HOPS:
             if (is_int_ && value_ > 0) {
@@ -85,8 +79,7 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_IPV6:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &self_->ipv6);
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_, &self_->ipv6);
 
         case ZLINK_INTERNAL_OPT_IMMEDIATE:
             if (is_int_ && (value_ == 0 || value_ == 1)) {
@@ -96,8 +89,7 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_CONFLATE:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &self_->conflate);
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_, &self_->conflate);
 
         case ZLINK_INTERNAL_OPT_HANDSHAKE_IVL:
             if (is_int_ && value_ >= 0) {
@@ -107,8 +99,7 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_INVERT_MATCHING:
-            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
-                                                      &self_->invert_matching);
+            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_, &self_->invert_matching);
 
         case ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE:
             if (is_int_
@@ -134,12 +125,10 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
             break;
 
         case ZLINK_INTERNAL_OPT_STREAM_NOTIFY:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &self_->stream_notify);
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_, &self_->stream_notify);
 
         case ZLINK_INTERNAL_OPT_ZMP_METADATA:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &self_->zmp_metadata);
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_, &self_->zmp_metadata);
 
         case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
             if (is_int_
@@ -178,12 +167,8 @@ int zlink::options_setsockopt_core_socket (options_t *self_,
     return -1;
 }
 
-int zlink::options_getsockopt_core_socket (const options_t *self_,
-                                           int option_,
-                                           void *optval_,
-                                           size_t *optvallen_,
-                                           bool is_int_,
-                                           int *value_)
+int zlink::options_getsockopt_core_socket (
+  const options_t *self_, int option_, void *optval_, size_t *optvallen_, bool is_int_, int *value_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_SNDHWM:
@@ -211,8 +196,7 @@ int zlink::options_getsockopt_core_socket (const options_t *self_,
             }
             break;
         case ZLINK_INTERNAL_OPT_ROUTING_ID:
-            return do_getsockopt (optval_, optvallen_, self_->routing_id,
-                                  self_->routing_id_size);
+            return do_getsockopt (optval_, optvallen_, self_->routing_id, self_->routing_id_size);
         case ZLINK_INTERNAL_OPT_RATE:
             if (is_int_) {
                 *value_ = self_->rate;

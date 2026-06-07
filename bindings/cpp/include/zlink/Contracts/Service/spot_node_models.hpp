@@ -126,7 +126,10 @@ class spot_node_status_t
 
     const std::string &local_endpoint () const noexcept { return local_endpoint_; }
 
-    const std::optional<routing_id_t> &node_routing_id () const noexcept { return node_routing_id_; }
+    const std::optional<routing_id_t> &node_routing_id () const noexcept
+    {
+        return node_routing_id_;
+    }
 
     spot_node_state_t state () const noexcept { return state_; }
 
@@ -140,9 +143,15 @@ class spot_node_status_t
 
     uint32_t ready_subject_count () const noexcept { return ready_subject_count_; }
 
-    uint32_t disconnected_sub_target_count () const noexcept { return disconnected_sub_target_count_; }
+    uint32_t disconnected_sub_target_count () const noexcept
+    {
+        return disconnected_sub_target_count_;
+    }
 
-    uint32_t disconnected_routed_target_count () const noexcept { return disconnected_routed_target_count_; }
+    uint32_t disconnected_routed_target_count () const noexcept
+    {
+        return disconnected_routed_target_count_;
+    }
 
     int32_t last_error () const noexcept { return last_error_; }
 
@@ -359,7 +368,10 @@ class spot_node_socket_filter_t
 
     const std::optional<spot_node_socket_owner_t> &owner () const noexcept { return owner_; }
 
-    const std::optional<spot_node_socket_type_t> &socket_type () const noexcept { return socket_type_; }
+    const std::optional<spot_node_socket_type_t> &socket_type () const noexcept
+    {
+        return socket_type_;
+    }
 
     const std::optional<std::string> &socket_name () const noexcept { return socket_name_; }
 
@@ -468,7 +480,10 @@ class spot_node_actor_entry_t
 
     const actor_ref_t &actor () const noexcept { return actor_; }
 
-    const std::optional<routing_id_t> &current_spot_rid () const noexcept { return current_spot_rid_; }
+    const std::optional<routing_id_t> &current_spot_rid () const noexcept
+    {
+        return current_spot_rid_;
+    }
 
     spot_kind current_spot_kind () const noexcept { return current_spot_kind_; }
 

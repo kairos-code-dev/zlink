@@ -17,9 +17,8 @@ namespace zlink
 namespace spot_actor_internal
 {
 
-zlink_submit_result_t build_packet_frame (zlink_msg_t *header_,
-                                          zlink_msg_t *body_,
-                                          zlink_msg_t *frame_out_)
+zlink_submit_result_t
+build_packet_frame (zlink_msg_t *header_, zlink_msg_t *body_, zlink_msg_t *frame_out_)
 {
     const size_t header_size = zlink_msg_size (header_);
     const size_t body_size = zlink_msg_size (body_);
@@ -34,8 +33,7 @@ zlink_submit_result_t build_packet_frame (zlink_msg_t *header_,
     if (zlink_msg_init_size (frame_out_, total_size) != ZLINK_CONFIG_OK)
         return ZLINK_SUBMIT_INTERNAL_ERROR;
 
-    unsigned char *data =
-      static_cast<unsigned char *> (zlink_msg_data (frame_out_));
+    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (frame_out_));
     zlink::put_uint16 (data, static_cast<uint16_t> (header_size));
     zlink::put_uint32 (data + 2, static_cast<uint32_t> (body_size));
     if (header_size > 0)
@@ -45,8 +43,7 @@ zlink_submit_result_t build_packet_frame (zlink_msg_t *header_,
     return ZLINK_SUBMIT_OK;
 }
 
-zlink_submit_result_t copy_msg_for_stream_send (zlink_msg_t *src_,
-                                                zlink_msg_t *dst_)
+zlink_submit_result_t copy_msg_for_stream_send (zlink_msg_t *src_, zlink_msg_t *dst_)
 {
     if (!src_ || !dst_) {
         errno = EINVAL;
@@ -64,11 +61,10 @@ zlink_submit_result_t copy_msg_for_stream_send (zlink_msg_t *src_,
     return ZLINK_SUBMIT_OK;
 }
 
-zlink_submit_result_t send_copied_msg_to_bound_stream (
-  void *stream_,
-  const zlink_routing_id_t *rid_,
-  zlink_msg_t *message_,
-  zlink_send_flags_t flags_)
+zlink_submit_result_t send_copied_msg_to_bound_stream (void *stream_,
+                                                       const zlink_routing_id_t *rid_,
+                                                       zlink_msg_t *message_,
+                                                       zlink_send_flags_t flags_)
 {
     zlink::socket_base_t *stream = try_as_socket (stream_);
     if (!stream || stream->socket_type () != ZLINK_CORE_SOCKET_STREAM) {
@@ -76,8 +72,7 @@ zlink_submit_result_t send_copied_msg_to_bound_stream (
         return ZLINK_SUBMIT_NOT_CONNECTED;
     }
 
-    return zlink_send_part_rid (stream_, rid_, message_, flags_,
-                                ZLINK_PART_FINAL);
+    return zlink_send_part_rid (stream_, rid_, message_, flags_, ZLINK_PART_FINAL);
 }
 
 }

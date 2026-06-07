@@ -76,8 +76,11 @@ int main ()
 
     // 게임룸이 API 채널로 outgame 요청을 보낸다.
     zlink::message_t request = zlink::message_t::from ("get-profile");
-    std::vector<zlink::message_t> reply =
-      room.request_channel (channel).message (request).timeout (std::chrono::seconds (5)).submit_async ().get ();
+    std::vector<zlink::message_t> reply = room.request_channel (channel)
+                                            .message (request)
+                                            .timeout (std::chrono::seconds (5))
+                                            .submit_async ()
+                                            .get ();
     server.join ();
 
     std::printf ("[spot/channel] request \"get-profile\" -> reply \"%s\"\n",

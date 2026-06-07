@@ -56,7 +56,9 @@ class monitoring_runtime_t
     void publish_spot_snapshot (spot_event_payload_t event) const;
     void publish_stream (stream_event_payload_t event) const;
     void publish_actor (actor_event_payload_t event) const;
-    void publish_timer_failure (std::string source_name, spot_rid_t spot_rid, timer_failure_event_t failure) const;
+    void publish_timer_failure (std::string source_name,
+                                spot_rid_t spot_rid,
+                                timer_failure_event_t failure) const;
 
   private:
     template <typename TEvent> void publish (TEvent event) const

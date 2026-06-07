@@ -12,7 +12,8 @@ class api_server_host_factory_t
     static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true);
 };
 
-inline zlink::framework::app_t api_server_host_factory_t::build (const sample_topology_t &topology, bool auto_stop)
+inline zlink::framework::app_t api_server_host_factory_t::build (const sample_topology_t &topology,
+                                                                 bool auto_stop)
 {
     auto app = zlink::framework::app_t::create ();
     if (auto_stop) {

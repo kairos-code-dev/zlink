@@ -8,26 +8,24 @@
 namespace zlink::samples::bingo
 {
 
-inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &app, const sample_topology_t &topology)
+inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &app,
+                                                      const sample_topology_t &topology)
 {
-    app.logging().use_console().set_level ("info");
+    app.logging ().use_console ().set_level ("info");
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+        options.handlers ()
+          .add<authenticate_player_handler_t> ("api")
+          .add<match_bingo_api_handler_t> ("api");
 
-        options.handlers()
-            .add<authenticate_player_handler_t> ("api")
-            .add<match_bingo_api_handler_t> ("api");
+        options.codecs ().add_json ();
 
-        options.codecs().add_json();
-
-        options.use_discovery ()
-            .add_registry_endpoint (topology.registry_router_endpoint);
+        options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
 
         options.add_client_server_channel (sample_names_t::api_channel)
-            .enable_server (topology.api_channel_endpoint)
-            .use_handler_group ("api");
+          .enable_server (topology.api_channel_endpoint)
+          .use_handler_group ("api");
 
-        options.add_client_server_channel (sample_names_t::play_channel)
-            .enable_client ();
+        options.add_client_server_channel (sample_names_t::play_channel).enable_client ();
     });
     return app;
 }

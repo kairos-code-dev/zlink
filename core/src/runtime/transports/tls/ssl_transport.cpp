@@ -26,8 +26,7 @@ boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
 }
 
 ssl_transport_t::ssl_transport_t (boost::asio::ssl::context &ssl_ctx) :
-    _ssl_ctx (ssl_ctx),
-    _handshake_complete (false)
+    _ssl_ctx (ssl_ctx), _handshake_complete (false)
 {
 }
 
@@ -48,24 +47,23 @@ bool ssl_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     //  Assign the file descriptor to the socket
     socket.assign (protocol_for_fd (fd), fd, ec);
     if (ec) {
-        ASIO_GLOBAL_ERROR ("ssl_transport assign failed: %s",
-                          ec.message ().c_str ());
+        ASIO_GLOBAL_ERROR ("ssl_transport assign failed: %s", ec.message ().c_str ());
         return false;
     }
 
     //  Keep synchronous read_some/write_some paths non-blocking.
     socket.native_non_blocking (true, ec);
     if (ec) {
-        ASIO_GLOBAL_ERROR ("ssl_transport non-blocking failed: %s",
-                           ec.message ().c_str ());
+        ASIO_GLOBAL_ERROR ("ssl_transport non-blocking failed: %s", ec.message ().c_str ());
         return false;
     }
 
     //  Create SSL stream wrapping the socket
     try {
-        _ssl_stream = std::shared_ptr<ssl_stream_t> (
-          new ssl_stream_t (std::move (socket), _ssl_ctx));
-    } catch (const std::bad_alloc &) {
+        _ssl_stream =
+          std::shared_ptr<ssl_stream_t> (new ssl_stream_t (std::move (socket), _ssl_ctx));
+    }
+    catch (const std::bad_alloc &) {
         ASIO_GLOBAL_ERROR ("ssl_transport stream allocation failed");
         return false;
     }
@@ -90,8 +88,7 @@ void ssl_transport_t::close ()
         stream->lowest_layer ().cancel (ec);
 
         //  Avoid blocking SSL shutdown on close; just close the TCP layer.
-        stream->lowest_layer ().shutdown (
-          boost::asio::ip::tcp::socket::shutdown_both, ec);
+        stream->lowest_layer ().shutdown (boost::asio::ip::tcp::socket::shutdown_both, ec);
         stream->lowest_layer ().close (ec);
     }
 
@@ -112,8 +109,7 @@ void ssl_transport_t::async_read_some (unsigned char *buffer,
 
     stream->async_read_some (
       boost::asio::buffer (buffer, buffer_size),
-      [stream, handler] (const boost::system::error_code &ec,
-                         std::size_t bytes_transferred) {
+      [stream, handler] (const boost::system::error_code &ec, std::size_t bytes_transferred) {
           if (handler) {
               handler (ec, bytes_transferred);
           }
@@ -139,17 +135,14 @@ std::size_t ssl_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
     }
 
     boost::system::error_code ec;
-    const std::size_t bytes_read =
-      stream->read_some (boost::asio::buffer (buffer, len), ec);
+    const std::size_t bytes_read = stream->read_some (boost::asio::buffer (buffer, len), ec);
 
     if (ec) {
-        if (ec == boost::asio::error::would_block
-            || ec == boost::asio::error::try_again) {
+        if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
             errno = EAGAIN;
             return 0;
         }
-        if (ec == boost::asio::error::eof
-            || ec == boost::asio::error::connection_reset
+        if (ec == boost::asio::error::eof || ec == boost::asio::error::connection_reset
             || ec == boost::asio::error::broken_pipe) {
             errno = EPIPE;
             return 0;
@@ -184,19 +177,16 @@ void ssl_transport_t::async_write_some (const unsigned char *buffer,
         return;
     }
 
-    boost::asio::async_write (*stream,
-                              boost::asio::buffer (buffer, buffer_size),
-                              [stream, handler] (
-                                const boost::system::error_code &ec,
-                                std::size_t bytes_transferred) {
-                                  if (handler) {
-                                      handler (ec, bytes_transferred);
-                                  }
-                              });
+    boost::asio::async_write (
+      *stream, boost::asio::buffer (buffer, buffer_size),
+      [stream, handler] (const boost::system::error_code &ec, std::size_t bytes_transferred) {
+          if (handler) {
+              handler (ec, bytes_transferred);
+          }
+      });
 }
 
-std::size_t ssl_transport_t::write_some (const std::uint8_t *data,
-                                         std::size_t len)
+std::size_t ssl_transport_t::write_some (const std::uint8_t *data, std::size_t len)
 {
     if (len == 0) {
         return 0;
@@ -223,8 +213,7 @@ std::size_t ssl_transport_t::write_some (const std::uint8_t *data,
 
     if (ec) {
         //  Handle would_block case
-        if (ec == boost::asio::error::would_block
-            || ec == boost::asio::error::try_again) {
+        if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
             errno = EAGAIN;
             return 0;
         }
@@ -237,8 +226,7 @@ std::size_t ssl_transport_t::write_some (const std::uint8_t *data,
         }
 
         //  Map boost error codes to errno
-        if (ec == boost::asio::error::broken_pipe
-            || ec == boost::asio::error::connection_reset) {
+        if (ec == boost::asio::error::broken_pipe || ec == boost::asio::error::connection_reset) {
             errno = EPIPE;
         } else if (ec == boost::asio::error::not_connected) {
             errno = ENOTCONN;
@@ -256,8 +244,7 @@ std::size_t ssl_transport_t::write_some (const std::uint8_t *data,
     return bytes_written;
 }
 
-void ssl_transport_t::async_handshake (int handshake_type,
-                                       completion_handler_t handler)
+void ssl_transport_t::async_handshake (int handshake_type, completion_handler_t handler)
 {
     std::shared_ptr<ssl_stream_t> stream = _ssl_stream;
     if (!stream) {
@@ -267,14 +254,11 @@ void ssl_transport_t::async_handshake (int handshake_type,
         return;
     }
 
-    auto hs_type =
-      (handshake_type == 0)
-        ? boost::asio::ssl::stream_base::client
-        : boost::asio::ssl::stream_base::server;
+    auto hs_type = (handshake_type == 0) ? boost::asio::ssl::stream_base::client
+                                         : boost::asio::ssl::stream_base::server;
 
     if (handshake_type == client && !_hostname.empty ()) {
-        if (!SSL_set_tlsext_host_name (stream->native_handle (),
-                                       _hostname.c_str ())) {
+        if (!SSL_set_tlsext_host_name (stream->native_handle (), _hostname.c_str ())) {
             if (handler) {
                 handler (boost::asio::error::invalid_argument, 0);
             }
@@ -282,18 +266,17 @@ void ssl_transport_t::async_handshake (int handshake_type,
         }
     }
 
-    stream->async_handshake (
-      hs_type,
-      [this, stream, handler] (const boost::system::error_code &ec) {
-          if (!ec) {
-              _handshake_complete = true;
-          }
-          if (handler) {
-              handler (ec, 0);
-          }
-      });
+    stream->async_handshake (hs_type,
+                             [this, stream, handler] (const boost::system::error_code &ec) {
+                                 if (!ec) {
+                                     _handshake_complete = true;
+                                 }
+                                 if (handler) {
+                                     handler (ec, 0);
+                                 }
+                             });
 }
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

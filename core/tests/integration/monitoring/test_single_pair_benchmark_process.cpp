@@ -28,11 +28,7 @@ const char *g_self_path = NULL;
 struct process_capture_t
 {
     process_capture_t () :
-        pid (-1),
-        stdout_file (NULL),
-        stderr_file (NULL),
-        stdout_done (false),
-        stderr_done (false)
+        pid (-1), stdout_file (NULL), stderr_file (NULL), stdout_done (false), stderr_done (false)
     {
     }
 
@@ -145,8 +141,7 @@ bool start_process (const std::string &path_,
         std::vector<std::string> env_storage;
         for (char **it = environ; it && *it; ++it)
             env_storage.push_back (*it);
-        env_storage.insert (env_storage.end (), env_overrides_.begin (),
-                            env_overrides_.end ());
+        env_storage.insert (env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
 
         std::vector<char *> envp;
         for (size_t i = 0; i < env_storage.size (); ++i)
@@ -174,10 +169,8 @@ bool start_process (const std::string &path_,
         return false;
     }
 
-    out_->stdout_thread =
-      std::thread (&reader_loop, out_->stdout_file, out_, true);
-    out_->stderr_thread =
-      std::thread (&reader_loop, out_->stderr_file, out_, false);
+    out_->stdout_thread = std::thread (&reader_loop, out_->stdout_file, out_, true);
+    out_->stderr_thread = std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
 }
 
@@ -266,8 +259,7 @@ void run_single_pair_reject_case (const char *self_path_,
     TEST_ASSERT_TRUE (wait_for_exit_code (&proc, 15000, &rc));
     close_process_capture (&proc);
     TEST_ASSERT_NOT_EQUAL (0, rc);
-    TEST_ASSERT_TRUE (
-      proc.stderr_text.find ("policy violation") != std::string::npos);
+    TEST_ASSERT_TRUE (proc.stderr_text.find ("policy violation") != std::string::npos);
 }
 } // namespace
 

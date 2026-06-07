@@ -15,7 +15,8 @@
 #define ZLINK_SOCKET_STREAM ((zlink_socket_type_t) 0x1008)
 #endif
 
-namespace {
+namespace
+{
 
 #ifndef PERF_MULTI_STREAM_PATTERN_NAME
 #define PERF_MULTI_STREAM_PATTERN_NAME "MULTI_STREAM"
@@ -26,14 +27,12 @@ static const char *k_pattern = PERF_MULTI_STREAM_PATTERN_NAME;
 
 static perf_multi_stream::session_t g_stream_session;
 
-inline void print_server_metrics (
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_resource_metrics_t &metrics)
+inline void print_server_metrics (const std::string &lib_name,
+                                  const std::string &transport,
+                                  const std::vector<size_t> &sizes,
+                                  const bench_resource_metrics_t &metrics)
 {
-    print_server_metrics_for_sizes (
-      lib_name, k_pattern, transport, sizes, metrics);
+    print_server_metrics_for_sizes (lib_name, k_pattern, transport, sizes, metrics);
 }
 
 } // namespace
@@ -50,8 +49,8 @@ int main (int argc, char **argv)
     set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
-                  << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return 0;
     }
 
@@ -70,8 +69,8 @@ int main (int argc, char **argv)
     void *server = zlink_socket (ctx.get (), ZLINK_SOCKET_STREAM);
     if (!server) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] socket create failed errno="
-                      << zlink_errno () << std::endl;
+            std::cerr << "[multi-stream-server] socket create failed errno=" << zlink_errno ()
+                      << std::endl;
         }
         return 1;
     }
@@ -84,49 +83,39 @@ int main (int argc, char **argv)
     set_sockopt_int (server, ZLINK_OPT_LINGER, linger_ms, "ZLINK_OPT_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
     const int io_timeout_ms = resolve_bench_count ("PERF_STREAM_TIMEOUT_MS", 5000);
-    set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms,
-                     "ZLINK_OPT_SNDTIMEO");
-    set_sockopt_int (server, ZLINK_OPT_RCVTIMEO, io_timeout_ms,
-                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_SNDTIMEO, io_timeout_ms, "ZLINK_OPT_SNDTIMEO");
+    set_sockopt_int (server, ZLINK_OPT_RCVTIMEO, io_timeout_ms, "ZLINK_OPT_RCVTIMEO");
     const int nodelay = 1;
-    set_sockopt_int (server, ZLINK_OPT_TCP_NODELAY, nodelay,
-                     "ZLINK_OPT_TCP_NODELAY");
+    set_sockopt_int (server, ZLINK_OPT_TCP_NODELAY, nodelay, "ZLINK_OPT_TCP_NODELAY");
 
     if (!setup_tls_server (server, transport)) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] tls setup failed transport="
-                      << transport << " errno=" << zlink_errno ()
+            std::cerr << "[multi-stream-server] tls setup failed transport=" << transport
+                      << " errno=" << zlink_errno () << std::endl;
+        }
+        zlink_close (server);
+        return 1;
+    }
+
+    const std::string endpoint =
+      bind_server_endpoint (server, transport, lib_name + "_stream_server");
+    if (endpoint.empty ()) {
+        if (bench_debug_enabled ()) {
+            std::cerr << "[multi-stream-server] bind endpoint failed errno=" << zlink_errno ()
                       << std::endl;
         }
         zlink_close (server);
         return 1;
     }
 
-    const std::string endpoint = bind_server_endpoint (
-      server, transport, lib_name + "_stream_server");
-    if (endpoint.empty ()) {
-        if (bench_debug_enabled ()) {
-            std::cerr << "[multi-stream-server] bind endpoint failed errno="
-                      << zlink_errno () << std::endl;
-        }
-        zlink_close (server);
-        return 1;
-    }
-
     perf_stop_requested ().store (false, std::memory_order_release);
-    perf_multi_stream::reset_session (
-      &g_stream_session,
-      ctx.get (),
-      server,
-      ZLINK_SOCKET_STREAM,
-      settings.hwm,
-      transport);
+    perf_multi_stream::reset_session (&g_stream_session, ctx.get (), server, ZLINK_SOCKET_STREAM,
+                                      settings.hwm, transport);
     perf_multi_stream::packet_handler_context_t packet_handler_ctx;
     packet_handler_ctx.session = &g_stream_session;
     packet_handler_ctx.stop_token = k_stop_token;
-    if (zlink_stream_packet_handler (
-          server, &perf_multi_stream::stream_packet_handler_callback,
-          &packet_handler_ctx)
+    if (zlink_stream_packet_handler (server, &perf_multi_stream::stream_packet_handler_callback,
+                                     &packet_handler_ctx)
         != ZLINK_HANDLER_OK) {
         if (bench_debug_enabled ()) {
             std::cerr << "[multi-stream-server] packet handler install failed errno="
@@ -152,12 +141,8 @@ int main (int argc, char **argv)
 
     std::atomic<int> loop_rc (0);
     std::thread event_loop_thread ([&] () {
-        loop_rc.store (perf_multi_stream::run_server_event_loop (
-                         &g_stream_session,
-                         server,
-                         k_stop_token,
-                         NULL,
-                         NULL),
+        loop_rc.store (perf_multi_stream::run_server_event_loop (&g_stream_session, server,
+                                                                 k_stop_token, NULL, NULL),
                        std::memory_order_release);
     });
 
@@ -166,8 +151,7 @@ int main (int argc, char **argv)
 
     perf_multi_stream::clear_session (&g_stream_session);
 
-    const bench_resource_metrics_t metrics =
-      bench_finish_resource_probe (cpu_start);
+    const bench_resource_metrics_t metrics = bench_finish_resource_probe (cpu_start);
     print_server_metrics (lib_name, transport, sizes, metrics);
     zlink_close (server);
     return loop_rc.load (std::memory_order_acquire);

@@ -200,7 +200,8 @@ class registry_query_t
 
     registry_status_t status () const;
     std::vector<service_summary_entry_t> service_summary () const;
-    std::vector<service_summary_entry_t> service_summary (const service_summary_filter_t &filter) const;
+    std::vector<service_summary_entry_t>
+    service_summary (const service_summary_filter_t &filter) const;
     std::vector<topology_entry_t> topology () const;
     std::vector<topology_entry_t> topology (const topology_filter_t &filter) const;
     std::vector<member_peer_t> member_peers (std::string channel_name) const;

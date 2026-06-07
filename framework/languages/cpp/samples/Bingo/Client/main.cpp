@@ -18,8 +18,8 @@ int main ()
             return 2;
         }
     }
-    if (result.player_joined_notifications == 0 || result.started_notifications == 0 || result.drawn_notifications == 0
-        || result.ended_notifications == 0) {
+    if (result.player_joined_notifications == 0 || result.started_notifications == 0
+        || result.drawn_notifications == 0 || result.ended_notifications == 0) {
         return 4;
     }
     return result.sends.front ().completed ? 0 : 3;

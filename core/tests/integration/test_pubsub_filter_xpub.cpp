@@ -20,8 +20,7 @@ namespace
 {
 void *create_sync_socket (int type_)
 {
-    void *socket =
-      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
+    void *socket = zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -40,8 +39,7 @@ static void test_pubsub_filter_transport (const char *endpoint_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, endpoint_));
 
     char connect_endpoint[MAX_SOCKET_STRING];
-    if (strncmp (endpoint_, "tcp://", 6) == 0
-        || strncmp (endpoint_, "ipc://", 6) == 0) {
+    if (strncmp (endpoint_, "tcp://", 6) == 0 || strncmp (endpoint_, "ipc://", 6) == 0) {
         size_t len = sizeof (connect_endpoint);
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_get_option (pub, ZLINK_OPT_LAST_ENDPOINT, connect_endpoint, &len));
@@ -52,8 +50,7 @@ static void test_pubsub_filter_transport (const char *endpoint_)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, connect_endpoint));
 
     // Subscribe only to "topicA"
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub, "topicA"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "topicA"));
 
     msleep (SETTLE_TIME);
 

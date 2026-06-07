@@ -37,17 +37,15 @@ void test_handshake_timeout ()
 
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    void *monitor = open_test_monitor_probe (
-      server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED, &probe);
+    void *monitor =
+      open_test_monitor_probe (server, ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED, &probe);
 
     // Connect a raw socket but don't send ZMTP greeting
     fd_t fd = connect_socket (endpoint);
 
     TEST_ASSERT_TRUE (test_monitor_probe_wait_count (&probe, 2, 3000));
-    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_ACCEPTED,
-                              test_monitor_probe_event_at (&probe, 0));
-    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_DISCONNECTED,
-                              test_monitor_probe_event_at (&probe, 1));
+    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_ACCEPTED, test_monitor_probe_event_at (&probe, 0));
+    TEST_ASSERT_EQUAL_UINT64 (ZLINK_EVENT_DISCONNECTED, test_monitor_probe_event_at (&probe, 1));
 
     close (fd);
     close_test_monitor_probe (&monitor, &probe);

@@ -7,7 +7,6 @@
 
 bool poller_subject_is_completion (poller_subject_kind_t subject_kind_);
 bool poller_completion_is_hidden (const poller_registration_t *registration_);
-int poller_completion_drain_hidden (
-  const poller_registration_t *registration_);
+int poller_completion_drain_hidden (const poller_registration_t *registration_);
 
 #endif

@@ -42,8 +42,7 @@ bool should_run_stream_threadsafe_test (const char *name_)
         return strcmp (selected, name_) == 0;
 
     for (size_t i = 0;
-         i < sizeof (stream_threadsafe_smoke_cases)
-               / sizeof (stream_threadsafe_smoke_cases[0]);
+         i < sizeof (stream_threadsafe_smoke_cases) / sizeof (stream_threadsafe_smoke_cases[0]);
          ++i) {
         if (strcmp (stream_threadsafe_smoke_cases[i], name_) == 0)
             return true;
@@ -61,10 +60,7 @@ const size_t kPayloadSize = 64;
 
 struct route_probe_t
 {
-    route_probe_t () : ready (0), rid ()
-    {
-        memset (&rid, 0, sizeof (rid));
-    }
+    route_probe_t () : ready (0), rid () { memset (&rid, 0, sizeof (rid)); }
 
     std::atomic<int> ready;
     zlink_routing_id_t rid;
@@ -73,12 +69,7 @@ struct route_probe_t
 struct lifecycle_probe_t
 {
     lifecycle_probe_t () :
-        socket (NULL),
-        hits (0),
-        detach_rc (1),
-        detach_errno (0),
-        close_rc (1),
-        close_errno (0)
+        socket (NULL), hits (0), detach_rc (1), detach_errno (0), close_rc (1), close_errno (0)
     {
     }
 
@@ -93,11 +84,7 @@ struct lifecycle_probe_t
 struct worker_probe_t
 {
     worker_probe_t () :
-        socket (NULL),
-        has_message (false),
-        done (false),
-        send_rc (-1),
-        send_errno (0)
+        socket (NULL), has_message (false), done (false), send_rc (-1), send_errno (0)
     {
         memset (&rid, 0, sizeof (rid));
         if (zlink_msg_init (&msg) != 0)
@@ -248,17 +235,13 @@ void configure_stream_socket (void *socket_)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (socket_, ZLINK_OPT_LINGER, &kLingerMs, sizeof (kLingerMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes,
-                        sizeof (kSocketBufBytes)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDBUF, &kSocketBufBytes, sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes,
-                        sizeof (kSocketBufBytes)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVBUF, &kSocketBufBytes, sizeof (kSocketBufBytes)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kTimeoutMs,
-                        sizeof (kTimeoutMs)));
+      zlink_set_option (socket_, ZLINK_OPT_SNDTIMEO, &kTimeoutMs, sizeof (kTimeoutMs)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &kTimeoutMs,
-                        sizeof (kTimeoutMs)));
+      zlink_set_option (socket_, ZLINK_OPT_RCVTIMEO, &kTimeoutMs, sizeof (kTimeoutMs)));
 }
 
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -338,9 +321,7 @@ int connect_raw_tcp (const char *endpoint_)
         return -1;
     }
 
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
+    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr), sizeof (addr)) != 0) {
         const int err = errno;
         close (fd);
         errno = err;
@@ -377,10 +358,8 @@ void set_raw_timeout (int fd_, int timeout_ms_)
     struct timeval tv;
     tv.tv_sec = timeout_ms_ / 1000;
     tv.tv_usec = (timeout_ms_ % 1000) * 1000;
-    TEST_ASSERT_EQUAL_INT (
-      0, setsockopt (fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof (tv)));
-    TEST_ASSERT_EQUAL_INT (
-      0, setsockopt (fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof (tv)));
+    TEST_ASSERT_EQUAL_INT (0, setsockopt (fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof (tv)));
+    TEST_ASSERT_EQUAL_INT (0, setsockopt (fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof (tv)));
 }
 
 int recv_raw (int fd_, unsigned char *buf_, size_t cap_)
@@ -408,8 +387,7 @@ bool wait_flag (std::atomic<int> *flag_, int timeout_ms_)
 
 int capture_route_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
 {
-    if (g_route_probe && rid_ && msg_ && rid_->size == kRouteIdSize
-        && zlink_msg_size (msg_) > 0
+    if (g_route_probe && rid_ && msg_ && rid_->size == kRouteIdSize && zlink_msg_size (msg_) > 0
         && g_route_probe->ready.load (std::memory_order_acquire) == 0) {
         g_route_probe->rid.size = rid_->size;
         memcpy (g_route_probe->rid.data, rid_->data, kRouteIdSize);
@@ -443,13 +421,11 @@ int lifecycle_reject_callback (const zlink_routing_id_t *, zlink_msg_t *msg_)
     return 0;
 }
 
-void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_,
-                      bool keep_attached_)
+void establish_route (void *server_, int raw_fd_, zlink_routing_id_t *rid_, bool keep_attached_)
 {
     route_probe_t probe;
     g_route_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server_, capture_route_callback));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach_raw (server_, capture_route_callback));
 
     const unsigned char payload = 0xA5;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd_, &payload, sizeof (payload)));
@@ -468,15 +444,13 @@ void drain_exact_bytes (int fd_,
                         std::atomic<int> *errors_)
 {
     unsigned char buf[4096];
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
 
     while (received_->load (std::memory_order_acquire) < expected_bytes_
            && std::chrono::steady_clock::now () < deadline) {
         const int n = recv_raw (fd_, buf, sizeof (buf));
         if (n > 0) {
-            received_->fetch_add (static_cast<size_t> (n),
-                                  std::memory_order_release);
+            received_->fetch_add (static_cast<size_t> (n), std::memory_order_release);
             continue;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -529,10 +503,8 @@ static bool is_stream_control_chunk (const unsigned char *data_, size_t size_)
 
 static uint32_t load_u32_be (const unsigned char *src_)
 {
-    return (static_cast<uint32_t> (src_[0]) << 24)
-           | (static_cast<uint32_t> (src_[1]) << 16)
-           | (static_cast<uint32_t> (src_[2]) << 8)
-           | static_cast<uint32_t> (src_[3]);
+    return (static_cast<uint32_t> (src_[0]) << 24) | (static_cast<uint32_t> (src_[1]) << 16)
+           | (static_cast<uint32_t> (src_[2]) << 8) | static_cast<uint32_t> (src_[3]);
 }
 
 static void store_u32_be (unsigned char *dst_, uint32_t value_)
@@ -559,9 +531,7 @@ void read_last_endpoint_loop (void *socket_,
     while (stop_->load (std::memory_order_acquire) == 0) {
         size_t size = sizeof (endpoint);
         memset (endpoint, 0, sizeof (endpoint));
-        if (zlink_get_option (socket_, ZLINK_OPT_LAST_ENDPOINT, endpoint,
-                              &size)
-            != 0) {
+        if (zlink_get_option (socket_, ZLINK_OPT_LAST_ENDPOINT, endpoint, &size) != 0) {
             errors_->fetch_add (1, std::memory_order_release);
             return;
         }
@@ -574,15 +544,12 @@ void read_last_endpoint_loop (void *socket_,
     }
 }
 
-void read_events_loop (void *socket_,
-                       std::atomic<int> *stop_,
-                       std::atomic<int> *errors_)
+void read_events_loop (void *socket_, std::atomic<int> *stop_, std::atomic<int> *errors_)
 {
     while (stop_->load (std::memory_order_acquire) == 0) {
         int events = 0;
         size_t size = sizeof (events);
-        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &size)
-            != 0) {
+        if (zlink_get_option (socket_, ZLINK_OPT_EVENTS, &events, &size) != 0) {
             errors_->fetch_add (1, std::memory_order_release);
             return;
         }
@@ -597,8 +564,7 @@ void sender_thread_run (void *server_,
 {
     std::vector<unsigned char> payload (kPayloadSize, fill_);
     for (int i = 0; i < messages_; ++i) {
-        const int rc = test_stream_send_bytes (
-          server_, &rid_, &payload[0], payload.size (), 0);
+        const int rc = test_stream_send_bytes (server_, &rid_, &payload[0], payload.size (), 0);
         if (rc != static_cast<int> (payload.size ())) {
             errors_->fetch_add (1, std::memory_order_release);
             return;
@@ -612,12 +578,10 @@ int handoff_to_worker_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg
     if (!probe || !rid_ || !msg_)
         return 0;
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const unsigned char *payload = static_cast<const unsigned char *> (zlink_msg_data (msg_));
     const size_t payload_size = zlink_msg_size (msg_);
     if (payload_size == 0
-        || (payload_size == 1 && payload
-            && (payload[0] == 0x00 || payload[0] == 0x01))) {
+        || (payload_size == 1 && payload && (payload[0] == 0x00 || payload[0] == 0x01))) {
         (void) zlink_msg_close (msg_);
         return 0;
     }
@@ -638,8 +602,8 @@ int handoff_to_worker_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg
 void worker_send_msg_run (worker_probe_t *probe_)
 {
     std::unique_lock<std::mutex> lk (probe_->mutex);
-    const bool ready = probe_->cv.wait_for (
-      lk, std::chrono::seconds (5), [probe_]() { return probe_->has_message; });
+    const bool ready = probe_->cv.wait_for (lk, std::chrono::seconds (5),
+                                            [probe_] () { return probe_->has_message; });
     if (!ready) {
         probe_->send_rc = -1;
         probe_->send_errno = ETIMEDOUT;
@@ -666,8 +630,7 @@ void worker_send_msg_run (worker_probe_t *probe_)
 
 void queued_send_ready_handler (void *subject_, void *)
 {
-    queued_worker_probe_t *probe =
-      static_cast<queued_worker_probe_t *> (subject_);
+    queued_worker_probe_t *probe = static_cast<queued_worker_probe_t *> (subject_);
     if (!probe)
         return;
 
@@ -684,8 +647,7 @@ int queue_handoff_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     if (!probe || !rid_ || !msg_)
         return 0;
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const unsigned char *payload = static_cast<const unsigned char *> (zlink_msg_data (msg_));
     const size_t payload_size = zlink_msg_size (msg_);
     if (is_stream_control_chunk (payload, payload_size)) {
         std::lock_guard<std::mutex> lk (probe->mutex);
@@ -694,11 +656,10 @@ int queue_handoff_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
         return 0;
     }
 
-    std::vector<std::vector<unsigned char> > complete_frames;
+    std::vector<std::vector<unsigned char>> complete_frames;
     bool invalid = false;
     {
-        const std::string key (reinterpret_cast<const char *> (rid_->data),
-                               rid_->size);
+        const std::string key (reinterpret_cast<const char *> (rid_->data), rid_->size);
         std::lock_guard<std::mutex> lk (probe->stash_mu);
         stream_raw_stash_t &stash = probe->stashes[key];
         stash.append (payload, payload_size);
@@ -709,8 +670,7 @@ int queue_handoff_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
             const unsigned char *frame = &stash.data[stash.offset + consumed];
             const size_t body_size = static_cast<size_t> (load_u32_be (frame));
 
-            if (body_size < 8 || body_size > 4 * 1024 * 1024
-                || body_size != kPayloadSize) {
+            if (body_size < 8 || body_size > 4 * 1024 * 1024 || body_size != kPayloadSize) {
                 invalid = true;
                 break;
             }
@@ -746,8 +706,8 @@ int queue_handoff_callback (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
             queued_stream_message_t queued;
             queued.rid = *rid_;
             TEST_ASSERT_EQUAL_INT (0, zlink_msg_close (&queued.msg));
-            TEST_ASSERT_EQUAL_INT (
-              0, zlink_msg_init_size (&queued.msg, complete_frames[i].size ()));
+            TEST_ASSERT_EQUAL_INT (0,
+                                   zlink_msg_init_size (&queued.msg, complete_frames[i].size ()));
             memcpy (zlink_msg_data (&queued.msg), &complete_frames[i][0],
                     complete_frames[i].size ());
             probe->queue.push_back (std::move (queued));
@@ -780,8 +740,8 @@ void queued_worker_send_run (queued_worker_probe_t *probe_)
         if (has_blocked) {
             const size_t msg_size = zlink_msg_size (&blocked.msg);
             errno = 0;
-            const int rc = test_stream_send_single_msg (
-              probe_->socket, &blocked.rid, &blocked.msg, ZLINK_DONTWAIT);
+            const int rc = test_stream_send_single_msg (probe_->socket, &blocked.rid, &blocked.msg,
+                                                        ZLINK_DONTWAIT);
             if (rc == static_cast<int> (msg_size)) {
                 std::lock_guard<std::mutex> lk (probe_->mutex);
                 ++probe_->processed_messages;
@@ -804,10 +764,9 @@ void queued_worker_send_run (queued_worker_probe_t *probe_)
             }
 
             std::unique_lock<std::mutex> lk (probe_->mutex);
-            probe_->cv.wait_for (
-              lk, std::chrono::milliseconds (10), [&]() {
-                  return probe_->failed || probe_->ready_ticks != ready_checkpoint;
-              });
+            probe_->cv.wait_for (lk, std::chrono::milliseconds (10), [&] () {
+                return probe_->failed || probe_->ready_ticks != ready_checkpoint;
+            });
             ready_checkpoint = probe_->ready_ticks;
             continue;
         }
@@ -815,12 +774,10 @@ void queued_worker_send_run (queued_worker_probe_t *probe_)
         queued_stream_message_t queued;
         {
             std::unique_lock<std::mutex> lk (probe_->mutex);
-            probe_->cv.wait_for (
-              lk, std::chrono::milliseconds (10), [&]() {
-                  return probe_->failed
-                         || probe_->processed_messages >= probe_->expected_messages
-                         || !probe_->queue.empty ();
-              });
+            probe_->cv.wait_for (lk, std::chrono::milliseconds (10), [&] () {
+                return probe_->failed || probe_->processed_messages >= probe_->expected_messages
+                       || !probe_->queue.empty ();
+            });
 
             if (probe_->failed) {
                 probe_->done = true;
@@ -842,8 +799,8 @@ void queued_worker_send_run (queued_worker_probe_t *probe_)
 
         errno = 0;
         const size_t msg_size = zlink_msg_size (&queued.msg);
-        const int rc = test_stream_send_single_msg (
-          probe_->socket, &queued.rid, &queued.msg, ZLINK_DONTWAIT);
+        const int rc =
+          test_stream_send_single_msg (probe_->socket, &queued.rid, &queued.msg, ZLINK_DONTWAIT);
         if (rc == static_cast<int> (msg_size)) {
             std::lock_guard<std::mutex> lk (probe_->mutex);
             ++probe_->processed_messages;
@@ -894,8 +851,7 @@ static void run_stream_raw_client_load (const char *endpoint_,
         set_raw_timeout (fd, 5000);
 
         for (int i = 0; i < messages_per_phase_; ++i) {
-            const uint32_t seq =
-              static_cast<uint32_t> (phase * messages_per_phase_ + i);
+            const uint32_t seq = static_cast<uint32_t> (phase * messages_per_phase_ + i);
             store_u32_be (&payload[0], client_id_);
             store_u32_be (&payload[4], seq);
             for (size_t j = 8; j < payload_size_; ++j)
@@ -928,8 +884,7 @@ static void run_stream_raw_client_timed_window (const char *endpoint_,
                                                 std::atomic<int> *client_failures_,
                                                 std::atomic<int> *sent_messages_)
 {
-    if (!endpoint_ || !stop_ || !client_failures_ || !sent_messages_
-        || payload_size_ < 8)
+    if (!endpoint_ || !stop_ || !client_failures_ || !sent_messages_ || payload_size_ < 8)
         return;
 
     const int fd = connect_raw_tcp (endpoint_);
@@ -950,14 +905,12 @@ static void run_stream_raw_client_timed_window (const char *endpoint_,
         store_u32_be (&payload[0], client_id_);
         store_u32_be (&payload[4], seq);
         for (size_t j = 8; j < payload_size_; ++j)
-            payload[j] =
-              static_cast<unsigned char> ((client_id_ + seq + j) & 0xFF);
+            payload[j] = static_cast<unsigned char> ((client_id_ + seq + j) & 0xFF);
 
         store_u32_be (&frame[0], static_cast<uint32_t> (payload_size_));
         memcpy (&frame[4], &payload[0], payload_size_);
 
-        const size_t split =
-          1 + ((static_cast<size_t> (client_id_) + seq) % (frame.size () - 1));
+        const size_t split = 1 + ((static_cast<size_t> (client_id_) + seq) % (frame.size () - 1));
         if (send_all (fd, &frame[0], split) != 0
             || send_all (fd, &frame[split], frame.size () - split) != 0
             || !recv_exact_or_fail (fd, &recv_frame[0], recv_frame.size ())
@@ -995,20 +948,16 @@ void test_stream_callback_rejects_detach_and_close ()
     lifecycle_probe_t probe;
     probe.socket = server;
     g_lifecycle_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server, lifecycle_reject_callback));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach_raw (server, lifecycle_reject_callback));
 
     const unsigned char payload = 0x41;
     TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &payload, sizeof (payload)));
     TEST_ASSERT_TRUE (wait_flag (&probe.hits, 5000));
 
     TEST_ASSERT_EQUAL_INT (-1, probe.detach_rc.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (EBUSY,
-                           probe.detach_errno.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY,
-                           probe.close_rc.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (EBUSY,
-                           probe.close_errno.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (EBUSY, probe.detach_errno.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY, probe.close_rc.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (EBUSY, probe.close_errno.load (std::memory_order_acquire));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_lifecycle_probe = NULL;
@@ -1038,17 +987,15 @@ void test_stream_send_is_thread_safe_across_app_threads ()
 
     std::atomic<size_t> received_bytes (0);
     std::atomic<int> recv_errors (0);
-    const size_t expected_bytes =
-      kConcurrentSenders * kMessagesPerSender * kPayloadSize;
-    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes,
-                        &received_bytes, &recv_errors);
+    const size_t expected_bytes = kConcurrentSenders * kMessagesPerSender * kPayloadSize;
+    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes, &received_bytes, &recv_errors);
 
     std::atomic<int> send_errors (0);
     std::vector<std::thread> senders;
     for (int i = 0; i < kConcurrentSenders; ++i) {
-        senders.push_back (std::thread (
-          sender_thread_run, server, rid, static_cast<unsigned char> (0x30 + i),
-          kMessagesPerSender, &send_errors));
+        senders.push_back (std::thread (sender_thread_run, server, rid,
+                                        static_cast<unsigned char> (0x30 + i), kMessagesPerSender,
+                                        &send_errors));
     }
 
     for (size_t i = 0; i < senders.size (); ++i)
@@ -1059,8 +1006,7 @@ void test_stream_send_is_thread_safe_across_app_threads ()
     TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_UINT (
       static_cast<unsigned int> (expected_bytes),
-      static_cast<unsigned int> (
-        received_bytes.load (std::memory_order_acquire)));
+      static_cast<unsigned int> (received_bytes.load (std::memory_order_acquire)));
 
     close_raw_fd (raw_fd);
     test_context_socket_close_zero_linger (server);
@@ -1091,13 +1037,11 @@ void test_stream_send_and_close_race_is_safe ()
     std::thread sender ([&] () {
         std::vector<unsigned char> payload (kPayloadSize, 0x5A);
         for (;;) {
-            const int rc = test_stream_send_bytes (
-              server, &rid, &payload[0], payload.size (), 0);
+            const int rc = test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0);
             if (rc == static_cast<int> (payload.size ()))
                 continue;
 
-            if (errno == ENOTSOCK || errno == ETERM || errno == EAGAIN
-                || errno == EINTR) {
+            if (errno == ENOTSOCK || errno == ETERM || errno == EAGAIN || errno == EINTR) {
                 break;
             }
             send_errors.fetch_add (1, std::memory_order_release);
@@ -1136,25 +1080,22 @@ void test_stream_callback_handoff_to_worker_thread_send_msg_is_safe ()
     worker_probe_t probe;
     probe.socket = server;
     g_worker_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server, handoff_to_worker_callback));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach_raw (server, handoff_to_worker_callback));
 
     std::thread worker (worker_send_msg_run, &probe);
 
     std::vector<unsigned char> payload (kPayloadSize, 0x61);
-    TEST_ASSERT_EQUAL_INT (
-      0, send_all (raw_fd, &payload[0], payload.size ()));
+    TEST_ASSERT_EQUAL_INT (0, send_all (raw_fd, &payload[0], payload.size ()));
 
     {
         std::unique_lock<std::mutex> lk (probe.mutex);
-        TEST_ASSERT_TRUE (probe.cv.wait_for (
-          lk, std::chrono::seconds (10), [&probe]() { return probe.done; }));
+        TEST_ASSERT_TRUE (
+          probe.cv.wait_for (lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
     }
 
     std::vector<unsigned char> echoed (payload.size ());
     TEST_ASSERT_TRUE (recv_exact_bytes (raw_fd, &echoed[0], echoed.size ()));
-    TEST_ASSERT_EQUAL_INT (
-      0, memcmp (&payload[0], &echoed[0], payload.size ()));
+    TEST_ASSERT_EQUAL_INT (0, memcmp (&payload[0], &echoed[0], payload.size ()));
 
     worker.join ();
 
@@ -1183,10 +1124,8 @@ void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
     configure_stream_socket (server);
 
     const int hwm = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1197,8 +1136,7 @@ void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
     g_queued_worker_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach_raw (server, queue_handoff_callback));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach_raw (server, queue_handoff_callback));
 
     std::thread worker (queued_worker_send_run, &probe);
 
@@ -1206,10 +1144,9 @@ void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
     std::vector<std::thread> clients;
     clients.reserve (client_count);
     for (int i = 0; i < client_count; ++i) {
-        clients.push_back (
-          std::thread (run_stream_raw_client_load, endpoint,
-                       static_cast<uint32_t> (i), 1, messages_per_client,
-                       payload_size, &client_failures));
+        clients.push_back (std::thread (run_stream_raw_client_load, endpoint,
+                                        static_cast<uint32_t> (i), 1, messages_per_client,
+                                        payload_size, &client_failures));
     }
 
     for (size_t i = 0; i < clients.size (); ++i)
@@ -1217,8 +1154,8 @@ void test_stream_callback_queue_handoff_with_send_ready_under_load_is_safe ()
 
     {
         std::unique_lock<std::mutex> lk (probe.mutex);
-        TEST_ASSERT_TRUE (probe.cv.wait_for (
-          lk, std::chrono::seconds (10), [&probe]() { return probe.done; }));
+        TEST_ASSERT_TRUE (
+          probe.cv.wait_for (lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
     }
 
     worker.join ();
@@ -1253,10 +1190,8 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
     configure_stream_socket (server);
 
     const int hwm = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1267,8 +1202,7 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
     g_queued_worker_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
 
     std::thread worker (queued_worker_send_run, &probe);
 
@@ -1276,10 +1210,9 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
     std::vector<std::thread> clients;
     clients.reserve (client_count);
     for (int i = 0; i < client_count; ++i) {
-        clients.push_back (
-          std::thread (run_stream_raw_client_load, endpoint,
-                       static_cast<uint32_t> (i), 1, messages_per_client,
-                       payload_size, &client_failures));
+        clients.push_back (std::thread (run_stream_raw_client_load, endpoint,
+                                        static_cast<uint32_t> (i), 1, messages_per_client,
+                                        payload_size, &client_failures));
     }
 
     for (size_t i = 0; i < clients.size (); ++i)
@@ -1287,8 +1220,8 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe (
 
     {
         std::unique_lock<std::mutex> lk (probe.mutex);
-        TEST_ASSERT_TRUE (probe.cv.wait_for (
-          lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
+        TEST_ASSERT_TRUE (
+          probe.cv.wait_for (lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
     }
 
     worker.join ();
@@ -1321,10 +1254,8 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
     configure_stream_socket (server);
 
     const int hwm = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_RCVHWM, &hwm, sizeof (hwm)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -1335,8 +1266,7 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
     g_queued_worker_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_send_ready_handler (server, &queued_send_ready_handler, &probe));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv_handler (server, &queue_handoff_msg_handler, NULL));
 
     std::thread worker (queued_worker_send_run, &probe);
 
@@ -1346,10 +1276,9 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
     std::vector<std::thread> clients;
     clients.reserve (client_count);
     for (int i = 0; i < client_count; ++i) {
-        clients.push_back (
-          std::thread (run_stream_raw_client_timed_window, endpoint,
-                       static_cast<uint32_t> (i), payload_size, &stop,
-                       &client_failures, &sent_messages));
+        clients.push_back (std::thread (run_stream_raw_client_timed_window, endpoint,
+                                        static_cast<uint32_t> (i), payload_size, &stop,
+                                        &client_failures, &sent_messages));
     }
 
     std::this_thread::sleep_for (std::chrono::milliseconds (run_ms));
@@ -1366,8 +1295,8 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
 
     {
         std::unique_lock<std::mutex> lk (probe.mutex);
-        TEST_ASSERT_TRUE (probe.cv.wait_for (
-          lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
+        TEST_ASSERT_TRUE (
+          probe.cv.wait_for (lk, std::chrono::seconds (10), [&probe] () { return probe.done; }));
     }
 
     worker.join ();
@@ -1382,8 +1311,8 @@ void test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_
         TEST_ASSERT_EQUAL_INT (probe.enqueued_messages, probe.processed_messages);
     }
     TEST_ASSERT_EQUAL_INT (0, client_failures.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_INT (
-      sent_messages.load (std::memory_order_acquire), probe.processed_messages);
+    TEST_ASSERT_EQUAL_INT (sent_messages.load (std::memory_order_acquire),
+                           probe.processed_messages);
 
     g_queued_worker_probe = NULL;
     test_context_socket_close_zero_linger (server);
@@ -1438,13 +1367,11 @@ void test_stream_send_msg_is_thread_safe ()
     std::atomic<size_t> received_bytes (0);
     std::atomic<int> recv_errors (0);
     const size_t expected_bytes = send_msg_threads * msgs_per_thread * kPayloadSize;
-    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes,
-                        &received_bytes, &recv_errors);
+    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes, &received_bytes, &recv_errors);
 
     std::vector<std::thread> senders;
     for (int i = 0; i < send_msg_threads; ++i) {
-        senders.push_back (
-          std::thread (msg_sender, static_cast<unsigned char> (0x40 + i)));
+        senders.push_back (std::thread (msg_sender, static_cast<unsigned char> (0x40 + i)));
     }
 
     for (size_t i = 0; i < senders.size (); ++i)
@@ -1455,8 +1382,7 @@ void test_stream_send_msg_is_thread_safe ()
     TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_UINT (
       static_cast<unsigned int> (expected_bytes),
-      static_cast<unsigned int> (
-        received_bytes.load (std::memory_order_acquire)));
+      static_cast<unsigned int> (received_bytes.load (std::memory_order_acquire)));
 
     close_raw_fd (raw_fd);
     test_context_socket_close_zero_linger (server);
@@ -1484,24 +1410,21 @@ void test_stream_runtime_reads_are_safe_during_send ()
 
     std::atomic<int> stop_reads (0);
     std::atomic<int> read_errors (0);
-    std::thread endpoint_reader (
-      read_last_endpoint_loop, server, endpoint, &stop_reads, &read_errors);
-    std::thread events_reader (
-      read_events_loop, server, &stop_reads, &read_errors);
+    std::thread endpoint_reader (read_last_endpoint_loop, server, endpoint, &stop_reads,
+                                 &read_errors);
+    std::thread events_reader (read_events_loop, server, &stop_reads, &read_errors);
 
     std::atomic<size_t> received_bytes (0);
     std::atomic<int> recv_errors (0);
-    const size_t expected_bytes =
-      kConcurrentSenders * kMessagesPerSender * kPayloadSize;
-    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes,
-                        &received_bytes, &recv_errors);
+    const size_t expected_bytes = kConcurrentSenders * kMessagesPerSender * kPayloadSize;
+    std::thread reader (drain_exact_bytes, raw_fd, expected_bytes, &received_bytes, &recv_errors);
 
     std::atomic<int> send_errors (0);
     std::vector<std::thread> senders;
     for (int i = 0; i < kConcurrentSenders; ++i) {
-        senders.push_back (std::thread (
-          sender_thread_run, server, rid, static_cast<unsigned char> (0x61 + i),
-          kMessagesPerSender, &send_errors));
+        senders.push_back (std::thread (sender_thread_run, server, rid,
+                                        static_cast<unsigned char> (0x61 + i), kMessagesPerSender,
+                                        &send_errors));
     }
 
     for (size_t i = 0; i < senders.size (); ++i)
@@ -1537,9 +1460,8 @@ void test_socket_runtime_reads_are_safe_during_connect_disconnect ()
 
     std::atomic<int> stop_reads (0);
     std::atomic<int> read_errors (0);
-    std::thread endpoint_reader (
-      read_last_endpoint_loop, client, static_cast<const char *> (NULL),
-      &stop_reads, &read_errors);
+    std::thread endpoint_reader (read_last_endpoint_loop, client, static_cast<const char *> (NULL),
+                                 &stop_reads, &read_errors);
 
     std::atomic<int> control_errors (0);
     std::thread mutator ([&] () {
@@ -1593,8 +1515,8 @@ void test_stream_rapid_client_churn_during_send ()
     std::thread sender ([&] () {
         std::vector<unsigned char> payload (kPayloadSize, 0xEE);
         for (int i = 0; i < total_sends; ++i) {
-            const int rc = test_stream_send_bytes (
-              server, &persistent_rid, &payload[0], payload.size (), 0);
+            const int rc =
+              test_stream_send_bytes (server, &persistent_rid, &payload[0], payload.size (), 0);
             if (rc != static_cast<int> (payload.size ())) {
                 send_errors.fetch_add (1, std::memory_order_release);
             }
@@ -1620,8 +1542,8 @@ void test_stream_rapid_client_churn_during_send ()
     std::atomic<size_t> received_bytes (0);
     std::atomic<int> recv_errors (0);
     const size_t expected_bytes = total_sends * kPayloadSize;
-    std::thread reader (drain_exact_bytes, persistent_fd, expected_bytes,
-                        &received_bytes, &recv_errors);
+    std::thread reader (drain_exact_bytes, persistent_fd, expected_bytes, &received_bytes,
+                        &recv_errors);
 
     sender.join ();
     churner.join ();
@@ -1631,8 +1553,7 @@ void test_stream_rapid_client_churn_during_send ()
     TEST_ASSERT_EQUAL_INT (0, recv_errors.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_UINT (
       static_cast<unsigned int> (expected_bytes),
-      static_cast<unsigned int> (
-        received_bytes.load (std::memory_order_acquire)));
+      static_cast<unsigned int> (received_bytes.load (std::memory_order_acquire)));
 
     close_raw_fd (persistent_fd);
     test_context_socket_close_zero_linger (server);
@@ -1664,9 +1585,8 @@ void test_stream_send_to_stale_rid_after_disconnect ()
 
     //  Verify send works while connected
     std::vector<unsigned char> payload (kPayloadSize, 0x77);
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (payload.size ()),
-      test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (payload.size ()),
+                           test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0));
 
     //  Disconnect the raw client
     close_raw_fd (raw_fd);
@@ -1675,8 +1595,7 @@ void test_stream_send_to_stale_rid_after_disconnect ()
     msleep (SETTLE_TIME);
 
     //  Send to the stale routing_id should fail gracefully, not crash
-    const int rc =
-      test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0);
+    const int rc = test_stream_send_bytes (server, &rid, &payload[0], payload.size (), 0);
     //  Either returns error or succeeds (buffered) — the key assertion is no crash
     LIBZLINK_UNUSED (rc);
 
@@ -1689,14 +1608,11 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    if (should_run_stream_threadsafe_test (
-          "test_stream_callback_rejects_detach_and_close"))
+    if (should_run_stream_threadsafe_test ("test_stream_callback_rejects_detach_and_close"))
         RUN_TEST (test_stream_callback_rejects_detach_and_close);
-    if (should_run_stream_threadsafe_test (
-          "test_stream_send_is_thread_safe_across_app_threads"))
+    if (should_run_stream_threadsafe_test ("test_stream_send_is_thread_safe_across_app_threads"))
         RUN_TEST (test_stream_send_is_thread_safe_across_app_threads);
-    if (should_run_stream_threadsafe_test (
-          "test_stream_send_and_close_race_is_safe"))
+    if (should_run_stream_threadsafe_test ("test_stream_send_and_close_race_is_safe"))
         RUN_TEST (test_stream_send_and_close_race_is_safe);
     if (should_run_stream_threadsafe_test (
           "test_stream_callback_handoff_to_worker_thread_send_msg_is_safe"))
@@ -1709,19 +1625,18 @@ int main ()
         RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_under_load_is_safe);
     if (should_run_stream_threadsafe_test (
           "test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly"))
-        RUN_TEST (test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
+        RUN_TEST (
+          test_stream_recv_handler_queue_handoff_with_send_ready_timed_window_drains_cleanly);
     if (should_run_stream_threadsafe_test ("test_stream_send_msg_is_thread_safe"))
         RUN_TEST (test_stream_send_msg_is_thread_safe);
-    if (should_run_stream_threadsafe_test (
-          "test_stream_runtime_reads_are_safe_during_send"))
+    if (should_run_stream_threadsafe_test ("test_stream_runtime_reads_are_safe_during_send"))
         RUN_TEST (test_stream_runtime_reads_are_safe_during_send);
     if (should_run_stream_threadsafe_test (
           "test_socket_runtime_reads_are_safe_during_connect_disconnect"))
         RUN_TEST (test_socket_runtime_reads_are_safe_during_connect_disconnect);
     if (should_run_stream_threadsafe_test ("test_stream_rapid_client_churn_during_send"))
         RUN_TEST (test_stream_rapid_client_churn_during_send);
-    if (should_run_stream_threadsafe_test (
-          "test_stream_send_to_stale_rid_after_disconnect"))
+    if (should_run_stream_threadsafe_test ("test_stream_send_to_stale_rid_after_disconnect"))
         RUN_TEST (test_stream_send_to_stale_rid_after_disconnect);
     return UNITY_END ();
 }

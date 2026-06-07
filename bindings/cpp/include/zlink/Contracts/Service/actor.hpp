@@ -32,7 +32,10 @@ class actor_t
         return _node->join_actor (_ref, _node->routing_id (), spot_.routing_id ());
     }
 
-    actor_leave_operation_t leave (spot_t &spot_) { return _node->leave_actor (_ref, spot_.routing_id ()); }
+    actor_leave_operation_t leave (spot_t &spot_)
+    {
+        return _node->leave_actor (_ref, spot_.routing_id ());
+    }
 
     std::optional<actor_part_t> recv_part (recv_flags_t flags_ = recv_flags_t::none)
     {

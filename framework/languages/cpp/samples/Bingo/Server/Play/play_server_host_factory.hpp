@@ -22,7 +22,9 @@ class play_server_host_factory_t
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.services ().add_singleton<bingo_room_directory_t> ();
-            options.handlers ().add<allocate_bingo_room_handler_t> ("play").add<ensure_player_actor_handler_t> ("play");
+            options.handlers ()
+              .add<allocate_bingo_room_handler_t> ("play")
+              .add<ensure_player_actor_handler_t> ("play");
             options.codecs ().add_json ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::play_channel)

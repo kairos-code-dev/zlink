@@ -19,19 +19,18 @@ inline void drain_router_completion_queues (
     if (socket_state_)
         (void) drain_reply_completions (socket_state_, router_);
     if (router_spot_state_) {
-        (void) zlink::spot_reqrep_internal::drain_router_reply_completions (
-          router_spot_state_, router_);
+        (void) zlink::spot_reqrep_internal::drain_router_reply_completions (router_spot_state_,
+                                                                            router_);
     }
 }
 
-inline int wait_router_input_or_completion (
-  zlink::socket_base_t *input_,
-  zlink::socket_base_t *socket_signal_,
-  zlink::socket_base_t *router_spot_signal_,
-  long timeout_ms_,
-  bool *input_ready_out_,
-  bool *socket_signal_ready_out_,
-  bool *router_spot_signal_ready_out_)
+inline int wait_router_input_or_completion (zlink::socket_base_t *input_,
+                                            zlink::socket_base_t *socket_signal_,
+                                            zlink::socket_base_t *router_spot_signal_,
+                                            long timeout_ms_,
+                                            bool *input_ready_out_,
+                                            bool *socket_signal_ready_out_,
+                                            bool *router_spot_signal_ready_out_)
 {
     if (!input_ || !input_ready_out_ || !socket_signal_ready_out_
         || !router_spot_signal_ready_out_) {
@@ -57,8 +56,7 @@ inline int wait_router_input_or_completion (
     }
 
     return zlink::request_completion::wait_input_or_signals (
-      input_, signal_count > 0 ? signals : NULL, signal_count, timeout_ms_,
-      input_ready_out_);
+      input_, signal_count > 0 ? signals : NULL, signal_count, timeout_ms_, input_ready_out_);
 }
 }
 }

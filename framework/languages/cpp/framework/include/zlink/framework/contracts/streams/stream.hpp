@@ -50,14 +50,18 @@ enum class stream_header_flags_t : std::uint8_t
     payload_compressed = 0x04
 };
 
-constexpr stream_header_flags_t operator| (stream_header_flags_t lhs, stream_header_flags_t rhs) noexcept
+constexpr stream_header_flags_t operator| (stream_header_flags_t lhs,
+                                           stream_header_flags_t rhs) noexcept
 {
-    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs) | static_cast<std::uint8_t> (rhs));
+    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs)
+                                               | static_cast<std::uint8_t> (rhs));
 }
 
-constexpr stream_header_flags_t operator& (stream_header_flags_t lhs, stream_header_flags_t rhs) noexcept
+constexpr stream_header_flags_t operator& (stream_header_flags_t lhs,
+                                           stream_header_flags_t rhs) noexcept
 {
-    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs) & static_cast<std::uint8_t> (rhs));
+    return static_cast<stream_header_flags_t> (static_cast<std::uint8_t> (lhs)
+                                               & static_cast<std::uint8_t> (rhs));
 }
 
 enum class stream_session_error_t
@@ -141,8 +145,10 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const stream_header_t &header, const zlink::message_t &payload);
-    stream_write_call_t reply_packet (const stream_header_t &request_header, const zlink::message_t &payload);
+    stream_write_call_t write_packet (const stream_header_t &header,
+                                      const zlink::message_t &payload);
+    stream_write_call_t reply_packet (const stream_header_t &request_header,
+                                      const zlink::message_t &payload);
 
   private:
     friend class detail::stream_runtime_t;
@@ -158,8 +164,9 @@ class packet_stream_session_t
     virtual task_t<void> on_connected (stream_t &stream) = 0;
     virtual task_t<void> on_disconnected (stream_t &stream) = 0;
     virtual task_t<void> on_error (stream_t &stream, const stream_error_t &error) = 0;
-    virtual task_t<void>
-    on_packet (stream_t &stream, const stream_header_t &header, const zlink::message_t &payload) = 0;
+    virtual task_t<void> on_packet (stream_t &stream,
+                                    const stream_header_t &header,
+                                    const zlink::message_t &payload) = 0;
 };
 
 struct stream_snapshot_t

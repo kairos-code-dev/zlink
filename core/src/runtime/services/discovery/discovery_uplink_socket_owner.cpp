@@ -13,16 +13,16 @@ discovery_uplink_runtime_t::discovery_uplink_runtime_t ()
 {
 }
 
-socket_base_t *discovery_uplink_runtime_t::create_uplink_dealer (
-  discovery_t *owner_,
-  const std::string &uplink_endpoint_,
-  int linger_,
-  int sndtimeo_ms_,
-  int rcvtimeo_ms_,
-  bool use_bootstrap_routing_id_)
+socket_base_t *
+discovery_uplink_runtime_t::create_uplink_dealer (discovery_t *owner_,
+                                                  const std::string &uplink_endpoint_,
+                                                  int linger_,
+                                                  int sndtimeo_ms_,
+                                                  int rcvtimeo_ms_,
+                                                  bool use_bootstrap_routing_id_)
 {
-    socket_base_t *dealer = discovery_access_t::create_tracked_socket (
-      owner_, ZLINK_CORE_SOCKET_DEALER);
+    socket_base_t *dealer =
+      discovery_access_t::create_tracked_socket (owner_, ZLINK_CORE_SOCKET_DEALER);
     if (!dealer)
         return NULL;
 
@@ -31,28 +31,26 @@ socket_base_t *discovery_uplink_runtime_t::create_uplink_dealer (
         ? discovery_access_t::bootstrap_runtime (owner_)->ensure_socket_routing_id (dealer)
         : zlink::discovery::set_socket_routing_id (dealer, NULL, NULL);
     if (!routing_ok) {
-        (void) discovery_access_t::close_tracked_socket (owner_, dealer,
-                                                         10000);
+        (void) discovery_access_t::close_tracked_socket (owner_, dealer, 10000);
         return NULL;
     }
 
     discovery_access_t::bootstrap_runtime (owner_)->apply_socket_options (dealer);
     dealer->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger_, sizeof (linger_));
-    dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms_,
-                        sizeof (sndtimeo_ms_));
-    dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms_,
-                        sizeof (rcvtimeo_ms_));
+    dealer->setsockopt (ZLINK_INTERNAL_OPT_SNDTIMEO, &sndtimeo_ms_, sizeof (sndtimeo_ms_));
+    dealer->setsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, &rcvtimeo_ms_, sizeof (rcvtimeo_ms_));
     if (dealer->connect (uplink_endpoint_.c_str ()) != 0) {
-        (void) discovery_access_t::close_tracked_socket (owner_, dealer,
-                                                         10000);
+        (void) discovery_access_t::close_tracked_socket (owner_, dealer, 10000);
         return NULL;
     }
 
     return dealer;
 }
 
-void discovery_uplink_runtime_t::apply_socket_option_to_existing (
-  discovery_t *owner_, int option_, const void *optval_, size_t optvallen_) const
+void discovery_uplink_runtime_t::apply_socket_option_to_existing (discovery_t *owner_,
+                                                                  int option_,
+                                                                  const void *optval_,
+                                                                  size_t optvallen_) const
 {
     scoped_lock_t lock (discovery_access_t::sync (owner_));
     for (std::map<std::string, socket_base_t *>::const_iterator it =
@@ -70,10 +68,9 @@ void discovery_uplink_runtime_t::apply_socket_option_to_existing (
     }
 }
 
-int discovery_uplink_runtime_t::ensure_topology_reporter (
-  discovery_t *owner_,
-  const std::string &uplink_endpoint_,
-  socket_base_t **dealer_out_)
+int discovery_uplink_runtime_t::ensure_topology_reporter (discovery_t *owner_,
+                                                          const std::string &uplink_endpoint_,
+                                                          socket_base_t **dealer_out_)
 {
     if (!dealer_out_) {
         errno = EINVAL;
@@ -98,10 +95,9 @@ int discovery_uplink_runtime_t::ensure_topology_reporter (
     return 0;
 }
 
-int discovery_uplink_runtime_t::ensure_control_dealer (
-  discovery_t *owner_,
-  const std::string &uplink_endpoint_,
-  socket_base_t **dealer_out_)
+int discovery_uplink_runtime_t::ensure_control_dealer (discovery_t *owner_,
+                                                       const std::string &uplink_endpoint_,
+                                                       socket_base_t **dealer_out_)
 {
     if (!dealer_out_) {
         errno = EINVAL;
@@ -113,8 +109,8 @@ int discovery_uplink_runtime_t::ensure_control_dealer (
     std::map<std::string, socket_base_t *>::iterator it =
       _socket_owner_state.control_dealers.find (uplink_endpoint_);
     if (it == _socket_owner_state.control_dealers.end () || !it->second) {
-        socket_base_t *dealer = create_uplink_dealer (owner_, uplink_endpoint_,
-                                                      200, 500, 500, false);
+        socket_base_t *dealer =
+          create_uplink_dealer (owner_, uplink_endpoint_, 200, 500, 500, false);
         if (!dealer)
             return -1;
         _socket_owner_state.control_dealers[uplink_endpoint_] = dealer;
@@ -126,18 +122,17 @@ int discovery_uplink_runtime_t::ensure_control_dealer (
     return 0;
 }
 
-void discovery_uplink_runtime_t::remember_registry_uplink (
-  discovery_t *owner_, const std::string &uplink_endpoint_)
+void discovery_uplink_runtime_t::remember_registry_uplink (discovery_t *owner_,
+                                                           const std::string &uplink_endpoint_)
 {
     scoped_lock_t lock (discovery_access_t::sync (owner_));
     _socket_owner_state.registry_uplink_endpoints.insert (uplink_endpoint_);
     _socket_owner_state.latest_registry_uplink_endpoint = uplink_endpoint_;
 }
 
-void discovery_uplink_runtime_t::adopt_report_dealer (
-  discovery_t *owner_,
-  const std::string &uplink_endpoint_,
-  socket_base_t *bootstrap_dealer_)
+void discovery_uplink_runtime_t::adopt_report_dealer (discovery_t *owner_,
+                                                      const std::string &uplink_endpoint_,
+                                                      socket_base_t *bootstrap_dealer_)
 {
     if (!bootstrap_dealer_)
         return;
@@ -154,12 +149,11 @@ void discovery_uplink_runtime_t::adopt_report_dealer (
     }
 
     if (orphaned_dealer)
-        (void) discovery_access_t::close_tracked_socket_and_wait (
-          owner_, orphaned_dealer, 1000);
+        (void) discovery_access_t::close_tracked_socket_and_wait (owner_, orphaned_dealer, 1000);
 }
 
-void discovery_uplink_runtime_t::collect_uplink_endpoints (
-  discovery_t *owner_, std::vector<std::string> *out_) const
+void discovery_uplink_runtime_t::collect_uplink_endpoints (discovery_t *owner_,
+                                                           std::vector<std::string> *out_) const
 {
     if (!out_)
         return;
@@ -172,8 +166,8 @@ void discovery_uplink_runtime_t::collect_uplink_endpoints (
     }
 }
 
-bool discovery_uplink_runtime_t::latest_registry_uplink (
-  discovery_t *owner_, std::string *out_) const
+bool discovery_uplink_runtime_t::latest_registry_uplink (discovery_t *owner_,
+                                                         std::string *out_) const
 {
     if (!out_)
         return false;
@@ -187,8 +181,8 @@ bool discovery_uplink_runtime_t::latest_registry_uplink (
 
 void discovery_uplink_runtime_t::take_shutdown_state (
   discovery_t *owner_,
-  std::vector<std::pair<std::string, socket_base_t *> > *report_dealers,
-  std::vector<std::pair<std::string, socket_base_t *> > *control_dealers)
+  std::vector<std::pair<std::string, socket_base_t *>> *report_dealers,
+  std::vector<std::pair<std::string, socket_base_t *>> *control_dealers)
 {
     if (!report_dealers || !control_dealers)
         return;

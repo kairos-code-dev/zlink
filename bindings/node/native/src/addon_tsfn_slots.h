@@ -4,8 +4,7 @@
 
 #include "addon_common_api.h"
 
-template <typename Slot>
-inline Slot *find_free_tsfn_slot(Slot *slots, size_t count)
+template <typename Slot> inline Slot *find_free_tsfn_slot (Slot *slots, size_t count)
 {
     for (size_t i = 0; i < count; ++i) {
         if (!slots[i].used)
@@ -15,10 +14,8 @@ inline Slot *find_free_tsfn_slot(Slot *slots, size_t count)
 }
 
 template <typename Slot, typename Subject>
-inline Slot *find_tsfn_slot_by_subject(Slot *slots,
-                                       size_t count,
-                                       Subject Slot::*member,
-                                       Subject subject)
+inline Slot *
+find_tsfn_slot_by_subject (Slot *slots, size_t count, Subject Slot::*member, Subject subject)
 {
     for (size_t i = 0; i < count; ++i) {
         if (slots[i].used && slots[i].*member == subject)
@@ -27,8 +24,7 @@ inline Slot *find_tsfn_slot_by_subject(Slot *slots,
     return NULL;
 }
 
-template <typename Slot>
-inline void reset_tsfn_slot_base(Slot *state)
+template <typename Slot> inline void reset_tsfn_slot_base (Slot *state)
 {
     if (!state)
         return;
@@ -37,12 +33,11 @@ inline void reset_tsfn_slot_base(Slot *state)
     state->tsfn = NULL;
 }
 
-template <typename State>
-inline bool release_request_tsfn(State *state)
+template <typename State> inline bool release_request_tsfn (State *state)
 {
     if (!state || !state->tsfn)
         return false;
-    (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_release);
+    (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_release);
     state->tsfn = NULL;
     return true;
 }

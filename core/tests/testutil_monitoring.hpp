@@ -13,14 +13,9 @@
 
 //  General, i.e. non-security specific, monitor utilities
 
-int recv_monitor_event_from_socket (void *monitor_,
-                                    zlink_monitor_event_t *event_,
-                                    int flags_);
+int recv_monitor_event_from_socket (void *monitor_, zlink_monitor_event_t *event_, int flags_);
 
-int get_monitor_event_with_timeout (void *monitor_,
-                                    int *value_,
-                                    char **address_,
-                                    int timeout_);
+int get_monitor_event_with_timeout (void *monitor_, int *value_, char **address_, int timeout_);
 
 //  Read one event off the monitor socket; return value and address
 //  by reference, if not null, and event number by value. Returns -1
@@ -60,15 +55,11 @@ struct test_monitor_probe_t
 void *open_test_monitor_probe (void *socket_,
                                zlink_socket_monitor_event_mask_t events_,
                                test_monitor_probe_t *probe_);
-void close_test_monitor_probe (void **monitor_p_,
-                               test_monitor_probe_t *probe_);
+void close_test_monitor_probe (void **monitor_p_, test_monitor_probe_t *probe_);
 
 int test_monitor_probe_count (test_monitor_probe_t *probe_);
-uint64_t test_monitor_probe_event_at (test_monitor_probe_t *probe_,
-                                      int index_);
-bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_,
-                                    int expected_,
-                                    int timeout_ms_);
+uint64_t test_monitor_probe_event_at (test_monitor_probe_t *probe_, int index_);
+bool test_monitor_probe_wait_count (test_monitor_probe_t *probe_, int expected_, int timeout_ms_);
 bool test_monitor_probe_wait_no_additional (test_monitor_probe_t *probe_,
                                             int baseline_,
                                             int timeout_ms_);

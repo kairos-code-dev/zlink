@@ -30,13 +30,19 @@ struct dependent_t
 
 struct second_dependent_t
 {
-    second_dependent_t (singleton_t &singleton, dependent_t &dependent) : value (singleton.value + dependent.value) {}
+    second_dependent_t (singleton_t &singleton, dependent_t &dependent) :
+        value (singleton.value + dependent.value)
+    {
+    }
     int value;
 };
 
 struct logger_dependent_t
 {
-    explicit logger_dependent_t (zlink::framework::logger_t<logger_dependent_t> &logger) : logger (logger) {}
+    explicit logger_dependent_t (zlink::framework::logger_t<logger_dependent_t> &logger) :
+        logger (logger)
+    {
+    }
 
     void write () { logger.info ("dependency logger resolved"); }
 
@@ -81,7 +87,8 @@ int main ()
         (void) provider.get_required<scoped_t> ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        scoped_from_root_failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        scoped_from_root_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!scoped_from_root_failed) {
         return 4;
@@ -106,7 +113,8 @@ int main ()
     }
 
     {
-        auto scope = provider.create_scope (zlink::framework::service_scope_kind_t::spot_activation);
+        auto scope =
+          provider.create_scope (zlink::framework::service_scope_kind_t::spot_activation);
         if (scope.kind () != zlink::framework::service_scope_kind_t::spot_activation) {
             return 8;
         }
@@ -131,7 +139,8 @@ int main ()
         (void) provider.get_required<singleton_t> ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        shutdown_resolve_failed = error.kind () == zlink::framework::framework_error_kind_t::shutdown;
+        shutdown_resolve_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::shutdown;
     }
     if (!shutdown_resolve_failed) {
         return 10;
@@ -144,7 +153,8 @@ int main ()
         duplicate_services.add_singleton<singleton_t> ();
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        duplicate_failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        duplicate_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!duplicate_failed) {
         return 11;
@@ -154,7 +164,8 @@ int main ()
     zlink::framework::service_collection_t logging_services;
     logging_services.add_singleton<zlink::framework::logger_factory_t> (
       std::make_unique<zlink::framework::logger_factory_t> (logging.factory ()));
-    logging_services.add_transient<logger_dependent_t, zlink::framework::logger_t<logger_dependent_t>> ();
+    logging_services
+      .add_transient<logger_dependent_t, zlink::framework::logger_t<logger_dependent_t>> ();
     auto logging_provider = logging_services.build_provider ();
     logging_provider.get_required<logger_dependent_t> ().write ();
     if (logging.captured_records ().empty ()) {

@@ -61,8 +61,7 @@ int spot_dispatch_worker_pool_t::start (int min_workers_, int max_workers_)
     return 0;
 }
 
-int spot_dispatch_worker_pool_t::update_limits (int min_workers_,
-                                                int max_workers_)
+int spot_dispatch_worker_pool_t::update_limits (int min_workers_, int max_workers_)
 {
     if (min_workers_ < 1 || max_workers_ < min_workers_) {
         errno = EINVAL;
@@ -132,8 +131,7 @@ int spot_dispatch_worker_pool_t::post (void *spot_)
         } else if (_queued.insert (spot_).second) {
             _ready.push_back (spot_);
         }
-        if (!_ready.empty () && _idle_workers == 0
-            && _live_workers < _max_workers) {
+        if (!_ready.empty () && _idle_workers == 0 && _live_workers < _max_workers) {
             (void) spawn_worker_locked ();
         }
     }
@@ -203,8 +201,7 @@ bool spot_dispatch_worker_pool_t::spawn_worker_locked ()
     }
     _threads.push_back (thread);
     ++_live_workers;
-    thread->start (&spot_dispatch_worker_pool_t::worker_entry, this,
-                   "spot-dispatch");
+    thread->start (&spot_dispatch_worker_pool_t::worker_entry, this, "spot-dispatch");
     return true;
 }
 
@@ -217,11 +214,10 @@ void spot_dispatch_worker_pool_t::run_worker ()
             std::unique_lock<std::mutex> lock (_mutex);
             while (!_stopping && _ready.empty () && _tasks.empty ()) {
                 ++_idle_workers;
-                const std::cv_status status =
-                  _cv.wait_for (lock, dispatch_worker_idle_timeout);
+                const std::cv_status status = _cv.wait_for (lock, dispatch_worker_idle_timeout);
                 --_idle_workers;
-                if (status == std::cv_status::timeout && _ready.empty ()
-                    && _tasks.empty () && _live_workers > _min_workers) {
+                if (status == std::cv_status::timeout && _ready.empty () && _tasks.empty ()
+                    && _live_workers > _min_workers) {
                     --_live_workers;
                     return;
                 }
@@ -251,8 +247,7 @@ void spot_dispatch_worker_pool_t::run_worker ()
         {
             std::lock_guard<std::mutex> lock (_mutex);
             _active.erase (spot);
-            if (!_stopping && _dirty.erase (spot) != 0
-                && _queued.insert (spot).second) {
+            if (!_stopping && _dirty.erase (spot) != 0 && _queued.insert (spot).second) {
                 _ready.push_back (spot);
                 _cv.notify_one ();
             }

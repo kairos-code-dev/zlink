@@ -62,8 +62,7 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
         return;
 
     const uint64_t hinted_deadline =
-      g_spot_timeout_reaper_next_deadline_hint_ns.load (
-        std::memory_order_acquire);
+      g_spot_timeout_reaper_next_deadline_hint_ns.load (std::memory_order_acquire);
     if (hinted_deadline != 0 && hinted_deadline <= deadline_ns_
         && hinted_deadline > zlink::request_timeout::monotonic_now_ns ()) {
         return;
@@ -77,12 +76,11 @@ void update_spot_timeout_reaper_deadline (uint64_t deadline_ns_)
     if (g_spot_timeout_reaper_next_deadline_ns == 0
         || deadline_ns_ < g_spot_timeout_reaper_next_deadline_ns) {
         g_spot_timeout_reaper_next_deadline_ns = deadline_ns_;
-        g_spot_timeout_reaper_next_deadline_hint_ns.store (
-          deadline_ns_, std::memory_order_release);
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (deadline_ns_, std::memory_order_release);
         g_spot_timeout_reaper_cv.notify_all ();
     } else if (g_spot_timeout_reaper_next_deadline_ns != 0) {
-        g_spot_timeout_reaper_next_deadline_hint_ns.store (
-          g_spot_timeout_reaper_next_deadline_ns, std::memory_order_release);
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (g_spot_timeout_reaper_next_deadline_ns,
+                                                           std::memory_order_release);
     }
 }
 
@@ -91,8 +89,7 @@ void run_spot_timeout_reaper ()
     std::unique_lock<std::mutex> lock (g_spot_timeout_reaper_mutex);
     while (!g_spot_timeout_reaper_stopping) {
         if (g_spot_timeout_reaper_next_deadline_ns == 0) {
-            g_spot_timeout_reaper_cv.wait_for (lock,
-                                               spot_timeout_reaper_idle_wait);
+            g_spot_timeout_reaper_cv.wait_for (lock, spot_timeout_reaper_idle_wait);
         } else {
             g_spot_timeout_reaper_cv.wait_for (
               lock, ns_until_deadline (g_spot_timeout_reaper_next_deadline_ns));
@@ -102,7 +99,7 @@ void run_spot_timeout_reaper ()
         lock.unlock ();
 
         const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
-        std::vector<std::shared_ptr<spot_request_reply_state_t> > states =
+        std::vector<std::shared_ptr<spot_request_reply_state_t>> states =
           zlink::spot_reqrep_internal::snapshot_spot_states ();
         uint64_t next_deadline_ns = 0;
         for (size_t i = 0; i < states.size (); ++i) {
@@ -114,13 +111,11 @@ void run_spot_timeout_reaper ()
             {
                 std::lock_guard<std::mutex> state_lock (state->mutex);
                 for (std::unordered_map<
-                       pending_spot_key_t,
-                       pending_reply_t,
-                       zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator
-                       it = state->requests.pending_replies.begin ();
+                       pending_spot_key_t, pending_reply_t,
+                       zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
+                       state->requests.pending_replies.begin ();
                      it != state->requests.pending_replies.end ();) {
-                    if (it->second.deadline_ns == 0
-                        || it->second.deadline_ns > now_ns) {
+                    if (it->second.deadline_ns == 0 || it->second.deadline_ns > now_ns) {
                         if (it->second.deadline_ns != 0
                             && (next_deadline_ns == 0
                                 || it->second.deadline_ns < next_deadline_ns)) {
@@ -131,23 +126,21 @@ void run_spot_timeout_reaper ()
                     }
 
                     expired.push_back (it->second);
-                    state->requests.pending_sequences.erase (
-                      it->first.request_seq);
+                    state->requests.pending_sequences.erase (it->first.request_seq);
                     it = state->requests.pending_replies.erase (it);
                 }
             }
 
             for (size_t j = 0; j < expired.size (); ++j) {
                 (void) zlink::spot_reqrep_internal::queue_spot_reply_completion (
-                  state, expired[j].handler, expired[j].userdata, ETIMEDOUT,
-                  NULL, 0);
+                  state, expired[j].handler, expired[j].userdata, ETIMEDOUT, NULL, 0);
             }
         }
 
         lock.lock ();
         g_spot_timeout_reaper_next_deadline_ns = next_deadline_ns;
-        g_spot_timeout_reaper_next_deadline_hint_ns.store (
-          next_deadline_ns, std::memory_order_release);
+        g_spot_timeout_reaper_next_deadline_hint_ns.store (next_deadline_ns,
+                                                           std::memory_order_release);
     }
 }
 
@@ -212,11 +205,9 @@ int zlink::spot_reqrep_internal::register_spot_pending_request (
     pending.deadline_ns = 0;
 
     const uint32_t resolved_timeout_ms =
-      zlink::request_reply::resolve_timeout_ms (timeout_ms_,
-                                                state_->requests.default_timeout_ms);
+      zlink::request_reply::resolve_timeout_ms (timeout_ms_, state_->requests.default_timeout_ms);
     if (resolved_timeout_ms > 0) {
-        pending.deadline_ns =
-          zlink::request_timeout::deadline_after_ms (resolved_timeout_ms);
+        pending.deadline_ns = zlink::request_timeout::deadline_after_ms (resolved_timeout_ms);
         ensure_spot_timeout_reaper_started ();
     }
 
@@ -251,10 +242,8 @@ int zlink::spot_reqrep_internal::register_router_spot_pending_request (
     pending.deadline_ns = 0;
 
     const uint32_t resolved_timeout_ms =
-      zlink::request_reply::resolve_timeout_ms (timeout_ms_,
-                                                state_->requests.default_timeout_ms);
-    if (zlink::request_reply_runtime::schedule_timeout_task<
-          router_spot_timeout_callback_ctx_t> (
+      zlink::request_reply::resolve_timeout_ms (timeout_ms_, state_->requests.default_timeout_ms);
+    if (zlink::request_reply_runtime::schedule_timeout_task<router_spot_timeout_callback_ctx_t> (
           resolved_timeout_ms, &on_router_spot_request_timeout,
           [&] (router_spot_timeout_callback_ctx_t &ctx_) {
               ctx_.state = state_;
@@ -272,16 +261,14 @@ int zlink::spot_reqrep_internal::register_router_spot_pending_request (
 }
 
 void zlink::spot_reqrep_internal::erase_spot_pending_request (
-  const std::shared_ptr<spot_request_reply_state_t> &state_,
-  const pending_spot_key_t &key_)
+  const std::shared_ptr<spot_request_reply_state_t> &state_, const pending_spot_key_t &key_)
 {
     if (!state_)
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
     state_->requests.pending_sequences.erase (key_.request_seq);
-    std::unordered_map<pending_spot_key_t,
-                       pending_reply_t,
+    std::unordered_map<pending_spot_key_t, pending_reply_t,
                        zlink::spot_reqrep_internal::pending_spot_key_hash_t>::iterator it =
       state_->requests.pending_replies.find (key_);
     if (it == state_->requests.pending_replies.end ())

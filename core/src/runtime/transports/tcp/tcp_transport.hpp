@@ -34,8 +34,7 @@ class tcp_transport_t : public i_asio_transport
                           std::size_t buffer_size,
                           completion_handler_t handler) ZLINK_OVERRIDE;
 
-    std::size_t read_some (std::uint8_t *buffer,
-                           std::size_t len) ZLINK_OVERRIDE;
+    std::size_t read_some (std::uint8_t *buffer, std::size_t len) ZLINK_OVERRIDE;
 
     void async_write_some (const unsigned char *buffer,
                            std::size_t buffer_size,
@@ -47,8 +46,7 @@ class tcp_transport_t : public i_asio_transport
                        std::size_t body_size,
                        completion_handler_t handler) ZLINK_OVERRIDE;
 
-    std::size_t write_some (const std::uint8_t *data,
-                            std::size_t len) ZLINK_OVERRIDE;
+    std::size_t write_some (const std::uint8_t *data, std::size_t len) ZLINK_OVERRIDE;
 
     bool supports_speculative_read () const ZLINK_OVERRIDE;
     bool supports_speculative_write () const ZLINK_OVERRIDE;
@@ -62,8 +60,8 @@ class tcp_transport_t : public i_asio_transport
     ZLINK_NON_COPYABLE_NOR_MOVABLE (tcp_transport_t)
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZLINK_TCP_TRANSPORT_HPP_INCLUDED__
+#endif // __ZLINK_TCP_TRANSPORT_HPP_INCLUDED__

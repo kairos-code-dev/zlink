@@ -27,21 +27,17 @@ zlink_routing_id_t &spot_service_event_source_rid_tls ()
     return rid;
 }
 
-int copy_text_to_output (const std::string &value_,
-                         char *out_,
-                         size_t *len_inout_)
+int copy_text_to_output (const std::string &value_, char *out_, size_t *len_inout_)
 {
-    return zlink::copy_bytes_to_sized_output (value_.data (), value_.size (),
-                                              out_, len_inout_);
+    return zlink::copy_bytes_to_sized_output (value_.data (), value_.size (), out_, len_inout_);
 }
 
-zlink_recv_result_t try_dequeue_logical_subscribe (
-  spot_handle_t *spot_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_)
+zlink_recv_result_t try_dequeue_logical_subscribe (spot_handle_t *spot_,
+                                                   zlink_routing_id_t *source_rid_out_,
+                                                   zlink_msg_t **parts_out_,
+                                                   size_t *part_count_out_,
+                                                   char *topic_id_out_,
+                                                   size_t *topic_id_len_out_)
 {
     if (!spot_ || !spot_->logical_state)
         return ZLINK_RECV_NO_DATA;
@@ -81,9 +77,7 @@ zlink_recv_result_t try_dequeue_logical_subscribe (
     }
     if (source_rid_out_)
         *source_rid_out_ = message->source_rid;
-    if (copy_text_to_output (message->topic_id, topic_id_out_,
-                             topic_id_len_out_)
-        != 0) {
+    if (copy_text_to_output (message->topic_id, topic_id_out_, topic_id_len_out_) != 0) {
         zlink::recv_tls_view::abort ();
         return zlink::recv_result_internal::from_errno (errno);
     }
@@ -123,8 +117,7 @@ int prepare_staged_send_step (
         state->send.owner_thread = current_thread;
         *first_part_out_ = true;
     } else {
-        if (!zlink::part_helper_internal::send_spec_equals (
-              state->send.spec, spec_)) {
+        if (!zlink::part_helper_internal::send_spec_equals (state->send.spec, spec_)) {
             errno = EINVAL;
             return -1;
         }
@@ -135,9 +128,7 @@ int prepare_staged_send_step (
     return 0;
 }
 
-int stage_staged_send_part (
-  zlink::part_helper_internal::handle_state_t *state_,
-  zlink_msg_t *part_)
+int stage_staged_send_part (zlink::part_helper_internal::handle_state_t *state_, zlink_msg_t *part_)
 {
     if (!state_ || !part_) {
         errno = EFAULT;
@@ -213,8 +204,7 @@ int spot_pub_publish_internal (void *spot_pub_,
                                size_t part_count_,
                                zlink_send_flags_t flags_)
 {
-    return spot_subject_publish (spot_pub_, topic_id_, parts_, part_count_,
-                                 flags_);
+    return spot_subject_publish (spot_pub_, topic_id_, parts_, part_count_, flags_);
 }
 
 int spot_node_publish_internal (void *node_,
@@ -238,14 +228,12 @@ int spot_sub_subscribe_internal (void *spot_sub_, const char *topic_id_)
     return spot_subject_set_subscription (spot_sub_, topic_id_);
 }
 
-int spot_sub_subscribe_pattern_internal (void *spot_sub_,
-                                         const char *pattern_)
+int spot_sub_subscribe_pattern_internal (void *spot_sub_, const char *pattern_)
 {
     return spot_subject_set_subscription (spot_sub_, pattern_);
 }
 
-int spot_sub_unsubscribe_internal (void *spot_sub_,
-                                   const char *topic_id_or_pattern_)
+int spot_sub_unsubscribe_internal (void *spot_sub_, const char *topic_id_or_pattern_)
 {
     return spot_subject_unset_subscription (spot_sub_, topic_id_or_pattern_);
 }
@@ -258,8 +246,8 @@ int spot_sub_recv_internal (void *sub_,
                             size_t *topic_id_len_,
                             zlink_recv_flags_t flags_)
 {
-    return spot_subject_recv (sub_, source_rid_out_, parts_, part_count_,
-                              topic_id_out_, topic_id_len_, flags_);
+    return spot_subject_recv (sub_, source_rid_out_, parts_, part_count_, topic_id_out_,
+                              topic_id_len_, flags_);
 }
 
 int spot_node_recv_internal (void *node_,
@@ -270,16 +258,15 @@ int spot_node_recv_internal (void *node_,
                              size_t *topic_id_len_,
                              zlink_recv_flags_t flags_)
 {
-    return spot_subject_recv (node_, source_rid_out_, parts_, part_count_,
-                              topic_id_out_, topic_id_len_, flags_);
+    return spot_subject_recv (node_, source_rid_out_, parts_, part_count_, topic_id_out_,
+                              topic_id_len_, flags_);
 }
 
-zlink_submit_result_t spot_publish_no_sequence_check (
-  void *spot_,
-  const char *topic_id_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_)
+zlink_submit_result_t spot_publish_no_sequence_check (void *spot_,
+                                                      const char *topic_id_,
+                                                      zlink_msg_t *parts_,
+                                                      size_t part_count_,
+                                                      zlink_send_flags_t flags_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot)
@@ -300,16 +287,14 @@ zlink_submit_result_t spot_publish_impl (void *spot_,
 {
     if (zlink::part_helper_internal::reject_if_send_sequence_open (spot_) != 0)
         return zlink::submit_result_internal::from_errno (errno);
-    return spot_publish_no_sequence_check (
-      spot_, topic_id_, parts_, part_count_, flags_);
+    return spot_publish_no_sequence_check (spot_, topic_id_, parts_, part_count_, flags_);
 }
 
-zlink_submit_result_t zlink_spot_publish_part (
-  void *spot_,
-  const char *topic_id_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_)
+zlink_submit_result_t zlink_spot_publish_part (void *spot_,
+                                               const char *topic_id_,
+                                               zlink_msg_t *part_,
+                                               zlink_send_flags_t flags_,
+                                               zlink_part_flag_t part_flag_)
 {
     if (zlink::part_helper_internal::validate_part_flag (part_flag_) != 0
         || zlink::part_helper_internal::validate_send_flags (flags_) != 0) {
@@ -318,8 +303,7 @@ zlink_submit_result_t zlink_spot_publish_part (
     }
 
     if (part_flag_ == ZLINK_PART_FINAL && !send_sequence_active (spot_))
-        return spot_publish_no_sequence_check (
-          spot_, topic_id_, part_, 1u, flags_);
+        return spot_publish_no_sequence_check (spot_, topic_id_, part_, 1u, flags_);
 
     zlink::part_helper_internal::send_sequence_spec_t spec;
     spec.family = zlink::part_helper_internal::send_family_spot_publish;
@@ -356,8 +340,7 @@ zlink_submit_result_t zlink_spot_publish_part (
     }
 
     zlink::part_helper_internal::complete_send_step (state, part_flag_);
-    return spot_publish_impl (spot_, topic_id_, parts.data (), parts.size (),
-                              flags_);
+    return spot_publish_impl (spot_, topic_id_, parts.data (), parts.size (), flags_);
 }
 
 zlink_recv_result_t spot_subscribe_impl (void *spot_,
@@ -372,10 +355,8 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
     if (!spot)
         return ZLINK_RECV_INVALID_HANDLE;
 
-    const zlink_recv_result_t logical_recv =
-      try_dequeue_logical_subscribe (
-        spot, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-        topic_id_len_out_);
+    const zlink_recv_result_t logical_recv = try_dequeue_logical_subscribe (
+      spot, source_rid_out_, parts_out_, part_count_out_, topic_id_out_, topic_id_len_out_);
     if (logical_recv != ZLINK_RECV_NO_DATA)
         return logical_recv;
     if (spot->logical_state) {
@@ -383,43 +364,38 @@ zlink_recv_result_t spot_subscribe_impl (void *spot_,
         return ZLINK_RECV_NO_DATA;
     }
 
-    const zlink_recv_result_t dispatch_recv =
-      zlink::recv_result_internal::from_rc (
-        spot_dispatch_subscribe_recv_internal (
-          spot_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-          topic_id_len_out_, flags_));
+    const zlink_recv_result_t dispatch_recv = zlink::recv_result_internal::from_rc (
+      spot_dispatch_subscribe_recv_internal (spot_, source_rid_out_, parts_out_, part_count_out_,
+                                             topic_id_out_, topic_id_len_out_, flags_));
     if (dispatch_recv != ZLINK_RECV_NO_DATA)
         return dispatch_recv;
 
     const zlink_recv_result_t service_recv =
-      zlink::recv_result_internal::from_rc (
-        zlink::spot_node_access_t::service_subscribe_recv (
-          spot->node, source_rid_out_, parts_out_, part_count_out_,
-          topic_id_out_, topic_id_len_out_, flags_));
+      zlink::recv_result_internal::from_rc (zlink::spot_node_access_t::service_subscribe_recv (
+        spot->node, source_rid_out_, parts_out_, part_count_out_, topic_id_out_, topic_id_len_out_,
+        flags_));
     if (service_recv == ZLINK_RECV_OK)
         return service_recv;
     if (service_recv != ZLINK_RECV_NO_DATA)
         return service_recv;
 
-    const zlink_recv_result_t recv_rc =
-      zlink::recv_result_internal::from_rc (spot_sub_recv_internal (
-        spot_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-        topic_id_len_out_, flags_));
+    const zlink_recv_result_t recv_rc = zlink::recv_result_internal::from_rc (
+      spot_sub_recv_internal (spot_, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+                              topic_id_len_out_, flags_));
     if (recv_rc != ZLINK_RECV_OK)
         return recv_rc;
 
     return ZLINK_RECV_OK;
 }
 
-zlink_recv_result_t zlink_spot_subscribe_part (
-  void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
-  char *topic_id_buf_,
-  size_t topic_id_capacity_,
-  size_t *topic_id_len_out_,
-  zlink_msg_t *part_out_,
-  zlink_part_flag_t *has_more_out_,
-  zlink_recv_flags_t flags_)
+zlink_recv_result_t zlink_spot_subscribe_part (void *spot_,
+                                               const zlink_routing_id_t **source_rid_out_,
+                                               char *topic_id_buf_,
+                                               size_t topic_id_capacity_,
+                                               size_t *topic_id_len_out_,
+                                               zlink_msg_t *part_out_,
+                                               zlink_part_flag_t *has_more_out_,
+                                               zlink_recv_flags_t flags_)
 {
     if (!spot_ || !topic_id_len_out_ || !part_out_ || !has_more_out_) {
         errno = EFAULT;
@@ -436,8 +412,8 @@ zlink_recv_result_t zlink_spot_subscribe_part (
     bool first_part = false;
     zlink::socket_base_t *source_socket = NULL;
     if (zlink::part_helper_internal::prepare_recv_step (
-          spot_, zlink::part_helper_internal::recv_family_spot_subscribe,
-          source_socket, &helper_state, &first_part, &source_socket)
+          spot_, zlink::part_helper_internal::recv_family_spot_subscribe, source_socket,
+          &helper_state, &first_part, &source_socket)
         != 0) {
         return zlink::recv_result_internal::from_errno (errno);
     }
@@ -446,8 +422,7 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         zlink_routing_id_t source_rid;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        const bool use_caller_topic_buf =
-          topic_id_buf_ != NULL && topic_id_capacity_ > 0;
+        const bool use_caller_topic_buf = topic_id_buf_ != NULL && topic_id_capacity_ > 0;
         size_t topic_id_len = use_caller_topic_buf ? topic_id_capacity_ : 65536;
         std::string topic_id;
         std::vector<char> topic_id_storage;
@@ -458,9 +433,8 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         }
         memset (&source_rid, 0, sizeof (source_rid));
 
-        const zlink_recv_result_t rc = spot_subscribe_impl (
-          spot_, &source_rid, &parts, &part_count, recv_topic_buf,
-          &topic_id_len, flags_);
+        const zlink_recv_result_t rc = spot_subscribe_impl (spot_, &source_rid, &parts, &part_count,
+                                                            recv_topic_buf, &topic_id_len, flags_);
         if (rc != ZLINK_RECV_OK) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
             return rc;
@@ -479,9 +453,7 @@ zlink_recv_result_t zlink_spot_subscribe_part (
             helper_state->recv.next_part_index = 0;
             for (size_t i = 0; i < part_count; ++i) {
                 zlink_msg_init (&helper_state->recv.buffered_parts[i]);
-                if (zlink_msg_move (&helper_state->recv.buffered_parts[i],
-                                    &parts[i])
-                    != 0) {
+                if (zlink_msg_move (&helper_state->recv.buffered_parts[i], &parts[i]) != 0) {
                     move_failed = true;
                     break;
                 }
@@ -509,15 +481,13 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         bool move_failed = false;
         {
             std::lock_guard<std::mutex> lock (helper_state->mutex);
-            if (helper_state->recv.next_part_index
-                >= helper_state->recv.buffered_parts.size ()) {
+            if (helper_state->recv.next_part_index >= helper_state->recv.buffered_parts.size ()) {
                 range_failed = true;
             } else {
                 move_failed =
                   zlink_msg_move (
                     part_out_,
-                    &helper_state
-                       ->recv.buffered_parts[helper_state->recv.next_part_index])
+                    &helper_state->recv.buffered_parts[helper_state->recv.next_part_index])
                   != 0;
                 if (!move_failed)
                     ++helper_state->recv.next_part_index;
@@ -542,8 +512,7 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         if (topic_id_capacity_ > 0) {
             if (!topic_id_buf_) {
                 copy_errno = EFAULT;
-            } else if (topic_id_capacity_
-                       < helper_state->recv.topic_id.size ()) {
+            } else if (topic_id_capacity_ < helper_state->recv.topic_id.size ()) {
                 copy_errno = EMSGSIZE;
             } else if (!helper_state->recv.topic_id.empty ()) {
                 memcpy (topic_id_buf_, helper_state->recv.topic_id.data (),
@@ -552,19 +521,17 @@ zlink_recv_result_t zlink_spot_subscribe_part (
         }
 
         if (source_rid_out_) {
-            *source_rid_out_ =
-              helper_state->recv.return_source_rid_as_null
-                ? NULL
-                : &helper_state->recv.source_node_rid;
+            *source_rid_out_ = helper_state->recv.return_source_rid_as_null
+                                 ? NULL
+                                 : &helper_state->recv.source_node_rid;
         }
         *has_more_out_ =
-          (helper_state->recv.next_part_index
-           < helper_state->recv.buffered_parts.size ())
-            ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+          (helper_state->recv.next_part_index < helper_state->recv.buffered_parts.size ())
+            ? ZLINK_PART_MORE
+            : ZLINK_PART_FINAL;
     }
 
-    zlink::part_helper_internal::complete_recv_step (helper_state,
-                                                     *has_more_out_);
+    zlink::part_helper_internal::complete_recv_step (helper_state, *has_more_out_);
     if (copy_errno != 0) {
         errno = copy_errno;
         return zlink::recv_result_internal::from_errno (errno);
@@ -572,14 +539,13 @@ zlink_recv_result_t zlink_spot_subscribe_part (
     return ZLINK_RECV_OK;
 }
 
-zlink_recv_result_t zlink_spot_recv_subscription_event (
-  void *spot_,
-  const zlink_routing_id_t **source_rid_out_,
-  int *subscribed_out_,
-  char *topic_id_buf_,
-  size_t topic_id_capacity_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_)
+zlink_recv_result_t zlink_spot_recv_subscription_event (void *spot_,
+                                                        const zlink_routing_id_t **source_rid_out_,
+                                                        int *subscribed_out_,
+                                                        char *topic_id_buf_,
+                                                        size_t topic_id_capacity_,
+                                                        size_t *topic_id_len_out_,
+                                                        zlink_recv_flags_t flags_)
 {
     if (!spot_ || !subscribed_out_ || !topic_id_len_out_) {
         errno = EFAULT;
@@ -597,15 +563,12 @@ zlink_recv_result_t zlink_spot_recv_subscription_event (
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
 
-    const zlink_recv_result_t service_rc =
-      zlink::recv_result_internal::from_rc (
-        zlink::spot_node_access_t::service_subscription_event_recv (
-          spot->node, &source_rid, subscribed_out_, topic_id_buf_,
-          topic_id_len_out_, flags_));
+    const zlink_recv_result_t service_rc = zlink::recv_result_internal::from_rc (
+      zlink::spot_node_access_t::service_subscription_event_recv (
+        spot->node, &source_rid, subscribed_out_, topic_id_buf_, topic_id_len_out_, flags_));
     if (service_rc == ZLINK_RECV_OK) {
         if (source_rid_out_) {
-            zlink_routing_id_t &stored_source_rid =
-              spot_service_event_source_rid_tls ();
+            zlink_routing_id_t &stored_source_rid = spot_service_event_source_rid_tls ();
             stored_source_rid = source_rid;
             *source_rid_out_ = &stored_source_rid;
         }

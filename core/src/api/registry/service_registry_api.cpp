@@ -20,39 +20,32 @@ void *zlink_registry_new (void *ctx_)
         errno = EFAULT;
         return NULL;
     }
-    void *registry =
-      zlink::registry_access_t::create (static_cast<zlink::ctx_t *> (ctx_));
+    void *registry = zlink::registry_access_t::create (static_cast<zlink::ctx_t *> (ctx_));
     register_registry_handle (registry);
     return registry;
 }
 
-zlink_bind_result_t zlink_registry_bind (void *registry_,
-                                         const char *pub_endpoint_,
-                                         const char *router_endpoint_)
+zlink_bind_result_t
+zlink_registry_bind (void *registry_, const char *pub_endpoint_, const char *router_endpoint_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_BIND_INVALID_ARGUMENT;
     }
     return zlink::bind_result_internal::from_rc (
-      zlink::registry_access_t::bind (registry, pub_endpoint_,
-                                       router_endpoint_));
+      zlink::registry_access_t::bind (registry, pub_endpoint_, router_endpoint_));
 }
 
 zlink_config_result_t zlink_registry_set_id (void *registry_, uint32_t registry_id_)
 {
-    return zlink_registry_set (registry_, ZLINK_REGISTRY_OPT_ID,
-                               registry_id_);
+    return zlink_registry_set (registry_, ZLINK_REGISTRY_OPT_ID, registry_id_);
 }
 
-zlink_config_result_t zlink_registry_set (void *registry_,
-                                          zlink_registry_option_t option_,
-                                          uint32_t value_)
+zlink_config_result_t
+zlink_registry_set (void *registry_, zlink_registry_option_t option_, uint32_t value_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -69,8 +62,7 @@ uint32_t zlink_registry_get (void *registry_,
                              zlink_registry_option_t option_,
                              zlink_config_result_t *error_out_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         if (error_out_)
@@ -79,8 +71,7 @@ uint32_t zlink_registry_get (void *registry_,
     }
 
     uint32_t value = 0;
-    const int rc = zlink::registry_access_t::get_option (registry, option_,
-                                                         &value);
+    const int rc = zlink::registry_access_t::get_option (registry, option_, &value);
     if (rc != 0) {
         if (error_out_)
             *error_out_ = zlink::config_result_internal::from_rc (-1);
@@ -93,8 +84,7 @@ uint32_t zlink_registry_get (void *registry_,
 
 zlink_config_result_t zlink_registry_add_peer (void *registry_, const char *peer_pub_endpoint_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -103,26 +93,21 @@ zlink_config_result_t zlink_registry_add_peer (void *registry_, const char *peer
       zlink::registry_access_t::add_peer (registry, peer_pub_endpoint_));
 }
 
-zlink_config_result_t zlink_registry_set_heartbeat (void *registry_,
-                                                    uint32_t interval_ms_,
-                                                    uint32_t timeout_ms_)
+zlink_config_result_t
+zlink_registry_set_heartbeat (void *registry_, uint32_t interval_ms_, uint32_t timeout_ms_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::registry_access_t::set_heartbeat (registry, interval_ms_,
-                                                timeout_ms_));
+      zlink::registry_access_t::set_heartbeat (registry, interval_ms_, timeout_ms_));
 }
 
-zlink_config_result_t zlink_registry_set_broadcast_interval (void *registry_,
-                                                             uint32_t interval_ms_)
+zlink_config_result_t zlink_registry_set_broadcast_interval (void *registry_, uint32_t interval_ms_)
 {
-    return zlink_registry_set (
-      registry_, ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms_);
+    return zlink_registry_set (registry_, ZLINK_REGISTRY_OPT_BROADCAST_INTERVAL_MS, interval_ms_);
 }
 
 zlink_close_result_t zlink_registry_destroy (void **registry_p_)
@@ -131,8 +116,7 @@ zlink_close_result_t zlink_registry_destroy (void **registry_p_)
         errno = EFAULT;
         return ZLINK_CLOSE_INVALID_HANDLE;
     }
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (*registry_p_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (*registry_p_);
     if (!registry)
         return ZLINK_CLOSE_INVALID_HANDLE;
     if (zlink::registry_access_t::destroy (registry) != 0)
@@ -142,11 +126,9 @@ zlink_close_result_t zlink_registry_destroy (void **registry_p_)
     return ZLINK_CLOSE_OK;
 }
 
-zlink_config_result_t zlink_registry_status (void *registry_,
-                                                      zlink_registry_status_t *out_)
+zlink_config_result_t zlink_registry_status (void *registry_, zlink_registry_status_t *out_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -155,14 +137,13 @@ zlink_config_result_t zlink_registry_status (void *registry_,
       zlink::registry_access_t::status_snapshot (registry, out_));
 }
 
-zlink_config_result_t zlink_registry_service_summary (
-  void *registry_,
-  const zlink_registry_service_summary_filter_t *filter_,
-  zlink_registry_service_summary_entry_t *entries_,
-  size_t *count_)
+zlink_config_result_t
+zlink_registry_service_summary (void *registry_,
+                                const zlink_registry_service_summary_filter_t *filter_,
+                                zlink_registry_service_summary_entry_t *entries_,
+                                size_t *count_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -172,9 +153,7 @@ zlink_config_result_t zlink_registry_service_summary (
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
     std::vector<zlink_registry_service_summary_entry_t> rows;
-    if (zlink::registry_access_t::service_summary_snapshot (
-          registry, filter_, &rows)
-        != 0)
+    if (zlink::registry_access_t::service_summary_snapshot (registry, filter_, &rows) != 0)
         return zlink::config_result_internal::from_rc (-1);
     if (!entries_) {
         *count_ = rows.size ();
@@ -192,36 +171,31 @@ zlink_config_result_t zlink_registry_service_summary (
 }
 
 zlink_config_result_t zlink_registry_member_peers (void *registry_,
-                                                    const char *channel_name_,
-                                                    zlink_member_peer_entry_t *entries_,
-                                                    size_t *count_)
+                                                   const char *channel_name_,
+                                                   zlink_member_peer_entry_t *entries_,
+                                                   size_t *count_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::registry_access_t::member_peers (
-        registry, channel_name_, entries_, count_));
+      zlink::registry_access_t::member_peers (registry, channel_name_, entries_, count_));
 }
 
-zlink_config_result_t zlink_registry_topology (
-  void *registry_,
-  const zlink_registry_topology_filter_t *filter_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
+zlink_config_result_t zlink_registry_topology (void *registry_,
+                                               const zlink_registry_topology_filter_t *filter_,
+                                               zlink_registry_topology_entry_t *entries_,
+                                               size_t *count_)
 {
-    zlink::registry_t *registry =
-      zlink::registry_access_t::from_handle (registry_);
+    zlink::registry_t *registry = zlink::registry_access_t::from_handle (registry_);
     if (!registry) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
     return zlink::config_result_internal::from_rc (
-      zlink::registry_access_t::topology_query (registry, filter_, entries_,
-                                                 count_));
+      zlink::registry_access_t::topology_query (registry, filter_, entries_, count_));
 }
 
 void *zlink_registry_query_client_new (void *ctx_)
@@ -230,26 +204,23 @@ void *zlink_registry_query_client_new (void *ctx_)
         errno = EFAULT;
         return NULL;
     }
-    return zlink::registry_query_access_t::create (
-      static_cast<zlink::ctx_t *> (ctx_));
+    return zlink::registry_query_access_t::create (static_cast<zlink::ctx_t *> (ctx_));
 }
 
-zlink_connect_result_t zlink_registry_query_client_connect (void *client_,
-                                                            const char *endpoint_)
+zlink_connect_result_t zlink_registry_query_client_connect (void *client_, const char *endpoint_)
 {
     return zlink::connect_result_internal::from_rc (
       zlink::registry_query_access_t::connect (client_, endpoint_));
 }
 
-zlink_config_result_t zlink_registry_query_client_topology (
-  void *client_,
-  const zlink_registry_topology_filter_t *filter_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
+zlink_config_result_t
+zlink_registry_query_client_topology (void *client_,
+                                      const zlink_registry_topology_filter_t *filter_,
+                                      zlink_registry_topology_entry_t *entries_,
+                                      size_t *count_)
 {
     return zlink::config_result_internal::from_rc (
-      zlink::registry_query_access_t::topology_query (client_, filter_,
-                                                       entries_, count_));
+      zlink::registry_query_access_t::topology_query (client_, filter_, entries_, count_));
 }
 
 zlink_close_result_t zlink_registry_query_client_destroy (void **client_p_)

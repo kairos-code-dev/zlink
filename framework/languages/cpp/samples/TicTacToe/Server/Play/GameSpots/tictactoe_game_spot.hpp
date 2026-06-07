@@ -22,8 +22,8 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
         context.handlers ().add_actor_packet<&tictactoe_game_spot_t::place_mark> ();
     }
 
-    zlink::framework::spot_actor_join_response_t on_actor_join (const player_actor_t &,
-                                                                const zlink::message_t &request_message)
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (const player_actor_t &, const zlink::message_t &request_message)
     {
         return zlink::framework::spot_actor_join_response_t::accept (
           zlink::message_t::from_json (join (request_message.parse_json<join_match_req_t> ())));

@@ -49,9 +49,7 @@ static const char ipc[] = "ipc";
 
 struct address_t
 {
-    address_t (const std::string &protocol_,
-               const std::string &address_,
-               ctx_t *parent_);
+    address_t (const std::string &protocol_, const std::string &address_, ctx_t *parent_);
 
     ~address_t ();
 
@@ -79,8 +77,7 @@ struct address_t
     int to_string (std::string &addr_) const;
 };
 
-#if defined(ZLINK_HAVE_HPUX) || defined(ZLINK_HAVE_VXWORKS)                        \
-  || defined(ZLINK_HAVE_WINDOWS)
+#if defined(ZLINK_HAVE_HPUX) || defined(ZLINK_HAVE_VXWORKS) || defined(ZLINK_HAVE_WINDOWS)
 typedef int zlink_socklen_t;
 #else
 typedef socklen_t zlink_socklen_t;
@@ -92,11 +89,9 @@ enum socket_end_t
     socket_end_remote
 };
 
-zlink_socklen_t
-get_socket_address (fd_t fd_, socket_end_t socket_end_, sockaddr_storage *ss_);
+zlink_socklen_t get_socket_address (fd_t fd_, socket_end_t socket_end_, sockaddr_storage *ss_);
 
-template <typename T>
-std::string get_socket_name (fd_t fd_, socket_end_t socket_end_)
+template <typename T> std::string get_socket_name (fd_t fd_, socket_end_t socket_end_)
 {
     struct sockaddr_storage ss;
     const zlink_socklen_t sl = get_socket_address (fd_, socket_end_, &ss);

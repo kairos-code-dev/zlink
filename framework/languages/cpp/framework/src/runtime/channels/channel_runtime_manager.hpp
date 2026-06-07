@@ -39,7 +39,8 @@ class channel_runtime_manager_t
     std::string monitoring_source (const std::string &source_name);
 
   private:
-    const channel_snapshot_t &require_channel (const std::string &channel_name, capability_t capability) const;
+    const channel_snapshot_t &require_channel (const std::string &channel_name,
+                                               capability_t capability) const;
 
     static std::pair<std::string, std::string> parse_source (const std::string &source_name);
 

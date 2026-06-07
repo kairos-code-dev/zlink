@@ -19,10 +19,11 @@ namespace zlink::samples::tictactoe
 class tictactoe_player_client_t
 {
   public:
-    static tictactoe_player_client_t connect (std::string actor_id, const tictactoe_client_options_t &options)
+    static tictactoe_player_client_t connect (std::string actor_id,
+                                              const tictactoe_client_options_t &options)
     {
-        auto connector =
-          zlink::stream_connector::connector_factory_t::create (zlink::samples::make_immediate_connector_options (
+        auto connector = zlink::stream_connector::connector_factory_t::create (
+          zlink::samples::make_immediate_connector_options (
             options.play_endpoint, options.stream_timeout, options.stream_timeout));
         auto client = tictactoe_player_client_t (std::move (actor_id), std::move (connector));
         client.register_notifications ();
@@ -57,7 +58,8 @@ class tictactoe_player_client_t
     void dispatch () { zlink::samples::dispatch_client_connector (_connector); }
 
   private:
-    tictactoe_player_client_t (std::string actor_id, zlink::stream_connector::connector_t connector) :
+    tictactoe_player_client_t (std::string actor_id,
+                               zlink::stream_connector::connector_t connector) :
         _actor_id (std::move (actor_id)), _connector (std::move (connector))
     {
     }
@@ -65,18 +67,22 @@ class tictactoe_player_client_t
     void register_notifications ()
     {
         zlink::stream_connector::codecs::on<opponent_joined_notify_t> (
-          _connector, [this] (const opponent_joined_notify_t &message) { _notifications.opponent_joined (message); });
+          _connector, [this] (const opponent_joined_notify_t &message) {
+              _notifications.opponent_joined (message);
+          });
         zlink::stream_connector::codecs::on<turn_changed_notify_t> (
-          _connector, [this] (const turn_changed_notify_t &message) { _notifications.turn_changed (message); });
+          _connector,
+          [this] (const turn_changed_notify_t &message) { _notifications.turn_changed (message); });
         zlink::stream_connector::codecs::on<game_ended_notify_t> (
-          _connector, [this] (const game_ended_notify_t &message) { _notifications.game_ended (message); });
+          _connector,
+          [this] (const game_ended_notify_t &message) { _notifications.game_ended (message); });
     }
 
     template <typename TReply, typename TRequest>
     tictactoe_client_call_result_t request (const TRequest &request_message)
     {
-        return zlink::samples::request_client_packet<tictactoe_client_call_result_t, TReply> (_connector,
-                                                                                              request_message);
+        return zlink::samples::request_client_packet<tictactoe_client_call_result_t, TReply> (
+          _connector, request_message);
     }
 
     std::string _actor_id;

@@ -18,15 +18,11 @@ class io_thread_t;
 class pair_t ZLINK_FINAL : public socket_base_t
 {
   public:
-    pair_t (zlink::ctx_t *parent_,
-            uint32_t tid_,
-            int sid_);
+    pair_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~pair_t ();
 
     //  Overrides of functions from socket_base_t.
-    void xattach_pipe (zlink::pipe_t *pipe_,
-                       bool subscribe_to_all_,
-                       bool locally_initiated_);
+    void xattach_pipe (zlink::pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_);
     int xsend (zlink::msg_t *msg_);
     int xrecv (zlink::msg_t *msg_);
     bool xhas_in ();
@@ -34,8 +30,7 @@ class pair_t ZLINK_FINAL : public socket_base_t
     void xread_activated (zlink::pipe_t *pipe_);
     void xwrite_activated (zlink::pipe_t *pipe_);
     void xpipe_terminated (zlink::pipe_t *pipe_);
-    int xsocket_msg_dispatch (zlink::msg_t *msg_,
-                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
 
   private:

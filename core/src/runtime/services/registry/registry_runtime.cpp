@@ -60,8 +60,7 @@ void registry_t::tick ()
                     break;
                 }
                 if (zlink_msg_size (&submsg) > 0) {
-                    unsigned char *data = static_cast<unsigned char *> (
-                      zlink_msg_data (&submsg));
+                    unsigned char *data = static_cast<unsigned char *> (zlink_msg_data (&submsg));
                     if (data && data[0] == 1) {
                         send_service_list (pub);
                         send_route_list (pub);
@@ -70,9 +69,7 @@ void registry_t::tick ()
                 zlink_msg_close (&submsg);
             }
         }
-        if (peer_sub
-            && zlink::wait_socket_events_internal (peer_sub, ZLINK_POLLIN, 0)
-                 > 0) {
+        if (peer_sub && zlink::wait_socket_events_internal (peer_sub, ZLINK_POLLIN, 0) > 0) {
             handle_peer (peer_sub);
             handled = true;
         }
@@ -91,10 +88,13 @@ void registry_t::tick ()
         if (_coordination_state.list_seq != _runtime_socket_state.last_sent_seq) {
             send_list = true;
             _runtime_socket_state.last_sent_seq = _coordination_state.list_seq;
-            _runtime_socket_state.next_broadcast_ms = now + _coordination_state.broadcast_interval_ms;
-        } else if (_runtime_socket_state.next_broadcast_ms == 0 || now >= _runtime_socket_state.next_broadcast_ms) {
+            _runtime_socket_state.next_broadcast_ms =
+              now + _coordination_state.broadcast_interval_ms;
+        } else if (_runtime_socket_state.next_broadcast_ms == 0
+                   || now >= _runtime_socket_state.next_broadcast_ms) {
             send_list = true;
-            _runtime_socket_state.next_broadcast_ms = now + _coordination_state.broadcast_interval_ms;
+            _runtime_socket_state.next_broadcast_ms =
+              now + _coordination_state.broadcast_interval_ms;
         }
         if (_coordination_state.broadcast_interval_ms == 0)
             _coordination_state.broadcast_interval_ms = 30000;

@@ -53,8 +53,7 @@ const struct sockaddr *zlink::ip_addr_t::as_sockaddr () const
 
 zlink::zlink_socklen_t zlink::ip_addr_t::sockaddr_len () const
 {
-    return static_cast<zlink_socklen_t> (family () == AF_INET6 ? sizeof (ipv6)
-                                                             : sizeof (ipv4));
+    return static_cast<zlink_socklen_t> (family () == AF_INET6 ? sizeof (ipv6) : sizeof (ipv4));
 }
 
 void zlink::ip_addr_t::set_port (uint16_t port_)
@@ -104,16 +103,14 @@ zlink::ip_resolver_options_t::ip_resolver_options_t () :
 {
 }
 
-zlink::ip_resolver_options_t &
-zlink::ip_resolver_options_t::bindable (bool bindable_)
+zlink::ip_resolver_options_t &zlink::ip_resolver_options_t::bindable (bool bindable_)
 {
     _bindable_wanted = bindable_;
 
     return *this;
 }
 
-zlink::ip_resolver_options_t &
-zlink::ip_resolver_options_t::allow_nic_name (bool allow_)
+zlink::ip_resolver_options_t &zlink::ip_resolver_options_t::allow_nic_name (bool allow_)
 {
     _nic_name_allowed = allow_;
 
@@ -129,8 +126,7 @@ zlink::ip_resolver_options_t &zlink::ip_resolver_options_t::ipv6 (bool ipv6_)
 
 //  If true we expect that the host will be followed by a colon and a port
 //  number or channel name
-zlink::ip_resolver_options_t &
-zlink::ip_resolver_options_t::expect_port (bool expect_)
+zlink::ip_resolver_options_t &zlink::ip_resolver_options_t::expect_port (bool expect_)
 {
     _port_expected = expect_;
 
@@ -181,8 +177,7 @@ bool zlink::ip_resolver_options_t::allow_path ()
     return _path_allowed;
 }
 
-zlink::ip_resolver_t::ip_resolver_t (ip_resolver_options_t opts_) :
-    _options (opts_)
+zlink::ip_resolver_t::ip_resolver_t (ip_resolver_options_t opts_) : _options (opts_)
 {
 }
 
@@ -239,8 +234,7 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
     //  Trim optional square brackets surrounding the address. Bracketless IPv6
     //  is accepted here because endpoint parsing has already separated the port.
     const size_t brackets_length = 2;
-    if (addr.size () >= brackets_length && addr[0] == '['
-        && addr[addr.size () - 1] == ']') {
+    if (addr.size () >= brackets_length && addr[0] == '[' && addr[addr.size () - 1] == ']') {
         addr = addr.substr (1, addr.size () - brackets_length);
     }
 
@@ -312,8 +306,7 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
     return 0;
 }
 
-int zlink::ip_resolver_t::resolve_getaddrinfo (ip_addr_t *ip_addr_,
-                                             const char *addr_)
+int zlink::ip_resolver_t::resolve_getaddrinfo (ip_addr_t *ip_addr_, const char *addr_)
 {
 #if defined ZLINK_HAVE_OPENVMS && defined __ia64
     __addrinfo64 *res = NULL;
@@ -457,8 +450,8 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
     return 0;
 }
 
-#elif defined ZLINK_HAVE_AIX || defined ZLINK_HAVE_HPUX                            \
-  || defined ZLINK_HAVE_ANDROID || defined ZLINK_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_AIX || defined ZLINK_HAVE_HPUX || defined ZLINK_HAVE_ANDROID              \
+  || defined ZLINK_HAVE_VXWORKS
 #include <sys/ioctl.h>
 #ifdef ZLINK_HAVE_VXWORKS
 #include <ioLib.h>
@@ -475,8 +468,7 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
 #endif
 
     //  Create a socket.
-    const int sd =
-      open_socket (_options.ipv6 () ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+    const int sd = open_socket (_options.ipv6 () ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
     errno_assert (sd != -1);
 
     struct ifreq ifr;
@@ -496,11 +488,9 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
     }
 
     const int family = ifr.ifr_addr.sa_family;
-    if (family == (_options.ipv6 () ? AF_INET6 : AF_INET)
-        && !strcmp (nic_, ifr.ifr_name)) {
+    if (family == (_options.ipv6 () ? AF_INET6 : AF_INET) && !strcmp (nic_, ifr.ifr_name)) {
         memcpy (ip_addr_, &ifr.ifr_addr,
-                (family == AF_INET) ? sizeof (struct sockaddr_in)
-                                    : sizeof (struct sockaddr_in6));
+                (family == AF_INET) ? sizeof (struct sockaddr_in) : sizeof (struct sockaddr_in6));
     } else {
         errno = ENODEV;
         return -1;
@@ -509,10 +499,9 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
     return 0;
 }
 
-#elif ((defined ZLINK_HAVE_LINUX || defined ZLINK_HAVE_FREEBSD                     \
-        || defined ZLINK_HAVE_OSX || defined ZLINK_HAVE_OPENBSD                    \
-        || defined ZLINK_HAVE_QNXNTO || defined ZLINK_HAVE_NETBSD                  \
-        || defined ZLINK_HAVE_DRAGONFLY || defined ZLINK_HAVE_GNU)                 \
+#elif ((defined ZLINK_HAVE_LINUX || defined ZLINK_HAVE_FREEBSD || defined ZLINK_HAVE_OSX           \
+        || defined ZLINK_HAVE_OPENBSD || defined ZLINK_HAVE_QNXNTO || defined ZLINK_HAVE_NETBSD    \
+        || defined ZLINK_HAVE_DRAGONFLY || defined ZLINK_HAVE_GNU)                                 \
        && defined ZLINK_HAVE_IFADDRS)
 
 #include <ifaddrs.h>
@@ -533,8 +522,8 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
         usleep ((backoff_msec << i) * 1000);
     }
 
-    if (rc != 0 && ((errno == EINVAL) || (errno == EOPNOTSUPP)
-                    || (errno == EPERM) || (errno == EACCES))) {
+    if (rc != 0
+        && ((errno == EINVAL) || (errno == EOPNOTSUPP) || (errno == EPERM) || (errno == EACCES))) {
         // Windows Subsystem for Linux compatibility
         // Some restricted Linux sandboxes also block interface enumeration.
         errno = ENODEV;
@@ -550,8 +539,7 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
             continue;
 
         const int family = ifp->ifa_addr->sa_family;
-        if (family == (_options.ipv6 () ? AF_INET6 : AF_INET)
-            && !strcmp (nic_, ifp->ifa_name)) {
+        if (family == (_options.ipv6 () ? AF_INET6 : AF_INET) && !strcmp (nic_, ifp->ifa_name)) {
             memcpy (ip_addr_, ifp->ifa_addr,
                     (family == AF_INET) ? sizeof (struct sockaddr_in)
                                         : sizeof (struct sockaddr_in6));
@@ -574,8 +562,7 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
 
 #include <netioapi.h>
 
-int zlink::ip_resolver_t::get_interface_name (unsigned long index_,
-                                            char **dest_) const
+int zlink::ip_resolver_t::get_interface_name (unsigned long index_, char **dest_) const
 {
 #ifdef ZLINK_HAVE_WINDOWS_UWP
     char *buffer = (char *) malloc (1024);
@@ -602,14 +589,12 @@ int zlink::ip_resolver_t::get_interface_name (unsigned long index_,
 int zlink::ip_resolver_t::wchar_to_utf8 (const WCHAR *src_, char **dest_) const
 {
     int rc;
-    const int buffer_len =
-      WideCharToMultiByte (CP_UTF8, 0, src_, -1, NULL, 0, NULL, 0);
+    const int buffer_len = WideCharToMultiByte (CP_UTF8, 0, src_, -1, NULL, 0, NULL, 0);
 
     char *buffer = static_cast<char *> (malloc (buffer_len));
     alloc_assert (buffer);
 
-    rc =
-      WideCharToMultiByte (CP_UTF8, 0, src_, -1, buffer, buffer_len, NULL, 0);
+    rc = WideCharToMultiByte (CP_UTF8, 0, src_, -1, buffer, buffer_len, NULL, 0);
 
     if (rc == 0) {
         free (buffer);
@@ -634,11 +619,9 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
         addresses = static_cast<IP_ADAPTER_ADDRESSES *> (malloc (out_buf_len));
         alloc_assert (addresses);
 
-        rc =
-          GetAdaptersAddresses (AF_UNSPEC,
-                                GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST
-                                  | GAA_FLAG_SKIP_DNS_SERVER,
-                                NULL, addresses, &out_buf_len);
+        rc = GetAdaptersAddresses (
+          AF_UNSPEC, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+          NULL, addresses, &out_buf_len);
         if (rc == ERROR_BUFFER_OVERFLOW) {
             free (addresses);
             addresses = NULL;
@@ -649,15 +632,13 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
     } while ((rc == ERROR_BUFFER_OVERFLOW) && (iterations < max_attempts));
 
     if (rc == 0) {
-        for (const IP_ADAPTER_ADDRESSES *current_addresses = addresses;
-             current_addresses; current_addresses = current_addresses->Next) {
+        for (const IP_ADAPTER_ADDRESSES *current_addresses = addresses; current_addresses;
+             current_addresses = current_addresses->Next) {
             char *if_name = NULL;
             char *if_friendly_name = NULL;
 
-            const int str_rc1 =
-              get_interface_name (current_addresses->IfIndex, &if_name);
-            const int str_rc2 = wchar_to_utf8 (current_addresses->FriendlyName,
-                                               &if_friendly_name);
+            const int str_rc1 = get_interface_name (current_addresses->IfIndex, &if_name);
+            const int str_rc2 = wchar_to_utf8 (current_addresses->FriendlyName, &if_friendly_name);
 
             //  Find a network adapter by its "name" or "friendly name"
             if (((str_rc1 == 0) && (!strcmp (nic_, if_name)))
@@ -671,10 +652,9 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
                       current_unicast_address->Address.lpSockaddr->sa_family;
 
                     if (family == (_options.ipv6 () ? AF_INET6 : AF_INET)) {
-                        memcpy (
-                          ip_addr_, current_unicast_address->Address.lpSockaddr,
-                          (family == AF_INET) ? sizeof (struct sockaddr_in)
-                                              : sizeof (struct sockaddr_in6));
+                        memcpy (ip_addr_, current_unicast_address->Address.lpSockaddr,
+                                (family == AF_INET) ? sizeof (struct sockaddr_in)
+                                                    : sizeof (struct sockaddr_in6));
                         found = true;
                         break;
                     }
@@ -715,9 +695,9 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
 #endif
 
 int zlink::ip_resolver_t::do_getaddrinfo (const char *node_,
-                                        const char *service_,
-                                        const struct addrinfo *hints_,
-                                        struct addrinfo **res_)
+                                          const char *service_,
+                                          const struct addrinfo *hints_,
+                                          struct addrinfo **res_)
 {
     return getaddrinfo (node_, service_, hints_, res_);
 }

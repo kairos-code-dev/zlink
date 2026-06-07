@@ -38,7 +38,11 @@ inline monitor_event operator| (monitor_event a, monitor_event b)
 struct monitor_event_t
 {
     monitor_event_t () :
-        event (monitor_event::closed), value (0), routing_id (std::nullopt), local_addr (), remote_addr ()
+        event (monitor_event::closed),
+        value (0),
+        routing_id (std::nullopt),
+        local_addr (),
+        remote_addr ()
     {
     }
 

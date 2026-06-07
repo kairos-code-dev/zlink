@@ -12,7 +12,8 @@ namespace zlink::samples::tictactoe
 class create_match_session_packet_handler_t
 {
   public:
-    explicit create_match_session_packet_handler_t (create_match_handler_t &create_match) : _create_match (create_match)
+    explicit create_match_session_packet_handler_t (create_match_handler_t &create_match) :
+        _create_match (create_match)
     {
     }
 

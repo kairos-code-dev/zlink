@@ -20,19 +20,23 @@
 namespace zlink::framework::runtime
 {
 
-template <typename TResult> boost::asio::awaitable<result_t<TResult>> await_task_result (task_t<TResult> task)
+template <typename TResult>
+boost::asio::awaitable<result_t<TResult>> await_task_result (task_t<TResult> task)
 {
     auto executor = co_await boost::asio::this_coro::executor;
     auto token = boost::asio::use_awaitable;
     co_return co_await boost::asio::async_initiate<decltype (token), void (result_t<TResult>)> (
       [executor, task = std::move (task)] (auto handler) mutable {
-          auto shared_handler = std::make_shared<std::decay_t<decltype (handler)>> (std::move (handler));
-          detail::observe_task_completion (task, [executor, shared_handler] (const result_t<TResult> &result) mutable {
-              auto result_copy = result;
-              boost::asio::dispatch (executor, [shared_handler, result = std::move (result_copy)] () mutable {
-                  (*shared_handler) (std::move (result));
-              });
-          });
+          auto shared_handler =
+            std::make_shared<std::decay_t<decltype (handler)>> (std::move (handler));
+          detail::observe_task_completion (
+            task, [executor, shared_handler] (const result_t<TResult> &result) mutable {
+                auto result_copy = result;
+                boost::asio::dispatch (
+                  executor, [shared_handler, result = std::move (result_copy)] () mutable {
+                      (*shared_handler) (std::move (result));
+                  });
+            });
       },
       token);
 }
@@ -53,14 +57,16 @@ class coroutine_executor_t
         auto task = completion.task ();
         boost::asio::co_spawn (
           _pool,
-          [work = std::move (work), completion = std::move (completion)] () mutable -> boost::asio::awaitable<void> {
-              result_t<TResult> result =
-                result_t<TResult>::failure (framework_error_kind_t::request_failed, "coroutine handler failed");
+          [work = std::move (work),
+           completion = std::move (completion)] () mutable -> boost::asio::awaitable<void> {
+              result_t<TResult> result = result_t<TResult>::failure (
+                framework_error_kind_t::request_failed, "coroutine handler failed");
               try {
                   result = co_await work ();
               }
               catch (const framework_exception_t &error) {
-                  result = result_t<TResult>::failure (error.kind (), error.what (), error.is_retriable ());
+                  result = result_t<TResult>::failure (error.kind (), error.what (),
+                                                       error.is_retriable ());
               }
               catch (...) {
                   result = result_t<TResult>::failure (framework_error_kind_t::request_failed,
@@ -72,7 +78,8 @@ class coroutine_executor_t
         return task;
     }
 
-    template <typename TResult> result_t<TResult> run (std::function<boost::asio::awaitable<result_t<TResult>> ()> work)
+    template <typename TResult>
+    result_t<TResult> run (std::function<boost::asio::awaitable<result_t<TResult>> ()> work)
     {
         return submit<TResult> (std::move (work)).result ();
     }

@@ -21,8 +21,7 @@ struct timer_callback_probe_t
 
 void on_timer (void *, uint64_t fire_count_, void *userdata_)
 {
-    timer_callback_probe_t *probe =
-      static_cast<timer_callback_probe_t *> (userdata_);
+    timer_callback_probe_t *probe = static_cast<timer_callback_probe_t *> (userdata_);
     std::lock_guard<std::mutex> lock (probe->mutex);
     probe->fire_count = fire_count_;
     probe->called = true;
@@ -40,8 +39,7 @@ void test_timer_one_shot_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (1, fire_count);
 
-    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
-                           zlink_timer_recv (timer, &fire_count));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
@@ -62,8 +60,7 @@ void test_timer_repeat_recv_sequence ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_UINT64 (3, fire_count);
 
-    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
-                           zlink_timer_recv (timer, &fire_count));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, zlink_timer_recv (timer, &fire_count));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
@@ -120,24 +117,20 @@ void test_timer_callback_conflicts_and_destroy_busy ()
     TEST_ASSERT_NOT_NULL (poller);
 
     timer_callback_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_timer_handler (timer_callback, &on_timer, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_handler (timer_callback, &on_timer, &probe));
 
     uint64_t fire_count = 0;
-    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUSY,
-                           zlink_timer_recv (timer_callback, &fire_count));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUSY, zlink_timer_recv (timer_callback, &fire_count));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
                            zlink_poller_add_timer (poller, timer_callback, NULL));
     TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer_callback,
-                                                  20 * 1000 * 1000ULL, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer_callback, 20 * 1000 * 1000ULL, 1));
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool fired = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.called; });
+        const bool fired = probe.cv.wait_for (lock, std::chrono::milliseconds (500),
+                                              [&probe] () { return probe.called; });
         TEST_ASSERT_TRUE (fired);
         TEST_ASSERT_EQUAL_UINT64 (1, probe.fire_count);
     }

@@ -14,11 +14,9 @@ void noop_send_ready_handler (void *subject_, void *userdata_)
     LIBZLINK_UNUSED (userdata_);
 }
 
-zlink::endpoint_uri_pair_t make_bind_endpoint (const char *local_,
-                                               const char *remote_)
+zlink::endpoint_uri_pair_t make_bind_endpoint (const char *local_, const char *remote_)
 {
-    return zlink::endpoint_uri_pair_t (local_, remote_,
-                                       zlink::endpoint_type_bind);
+    return zlink::endpoint_uri_pair_t (local_, remote_, zlink::endpoint_type_bind);
 }
 
 void test_socket_monitor_runtime_tracks_ready_connections_once ()
@@ -29,14 +27,14 @@ void test_socket_monitor_runtime_tracks_ready_connections_once ()
     const unsigned char routing_id[] = {'r', 'i', 'd', '1'};
 
     uint32_t ready_count = 0;
-    TEST_ASSERT_TRUE (runtime.mark_ready_connection (
-      endpoint, routing_id, sizeof (routing_id), &ready_count));
+    TEST_ASSERT_TRUE (
+      runtime.mark_ready_connection (endpoint, routing_id, sizeof (routing_id), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (1u, ready_count);
     TEST_ASSERT_EQUAL_UINT32 (1u, runtime.ready_count ());
 
     ready_count = 99;
-    TEST_ASSERT_FALSE (runtime.mark_ready_connection (
-      endpoint, routing_id, sizeof (routing_id), &ready_count));
+    TEST_ASSERT_FALSE (
+      runtime.mark_ready_connection (endpoint, routing_id, sizeof (routing_id), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (99u, ready_count);
     TEST_ASSERT_EQUAL_UINT32 (1u, runtime.ready_count ());
 }
@@ -52,26 +50,26 @@ void test_socket_monitor_runtime_erases_only_matching_ready_connection ()
     const unsigned char routing_id_b[] = {'r', 'i', 'd', 'b'};
 
     uint32_t ready_count = 0;
-    TEST_ASSERT_TRUE (runtime.mark_ready_connection (
-      endpoint_a, routing_id_a, sizeof (routing_id_a), &ready_count));
-    TEST_ASSERT_TRUE (runtime.mark_ready_connection (
-      endpoint_b, routing_id_b, sizeof (routing_id_b), &ready_count));
+    TEST_ASSERT_TRUE (runtime.mark_ready_connection (endpoint_a, routing_id_a,
+                                                     sizeof (routing_id_a), &ready_count));
+    TEST_ASSERT_TRUE (runtime.mark_ready_connection (endpoint_b, routing_id_b,
+                                                     sizeof (routing_id_b), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (2u, runtime.ready_count ());
 
     ready_count = 0;
-    TEST_ASSERT_TRUE (runtime.erase_ready_connection (
-      endpoint_a, routing_id_a, sizeof (routing_id_a), &ready_count));
+    TEST_ASSERT_TRUE (runtime.erase_ready_connection (endpoint_a, routing_id_a,
+                                                      sizeof (routing_id_a), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (1u, ready_count);
     TEST_ASSERT_EQUAL_UINT32 (1u, runtime.ready_count ());
 
     ready_count = 77;
-    TEST_ASSERT_FALSE (runtime.erase_ready_connection (
-      endpoint_a, routing_id_a, sizeof (routing_id_a), &ready_count));
+    TEST_ASSERT_FALSE (runtime.erase_ready_connection (endpoint_a, routing_id_a,
+                                                       sizeof (routing_id_a), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (77u, ready_count);
     TEST_ASSERT_EQUAL_UINT32 (1u, runtime.ready_count ());
 
-    TEST_ASSERT_TRUE (runtime.erase_ready_connection (
-      endpoint_b, routing_id_b, sizeof (routing_id_b), &ready_count));
+    TEST_ASSERT_TRUE (runtime.erase_ready_connection (endpoint_b, routing_id_b,
+                                                      sizeof (routing_id_b), &ready_count));
     TEST_ASSERT_EQUAL_UINT32 (0u, ready_count);
     TEST_ASSERT_EQUAL_UINT32 (0u, runtime.ready_count ());
 }
@@ -160,8 +158,7 @@ void test_socket_endpoint_runtime_tracks_last_endpoint ()
     TEST_ASSERT_EQUAL_STRING ("", runtime.last_endpoint_uri ().c_str ());
 
     runtime.set_last_endpoint ("tcp://127.0.0.1:5555");
-    TEST_ASSERT_EQUAL_STRING ("tcp://127.0.0.1:5555",
-                              runtime.last_endpoint_uri ().c_str ());
+    TEST_ASSERT_EQUAL_STRING ("tcp://127.0.0.1:5555", runtime.last_endpoint_uri ().c_str ());
 
     runtime.set_last_endpoint ("inproc://socket-runtime-endpoint");
     TEST_ASSERT_EQUAL_STRING ("inproc://socket-runtime-endpoint",
@@ -254,70 +251,51 @@ void test_socket_callback_scope_tracks_callback_depth_and_inflight_state ()
 {
     zlink::socket_lifecycle_coordinator_t coordinator;
 
-    TEST_ASSERT_EQUAL_UINT32 (
-      0u, coordinator.callback_api_depth.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_UINT32 (
-      0u, coordinator.public_api_state.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (0u, coordinator.callback_api_depth.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (0u, coordinator.public_api_state.load (std::memory_order_acquire));
 
     {
         zlink::socket_callback_scope_t callback_scope (NULL, coordinator);
         TEST_ASSERT_TRUE (callback_scope.acquired ());
-        TEST_ASSERT_EQUAL_UINT32 (
-          1u,
-          coordinator.callback_api_depth.load (std::memory_order_acquire));
-        TEST_ASSERT_EQUAL_UINT32 (
-          1u, coordinator.public_api_state.load (std::memory_order_acquire));
+        TEST_ASSERT_EQUAL_UINT32 (1u,
+                                  coordinator.callback_api_depth.load (std::memory_order_acquire));
+        TEST_ASSERT_EQUAL_UINT32 (1u,
+                                  coordinator.public_api_state.load (std::memory_order_acquire));
     }
 
-    TEST_ASSERT_EQUAL_UINT32 (
-      0u, coordinator.callback_api_depth.load (std::memory_order_acquire));
-    TEST_ASSERT_EQUAL_UINT32 (
-      0u, coordinator.public_api_state.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (0u, coordinator.callback_api_depth.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (0u, coordinator.public_api_state.load (std::memory_order_acquire));
     TEST_ASSERT_FALSE (coordinator.public_close_requested ());
 }
 
 void test_socket_send_ready_dispatch_scope_restores_previous_socket ()
 {
-    zlink::socket_base_t *outer =
-      reinterpret_cast<zlink::socket_base_t *> (0x1);
-    zlink::socket_base_t *inner =
-      reinterpret_cast<zlink::socket_base_t *> (0x2);
+    zlink::socket_base_t *outer = reinterpret_cast<zlink::socket_base_t *> (0x1);
+    zlink::socket_base_t *inner = reinterpret_cast<zlink::socket_base_t *> (0x2);
 
-    TEST_ASSERT_NULL (
-      zlink::socket_send_ready_dispatch_scope_t::current_socket ());
-    TEST_ASSERT_FALSE (
-      zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (outer));
+    TEST_ASSERT_NULL (zlink::socket_send_ready_dispatch_scope_t::current_socket ());
+    TEST_ASSERT_FALSE (zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (outer));
 
     {
         zlink::socket_send_ready_dispatch_scope_t outer_scope (outer);
-        TEST_ASSERT_EQUAL_PTR (
-          outer, zlink::socket_send_ready_dispatch_scope_t::current_socket ());
-        TEST_ASSERT_TRUE (
-          zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
-            outer));
+        TEST_ASSERT_EQUAL_PTR (outer, zlink::socket_send_ready_dispatch_scope_t::current_socket ());
+        TEST_ASSERT_TRUE (zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (outer));
 
         {
             zlink::socket_send_ready_dispatch_scope_t inner_scope (inner);
-            TEST_ASSERT_EQUAL_PTR (
-              inner,
-              zlink::socket_send_ready_dispatch_scope_t::current_socket ());
+            TEST_ASSERT_EQUAL_PTR (inner,
+                                   zlink::socket_send_ready_dispatch_scope_t::current_socket ());
             TEST_ASSERT_TRUE (
-              zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
-                inner));
+              zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (inner));
             TEST_ASSERT_FALSE (
-              zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
-                outer));
+              zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (outer));
         }
 
-        TEST_ASSERT_EQUAL_PTR (
-          outer, zlink::socket_send_ready_dispatch_scope_t::current_socket ());
-        TEST_ASSERT_TRUE (
-          zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (
-            outer));
+        TEST_ASSERT_EQUAL_PTR (outer, zlink::socket_send_ready_dispatch_scope_t::current_socket ());
+        TEST_ASSERT_TRUE (zlink::socket_send_ready_dispatch_scope_t::dispatching_socket (outer));
     }
 
-    TEST_ASSERT_NULL (
-      zlink::socket_send_ready_dispatch_scope_t::current_socket ());
+    TEST_ASSERT_NULL (zlink::socket_send_ready_dispatch_scope_t::current_socket ());
 }
 
 void test_socket_command_runtime_throttles_command_polls_by_tsc_window ()
@@ -325,12 +303,10 @@ void test_socket_command_runtime_throttles_command_polls_by_tsc_window ()
     zlink::socket_command_runtime_t runtime;
 
     TEST_ASSERT_FALSE (runtime.should_skip_throttled_command_poll (0));
-    TEST_ASSERT_FALSE (runtime.should_skip_throttled_command_poll (
-      zlink::max_command_delay + 1));
-    TEST_ASSERT_TRUE (runtime.should_skip_throttled_command_poll (
-      zlink::max_command_delay + 2));
-    TEST_ASSERT_FALSE (runtime.should_skip_throttled_command_poll (
-      (2 * zlink::max_command_delay) + 2));
+    TEST_ASSERT_FALSE (runtime.should_skip_throttled_command_poll (zlink::max_command_delay + 1));
+    TEST_ASSERT_TRUE (runtime.should_skip_throttled_command_poll (zlink::max_command_delay + 2));
+    TEST_ASSERT_FALSE (
+      runtime.should_skip_throttled_command_poll ((2 * zlink::max_command_delay) + 2));
     TEST_ASSERT_FALSE (runtime.should_skip_throttled_command_poll (50));
 }
 
@@ -339,17 +315,14 @@ void test_socket_command_runtime_tracks_recv_ticks_until_reset ()
     zlink::socket_command_runtime_t runtime;
 
     for (int i = 1; i < zlink::inbound_poll_rate; ++i)
-        TEST_ASSERT_FALSE (
-          runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
+        TEST_ASSERT_FALSE (runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
 
-    TEST_ASSERT_TRUE (
-      runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
+    TEST_ASSERT_TRUE (runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
     TEST_ASSERT_TRUE (runtime.should_block_on_recv ());
 
     runtime.reset_recv_ticks ();
     TEST_ASSERT_FALSE (runtime.should_block_on_recv ());
-    TEST_ASSERT_FALSE (
-      runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
+    TEST_ASSERT_FALSE (runtime.should_poll_commands_after_recv (zlink::inbound_poll_rate));
 }
 
 void test_socket_dispatch_bridge_reads_send_ready_triplet_consistently ()
@@ -359,19 +332,16 @@ void test_socket_dispatch_bridge_reads_send_ready_triplet_consistently ()
     void *subject = NULL;
     void *userdata = NULL;
 
-    TEST_ASSERT_FALSE (
-      bridge.load_send_ready_handler (&handler, &subject, &userdata));
+    TEST_ASSERT_FALSE (bridge.load_send_ready_handler (&handler, &subject, &userdata));
     TEST_ASSERT_NULL (handler);
     TEST_ASSERT_NULL (subject);
     TEST_ASSERT_NULL (userdata);
 
     int subject_value = 7;
     int userdata_value = 11;
-    bridge.store_send_ready_handler (&noop_send_ready_handler, &subject_value,
-                                     &userdata_value);
+    bridge.store_send_ready_handler (&noop_send_ready_handler, &subject_value, &userdata_value);
 
-    TEST_ASSERT_TRUE (
-      bridge.load_send_ready_handler (&handler, &subject, &userdata));
+    TEST_ASSERT_TRUE (bridge.load_send_ready_handler (&handler, &subject, &userdata));
     TEST_ASSERT_EQUAL_PTR (&noop_send_ready_handler, handler);
     TEST_ASSERT_EQUAL_PTR (&subject_value, subject);
     TEST_ASSERT_EQUAL_PTR (&userdata_value, userdata);
@@ -385,8 +355,7 @@ void test_socket_dispatch_bridge_arms_send_ready_only_with_handler ()
     TEST_ASSERT_FALSE (bridge.consume_send_ready_notification ());
 
     int subject_value = 13;
-    bridge.store_send_ready_handler (&noop_send_ready_handler, &subject_value,
-                                     NULL);
+    bridge.store_send_ready_handler (&noop_send_ready_handler, &subject_value, NULL);
 
     TEST_ASSERT_TRUE (bridge.arm_send_ready_notification ());
     TEST_ASSERT_TRUE (bridge.consume_send_ready_notification ());
@@ -448,16 +417,15 @@ void test_socket_public_send_scope_without_sync_keeps_inflight_admission ()
         zlink::socket_public_send_scope_t send_scope (coordinator, false);
         TEST_ASSERT_TRUE (send_scope.acquired ());
         TEST_ASSERT_FALSE (send_scope.sync_locked ());
-        TEST_ASSERT_EQUAL_UINT32 (
-          1u, coordinator.public_api_state.load (std::memory_order_acquire));
+        TEST_ASSERT_EQUAL_UINT32 (1u,
+                                  coordinator.public_api_state.load (std::memory_order_acquire));
 
         errno = 0;
         TEST_ASSERT_FALSE (coordinator.begin_close_or_fail_busy (false));
         TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     }
 
-    TEST_ASSERT_EQUAL_UINT32 (
-      0u, coordinator.public_api_state.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (0u, coordinator.public_api_state.load (std::memory_order_acquire));
     errno = 0;
     TEST_ASSERT_TRUE (coordinator.begin_close_or_fail_busy (false));
 }
@@ -474,10 +442,8 @@ int main (int argc, char **argv)
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_recv_source_rid);
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_endpoint);
     RUN_TEST (test_socket_lifecycle_coordinator_tracks_destroy_state);
-    RUN_TEST (
-      test_socket_lifecycle_coordinator_completes_deferred_close_without_async_mailbox);
-    RUN_TEST (
-      test_socket_lifecycle_coordinator_handoff_waits_pending_async_quiesce);
+    RUN_TEST (test_socket_lifecycle_coordinator_completes_deferred_close_without_async_mailbox);
+    RUN_TEST (test_socket_lifecycle_coordinator_handoff_waits_pending_async_quiesce);
     RUN_TEST (test_socket_public_api_scope_releases_inflight_admission);
     RUN_TEST (test_socket_public_api_lock_scope_releases_sync_bit_on_exit);
     RUN_TEST (test_socket_callback_scope_tracks_callback_depth_and_inflight_state);
@@ -487,9 +453,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_socket_dispatch_bridge_reads_send_ready_triplet_consistently);
     RUN_TEST (test_socket_dispatch_bridge_arms_send_ready_only_with_handler);
     RUN_TEST (test_socket_public_send_scope_combines_initial_admission_and_sync);
-    RUN_TEST (
-      test_socket_public_send_scope_unlocks_sync_but_keeps_inflight_admission);
-    RUN_TEST (
-      test_socket_public_send_scope_without_sync_keeps_inflight_admission);
+    RUN_TEST (test_socket_public_send_scope_unlocks_sync_but_keeps_inflight_admission);
+    RUN_TEST (test_socket_public_send_scope_without_sync_keeps_inflight_admission);
     return UNITY_END ();
 }

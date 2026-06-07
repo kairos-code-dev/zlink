@@ -145,8 +145,7 @@ void test_add_rm_single_entry_match_exact ()
 
     mtrie.add (test_name, getlen (test_name), &pipe);
     TEST_ASSERT_EQUAL_INT (1, mtrie.num_prefixes ());
-    zlink::generic_mtrie_t<int>::rm_result res =
-      mtrie.rm (test_name, getlen (test_name), &pipe);
+    zlink::generic_mtrie_t<int>::rm_result res = mtrie.rm (test_name, getlen (test_name), &pipe);
     TEST_ASSERT_EQUAL (zlink::generic_mtrie_t<int>::last_value_removed, res);
     TEST_ASSERT_EQUAL_INT (0, mtrie.num_prefixes ());
 
@@ -172,8 +171,7 @@ void test_rm_nonexistent_empty ()
     const zlink::generic_mtrie_t<int>::prefix_t test_name =
       reinterpret_cast<zlink::generic_mtrie_t<int>::prefix_t> ("foo");
 
-    zlink::generic_mtrie_t<int>::rm_result res =
-      mtrie.rm (test_name, getlen (test_name), &pipe);
+    zlink::generic_mtrie_t<int>::rm_result res = mtrie.rm (test_name, getlen (test_name), &pipe);
     TEST_ASSERT_EQUAL (zlink::generic_mtrie_t<int>::not_found, res);
     TEST_ASSERT_EQUAL_INT (0, mtrie.num_prefixes ());
 
@@ -201,14 +199,11 @@ void test_add_and_rm_other (const char *add_name_, const char *rm_name_)
 
     {
         int count = 0;
-        mtrie.match (add_name_data, getlen (add_name_data), mtrie_count,
-                     &count);
+        mtrie.match (add_name_data, getlen (add_name_data), mtrie_count, &count);
         TEST_ASSERT_EQUAL_INT (1, count);
     }
 
-    if (strncmp (add_name_, rm_name_,
-                 std::min (strlen (add_name_), strlen (rm_name_) + 1))
-        != 0) {
+    if (strncmp (add_name_, rm_name_, std::min (strlen (add_name_), strlen (rm_name_) + 1)) != 0) {
         int count = 0;
         mtrie.match (rm_name_data, getlen (rm_name_data), mtrie_count, &count);
         TEST_ASSERT_EQUAL_INT (0, count);
@@ -267,9 +262,7 @@ void test_rm_nonexistent_between ()
 }
 
 template <size_t N>
-void add_entries (zlink::generic_mtrie_t<int> &mtrie_,
-                  int (&pipes_)[N],
-                  const char *(&names_)[N])
+void add_entries (zlink::generic_mtrie_t<int> &mtrie_, int (&pipes_)[N], const char *(&names_)[N])
 {
     for (size_t i = 0; i < N; ++i) {
         add_indexed_expect_unique (mtrie_, pipes_, names_, i);
@@ -301,8 +294,7 @@ void test_add_multiple_reverse ()
 
     zlink::generic_mtrie_t<int> mtrie;
     for (int i = 2; i >= 0; --i) {
-        add_indexed_expect_unique (mtrie, pipes, names,
-                                   static_cast<size_t> (i));
+        add_indexed_expect_unique (mtrie, pipes, names, static_cast<size_t> (i));
     }
     TEST_ASSERT_EQUAL_INT (3, mtrie.num_prefixes ());
 
@@ -344,9 +336,7 @@ void test_rm_multiple_reverse_order ()
     add_and_rm_entries (names);
 }
 
-void check_name (zlink::generic_mtrie_t<int>::prefix_t data_,
-                 size_t len_,
-                 const char *name_)
+void check_name (zlink::generic_mtrie_t<int>::prefix_t data_, size_t len_, const char *name_)
 {
     TEST_ASSERT_EQUAL_UINT (strlen (name_), len_);
     TEST_ASSERT_EQUAL_STRING_LEN (name_, data_, len_);
@@ -377,9 +367,7 @@ void test_rm_with_callback_multiple_reverse_order ()
     add_entries_rm_pipes_unique (names);
 }
 
-void check_count (zlink::generic_mtrie_t<int>::prefix_t data_,
-                  size_t len_,
-                  int *count_)
+void check_count (zlink::generic_mtrie_t<int>::prefix_t data_, size_t len_, int *count_)
 {
     LIBZLINK_UNUSED (data_);
     LIBZLINK_UNUSED (len_);

@@ -15,13 +15,7 @@ namespace
 {
 struct spot_dispatch_probe_t
 {
-    spot_dispatch_probe_t () :
-        event (0),
-        subject_kind (0),
-        subject (NULL),
-        called (false)
-    {
-    }
+    spot_dispatch_probe_t () : event (0), subject_kind (0), subject (NULL), called (false) {}
 
     std::mutex mutex;
     std::condition_variable cv;
@@ -91,8 +85,7 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
 
 void set_routing_id_text (void *handle_, const char *text_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (handle_, text_, strlen (text_)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (handle_, text_, strlen (text_)));
 }
 
 zlink_routing_id_t get_routing_id_value (void *handle_)
@@ -116,8 +109,7 @@ int drain_completion_via_poller (void *subject_)
     if (!poller)
         return -1;
     int rc = -1;
-    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION)
-        == ZLINK_CONFIG_OK) {
+    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION) == ZLINK_CONFIG_OK) {
         zlink_poller_event_t event;
         rc = zlink_poller_wait (poller, &event, 1, 0, NULL);
         (void) zlink_poller_remove (poller, subject_);
@@ -130,8 +122,7 @@ bool wait_for_channel_reply_callbacks (spot_dispatch_recv_probe_t *probe_,
                                        void *spot_,
                                        size_t expected_count_,
                                        int timeout_ms_,
-                                       size_t expected_subject_count_ =
-                                         static_cast<size_t> (-1))
+                                       size_t expected_subject_count_ = static_cast<size_t> (-1))
 {
     if (expected_subject_count_ == static_cast<size_t> (-1))
         expected_subject_count_ = expected_count_;
@@ -141,16 +132,14 @@ bool wait_for_channel_reply_callbacks (spot_dispatch_recv_probe_t *probe_,
         (void) drain_completion_via_poller (spot_);
         {
             std::unique_lock<std::mutex> lock (probe_->mutex);
-            if (probe_->cv.wait_for (
-                  lock,
-                  std::chrono::milliseconds (10),
-                  [probe_, expected_count_, expected_subject_count_]() {
-                      return probe_->failed
-                             || probe_->channel_reply_callback_count
-                                  >= expected_count_
-                                   && probe_->channel_reply_subjects.size ()
-                                        >= expected_subject_count_;
-                  }))
+            if (probe_->cv.wait_for (lock, std::chrono::milliseconds (10),
+                                     [probe_, expected_count_, expected_subject_count_] () {
+                                         return probe_->failed
+                                                || probe_->channel_reply_callback_count
+                                                       >= expected_count_
+                                                     && probe_->channel_reply_subjects.size ()
+                                                          >= expected_subject_count_;
+                                     }))
                 return true;
         }
     }
@@ -158,8 +147,7 @@ bool wait_for_channel_reply_callbacks (spot_dispatch_recv_probe_t *probe_,
     std::lock_guard<std::mutex> lock (probe_->mutex);
     return probe_->failed
            || (probe_->channel_reply_callback_count >= expected_count_
-               && probe_->channel_reply_subjects.size ()
-                    >= expected_subject_count_);
+               && probe_->channel_reply_subjects.size () >= expected_subject_count_);
 }
 
 bool wait_for_channel_reply_callbacks_on_poller (
@@ -179,19 +167,15 @@ bool wait_for_channel_reply_callbacks_on_poller (
         std::lock_guard<std::mutex> lock (probe_->mutex);
         if (probe_->failed
             || (probe_->channel_reply_callback_count >= expected_count_
-                && probe_->channel_reply_subjects.size ()
-                     >= expected_subject_count_))
+                && probe_->channel_reply_subjects.size () >= expected_subject_count_))
             return true;
     }
     return false;
 }
 
-void on_spot_dispatch_event (void *,
-                             const zlink_spot_dispatch_info_t *info_,
-                             void *userdata_)
+void on_spot_dispatch_event (void *, const zlink_spot_dispatch_info_t *info_, void *userdata_)
 {
-    spot_dispatch_probe_t *probe =
-      static_cast<spot_dispatch_probe_t *> (userdata_);
+    spot_dispatch_probe_t *probe = static_cast<spot_dispatch_probe_t *> (userdata_);
     std::lock_guard<std::mutex> lock (probe->mutex);
     probe->event = info_ ? static_cast<int> (info_->event) : 0;
     probe->subject_kind = info_ ? static_cast<int> (info_->subject_kind) : 0;
@@ -205,16 +189,15 @@ void on_channel_reply (zlink_request_result_t result_,
                        size_t part_count_,
                        void *userdata_)
 {
-    spot_dispatch_recv_probe_t *probe =
-      static_cast<spot_dispatch_recv_probe_t *> (userdata_);
+    spot_dispatch_recv_probe_t *probe = static_cast<spot_dispatch_recv_probe_t *> (userdata_);
     if (!probe)
         return;
 
     std::lock_guard<std::mutex> lock (probe->mutex);
     probe->channel_reply_result = result_;
     ++probe->channel_reply_callback_count;
-    probe->channel_reply_payloads.push_back (
-      part_count_ > 0 ? msg_to_string (&parts_[0]) : std::string ());
+    probe->channel_reply_payloads.push_back (part_count_ > 0 ? msg_to_string (&parts_[0])
+                                                             : std::string ());
     probe->cv.notify_all ();
 }
 
@@ -222,8 +205,7 @@ void on_spot_dispatch_recv_event (void *spot_,
                                   const zlink_spot_dispatch_info_t *info_,
                                   void *userdata_)
 {
-    spot_dispatch_recv_probe_t *probe =
-      static_cast<spot_dispatch_recv_probe_t *> (userdata_);
+    spot_dispatch_recv_probe_t *probe = static_cast<spot_dispatch_recv_probe_t *> (userdata_);
     if (!probe || !info_)
         return;
 
@@ -251,9 +233,8 @@ void on_spot_dispatch_recv_event (void *spot_,
             size_t topic_len = sizeof (topic);
             memset (&source_rid, 0, sizeof (source_rid));
 
-            const zlink_recv_result_t rc =
-              zlink_subscribe (spot_, &source_rid, &parts, &part_count, topic,
-                               &topic_len, ZLINK_DONTWAIT);
+            const zlink_recv_result_t rc = zlink_subscribe (spot_, &source_rid, &parts, &part_count,
+                                                            topic, &topic_len, ZLINK_DONTWAIT);
             if (rc == ZLINK_RECV_NO_DATA && zlink_errno () == EAGAIN)
                 break;
             if (rc != ZLINK_RECV_OK) {
@@ -265,15 +246,13 @@ void on_spot_dispatch_recv_event (void *spot_,
 
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->subscribe_topics.push_back (std::string (topic, topic_len));
-            probe->subscribe_payloads.push_back (
-              part_count > 0 ? msg_to_string (&parts[0]) : std::string ());
+            probe->subscribe_payloads.push_back (part_count > 0 ? msg_to_string (&parts[0])
+                                                                : std::string ());
             zlink_multipart_close (parts, part_count);
             if (probe->subscribe_new_filter_after_first_payload
                 && !probe->subscription_changed_in_callback) {
                 probe->subscription_changed_in_callback = true;
-                if (zlink_set_subscription (spot_,
-                                            "dispatch.topic.changed")
-                    != ZLINK_CONFIG_OK) {
+                if (zlink_set_subscription (spot_, "dispatch.topic.changed") != ZLINK_CONFIG_OK) {
                     probe->failed = true;
                     probe->last_errno = zlink_errno ();
                 }
@@ -287,9 +266,8 @@ void on_spot_dispatch_recv_event (void *spot_,
             zlink_msg_t *parts = NULL;
             size_t part_count = 0;
 
-            const zlink_recv_result_t rc =
-              zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq,
-                               &parts, &part_count, ZLINK_DONTWAIT);
+            const zlink_recv_result_t rc = zlink_spot_recv (
+              spot_, &source_rid, &spot_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
             if (rc == ZLINK_RECV_NO_DATA && zlink_errno () == EAGAIN)
                 break;
             if (rc != ZLINK_RECV_OK) {
@@ -301,23 +279,20 @@ void on_spot_dispatch_recv_event (void *spot_,
 
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->routed_request_seq = request_seq;
-            probe->routed_source_rid.assign (
-              reinterpret_cast<const char *> (source_rid->data),
-              source_rid->size);
+            probe->routed_source_rid.assign (reinterpret_cast<const char *> (source_rid->data),
+                                             source_rid->size);
             probe->routed_spot_rid.assign (
               spot_rid ? reinterpret_cast<const char *> (spot_rid->data) : "",
               spot_rid ? spot_rid->size : 0);
-            probe->routed_payloads.push_back (
-              part_count > 0 ? msg_to_string (&parts[0]) : std::string ());
+            probe->routed_payloads.push_back (part_count > 0 ? msg_to_string (&parts[0])
+                                                             : std::string ());
             zlink_multipart_close (parts, part_count);
         }
-    } else if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE
-               && probe->timer != NULL
+    } else if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE && probe->timer != NULL
                && info_->subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_TIMER) {
         for (;;) {
             uint64_t fire_count = 0;
-            const zlink_recv_result_t rc = zlink_timer_recv (info_->subject,
-                                                             &fire_count);
+            const zlink_recv_result_t rc = zlink_timer_recv (info_->subject, &fire_count);
             if (rc == ZLINK_RECV_NO_DATA && zlink_errno () == EAGAIN)
                 break;
             if (rc != ZLINK_RECV_OK) {
@@ -331,14 +306,12 @@ void on_spot_dispatch_recv_event (void *spot_,
             probe->timer_fire_counts.push_back (std::to_string (fire_count));
         }
     } else if (info_->event == ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE
-               && info_->subject_kind
-                    == ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER) {
+               && info_->subject_kind == ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER) {
         size_t channel_name_len = 0;
         char channel_name_buf[64];
         memset (channel_name_buf, 0, sizeof (channel_name_buf));
         if (zlink_socket_get_channel_name (info_->subject, channel_name_buf,
-                                           sizeof (channel_name_buf),
-                                           &channel_name_len)
+                                           sizeof (channel_name_buf), &channel_name_len)
             != ZLINK_CONFIG_OK) {
             std::lock_guard<std::mutex> lock (probe->mutex);
             probe->failed = true;
@@ -375,9 +348,8 @@ bool recv_router_request_until (void *router_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink_recv_result_t rc =
-          zlink_router_recv (router_, &source_rid, &source_spot_rid,
-                             &request_seq, &parts, &part_count,
-                             ZLINK_DONTWAIT);
+          zlink_router_recv (router_, &source_rid, &source_spot_rid, &request_seq, &parts,
+                             &part_count, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
             TEST_ASSERT_NOT_NULL (source_rid);
             TEST_ASSERT_TRUE (request_seq != 0);
@@ -386,8 +358,7 @@ bool recv_router_request_until (void *router_,
             if (request_seq_out_)
                 *request_seq_out_ = request_seq;
             if (payload_out_)
-                *payload_out_ =
-                  part_count > 0 ? msg_to_string (&parts[0]) : std::string ();
+                *payload_out_ = part_count > 0 ? msg_to_string (&parts[0]) : std::string ();
             zlink_multipart_close (parts, part_count);
             return true;
         }
@@ -422,8 +393,7 @@ void send_malformed_router_reply (void *router_,
     memcpy (zlink_msg_data (&parts[3]), seq_buf, sizeof (seq_buf));
     memcpy (zlink_msg_data (&parts[4]), &invalid_errno, 1);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_send_rid (router_, peer_rid_, parts, 5,
-                      static_cast<zlink_send_flags_t> (0)));
+      zlink_send_rid (router_, peer_rid_, parts, 5, static_cast<zlink_send_flags_t> (0)));
 }
 
 void test_spot_timer_dispatch_event_and_recv ()
@@ -444,14 +414,11 @@ void test_spot_timer_dispatch_event_and_recv ()
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool fired = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.called; });
+        const bool fired = probe.cv.wait_for (lock, std::chrono::milliseconds (500),
+                                              [&probe] () { return probe.called; });
         TEST_ASSERT_TRUE (fired);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
-                               probe.event);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_SUBJECT_TIMER,
-                               probe.subject_kind);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE, probe.event);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_SUBJECT_TIMER, probe.subject_kind);
         TEST_ASSERT_EQUAL_PTR (timer, probe.subject);
     }
 
@@ -477,33 +444,28 @@ void test_spot_dispatch_subscribe_recv_inside_callback ()
     TEST_ASSERT_NOT_NULL (pub_spot);
 
     set_routing_id_text (pub_spot, "pub-spot");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "dispatch.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "dispatch.topic"));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      sub_spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (sub_spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t part;
     init_string_part (&part, "topic-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic", &part, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool received = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500), [&probe]() {
+        const bool received =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
               return probe.failed || probe.subscribe_payloads.size () >= 1;
           });
         TEST_ASSERT_TRUE (received);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("dispatch.topic",
-                                  probe.subscribe_topics[0].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("topic-payload",
-                                  probe.subscribe_payloads[0].c_str ());
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
-                               probe.events[0]);
+        TEST_ASSERT_EQUAL_STRING ("dispatch.topic", probe.subscribe_topics[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("topic-payload", probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE, probe.events[0]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
@@ -525,32 +487,29 @@ void test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot ()
     TEST_ASSERT_NOT_NULL (idle_spot);
     TEST_ASSERT_NOT_NULL (pub_spot);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "dispatch.topic.one"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "dispatch.topic.one"));
 
     spot_dispatch_recv_probe_t sub_probe;
     spot_dispatch_recv_probe_t idle_probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      sub_spot, &on_spot_dispatch_recv_event, &sub_probe));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      idle_spot, &on_spot_dispatch_recv_event, &idle_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (sub_spot, &on_spot_dispatch_recv_event, &sub_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (idle_spot, &on_spot_dispatch_recv_event, &idle_probe));
 
     zlink_msg_t part;
     init_string_part (&part, "isolated-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.one", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.one", &part, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (sub_probe.mutex);
-        const bool received = sub_probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500), [&sub_probe]() {
+        const bool received =
+          sub_probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&sub_probe] () {
               return sub_probe.failed || sub_probe.subscribe_payloads.size () >= 1;
           });
         TEST_ASSERT_TRUE (received);
         TEST_ASSERT_FALSE (sub_probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, sub_probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("isolated-payload",
-                                  sub_probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("isolated-payload", sub_probe.subscribe_payloads[0].c_str ());
     }
 
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
@@ -580,13 +539,12 @@ void test_spot_dispatch_subscribe_drain_until_eagain ()
     TEST_ASSERT_NOT_NULL (sub_spot);
     TEST_ASSERT_NOT_NULL (pub_spot);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "dispatch.topic.drain"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "dispatch.topic.drain"));
 
     spot_dispatch_recv_probe_t probe;
     probe.block_first_callback = true;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      sub_spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (sub_spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t part1;
     zlink_msg_t part2;
@@ -595,22 +553,19 @@ void test_spot_dispatch_subscribe_drain_until_eagain ()
     init_string_part (&part2, "payload-2");
     init_string_part (&part3, "payload-3");
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.drain", &part1, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.drain", &part1, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool entered = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.first_callback_entered; });
+        const bool entered = probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
+            return probe.first_callback_entered;
+        });
         TEST_ASSERT_TRUE (entered);
         TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.drain", &part2, 1, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.drain", &part3, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.drain", &part2, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.drain", &part3, 1, 0));
 
     {
         std::lock_guard<std::mutex> lock (probe.mutex);
@@ -620,22 +575,17 @@ void test_spot_dispatch_subscribe_drain_until_eagain ()
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool drained = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed
-                     || (probe.subscribe_payloads.size () >= 3
-                         && probe.inflight == 0);
+        const bool drained =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (1000), [&probe] () {
+              return probe.failed || (probe.subscribe_payloads.size () >= 3 && probe.inflight == 0);
           });
         TEST_ASSERT_TRUE (drained);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
         TEST_ASSERT_EQUAL_UINT (3, probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("payload-1",
-                                  probe.subscribe_payloads[0].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("payload-2",
-                                  probe.subscribe_payloads[1].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("payload-3",
-                                  probe.subscribe_payloads[2].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("payload-1", probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("payload-2", probe.subscribe_payloads[1].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("payload-3", probe.subscribe_payloads[2].c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
@@ -655,48 +605,43 @@ void test_spot_dispatch_subscription_change_applies_to_later_fanout ()
     TEST_ASSERT_NOT_NULL (sub_spot);
     TEST_ASSERT_NOT_NULL (pub_spot);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "dispatch.topic.initial"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "dispatch.topic.initial"));
 
     spot_dispatch_recv_probe_t probe;
     probe.subscribe_new_filter_after_first_payload = true;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      sub_spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (sub_spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t first;
     init_string_part (&first, "initial-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.initial", &first, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.initial", &first, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool changed = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
+        const bool changed =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (1000), [&probe] () {
               return probe.failed || probe.subscription_changed_in_callback;
           });
         TEST_ASSERT_TRUE (changed);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("initial-payload",
-                                  probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("initial-payload", probe.subscribe_payloads[0].c_str ());
     }
 
     zlink_msg_t second;
     init_string_part (&second, "changed-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "dispatch.topic.changed", &second, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "dispatch.topic.changed", &second, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool received = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
+        const bool received =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (1000), [&probe] () {
               return probe.failed || probe.subscribe_payloads.size () >= 2;
           });
         TEST_ASSERT_TRUE (received);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (2, probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("changed-payload",
-                                  probe.subscribe_payloads[1].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("changed-payload", probe.subscribe_payloads[1].c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
@@ -725,31 +670,28 @@ void test_spot_dispatch_routed_recv_inside_callback ()
     const zlink_routing_id_t router_rid = get_routing_id_value (router);
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      receiver, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (receiver, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t part;
     init_string_part (&part, "routed-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
-      router, &node_rid, &receiver_rid, &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_send_spot (router, &node_rid, &receiver_rid, &part, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool received = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500), [&probe]() {
+        const bool received =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
               return probe.failed || probe.routed_payloads.size () >= 1;
           });
         TEST_ASSERT_TRUE (received);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.routed_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("routed-payload",
-                                  probe.routed_payloads[0].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("router-dispatch",
-                                  probe.routed_source_rid.c_str ());
+        TEST_ASSERT_EQUAL_STRING ("routed-payload", probe.routed_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("router-dispatch", probe.routed_source_rid.c_str ());
         TEST_ASSERT_EQUAL_STRING ("", probe.routed_spot_rid.c_str ());
         TEST_ASSERT_EQUAL_UINT64 (0, probe.routed_request_seq);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE,
-                               probe.events[0]);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE, probe.events[0]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver));
@@ -778,8 +720,8 @@ void test_spot_dispatch_routed_drain_until_eagain ()
 
     spot_dispatch_recv_probe_t probe;
     probe.block_first_callback = true;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      receiver, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (receiver, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t part1;
     zlink_msg_t part2;
@@ -788,22 +730,22 @@ void test_spot_dispatch_routed_drain_until_eagain ()
     init_string_part (&part2, "routed-2");
     init_string_part (&part3, "routed-3");
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
-      router, &node_rid, &receiver_rid, &part1, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_send_spot (router, &node_rid, &receiver_rid, &part1, 1, 0));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool entered = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.first_callback_entered; });
+        const bool entered = probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
+            return probe.first_callback_entered;
+        });
         TEST_ASSERT_TRUE (entered);
         TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
-      router, &node_rid, &receiver_rid, &part2, 1, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (
-      router, &node_rid, &receiver_rid, &part3, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_send_spot (router, &node_rid, &receiver_rid, &part2, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_router_send_spot (router, &node_rid, &receiver_rid, &part3, 1, 0));
 
     {
         std::lock_guard<std::mutex> lock (probe.mutex);
@@ -813,11 +755,9 @@ void test_spot_dispatch_routed_drain_until_eagain ()
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool drained = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (1000), [&probe]() {
-              return probe.failed
-                     || (probe.routed_payloads.size () >= 3
-                         && probe.inflight == 0);
+        const bool drained =
+          probe.cv.wait_for (lock, std::chrono::milliseconds (1000), [&probe] () {
+              return probe.failed || (probe.routed_payloads.size () >= 3 && probe.inflight == 0);
           });
         TEST_ASSERT_TRUE (drained);
         TEST_ASSERT_FALSE (probe.failed);
@@ -826,8 +766,7 @@ void test_spot_dispatch_routed_drain_until_eagain ()
         TEST_ASSERT_EQUAL_STRING ("routed-1", probe.routed_payloads[0].c_str ());
         TEST_ASSERT_EQUAL_STRING ("routed-2", probe.routed_payloads[1].c_str ());
         TEST_ASSERT_EQUAL_STRING ("routed-3", probe.routed_payloads[2].c_str ());
-        TEST_ASSERT_EQUAL_STRING ("router-routed-drain",
-                                  probe.routed_source_rid.c_str ());
+        TEST_ASSERT_EQUAL_STRING ("router-routed-drain", probe.routed_source_rid.c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&receiver));
@@ -849,36 +788,30 @@ void test_spot_dispatch_channel_reply_inside_callback ()
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (router);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://spot-dispatch-channel-reply"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://spot-dispatch-channel-reply"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://spot-dispatch-channel-reply"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer, "inproc://spot-dispatch-channel-reply"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_channel_dealer_manual (node, "svc-dispatch",
-                                                    dealer));
+      zlink_spot_node_attach_channel_dealer_manual (node, "svc-dispatch", dealer));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t request;
     init_string_part (&request, "channel-request");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-dispatch", &request, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-dispatch", &request, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
 
     const zlink_routing_id_t *source_rid = NULL;
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (500);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
     for (;;) {
-        const zlink_recv_result_t rc =
-          zlink_router_recv (router, &source_rid, &source_spot_rid,
-                             &request_seq, &parts, &part_count,
-                             ZLINK_DONTWAIT);
+        const zlink_recv_result_t rc = zlink_router_recv (
+          router, &source_rid, &source_spot_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK)
             break;
         TEST_ASSERT_TRUE (rc == ZLINK_RECV_NO_DATA && zlink_errno () == EAGAIN);
@@ -891,23 +824,19 @@ void test_spot_dispatch_channel_reply_inside_callback ()
 
     zlink_msg_t reply;
     init_string_part (&reply, "channel-reply");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_reply (router, source_rid, request_seq, &reply, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_reply (router, source_rid, request_seq, &reply, 1));
     zlink_multipart_close (parts, part_count);
 
     {
-        TEST_ASSERT_TRUE (
-          wait_for_channel_reply_callbacks (&probe, spot, 1, 500));
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks (&probe, spot, 1, 500));
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("channel-reply",
-                                  probe.channel_reply_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("channel-reply", probe.channel_reply_payloads[0].c_str ());
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, probe.channel_reply_result);
         TEST_ASSERT_EQUAL_PTR (dealer, probe.channel_reply_subject);
         TEST_ASSERT_EQUAL_STRING ("svc-dispatch", probe.channel_name.c_str ());
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE,
-                               probe.events[0]);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE, probe.events[0]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
@@ -930,23 +859,21 @@ void test_spot_dispatch_callbacks_are_serialized ()
     TEST_ASSERT_NOT_NULL (pub_spot);
     TEST_ASSERT_NOT_NULL (timer);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (spot, "serialize.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "serialize.topic"));
 
     spot_dispatch_recv_probe_t probe;
     probe.timer = timer;
     probe.block_first_callback = true;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event,
-                                         &probe));
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_start (timer, 20 * 1000 * 1000ULL, 1));
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool entered = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500),
-          [&probe]() { return probe.first_callback_entered; });
+        const bool entered = probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
+            return probe.first_callback_entered;
+        });
         TEST_ASSERT_TRUE (entered);
         TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
         TEST_ASSERT_EQUAL_INT (1, static_cast<int> (probe.callback_count));
@@ -954,8 +881,7 @@ void test_spot_dispatch_callbacks_are_serialized ()
 
     zlink_msg_t part;
     init_string_part (&part, "serialized-payload");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "serialize.topic", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "serialize.topic", &part, 1, 0));
 
     {
         std::lock_guard<std::mutex> lock (probe.mutex);
@@ -966,25 +892,20 @@ void test_spot_dispatch_callbacks_are_serialized ()
 
     {
         std::unique_lock<std::mutex> lock (probe.mutex);
-        const bool done = probe.cv.wait_for (
-          lock, std::chrono::milliseconds (500), [&probe]() {
-              return probe.failed
-                     || (probe.timer_fire_counts.size () >= 1
-                         && probe.subscribe_payloads.size () >= 1
-                         && probe.callback_count >= 2 && probe.inflight == 0);
-          });
+        const bool done = probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
+            return probe.failed
+                   || (probe.timer_fire_counts.size () >= 1 && probe.subscribe_payloads.size () >= 1
+                       && probe.callback_count >= 2 && probe.inflight == 0);
+        });
         TEST_ASSERT_TRUE (done);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_INT (1, probe.max_inflight);
         TEST_ASSERT_EQUAL_UINT (1, probe.timer_fire_counts.size ());
         TEST_ASSERT_EQUAL_UINT (1, probe.subscribe_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("serialized-payload",
-                                  probe.subscribe_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("serialized-payload", probe.subscribe_payloads[0].c_str ());
         TEST_ASSERT_TRUE (probe.events.size () >= 2);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
-                               probe.events[0]);
-        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
-                               probe.events[1]);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE, probe.events[0]);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE, probe.events[1]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_timer_destroy (&timer));
@@ -1013,29 +934,27 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router_a, "inproc://spot-dispatch-a"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router_b, "inproc://spot-dispatch-b"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer_a, "inproc://spot-dispatch-a"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer_b, "inproc://spot-dispatch-b"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_a, "inproc://spot-dispatch-a"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer_b, "inproc://spot-dispatch-b"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_channel_dealer_manual (node, "svc-a", dealer_a));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_channel_dealer_manual (node, "svc-b", dealer_b));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t request_a;
     zlink_msg_t request_b;
     init_string_part (&request_a, "request-a");
     init_string_part (&request_b, "request-b");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-a", &request_a, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 1000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-b", &request_b, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-a", &request_a, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-b", &request_b, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
     void *completion_poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (completion_poller);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1048,11 +967,11 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
     uint64_t request_seq_a = 0;
     uint64_t request_seq_b = 0;
     std::string payload;
-    TEST_ASSERT_TRUE (recv_router_request_until (router_a, &source_a,
-                                                 &request_seq_a, &payload, 500));
+    TEST_ASSERT_TRUE (
+      recv_router_request_until (router_a, &source_a, &request_seq_a, &payload, 500));
     TEST_ASSERT_EQUAL_STRING ("request-a", payload.c_str ());
-    TEST_ASSERT_TRUE (recv_router_request_until (router_b, &source_b,
-                                                 &request_seq_b, &payload, 500));
+    TEST_ASSERT_TRUE (
+      recv_router_request_until (router_b, &source_b, &request_seq_b, &payload, 500));
     TEST_ASSERT_EQUAL_STRING ("request-b", payload.c_str ());
 
     zlink_msg_t reply_a;
@@ -1065,26 +984,23 @@ void test_spot_dispatch_channel_reply_multiple_dealers_exactly_once ()
       zlink_router_reply (router_b, &source_b, request_seq_b, &reply_b, 1));
 
     {
-        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
-          &probe, completion_poller, 2, 1000));
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks_on_poller (&probe, completion_poller, 2, 1000));
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_payloads.size ());
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_callback_count);
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_channel_names.size ());
         TEST_ASSERT_EQUAL_UINT (2, probe.channel_reply_subjects.size ());
-        TEST_ASSERT_TRUE (
-          (probe.channel_reply_payloads[0] == "reply-a"
-           && probe.channel_reply_payloads[1] == "reply-b")
-          || (probe.channel_reply_payloads[0] == "reply-b"
-              && probe.channel_reply_payloads[1] == "reply-a"));
-        TEST_ASSERT_TRUE (
-          (probe.channel_reply_channel_names[0] == "svc-a"
-           && probe.channel_reply_channel_names[1] == "svc-b")
-          || (probe.channel_reply_channel_names[0] == "svc-b"
-              && probe.channel_reply_channel_names[1] == "svc-a"));
-        TEST_ASSERT_TRUE (probe.channel_reply_subjects[0]
-                          != probe.channel_reply_subjects[1]);
+        TEST_ASSERT_TRUE ((probe.channel_reply_payloads[0] == "reply-a"
+                           && probe.channel_reply_payloads[1] == "reply-b")
+                          || (probe.channel_reply_payloads[0] == "reply-b"
+                              && probe.channel_reply_payloads[1] == "reply-a"));
+        TEST_ASSERT_TRUE ((probe.channel_reply_channel_names[0] == "svc-a"
+                           && probe.channel_reply_channel_names[1] == "svc-b")
+                          || (probe.channel_reply_channel_names[0] == "svc-b"
+                              && probe.channel_reply_channel_names[1] == "svc-a"));
+        TEST_ASSERT_TRUE (probe.channel_reply_subjects[0] != probe.channel_reply_subjects[1]);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller, spot));
@@ -1113,39 +1029,36 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (router);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://spot-dispatch-shared-channel"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://spot-dispatch-shared-channel"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://spot-dispatch-shared-channel"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer, "inproc://spot-dispatch-shared-channel"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_channel_dealer_manual (node, "svc-shared",
-                                                    dealer));
+      zlink_spot_node_attach_channel_dealer_manual (node, "svc-shared", dealer));
 
     spot_dispatch_recv_probe_t probe_a;
     spot_dispatch_recv_probe_t probe_b;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot_a, &on_spot_dispatch_recv_event, &probe_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot_b, &on_spot_dispatch_recv_event, &probe_b));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot_a, &on_spot_dispatch_recv_event, &probe_a));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot_b, &on_spot_dispatch_recv_event, &probe_b));
 
     zlink_msg_t request_a;
     zlink_msg_t request_b;
     init_string_part (&request_a, "request-shared-a");
     init_string_part (&request_b, "request-shared-b");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot_a, "svc-shared", &request_a, 1, &on_channel_reply, &probe_a,
-      static_cast<zlink_send_flags_t> (0), 1000));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot_b, "svc-shared", &request_b, 1, &on_channel_reply, &probe_b,
-      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot_a, "svc-shared", &request_a, 1, &on_channel_reply, &probe_a,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot_b, "svc-shared", &request_b, 1, &on_channel_reply, &probe_b,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
     void *completion_poller_a = zlink_poller_new ();
     void *completion_poller_b = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (completion_poller_a);
     TEST_ASSERT_NOT_NULL (completion_poller_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
-      completion_poller_a, spot_a, NULL, ZLINK_POLLCOMPLETION));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
-      completion_poller_b, spot_b, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (completion_poller_a, spot_a, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_poller_add (completion_poller_b, spot_b, NULL, ZLINK_POLLCOMPLETION));
 
     zlink_routing_id_t source_a;
     zlink_routing_id_t source_b;
@@ -1155,12 +1068,10 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
     uint64_t request_seq_b = 0;
     std::string payload_a;
     std::string payload_b;
-    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_a,
-                                                 &request_seq_a, &payload_a,
-                                                 500));
-    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_b,
-                                                 &request_seq_b, &payload_b,
-                                                 500));
+    TEST_ASSERT_TRUE (
+      recv_router_request_until (router, &source_a, &request_seq_a, &payload_a, 500));
+    TEST_ASSERT_TRUE (
+      recv_router_request_until (router, &source_b, &request_seq_b, &payload_b, 500));
     if (payload_a == "request-shared-b") {
         std::swap (source_a, source_b);
         std::swap (request_seq_a, request_seq_b);
@@ -1173,37 +1084,31 @@ void test_spot_dispatch_channel_reply_shared_dealer_per_request_spot ()
     zlink_msg_t reply_b;
     init_string_part (&reply_a, "reply-shared-a");
     init_string_part (&reply_b, "reply-shared-b");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_reply (router, &source_a, request_seq_a, &reply_a, 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_reply (router, &source_b, request_seq_b, &reply_b, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_reply (router, &source_a, request_seq_a, &reply_a, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_reply (router, &source_b, request_seq_b, &reply_b, 1));
 
     {
-        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
-          &probe_a, completion_poller_a, 1, 1000));
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks_on_poller (&probe_a, completion_poller_a, 1, 1000));
         std::lock_guard<std::mutex> lock (probe_a.mutex);
         TEST_ASSERT_FALSE (probe_a.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe_a.channel_reply_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("reply-shared-a",
-                                  probe_a.channel_reply_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("reply-shared-a", probe_a.channel_reply_payloads[0].c_str ());
         TEST_ASSERT_EQUAL_PTR (dealer, probe_a.channel_reply_subject);
     }
 
     {
-        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
-          &probe_b, completion_poller_b, 1, 1000));
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks_on_poller (&probe_b, completion_poller_b, 1, 1000));
         std::lock_guard<std::mutex> lock (probe_b.mutex);
         TEST_ASSERT_FALSE (probe_b.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe_b.channel_reply_payloads.size ());
-        TEST_ASSERT_EQUAL_STRING ("reply-shared-b",
-                                  probe_b.channel_reply_payloads[0].c_str ());
+        TEST_ASSERT_EQUAL_STRING ("reply-shared-b", probe_b.channel_reply_payloads[0].c_str ());
         TEST_ASSERT_EQUAL_PTR (dealer, probe_b.channel_reply_subject);
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_remove (completion_poller_b, spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_remove (completion_poller_a, spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller_b, spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller_a, spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller_b));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&completion_poller_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
@@ -1227,35 +1132,30 @@ void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (router);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://spot-dispatch-timeout"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://spot-dispatch-timeout"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://spot-dispatch-timeout"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer, "inproc://spot-dispatch-timeout"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_channel_dealer_manual (node, "svc-timeout",
-                                                    dealer));
+      zlink_spot_node_attach_channel_dealer_manual (node, "svc-timeout", dealer));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t request;
     init_string_part (&request, "timeout-request");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-timeout", &request, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 30));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-timeout", &request, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 30));
 
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
     uint64_t request_seq = 0;
     std::string payload;
-    TEST_ASSERT_TRUE (
-      recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
+    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
     TEST_ASSERT_EQUAL_STRING ("timeout-request", payload.c_str ());
 
     {
-        TEST_ASSERT_TRUE (
-          wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
@@ -1264,8 +1164,7 @@ void test_spot_dispatch_channel_reply_timeout_late_reply_no_double_completion ()
 
     zlink_msg_t reply;
     init_string_part (&reply, "late-reply");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_reply (router, &source_rid, request_seq, &reply, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_reply (router, &source_rid, request_seq, &reply, 1));
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
     {
@@ -1295,55 +1194,48 @@ void test_spot_dispatch_channel_reply_close_late_reply_no_double_completion ()
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (router);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://spot-dispatch-close"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer, "inproc://spot-dispatch-close"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://spot-dispatch-close"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://spot-dispatch-close"));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_node_attach_channel_dealer_manual (node, "svc-close", dealer));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t request;
     init_string_part (&request, "close-request");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-close", &request, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-close", &request, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
 
     zlink_routing_id_t source_rid;
     memset (&source_rid, 0, sizeof (source_rid));
     uint64_t request_seq = 0;
     std::string payload;
-    TEST_ASSERT_TRUE (
-      recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
+    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
     TEST_ASSERT_EQUAL_STRING ("close-request", payload.c_str ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
 
     {
-        TEST_ASSERT_TRUE (
-          wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
+        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks (&probe, spot, 1, 1000, 0));
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED,
-                               probe.channel_reply_result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED, probe.channel_reply_result);
     }
 
     zlink_msg_t reply;
     init_string_part (&reply, "late-close-reply");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_reply (router, &source_rid, request_seq, &reply, 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_reply (router, &source_rid, request_seq, &reply, 1));
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
     {
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_payloads.size ());
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED,
-                               probe.channel_reply_result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED, probe.channel_reply_result);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -1365,23 +1257,20 @@ void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
     TEST_ASSERT_NOT_NULL (dealer);
     TEST_ASSERT_NOT_NULL (router);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://spot-dispatch-malformed"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, "inproc://spot-dispatch-malformed"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://spot-dispatch-malformed"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer, "inproc://spot-dispatch-malformed"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_attach_channel_dealer_manual (node, "svc-malformed",
-                                                    dealer));
+      zlink_spot_node_attach_channel_dealer_manual (node, "svc-malformed", dealer));
 
     spot_dispatch_recv_probe_t probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
-      spot, &on_spot_dispatch_recv_event, &probe));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (spot, &on_spot_dispatch_recv_event, &probe));
 
     zlink_msg_t request;
     init_string_part (&request, "malformed-request");
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_channel (
-      spot, "svc-malformed", &request, 1, &on_channel_reply, &probe,
-      static_cast<zlink_send_flags_t> (0), 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_request_channel (spot, "svc-malformed", &request, 1, &on_channel_reply, &probe,
+                                  static_cast<zlink_send_flags_t> (0), 1000));
     void *completion_poller = zlink_poller_new ();
     TEST_ASSERT_NOT_NULL (completion_poller);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1391,27 +1280,24 @@ void test_spot_dispatch_channel_reply_malformed_reply_protocol_error_once ()
     memset (&source_rid, 0, sizeof (source_rid));
     uint64_t request_seq = 0;
     std::string payload;
-    TEST_ASSERT_TRUE (
-      recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
+    TEST_ASSERT_TRUE (recv_router_request_until (router, &source_rid, &request_seq, &payload, 500));
     TEST_ASSERT_EQUAL_STRING ("malformed-request", payload.c_str ());
     send_malformed_router_reply (router, &source_rid, request_seq);
 
     {
-        TEST_ASSERT_TRUE (wait_for_channel_reply_callbacks_on_poller (
-          &probe, completion_poller, 1, 1000));
+        TEST_ASSERT_TRUE (
+          wait_for_channel_reply_callbacks_on_poller (&probe, completion_poller, 1, 1000));
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_FALSE (probe.failed);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR,
-                               probe.channel_reply_result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR, probe.channel_reply_result);
     }
 
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
     {
         std::lock_guard<std::mutex> lock (probe.mutex);
         TEST_ASSERT_EQUAL_UINT (1, probe.channel_reply_callback_count);
-        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR,
-                               probe.channel_reply_result);
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR, probe.channel_reply_result);
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (completion_poller, spot));

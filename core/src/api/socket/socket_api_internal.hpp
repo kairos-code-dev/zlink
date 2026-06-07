@@ -51,8 +51,7 @@ static inline socket_handle_t as_socket_handle (void *s_)
 
 static inline bool is_stream_type (socket_handle_t handle_)
 {
-    return handle_.socket
-           && handle_.socket->socket_type () == ZLINK_CORE_SOCKET_STREAM;
+    return handle_.socket && handle_.socket->socket_type () == ZLINK_CORE_SOCKET_STREAM;
 }
 
 static inline int socket_type (socket_handle_t handle_)

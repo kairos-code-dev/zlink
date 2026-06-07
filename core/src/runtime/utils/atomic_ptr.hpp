@@ -7,8 +7,7 @@
 
 #if defined ZLINK_FORCE_MUTEXES
 #define ZLINK_ATOMIC_PTR_MUTEX
-#elif (defined __cplusplus && __cplusplus >= 201103L)                          \
-  || (defined _MSC_VER && _MSC_VER >= 1900)
+#elif (defined __cplusplus && __cplusplus >= 201103L) || (defined _MSC_VER && _MSC_VER >= 1900)
 #define ZLINK_ATOMIC_PTR_CXX11
 #elif defined ZLINK_HAVE_ATOMIC_INTRINSICS
 #define ZLINK_ATOMIC_PTR_INTRINSIC
@@ -20,8 +19,7 @@
 #define ZLINK_ATOMIC_PTR_TILE
 #elif defined ZLINK_HAVE_WINDOWS
 #define ZLINK_ATOMIC_PTR_WINDOWS
-#elif (defined ZLINK_HAVE_SOLARIS || defined ZLINK_HAVE_NETBSD                     \
-       || defined ZLINK_HAVE_GNU)
+#elif (defined ZLINK_HAVE_SOLARIS || defined ZLINK_HAVE_NETBSD || defined ZLINK_HAVE_GNU)
 #define ZLINK_ATOMIC_PTR_ATOMIC_H
 #else
 #define ZLINK_ATOMIC_PTR_MUTEX
@@ -60,22 +58,20 @@ inline void *atomic_xchg_ptr (void **ptr_,
     return arch_atomic_exchange (ptr_, val_);
 #elif defined ZLINK_ATOMIC_PTR_X86
     void *old;
-    __asm__ volatile("lock; xchg %0, %2"
-                     : "=r"(old), "=m"(*ptr_)
-                     : "m"(*ptr_), "0"(val_));
+    __asm__ volatile ("lock; xchg %0, %2" : "=r"(old), "=m"(*ptr_) : "m"(*ptr_), "0"(val_));
     return old;
 #elif defined ZLINK_ATOMIC_PTR_ARM
     void *old;
     unsigned int flag;
-    __asm__ volatile("       dmb     sy\n\t"
-                     "1:     ldrex   %1, [%3]\n\t"
-                     "       strex   %0, %4, [%3]\n\t"
-                     "       teq     %0, #0\n\t"
-                     "       bne     1b\n\t"
-                     "       dmb     sy\n\t"
-                     : "=&r"(flag), "=&r"(old), "+Qo"(*ptr_)
-                     : "r"(ptr_), "r"(val_)
-                     : "cc");
+    __asm__ volatile ("       dmb     sy\n\t"
+                      "1:     ldrex   %1, [%3]\n\t"
+                      "       strex   %0, %4, [%3]\n\t"
+                      "       teq     %0, #0\n\t"
+                      "       bne     1b\n\t"
+                      "       dmb     sy\n\t"
+                      : "=&r"(flag), "=&r"(old), "+Qo"(*ptr_)
+                      : "r"(ptr_), "r"(val_)
+                      : "cc");
     return old;
 #elif defined ZLINK_ATOMIC_PTR_MUTEX
     _sync.lock ();
@@ -98,12 +94,10 @@ inline void *atomic_cas (void *volatile *ptr_,
                          ) ZLINK_NOEXCEPT
 {
 #if defined ZLINK_ATOMIC_PTR_WINDOWS
-    return InterlockedCompareExchangePointer ((volatile PVOID *) ptr_, val_,
-                                              cmp_);
+    return InterlockedCompareExchangePointer ((volatile PVOID *) ptr_, val_, cmp_);
 #elif defined ZLINK_ATOMIC_PTR_INTRINSIC
     void *old = cmp_;
-    __atomic_compare_exchange_n (ptr_, &old, val_, false, __ATOMIC_RELEASE,
-                                 __ATOMIC_ACQUIRE);
+    __atomic_compare_exchange_n (ptr_, &old, val_, false, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE);
     return old;
 #elif defined ZLINK_ATOMIC_PTR_ATOMIC_H
     return atomic_cas_ptr (ptr_, cmp_, val_);
@@ -111,26 +105,26 @@ inline void *atomic_cas (void *volatile *ptr_,
     return arch_atomic_val_compare_and_exchange (ptr_, cmp_, val_);
 #elif defined ZLINK_ATOMIC_PTR_X86
     void *old;
-    __asm__ volatile("lock; cmpxchg %2, %3"
-                     : "=a"(old), "=m"(*ptr_)
-                     : "r"(val_), "m"(*ptr_), "0"(cmp_)
-                     : "cc");
+    __asm__ volatile ("lock; cmpxchg %2, %3"
+                      : "=a"(old), "=m"(*ptr_)
+                      : "r"(val_), "m"(*ptr_), "0"(cmp_)
+                      : "cc");
     return old;
 #elif defined ZLINK_ATOMIC_PTR_ARM
     void *old;
     unsigned int flag;
-    __asm__ volatile("       dmb     sy\n\t"
-                     "1:     ldrex   %1, [%3]\n\t"
-                     "       mov     %0, #0\n\t"
-                     "       teq     %1, %4\n\t"
-                     "       it      eq\n\t"
-                     "       strexeq %0, %5, [%3]\n\t"
-                     "       teq     %0, #0\n\t"
-                     "       bne     1b\n\t"
-                     "       dmb     sy\n\t"
-                     : "=&r"(flag), "=&r"(old), "+Qo"(*ptr_)
-                     : "r"(ptr_), "r"(cmp_), "r"(val_)
-                     : "cc");
+    __asm__ volatile ("       dmb     sy\n\t"
+                      "1:     ldrex   %1, [%3]\n\t"
+                      "       mov     %0, #0\n\t"
+                      "       teq     %1, %4\n\t"
+                      "       it      eq\n\t"
+                      "       strexeq %0, %5, [%3]\n\t"
+                      "       teq     %0, #0\n\t"
+                      "       bne     1b\n\t"
+                      "       dmb     sy\n\t"
+                      : "=&r"(flag), "=&r"(old), "+Qo"(*ptr_)
+                      : "r"(ptr_), "r"(cmp_), "r"(val_)
+                      : "cc");
     return old;
 #elif defined ZLINK_ATOMIC_PTR_MUTEX
     _sync.lock ();
@@ -213,10 +207,7 @@ struct atomic_value_t
 {
     atomic_value_t (const int value_) ZLINK_NOEXCEPT : _value (value_) {}
 
-    atomic_value_t (const atomic_value_t &src_) ZLINK_NOEXCEPT
-        : _value (src_.load ())
-    {
-    }
+    atomic_value_t (const atomic_value_t &src_) ZLINK_NOEXCEPT : _value (src_.load ()) {}
 
     void store (const int value_) ZLINK_NOEXCEPT
     {

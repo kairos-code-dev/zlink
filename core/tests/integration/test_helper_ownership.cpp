@@ -22,39 +22,33 @@ void test_send_part_consumes_input_and_requires_reinit_before_reuse ()
     void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
     void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (receiver, "inproc://helper-ownership-send"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (sender, "inproc://helper-ownership-send"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, "inproc://helper-ownership-send"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, "inproc://helper-ownership-send"));
 
     zlink_msg_t part;
     init_part (&part, "first");
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OK,
-      zlink_send_part (sender, &part, static_cast<zlink_send_flags_t> (0),
-                       ZLINK_PART_FINAL));
+      zlink_send_part (sender, &part, static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL));
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&part));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 6));
     memcpy (zlink_msg_data (&part), "second", 6);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OK,
-      zlink_send_part (sender, &part, static_cast<zlink_send_flags_t> (0),
-                       ZLINK_PART_FINAL));
+      zlink_send_part (sender, &part, static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL));
     TEST_ASSERT_EQUAL_UINT64 (0, zlink_msg_size (&part));
 
     zlink_msg_t *received = NULL;
     size_t part_count = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (receiver, NULL, &received, &part_count,
-                  static_cast<zlink_recv_flags_t> (0)));
+      zlink_recv (receiver, NULL, &received, &part_count, static_cast<zlink_recv_flags_t> (0)));
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_MEMORY ("first", zlink_msg_data (&received[0]), 5);
     zlink_multipart_close (received, part_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv (receiver, NULL, &received, &part_count,
-                  static_cast<zlink_recv_flags_t> (0)));
+      zlink_recv (receiver, NULL, &received, &part_count, static_cast<zlink_recv_flags_t> (0)));
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_MEMORY ("second", zlink_msg_data (&received[0]), 6);
     zlink_multipart_close (received, part_count);
@@ -65,10 +59,8 @@ void test_recv_part_returns_caller_owned_message_handle ()
     void *receiver = test_context_socket (ZLINK_SOCKET_PAIR);
     void *sender = test_context_socket (ZLINK_SOCKET_PAIR);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (receiver, "inproc://helper-ownership-recv"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (sender, "inproc://helper-ownership-recv"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, "inproc://helper-ownership-recv"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sender, "inproc://helper-ownership-recv"));
 
     zlink_msg_t send_a;
     zlink_msg_t send_b;
@@ -86,15 +78,13 @@ void test_recv_part_returns_caller_owned_message_handle ()
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_part (receiver, NULL, &recv_a, &has_more,
-                       static_cast<zlink_recv_flags_t> (0)));
+      zlink_recv_part (receiver, NULL, &recv_a, &has_more, static_cast<zlink_recv_flags_t> (0)));
     TEST_ASSERT_EQUAL_INT (0, has_more);
     TEST_ASSERT_EQUAL_MEMORY ("owned-a", zlink_msg_data (&recv_a), 7);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&recv_a));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_recv_part (receiver, NULL, &recv_b, &has_more,
-                       static_cast<zlink_recv_flags_t> (0)));
+      zlink_recv_part (receiver, NULL, &recv_b, &has_more, static_cast<zlink_recv_flags_t> (0)));
     TEST_ASSERT_EQUAL_INT (0, has_more);
     TEST_ASSERT_EQUAL_MEMORY ("owned-b", zlink_msg_data (&recv_b), 7);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&recv_b));

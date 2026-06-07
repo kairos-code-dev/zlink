@@ -63,7 +63,10 @@ class auto_send_call_t
 
     task_t<void> submit () { return _inner.submit (); }
 
-    void submit (std::function<void (result_t<void>)> callback) { _inner.submit (std::move (callback)); }
+    void submit (std::function<void (result_t<void>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
 
   private:
     send_call_t _inner;
@@ -72,7 +75,10 @@ class auto_send_call_t
 template <typename TReply> class auto_request_call_t
 {
   public:
-    explicit auto_request_call_t (request_call_t<zlink::message_t> inner) : _inner (std::move (inner)) {}
+    explicit auto_request_call_t (request_call_t<zlink::message_t> inner) :
+        _inner (std::move (inner))
+    {
+    }
 
     auto_request_call_t &packet_name (std::string name)
     {
@@ -109,9 +115,11 @@ template <typename TReply> class auto_request_call_t
         auto result = _inner.submit ().consume_result ();
         if (!result) {
             return task_t<TReply> (result_t<TReply>::failure (
-              result.error_code (), result.error () ? result.error ()->message : "stream request failed"));
+              result.error_code (),
+              result.error () ? result.error ()->message : "stream request failed"));
         }
-        return task_t<TReply> (result_t<TReply>::success (codec_traits<TReply>::decode (result.value ())));
+        return task_t<TReply> (
+          result_t<TReply>::success (codec_traits<TReply>::decode (result.value ())));
     }
 
     void submit (std::function<void (result_t<TReply>)> callback)
@@ -132,18 +140,22 @@ template <typename T> auto_send_call_t send (connector_t &connector, const T &pa
 template <typename TReply, typename TRequest>
 auto_request_call_t<TReply> request (connector_t &connector, const TRequest &payload)
 {
-    return auto_request_call_t<TReply> (connector.request<zlink::message_t> (encode_packet (payload)));
+    return auto_request_call_t<TReply> (
+      connector.request<zlink::message_t> (encode_packet (payload)));
 }
 
 template <typename T>
-connector_t &on (connector_t &connector, std::string packet_name, std::function<void (const T &)> callback)
+connector_t &
+on (connector_t &connector, std::string packet_name, std::function<void (const T &)> callback)
 {
-    return connector.on<packet_t> (std::move (packet_name), [callback = std::move (callback)] (const packet_t &packet) {
-        callback (codec_traits<T>::decode (packet.payload));
-    });
+    return connector.on<packet_t> (std::move (packet_name),
+                                   [callback = std::move (callback)] (const packet_t &packet) {
+                                       callback (codec_traits<T>::decode (packet.payload));
+                                   });
 }
 
-template <typename T> connector_t &on (connector_t &connector, std::function<void (const T &)> callback)
+template <typename T>
+connector_t &on (connector_t &connector, std::function<void (const T &)> callback)
 {
     return on<T> (connector, detail::message_packet_name<T> (), std::move (callback));
 }

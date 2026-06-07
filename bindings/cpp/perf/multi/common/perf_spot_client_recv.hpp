@@ -52,15 +52,16 @@ bind_spot_recv_thread_metrics (OwnerT *owner_,
 }
 
 template <typename OwnerT>
-inline void collect_spot_recv_thread_metrics (OwnerT *owner_,
-                                              std::mutex *metrics_mutex_,
-                                              std::vector<spot_recv_thread_metrics_t<OwnerT> *> *thread_metrics_,
-                                              std::atomic<uint64_t> *metrics_epoch_,
-                                              unsigned long long *active_received_out_,
-                                              bench_latency_stats_t *latency_out_)
+inline void collect_spot_recv_thread_metrics (
+  OwnerT *owner_,
+  std::mutex *metrics_mutex_,
+  std::vector<spot_recv_thread_metrics_t<OwnerT> *> *thread_metrics_,
+  std::atomic<uint64_t> *metrics_epoch_,
+  unsigned long long *active_received_out_,
+  bench_latency_stats_t *latency_out_)
 {
-    collect_spot_thread_metrics (owner_, metrics_mutex_, thread_metrics_, metrics_epoch_, active_received_out_,
-                                 latency_out_);
+    collect_spot_thread_metrics (owner_, metrics_mutex_, thread_metrics_, metrics_epoch_,
+                                 active_received_out_, latency_out_);
 }
 
 inline void print_spot_client_result_lines (const std::string &lib_,
@@ -75,8 +76,8 @@ inline void print_spot_client_result_lines (const std::string &lib_,
       static_cast<double> (active_count_) / static_cast<double> (std::max (1, duration_seconds_));
     const double bandwidth = throughput * static_cast<double> (msg_size_) / 1000000.0;
 
-    print_result (lib_, pattern_, transport_, msg_size_, throughput, bandwidth, latency_.mean_ns, latency_.p95_ns,
-                  latency_.p99_ns);
+    print_result (lib_, pattern_, transport_, msg_size_, throughput, bandwidth, latency_.mean_ns,
+                  latency_.p95_ns, latency_.p99_ns);
 }
 
 } // namespace multi

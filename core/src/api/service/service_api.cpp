@@ -36,8 +36,7 @@ bool is_registered_discovery_handle (void *discovery_)
     service_handle_registry_t &registry = service_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
     return discovery_
-           && registry.discovery_handles.find (discovery_)
-                != registry.discovery_handles.end ();
+           && registry.discovery_handles.find (discovery_) != registry.discovery_handles.end ();
 }
 
 bool is_registered_registry_handle (void *registry_)
@@ -45,8 +44,7 @@ bool is_registered_registry_handle (void *registry_)
     service_handle_registry_t &registry = service_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
     return registry_
-           && registry.registry_handles.find (registry_)
-                != registry.registry_handles.end ();
+           && registry.registry_handles.find (registry_) != registry.registry_handles.end ();
 }
 
 void register_discovery_handle (void *discovery_)
@@ -90,9 +88,7 @@ namespace zlink
 extern "C" void zlink_spot_request_reply_cleanup_spot (void *spot_);
 
 service_handle_resolution_t::service_handle_resolution_t () :
-    kind (service_handle_unknown),
-    discovery (NULL),
-    registry (NULL)
+    kind (service_handle_unknown), discovery (NULL), registry (NULL)
 {
 }
 
@@ -173,8 +169,7 @@ namespace
 {
 int unsupported_or_fault_service_errno (void *handle_)
 {
-    const zlink::service_handle_resolution_t resolved =
-      zlink::resolve_service_handle (handle_);
+    const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
 
     errno = resolved.kind == zlink::service_handle_unknown ? EFAULT : ENOTSUP;
     return -1;
@@ -211,8 +206,7 @@ int zlink_service_recv_internal (void *handle_,
                                  size_t *part_count_out_,
                                  zlink_recv_flags_t flags_)
 {
-    const zlink::service_handle_resolution_t resolved =
-      zlink::resolve_service_handle (handle_);
+    const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
     if (resolved.kind == zlink::service_handle_spot
         || resolved.kind == zlink::service_handle_spot_node) {
         LIBZLINK_UNUSED (source_rid_out_);

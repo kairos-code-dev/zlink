@@ -57,16 +57,14 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void start_accept ();
 
     //  Handle TCP accept completion
-    void on_tcp_accept (
-      const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
-      const boost::system::error_code &ec);
+    void on_tcp_accept (const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+                        const boost::system::error_code &ec);
 
     //  Create SSL context from options
     std::unique_ptr<boost::asio::ssl::context> create_ssl_context () const;
 
     //  Create engine for accepted connection
-    void create_engine (fd_t fd_,
-                        std::unique_ptr<boost::asio::ssl::context> ssl_context_);
+    void create_engine (fd_t fd_, std::unique_ptr<boost::asio::ssl::context> ssl_context_);
 
     //  Close the acceptor
     void close ();
@@ -75,9 +73,7 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
     int tune_socket (fd_t fd_) const;
 
     //  Apply accept filters to accepted connection
-    bool apply_accept_filters (fd_t fd_,
-                                const struct sockaddr_storage &ss,
-                                socklen_t ss_len) const;
+    bool apply_accept_filters (fd_t fd_, const struct sockaddr_storage &ss, socklen_t ss_len) const;
 
     //  Get socket name helper
     std::string get_socket_name (fd_t fd_, socket_end_t socket_end_) const;
@@ -108,8 +104,8 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_tls_listener_t)
 };
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZLINK_ASIO_TLS_LISTENER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_TLS_LISTENER_HPP_INCLUDED__

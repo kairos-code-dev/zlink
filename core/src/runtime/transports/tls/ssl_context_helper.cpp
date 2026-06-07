@@ -31,9 +31,9 @@ ssl_context_helper_t::create_server_context (const std::string &cert_chain_file,
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_server));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_server));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -41,8 +41,7 @@ ssl_context_helper_t::create_server_context (const std::string &cert_chain_file,
         //  Set up password callback if needed (thread-safe lambda capture)
         if (!password.empty ()) {
             ctx->set_password_callback (
-              [password] (std::size_t max_length,
-                          boost::asio::ssl::context::password_purpose) {
+              [password] (std::size_t max_length, boost::asio::ssl::context::password_purpose) {
                   return password.substr (0, max_length);
               });
         }
@@ -56,31 +55,28 @@ ssl_context_helper_t::create_server_context (const std::string &cert_chain_file,
         ctx->use_certificate_chain_file (cert_chain_file);
 
         //  Load private key
-        ctx->use_private_key_file (private_key_file,
-                                   boost::asio::ssl::context::pem);
+        ctx->use_private_key_file (private_key_file, boost::asio::ssl::context::pem);
 
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL server context creation failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL server context creation failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
 std::unique_ptr<boost::asio::ssl::context>
-ssl_context_helper_t::create_server_context_from_pem (
-  const std::string &cert_chain_pem,
-  const std::string &private_key_pem,
-  const std::string &password)
+ssl_context_helper_t::create_server_context_from_pem (const std::string &cert_chain_pem,
+                                                      const std::string &private_key_pem,
+                                                      const std::string &password)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_server));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_server));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -88,8 +84,7 @@ ssl_context_helper_t::create_server_context_from_pem (
         //  Set up password callback if needed (thread-safe lambda capture)
         if (!password.empty ()) {
             ctx->set_password_callback (
-              [password] (std::size_t max_length,
-                          boost::asio::ssl::context::password_purpose) {
+              [password] (std::size_t max_length, boost::asio::ssl::context::password_purpose) {
                   return password.substr (0, max_length);
               });
         }
@@ -111,24 +106,21 @@ ssl_context_helper_t::create_server_context_from_pem (
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL server context creation from PEM failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL server context creation from PEM failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
-std::unique_ptr<boost::asio::ssl::context>
-ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
-                                             bool trust_system,
-                                             verification_mode mode)
+std::unique_ptr<boost::asio::ssl::context> ssl_context_helper_t::create_client_context (
+  const std::string &ca_cert_file, bool trust_system, verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_client));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_client));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -156,23 +148,21 @@ ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL client context creation failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL client context creation failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
-std::unique_ptr<boost::asio::ssl::context>
-ssl_context_helper_t::create_client_context_from_pem (
+std::unique_ptr<boost::asio::ssl::context> ssl_context_helper_t::create_client_context_from_pem (
   const std::string &ca_cert_pem, bool trust_system, verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_client));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_client));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -199,28 +189,26 @@ ssl_context_helper_t::create_client_context_from_pem (
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL client context creation from PEM failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL client context creation from PEM failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
 std::unique_ptr<boost::asio::ssl::context>
-ssl_context_helper_t::create_client_context_with_cert (
-  const std::string &ca_cert_file,
-  const std::string &client_cert_file,
-  const std::string &client_key_file,
-  const std::string &password,
-  bool trust_system,
-  verification_mode mode)
+ssl_context_helper_t::create_client_context_with_cert (const std::string &ca_cert_file,
+                                                       const std::string &client_cert_file,
+                                                       const std::string &client_key_file,
+                                                       const std::string &password,
+                                                       bool trust_system,
+                                                       verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_client));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_client));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -228,8 +216,7 @@ ssl_context_helper_t::create_client_context_with_cert (
         //  Set up password callback if needed (thread-safe lambda capture)
         if (!password.empty ()) {
             ctx->set_password_callback (
-              [password] (std::size_t max_length,
-                          boost::asio::ssl::context::password_purpose) {
+              [password] (std::size_t max_length, boost::asio::ssl::context::password_purpose) {
                   return password.substr (0, max_length);
               });
         }
@@ -252,8 +239,7 @@ ssl_context_helper_t::create_client_context_with_cert (
         ctx->use_certificate_chain_file (client_cert_file);
 
         //  Load client private key
-        ctx->use_private_key_file (client_key_file,
-                                   boost::asio::ssl::context::pem);
+        ctx->use_private_key_file (client_key_file, boost::asio::ssl::context::pem);
 
         //  Configure verification
         if (!configure_verification (*ctx, mode)) {
@@ -263,28 +249,26 @@ ssl_context_helper_t::create_client_context_with_cert (
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL client context with cert creation failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL client context with cert creation failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
 std::unique_ptr<boost::asio::ssl::context>
-ssl_context_helper_t::create_client_context_with_cert_from_pem (
-  const std::string &ca_cert_pem,
-  const std::string &client_cert_pem,
-  const std::string &client_key_pem,
-  const std::string &password,
-  bool trust_system,
-  verification_mode mode)
+ssl_context_helper_t::create_client_context_with_cert_from_pem (const std::string &ca_cert_pem,
+                                                                const std::string &client_cert_pem,
+                                                                const std::string &client_key_pem,
+                                                                const std::string &password,
+                                                                bool trust_system,
+                                                                verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
         ctx = std::unique_ptr<boost::asio::ssl::context> (
-          new boost::asio::ssl::context (
-            boost::asio::ssl::context::tlsv12_client));
-    } catch (const std::bad_alloc &) {
+          new boost::asio::ssl::context (boost::asio::ssl::context::tlsv12_client));
+    }
+    catch (const std::bad_alloc &) {
         return nullptr;
     }
 
@@ -292,8 +276,7 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
         //  Set up password callback if needed (thread-safe lambda capture)
         if (!password.empty ()) {
             ctx->set_password_callback (
-              [password] (std::size_t max_length,
-                          boost::asio::ssl::context::password_purpose) {
+              [password] (std::size_t max_length, boost::asio::ssl::context::password_purpose) {
                   return password.substr (0, max_length);
               });
         }
@@ -314,13 +297,11 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
 
         //  Load client certificate from PEM buffer
         ctx->use_certificate_chain (
-          boost::asio::buffer (client_cert_pem.data (),
-                               client_cert_pem.size ()));
+          boost::asio::buffer (client_cert_pem.data (), client_cert_pem.size ()));
 
         //  Load client private key from PEM buffer
-        ctx->use_private_key (
-          boost::asio::buffer (client_key_pem.data (), client_key_pem.size ()),
-          boost::asio::ssl::context::pem);
+        ctx->use_private_key (boost::asio::buffer (client_key_pem.data (), client_key_pem.size ()),
+                              boost::asio::ssl::context::pem);
 
         //  Configure verification
         if (!configure_verification (*ctx, mode)) {
@@ -330,16 +311,14 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
         return ctx;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR (
-          "SSL client context with cert from PEM creation failed: %s",
-          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL client context with cert from PEM creation failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
 
-bool ssl_context_helper_t::configure_verification (
-  boost::asio::ssl::context &ctx, verification_mode mode)
+bool ssl_context_helper_t::configure_verification (boost::asio::ssl::context &ctx,
+                                                   verification_mode mode)
 {
     try {
         switch (mode) {
@@ -368,9 +347,8 @@ bool ssl_context_helper_t::configure_verification (
         return true;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("SSL verification configuration failed: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("SSL verification configuration failed: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
@@ -383,15 +361,14 @@ bool ssl_context_helper_t::load_ca_certificate (boost::asio::ssl::context &ctx,
         return true;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("Failed to load CA certificate from file: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("Failed to load CA certificate from file: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
 
-bool ssl_context_helper_t::load_ca_certificate_from_pem (
-  boost::asio::ssl::context &ctx, const std::string &ca_cert_pem)
+bool ssl_context_helper_t::load_ca_certificate_from_pem (boost::asio::ssl::context &ctx,
+                                                         const std::string &ca_cert_pem)
 {
     try {
         ctx.add_certificate_authority (
@@ -399,15 +376,14 @@ bool ssl_context_helper_t::load_ca_certificate_from_pem (
         return true;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("Failed to load CA certificate from PEM: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("Failed to load CA certificate from PEM: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
 
-bool ssl_context_helper_t::set_hostname_verification (
-  boost::asio::ssl::context &ctx, const std::string &hostname)
+bool ssl_context_helper_t::set_hostname_verification (boost::asio::ssl::context &ctx,
+                                                      const std::string &hostname)
 {
     if (hostname.empty ()) {
         ASIO_GLOBAL_ERROR ("set_hostname_verification: hostname is empty");
@@ -421,8 +397,7 @@ bool ssl_context_helper_t::set_hostname_verification (
     //  This is supported in OpenSSL 1.0.2+ and uses X509_VERIFY_PARAM
     X509_VERIFY_PARAM *param = SSL_CTX_get0_param (native_ctx);
     if (!param) {
-        ASIO_GLOBAL_ERROR (
-          "set_hostname_verification: failed to get X509_VERIFY_PARAM");
+        ASIO_GLOBAL_ERROR ("set_hostname_verification: failed to get X509_VERIFY_PARAM");
         return false;
     }
 
@@ -432,20 +407,16 @@ bool ssl_context_helper_t::set_hostname_verification (
         || inet_pton (AF_INET6, hostname.c_str (), buf) == 1) {
         //  IP address verification
         if (!X509_VERIFY_PARAM_set1_ip_asc (param, hostname.c_str ())) {
-            ASIO_GLOBAL_ERROR (
-              "set_hostname_verification: failed to set IP '%s'",
-              hostname.c_str ());
+            ASIO_GLOBAL_ERROR ("set_hostname_verification: failed to set IP '%s'",
+                               hostname.c_str ());
             return false;
         }
     } else {
         //  DNS hostname verification
-        X509_VERIFY_PARAM_set_hostflags (param,
-                                         X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-        if (!X509_VERIFY_PARAM_set1_host (param, hostname.c_str (),
-                                          hostname.size ())) {
-            ASIO_GLOBAL_ERROR (
-              "set_hostname_verification: failed to set hostname '%s'",
-              hostname.c_str ());
+        X509_VERIFY_PARAM_set_hostflags (param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+        if (!X509_VERIFY_PARAM_set1_host (param, hostname.c_str (), hostname.size ())) {
+            ASIO_GLOBAL_ERROR ("set_hostname_verification: failed to set hostname '%s'",
+                               hostname.c_str ());
             return false;
         }
     }
@@ -453,8 +424,8 @@ bool ssl_context_helper_t::set_hostname_verification (
     return true;
 }
 
-bool ssl_context_helper_t::configure_server_verification (
-  boost::asio::ssl::context &ctx, bool require_client_cert)
+bool ssl_context_helper_t::configure_server_verification (boost::asio::ssl::context &ctx,
+                                                          bool require_client_cert)
 {
     try {
         if (require_client_cert) {
@@ -469,9 +440,8 @@ bool ssl_context_helper_t::configure_server_verification (
         return true;
     }
     catch (const boost::system::system_error &e) {
-        ASIO_GLOBAL_ERROR ("Failed to configure server verification: %s",
-                          e.what ());
-        (void) e;  // Suppress unused variable warning when debug is disabled
+        ASIO_GLOBAL_ERROR ("Failed to configure server verification: %s", e.what ());
+        (void) e; // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
@@ -487,6 +457,6 @@ std::string ssl_context_helper_t::get_ssl_error_string ()
     return std::string (buf);
 }
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

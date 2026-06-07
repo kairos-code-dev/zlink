@@ -25,12 +25,7 @@ struct spot_data_plane_runtime_state_t
 
     struct publish_pending_entry_t
     {
-        publish_pending_entry_t () :
-            message_id (0),
-            encoded_bytes (0),
-            remaining_targets (0)
-        {
-        }
+        publish_pending_entry_t () : message_id (0), encoded_bytes (0), remaining_targets (0) {}
 
         uint64_t message_id;
         std::string topic;
@@ -41,12 +36,7 @@ struct spot_data_plane_runtime_state_t
 
     struct local_target_state_t
     {
-        local_target_state_t () :
-            attachment_id (0),
-            relay_socket (NULL),
-            pollout_armed (false)
-        {
-        }
+        local_target_state_t () : attachment_id (0), relay_socket (NULL), pollout_armed (false) {}
 
         uint64_t attachment_id;
         socket_base_t *relay_socket;
@@ -56,12 +46,7 @@ struct spot_data_plane_runtime_state_t
 
     struct staged_publish_entry_t
     {
-        staged_publish_entry_t () :
-            encoded_bytes (0),
-            need_local (false),
-            need_mesh (false)
-        {
-        }
+        staged_publish_entry_t () : encoded_bytes (0), need_local (false), need_mesh (false) {}
 
         std::string topic;
         spot_owned_msg_parts_t parts;
@@ -72,11 +57,7 @@ struct spot_data_plane_runtime_state_t
 
     struct remote_target_state_t
     {
-        remote_target_state_t () :
-            sender_socket (NULL),
-            pollout_armed (false)
-        {
-        }
+        remote_target_state_t () : sender_socket (NULL), pollout_armed (false) {}
 
         std::string endpoint;
         std::string route_endpoint;
@@ -87,11 +68,7 @@ struct spot_data_plane_runtime_state_t
 
     struct mesh_pub_hwm_state_t
     {
-        mesh_pub_hwm_state_t () :
-            current_sndhwm (0),
-            last_hwm_version (UINT64_MAX)
-        {
-        }
+        mesh_pub_hwm_state_t () : current_sndhwm (0), last_hwm_version (UINT64_MAX) {}
 
         int current_sndhwm;
         uint64_t last_hwm_version;
@@ -100,10 +77,8 @@ struct spot_data_plane_runtime_state_t
 
     struct local_fanout_state_t
     {
-        typedef std::unordered_map<uint64_t, publish_pending_entry_t>
-          pending_message_map_t;
-        typedef std::unordered_map<uint64_t, local_target_state_t>
-          target_map_t;
+        typedef std::unordered_map<uint64_t, publish_pending_entry_t> pending_message_map_t;
+        typedef std::unordered_map<uint64_t, local_target_state_t> target_map_t;
 
         local_fanout_state_t () :
             pending_bytes (0),
@@ -124,10 +99,8 @@ struct spot_data_plane_runtime_state_t
 
     struct remote_mesh_state_t
     {
-        typedef std::unordered_map<uint64_t, publish_pending_entry_t>
-          pending_message_map_t;
-        typedef std::unordered_map<std::string, remote_target_state_t>
-          target_map_t;
+        typedef std::unordered_map<uint64_t, publish_pending_entry_t> pending_message_map_t;
+        typedef std::unordered_map<std::string, remote_target_state_t> target_map_t;
 
         remote_mesh_state_t () :
             pollout_armed (false),
@@ -158,10 +131,7 @@ struct spot_data_plane_runtime_state_t
     struct publish_ingress_queue_t
     {
         publish_ingress_queue_t () :
-            queued_bytes (0),
-            backpressure_active (false),
-            signal_armed (false),
-            closed (false)
+            queued_bytes (0), backpressure_active (false), signal_armed (false), closed (false)
         {
         }
 
@@ -210,11 +180,7 @@ struct spot_data_plane_runtime_state_t
 
     struct external_router_ingress_queue_t
     {
-        external_router_ingress_queue_t () :
-            signal_armed (false),
-            closed (false)
-        {
-        }
+        external_router_ingress_queue_t () : signal_armed (false), closed (false) {}
 
         std::mutex mutex;
         std::deque<external_router_ingress_entry_t> messages;
@@ -225,9 +191,7 @@ struct spot_data_plane_runtime_state_t
 
     struct poller_interest_state_t
     {
-        poller_interest_state_t () :
-            mesh_xsub_pollin_paused (false),
-            mesh_xsub_pollin_armed (true)
+        poller_interest_state_t () : mesh_xsub_pollin_paused (false), mesh_xsub_pollin_armed (true)
         {
         }
 
@@ -237,11 +201,7 @@ struct spot_data_plane_runtime_state_t
 
     struct mesh_peer_observer_state_t
     {
-        mesh_peer_observer_state_t () :
-            pub_monitor (NULL),
-            xsub_monitor (NULL)
-        {
-        }
+        mesh_peer_observer_state_t () : pub_monitor (NULL), xsub_monitor (NULL) {}
 
         bool owns (const socket_base_t *socket_) const
         {

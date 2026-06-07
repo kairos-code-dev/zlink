@@ -17,11 +17,15 @@ void proxy (socket_t &frontend_, socket_t &backend_)
 
 void proxy (socket_t &frontend_, socket_t &backend_, socket_t &capture_)
 {
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (zlink_proxy (
-      detail::native_handle (frontend_), detail::native_handle (backend_), detail::native_handle (capture_))));
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_proxy (detail::native_handle (frontend_), detail::native_handle (backend_),
+                   detail::native_handle (capture_))));
 }
 
-void proxy_steerable (socket_t &frontend_, socket_t &backend_, socket_t &capture_, socket_t &control_)
+void proxy_steerable (socket_t &frontend_,
+                      socket_t &backend_,
+                      socket_t &capture_,
+                      socket_t &control_)
 {
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_proxy_steerable (detail::native_handle (frontend_), detail::native_handle (backend_),

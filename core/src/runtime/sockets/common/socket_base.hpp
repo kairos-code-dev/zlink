@@ -34,8 +34,7 @@ extern "C" {
 void zlink_free_event (void *data_, void *hint_);
 }
 
-typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
-                                       zlink_msg_t *msg_);
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_, zlink_msg_t *msg_);
 
 namespace zlink
 {
@@ -78,8 +77,7 @@ struct socket_request_reply_bridge_t
 {
     std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
       router_spot_request_reply_state;
-    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
-      request_reply_state;
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> request_reply_state;
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state;
 };
 
@@ -108,8 +106,7 @@ class socket_base_t : public own_t,
     int socket_type () const;
 
     //  Create a socket of a specified type.
-    static socket_base_t *
-    create (int type_, zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    static socket_base_t *create (int type_, zlink::ctx_t *parent_, uint32_t tid_, int sid_);
 
     //  Returns the mailbox associated with this socket.
     i_mailbox *get_mailbox () const;
@@ -134,67 +131,58 @@ class socket_base_t : public own_t,
     int send (zlink::msg_t *msg_, int flags_);
     // Internal helper for logical multipart wrappers that already hold the
     // public send scope for the whole transaction.
-    int send_scoped (zlink::msg_t *msg_,
-                     int flags_,
-                     socket_public_send_scope_t &scope_);
-    int send_routed (const zlink_routing_id_t *target_rid_,
-                     zlink::msg_t *msg_,
-                     int flags_);
+    int send_scoped (zlink::msg_t *msg_, int flags_, socket_public_send_scope_t &scope_);
+    int send_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_, int flags_);
     int send_routed_scoped (const zlink_routing_id_t *target_rid_,
                             zlink::msg_t *msg_,
                             int flags_,
                             socket_public_send_scope_t &scope_);
-    std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (
-      bool force_sync_);
+    std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
     int recv (zlink::msg_t *msg_, int flags_);
     int recv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_, int flags_);
-    int recv_routed (zlink::msg_t *msg_,
-                     zlink_routing_id_t *source_rid_out_,
-                     int flags_);
+    int recv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_, int flags_);
     int close ();
     int close (int handoff_timeout_ms_);
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int peer_command_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     int socket_set_msg_handler (zlink_socket_msg_handler_fn handler_);
-    int socket_set_msg_handler_ex (zlink_socket_msg_handler_fn handler_,
-                                   void *subject_);
-    int socket_set_msg_handler_with_userdata (
-      zlink_socket_msg_handler_fn handler_, void *subject_, void *userdata_);
+    int socket_set_msg_handler_ex (zlink_socket_msg_handler_fn handler_, void *subject_);
+    int socket_set_msg_handler_with_userdata (zlink_socket_msg_handler_fn handler_,
+                                              void *subject_,
+                                              void *userdata_);
     int socket_msg_dispatch_stop ();
     void socket_msg_dispatch_drain_pending ();
     int socket_set_spot_handler (zlink_subscribe_handler_fn handler_);
-    int socket_set_spot_handler_with_userdata (
-      zlink_subscribe_handler_fn handler_,
+    int socket_set_spot_handler_with_userdata (zlink_subscribe_handler_fn handler_,
                                                void *userdata_);
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
-    int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_,
-                                          void *subject_);
-    int socket_set_send_ready_handler_with_userdata (
-      zlink_send_ready_handler_fn handler_, void *subject_, void *userdata_);
+    int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_, void *subject_);
+    int socket_set_send_ready_handler_with_userdata (zlink_send_ready_handler_fn handler_,
+                                                     void *subject_,
+                                                     void *userdata_);
     bool socket_msg_dispatch_active () const;
     bool send_ready_handler_active () const;
     static socket_base_t *current_socket_msg_dispatch_socket ();
     static socket_base_t *current_send_ready_dispatch_socket ();
     static zlink::pipe_t *current_socket_msg_dispatch_pipe ();
     static void *current_socket_msg_dispatch_subject ();
-    static bool current_socket_msg_dispatch_source_rid (
-      zlink_routing_id_t *out_);
+    static bool current_socket_msg_dispatch_source_rid (zlink_routing_id_t *out_);
     bool recv_source_rid_capture_requested () const;
     void invoke_send_ready_handler ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
-    virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_,
-                                    void *userdata_);
+    virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_);
     virtual int sub_dispatch_stop ();
     virtual bool sub_dispatch_active () const;
     virtual int xpub_dispatch_start ();
     virtual bool xpub_dispatch_active () const;
     virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
-    virtual int stream_set_msg_handler_with_userdata (
-      zlink_socket_msg_handler_fn handler_, void *userdata_);
-    virtual int stream_set_packet_msg_handler_with_userdata (
-      zlink_stream_packet_handler_fn handler_, void *userdata_);
+    virtual int stream_set_msg_handler_with_userdata (zlink_socket_msg_handler_fn handler_,
+                                                      void *userdata_);
+    virtual int
+    stream_set_packet_msg_handler_with_userdata (zlink_stream_packet_handler_fn handler_,
+                                                 void *userdata_);
     virtual int stream_dispatch_stop ();
     virtual bool stream_dispatch_active () const;
     virtual bool stream_dispatch_in_callback () const;
@@ -203,12 +191,10 @@ class socket_base_t : public own_t,
                                               const void *data_,
                                               size_t size_,
                                               int flags_);
-    virtual int stream_dispatch_send_msg_from_io (
-      const zlink_routing_id_t *rid_,
-      zlink::msg_t *msg_,
-      int flags_);
-    virtual int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_,
-                                                          int flags_);
+    virtual int stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
+                                                  zlink::msg_t *msg_,
+                                                  int flags_);
+    virtual int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_, int flags_);
     virtual std::recursive_mutex *api_sync_mutex ();
 
     //  These functions are used by the polling mechanism to determine
@@ -237,65 +223,44 @@ class socket_base_t : public own_t,
     void hiccuped (pipe_t *pipe_) ZLINK_FINAL;
     void pipe_terminated (pipe_t *pipe_) ZLINK_FINAL;
 
-    int monitor (const char *endpoint_,
-                 uint64_t events_,
-                 int event_version_,
-                 int type_);
+    int monitor (const char *endpoint_, uint64_t events_, int event_version_, int type_);
 
-    void event_connected (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                          zlink::fd_t fd_);
-    void event_connect_delayed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                                int err_);
-    void event_connect_retried (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                                int interval_);
-    void event_listening (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                          zlink::fd_t fd_);
-    void event_bind_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                            int err_);
-    void event_accepted (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                         zlink::fd_t fd_);
-    void event_accept_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                              int err_);
-    void event_closed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                       zlink::fd_t fd_);
-    void event_close_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                             int err_);
+    void event_connected (const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_);
+    void event_connect_delayed (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_connect_retried (const endpoint_uri_pair_t &endpoint_uri_pair_, int interval_);
+    void event_listening (const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_);
+    void event_bind_failed (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_accepted (const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_);
+    void event_accept_failed (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_closed (const endpoint_uri_pair_t &endpoint_uri_pair_, zlink::fd_t fd_);
+    void event_close_failed (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
     void event_disconnected (const endpoint_uri_pair_t &endpoint_uri_pair_,
                              uint64_t reason_,
                              const unsigned char *routing_id_,
                              size_t routing_id_size_);
-    void event_handshake_failed_no_detail (
-      const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
-    void event_handshake_failed_protocol (
-      const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
-    void
-    event_handshake_failed_auth (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                                 int err_);
-    void
-    event_connection_ready_changed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                                    const unsigned char *routing_id_,
-                                    size_t routing_id_size_);
+    void event_handshake_failed_no_detail (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_handshake_failed_protocol (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_handshake_failed_auth (const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
+    void event_connection_ready_changed (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                         const unsigned char *routing_id_,
+                                         size_t routing_id_size_);
     void emit_inproc_connection_ready (pipe_t *pipe_);
 
     //  Query the state of a specific peer. The default implementation
     //  always returns an ENOTSUP error.
-    virtual int get_peer_state (const void *routing_id_,
-                                size_t routing_id_size_) const;
+    virtual int get_peer_state (const void *routing_id_, size_t routing_id_size_) const;
 
     int monitor_snapshot (zlink_monitor_status_t *out_);
     bool auto_hwm_policy_enabled () const;
-    auto_hwm_socket_plan_t prepare_auto_hwm_socket_plan (
-      const auto_hwm_context_plan_t &context_);
-    void apply_auto_hwm_socket_plan (
-      const auto_hwm_context_plan_t &context_,
-      const auto_hwm_socket_plan_t &plan_,
-      bool force_apply_,
-      uint32_t recalc_reason_);
+    auto_hwm_socket_plan_t prepare_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_);
+    void apply_auto_hwm_socket_plan (const auto_hwm_context_plan_t &context_,
+                                     const auto_hwm_socket_plan_t &plan_,
+                                     bool force_apply_,
+                                     uint32_t recalc_reason_);
     void refresh_auto_hwm_policy (bool force_apply_ = false);
     void set_auto_hwm_role (auto_hwm_role_t role_);
     void set_auto_hwm_scope (auto_hwm_scope_t scope_, size_t scope_count_);
-    void clear_auto_hwm_manual_overrides (bool sndhwm_, bool rcvhwm_,
-                                          bool sndbuf_, bool rcvbuf_);
+    void clear_auto_hwm_manual_overrides (bool sndhwm_, bool rcvhwm_, bool sndbuf_, bool rcvbuf_);
     void set_auto_hwm_policy_enabled (bool enabled_);
     bool monitor_has_attached_pipes () const;
     void socket_peer_remote_endpoints (std::vector<std::string> *out_);
@@ -309,19 +274,16 @@ class socket_base_t : public own_t,
     std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
     router_spot_request_reply_state () const;
     void set_router_spot_request_reply_state (
-      const std::shared_ptr<
-        spot_reqrep_internal::router_spot_request_reply_state_t> &state_);
+      const std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t> &state_);
     void clear_router_spot_request_reply_state ();
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
     request_reply_state () const;
     void set_request_reply_state (
-      const std::shared_ptr<
-        socket_reqrep_internal::socket_request_reply_state_t> &state_);
+      const std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> &state_);
     void clear_request_reply_state ();
-    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state ()
-      const;
-    void set_part_helper_state (
-      const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
+    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
+    void
+    set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
     int set_channel_name_metadata (const char *channel_name_);
     int get_channel_name_metadata (char *channel_name_buf_,
@@ -346,8 +308,7 @@ class socket_base_t : public own_t,
     //  The default implementation assumes there are no specific socket
     //  options for the particular socket type. If not so, ZLINK_FINAL this
     //  method.
-    virtual int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_);
+    virtual int xsetsockopt (int option_, const void *optval_, size_t optvallen_);
 
     //  The default implementation assumes there are no specific socket
     //  options for the particular socket type. If not so, ZLINK_FINAL this
@@ -357,21 +318,17 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that send is not supported.
     virtual bool xhas_out ();
     virtual int xsend (zlink::msg_t *msg_);
-    virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
-                              zlink::msg_t *msg_);
-    virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
-                                        int err_) const;
+    virtual int xsend_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_);
+    virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_, int err_) const;
     virtual int xrollback ();
 
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
     virtual int xrecv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_);
-    virtual int xrecv_routed (zlink::msg_t *msg_,
-                              zlink_routing_id_t *source_rid_out_);
+    virtual int xrecv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_);
     virtual int xterm_peer_rid (const zlink_routing_id_t *peer_rid_);
-    virtual int xsocket_msg_dispatch (zlink::msg_t *msg_,
-                                      zlink::pipe_t *pipe_);
+    virtual int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual void xlocal_peer_weight_changed ();
@@ -393,11 +350,9 @@ class socket_base_t : public own_t,
                                     const zlink_routing_id_t *source_rid_,
                                     zlink_msg_t *parts_,
                                     size_t part_count_);
-    static void store_socket_msg_part (std::vector<zlink_msg_t> *parts_,
-                                       zlink::msg_t *msg_);
+    static void store_socket_msg_part (std::vector<zlink_msg_t> *parts_, zlink::msg_t *msg_);
     static int init_peer_weight_command (zlink::msg_t *msg_, uint32_t weight_);
-    static bool decode_peer_weight_command (const zlink::msg_t &msg_,
-                                            uint32_t *weight_out_);
+    static bool decode_peer_weight_command (const zlink::msg_t &msg_, uint32_t *weight_out_);
 
     //  Delay actual destruction of the socket.
     void process_destroy () ZLINK_FINAL;
@@ -423,31 +378,30 @@ class socket_base_t : public own_t,
     void *socket_send_ready_handler_subject () const;
     void *socket_send_ready_handler_userdata () const;
     static void close_socket_msg_parts (std::vector<zlink_msg_t> *parts_);
-    static void resolve_socket_msg_source_rid (pipe_t *pipe_,
-                                               zlink_routing_id_t *out_);
+    static void resolve_socket_msg_source_rid (pipe_t *pipe_, zlink_routing_id_t *out_);
+
   public:
     void store_last_recv_source_rid (pipe_t *pipe_);
     void store_last_recv_source_rid (const zlink_routing_id_t *source_rid_);
     void clear_last_recv_source_rid ();
     bool copy_last_recv_source_rid (zlink_routing_id_t *out_) const;
+
   protected:
-    static void dispatch_spot_handler_from_io (
-      const zlink_routing_id_t *source_rid_,
-      const char *topic_,
-      size_t topic_len_,
-      zlink_msg_t *parts_,
-      size_t part_count_,
-      void *userdata_);
+    static void dispatch_spot_handler_from_io (const zlink_routing_id_t *source_rid_,
+                                               const char *topic_,
+                                               size_t topic_len_,
+                                               zlink_msg_t *parts_,
+                                               size_t part_count_,
+                                               void *userdata_);
     std::recursive_mutex &socket_msg_dispatch_mutex ()
     {
         return dispatch_runtime ().socket_msg_dispatch_sync;
     }
     void arm_send_ready_notification ();
     void notify_send_ready_if_armed ();
-    void emit_socket_monitor_value_event (
-      uint64_t event_,
-      uint64_t value_,
-      const endpoint_uri_pair_t &endpoint_uri_pair_);
+    void emit_socket_monitor_value_event (uint64_t event_,
+                                          uint64_t value_,
+                                          const endpoint_uri_pair_t &endpoint_uri_pair_);
     void emit_peer_weight_changed (pipe_t *pipe_, uint32_t weight_);
     void snapshot_attached_pipes (std::vector<pipe_t *> *out_);
     bool has_attached_pipes () const;
@@ -482,42 +436,15 @@ class socket_base_t : public own_t,
     typedef zlink::socket_lifecycle_coordinator_t lifecycle_coordinator_t;
     typedef zlink::socket_runtime_t socket_runtime_t;
 
-    endpoint_runtime_t &endpoint_runtime ()
-    {
-        return _runtime.endpoint_runtime;
-    }
-    const endpoint_runtime_t &endpoint_runtime () const
-    {
-        return _runtime.endpoint_runtime;
-    }
-    command_runtime_t &command_runtime ()
-    {
-        return _runtime.command_runtime;
-    }
-    const command_runtime_t &command_runtime () const
-    {
-        return _runtime.command_runtime;
-    }
-    monitor_runtime_t &monitor_runtime ()
-    {
-        return _runtime.monitor_runtime;
-    }
-    const monitor_runtime_t &monitor_runtime () const
-    {
-        return _runtime.monitor_runtime;
-    }
-    dispatch_bridge_t &dispatch_runtime ()
-    {
-        return _runtime.dispatch_bridge;
-    }
-    const dispatch_bridge_t &dispatch_runtime () const
-    {
-        return _runtime.dispatch_bridge;
-    }
-    lifecycle_coordinator_t &lifecycle_coordinator ()
-    {
-        return _runtime.lifecycle_coordinator;
-    }
+    endpoint_runtime_t &endpoint_runtime () { return _runtime.endpoint_runtime; }
+    const endpoint_runtime_t &endpoint_runtime () const { return _runtime.endpoint_runtime; }
+    command_runtime_t &command_runtime () { return _runtime.command_runtime; }
+    const command_runtime_t &command_runtime () const { return _runtime.command_runtime; }
+    monitor_runtime_t &monitor_runtime () { return _runtime.monitor_runtime; }
+    const monitor_runtime_t &monitor_runtime () const { return _runtime.monitor_runtime; }
+    dispatch_bridge_t &dispatch_runtime () { return _runtime.dispatch_bridge; }
+    const dispatch_bridge_t &dispatch_runtime () const { return _runtime.dispatch_bridge; }
+    lifecycle_coordinator_t &lifecycle_coordinator () { return _runtime.lifecycle_coordinator; }
     lifecycle_coordinator_t &lifecycle_coordinator () const
     {
         return _runtime.lifecycle_coordinator;
@@ -536,14 +463,13 @@ class socket_base_t : public own_t,
     static void monitor_delivery_ready_pump (void *arg_);
     void pump_monitor_events ();
     void enqueue_monitor_event (const monitor_event_record_t &record_);
-    bool build_monitor_event_record (
-      monitor_event_record_t *out_,
-      uint64_t event_,
-      const uint64_t values_[],
-      uint64_t values_count_,
-      const unsigned char *routing_id_,
-      size_t routing_id_size_,
-      const endpoint_uri_pair_t &endpoint_uri_pair_) const;
+    bool build_monitor_event_record (monitor_event_record_t *out_,
+                                     uint64_t event_,
+                                     const uint64_t values_[],
+                                     uint64_t values_count_,
+                                     const unsigned char *routing_id_,
+                                     size_t routing_id_size_,
+                                     const endpoint_uri_pair_t &endpoint_uri_pair_) const;
     bool dispatch_monitor_event (void *monitor_socket_,
                                  const monitor_event_record_t &record_) const;
 
@@ -551,9 +477,7 @@ class socket_base_t : public own_t,
     void stop_monitor (bool send_monitor_stopped_event_ = true);
 
     //  Creates new endpoint ID and adds the endpoint to the map.
-    void add_endpoint (const endpoint_uri_pair_t &endpoint_pair_,
-                       own_t *endpoint_,
-                       pipe_t *pipe_);
+    void add_endpoint (const endpoint_uri_pair_t &endpoint_pair_, own_t *endpoint_, pipe_t *pipe_);
 
     //  To be called after processing commands or invoking any command
     //  handlers explicitly. If required, it will deallocate the socket.
@@ -570,8 +494,7 @@ class socket_base_t : public own_t,
     bool _ctx_terminated;
 
     //  Parse URI string.
-    static int
-    parse_uri (const char *uri_, std::string &scheme_, std::string &path_);
+    static int parse_uri (const char *uri_, std::string &scheme_, std::string &path_);
 
     //  Check whether transport protocol, as specified in connect or
     //  bind, is available and compatible with the socket type.
@@ -605,8 +528,7 @@ class socket_base_t : public own_t,
     void refresh_attached_pipe_hwms ();
     void update_pipe_options (int option_);
 
-    std::string resolve_tcp_addr (std::string endpoint_uri_,
-                                  const char *tcp_address_);
+    std::string resolve_tcp_addr (std::string endpoint_uri_, const char *tcp_address_);
     void finish_close_handoff (int handoff_timeout_ms_ = 2000);
 
     //  Socket's mailbox object.
@@ -655,9 +577,7 @@ class routing_socket_base_t : public socket_base_t
     ~routing_socket_base_t () ZLINK_OVERRIDE;
 
     // methods from socket_base_t
-    int xsetsockopt (int option_,
-                     const void *optval_,
-                     size_t optvallen_) ZLINK_OVERRIDE;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_OVERRIDE;
     void xwrite_activated (pipe_t *pipe_) ZLINK_FINAL;
 
     // own methods
@@ -672,9 +592,7 @@ class routing_socket_base_t : public socket_base_t
         uint32_t weight;
     };
 
-    void add_out_pipe (blob_t routing_id_,
-                       pipe_t *pipe_,
-                       bool locally_initiated_);
+    void add_out_pipe (blob_t routing_id_, pipe_t *pipe_, bool locally_initiated_);
     bool has_out_pipe (const blob_t &routing_id_) const;
     out_pipe_t *lookup_out_pipe (const blob_t &routing_id_);
     const out_pipe_t *lookup_out_pipe (const blob_t &routing_id_) const;
@@ -690,8 +608,7 @@ class routing_socket_base_t : public socket_base_t
     template <typename Func> bool any_of_out_pipes (Func func_)
     {
         bool res = false;
-        for (out_pipes_t::iterator it = _out_pipes.begin (),
-                                   end = _out_pipes.end ();
+        for (out_pipes_t::iterator it = _out_pipes.begin (), end = _out_pipes.end ();
              it != end && !res; ++it) {
             res |= func_ (it->second);
         }

@@ -15,8 +15,7 @@
 #include "utils/stdint.hpp"
 #include "utils/macros.hpp"
 
-zlink::pgm_sender_t::pgm_sender_t (io_thread_t *parent_,
-                                 const options_t &options_) :
+zlink::pgm_sender_t::pgm_sender_t (io_thread_t *parent_, const options_t &options_) :
     io_object_t (parent_),
     has_tx_timer (false),
     has_rx_timer (false),
@@ -62,8 +61,8 @@ void zlink::pgm_sender_t::plug (io_thread_t *io_thread_, session_base_t *session
     session = session_;
 
     //  Fill fds from PGM transport and add them to the poller.
-    pgm_socket.get_sender_fds (&downlink_socket_fd, &uplink_socket_fd,
-                               &rdata_notify_fd, &pending_notify_fd);
+    pgm_socket.get_sender_fds (&downlink_socket_fd, &uplink_socket_fd, &rdata_notify_fd,
+                               &pending_notify_fd);
 
     handle = add_fd (downlink_socket_fd);
     uplink_handle = add_fd (uplink_socket_fd);

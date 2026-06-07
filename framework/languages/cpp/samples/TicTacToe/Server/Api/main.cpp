@@ -9,5 +9,6 @@ int main (int argc, char **argv)
     if (auto_stop) {
         return 0;
     }
-    return zlink::samples::tictactoe::api_server_host_factory_t::build (topology, auto_stop).run (argc, argv);
+    return zlink::samples::tictactoe::api_server_host_factory_t::build (topology, auto_stop)
+      .run (argc, argv);
 }

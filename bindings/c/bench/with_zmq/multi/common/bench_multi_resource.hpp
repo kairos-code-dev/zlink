@@ -27,22 +27,19 @@ struct bench_multi_resource_metrics_t
     bool has_mem_mb;
     double mem_mb;
 
-    bench_multi_resource_metrics_t ()
-        : has_cpu_pct (false),
-          cpu_pct (0.0),
-          has_mem_mb (false),
-          mem_mb (0.0)
+    bench_multi_resource_metrics_t () :
+        has_cpu_pct (false), cpu_pct (0.0), has_mem_mb (false), mem_mb (0.0)
     {
     }
 };
 
 struct server_queue_stats_t
 {
-    server_queue_stats_t ()
-        : has_send_queue_depth (false),
-          send_queue_depth (0.0),
-          has_recv_queue_depth (false),
-          recv_queue_depth (0.0)
+    server_queue_stats_t () :
+        has_send_queue_depth (false),
+        send_queue_depth (0.0),
+        has_recv_queue_depth (false),
+        recv_queue_depth (0.0)
     {
     }
 
@@ -58,12 +55,7 @@ struct bench_multi_cpu_sample_t
     unsigned long long ticks;
     std::chrono::steady_clock::time_point timestamp;
 
-    bench_multi_cpu_sample_t ()
-        : valid (false),
-          ticks (0),
-          timestamp ()
-    {
-    }
+    bench_multi_cpu_sample_t () : valid (false), ticks (0), timestamp () {}
 };
 
 inline bool bench_multi_resource_metrics_enabled ()
@@ -90,12 +82,7 @@ inline bool bench_multi_read_self_cpu_ticks (unsigned long long *ticks_out_)
     FILETIME exit_time;
     FILETIME kernel_time;
     FILETIME user_time;
-    if (!GetProcessTimes (
-          GetCurrentProcess (),
-          &creation,
-          &exit_time,
-          &kernel_time,
-          &user_time)) {
+    if (!GetProcessTimes (GetCurrentProcess (), &creation, &exit_time, &kernel_time, &user_time)) {
         return false;
     }
 
@@ -117,14 +104,10 @@ inline bool bench_multi_read_self_mem_mb (double *mem_mb_out_)
     PROCESS_MEMORY_COUNTERS counters;
     std::memset (&counters, 0, sizeof (counters));
     counters.cb = sizeof (counters);
-    if (!GetProcessMemoryInfo (
-          GetCurrentProcess (),
-          &counters,
-          sizeof (counters)))
+    if (!GetProcessMemoryInfo (GetCurrentProcess (), &counters, sizeof (counters)))
         return false;
 
-    *mem_mb_out_ = static_cast<double> (counters.WorkingSetSize)
-                   / (1024.0 * 1024.0);
+    *mem_mb_out_ = static_cast<double> (counters.WorkingSetSize) / (1024.0 * 1024.0);
     return true;
 }
 #else
@@ -204,10 +187,9 @@ inline bench_multi_cpu_sample_t bench_multi_capture_cpu_sample ()
     return sample;
 }
 
-inline void bench_multi_fill_cpu_pct (
-  const bench_multi_cpu_sample_t &start_,
-  const bench_multi_cpu_sample_t &end_,
-  bench_multi_resource_metrics_t *metrics_)
+inline void bench_multi_fill_cpu_pct (const bench_multi_cpu_sample_t &start_,
+                                      const bench_multi_cpu_sample_t &end_,
+                                      bench_multi_resource_metrics_t *metrics_)
 {
     if (!metrics_ || !start_.valid || !end_.valid)
         return;
@@ -239,8 +221,7 @@ inline void bench_multi_fill_cpu_pct (
 #if defined(_WIN32)
     const double cpu_sec = static_cast<double> (delta_ticks) / 10000000.0;
 #else
-    const double cpu_sec =
-      static_cast<double> (delta_ticks) / static_cast<double> (clk_tck);
+    const double cpu_sec = static_cast<double> (delta_ticks) / static_cast<double> (clk_tck);
 #endif
     const double denom = elapsed_sec * static_cast<double> (nproc);
     if (denom <= 0.0)
@@ -250,8 +231,8 @@ inline void bench_multi_fill_cpu_pct (
     metrics_->has_cpu_pct = true;
 }
 
-inline bench_multi_resource_metrics_t bench_multi_finish_resource_probe (
-  const bench_multi_cpu_sample_t &start_)
+inline bench_multi_resource_metrics_t
+bench_multi_finish_resource_probe (const bench_multi_cpu_sample_t &start_)
 {
     bench_multi_resource_metrics_t metrics;
     if (!bench_multi_resource_metrics_enabled ())
@@ -268,8 +249,7 @@ inline bench_multi_resource_metrics_t bench_multi_finish_resource_probe (
     return metrics;
 }
 
-inline server_queue_stats_t sample_server_queue_stats (void *send_socket_,
-                                                       void *recv_socket_)
+inline server_queue_stats_t sample_server_queue_stats (void *send_socket_, void *recv_socket_)
 {
     (void) send_socket_;
     (void) recv_socket_;
@@ -283,23 +263,18 @@ inline void print_server_queue_metrics (const std::string &lib_name_,
                                         const server_queue_stats_t &stats_)
 {
     if (stats_.has_send_queue_depth) {
-        std::cout << "RESULT," << lib_name_ << "," << pattern_ << ","
-                  << transport_ << "," << msg_size_
-                  << ",server_send_queue_depth," << std::fixed
-                  << std::setprecision (2) << stats_.send_queue_depth
-                  << std::endl;
+        std::cout << "RESULT," << lib_name_ << "," << pattern_ << "," << transport_ << ","
+                  << msg_size_ << ",server_send_queue_depth," << std::fixed << std::setprecision (2)
+                  << stats_.send_queue_depth << std::endl;
     }
     if (stats_.has_recv_queue_depth) {
-        std::cout << "RESULT," << lib_name_ << "," << pattern_ << ","
-                  << transport_ << "," << msg_size_
-                  << ",server_recv_queue_depth," << std::fixed
-                  << std::setprecision (2) << stats_.recv_queue_depth
-                  << std::endl;
+        std::cout << "RESULT," << lib_name_ << "," << pattern_ << "," << transport_ << ","
+                  << msg_size_ << ",server_recv_queue_depth," << std::fixed << std::setprecision (2)
+                  << stats_.recv_queue_depth << std::endl;
     }
 }
 
-inline bool parse_queue_probe_command (const std::string &line_,
-                                       size_t *msg_size_out_)
+inline bool parse_queue_probe_command (const std::string &line_, size_t *msg_size_out_)
 {
     if (!msg_size_out_)
         return false;

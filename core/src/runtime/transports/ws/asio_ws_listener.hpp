@@ -57,9 +57,8 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void start_accept ();
 
     //  Handle accept completion
-    void on_accept (
-      const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
-      const boost::system::error_code &ec);
+    void on_accept (const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+                    const boost::system::error_code &ec);
 
     //  Create engine for accepted connection
     void create_engine (fd_t fd_);
@@ -71,9 +70,7 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     int tune_socket (fd_t fd_) const;
 
     //  Apply accept filters
-    bool apply_accept_filters (fd_t fd_,
-                               const struct sockaddr_storage &ss,
-                               socklen_t ss_len) const;
+    bool apply_accept_filters (fd_t fd_, const struct sockaddr_storage &ss, socklen_t ss_len) const;
 
     //  Reference to io_context from asio_poller
     boost::asio::io_context &_io_context;
@@ -101,8 +98,8 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_listener_t)
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZLINK_ASIO_WS_LISTENER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_WS_LISTENER_HPP_INCLUDED__

@@ -11,10 +11,7 @@ namespace
 struct socket_msg_dispatch_tls_t
 {
     socket_msg_dispatch_tls_t () :
-        socket (NULL),
-        pipe (NULL),
-        subject (NULL),
-        source_rid_valid (false)
+        socket (NULL), pipe (NULL), subject (NULL), source_rid_valid (false)
     {
         memset (&source_rid, 0, sizeof (source_rid));
     }
@@ -61,10 +58,7 @@ void set_dispatch_source_rid (socket_msg_dispatch_tls_t &context_,
 }
 
 zlink::socket_msg_dispatch_context_t::socket_msg_dispatch_context_t (
-  socket_base_t *socket_,
-  pipe_t *pipe_,
-  void *subject_,
-  const zlink_routing_id_t *source_rid_) :
+  socket_base_t *socket_, pipe_t *pipe_, void *subject_, const zlink_routing_id_t *source_rid_) :
     _previous_socket (socket_msg_dispatch_tls ().socket),
     _previous_pipe (socket_msg_dispatch_tls ().pipe),
     _previous_subject (socket_msg_dispatch_tls ().subject),
@@ -107,8 +101,7 @@ void *zlink::socket_msg_dispatch_context_t::current_subject ()
     return socket_msg_dispatch_tls ().subject;
 }
 
-bool zlink::socket_msg_dispatch_context_t::current_source_rid (
-  zlink_routing_id_t *out_)
+bool zlink::socket_msg_dispatch_context_t::current_source_rid (zlink_routing_id_t *out_)
 {
     const socket_msg_dispatch_tls_t &context = socket_msg_dispatch_tls ();
     if (!out_ || !context.source_rid_valid)
@@ -117,8 +110,8 @@ bool zlink::socket_msg_dispatch_context_t::current_source_rid (
     return true;
 }
 
-zlink::socket_recv_source_rid_context_t::socket_recv_source_rid_context_t (
-  socket_base_t *socket_, bool enabled_) :
+zlink::socket_recv_source_rid_context_t::socket_recv_source_rid_context_t (socket_base_t *socket_,
+                                                                           bool enabled_) :
     _previous_socket (socket_recv_source_rid_tls ().socket),
     _previous_enabled (socket_recv_source_rid_tls ().enabled)
 {
@@ -144,16 +137,14 @@ bool zlink::socket_recv_source_rid_context_t::current_enabled ()
     return socket_recv_source_rid_tls ().enabled;
 }
 
-void zlink::socket_recv_source_rid_context_t::set (socket_base_t *socket_,
-                                                   bool enabled_)
+void zlink::socket_recv_source_rid_context_t::set (socket_base_t *socket_, bool enabled_)
 {
     socket_recv_source_rid_tls_t &context = socket_recv_source_rid_tls ();
     context.socket = socket_;
     context.enabled = enabled_;
 }
 
-bool zlink::socket_recv_source_rid_context_t::capture_requested (
-  const socket_base_t *socket_)
+bool zlink::socket_recv_source_rid_context_t::capture_requested (const socket_base_t *socket_)
 {
     const socket_recv_source_rid_tls_t &context = socket_recv_source_rid_tls ();
     return context.enabled && context.socket == socket_;

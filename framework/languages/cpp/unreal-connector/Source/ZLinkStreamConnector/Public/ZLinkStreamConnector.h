@@ -21,51 +21,51 @@
 #define BlueprintType
 #define BlueprintCallable
 #define BlueprintAssignable
-#define DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(Name, ParamType, ParamName)                                        \
-    class Name                                                                                                         \
-    {                                                                                                                  \
-      public:                                                                                                          \
-        void Broadcast (ParamType value)                                                                               \
-        {                                                                                                              \
-            LastValue = value;                                                                                         \
-            ++BroadcastCount;                                                                                          \
-        }                                                                                                              \
-        int NumBroadcasts () const noexcept                                                                            \
-        {                                                                                                              \
-            return BroadcastCount;                                                                                     \
-        }                                                                                                              \
-        ParamType LastBroadcastValue () const noexcept                                                                 \
-        {                                                                                                              \
-            return LastValue;                                                                                          \
-        }                                                                                                              \
-                                                                                                                       \
-      private:                                                                                                         \
-        int BroadcastCount = 0;                                                                                        \
-        ParamType LastValue{};                                                                                         \
+#define DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(Name, ParamType, ParamName)                    \
+    class Name                                                                                     \
+    {                                                                                              \
+      public:                                                                                      \
+        void Broadcast (ParamType value)                                                           \
+        {                                                                                          \
+            LastValue = value;                                                                     \
+            ++BroadcastCount;                                                                      \
+        }                                                                                          \
+        int NumBroadcasts () const noexcept                                                        \
+        {                                                                                          \
+            return BroadcastCount;                                                                 \
+        }                                                                                          \
+        ParamType LastBroadcastValue () const noexcept                                             \
+        {                                                                                          \
+            return LastValue;                                                                      \
+        }                                                                                          \
+                                                                                                   \
+      private:                                                                                     \
+        int BroadcastCount = 0;                                                                    \
+        ParamType LastValue{};                                                                     \
     }
-#define DECLARE_MULTICAST_DELEGATE_OneParam(Name, ParamType)                                                           \
-    class Name                                                                                                         \
-    {                                                                                                                  \
-      public:                                                                                                          \
-        template <typename CallbackT> void AddLambda (CallbackT callback)                                              \
-        {                                                                                                              \
-            Function = callback;                                                                                       \
-        }                                                                                                              \
-        void Broadcast (ParamType value)                                                                               \
-        {                                                                                                              \
-            if (Function) {                                                                                            \
-                Function (value);                                                                                      \
-            }                                                                                                          \
-            ++BroadcastCount;                                                                                          \
-        }                                                                                                              \
-        int NumBroadcasts () const noexcept                                                                            \
-        {                                                                                                              \
-            return BroadcastCount;                                                                                     \
-        }                                                                                                              \
-                                                                                                                       \
-      private:                                                                                                         \
-        std::function<void (ParamType)> Function;                                                                      \
-        int BroadcastCount = 0;                                                                                        \
+#define DECLARE_MULTICAST_DELEGATE_OneParam(Name, ParamType)                                       \
+    class Name                                                                                     \
+    {                                                                                              \
+      public:                                                                                      \
+        template <typename CallbackT> void AddLambda (CallbackT callback)                          \
+        {                                                                                          \
+            Function = callback;                                                                   \
+        }                                                                                          \
+        void Broadcast (ParamType value)                                                           \
+        {                                                                                          \
+            if (Function) {                                                                        \
+                Function (value);                                                                  \
+            }                                                                                      \
+            ++BroadcastCount;                                                                      \
+        }                                                                                          \
+        int NumBroadcasts () const noexcept                                                        \
+        {                                                                                          \
+            return BroadcastCount;                                                                 \
+        }                                                                                          \
+                                                                                                   \
+      private:                                                                                     \
+        std::function<void (ParamType)> Function;                                                  \
+        int BroadcastCount = 0;                                                                    \
     }
 class UObject
 {
@@ -92,7 +92,9 @@ enum class EZLinkStreamConnectionState : std::uint8_t
     Closed
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamConnectionStateChanged, EZLinkStreamConnectionState, State);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamConnectionStateChanged,
+                                             EZLinkStreamConnectionState,
+                                             State);
 
 USTRUCT (BlueprintType)
 struct FZLinkStreamPacket
@@ -124,13 +126,18 @@ struct FZLinkStreamSendOptions
     bool bCompress = false;
 };
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamPacketReceived, FZLinkStreamPacket, Packet);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamPacketReceived,
+                                             FZLinkStreamPacket,
+                                             Packet);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamRequestCompleted, FZLinkStreamPacket, Packet);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam (FZLinkStreamRequestCompleted,
+                                             FZLinkStreamPacket,
+                                             Packet);
 
 DECLARE_MULTICAST_DELEGATE_OneParam (FZLinkStreamPacketReceivedNative, const FZLinkStreamPacket &);
 
-DECLARE_MULTICAST_DELEGATE_OneParam (FZLinkStreamRequestCompletedNative, const FZLinkStreamPacket &);
+DECLARE_MULTICAST_DELEGATE_OneParam (FZLinkStreamRequestCompletedNative,
+                                     const FZLinkStreamPacket &);
 
 namespace UE::ZLinkStreamConnector::Private
 {
@@ -156,7 +163,9 @@ class UZLinkStreamConnector : public UObject
     void SendJson (FName PacketName, const FString &JsonPayload);
 
     UFUNCTION (BlueprintCallable, Category = "ZLink")
-    void SendJsonWithOptions (FName PacketName, const FString &JsonPayload, const FZLinkStreamSendOptions &Options);
+    void SendJsonWithOptions (FName PacketName,
+                              const FString &JsonPayload,
+                              const FZLinkStreamSendOptions &Options);
 
     UFUNCTION (BlueprintCallable, Category = "ZLink")
     void RequestJson (FName PacketName, const FString &JsonPayload, float TimeoutSeconds);

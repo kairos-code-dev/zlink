@@ -249,11 +249,13 @@ inline void validate_no_embedded_null (const std::string &value_, const char *fi
         throw std::invalid_argument (std::string (field_name_) + " must not contain embedded null");
 }
 
-inline void validate_bounded_c_string (const std::string &value_, size_t max_bytes_, const char *field_name_)
+inline void
+validate_bounded_c_string (const std::string &value_, size_t max_bytes_, const char *field_name_)
 {
     validate_no_embedded_null (value_, field_name_);
     if (value_.size () > max_bytes_) {
-        throw std::invalid_argument (std::string (field_name_) + " exceeds " + std::to_string (max_bytes_) + " bytes");
+        throw std::invalid_argument (std::string (field_name_) + " exceeds "
+                                     + std::to_string (max_bytes_) + " bytes");
     }
 }
 
@@ -263,7 +265,10 @@ inline void validate_bounded_c_string (const std::string &value_, size_t max_byt
 class routing_id_t
 {
   public:
-    routing_id_t (const uint8_t *bytes_, size_t size_) : _data (), _size (0) { assign (bytes_, size_); }
+    routing_id_t (const uint8_t *bytes_, size_t size_) : _data (), _size (0)
+    {
+        assign (bytes_, size_);
+    }
 
     routing_id_t (const routing_id_t &other_) = default;
 
@@ -273,7 +278,10 @@ class routing_id_t
 
     routing_id_t &operator= (routing_id_t &&other_) noexcept = default;
 
-    static routing_id_t from (const uint8_t *bytes_, size_t size_) { return routing_id_t (bytes_, size_); }
+    static routing_id_t from (const uint8_t *bytes_, size_t size_)
+    {
+        return routing_id_t (bytes_, size_);
+    }
 
     static routing_id_t from (const std::vector<uint8_t> &bytes_)
     {
@@ -289,11 +297,15 @@ class routing_id_t
     {
         const uint8_t bytes[4] = {static_cast<uint8_t> ((value_ >> 24u) & 0xffu),
                                   static_cast<uint8_t> ((value_ >> 16u) & 0xffu),
-                                  static_cast<uint8_t> ((value_ >> 8u) & 0xffu), static_cast<uint8_t> (value_ & 0xffu)};
+                                  static_cast<uint8_t> ((value_ >> 8u) & 0xffu),
+                                  static_cast<uint8_t> (value_ & 0xffu)};
         return from (bytes, sizeof (bytes));
     }
 
-    static routing_id_t from (const std::array<uint8_t, 16> &value_) { return from (value_.data (), value_.size ()); }
+    static routing_id_t from (const std::array<uint8_t, 16> &value_)
+    {
+        return from (value_.data (), value_.size ());
+    }
 
     static routing_id_t from_hex (const std::string &value_)
     {
@@ -317,7 +329,10 @@ class routing_id_t
     const uint8_t *data () const noexcept { return _data.data (); }
     size_t size () const noexcept { return _size; }
 
-    std::vector<uint8_t> to_bytes () const { return std::vector<uint8_t> (_data.data (), _data.data () + _size); }
+    std::vector<uint8_t> to_bytes () const
+    {
+        return std::vector<uint8_t> (_data.data (), _data.data () + _size);
+    }
 
     std::string to_string () const
     {
@@ -326,16 +341,19 @@ class routing_id_t
         }
         if (size () == 4u) {
             const uint8_t *bytes = data ();
-            const uint32_t value = (static_cast<uint32_t> (bytes[0]) << 24u) | (static_cast<uint32_t> (bytes[1]) << 16u)
-                                   | (static_cast<uint32_t> (bytes[2]) << 8u) | static_cast<uint32_t> (bytes[3]);
+            const uint32_t value =
+              (static_cast<uint32_t> (bytes[0]) << 24u) | (static_cast<uint32_t> (bytes[1]) << 16u)
+              | (static_cast<uint32_t> (bytes[2]) << 8u) | static_cast<uint32_t> (bytes[3]);
             return std::to_string (value);
         }
         if (size () == 16u) {
             const uint8_t *bytes = data ();
             char out[37];
-            std::snprintf (out, sizeof (out), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                           bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
-                           bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+            std::snprintf (out, sizeof (out),
+                           "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                           bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                           bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
+                           bytes[14], bytes[15]);
             return std::string (out);
         }
         return std::string ("hex:") + to_hex ();
@@ -356,10 +374,14 @@ class routing_id_t
 
     friend bool operator== (const routing_id_t &a_, const routing_id_t &b_) noexcept
     {
-        return a_._size == b_._size && std::memcmp (a_._data.data (), b_._data.data (), a_._size) == 0;
+        return a_._size == b_._size
+               && std::memcmp (a_._data.data (), b_._data.data (), a_._size) == 0;
     }
 
-    friend bool operator!= (const routing_id_t &a_, const routing_id_t &b_) noexcept { return !(a_ == b_); }
+    friend bool operator!= (const routing_id_t &a_, const routing_id_t &b_) noexcept
+    {
+        return !(a_ == b_);
+    }
 
   private:
     routing_id_t () noexcept : _data (), _size (0) {}

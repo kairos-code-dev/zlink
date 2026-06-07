@@ -72,17 +72,14 @@ void test_io_completion_port ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (s, ZLINK_OPT_FD, &fd, &fd_size));
 
     ::WSAPROTOCOL_INFO pi;
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (
-      ::WSADuplicateSocket (fd, ::GetCurrentProcessId (), &pi));
-    const SOCKET socket = ::WSASocket (pi.iAddressFamily /*AF_INET*/,
-                                       pi.iSocketType /*SOCK_STREAM*/,
-                                       pi.iProtocol /*IPPROTO_TCP*/, &pi, 0, 0);
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (::WSADuplicateSocket (fd, ::GetCurrentProcessId (), &pi));
+    const SOCKET socket =
+      ::WSASocket (pi.iAddressFamily /*AF_INET*/, pi.iSocketType /*SOCK_STREAM*/,
+                   pi.iProtocol /*IPPROTO_TCP*/, &pi, 0, 0);
 
-    const HANDLE iocp =
-      ::CreateIoCompletionPort (INVALID_HANDLE_VALUE, NULL, 0, 0);
+    const HANDLE iocp = ::CreateIoCompletionPort (INVALID_HANDLE_VALUE, NULL, 0, 0);
     TEST_ASSERT_NOT_EQUAL (NULL, iocp);
-    const HANDLE res =
-      ::CreateIoCompletionPort (reinterpret_cast<HANDLE> (socket), iocp, 0, 0);
+    const HANDLE res = ::CreateIoCompletionPort (reinterpret_cast<HANDLE> (socket), iocp, 0, 0);
     TEST_ASSERT_NOT_EQUAL (NULL, res);
 
     TEST_ASSERT_SUCCESS_RAW_ERRNO (closesocket (socket));

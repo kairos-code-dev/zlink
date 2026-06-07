@@ -42,8 +42,7 @@ void zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
         if (!handle.socket)
             continue;
         const std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
-          socket_state =
-            zlink::socket_reqrep_internal::find_request_reply_state (handle);
+          socket_state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
         if (socket_state) {
             zlink::socket_reqrep_internal::unregister_spot_channel_dispatch_observer (
               socket_state, state_->owner);
@@ -53,7 +52,7 @@ void zlink::spot_reqrep_internal::unregister_spot_channel_reply_observers (
 
 void zlink::spot_reqrep_internal::clear_spot_channel_reply_sources (
   const std::shared_ptr<spot_request_reply_state_t> &state_,
-  std::vector<std::shared_ptr<spot_channel_reply_source_t> > *sources_out_)
+  std::vector<std::shared_ptr<spot_channel_reply_source_t>> *sources_out_)
 {
     if (!state_)
         return;
@@ -61,8 +60,8 @@ void zlink::spot_reqrep_internal::clear_spot_channel_reply_sources (
     std::lock_guard<std::mutex> lock (state_->mutex);
     if (sources_out_) {
         sources_out_->clear ();
-        for (std::map<void *, std::shared_ptr<spot_channel_reply_source_t> >::const_iterator
-               it = state_->completion_state.channel_reply_sources.begin ();
+        for (std::map<void *, std::shared_ptr<spot_channel_reply_source_t>>::const_iterator it =
+               state_->completion_state.channel_reply_sources.begin ();
              it != state_->completion_state.channel_reply_sources.end (); ++it) {
             sources_out_->push_back (it->second);
         }
@@ -95,8 +94,7 @@ bool zlink::spot_reqrep_internal::has_pending_router_spot_request_work (
     return !state_->requests.pending_replies.empty ();
 }
 
-int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
-  void *spot_)
+int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (void *spot_)
 {
     std::shared_ptr<spot_request_reply_state_t> state = try_find_spot_state (spot_);
     if (!state)
@@ -105,10 +103,8 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
     std::vector<pending_reply_t> pending;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        for (std::unordered_map<
-               pending_spot_key_t,
-               pending_reply_t,
-               pending_spot_key_hash_t>::iterator it =
+        for (std::unordered_map<pending_spot_key_t, pending_reply_t,
+                                pending_spot_key_hash_t>::iterator it =
                state->requests.pending_replies.begin ();
              it != state->requests.pending_replies.end (); ++it) {
             pending.push_back (it->second);
@@ -119,8 +115,8 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
 
     for (size_t i = 0; i < pending.size (); ++i) {
         zlink::request_timeout::cancel (pending[i].timeout_task);
-        if (queue_spot_reply_completion (state, pending[i].handler,
-                                         pending[i].userdata, ETERM, NULL, 0)
+        if (queue_spot_reply_completion (state, pending[i].handler, pending[i].userdata, ETERM,
+                                         NULL, 0)
             != 0) {
             return -1;
         }
@@ -133,8 +129,7 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
         const socket_handle_t handle = as_socket_handle (dealers[i]);
         if (!handle.socket)
             continue;
-        if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle)
-            < 0) {
+        if (zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle) < 0) {
             return -1;
         }
     }
@@ -146,8 +141,7 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
 
     int drained = direct_rc;
     for (size_t i = 0; i < dealers.size (); ++i) {
-        const int rc =
-          drain_spot_channel_reply_completions_from (state, spot_, dealers[i]);
+        const int rc = drain_spot_channel_reply_completions_from (state, spot_, dealers[i]);
         if (rc < 0 && errno != ENOENT)
             return -1;
         if (rc > 0)
@@ -156,8 +150,7 @@ int zlink::spot_reqrep_internal::drain_close_spot_request_reply_state (
     return drained;
 }
 
-int zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
-  void *router_)
+int zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (void *router_)
 {
     socket_handle_t handle = as_socket_handle (router_);
     if (!handle.socket) {
@@ -184,9 +177,8 @@ int zlink::spot_reqrep_internal::drain_close_router_spot_request_reply_state (
 
     for (size_t i = 0; i < pending.size (); ++i) {
         zlink::request_timeout::cancel (pending[i].timeout_task);
-        if (queue_router_reply_completion (state, pending[i].handler,
-                                           pending[i].userdata, ETERM, NULL,
-                                           0)
+        if (queue_router_reply_completion (state, pending[i].handler, pending[i].userdata, ETERM,
+                                           NULL, 0)
             != 0) {
             return -1;
         }

@@ -122,7 +122,8 @@ inline void actor_join_result_trampoline (const zlink_actor_join_result_t *resul
     }
     if (holder->promise) {
         if (result.result != request_result_t::ok)
-            holder->promise->set_exception (std::make_exception_ptr (request_error_t (result.result)));
+            holder->promise->set_exception (
+              std::make_exception_ptr (request_error_t (result.result)));
         else {
             holder->result = result;
             holder->parts = std::move (parts);
@@ -131,10 +132,12 @@ inline void actor_join_result_trampoline (const zlink_actor_join_result_t *resul
     }
 }
 
-inline void actor_join_entry_spot_result_trampoline (const zlink_actor_join_entry_spot_result_t *result_,
-                                                     void *userdata_)
+inline void
+actor_join_entry_spot_result_trampoline (const zlink_actor_join_entry_spot_result_t *result_,
+                                         void *userdata_)
 {
-    actor_join_entry_spot_result_state_t *state = static_cast<actor_join_entry_spot_result_state_t *> (userdata_);
+    actor_join_entry_spot_result_state_t *state =
+      static_cast<actor_join_entry_spot_result_state_t *> (userdata_);
     if (!state)
         return;
     std::unique_ptr<actor_join_entry_spot_result_state_t> holder (state);
@@ -149,7 +152,8 @@ inline void actor_join_entry_spot_result_trampoline (const zlink_actor_join_entr
     }
     if (holder->promise) {
         if (result.result != request_result_t::ok)
-            holder->promise->set_exception (std::make_exception_ptr (request_error_t (result.result)));
+            holder->promise->set_exception (
+              std::make_exception_ptr (request_error_t (result.result)));
         else
             holder->promise->set_value (result);
     }
@@ -168,14 +172,16 @@ inline actor_lookup_result_state_t *make_future_actor_lookup_state ()
     return state.release ();
 }
 
-inline actor_lookup_result_state_t *make_callback_actor_lookup_state (actor_lookup_callback_t callback_)
+inline actor_lookup_result_state_t *
+make_callback_actor_lookup_state (actor_lookup_callback_t callback_)
 {
     auto state = std::make_unique<actor_lookup_result_state_t> ();
     state->on_complete = std::move (callback_);
     return state.release ();
 }
 
-inline void actor_lookup_result_trampoline (const zlink_actor_lookup_result_t *result_, void *userdata_)
+inline void actor_lookup_result_trampoline (const zlink_actor_lookup_result_t *result_,
+                                            void *userdata_)
 {
     actor_lookup_result_state_t *state = static_cast<actor_lookup_result_state_t *> (userdata_);
     if (!state)
@@ -192,26 +198,31 @@ inline void actor_lookup_result_trampoline (const zlink_actor_lookup_result_t *r
     }
     if (holder->promise) {
         if (result.result != request_result_t::ok)
-            holder->promise->set_exception (std::make_exception_ptr (request_error_t (result.result)));
+            holder->promise->set_exception (
+              std::make_exception_ptr (request_error_t (result.result)));
         else
             holder->promise->set_value (result);
     }
 }
 
-inline int submit_actor_join (detail::actor_join_state_t &state_, detail::actor_join_result_state_t *result_state_)
+inline int submit_actor_join (detail::actor_join_state_t &state_,
+                              detail::actor_join_result_state_t *result_state_)
 {
     if (!state_.node || state_.parts.empty ())
         return ZLINK_SUBMIT_INVALID_HANDLE;
 
-    const zlink_routing_id_t dest_node_rid = zlink::detail::routing_id_native_value (state_.dest_node_rid);
-    const zlink_routing_id_t dest_spot_rid = zlink::detail::routing_id_native_value (state_.dest_spot_rid);
-    const int rc = submit_message_array (state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
-        return zlink_spot_node_actor_join_spot (state_.node, zlink::detail::actor_ref_native (state_.actor),
-                                                &dest_node_rid, &dest_spot_rid, native_, part_count_,
-                                                &detail::actor_join_result_trampoline, result_state_,
-                                                static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
-                                                zlink::detail::native_timeout_ms (state_.timeout));
-    });
+    const zlink_routing_id_t dest_node_rid =
+      zlink::detail::routing_id_native_value (state_.dest_node_rid);
+    const zlink_routing_id_t dest_spot_rid =
+      zlink::detail::routing_id_native_value (state_.dest_spot_rid);
+    const int rc =
+      submit_message_array (state_.parts, [&] (zlink_msg_t *native_, size_t part_count_) {
+          return zlink_spot_node_actor_join_spot (
+            state_.node, zlink::detail::actor_ref_native (state_.actor), &dest_node_rid,
+            &dest_spot_rid, native_, part_count_, &detail::actor_join_result_trampoline,
+            result_state_, static_cast<zlink_send_flags_t> (static_cast<int> (state_.flags)),
+            zlink::detail::native_timeout_ms (state_.timeout));
+      });
     return rc == -1 ? ZLINK_SUBMIT_INVALID_HANDLE : rc;
 }
 
@@ -222,7 +233,8 @@ inline int submit_payloadless_request (detail::actor_payloadless_state_t &state_
 {
     if (!state_.node)
         return ZLINK_SUBMIT_INVALID_HANDLE;
-    const zlink_submit_result_t rc = submit_ (state_, &detail::request_callback_trampoline, request_state_);
+    const zlink_submit_result_t rc =
+      submit_ (state_, &detail::request_callback_trampoline, request_state_);
     return rc;
 }
 

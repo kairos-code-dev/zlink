@@ -48,8 +48,7 @@ class mutex_t
   public:
     inline mutex_t ()
     {
-        _semId =
-          semMCreate (SEM_Q_PRIORITY | SEM_INVERSION_SAFE | SEM_DELETE_SAFE);
+        _semId = semMCreate (SEM_Q_PRIORITY | SEM_INVERSION_SAFE | SEM_DELETE_SAFE);
     }
 
     inline ~mutex_t () { semDelete (_semId); }

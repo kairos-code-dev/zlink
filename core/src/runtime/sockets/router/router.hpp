@@ -23,32 +23,25 @@ class pipe_t;
 class router_t : public routing_socket_base_t
 {
   public:
-    router_t (zlink::ctx_t *parent_,
-              uint32_t tid_,
-              int sid_);
+    router_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~router_t () ZLINK_OVERRIDE;
 
     //  Overrides of functions from socket_base_t.
     void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
                        bool locally_initiated_) ZLINK_FINAL;
-    int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
-    int xsend_routed (const zlink_routing_id_t *target_rid_,
-                      zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xsend_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
-    int xrecv_routed (zlink::msg_t *msg_,
-                      zlink_routing_id_t *source_rid_out_) ZLINK_OVERRIDE;
+    int xrecv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int xsocket_msg_dispatch (zlink::msg_t *msg_,
-                              zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
-    int xpeer_command (zlink::msg_t *msg_,
-                       zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
+    int xpeer_command (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int xterm_peer_rid (const zlink_routing_id_t *peer_rid_) ZLINK_OVERRIDE
     {
         return terminate_out_pipe_by_routing_id (peer_rid_);
@@ -56,8 +49,7 @@ class router_t : public routing_socket_base_t
     void xlocal_peer_weight_changed () ZLINK_OVERRIDE;
     void xarm_socket_msg_dispatch () ZLINK_OVERRIDE;
     void xdispatch_io () ZLINK_OVERRIDE;
-    int get_peer_state (const void *routing_id_,
-                        size_t routing_id_size_) const ZLINK_FINAL;
+    int get_peer_state (const void *routing_id_, size_t routing_id_size_) const ZLINK_FINAL;
 
   protected:
     //  Rollback any message parts that were sent but not yet flushed.
@@ -66,9 +58,7 @@ class router_t : public routing_socket_base_t
   private:
     //  Receive peer id and update lookup map
     bool identify_peer (pipe_t *pipe_, bool locally_initiated_);
-    bool adopt_peer_routing_id (pipe_t *pipe_,
-                                blob_t routing_id_,
-                                bool locally_initiated_);
+    bool adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool locally_initiated_);
     void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
     void broadcast_local_peer_weight ();
     void send_local_peer_weight (pipe_t *pipe_);

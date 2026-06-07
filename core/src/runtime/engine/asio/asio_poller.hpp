@@ -38,8 +38,7 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
 
     //  "poller" concept.
     handle_t add_fd (fd_t fd_, zlink::i_poll_events *events_);
-    handle_t add_tcp_socket (boost::asio::ip::tcp::socket *socket_,
-                             zlink::i_poll_events *events_);
+    handle_t add_tcp_socket (boost::asio::ip::tcp::socket *socket_, zlink::i_poll_events *events_);
 #if defined ZLINK_HAVE_IPC
     handle_t add_ipc_socket (boost::asio::local::stream_protocol::socket *socket_,
                              zlink::i_poll_events *events_);
@@ -97,8 +96,7 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
     boost::asio::io_context _io_context;
 
     //  Work guard to keep io_context running even when no handlers are pending
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      _work_guard;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> _work_guard;
 
     //  List of retired event sources (to be deleted after loop iteration)
     typedef std::vector<poll_entry_t *> retired_t;
@@ -116,6 +114,6 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
 typedef asio_poller_t poller_t;
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZLINK_ASIO_POLLER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_POLLER_HPP_INCLUDED__

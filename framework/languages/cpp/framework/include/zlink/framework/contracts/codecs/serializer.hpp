@@ -66,8 +66,9 @@ class serializer_registry_t
 
     template <typename T> serializer_registry_t &add_json ()
     {
-        return add<T> ([] (const T &value) { return zlink::message_t::from_json (value); },
-                       [] (const zlink::message_t &message) { return message.template parse_json<T> (); });
+        return add<T> (
+          [] (const T &value) { return zlink::message_t::from_json (value); },
+          [] (const zlink::message_t &message) { return message.template parse_json<T> (); });
     }
 
     template <typename T>
@@ -86,12 +87,13 @@ class serializer_registry_t
 
     template <typename T> serializer_t<T> get () const
     {
-        return serializer_t<T> ([this] (const T &value) { return serialize (std::type_index (typeid (T)), &value); },
-                                [this] (const zlink::message_t &message) {
-                                    T value{};
-                                    deserialize (std::type_index (typeid (T)), message, &value);
-                                    return value;
-                                });
+        return serializer_t<T> (
+          [this] (const T &value) { return serialize (std::type_index (typeid (T)), &value); },
+          [this] (const zlink::message_t &message) {
+              T value{};
+              deserialize (std::type_index (typeid (T)), message, &value);
+              return value;
+          });
     }
 
     zlink::message_t serialize (std::type_index type, const void *value) const;
@@ -99,8 +101,9 @@ class serializer_registry_t
     bool contains (std::type_index type) const;
 
   private:
-    serializer_registry_t &
-    add_erased (std::type_index type, serialize_any_fn_t serialize, deserialize_any_fn_t deserialize);
+    serializer_registry_t &add_erased (std::type_index type,
+                                       serialize_any_fn_t serialize,
+                                       deserialize_any_fn_t deserialize);
 
     std::unique_ptr<detail::serializer_registry_state_t> _state;
 };

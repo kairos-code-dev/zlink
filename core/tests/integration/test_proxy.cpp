@@ -52,8 +52,7 @@ static void client_task (void *db_)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (endpoint, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     char endpoint_source[256];
-    snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d",
-              databag->id);
+    snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d", databag->id);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (endpoint, endpoint_source));
     char *my_endpoint = s_recv (endpoint);
     TEST_ASSERT_NOT_NULL (my_endpoint);
@@ -72,19 +71,17 @@ static void client_task (void *db_)
     char content[CONTENT_SIZE_MAX] = {};
     // Set random routing id to make tracing easier
     char routing_id[ROUTING_ID_SIZE] = {};
-    snprintf (routing_id, ROUTING_ID_SIZE * sizeof (char), "%04X-%04X",
-              rand () % 0xFFFF, rand () % 0xFFFF);
+    snprintf (routing_id, ROUTING_ID_SIZE * sizeof (char), "%04X-%04X", rand () % 0xFFFF,
+              rand () % 0xFFFF);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (
-        client, routing_id,
-        ROUTING_ID_SIZE)); // includes '\0' as an helper for printf
+      zlink_set_routing_id (client, routing_id,
+                            ROUTING_ID_SIZE)); // includes '\0' as an helper for printf
     linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (client, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
-    zlink_pollitem_t items[] = {{client, 0, ZLINK_POLLIN, 0},
-                              {control, 0, ZLINK_POLLIN, 0}};
+    zlink_pollitem_t items[] = {{client, 0, ZLINK_POLLIN, 0}, {control, 0, ZLINK_POLLIN, 0}};
     int request_nbr = 0;
     bool run = true;
     bool keep_sending = true;
@@ -96,16 +93,13 @@ static void client_task (void *db_)
             if (items[0].revents & ZLINK_POLLIN) {
                 zlink_msg_t msg;
                 TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-                int rc =
-                  TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, client, 0));
+                int rc = TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, client, 0));
                 TEST_ASSERT_EQUAL_INT (CONTENT_SIZE, rc);
-                memcpy (content, zlink_msg_data (&msg),
-                        static_cast<size_t> (CONTENT_SIZE));
+                memcpy (content, zlink_msg_data (&msg), static_cast<size_t> (CONTENT_SIZE));
                 content[CONTENT_SIZE] = '\0';
                 if (is_verbose)
-                    printf (
-                      "client receive - routing_id = %s    content = %s\n",
-                      routing_id, content);
+                    printf ("client receive - routing_id = %s    content = %s\n", routing_id,
+                            content);
                 //  Check that message is still the same
                 TEST_ASSERT_EQUAL_STRING_LEN ("request #", content, 9);
                 TEST_ASSERT_FALSE (test_msg_has_more (&msg));
@@ -117,9 +111,8 @@ static void client_task (void *db_)
                 if (rc > 0) {
                     content[rc] = 0; // NULL-terminate the command string
                     if (is_verbose)
-                        printf (
-                          "client receive - routing_id = %s    command = %s\n",
-                          routing_id, content);
+                        printf ("client receive - routing_id = %s    command = %s\n", routing_id,
+                                content);
                     if (memcmp (content, "TERMINATE", 9) == 0) {
                         run = false;
                         break;
@@ -133,15 +126,14 @@ static void client_task (void *db_)
         }
 
         if (keep_sending) {
-            snprintf (content, CONTENT_SIZE_MAX * sizeof (char),
-                      "request #%03d", ++request_nbr); // CONTENT_SIZE
+            snprintf (content, CONTENT_SIZE_MAX * sizeof (char), "request #%03d",
+                      ++request_nbr); // CONTENT_SIZE
             if (is_verbose)
-                printf ("client send - routing_id = %s    request #%03d\n",
-                        routing_id, request_nbr);
+                printf ("client send - routing_id = %s    request #%03d\n", routing_id,
+                        request_nbr);
             zlink_atomic_counter_inc (g_clients_pkts_out);
 
-            TEST_ASSERT_EQUAL_INT (CONTENT_SIZE,
-                                   zlink_send (client, content, CONTENT_SIZE, 0));
+            TEST_ASSERT_EQUAL_INT (CONTENT_SIZE, zlink_send (client, content, CONTENT_SIZE, 0));
         }
     }
 
@@ -189,12 +181,10 @@ void server_task (void * /*unused_*/)
     for (int i = 0; i < QT_CLIENTS; ++i) {
         endpoint_receivers[i] = zlink_socket (get_test_context (), ZLINK_SOCKET_PAIR);
         TEST_ASSERT_NOT_NULL (endpoint_receivers[i]);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-          endpoint_receivers[i], ZLINK_OPT_LINGER, &linger, sizeof (linger)));
-        snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d",
-                  i);
         TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_bind (endpoint_receivers[i], endpoint_source));
+          zlink_set_option (endpoint_receivers[i], ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+        snprintf (endpoint_source, 256 * sizeof (char), "inproc://endpoint%d", i);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (endpoint_receivers[i], endpoint_source));
     }
 
     for (int i = 0; i < QT_CLIENTS; ++i) {
@@ -235,16 +225,14 @@ static void server_worker (void * /*unused_*/)
       zlink_set_option (control, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (control, "inproc://control"));
 
-    char content[CONTENT_SIZE_MAX] =
-      {}; // bigger than what we need to check that
-    char routing_id[ROUTING_ID_SIZE_MAX] =
-      {}; // the size received is the size sent
+    char content[CONTENT_SIZE_MAX] = {};       // bigger than what we need to check that
+    char routing_id[ROUTING_ID_SIZE_MAX] = {}; // the size received is the size sent
 
     bool run = true;
     bool keep_sending = true;
     while (run) {
         int rc = zlink_recv (control, content, CONTENT_SIZE_MAX,
-                           ZLINK_DONTWAIT); // usually, rc == -1 (no message)
+                             ZLINK_DONTWAIT); // usually, rc == -1 (no message)
         if (rc > 0) {
             content[rc] = 0; // NULL-terminate the command string
             if (is_verbose)
@@ -261,8 +249,7 @@ static void server_worker (void * /*unused_*/)
             rc = zlink_recv (worker, content, CONTENT_SIZE_MAX, 0);
             TEST_ASSERT_EQUAL_INT (CONTENT_SIZE, rc);
             if (is_verbose)
-                printf ("server receive - routing_id = %s    content = %s\n",
-                        routing_id, content);
+                printf ("server receive - routing_id = %s    content = %s\n", routing_id, content);
 
             // Send 0..4 replies back
             if (keep_sending) {
@@ -273,12 +260,10 @@ static void server_worker (void * /*unused_*/)
 
                     //  Send message from server to client
                     if (is_verbose)
-                        printf ("server send - routing_id = %s    reply\n",
-                                routing_id);
+                        printf ("server send - routing_id = %s    reply\n", routing_id);
                     zlink_atomic_counter_inc (g_workers_pkts_out);
 
-                    rc = zlink_send (worker, routing_id, ROUTING_ID_SIZE,
-                                   ZLINK_SNDMORE);
+                    rc = zlink_send (worker, routing_id, ROUTING_ID_SIZE, ZLINK_SNDMORE);
                     TEST_ASSERT_EQUAL_INT (ROUTING_ID_SIZE, rc);
                     rc = zlink_send (worker, content, CONTENT_SIZE, 0);
                     TEST_ASSERT_EQUAL_INT (CONTENT_SIZE, rc);

@@ -18,7 +18,8 @@ typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *, zlink_msg_t *
 int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_);
 }
 
-namespace {
+namespace
+{
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
@@ -69,12 +70,9 @@ std::string make_endpoint (const std::string &host, int port)
 
 void apply_socket_tuning (void *socket, const server_options_t &opt)
 {
-    (void) zlink_set_option (socket, ZLINK_OPT_SNDBUF, &opt.sndbuf,
-                             sizeof (opt.sndbuf));
-    (void) zlink_set_option (socket, ZLINK_OPT_RCVBUF, &opt.rcvbuf,
-                             sizeof (opt.rcvbuf));
-    (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog,
-                             sizeof (opt.backlog));
+    (void) zlink_set_option (socket, ZLINK_OPT_SNDBUF, &opt.sndbuf, sizeof (opt.sndbuf));
+    (void) zlink_set_option (socket, ZLINK_OPT_RCVBUF, &opt.rcvbuf, sizeof (opt.rcvbuf));
+    (void) zlink_set_option (socket, ZLINK_OPT_BACKLOG, &opt.backlog, sizeof (opt.backlog));
     (void) zlink_set_option (socket, ZLINK_OPT_TCP_NODELAY, &opt.tcp_nodelay,
                              sizeof (opt.tcp_nodelay));
     const int hwm = 100;
@@ -86,8 +84,7 @@ uint32_t routing_id_key (const zlink_routing_id_t *rid_)
 {
     return (static_cast<uint32_t> (rid_->data[0]) << 24)
            | (static_cast<uint32_t> (rid_->data[1]) << 16)
-           | (static_cast<uint32_t> (rid_->data[2]) << 8)
-           | static_cast<uint32_t> (rid_->data[3]);
+           | (static_cast<uint32_t> (rid_->data[2]) << 8) | static_cast<uint32_t> (rid_->data[3]);
 }
 
 size_t routing_id_shard (uint32_t rid_value_)
@@ -95,50 +92,42 @@ size_t routing_id_shard (uint32_t rid_value_)
     return static_cast<size_t> (rid_value_ % k_frame_shard_count);
 }
 
-bool is_complete_stream_frame (const unsigned char *payload_,
-                               size_t payload_size_)
+bool is_complete_stream_frame (const unsigned char *payload_, size_t payload_size_)
 {
     if (!payload_ || payload_size_ < stream_echo::k_stream_packet_prefix_size)
         return false;
 
-    const size_t header_size =
-      static_cast<size_t> (stream_echo::load_u16_be (payload_));
-    const size_t body_size =
-      static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
+    const size_t header_size = static_cast<size_t> (stream_echo::load_u16_be (payload_));
+    const size_t body_size = static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
     if (!stream_echo::valid_frame_sizes (header_size, body_size))
         return false;
 
-    const size_t frame_size =
-      stream_echo::k_stream_packet_prefix_size + header_size + body_size;
+    const size_t frame_size = stream_echo::k_stream_packet_prefix_size + header_size + body_size;
     if (payload_size_ != frame_size)
         return false;
 
-    return stream_echo::is_msg_name (
-      payload_ + stream_echo::k_stream_packet_prefix_size, header_size);
+    return stream_echo::is_msg_name (payload_ + stream_echo::k_stream_packet_prefix_size,
+                                     header_size);
 }
 
 bool try_parse_stream_frame (const unsigned char *payload_,
                              size_t payload_size_,
                              size_t *frame_size_out_)
 {
-    if (!payload_ || !frame_size_out_
-        || payload_size_ < stream_echo::k_stream_packet_prefix_size)
+    if (!payload_ || !frame_size_out_ || payload_size_ < stream_echo::k_stream_packet_prefix_size)
         return false;
 
-    const size_t header_size =
-      static_cast<size_t> (stream_echo::load_u16_be (payload_));
-    const size_t body_size =
-      static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
+    const size_t header_size = static_cast<size_t> (stream_echo::load_u16_be (payload_));
+    const size_t body_size = static_cast<size_t> (stream_echo::load_u32_be (payload_ + 2));
     if (!stream_echo::valid_frame_sizes (header_size, body_size))
         return false;
 
-    const size_t frame_size =
-      stream_echo::k_stream_packet_prefix_size + header_size + body_size;
+    const size_t frame_size = stream_echo::k_stream_packet_prefix_size + header_size + body_size;
     if (payload_size_ < frame_size)
         return false;
 
-    if (!stream_echo::is_msg_name (
-          payload_ + stream_echo::k_stream_packet_prefix_size, header_size)) {
+    if (!stream_echo::is_msg_name (payload_ + stream_echo::k_stream_packet_prefix_size,
+                                   header_size)) {
         return false;
     }
 
@@ -191,15 +180,13 @@ class zlink_stream_echo_server_t
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
         if (zlink_bind (server, endpoint.c_str ()) != 0) {
-            std::fprintf (
-              stderr, "zlink stream: bind failed: %s endpoint=%s\n",
-              zlink_strerror (zlink_errno ()), endpoint.c_str ());
+            std::fprintf (stderr, "zlink stream: bind failed: %s endpoint=%s\n",
+                          zlink_strerror (zlink_errno ()), endpoint.c_str ());
             return 2;
         }
 
         g_server_instance = this;
-        if (zlink_stream_attach_raw (
-              server, &zlink_stream_echo_server_t::on_raw_packet_static)
+        if (zlink_stream_attach_raw (server, &zlink_stream_echo_server_t::on_raw_packet_static)
             != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
@@ -213,20 +200,17 @@ class zlink_stream_echo_server_t
         while (!stop.load (std::memory_order_acquire))
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        std::printf ("%s\n",
-                     stream_echo::make_metric_line (
-                       "zlink", opt.size,
-                       recv_msgs.load (std::memory_order_relaxed),
-                       parse_error.load (std::memory_order_relaxed),
-                       protocol_error.load (std::memory_order_relaxed),
-                       send_error.load (std::memory_order_relaxed), 0)
-                       .c_str ());
+        std::printf ("%s\n", stream_echo::make_metric_line (
+                               "zlink", opt.size, recv_msgs.load (std::memory_order_relaxed),
+                               parse_error.load (std::memory_order_relaxed),
+                               protocol_error.load (std::memory_order_relaxed),
+                               send_error.load (std::memory_order_relaxed), 0)
+                               .c_str ());
         return 0;
     }
 
   private:
-    static int on_raw_packet_static (const zlink_routing_id_t *rid_,
-                                     zlink_msg_t *msg_)
+    static int on_raw_packet_static (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     {
         zlink_stream_echo_server_t *self = g_server_instance;
         if (!self || !rid_ || !msg_) {
@@ -256,8 +240,7 @@ class zlink_stream_echo_server_t
         size_t frame_count = 0;
         while (offset < payload_size_) {
             size_t frame_size = 0;
-            if (!try_parse_stream_frame (payload_ + offset, payload_size_ - offset,
-                                         &frame_size)) {
+            if (!try_parse_stream_frame (payload_ + offset, payload_size_ - offset, &frame_size)) {
                 if (offset == 0)
                     return false;
                 mark_parse_error ();
@@ -267,8 +250,7 @@ class zlink_stream_echo_server_t
 
             recv_msgs.fetch_add (1, std::memory_order_relaxed);
             if (offset == 0 && frame_size == payload_size_ && frame_count == 0) {
-                if (zlink_send_part_rid (server, rid_, msg_,
-                                         ZLINK_SEND_FLAGS_NONE,
+                if (zlink_send_part_rid (server, rid_, msg_, ZLINK_SEND_FLAGS_NONE,
                                          ZLINK_PART_FINAL)
                     != 0) {
                     send_error.fetch_add (1, std::memory_order_relaxed);
@@ -284,9 +266,7 @@ class zlink_stream_echo_server_t
                 return true;
             }
             std::memcpy (zlink_msg_data (&reply), payload_ + offset, frame_size);
-            if (zlink_send_part_rid (server, rid_, &reply,
-                                     ZLINK_SEND_FLAGS_NONE,
-                                     ZLINK_PART_FINAL)
+            if (zlink_send_part_rid (server, rid_, &reply, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL)
                 != 0) {
                 send_error.fetch_add (1, std::memory_order_relaxed);
                 (void) zlink_msg_close (&reply);
@@ -310,8 +290,7 @@ class zlink_stream_echo_server_t
             return 0;
         }
 
-        const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (msg_));
+        const unsigned char *payload = static_cast<const unsigned char *> (zlink_msg_data (msg_));
         const size_t payload_size = zlink_msg_size (msg_);
         if (payload_size == 0) {
             (void) zlink_msg_close (msg_);
@@ -319,8 +298,7 @@ class zlink_stream_echo_server_t
         }
 
         if (payload_size == 1 && payload
-            && (payload[0] == k_stream_event_connect
-                || payload[0] == k_stream_event_disconnect)) {
+            && (payload[0] == k_stream_event_connect || payload[0] == k_stream_event_disconnect)) {
             if (payload[0] == k_stream_event_disconnect) {
                 const uint32_t rid_value = routing_id_key (rid_);
                 frame_shard_t &shard = frame_shards[routing_id_shard (rid_value)];
@@ -339,8 +317,7 @@ class zlink_stream_echo_server_t
         if (buffer.bytes.empty () && buffer.consumed == 0) {
             if (is_complete_stream_frame (payload, payload_size)) {
                 recv_msgs.fetch_add (1, std::memory_order_relaxed);
-                if (zlink_send_part_rid (server, rid_, msg_,
-                                         ZLINK_SEND_FLAGS_NONE,
+                if (zlink_send_part_rid (server, rid_, msg_, ZLINK_SEND_FLAGS_NONE,
                                          ZLINK_PART_FINAL)
                     != 0) {
                     send_error.fetch_add (1, std::memory_order_relaxed);
@@ -377,9 +354,7 @@ class zlink_stream_echo_server_t
             }
             std::memcpy (zlink_msg_data (&reply), frame.data, frame.size);
             recv_msgs.fetch_add (1, std::memory_order_relaxed);
-            if (zlink_send_part_rid (server, rid_, &reply,
-                                     ZLINK_SEND_FLAGS_NONE,
-                                     ZLINK_PART_FINAL)
+            if (zlink_send_part_rid (server, rid_, &reply, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL)
                 != 0) {
                 send_error.fetch_add (1, std::memory_order_relaxed);
                 (void) zlink_msg_close (&reply);

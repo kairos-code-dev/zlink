@@ -66,7 +66,9 @@ int main ()
                           spot_node.bind ("tcp://0.0.0.0:7101").enable_actor_gateway ();
                       })
       .stream ("client-stream", [] (zlink::framework::stream_builder_t &stream) {
-          stream.bind ("tcp://0.0.0.0:9200").register_session ("client").attach_actor_gateway ("session-actors");
+          stream.bind ("tcp://0.0.0.0:9200")
+            .register_session ("client")
+            .attach_actor_gateway ("session-actors");
       });
 
     if (zlink.streams ().size () != 1 || !zlink.streams ()[0].actor_gateway_spot_node_name
@@ -92,12 +94,13 @@ int main ()
     }
 
     auto type_mismatch = manager.get_or_create ("enemy", "alice");
-    if (type_mismatch || type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
+    if (type_mismatch
+        || type_mismatch.error_kind () != framework_error_kind_t::actor_type_mismatch) {
         return 5;
     }
 
-    zlink::framework::actor_ref_t remote_ref (zlink::framework::node_rid_t::from_string ("remote-node"), "player",
-                                              "bob", 7);
+    zlink::framework::actor_ref_t remote_ref (
+      zlink::framework::node_rid_t::from_string ("remote-node"), "player", "bob", 7);
     auto bound = manager.bind (remote_ref).submit ().result ();
     if (!bound || !gateway.actor_bound ("bob") || bound.value ().ref ().generation () != 7) {
         return 6;
@@ -111,24 +114,31 @@ int main ()
     const auto payload = zlink::message_t::from (std::string ("payload"));
     auto relay = bound.value ().relay (header, payload).submit ().result ();
     if (!relay || gateway.relayed_frames ().size () != 1
-        || gateway.relayed_frames ()[0].payload.to_string () != "payload" || payload.to_string () != "payload") {
+        || gateway.relayed_frames ()[0].payload.to_string () != "payload"
+        || payload.to_string () != "payload") {
         return 7;
     }
 
     zlink::framework::session_actor_t unbound;
     auto missing_relay = unbound.relay (header, payload).submit ().result ();
-    if (missing_relay || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
+    if (missing_relay
+        || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 8;
     }
 
-    auto push_result = bound.value ().context ().bound_session ().send_raw (payload).submit ().result ();
+    auto push_result =
+      bound.value ().context ().bound_session ().send_raw (payload).submit ().result ();
     if (!push_result || gateway.bound_session_pushes ().size () != 1
         || gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
         return 9;
     }
 
-    auto typed_push =
-      bound.value ().context ().bound_session ().send (typed_session_push_t{"typed-payload"}).submit ().result ();
+    auto typed_push = bound.value ()
+                        .context ()
+                        .bound_session ()
+                        .send (typed_session_push_t{"typed-payload"})
+                        .submit ()
+                        .result ();
     if (!typed_push || gateway.bound_session_pushes ().size () != 2
         || gateway.bound_session_pushes ()[1].payload.to_string () != "typed-payload") {
         return 13;
@@ -139,11 +149,13 @@ int main ()
         return 10;
     }
     auto disconnected_push = bound.value ().bound_session ().send_raw (payload).submit ().result ();
-    if (disconnected_push || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
+    if (disconnected_push
+        || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
         return 16;
     }
     auto disconnected_relay = bound.value ().relay (header, payload).submit ().result ();
-    if (disconnected_relay || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
+    if (disconnected_relay
+        || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
         || payload.to_string () != "payload") {
         return 17;
     }
@@ -163,23 +175,25 @@ int main ()
     }
 
     bool join_spot_seen = false;
-    gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor, zlink::framework::spot_rid_t spot_rid,
+    gateway.on_join_spot ([&] (const zlink::framework::actor_ref_t &actor,
+                               zlink::framework::spot_rid_t spot_rid,
                                const zlink::message_t &payload) {
         const auto request = payload.parse_json<join_request_t> ();
-        join_spot_seen = actor.actor_id () == "bob" && spot_rid.value () == "match-1" && request.room_id == "match-1";
+        join_spot_seen = actor.actor_id () == "bob" && spot_rid.value () == "match-1"
+                         && request.room_id == "match-1";
         return zlink::framework::result_t<zlink::framework::detail::actor_join_reply_t>::success (
           zlink::framework::detail::actor_join_reply_t{
             0,
-            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("spot-node"), "player", "bob", 8),
+            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("spot-node"),
+                                           "player", "bob", 8),
             zlink::message_t::from_json (join_reply_t{"match-1", "O"})});
     });
     auto actor_context = rebound.value ().context ();
-    const auto join_spot =
-      actor_context
-        .join_spot (zlink::framework::spot_rid_t::from_string ("match-1"),
-                    zlink::message_t::from_json (join_request_t{"match-1"}))
-        .submit ()
-        .result ();
+    const auto join_spot = actor_context
+                             .join_spot (zlink::framework::spot_rid_t::from_string ("match-1"),
+                                         zlink::message_t::from_json (join_request_t{"match-1"}))
+                             .submit ()
+                             .result ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
         || join_spot.value ().actor.generation () != 8
         || join_spot.value ().reply.parse_json<join_reply_t> ().mark != "O") {
@@ -190,20 +204,24 @@ int main ()
         || payload.to_string () != "payload") {
         return 20;
     }
-    const auto stale_push = rebound.value ().bound_session ().send_raw (payload).submit ().result ();
+    const auto stale_push =
+      rebound.value ().bound_session ().send_raw (payload).submit ().result ();
     if (stale_push || stale_push.error_kind () != framework_error_kind_t::actor_stale_generation) {
         return 21;
     }
 
     bool entry_join_seen = false;
-    gateway.on_join_entry_spot ([&] (const zlink::framework::actor_ref_t &actor,
-                                     zlink::framework::node_rid_t node_rid) {
-        entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node";
-        return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
-          zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("entry-node"), "player", "bob", 9));
-    });
+    gateway.on_join_entry_spot (
+      [&] (const zlink::framework::actor_ref_t &actor, zlink::framework::node_rid_t node_rid) {
+          entry_join_seen = actor.actor_id () == "bob" && node_rid.value () == "entry-node";
+          return zlink::framework::result_t<zlink::framework::actor_ref_t>::success (
+            zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string ("entry-node"),
+                                           "player", "bob", 9));
+      });
     const auto entry_join =
-      actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node")).submit ().result ();
+      actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node"))
+        .submit ()
+        .result ();
     if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
         return 15;
     }

@@ -62,8 +62,7 @@ int registry_access_t::get_option (registry_t *registry_,
     return registry_ ? registry_->get_option (option_, value_out_) : -1;
 }
 
-int registry_access_t::add_peer (registry_t *registry_,
-                                 const char *peer_pub_endpoint_)
+int registry_access_t::add_peer (registry_t *registry_, const char *peer_pub_endpoint_)
 {
     return registry_ ? registry_->add_peer (peer_pub_endpoint_) : -1;
 }
@@ -72,12 +71,10 @@ int registry_access_t::set_heartbeat (registry_t *registry_,
                                       uint32_t interval_ms_,
                                       uint32_t timeout_ms_)
 {
-    return registry_ ? registry_->set_heartbeat (interval_ms_, timeout_ms_)
-                     : -1;
+    return registry_ ? registry_->set_heartbeat (interval_ms_, timeout_ms_) : -1;
 }
 
-int registry_access_t::set_broadcast_interval (registry_t *registry_,
-                                               uint32_t interval_ms_)
+int registry_access_t::set_broadcast_interval (registry_t *registry_, uint32_t interval_ms_)
 {
     return registry_ ? registry_->set_broadcast_interval (interval_ms_) : -1;
 }
@@ -98,9 +95,7 @@ int registry_access_t::set_tls_server (registry_t *registry_,
                                        const char *key_,
                                        int require_client_cert_)
 {
-    return registry_
-             ? registry_->set_tls_server (cert_, key_, require_client_cert_)
-             : -1;
+    return registry_ ? registry_->set_tls_server (cert_, key_, require_client_cert_) : -1;
 }
 
 int registry_access_t::set_tls_client (registry_t *registry_,
@@ -108,9 +103,7 @@ int registry_access_t::set_tls_client (registry_t *registry_,
                                        const char *hostname_,
                                        int trust_system_)
 {
-    return registry_
-             ? registry_->set_tls_client (ca_cert_, hostname_, trust_system_)
-             : -1;
+    return registry_ ? registry_->set_tls_client (ca_cert_, hostname_, trust_system_) : -1;
 }
 
 int registry_access_t::topology_snapshot (registry_t *registry_,
@@ -120,8 +113,7 @@ int registry_access_t::topology_snapshot (registry_t *registry_,
     return registry_ ? registry_->topology_snapshot (entries_, count_) : -1;
 }
 
-int registry_access_t::status_snapshot (registry_t *registry_,
-                                        zlink_registry_status_t *out_)
+int registry_access_t::status_snapshot (registry_t *registry_, zlink_registry_status_t *out_)
 {
     return registry_ ? registry_->status_snapshot (out_) : -1;
 }
@@ -131,9 +123,7 @@ int registry_access_t::member_peers (registry_t *registry_,
                                      zlink_member_peer_entry_t *entries_,
                                      size_t *count_)
 {
-    return registry_
-             ? registry_->member_peers (channel_name_, entries_, count_)
-             : -1;
+    return registry_ ? registry_->member_peers (channel_name_, entries_, count_) : -1;
 }
 
 int registry_access_t::service_summary_snapshot (
@@ -144,13 +134,11 @@ int registry_access_t::service_summary_snapshot (
     return registry_ ? registry_->service_summary_snapshot (filter_, out_) : -1;
 }
 
-int registry_access_t::topology_query (
-  registry_t *registry_,
-  const zlink_registry_topology_filter_t *filter_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
+int registry_access_t::topology_query (registry_t *registry_,
+                                       const zlink_registry_topology_filter_t *filter_,
+                                       zlink_registry_topology_entry_t *entries_,
+                                       size_t *count_)
 {
-    return registry_ ? registry_->topology_query (filter_, entries_, count_)
-                     : -1;
+    return registry_ ? registry_->topology_query (filter_, entries_, count_) : -1;
 }
 }

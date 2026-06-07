@@ -18,17 +18,13 @@ namespace
 void discard_test_socket_parts (const zlink_routing_id_t *,
                                 zlink_msg_t *parts_,
                                 size_t part_count_,
-                          void *)
+                                void *)
 {
     zlink_multipart_close (parts_, part_count_);
 }
 
-void discard_test_spot_parts (const zlink_routing_id_t *,
-                              const char *,
-                              size_t,
-                              zlink_msg_t *parts_,
-                              size_t part_count_,
-                          void *)
+void discard_test_spot_parts (
+  const zlink_routing_id_t *, const char *, size_t, zlink_msg_t *parts_, size_t part_count_, void *)
 {
     zlink_multipart_close (parts_, part_count_);
 }
@@ -61,12 +57,10 @@ int test_assert_success_message_errno_helper (int rc_,
 {
     if (rc_ == -1) {
         char buffer[512];
-        buffer[sizeof (buffer) - 1] =
-          0; // to ensure defined behavior with VC++ <= 2013
-        snprintf (buffer, sizeof (buffer) - 1,
-                  "%s failed%s%s%s, errno = %i (%s)", expr_,
-                  msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-                  msg_ ? ")" : "", zlink_errno (), zlink_strerror (zlink_errno ()));
+        buffer[sizeof (buffer) - 1] = 0; // to ensure defined behavior with VC++ <= 2013
+        snprintf (buffer, sizeof (buffer) - 1, "%s failed%s%s%s, errno = %i (%s)", expr_,
+                  msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                  zlink_errno (), zlink_strerror (zlink_errno ()));
         UNITY_TEST_FAIL (line_, buffer);
     }
     return rc_;
@@ -80,32 +74,28 @@ int test_assert_success_message_errno_helper (zlink_submit_result_t rc_,
     if (rc_ != ZLINK_SUBMIT_OK) {
         char buffer[512];
         buffer[sizeof (buffer) - 1] = 0;
-        snprintf (buffer, sizeof (buffer) - 1,
-                  "%s failed%s%s%s, submit = %i, errno = %i (%s)", expr_,
-                  msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-                  msg_ ? ")" : "", static_cast<int> (rc_), zlink_errno (),
-                  zlink_strerror (zlink_errno ()));
+        snprintf (buffer, sizeof (buffer) - 1, "%s failed%s%s%s, submit = %i, errno = %i (%s)",
+                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                  static_cast<int> (rc_), zlink_errno (), zlink_strerror (zlink_errno ()));
         UNITY_TEST_FAIL (line_, buffer);
     }
     return static_cast<int> (rc_);
 }
 
-#define DEFINE_RESULT_ASSERT_HELPER(TYPE, OK_VAL, LABEL)                       \
-    int test_assert_success_message_errno_helper (                             \
-      TYPE rc_, const char *msg_, const char *expr_, int line_)                \
-    {                                                                          \
-        if (rc_ != OK_VAL) {                                                   \
-            char buffer[512];                                                  \
-            buffer[sizeof (buffer) - 1] = 0;                                   \
-            snprintf (                                                         \
-              buffer, sizeof (buffer) - 1,                                     \
-              "%s failed%s%s%s, " LABEL " = %i, errno = %i (%s)", expr_,       \
-              msg_ ? " (additional info: " : "", msg_ ? msg_ : "",            \
-              msg_ ? ")" : "", static_cast<int> (rc_), zlink_errno (),         \
-              zlink_strerror (zlink_errno ()));                                \
-            UNITY_TEST_FAIL (line_, buffer);                                    \
-        }                                                                      \
-        return static_cast<int> (rc_);                                         \
+#define DEFINE_RESULT_ASSERT_HELPER(TYPE, OK_VAL, LABEL)                                           \
+    int test_assert_success_message_errno_helper (TYPE rc_, const char *msg_, const char *expr_,   \
+                                                  int line_)                                       \
+    {                                                                                              \
+        if (rc_ != OK_VAL) {                                                                       \
+            char buffer[512];                                                                      \
+            buffer[sizeof (buffer) - 1] = 0;                                                       \
+            snprintf (buffer, sizeof (buffer) - 1,                                                 \
+                      "%s failed%s%s%s, " LABEL " = %i, errno = %i (%s)", expr_,                   \
+                      msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",        \
+                      static_cast<int> (rc_), zlink_errno (), zlink_strerror (zlink_errno ()));    \
+            UNITY_TEST_FAIL (line_, buffer);                                                       \
+        }                                                                                          \
+        return static_cast<int> (rc_);                                                             \
     }
 
 DEFINE_RESULT_ASSERT_HELPER (zlink_connect_result_t, ZLINK_CONNECT_OK, "connect")
@@ -128,12 +118,10 @@ int test_assert_success_message_raw_errno_helper (
 #endif
 
         char buffer[512];
-        buffer[sizeof (buffer) - 1] =
-          0; // to ensure defined behavior with VC++ <= 2013
-        snprintf (
-          buffer, sizeof (buffer) - 1, "%s failed%s%s%s with %d, errno = %i/%s",
-          expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-          msg_ ? ")" : "", rc_, current_errno, strerror (current_errno));
+        buffer[sizeof (buffer) - 1] = 0; // to ensure defined behavior with VC++ <= 2013
+        snprintf (buffer, sizeof (buffer) - 1, "%s failed%s%s%s with %d, errno = %i/%s", expr_,
+                  msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "", rc_,
+                  current_errno, strerror (current_errno));
         UNITY_TEST_FAIL (line_, buffer);
     }
     return rc_;
@@ -144,22 +132,20 @@ int test_assert_success_message_raw_zero_errno_helper (int rc_,
                                                        const char *expr_,
                                                        int line_)
 {
-    return test_assert_success_message_raw_errno_helper (rc_, msg_, expr_,
-                                                         line_, true);
+    return test_assert_success_message_raw_errno_helper (rc_, msg_, expr_, line_, true);
 }
 
 int test_assert_failure_message_raw_errno_helper (
   int rc_, int expected_errno_, const char *msg_, const char *expr_, int line_)
 {
     char buffer[512];
-    buffer[sizeof (buffer) - 1] =
-      0; // to ensure defined behavior with VC++ <= 2013
+    buffer[sizeof (buffer) - 1] = 0; // to ensure defined behavior with VC++ <= 2013
     if (rc_ != -1) {
         snprintf (buffer, sizeof (buffer) - 1,
                   "%s was unexpectedly successful%s%s%s, expected "
                   "errno = %i, actual return value = %i",
-                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-                  msg_ ? ")" : "", expected_errno_, rc_);
+                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                  expected_errno_, rc_);
         UNITY_TEST_FAIL (line_, buffer);
     } else {
 #if defined ZLINK_HAVE_WINDOWS
@@ -171,9 +157,8 @@ int test_assert_failure_message_raw_errno_helper (
             snprintf (buffer, sizeof (buffer) - 1,
                       "%s failed with an unexpected error%s%s%s, expected "
                       "errno = %i, actual errno = %i",
-                      expr_, msg_ ? " (additional info: " : "",
-                      msg_ ? msg_ : "", msg_ ? ")" : "", expected_errno_,
-                      current_errno);
+                      expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                      expected_errno_, current_errno);
             UNITY_TEST_FAIL (line_, buffer);
         }
     }
@@ -181,11 +166,7 @@ int test_assert_failure_message_raw_errno_helper (
 }
 
 int test_assert_failure_message_raw_errno_helper (
-  zlink_submit_result_t rc_,
-  int expected_errno_,
-  const char *msg_,
-  const char *expr_,
-  int line_)
+  zlink_submit_result_t rc_, int expected_errno_, const char *msg_, const char *expr_, int line_)
 {
     char buffer[512];
     buffer[sizeof (buffer) - 1] = 0;
@@ -193,8 +174,8 @@ int test_assert_failure_message_raw_errno_helper (
         snprintf (buffer, sizeof (buffer) - 1,
                   "%s was unexpectedly successful%s%s%s, expected errno = %i, "
                   "actual submit result = %i",
-                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-                  msg_ ? ")" : "", expected_errno_, static_cast<int> (rc_));
+                  expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                  expected_errno_, static_cast<int> (rc_));
         UNITY_TEST_FAIL (line_, buffer);
     } else {
 #if defined ZLINK_HAVE_WINDOWS
@@ -206,9 +187,8 @@ int test_assert_failure_message_raw_errno_helper (
             snprintf (buffer, sizeof (buffer) - 1,
                       "%s failed with an unexpected error%s%s%s, expected "
                       "errno = %i, actual errno = %i",
-                      expr_, msg_ ? " (additional info: " : "",
-                      msg_ ? msg_ : "", msg_ ? ")" : "", expected_errno_,
-                      current_errno);
+                      expr_, msg_ ? " (additional info: " : "", msg_ ? msg_ : "", msg_ ? ")" : "",
+                      expected_errno_, current_errno);
             UNITY_TEST_FAIL (line_, buffer);
         }
     }
@@ -291,9 +271,8 @@ static void internal_manage_test_sockets (void *socket_, bool add_)
                 if (found && i + 1 < test_socket_count)
                     test_sockets[i] = test_sockets[i + 1];
             }
-            TEST_ASSERT_TRUE_MESSAGE (found,
-                                      "Attempted to close a socket that was "
-                                      "not created by test_context_socket");
+            TEST_ASSERT_TRUE_MESSAGE (found, "Attempted to close a socket that was "
+                                             "not created by test_context_socket");
             --test_socket_count;
             test_sockets[test_socket_count] = NULL;
         }
@@ -321,8 +300,7 @@ void teardown_test_context ()
 void *test_context_socket (int type_)
 {
     void *const socket =
-      zlink_socket (get_test_context (),
-                    static_cast<zlink_socket_type_t> (type_));
+      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     internal_manage_test_sockets (socket, true);
     return socket;
@@ -338,16 +316,12 @@ void *test_context_socket_close (void *socket_)
 void *test_context_socket_close_zero_linger (void *socket_)
 {
     const int linger = 0;
-    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger,
-                               sizeof (linger));
+    int rc = zlink_set_option (socket_, ZLINK_OPT_LINGER, &linger, sizeof (linger));
     TEST_ASSERT_TRUE (rc == 0 || zlink_errno () == ETERM);
     return test_context_socket_close (socket_);
 }
 
-void test_bind (void *socket_,
-                const char *bind_address_,
-                char *my_endpoint_,
-                size_t len_)
+void test_bind (void *socket_, const char *bind_address_, char *my_endpoint_, size_t len_)
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, bind_address_));
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -360,11 +334,9 @@ void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)
         TEST_IGNORE_MESSAGE ("ipv6 is not available");
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_IPV6, &ipv6_, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_IPV6, &ipv6_, sizeof (int)));
 
-    test_bind (socket_, ipv6_ ? "tcp://[::1]:*" : "tcp://127.0.0.1:*",
-               my_endpoint_, len_);
+    test_bind (socket_, ipv6_ ? "tcp://[::1]:*" : "tcp://127.0.0.1:*", my_endpoint_, len_);
 }
 
 void bind_loopback_ipv4 (void *socket_, char *my_endpoint_, size_t len_)
@@ -390,8 +362,7 @@ void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_)
 void make_random_ipc_endpoint (char *out_endpoint_, size_t len_)
 {
     const std::string ipc_path = make_random_ipc_path ();
-    const int rc =
-      snprintf (out_endpoint_, len_, "ipc://%s", ipc_path.c_str ());
+    const int rc = snprintf (out_endpoint_, len_, "ipc://%s", ipc_path.c_str ());
     TEST_ASSERT_TRUE (rc > 0);
     TEST_ASSERT_LESS_THAN (len_, static_cast<size_t> (rc));
 }

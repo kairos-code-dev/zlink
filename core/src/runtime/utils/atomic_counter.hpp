@@ -8,8 +8,7 @@
 
 #if defined ZLINK_FORCE_MUTEXES
 #define ZLINK_ATOMIC_COUNTER_MUTEX
-#elif (defined __cplusplus && __cplusplus >= 201103L)                          \
-  || (defined _MSC_VER && _MSC_VER >= 1900)
+#elif (defined __cplusplus && __cplusplus >= 201103L) || (defined _MSC_VER && _MSC_VER >= 1900)
 #define ZLINK_ATOMIC_COUNTER_CXX11
 #elif defined ZLINK_HAVE_ATOMIC_INTRINSICS
 #define ZLINK_ATOMIC_COUNTER_INTRINSIC
@@ -19,8 +18,7 @@
 #define ZLINK_ATOMIC_COUNTER_ARM
 #elif defined ZLINK_HAVE_WINDOWS
 #define ZLINK_ATOMIC_COUNTER_WINDOWS
-#elif (defined ZLINK_HAVE_SOLARIS || defined ZLINK_HAVE_NETBSD                     \
-       || defined ZLINK_HAVE_GNU)
+#elif (defined ZLINK_HAVE_SOLARIS || defined ZLINK_HAVE_NETBSD || defined ZLINK_HAVE_GNU)
 #define ZLINK_ATOMIC_COUNTER_ATOMIC_H
 #elif defined __tile__
 #define ZLINK_ATOMIC_COUNTER_TILE
@@ -54,9 +52,9 @@ namespace zlink
 //  mutexes).
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
-class __declspec(align (8)) atomic_counter_t
+class __declspec (align (8)) atomic_counter_t
 #elif defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_ARM_ARMV7VE))
-class __declspec(align (4)) atomic_counter_t
+class __declspec (align (4)) atomic_counter_t
 #else
 class atomic_counter_t
 #endif
@@ -86,23 +84,22 @@ class atomic_counter_t
 #elif defined ZLINK_ATOMIC_COUNTER_TILE
         old_value = arch_atomic_add (&_value, increment_);
 #elif defined ZLINK_ATOMIC_COUNTER_X86
-        __asm__ volatile("lock; xadd %0, %1 \n\t"
-                         : "=r"(old_value), "=m"(_value)
-                         : "0"(increment_), "m"(_value)
-                         : "cc", "memory");
+        __asm__ volatile ("lock; xadd %0, %1 \n\t"
+                          : "=r"(old_value), "=m"(_value)
+                          : "0"(increment_), "m"(_value)
+                          : "cc", "memory");
 #elif defined ZLINK_ATOMIC_COUNTER_ARM
         integer_t flag, tmp;
-        __asm__ volatile("       dmb     sy\n\t"
-                         "1:     ldrex   %0, [%5]\n\t"
-                         "       add     %2, %0, %4\n\t"
-                         "       strex   %1, %2, [%5]\n\t"
-                         "       teq     %1, #0\n\t"
-                         "       bne     1b\n\t"
-                         "       dmb     sy\n\t"
-                         : "=&r"(old_value), "=&r"(flag), "=&r"(tmp),
-                           "+Qo"(_value)
-                         : "Ir"(increment_), "r"(&_value)
-                         : "cc");
+        __asm__ volatile ("       dmb     sy\n\t"
+                          "1:     ldrex   %0, [%5]\n\t"
+                          "       add     %2, %0, %4\n\t"
+                          "       strex   %1, %2, [%5]\n\t"
+                          "       teq     %1, #0\n\t"
+                          "       bne     1b\n\t"
+                          "       dmb     sy\n\t"
+                          : "=&r"(old_value), "=&r"(flag), "=&r"(tmp), "+Qo"(_value)
+                          : "Ir"(increment_), "r"(&_value)
+                          : "cc");
 #elif defined ZLINK_ATOMIC_COUNTER_MUTEX
         sync.lock ();
         old_value = _value;
@@ -122,12 +119,10 @@ class atomic_counter_t
         integer_t old = InterlockedExchangeAdd ((LONG *) &_value, delta);
         return old - decrement_ != 0;
 #elif defined ZLINK_ATOMIC_COUNTER_INTRINSIC
-        integer_t nv =
-          __atomic_sub_fetch (&_value, decrement_, __ATOMIC_ACQ_REL);
+        integer_t nv = __atomic_sub_fetch (&_value, decrement_, __ATOMIC_ACQ_REL);
         return nv != 0;
 #elif defined ZLINK_ATOMIC_COUNTER_CXX11
-        const integer_t old =
-          _value.fetch_sub (decrement_, std::memory_order_acq_rel);
+        const integer_t old = _value.fetch_sub (decrement_, std::memory_order_acq_rel);
         return old - decrement_ != 0;
 #elif defined ZLINK_ATOMIC_COUNTER_ATOMIC_H
         int32_t delta = -((int32_t) decrement_);
@@ -140,24 +135,23 @@ class atomic_counter_t
 #elif defined ZLINK_ATOMIC_COUNTER_X86
         integer_t oldval = -decrement_;
         volatile integer_t *val = &_value;
-        __asm__ volatile("lock; xaddl %0,%1"
-                         : "=r"(oldval), "=m"(*val)
-                         : "0"(oldval), "m"(*val)
-                         : "cc", "memory");
+        __asm__ volatile ("lock; xaddl %0,%1"
+                          : "=r"(oldval), "=m"(*val)
+                          : "0"(oldval), "m"(*val)
+                          : "cc", "memory");
         return oldval != decrement_;
 #elif defined ZLINK_ATOMIC_COUNTER_ARM
         integer_t old_value, flag, tmp;
-        __asm__ volatile("       dmb     sy\n\t"
-                         "1:     ldrex   %0, [%5]\n\t"
-                         "       sub     %2, %0, %4\n\t"
-                         "       strex   %1, %2, [%5]\n\t"
-                         "       teq     %1, #0\n\t"
-                         "       bne     1b\n\t"
-                         "       dmb     sy\n\t"
-                         : "=&r"(old_value), "=&r"(flag), "=&r"(tmp),
-                           "+Qo"(_value)
-                         : "Ir"(decrement_), "r"(&_value)
-                         : "cc");
+        __asm__ volatile ("       dmb     sy\n\t"
+                          "1:     ldrex   %0, [%5]\n\t"
+                          "       sub     %2, %0, %4\n\t"
+                          "       strex   %1, %2, [%5]\n\t"
+                          "       teq     %1, #0\n\t"
+                          "       bne     1b\n\t"
+                          "       dmb     sy\n\t"
+                          : "=&r"(old_value), "=&r"(flag), "=&r"(tmp), "+Qo"(_value)
+                          : "Ir"(decrement_), "r"(&_value)
+                          : "cc");
         return old_value - decrement_ != 0;
 #elif defined ZLINK_ATOMIC_COUNTER_MUTEX
         sync.lock ();
@@ -170,10 +164,7 @@ class atomic_counter_t
 #endif
     }
 
-    integer_t get () const ZLINK_NOEXCEPT
-    {
-        return _value;
-    }
+    integer_t get () const ZLINK_NOEXCEPT { return _value; }
 
   private:
 #if defined ZLINK_ATOMIC_COUNTER_CXX11
@@ -189,8 +180,7 @@ class atomic_counter_t
 #if !defined ZLINK_ATOMIC_COUNTER_CXX11
     ZLINK_NON_COPYABLE_NOR_MOVABLE (atomic_counter_t)
 #endif
-#if defined(__GNUC__) || defined(__INTEL_COMPILER)                             \
-  || (defined(__SUNPRO_C) && __SUNPRO_C >= 0x590)                              \
+#if defined(__GNUC__) || defined(__INTEL_COMPILER) || (defined(__SUNPRO_C) && __SUNPRO_C >= 0x590) \
   || (defined(__SUNPRO_CC) && __SUNPRO_CC >= 0x590)
 } __attribute__ ((aligned (sizeof (void *))));
 #else

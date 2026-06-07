@@ -13,11 +13,10 @@ struct registry_query_access_t
 {
     static void *create (ctx_t *ctx_);
     static int connect (void *client_, const char *endpoint_);
-    static int topology_query (
-      void *client_,
-      const zlink_registry_topology_filter_t *filter_,
-      zlink_registry_topology_entry_t *entries_,
-      size_t *count_);
+    static int topology_query (void *client_,
+                               const zlink_registry_topology_filter_t *filter_,
+                               zlink_registry_topology_entry_t *entries_,
+                               size_t *count_);
     static int destroy (void **client_p_);
 };
 }

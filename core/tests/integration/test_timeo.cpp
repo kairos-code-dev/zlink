@@ -12,8 +12,7 @@ void test_timeo ()
 
     //  Receive on disconnected socket returns immediately
     char buffer[32];
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN,
-                               zlink_recv (frontend, buffer, 32, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (frontend, buffer, 32, ZLINK_DONTWAIT));
 
 
     //  Check whether receive timeout is honored

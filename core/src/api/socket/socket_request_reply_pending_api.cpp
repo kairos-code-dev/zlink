@@ -45,8 +45,7 @@ void erase_socket_pending_request_impl (
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (state_->mutex);
-        std::unordered_map<reqrep::pending_key_t,
-                           reqrep::pending_request_t,
+        std::unordered_map<reqrep::pending_key_t, reqrep::pending_request_t,
                            reqrep::pending_key_hash_t>::iterator it =
           state_->pending_requests.find (key_);
         if (it != state_->pending_requests.end ()) {
@@ -101,8 +100,7 @@ int ensure_socket_pending_request_impl (
         pending.handler = handler_;
         pending.userdata = userdata_;
         const uint32_t resolved_timeout_ms =
-          zlink::request_reply::resolve_timeout_ms (
-            timeout_ms_, state->default_timeout_ms);
+          zlink::request_reply::resolve_timeout_ms (timeout_ms_, state->default_timeout_ms);
         struct socket_timeout_callback_ctx_t
         {
             std::shared_ptr<reqrep::socket_request_reply_state_t> state;
@@ -118,27 +116,23 @@ int ensure_socket_pending_request_impl (
             bool found = false;
             {
                 std::lock_guard<std::mutex> lock (ctx->state->mutex);
-                std::unordered_map<reqrep::pending_key_t,
-                                   reqrep::pending_request_t,
+                std::unordered_map<reqrep::pending_key_t, reqrep::pending_request_t,
                                    reqrep::pending_key_hash_t>::iterator it =
                   ctx->state->pending_requests.find (ctx->key);
                 if (it == ctx->state->pending_requests.end ())
                     return;
                 pending = it->second;
                 ctx->state->pending_sequences.erase (ctx->key.request_seq);
-                ctx->state->pending_request_keys_by_seq.erase (
-                  ctx->key.request_seq);
+                ctx->state->pending_request_keys_by_seq.erase (ctx->key.request_seq);
                 ctx->state->pending_requests.erase (it);
                 found = true;
             }
             if (found) {
-                (void) reqrep::queue_reply_completion (
-                  ctx->state, pending.handler, pending.userdata, ETIMEDOUT,
-                  NULL, 0);
+                (void) reqrep::queue_reply_completion (ctx->state, pending.handler,
+                                                       pending.userdata, ETIMEDOUT, NULL, 0);
             }
         };
-        if (zlink::request_reply_runtime::schedule_timeout_task<
-              socket_timeout_callback_ctx_t> (
+        if (zlink::request_reply_runtime::schedule_timeout_task<socket_timeout_callback_ctx_t> (
               resolved_timeout_ms, on_timeout,
               [&] (socket_timeout_callback_ctx_t &ctx_) {
                   ctx_.state = state;
@@ -166,13 +160,11 @@ int reqrep::lookup_socket_pending_request_by_seq (
   uint64_t request_seq_,
   pending_key_t *key_out_)
 {
-    return lookup_socket_pending_request_by_seq_impl (state_, request_seq_,
-                                                      key_out_);
+    return lookup_socket_pending_request_by_seq_impl (state_, request_seq_, key_out_);
 }
 
 void reqrep::erase_socket_pending_request (
-  const std::shared_ptr<socket_request_reply_state_t> &state_,
-  const pending_key_t &key_)
+  const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_key_t &key_)
 {
     erase_socket_pending_request_impl (state_, key_);
 }
@@ -187,7 +179,6 @@ int reqrep::ensure_socket_pending_request (
   std::shared_ptr<socket_request_reply_state_t> *state_out_,
   pending_key_t *key_out_)
 {
-    return ensure_socket_pending_request_impl (
-      handle_, peer_rid_, timeout_ms_, handler_, userdata_, request_seq_out_,
-      state_out_, key_out_);
+    return ensure_socket_pending_request_impl (handle_, peer_rid_, timeout_ms_, handler_, userdata_,
+                                               request_seq_out_, state_out_, key_out_);
 }

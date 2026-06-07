@@ -27,8 +27,7 @@ spot_handle_registry_t &spot_handle_registry ()
     return registry;
 }
 
-static int transition_service_to_callback_mode (
-  zlink::service_mode_state_t *state_)
+static int transition_service_to_callback_mode (zlink::service_mode_state_t *state_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -42,8 +41,7 @@ static int transition_service_to_callback_mode (
     return 0;
 }
 
-static void revert_service_receive_callback_mode (
-  zlink::service_mode_state_t *state_)
+static void revert_service_receive_callback_mode (zlink::service_mode_state_t *state_)
 {
     if (state_)
         state_->receive_callback_active = false;
@@ -78,8 +76,7 @@ static int ensure_service_recv_model (const zlink::service_mode_state_t *state_)
     return 0;
 }
 
-static int increment_service_poller_refs (zlink::service_mode_state_t *state_,
-                                          short events_)
+static int increment_service_poller_refs (zlink::service_mode_state_t *state_, short events_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -96,8 +93,7 @@ static int increment_service_poller_refs (zlink::service_mode_state_t *state_,
     return 0;
 }
 
-static void decrement_service_poller_refs (zlink::service_mode_state_t *state_,
-                                           short events_)
+static void decrement_service_poller_refs (zlink::service_mode_state_t *state_, short events_)
 {
     if (!state_)
         return;
@@ -112,8 +108,7 @@ static zlink::service_mode_state_t *spot_mode_state (spot_handle_t *spot_)
     return spot_ ? &spot_->mode_state : NULL;
 }
 
-static zlink::service_mode_state_t *spot_node_mode_state (
-  zlink::spot_node_t *node_)
+static zlink::service_mode_state_t *spot_node_mode_state (zlink::spot_node_t *node_)
 {
     return node_ ? &node_->mode_state () : NULL;
 }
@@ -124,8 +119,7 @@ bool is_registered_spot_pub_side_handle (void *pub_)
     spot_handle_registry_t &registry = spot_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
     return pub_
-           && registry.spot_pub_side_handles.find (pub_)
-                != registry.spot_pub_side_handles.end ();
+           && registry.spot_pub_side_handles.find (pub_) != registry.spot_pub_side_handles.end ();
 }
 
 bool is_registered_spot_sub_side_handle (void *sub_)
@@ -133,24 +127,21 @@ bool is_registered_spot_sub_side_handle (void *sub_)
     spot_handle_registry_t &registry = spot_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
     return sub_
-           && registry.spot_sub_side_handles.find (sub_)
-                != registry.spot_sub_side_handles.end ();
+           && registry.spot_sub_side_handles.find (sub_) != registry.spot_sub_side_handles.end ();
 }
 
 bool is_registered_spot_node_handle (void *node_)
 {
     spot_handle_registry_t &registry = spot_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
-    return node_ && registry.spot_node_handles.find (node_)
-                      != registry.spot_node_handles.end ();
+    return node_ && registry.spot_node_handles.find (node_) != registry.spot_node_handles.end ();
 }
 
 bool is_registered_spot_handle (void *spot_)
 {
     spot_handle_registry_t &registry = spot_handle_registry ();
     std::lock_guard<std::mutex> lock (registry.sync);
-    return spot_
-           && registry.spot_handles.find (spot_) != registry.spot_handles.end ();
+    return spot_ && registry.spot_handles.find (spot_) != registry.spot_handles.end ();
 }
 
 void register_spot_pub_side_handle (void *pub_)
@@ -297,8 +288,7 @@ int spot_require_recv_model (spot_handle_t *spot_)
     return ensure_service_recv_model (state);
 }
 
-int spot_activate_send_ready_mode (spot_handle_t *spot_,
-                                   bool *already_active_out_)
+int spot_activate_send_ready_mode (spot_handle_t *spot_, bool *already_active_out_)
 {
     zlink::service_mode_state_t *state = spot_mode_state (spot_);
     if (!state) {
@@ -320,8 +310,7 @@ void spot_revert_send_ready_mode (spot_handle_t *spot_)
     revert_service_send_ready_mode (state);
 }
 
-int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_,
-                                        bool *already_active_out_)
+int spot_node_activate_send_ready_mode (zlink::spot_node_t *node_, bool *already_active_out_)
 {
     zlink::service_mode_state_t *state = spot_node_mode_state (node_);
     if (!state) {

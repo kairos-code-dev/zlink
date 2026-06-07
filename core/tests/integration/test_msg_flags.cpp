@@ -25,13 +25,11 @@ void test_more ()
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  Then the first part of the message body.
-    TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
+    TEST_ASSERT_EQUAL_INT (1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
     TEST_ASSERT_TRUE (test_msg_has_more (&msg));
 
     //  And finally, the second part of the message body.
-    TEST_ASSERT_EQUAL_INT (
-      1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
+    TEST_ASSERT_EQUAL_INT (1, TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, sb, 0)));
     TEST_ASSERT_FALSE (test_msg_has_more (&msg));
 
     //  Deallocate the infrastructure.
@@ -47,10 +45,8 @@ void test_pair_socket_preserves_multipart_more_flag ()
     void *sc = test_context_socket (ZLINK_SOCKET_PAIR);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://msg-flags-pair"));
 
-    TEST_ASSERT_EQUAL_INT (
-      3, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foo", 3, ZLINK_SNDMORE)));
-    TEST_ASSERT_EQUAL_INT (
-      6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foobar", 6, 0)));
+    TEST_ASSERT_EQUAL_INT (3, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foo", 3, ZLINK_SNDMORE)));
+    TEST_ASSERT_EQUAL_INT (6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foobar", 6, 0)));
 
     recv_string_expect_success (sc, "foo", 0);
     recv_string_expect_success (sc, "foobar", 0);
@@ -87,8 +83,7 @@ void test_shared_const ()
 {
     zlink_msg_t msg_a;
     // Test shared storage query (case 2, constant data messages)
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_data (&msg_a, (void *) "TEST", 5, 0, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_data (&msg_a, (void *) "TEST", 5, 0, 0));
 
     // Constant messages are not internally refcounted; they report 1.
     TEST_ASSERT_EQUAL_INT (1, zlink_msg_refcnt (&msg_a, NULL));

@@ -22,16 +22,15 @@ bool zlink::ctx_bootstrap_t::start_runtime_locked (ctx_t &ctx_)
     const int ios = ctx_._io_thread_count;
     ctx_._opt_sync.unlock ();
 
-    if (!ctx_._runtime_resources.start_locked (
-          ctx_, ctx_._socket_registry, ctx_._term_mailbox, max_sockets, ios))
+    if (!ctx_._runtime_resources.start_locked (ctx_, ctx_._socket_registry, ctx_._term_mailbox,
+                                               max_sockets, ios))
         return false;
 
     ctx_._starting = false;
     return true;
 }
 
-zlink::service_control_runtime_t *
-zlink::ctx_bootstrap_t::ensure_service_runtime (ctx_t &ctx_)
+zlink::service_control_runtime_t *zlink::ctx_bootstrap_t::ensure_service_runtime (ctx_t &ctx_)
 {
     int last_errno = ENOTSUP;
     for (int attempt = 0; attempt < ctx_bootstrap_retry_count; ++attempt) {
@@ -41,8 +40,7 @@ zlink::ctx_bootstrap_t::ensure_service_runtime (ctx_t &ctx_)
             errno = ETERM;
             return NULL;
         }
-        service_control_runtime_t *runtime =
-          ctx_._runtime_resources.service_control_runtime ();
+        service_control_runtime_t *runtime = ctx_._runtime_resources.service_control_runtime ();
         if (runtime) {
             ctx_._slot_sync.unlock ();
             return runtime;

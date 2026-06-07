@@ -47,7 +47,8 @@ class timer_t
     template <class Rep, class Period>
     void start (std::chrono::duration<Rep, Period> interval_, uint64_t repeat_count_ = 0)
     {
-        const auto interval_ns_value = std::chrono::duration_cast<std::chrono::nanoseconds> (interval_).count ();
+        const auto interval_ns_value =
+          std::chrono::duration_cast<std::chrono::nanoseconds> (interval_).count ();
         if (interval_ns_value < 0)
             throw config_error_t (config_result_t::invalid_argument, EINVAL);
         const uint64_t interval_ns = static_cast<uint64_t> (interval_ns_value);

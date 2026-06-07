@@ -38,14 +38,12 @@ static void spot_ready_ack_ctrl_debugf (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK",
-                              "[spot-ready-ack-ctrl] ",
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK", "[spot-ready-ack-ctrl] ",
                               spot_debug::ready_ack_log_path (), fmt_, args);
     va_end (args);
 }
 
-static uint64_t default_bootstrap_broadcast_interval_ms (
-  const spot_runtime_t *runtime_)
+static uint64_t default_bootstrap_broadcast_interval_ms (const spot_runtime_t *runtime_)
 {
     if (runtime_) {
         if (runtime_->missing_external_routes_for_ready_peer ())
@@ -63,8 +61,8 @@ static uint64_t default_bootstrap_broadcast_interval_ms (
 
 }
 
-int spot_data_plane_protocol_t::recv_ascii_command (
-  socket_base_t *socket_, std::vector<std::string> *frames_)
+int spot_data_plane_protocol_t::recv_ascii_command (socket_base_t *socket_,
+                                                    std::vector<std::string> *frames_)
 {
     if (!frames_)
         return -1;
@@ -77,8 +75,7 @@ int spot_data_plane_protocol_t::recv_ascii_command (
             frame.close ();
             return -1;
         }
-        frames_->push_back (std::string (
-          static_cast<const char *> (frame.data ()), frame.size ()));
+        frames_->push_back (std::string (static_cast<const char *> (frame.data ()), frame.size ()));
         const bool more = (frame.flags () & msg_t::more) != 0;
         frame.close ();
         if (!more)
@@ -87,8 +84,9 @@ int spot_data_plane_protocol_t::recv_ascii_command (
     return frames_->empty () ? -1 : 0;
 }
 
-int spot_data_plane_protocol_t::send_subscription_update (
-  socket_base_t *socket_, const std::string &raw_filter_, bool subscribe_)
+int spot_data_plane_protocol_t::send_subscription_update (socket_base_t *socket_,
+                                                          const std::string &raw_filter_,
+                                                          bool subscribe_)
 {
     if (!socket_) {
         errno = EFAULT;
@@ -109,43 +107,36 @@ int spot_data_plane_protocol_t::send_subscription_update (
     return rc;
 }
 
-int spot_data_plane_protocol_t::send_errno_reply (socket_base_t *socket_,
-                                                  int error_)
+int spot_data_plane_protocol_t::send_errno_reply (socket_base_t *socket_, int error_)
 {
     char buf[32];
     snprintf (buf, sizeof (buf), "%d", error_);
-    if (spot_io::send_ascii_frame (
-          socket_, spot_control_protocol::reply_error, ZLINK_SNDMORE)
-        != 0)
+    if (spot_io::send_ascii_frame (socket_, spot_control_protocol::reply_error, ZLINK_SNDMORE) != 0)
         return -1;
     return spot_io::send_ascii_frame (socket_, buf, 0);
 }
 
 int spot_data_plane_protocol_t::send_ok_reply (socket_base_t *socket_)
 {
-    return spot_io::send_ascii_frame (
-      socket_, spot_control_protocol::reply_ok, 0);
+    return spot_io::send_ascii_frame (socket_, spot_control_protocol::reply_ok, 0);
 }
 
-uint64_t spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (
-  const spot_runtime_t *runtime_, bool bootstrap_ready_)
+uint64_t
+spot_data_plane_protocol_t::resolve_bootstrap_broadcast_interval_ms (const spot_runtime_t *runtime_,
+                                                                     bool bootstrap_ready_)
 {
     static uint64_t env_cached = 0;
     static bool env_checked = false;
     if (env_checked)
-        return env_cached != 0 ? env_cached
-                               : (bootstrap_ready_
-                                    ? default_bootstrap_broadcast_interval_ms (
-                                        runtime_)
-                                    : 1000);
+        return env_cached != 0
+                 ? env_cached
+                 : (bootstrap_ready_ ? default_bootstrap_broadcast_interval_ms (runtime_) : 1000);
 
     env_cached = env::positive_u64 ("ZLINK_SPOT_BOOTSTRAP_INTERVAL_MS", 0);
     env_checked = true;
-    return env_cached != 0 ? env_cached
-                           : (bootstrap_ready_
-                                ? default_bootstrap_broadcast_interval_ms (
-                                    runtime_)
-                                : 1000);
+    return env_cached != 0
+             ? env_cached
+             : (bootstrap_ready_ ? default_bootstrap_broadcast_interval_ms (runtime_) : 1000);
 }
 
 }

@@ -54,7 +54,8 @@ void serial_execution_queue_t::run (std::string name, std::function<void ()> wor
 void serial_execution_queue_t::drain ()
 {
     std::unique_lock<std::mutex> lock (_mutex);
-    _empty.wait (lock, [&] { return _queue.empty () && _active == 0 && !_draining && !_drain_scheduled; });
+    _empty.wait (
+      lock, [&] { return _queue.empty () && _active == 0 && !_draining && !_drain_scheduled; });
 }
 
 void serial_execution_queue_t::close ()

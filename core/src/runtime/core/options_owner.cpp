@@ -162,8 +162,7 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
     }
 }
 
-zlink::options_owner_t
-zlink::option_owner_of_bag_field (options_bag_field_t field_)
+zlink::options_owner_t zlink::option_owner_of_bag_field (options_bag_field_t field_)
 {
     switch (field_) {
         case options_bag_field_monitor_event_version:
@@ -184,8 +183,7 @@ zlink::options_owner_t zlink::common_option_owner_of (zlink_option_t option_)
     return common_option_owner_lookup (option_);
 }
 
-zlink::options_owner_t
-zlink::router_option_owner_of (zlink_router_option_t option_)
+zlink::options_owner_t zlink::router_option_owner_of (zlink_router_option_t option_)
 {
     switch (option_) {
         case ZLINK_ROUTER_OPT_MANDATORY:
@@ -199,8 +197,7 @@ zlink::router_option_owner_of (zlink_router_option_t option_)
     }
 }
 
-zlink::options_owner_t
-zlink::dealer_option_owner_of (zlink_dealer_option_t option_)
+zlink::options_owner_t zlink::dealer_option_owner_of (zlink_dealer_option_t option_)
 {
     switch (option_) {
         case ZLINK_DEALER_OPT_PROBE:
@@ -212,8 +209,7 @@ zlink::dealer_option_owner_of (zlink_dealer_option_t option_)
     }
 }
 
-zlink::options_owner_t
-zlink::stream_option_owner_of (zlink_stream_option_t option_)
+zlink::options_owner_t zlink::stream_option_owner_of (zlink_stream_option_t option_)
 {
     switch (option_) {
         case ZLINK_STREAM_OPT_NOTIFY:

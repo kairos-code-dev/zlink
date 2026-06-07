@@ -10,8 +10,7 @@ void test_basic ()
     //  Create a publisher
     void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     int manual = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create a subscriber
@@ -98,11 +97,9 @@ void test_unsubscribe_manual ()
 
     // Receive unsubscription "B"
     const char unsubscription2[2] = {0, 'B'};
-    TEST_ASSERT_EQUAL_INT (
-      sizeof unsubscription2,
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (pub, buffer, sizeof buffer, 0)));
-    TEST_ASSERT_EQUAL_INT8_ARRAY (unsubscription2, buffer,
-                                  sizeof unsubscription2);
+    TEST_ASSERT_EQUAL_INT (sizeof unsubscription2,
+                           TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (pub, buffer, sizeof buffer, 0)));
+    TEST_ASSERT_EQUAL_INT8_ARRAY (unsubscription2, buffer, sizeof unsubscription2);
 
     // Unsubscribe socket from XB instead
     TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (pub, "XB"));
@@ -123,15 +120,12 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
 
     // proxy frontend
     void *xsub_proxy = test_context_socket (ZLINK_SOCKET_XSUB);
-    bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
-                        sizeof my_endpoint_frontend);
+    bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend, sizeof my_endpoint_frontend);
 
     // proxy backend
     void *xpub_proxy = test_context_socket (ZLINK_SOCKET_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
-    bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
-                        sizeof my_endpoint_backend);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
+    bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend, sizeof my_endpoint_backend);
 
     // publisher
     void *pub = test_context_socket (ZLINK_SOCKET_PUB);
@@ -140,8 +134,7 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     // first subscriber subscribes
     void *sub1 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, my_endpoint_backend));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub1, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub1, topic_buff));
 
     // wait
     msleep (SETTLE_TIME);
@@ -149,23 +142,20 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     // proxy reroutes and confirms subscriptions
     const uint8_t subscription[2] = {1, *topic_buff};
     recv_array_expect_success (xpub_proxy, subscription, ZLINK_DONTWAIT);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (xpub_proxy, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xpub_proxy, topic_buff));
     send_array_expect_success (xsub_proxy, subscription, 0);
 
     // second subscriber subscribes
     void *sub2 = test_context_socket (ZLINK_SOCKET_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, my_endpoint_backend));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub2, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub2, topic_buff));
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy reroutes
     recv_array_expect_success (xpub_proxy, subscription, ZLINK_DONTWAIT);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (xpub_proxy, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xpub_proxy, topic_buff));
     send_array_expect_success (xsub_proxy, subscription, 0);
 
     // wait
@@ -204,14 +194,12 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     // unsubscribe messages are passed from proxy to publisher
     const uint8_t unsubscription[] = {0, *topic_buff};
     recv_array_expect_success (xpub_proxy, unsubscription, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_unset_subscription (xpub_proxy, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (xpub_proxy, topic_buff));
     send_array_expect_success (xsub_proxy, unsubscription, 0);
 
     // should receive another unsubscribe msg
     recv_array_expect_success (xpub_proxy, unsubscription, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_unset_subscription (xpub_proxy, topic_buff));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_unset_subscription (xpub_proxy, topic_buff));
     send_array_expect_success (xsub_proxy, unsubscription, 0);
 
     // wait
@@ -226,8 +214,8 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
 
     // nothing should come to the proxy
     char buffer[1];
-    TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zlink_recv (xsub_proxy, buffer, sizeof buffer, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN,
+                               zlink_recv (xsub_proxy, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     test_context_socket_close (pub);
     test_context_socket_close (xpub_proxy);
@@ -247,15 +235,12 @@ void test_missing_subscriptions ()
 
     // proxy frontend
     void *xsub_proxy = test_context_socket (ZLINK_SOCKET_XSUB);
-    bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
-                        sizeof my_endpoint_frontend);
+    bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend, sizeof my_endpoint_frontend);
 
     // proxy backend
     void *xpub_proxy = test_context_socket (ZLINK_SOCKET_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
-    bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
-                        sizeof my_endpoint_backend);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_pub_option (xpub_proxy, ZLINK_PUB_OPT_MANUAL, &manual, 4));
+    bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend, sizeof my_endpoint_backend);
 
     // publisher
     void *pub = test_context_socket (ZLINK_SOCKET_PUB);
@@ -276,8 +261,7 @@ void test_missing_subscriptions ()
     // proxy now reroutes and confirms subscriptions
     const uint8_t subscription1[] = {1, static_cast<uint8_t> (topic1[0])};
     recv_array_expect_success (xpub_proxy, subscription1, ZLINK_DONTWAIT);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (xpub_proxy, topic1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xpub_proxy, topic1));
     send_array_expect_success (xsub_proxy, subscription1, 0);
 
     // second subscriber
@@ -290,8 +274,7 @@ void test_missing_subscriptions ()
 
     const uint8_t subscription2[] = {1, static_cast<uint8_t> (topic2[0])};
     recv_array_expect_success (xpub_proxy, subscription2, ZLINK_DONTWAIT);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (xpub_proxy, topic2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (xpub_proxy, topic2));
     send_array_expect_success (xsub_proxy, subscription2, 0);
 
     // wait
@@ -342,8 +325,7 @@ void test_unsubscribe_cleanup ()
     //  Create a publisher
     void *pub = test_context_socket (ZLINK_SOCKET_XPUB);
     int manual = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_pub_option (pub, ZLINK_PUB_OPT_MANUAL, &manual, 4));
     bind_loopback_ipv4 (pub, my_endpoint, sizeof my_endpoint);
 
     //  Create a subscriber
@@ -368,8 +350,7 @@ void test_unsubscribe_cleanup ()
 
     // should be nothing left in the queue
     char buffer[2];
-    TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     // close the socket
     test_context_socket_close (sub);
@@ -402,8 +383,7 @@ void test_unsubscribe_cleanup ()
     recv_string_expect_success (sub, "XB", 0);
 
     // should be nothing left in the queue
-    TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     //  Clean up.
     test_context_socket_close (pub);

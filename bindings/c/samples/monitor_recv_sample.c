@@ -11,18 +11,16 @@ int main (void)
     assert (server != NULL);
     assert (client != NULL);
 
-    void *server_monitor = open_socket_monitor (
-      server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-    void *client_monitor = open_socket_monitor (
-      client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *server_monitor =
+      open_socket_monitor (server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *client_monitor =
+      open_socket_monitor (client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     /* try_recv before any connection: should return no event */
     zlink_socket_monitor_event_t try_event;
-    int rc = zlink_socket_monitor_recv (server_monitor, &try_event,
-                                        ZLINK_DONTWAIT);
+    int rc = zlink_socket_monitor_recv (server_monitor, &try_event, ZLINK_DONTWAIT);
     assert (rc != 0); /* no event available */
-    rc = zlink_socket_monitor_recv (client_monitor, &try_event,
-                                    ZLINK_DONTWAIT);
+    rc = zlink_socket_monitor_recv (client_monitor, &try_event, ZLINK_DONTWAIT);
     assert (rc != 0); /* no event available */
 
     rc = zlink_bind (server, "tcp://127.0.0.1:0");
@@ -36,25 +34,20 @@ int main (void)
     zlink_socket_monitor_event_t server_event;
     rc = zlink_socket_monitor_recv (server_monitor, &server_event, 0);
     assert (rc == 0);
-    assert (server_event.event
-            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    assert (server_event.event == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     zlink_socket_monitor_event_t client_event;
     rc = zlink_socket_monitor_recv (client_monitor, &client_event, 0);
     assert (rc == 0);
-    assert (client_event.event
-            == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    assert (client_event.event == ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     /* try_recv after consuming the event: should return no event */
-    rc = zlink_socket_monitor_recv (server_monitor, &try_event,
-                                    ZLINK_DONTWAIT);
+    rc = zlink_socket_monitor_recv (server_monitor, &try_event, ZLINK_DONTWAIT);
     assert (rc != 0);
-    rc = zlink_socket_monitor_recv (client_monitor, &try_event,
-                                    ZLINK_DONTWAIT);
+    rc = zlink_socket_monitor_recv (client_monitor, &try_event, ZLINK_DONTWAIT);
     assert (rc != 0);
 
-    printf (
-      "[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty\n");
+    printf ("[monitor/recv] recv: \"connection-ready\" -> tryRecv: empty\n");
 
     zlink_monitor_close (&client_monitor);
     zlink_monitor_close (&server_monitor);

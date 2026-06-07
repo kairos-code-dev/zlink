@@ -11,9 +11,8 @@ namespace zlink
 namespace
 {
 
-bool spot_logical_topic_matches_local (
-  const std::shared_ptr<spot_logical_state_t> &state_,
-  const std::string &topic_)
+bool spot_logical_topic_matches_local (const std::shared_ptr<spot_logical_state_t> &state_,
+                                       const std::string &topic_)
 {
     if (!state_ || topic_.empty ())
         return false;
@@ -21,8 +20,7 @@ bool spot_logical_topic_matches_local (
     scoped_lock_t lock (state_->pubsub_sync);
     if (state_->subscription_topics.count (topic_) != 0)
         return true;
-    for (std::set<std::string>::const_iterator it =
-           state_->subscription_patterns.begin ();
+    for (std::set<std::string>::const_iterator it = state_->subscription_patterns.begin ();
          it != state_->subscription_patterns.end (); ++it) {
         if (topic_.size () >= it->size ()
             && memcmp (topic_.data (), it->data (), it->size ()) == 0) {
@@ -32,10 +30,9 @@ bool spot_logical_topic_matches_local (
     return false;
 }
 
-int spot_copy_publish_parts_to_block_local (
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  spot_owned_msg_parts_t *out_)
+int spot_copy_publish_parts_to_block_local (zlink_msg_t *parts_,
+                                            size_t part_count_,
+                                            spot_owned_msg_parts_t *out_)
 {
     if (!out_ || (part_count_ > 0 && !parts_)) {
         errno = EINVAL;
@@ -70,7 +67,7 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
         return -1;
     }
 
-    std::vector<std::shared_ptr<spot_logical_state_t> > states;
+    std::vector<std::shared_ptr<spot_logical_state_t>> states;
     snapshot_spot_states (&states);
     if (states.empty ())
         return 0;
@@ -91,8 +88,8 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
     if (targets.empty ())
         return 0;
 
-    std::shared_ptr<spot_logical_pubsub_message_t> block (
-      new (std::nothrow) spot_logical_pubsub_message_t ());
+    std::shared_ptr<spot_logical_pubsub_message_t> block (new (std::nothrow)
+                                                            spot_logical_pubsub_message_t ());
     if (!block) {
         errno = ENOMEM;
         return -1;
@@ -102,9 +99,7 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
     if (source_rid_)
         block->source_rid = *source_rid_;
     block->topic_id = topic;
-    if (spot_copy_publish_parts_to_block_local (parts_, part_count_,
-                                                &block->parts)
-        != 0)
+    if (spot_copy_publish_parts_to_block_local (parts_, part_count_, &block->parts) != 0)
         return -1;
 
     for (size_t i = 0; i < targets.size (); ++i) {
@@ -121,15 +116,12 @@ int spot_node_t::fanout_local_publish (const zlink_routing_id_t *source_rid_,
             targets[i].state->subscribe_signaler.send ();
         {
             scoped_lock_t lock (_sync);
-            for (std::set<spot_handle_t *>::const_iterator it =
-                   _handle_state.facades.begin ();
+            for (std::set<spot_handle_t *>::const_iterator it = _handle_state.facades.begin ();
                  it != _handle_state.facades.end (); ++it) {
                 if ((*it)->logical_state == targets[i].state) {
-                    zlink_spot_notify_dispatch_info (
-                      *it,
-                      ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
-                      ZLINK_SPOT_DISPATCH_SUBJECT_SPOT,
-                      *it);
+                    zlink_spot_notify_dispatch_info (*it,
+                                                     ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE,
+                                                     ZLINK_SPOT_DISPATCH_SUBJECT_SPOT, *it);
                     break;
                 }
             }

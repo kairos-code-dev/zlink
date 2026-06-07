@@ -74,9 +74,7 @@ struct auto_hwm_socket_plan_t
 };
 
 auto_hwm_role_t auto_hwm_default_role_for_socket_type (int socket_type_);
-auto_hwm_policy_class_t auto_hwm_policy_class_for_role (
-  auto_hwm_role_t role_,
-  int socket_type_);
+auto_hwm_policy_class_t auto_hwm_policy_class_for_role (auto_hwm_role_t role_, int socket_type_);
 void auto_hwm_context_plan_make (bool enabled_,
                                  zlink_auto_hwm_profile_t profile_,
                                  auto_hwm_context_plan_t *out_,
@@ -91,8 +89,7 @@ void auto_hwm_socket_plan_prepare (auto_hwm_role_t role_,
                                    int rcvbuf_ = -1,
                                    bool manual_sndbuf_ = false,
                                    bool manual_rcvbuf_ = false,
-                                   auto_hwm_scope_t scope_ =
-                                     auto_hwm_scope_none,
+                                   auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                    size_t scope_count_ = 1,
                                    bool buffer_cost_enabled_ = true);
 void auto_hwm_context_finalize (auto_hwm_context_plan_t *context_,
@@ -109,8 +106,7 @@ void auto_hwm_socket_plan_for_role (const auto_hwm_context_plan_t &context_,
                                     int rcvbuf_ = -1,
                                     bool manual_sndbuf_ = false,
                                     bool manual_rcvbuf_ = false,
-                                    auto_hwm_scope_t scope_ =
-                                      auto_hwm_scope_none,
+                                    auto_hwm_scope_t scope_ = auto_hwm_scope_none,
                                     size_t scope_count_ = 1,
                                     bool buffer_cost_enabled_ = true);
 }

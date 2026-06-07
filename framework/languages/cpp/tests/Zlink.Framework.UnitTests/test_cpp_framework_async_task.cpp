@@ -38,8 +38,8 @@ zlink::framework::task_t<int> await_shared (zlink::framework::task_t<int> &task,
 
 zlink::framework::task_t<int> timeout_task ()
 {
-    co_return zlink::framework::result_t<int>::failure (zlink::framework::framework_error_kind_t::timeout,
-                                                        "timeout preserved");
+    co_return zlink::framework::result_t<int>::failure (
+      zlink::framework::framework_error_kind_t::timeout, "timeout preserved");
 }
 
 zlink::framework::task_t<int> await_timeout ()
@@ -64,33 +64,38 @@ int main ()
     int callback_count = 0;
     int callback_value = 0;
     zlink::framework::detail::observe_task_completion (
-      first_complete_wins, [&callback_count, &callback_value] (const zlink::framework::result_t<int> &result) {
+      first_complete_wins,
+      [&callback_count, &callback_value] (const zlink::framework::result_t<int> &result) {
           ++callback_count;
           callback_value = result.value ();
       });
     completion.complete (zlink::framework::result_t<int>::success (100));
     completion.complete (zlink::framework::result_t<int>::success (200));
-    if (first_complete_wins.result ().value () != 100 || callback_count != 1 || callback_value != 100) {
+    if (first_complete_wins.result ().value () != 100 || callback_count != 1
+        || callback_value != 100) {
         return 2;
     }
 
     auto callback_kind = zlink::framework::framework_error_kind_t::request_failed;
-    zlink::framework::request_call_t<int> callback_call (
-      zlink::framework::result_t<int>::failure (zlink::framework::framework_error_kind_t::timeout, "timeout"));
-    callback_call.submit ([&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
+    zlink::framework::request_call_t<int> callback_call (zlink::framework::result_t<int>::failure (
+      zlink::framework::framework_error_kind_t::timeout, "timeout"));
+    callback_call.submit (
+      [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
     auto coroutine_result = callback_call.submit ().result ();
     if (callback_kind != coroutine_result.error_kind ()) {
         return 3;
     }
 
     const auto preserved_failure = await_timeout ().result ();
-    if (preserved_failure || preserved_failure.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
+    if (preserved_failure
+        || preserved_failure.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
         return 4;
     }
 
-    zlink::framework::request_call_t<int> shutdown_call (
-      zlink::framework::result_t<int>::failure (zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
-    if (shutdown_call.submit ().result ().error_kind () != zlink::framework::framework_error_kind_t::shutdown) {
+    zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
+      zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
+    if (shutdown_call.submit ().result ().error_kind ()
+        != zlink::framework::framework_error_kind_t::shutdown) {
         return 5;
     }
 

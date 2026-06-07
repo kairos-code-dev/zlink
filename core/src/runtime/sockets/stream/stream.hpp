@@ -40,19 +40,15 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
-    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
-      ZLINK_OVERRIDE;
+    int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
-      ZLINK_FINAL;
-    int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
-      ZLINK_OVERRIDE;
-    int stream_set_msg_handler_with_userdata (
-      zlink_socket_msg_handler_fn handler_, void *userdata_) ZLINK_OVERRIDE;
-    int stream_set_packet_msg_handler_with_userdata (
-      zlink_stream_packet_handler_fn handler_, void *userdata_)
-      ZLINK_OVERRIDE;
+    int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_) ZLINK_OVERRIDE;
+    int stream_set_msg_handler_with_userdata (zlink_socket_msg_handler_fn handler_,
+                                              void *userdata_) ZLINK_OVERRIDE;
+    int stream_set_packet_msg_handler_with_userdata (zlink_stream_packet_handler_fn handler_,
+                                                     void *userdata_) ZLINK_OVERRIDE;
     int stream_dispatch_stop () ZLINK_OVERRIDE;
     bool stream_dispatch_active () const ZLINK_OVERRIDE;
     bool stream_dispatch_in_callback () const ZLINK_OVERRIDE;
@@ -64,8 +60,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
                                           zlink::msg_t *msg_,
                                           int flags_) ZLINK_OVERRIDE;
-    int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_,
-                                                  int flags_) ZLINK_OVERRIDE;
+    int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_, int flags_) ZLINK_OVERRIDE;
     std::recursive_mutex *api_sync_mutex () ZLINK_OVERRIDE;
 
   private:
@@ -85,17 +80,13 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     route_shard_t &route_shard_for (uint32_t routing_id_);
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     uint32_t ensure_dispatch_routing_id (pipe_t *pipe_);
-    void maybe_emit_connect_event (pipe_t *pipe_,
-                                   uint32_t routing_id_value_ = 0);
-    int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
-      ZLINK_OVERRIDE;
+    void maybe_emit_connect_event (pipe_t *pipe_, uint32_t routing_id_value_ = 0);
+    int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int stream_dispatch_packet_msg_from_io (const zlink_routing_id_t *rid_,
                                             zlink::msg_t *msg_,
                                             zlink::pipe_t *pipe_);
-    int stream_dispatch_raw_msg_from_io (const zlink_routing_id_t *rid_,
-                                         zlink::msg_t *msg_);
-    uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_,
-                                               zlink::pipe_t *pipe_);
+    int stream_dispatch_raw_msg_from_io (const zlink_routing_id_t *rid_, zlink::msg_t *msg_);
+    uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     void stop_dispatch_from_callback ();
     void clear_packet_dispatch_state ();
     bool stream_dispatch_owns_tls () const;

@@ -19,8 +19,7 @@ int main (void)
 
     zlink_msg_t outbound;
     make_message (&outbound, k_spot_payload);
-    rc = zlink_spot_publish_part (spot, k_spot_topic, &outbound, 0,
-                                  ZLINK_PART_FINAL);
+    rc = zlink_spot_publish_part (spot, k_spot_topic, &outbound, 0, ZLINK_PART_FINAL);
     assert (rc == ZLINK_SUBMIT_OK);
 
     const zlink_routing_id_t *rid = NULL;
@@ -32,8 +31,7 @@ int main (void)
     assert (zlink_msg_init (&part) == 0);
     do {
         topic_len = sizeof (topic);
-        rc = zlink_spot_subscribe_part (spot, &rid, topic, topic_len,
-                                        &topic_len, &part, &has_more,
+        rc = zlink_spot_subscribe_part (spot, &rid, topic, topic_len, &topic_len, &part, &has_more,
                                         ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK)
             break;
@@ -44,12 +42,9 @@ int main (void)
     assert (strcmp (topic, k_spot_topic) == 0);
     assert (has_more == ZLINK_PART_FINAL);
     assert (zlink_msg_size (&part) == strlen (k_spot_payload));
-    assert (memcmp (zlink_msg_data (&part), k_spot_payload,
-                    strlen (k_spot_payload))
-            == 0);
+    assert (memcmp (zlink_msg_data (&part), k_spot_payload, strlen (k_spot_payload)) == 0);
     printf ("[spot/recv] service: \"sample\" tick: 1 publish: \"%s/%s\" -> recv: \"%s/%.*s\"\n",
-            k_spot_topic, k_spot_payload,
-            topic, (int) zlink_msg_size (&part),
+            k_spot_topic, k_spot_payload, topic, (int) zlink_msg_size (&part),
             (const char *) zlink_msg_data (&part));
     zlink_msg_close (&part);
 

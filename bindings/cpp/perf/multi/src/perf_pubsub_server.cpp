@@ -47,7 +47,8 @@ bool publish_stop_token (::perf::socket_t &publisher)
             return false;
         std::memcpy (part.data (), perf::multi::k_stop_token, token_size);
 
-        const int rc = publisher.publish (k_topic, part, static_cast<int> (zlink::send_flags_t::none));
+        const int rc =
+          publisher.publish (k_topic, part, static_cast<int> (zlink::send_flags_t::none));
         if (rc == 0)
             return true;
 
@@ -78,8 +79,8 @@ bool run_phase (::perf::socket_t &publisher,
     try {
         const auto deadline = std::chrono::steady_clock::now () + duration;
         while (std::chrono::steady_clock::now () < deadline) {
-            if (!perf_metric::stamp_payload (payload.data (), payload.size (), run_id, phase, msg_size, seq++,
-                                             perf_metric::now_ns ())) {
+            if (!perf_metric::stamp_payload (payload.data (), payload.size (), run_id, phase,
+                                             msg_size, seq++, perf_metric::now_ns ())) {
                 return false;
             }
 
@@ -90,8 +91,8 @@ bool run_phase (::perf::socket_t &publisher,
                 std::memcpy (payload_part.data (), payload.data (), payload.size ());
             }
 
-            const int sent =
-              publisher.publish (k_topic, payload_part, static_cast<int> (zlink::send_flags_t::dontwait));
+            const int sent = publisher.publish (k_topic, payload_part,
+                                                static_cast<int> (zlink::send_flags_t::dontwait));
             if (sent == 0)
                 continue;
 
@@ -118,7 +119,8 @@ bool perf_pubsub_server (const std::string &lib_name, const std::string &transpo
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
     perf::multi::socket_guard_t publisher (ctx, zlink::socket_type::pub);
@@ -126,22 +128,24 @@ bool perf_pubsub_server (const std::string &lib_name, const std::string &transpo
         return false;
 
     perf::multi::apply_benchmark_socket_options (publisher.sock (), settings, transport);
-    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size) || !perf::multi::recalculate_auto_hwm (ctx))
+    if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size)
+        || !perf::multi::recalculate_auto_hwm (ctx))
         return false;
     if (!perf::multi::setup_tls_server (publisher.sock (), transport))
         return false;
 
-    const std::string endpoint = perf::multi::bind_and_resolve_endpoint (publisher.sock (), transport,
-                                                                         "cpp_multi_pubsub", settings.server_bind_port);
+    const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
+      publisher.sock (), transport, "cpp_multi_pubsub", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
-    perf::multi::emit_auto_hwm_detail (publisher.sock (), "server", "server", transport, msg_size, "pub");
+    perf::multi::emit_auto_hwm_detail (publisher.sock (), "server", "server", transport, msg_size,
+                                       "pub");
 
     perf::multi::print_ready (endpoint);
 
     if (!wait_for_start_signal (msg_size)) {
-        std::cerr << "PUBSUB_SERVER_FAIL,stage=start_signal,transport=" << transport << ",size=" << msg_size
-                  << std::endl;
+        std::cerr << "PUBSUB_SERVER_FAIL,stage=start_signal,transport=" << transport
+                  << ",size=" << msg_size << std::endl;
         return false;
     }
 

@@ -22,16 +22,17 @@ bool is_blank (const std::string &value)
 void require_non_blank (const std::string &value, const char *message)
 {
     if (is_blank (value)) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       message);
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error, message);
     }
 }
 
 void require_positive_timeout (std::chrono::milliseconds value)
 {
     if (value <= std::chrono::milliseconds::zero ()) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       "HTTP client timeout must be greater than zero");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP client timeout must be greater than zero");
     }
 }
 
@@ -42,7 +43,8 @@ client_builder_t client_t::create ()
     return {};
 }
 
-client_t::client_t (std::shared_ptr<detail::http_client_runtime_t> runtime) : _runtime (std::move (runtime))
+client_t::client_t (std::shared_ptr<detail::http_client_runtime_t> runtime) :
+    _runtime (std::move (runtime))
 {
 }
 
@@ -114,17 +116,20 @@ client_t client_builder_t::build () const
         return client_t (std::make_shared<detail::http_client_runtime_t> (std::move (options)));
     }
     catch (const std::invalid_argument &error) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       error.what ());
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error, error.what ());
     }
 }
 
-request_builder_t::request_builder_t (const client_t &client, http_method_t method, std::string path) :
+request_builder_t::request_builder_t (const client_t &client,
+                                      http_method_t method,
+                                      std::string path) :
     _client (&client), _method (method), _path (std::move (path))
 {
     if (_path.empty () || _path.front () != '/') {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       "HTTP request path must start with /");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP request path must start with /");
     }
 }
 
@@ -138,11 +143,13 @@ request_builder_t &request_builder_t::header (std::string name, std::string valu
 zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () const
 {
     if (!_client || !_client->_runtime) {
-        return zlink::framework::task_t<raw_http_response_t> (zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::closed, "HTTP client is not initialized"));
+        return zlink::framework::task_t<raw_http_response_t> (
+          zlink::framework::result_t<raw_http_response_t>::failure (
+            zlink::framework::framework_error_kind_t::closed, "HTTP client is not initialized"));
     }
 
-    detail::http_request_t request{.method = _method, .path = _path, .body = _body, .headers = _headers};
+    detail::http_request_t request{
+      .method = _method, .path = _path, .body = _body, .headers = _headers};
     return zlink::framework::task_t<raw_http_response_t> (_client->_runtime->execute (request));
 }
 

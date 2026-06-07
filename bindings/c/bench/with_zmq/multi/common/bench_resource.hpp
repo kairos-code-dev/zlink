@@ -16,8 +16,7 @@ inline bench_cpu_sample_t bench_capture_cpu_sample ()
     return bench_multi_capture_cpu_sample ();
 }
 
-inline bench_resource_metrics_t bench_finish_resource_probe (
-  const bench_cpu_sample_t &start)
+inline bench_resource_metrics_t bench_finish_resource_probe (const bench_cpu_sample_t &start)
 {
     return bench_multi_finish_resource_probe (start);
 }

@@ -26,7 +26,8 @@ namespace detail
 template <typename T> class async_result_t
 {
   public:
-    explicit async_result_t (std::future<T> future_) : async_result_t (std::move (future_), std::function<void ()> ())
+    explicit async_result_t (std::future<T> future_) :
+        async_result_t (std::move (future_), std::function<void ()> ())
     {
     }
 
@@ -47,13 +48,15 @@ template <typename T> class async_result_t
     void wait () const { wait_until_ready (*_state); }
 
     template <typename Rep, typename Period>
-    [[nodiscard]] std::future_status wait_for (const std::chrono::duration<Rep, Period> &timeout_) const
+    [[nodiscard]] std::future_status
+    wait_for (const std::chrono::duration<Rep, Period> &timeout_) const
     {
         if (!_state->progress)
             return _state->future.wait_for (timeout_);
 
         if (timeout_ <= timeout_.zero ()) {
-            if (_state->future.wait_for (std::chrono::milliseconds (0)) == std::future_status::ready)
+            if (_state->future.wait_for (std::chrono::milliseconds (0))
+                == std::future_status::ready)
                 return std::future_status::ready;
             pump_progress_once ();
             return _state->future.wait_for (std::chrono::milliseconds (0));
@@ -64,7 +67,8 @@ template <typename T> class async_result_t
           + std::chrono::duration_cast<std::chrono::steady_clock::duration> (timeout_);
 
         while (true) {
-            if (_state->future.wait_for (std::chrono::milliseconds (0)) == std::future_status::ready)
+            if (_state->future.wait_for (std::chrono::milliseconds (0))
+                == std::future_status::ready)
                 return std::future_status::ready;
 
             pump_progress_once ();
@@ -82,7 +86,8 @@ template <typename T> class async_result_t
     }
 
     template <typename Clock, typename Duration>
-    [[nodiscard]] std::future_status wait_until (const std::chrono::time_point<Clock, Duration> &deadline_) const
+    [[nodiscard]] std::future_status
+    wait_until (const std::chrono::time_point<Clock, Duration> &deadline_) const
     {
         if (!_state->progress)
             return _state->future.wait_until (deadline_);
@@ -139,7 +144,10 @@ template <typename T> class async_result_t
   private:
     struct shared_state_t
     {
-        explicit shared_state_t (std::future<T> future_) : future (std::move (future_)), waiter_started (false) {}
+        explicit shared_state_t (std::future<T> future_) :
+            future (std::move (future_)), waiter_started (false)
+        {
+        }
 
         std::future<T> future;
         std::function<void ()> progress;
@@ -157,7 +165,8 @@ template <typename T> class async_result_t
             return;
         }
 
-        while (state_.future.wait_for (std::chrono::milliseconds (0)) != std::future_status::ready) {
+        while (state_.future.wait_for (std::chrono::milliseconds (0))
+               != std::future_status::ready) {
             state_.progress ();
             (void) state_.future.wait_for (progress_slice ());
         }
@@ -214,7 +223,8 @@ class send_submit_operation_t
 
   private:
     explicit send_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit send_submit_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit send_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -276,7 +286,8 @@ class request_submit_operation_t
 
   private:
     explicit request_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_submit_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit request_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -298,7 +309,8 @@ class request_operation_t
 
   private:
     explicit request_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit request_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -315,7 +327,8 @@ class request_callback_submit_operation_t
   public:
     ~request_callback_submit_operation_t ();
     request_callback_submit_operation_t (request_callback_submit_operation_t &&) noexcept;
-    request_callback_submit_operation_t &operator= (request_callback_submit_operation_t &&) noexcept;
+    request_callback_submit_operation_t &
+    operator= (request_callback_submit_operation_t &&) noexcept;
 
     request_callback_submit_operation_t &&message (message_t &part_) &&;
     request_callback_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
@@ -324,7 +337,8 @@ class request_callback_submit_operation_t
 
   private:
     explicit request_callback_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit request_callback_submit_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit request_callback_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -348,7 +362,8 @@ class reply_submit_operation_t
 
   private:
     explicit reply_submit_operation_t (detail::spot_operation_state_t &&state_);
-    explicit reply_submit_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit reply_submit_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;
@@ -369,7 +384,8 @@ class reply_operation_t
 
   private:
     explicit reply_operation_t (detail::spot_operation_state_t &&state_);
-    explicit reply_operation_t (std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
+    explicit reply_operation_t (
+      std::unique_ptr<detail::spot_operation_state_t> state_ptr_) noexcept;
 
     detail::spot_operation_state_t &state () noexcept;
     const detail::spot_operation_state_t &state () const noexcept;

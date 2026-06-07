@@ -18,8 +18,7 @@ class spot_sub_t;
 class spot_internal_receiver_t;
 }
 
-typedef int (*monitor_snapshot_provider_fn) (void *subject_,
-                                             zlink_monitor_status_t *out_);
+typedef int (*monitor_snapshot_provider_fn) (void *subject_, zlink_monitor_status_t *out_);
 
 struct monitor_handler_state_t
 {
@@ -67,10 +66,8 @@ monitor_handler_state_t *current_monitor_handler_state ();
 void *current_monitor_dispatch_handle ();
 }
 
-monitor_handler_state_t *find_monitor_handler_state (
-  zlink::socket_base_t *socket_);
-zlink::socket_base_t *raw_monitor_snapshot_subject (
-  monitor_handler_state_t *state_);
+monitor_handler_state_t *find_monitor_handler_state (zlink::socket_base_t *socket_);
+zlink::socket_base_t *raw_monitor_snapshot_subject (monitor_handler_state_t *state_);
 void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_);
 void unregister_monitor_handlers (zlink::socket_base_t *socket_);
 
@@ -80,15 +77,10 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
                                void *snapshot_subject_,
                                void *socket_handler_userdata_);
 
-int socket_monitor_snapshot_provider (void *subject_,
-                                      zlink_monitor_status_t *out_);
-int spot_pub_monitor_snapshot_provider (void *subject_,
-                                        zlink_monitor_status_t *out_);
-int spot_sub_monitor_snapshot_provider (void *subject_,
-                                        zlink_monitor_status_t *out_);
-int spot_internal_receiver_monitor_snapshot_provider (
-  void *subject_,
-  zlink_monitor_status_t *out_);
+int socket_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
+int spot_pub_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
+int spot_sub_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
+int spot_internal_receiver_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
 
 int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                          zlink_monitor_event_t *event_,

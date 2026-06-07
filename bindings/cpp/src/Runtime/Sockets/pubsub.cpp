@@ -47,8 +47,8 @@ int xpub_socket_t::receive_subscription_event (subscription_event_t &out_, recv_
     zlink_recv_result_t rc = static_cast<zlink_recv_result_t> (206);
 
     while (true) {
-        rc = zlink_xpub_recv_part (detail::native_handle (*this), &source_rid, &subscribed, topic_buffer.data (),
-                                   topic_buffer.size (), &topic_size,
+        rc = zlink_xpub_recv_part (detail::native_handle (*this), &source_rid, &subscribed,
+                                   topic_buffer.data (), topic_buffer.size (), &topic_size,
                                    static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
         if (rc == 0)
             break;

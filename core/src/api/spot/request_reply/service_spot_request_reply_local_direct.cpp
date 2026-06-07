@@ -11,9 +11,7 @@ int zlink::spot_reqrep_internal::process_route_combined_for_local_delivery (
 }
 
 int zlink::spot_reqrep_internal::process_parsed_route_combined_for_local_delivery (
-  std::vector<zlink_msg_t> *combined_,
-  const parsed_spot_envelope_t &spot_envelope_)
+  std::vector<zlink_msg_t> *combined_, const parsed_spot_envelope_t &spot_envelope_)
 {
-    return process_parsed_route_combined_for_local_delivery_impl (
-      combined_, spot_envelope_);
+    return process_parsed_route_combined_for_local_delivery_impl (combined_, spot_envelope_);
 }

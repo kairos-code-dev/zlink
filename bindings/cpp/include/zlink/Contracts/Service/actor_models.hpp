@@ -17,7 +17,10 @@ struct actor_model_access_t;
 class actor_ref_t
 {
   public:
-    actor_ref_t () noexcept : _node_rid (detail::unchecked_empty_routing_id ()), _actor_id (), _generation (0) {}
+    actor_ref_t () noexcept :
+        _node_rid (detail::unchecked_empty_routing_id ()), _actor_id (), _generation (0)
+    {
+    }
 
     routing_id_t node_rid () const { return _node_rid; }
 
@@ -31,7 +34,9 @@ class actor_ref_t
 
   private:
     actor_ref_t (routing_id_t node_rid_, std::string actor_id_, uint64_t generation_) noexcept :
-        _node_rid (std::move (node_rid_)), _actor_id (std::move (actor_id_)), _generation (generation_)
+        _node_rid (std::move (node_rid_)),
+        _actor_id (std::move (actor_id_)),
+        _generation (generation_)
     {
     }
 
@@ -214,9 +219,11 @@ struct spot_actor_lifecycle_event_t
     friend struct detail::actor_model_access_t;
 };
 
-using actor_join_callback_t = std::function<void (const actor_join_result_t &, std::vector<message_t>)>;
+using actor_join_callback_t =
+  std::function<void (const actor_join_result_t &, std::vector<message_t>)>;
 
-using actor_join_entry_spot_callback_t = std::function<void (const actor_join_entry_spot_result_t &)>;
+using actor_join_entry_spot_callback_t =
+  std::function<void (const actor_join_entry_spot_result_t &)>;
 
 using actor_lookup_callback_t = std::function<void (const actor_lookup_result_t &)>;
 
@@ -229,7 +236,10 @@ enum class spot_kind : int
 
 struct actor_route_t
 {
-    actor_route_t () : actor (), current_spot_rid (std::nullopt), current_spot_kind (spot_kind::invalid) {}
+    actor_route_t () :
+        actor (), current_spot_rid (std::nullopt), current_spot_kind (spot_kind::invalid)
+    {
+    }
 
     actor_ref_t actor;
     std::optional<routing_id_t> current_spot_rid;

@@ -12,9 +12,10 @@ namespace zlink::stream_connector::detail
 namespace
 {
 
-constexpr std::uint8_t known_flags = static_cast<std::uint8_t> (header_flags_t::has_request_seq)
-                                     | static_cast<std::uint8_t> (header_flags_t::has_metadata)
-                                     | static_cast<std::uint8_t> (header_flags_t::payload_compressed);
+constexpr std::uint8_t known_flags =
+  static_cast<std::uint8_t> (header_flags_t::has_request_seq)
+  | static_cast<std::uint8_t> (header_flags_t::has_metadata)
+  | static_cast<std::uint8_t> (header_flags_t::payload_compressed);
 
 bool has_flag (header_flags_t flags, header_flags_t flag)
 {
@@ -28,7 +29,8 @@ void set_flag (header_flags_t &flags, header_flags_t flag)
 
 void clear_flag (header_flags_t &flags, header_flags_t flag)
 {
-    flags = static_cast<header_flags_t> (static_cast<std::uint8_t> (flags) & ~static_cast<std::uint8_t> (flag));
+    flags = static_cast<header_flags_t> (static_cast<std::uint8_t> (flags)
+                                         & ~static_cast<std::uint8_t> (flag));
 }
 
 void write_u16 (std::vector<std::uint8_t> &bytes, std::uint16_t value)
@@ -90,7 +92,8 @@ result_t<void> validate_header (const stream_header_t &header)
 {
     if (!is_defined (header.kind) || !is_defined (header.codec)
         || (static_cast<std::uint8_t> (header.flags) & ~known_flags) != 0) {
-        return result_t<void>::failure (error_code_t::frame_decode_failed, "Unknown stream header enum value.");
+        return result_t<void>::failure (error_code_t::frame_decode_failed,
+                                        "Unknown stream header enum value.");
     }
     const auto has_request_seq = has_flag (header.flags, header_flags_t::has_request_seq);
     const auto has_metadata = has_flag (header.flags, header_flags_t::has_metadata);
@@ -98,28 +101,36 @@ result_t<void> validate_header (const stream_header_t &header)
         return result_t<void>::failure (error_code_t::frame_decode_failed,
                                         "Send packet must not contain a request sequence.");
     }
-    if ((header.kind == message_kind_t::request || header.kind == message_kind_t::response) && !has_request_seq) {
-        return result_t<void>::failure (error_code_t::frame_decode_failed,
-                                        "Request and response packets must contain a request sequence.");
+    if ((header.kind == message_kind_t::request || header.kind == message_kind_t::response)
+        && !has_request_seq) {
+        return result_t<void>::failure (
+          error_code_t::frame_decode_failed,
+          "Request and response packets must contain a request sequence.");
     }
     if (header.kind == message_kind_t::error && header.codec != codec_t::json) {
-        return result_t<void>::failure (error_code_t::frame_decode_failed, "Error packet must use the JSON codec.");
+        return result_t<void>::failure (error_code_t::frame_decode_failed,
+                                        "Error packet must use the JSON codec.");
     }
     if (header.kind == message_kind_t::control) {
-        if (header.flags != header_flags_t::none || header.codec != codec_t::raw || has_request_seq || has_metadata) {
+        if (header.flags != header_flags_t::none || header.codec != codec_t::raw || has_request_seq
+            || has_metadata) {
             return result_t<void>::failure (error_code_t::frame_decode_failed,
                                             "Control packet must use raw codec and no flags.");
         }
     }
     if (header.name.empty () || header.name.size () > std::numeric_limits<std::uint8_t>::max ()) {
-        return result_t<void>::failure (error_code_t::validation_failed, "Packet name length is invalid.");
+        return result_t<void>::failure (error_code_t::validation_failed,
+                                        "Packet name length is invalid.");
     }
-    if (!header.name.empty () && header.name.front () == '$' && header.kind != message_kind_t::control) {
-        return result_t<void>::failure (error_code_t::frame_decode_failed,
-                                        "Reserved packet names are only valid for control packets.");
+    if (!header.name.empty () && header.name.front () == '$'
+        && header.kind != message_kind_t::control) {
+        return result_t<void>::failure (
+          error_code_t::frame_decode_failed,
+          "Reserved packet names are only valid for control packets.");
     }
     if (header.request_seq && *header.request_seq == 0) {
-        return result_t<void>::failure (error_code_t::validation_failed, "Request sequence must not be zero.");
+        return result_t<void>::failure (error_code_t::validation_failed,
+                                        "Request sequence must not be zero.");
     }
     return result_t<void>::success ();
 }
@@ -140,15 +151,17 @@ result_t<std::vector<std::uint8_t>> header_codec_t::encode (const stream_header_
         clear_flag (header.flags, header_flags_t::has_metadata);
     }
     if (auto validation = validate_header (header); !validation) {
-        return result_t<std::vector<std::uint8_t>>::failure (validation.error_code (), validation.error ()->message);
+        return result_t<std::vector<std::uint8_t>>::failure (validation.error_code (),
+                                                             validation.error ()->message);
     }
     auto metadata = metadata_codec_t::encode (header.metadata);
     if (!metadata) {
-        return result_t<std::vector<std::uint8_t>>::failure (metadata.error_code (), metadata.error ()->message);
+        return result_t<std::vector<std::uint8_t>>::failure (metadata.error_code (),
+                                                             metadata.error ()->message);
     }
     if (metadata.value ().size () > std::numeric_limits<std::uint16_t>::max ()) {
-        return result_t<std::vector<std::uint8_t>>::failure (error_code_t::validation_failed,
-                                                             "Metadata payload exceeds fixed limit.");
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::validation_failed, "Metadata payload exceeds fixed limit.");
     }
 
     std::vector<std::uint8_t> bytes;
@@ -172,7 +185,8 @@ result_t<std::vector<std::uint8_t>> header_codec_t::encode (const stream_header_
 result_t<stream_header_t> header_codec_t::decode (const std::vector<std::uint8_t> &bytes) const
 {
     if (bytes.size () < 4) {
-        return result_t<stream_header_t>::failure (error_code_t::frame_decode_failed, "Helper header is too short.");
+        return result_t<stream_header_t>::failure (error_code_t::frame_decode_failed,
+                                                   "Helper header is too short.");
     }
     std::size_t offset = 0;
     stream_header_t header;
@@ -182,8 +196,8 @@ result_t<stream_header_t> header_codec_t::decode (const std::vector<std::uint8_t
 
     if (has_flag (header.flags, header_flags_t::has_request_seq)) {
         if (bytes.size () - offset < 8) {
-            return result_t<stream_header_t>::failure (error_code_t::frame_decode_failed,
-                                                       "Helper header request sequence is incomplete.");
+            return result_t<stream_header_t>::failure (
+              error_code_t::frame_decode_failed, "Helper header request sequence is incomplete.");
         }
         header.request_seq = read_u64 (bytes, offset);
     }
@@ -210,12 +224,14 @@ result_t<stream_header_t> header_codec_t::decode (const std::vector<std::uint8_t
             return result_t<stream_header_t>::failure (error_code_t::frame_decode_failed,
                                                        "Helper header metadata is incomplete.");
         }
-        std::vector<std::uint8_t> metadata (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
-                                            bytes.begin () + static_cast<std::ptrdiff_t> (offset + metadata_size));
+        std::vector<std::uint8_t> metadata (
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset),
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset + metadata_size));
         offset += metadata_size;
         auto decoded = metadata_codec_t::decode (metadata);
         if (!decoded) {
-            return result_t<stream_header_t>::failure (decoded.error_code (), decoded.error ()->message);
+            return result_t<stream_header_t>::failure (decoded.error_code (),
+                                                       decoded.error ()->message);
         }
         header.metadata = decoded.value ();
     }
@@ -224,7 +240,8 @@ result_t<stream_header_t> header_codec_t::decode (const std::vector<std::uint8_t
                                                    "Helper header contains trailing bytes.");
     }
     if (auto validation = validate_header (header); !validation) {
-        return result_t<stream_header_t>::failure (validation.error_code (), validation.error ()->message);
+        return result_t<stream_header_t>::failure (validation.error_code (),
+                                                   validation.error ()->message);
     }
     return result_t<stream_header_t>::success (std::move (header));
 }

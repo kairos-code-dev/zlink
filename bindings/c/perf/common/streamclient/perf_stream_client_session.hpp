@@ -38,14 +38,14 @@
 
 // --- Benchmark tuning constants ---
 
-inline constexpr int k_connect_batch = 1024;           // max concurrent connect() calls
-inline constexpr int k_connect_timeout_s = 90;         // connect phase timeout budget
-inline constexpr int k_resize_timeout_s = 30;          // chunk-size barrier wait limit
-inline constexpr int k_socket_sndbuf_default = 64 * 1024; // SO_SNDBUF default (64 KiB)
-inline constexpr int k_socket_rcvbuf_default = 64 * 1024; // SO_RCVBUF default (64 KiB)
-inline constexpr int k_socket_tcp_nodelay = 1;         // TCP_NODELAY on
+inline constexpr int k_connect_batch = 1024;                 // max concurrent connect() calls
+inline constexpr int k_connect_timeout_s = 90;               // connect phase timeout budget
+inline constexpr int k_resize_timeout_s = 30;                // chunk-size barrier wait limit
+inline constexpr int k_socket_sndbuf_default = 64 * 1024;    // SO_SNDBUF default (64 KiB)
+inline constexpr int k_socket_rcvbuf_default = 64 * 1024;    // SO_RCVBUF default (64 KiB)
+inline constexpr int k_socket_tcp_nodelay = 1;               // TCP_NODELAY on
 inline constexpr size_t k_rtt_sample_capacity = 1024 * 1024; // max RTT samples (1M)
-inline constexpr size_t k_loopback_port_headroom = 64; // ports reserved for OS use
+inline constexpr size_t k_loopback_port_headroom = 64;       // ports reserved for OS use
 
 inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
 {
@@ -68,15 +68,15 @@ inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
 
 inline int resolve_stream_sndbuf_bytes ()
 {
-    static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
+    static const int value =
+      resolve_stream_sockbuf_env ("PERF_MULTI_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
     return value;
 }
 
 inline int resolve_stream_rcvbuf_bytes ()
 {
-    static const int value = resolve_stream_sockbuf_env (
-      "PERF_MULTI_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
+    static const int value =
+      resolve_stream_sockbuf_env ("PERF_MULTI_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
     return value;
 }
 
@@ -106,8 +106,7 @@ enum raw_transport_mode_t
     raw_transport_wss = 3,
 };
 
-inline raw_transport_mode_t
-parse_transport_mode (const std::string &transport)
+inline raw_transport_mode_t parse_transport_mode (const std::string &transport)
 {
     const std::string t = perf_stream_common::lower_copy (transport);
     if (t == "tls")
@@ -135,32 +134,32 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     client_session_t (bench_client_iface_t &owner_,
                       boost::asio::io_context &io_,
                       const std::string &transport_,
-                      const boost::asio::ip::tcp::endpoint &source_bind_ep_)
-        : owner (owner_),
-          io (io_),
-          transport_mode (parse_transport_mode (transport_)),
-          tls_ctx (boost::asio::ssl::context::tls_client),
-          tcp_socket (),
-          tls_socket (),
-          ws_socket (),
-          wss_socket (),
-          ws_read_buffer (),
-          ws_pending_frame (),
-          strand (boost::asio::make_strand (io_)),
-          closed (false),
-          connected_flag (false),
-          connect_started (false),
-          connect_reported (false),
-          write_pending (false),
-          read_pending (false),
-          outstanding (0),
-          chunk_size (64),
-          endpoint (),
-          source_bind_ep (source_bind_ep_),
-          write_buf (),
-          read_header_declared (0),
-          read_declared (0),
-          read_buf ()
+                      const boost::asio::ip::tcp::endpoint &source_bind_ep_) :
+        owner (owner_),
+        io (io_),
+        transport_mode (parse_transport_mode (transport_)),
+        tls_ctx (boost::asio::ssl::context::tls_client),
+        tcp_socket (),
+        tls_socket (),
+        ws_socket (),
+        wss_socket (),
+        ws_read_buffer (),
+        ws_pending_frame (),
+        strand (boost::asio::make_strand (io_)),
+        closed (false),
+        connected_flag (false),
+        connect_started (false),
+        connect_reported (false),
+        write_pending (false),
+        read_pending (false),
+        outstanding (0),
+        chunk_size (64),
+        endpoint (),
+        source_bind_ep (source_bind_ep_),
+        write_buf (),
+        read_header_declared (0),
+        read_declared (0),
+        read_buf ()
     {
         tls_ctx.set_verify_mode (boost::asio::ssl::verify_none);
         std::memset (read_header, 0, sizeof (read_header));
@@ -180,8 +179,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     }
 
     // Update payload size and decrement the resize latch (strand-dispatched).
-    void set_chunk_size (size_t size,
-                         const std::shared_ptr<resize_latch_t> &latch)
+    void set_chunk_size (size_t size, const std::shared_ptr<resize_latch_t> &latch)
     {
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         boost::asio::post (strand, [self, size, latch] () {
@@ -217,10 +215,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         boost::asio::post (strand, [self] () { self->close_internal (); });
     }
 
-    bool connected () const
-    {
-        return connected_flag && !closed;
-    }
+    bool connected () const { return connected_flag && !closed; }
 
   private:
     // --- Connect ---
@@ -236,8 +231,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         return std::string ("127.0.0.1:0");
     }
 
-    void bind_source_if_needed (boost::asio::ip::tcp::socket &socket,
-                                boost::system::error_code &ec)
+    void bind_source_if_needed (boost::asio::ip::tcp::socket &socket, boost::system::error_code &ec)
     {
         if (!endpoint.address ().is_v4 ())
             return;
@@ -262,11 +256,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         tls_socket->async_handshake (
           boost::asio::ssl::stream_base::client,
-          boost::asio::bind_executor (
-            strand,
-            [self] (const boost::system::error_code &handshake_ec) {
-                self->on_connect (handshake_ec);
-            }));
+          boost::asio::bind_executor (strand,
+                                      [self] (const boost::system::error_code &handshake_ec) {
+                                          self->on_connect (handshake_ec);
+                                      }));
     }
 
     void on_ws_tcp_connected (const boost::system::error_code &ec)
@@ -279,18 +272,16 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         ws_socket->binary (true);
-        ws_socket->set_option (
-          boost::beast::websocket::stream_base::timeout::suggested (
-            boost::beast::role_type::client));
+        ws_socket->set_option (boost::beast::websocket::stream_base::timeout::suggested (
+          boost::beast::role_type::client));
 
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         ws_socket->async_handshake (
           websocket_host_header (), "/",
-          boost::asio::bind_executor (
-            strand,
-            [self] (const boost::system::error_code &handshake_ec) {
-                self->on_connect (handshake_ec);
-            }));
+          boost::asio::bind_executor (strand,
+                                      [self] (const boost::system::error_code &handshake_ec) {
+                                          self->on_connect (handshake_ec);
+                                      }));
     }
 
     void on_wss_tls_handshake (const boost::system::error_code &ec)
@@ -303,18 +294,16 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         wss_socket->binary (true);
-        wss_socket->set_option (
-          boost::beast::websocket::stream_base::timeout::suggested (
-            boost::beast::role_type::client));
+        wss_socket->set_option (boost::beast::websocket::stream_base::timeout::suggested (
+          boost::beast::role_type::client));
 
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         wss_socket->async_handshake (
           websocket_host_header (), "/",
-          boost::asio::bind_executor (
-            strand,
-            [self] (const boost::system::error_code &handshake_ec) {
-                self->on_connect (handshake_ec);
-            }));
+          boost::asio::bind_executor (strand,
+                                      [self] (const boost::system::error_code &handshake_ec) {
+                                          self->on_connect (handshake_ec);
+                                      }));
     }
 
     void on_wss_tcp_connected (const boost::system::error_code &ec)
@@ -329,11 +318,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         wss_socket->next_layer ().async_handshake (
           boost::asio::ssl::stream_base::client,
-          boost::asio::bind_executor (
-            strand,
-            [self] (const boost::system::error_code &handshake_ec) {
-                self->on_wss_tls_handshake (handshake_ec);
-            }));
+          boost::asio::bind_executor (strand,
+                                      [self] (const boost::system::error_code &handshake_ec) {
+                                          self->on_wss_tls_handshake (handshake_ec);
+                                      }));
     }
 
     // Open socket, optionally bind to a loopback shard address, and async_connect.
@@ -361,17 +349,13 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             tcp_socket->async_connect (
               endpoint,
               boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &e) {
-                    self->on_connect (e);
-                }));
+                strand, [self] (const boost::system::error_code &e) { self->on_connect (e); }));
             return;
         }
 
         if (transport_mode == raw_transport_tls) {
             // TLS stream allocation is also a one-time setup cost.
-            tls_socket.reset (
-              new boost::asio::ssl::stream<tcp::socket> (io, tls_ctx));
+            tls_socket.reset (new boost::asio::ssl::stream<tcp::socket> (io, tls_ctx));
             tls_socket->next_layer ().open (endpoint.protocol (), ec);
             if (ec) {
                 on_connect (ec);
@@ -380,17 +364,14 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             bind_source_if_needed (tls_socket->next_layer (), ec);
             tls_socket->next_layer ().async_connect (
               endpoint,
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &e) {
-                    self->on_tls_connected (e);
-                }));
+              boost::asio::bind_executor (strand, [self] (const boost::system::error_code &e) {
+                  self->on_tls_connected (e);
+              }));
             return;
         }
 
         if (transport_mode == raw_transport_ws) {
-            ws_socket.reset (
-              new boost::beast::websocket::stream<tcp::socket> (io));
+            ws_socket.reset (new boost::beast::websocket::stream<tcp::socket> (io));
             ws_socket->next_layer ().open (endpoint.protocol (), ec);
             if (ec) {
                 on_connect (ec);
@@ -399,17 +380,14 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             bind_source_if_needed (ws_socket->next_layer (), ec);
             ws_socket->next_layer ().async_connect (
               endpoint,
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &e) {
-                    self->on_ws_tcp_connected (e);
-                }));
+              boost::asio::bind_executor (strand, [self] (const boost::system::error_code &e) {
+                  self->on_ws_tcp_connected (e);
+              }));
             return;
         }
 
-        wss_socket.reset (new boost::beast::websocket::stream<
-                          boost::asio::ssl::stream<tcp::socket> > (io,
-                                                                     tls_ctx));
+        wss_socket.reset (
+          new boost::beast::websocket::stream<boost::asio::ssl::stream<tcp::socket>> (io, tls_ctx));
         wss_socket->next_layer ().next_layer ().open (endpoint.protocol (), ec);
         if (ec) {
             on_connect (ec);
@@ -418,11 +396,9 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         bind_source_if_needed (wss_socket->next_layer ().next_layer (), ec);
         wss_socket->next_layer ().next_layer ().async_connect (
           endpoint,
-          boost::asio::bind_executor (
-            strand,
-            [self] (const boost::system::error_code &e) {
-                self->on_wss_tcp_connected (e);
-            }));
+          boost::asio::bind_executor (strand, [self] (const boost::system::error_code &e) {
+              self->on_wss_tcp_connected (e);
+          }));
     }
 
     // Handle connect result: apply tuning on success or fail immediately.
@@ -440,11 +416,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         if (std::getenv ("PERF_DEBUG")) {
-            std::fprintf (
-              stderr,
-              "perf_stream_client: connect_error code=%d message=%s\n",
-              ec.value (),
-              ec.message ().c_str ());
+            std::fprintf (stderr, "perf_stream_client: connect_error code=%d message=%s\n",
+                          ec.value (), ec.message ().c_str ());
         }
         connect_reported = true;
         owner.on_connect_result (false, shared_from_this ());
@@ -479,40 +452,29 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         chunk_size = size;
-        const size_t wire_size =
-          perf_stream_common::k_stream_packet_prefix_size
-          + perf_stream_common::k_stream_msg_name_size + size;
+        const size_t wire_size = perf_stream_common::k_stream_packet_prefix_size
+                                 + perf_stream_common::k_stream_msg_name_size + size;
         if (write_buf.size () != wire_size)
             write_buf.resize (wire_size);
 
         perf_stream_common::perf_stream_store_u16_be (
-          &write_buf[0],
-          static_cast<uint16_t> (perf_stream_common::k_stream_msg_name_size));
-        perf_stream_common::perf_stream_store_u32_be (
-          &write_buf[2], static_cast<uint32_t> (size));
+          &write_buf[0], static_cast<uint16_t> (perf_stream_common::k_stream_msg_name_size));
+        perf_stream_common::perf_stream_store_u32_be (&write_buf[2], static_cast<uint32_t> (size));
         std::memcpy (&write_buf[perf_stream_common::k_stream_packet_prefix_size],
                      perf_stream_common::k_stream_msg_name,
                      perf_stream_common::k_stream_msg_name_size);
         unsigned char *payload_write =
-          write_buf.size ()
-                > (perf_stream_common::k_stream_packet_prefix_size
-                   + perf_stream_common::k_stream_msg_name_size)
+          write_buf.size () > (perf_stream_common::k_stream_packet_prefix_size
+                               + perf_stream_common::k_stream_msg_name_size)
             ? &write_buf[perf_stream_common::k_stream_packet_prefix_size
                          + perf_stream_common::k_stream_msg_name_size]
             : NULL;
 
-        if (payload_write
-            && size >= perf_multi_metric::header_size ()) {
+        if (payload_write && size >= perf_multi_metric::header_size ()) {
             const uint64_t seq = owner.next_seq ();
             const uint64_t sent_ts_ns = perf_multi_metric::now_ns ();
-            (void) perf_multi_metric::stamp_payload (
-              payload_write,
-              size,
-              owner.metric_run_id (),
-              owner.metric_phase (),
-              size,
-              seq,
-              sent_ts_ns);
+            (void) perf_multi_metric::stamp_payload (payload_write, size, owner.metric_run_id (),
+                                                     owner.metric_phase (), size, seq, sent_ts_ns);
         }
 
         owner.on_send_begin (size);
@@ -523,51 +485,40 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (transport_mode == raw_transport_tcp && tcp_socket) {
             boost::asio::async_write (
               *tcp_socket, boost::asio::buffer (write_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_write (err, bytes);
-                }));
+              boost::asio::bind_executor (strand,
+                                          [self] (const boost::system::error_code &err,
+                                                  size_t bytes) { self->on_write (err, bytes); }));
             return;
         }
 
         if (transport_mode == raw_transport_tls && tls_socket) {
             boost::asio::async_write (
               *tls_socket, boost::asio::buffer (write_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_write (err, bytes);
-                }));
+              boost::asio::bind_executor (strand,
+                                          [self] (const boost::system::error_code &err,
+                                                  size_t bytes) { self->on_write (err, bytes); }));
             return;
         }
 
         if (transport_mode == raw_transport_ws && ws_socket) {
             ws_socket->async_write (
               boost::asio::buffer (write_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_write (err, bytes);
-                }));
+              boost::asio::bind_executor (strand,
+                                          [self] (const boost::system::error_code &err,
+                                                  size_t bytes) { self->on_write (err, bytes); }));
             return;
         }
 
         if (transport_mode == raw_transport_wss && wss_socket) {
             wss_socket->async_write (
               boost::asio::buffer (write_buf),
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_write (err, bytes);
-                }));
+              boost::asio::bind_executor (strand,
+                                          [self] (const boost::system::error_code &err,
+                                                  size_t bytes) { self->on_write (err, bytes); }));
             return;
         }
 
-        on_write (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
+        on_write (boost::asio::error::make_error_code (boost::asio::error::not_connected), 0);
     }
 
     void on_write (const boost::system::error_code &ec, size_t bytes)
@@ -601,8 +552,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         read_pending = true;
 
-        if (transport_mode == raw_transport_ws
-            || transport_mode == raw_transport_wss) {
+        if (transport_mode == raw_transport_ws || transport_mode == raw_transport_wss) {
             start_read_ws_frame ();
             return;
         }
@@ -612,8 +562,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             boost::asio::async_read (
               *tcp_socket, boost::asio::buffer (read_header),
               boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
+                strand, [self] (const boost::system::error_code &err, size_t bytes) {
                     self->on_read_header (err, bytes);
                 }));
             return;
@@ -622,17 +571,13 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             boost::asio::async_read (
               *tls_socket, boost::asio::buffer (read_header),
               boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
+                strand, [self] (const boost::system::error_code &err, size_t bytes) {
                     self->on_read_header (err, bytes);
                 }));
             return;
         }
 
-        on_read_header (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
+        on_read_header (boost::asio::error::make_error_code (boost::asio::error::not_connected), 0);
     }
 
     // Read the packet body (size declared in the prefix).
@@ -641,8 +586,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (closed || !connected ())
             return;
 
-        if (!perf_stream_common::perf_stream_validate_frame_sizes (
-              read_header_declared, read_declared)) {
+        if (!perf_stream_common::perf_stream_validate_frame_sizes (read_header_declared,
+                                                                   read_declared)) {
             owner.on_recv_error ();
             if (outstanding > 0) {
                 const long dropped = static_cast<long> (outstanding);
@@ -654,8 +599,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         const size_t read_total_size =
-          static_cast<size_t> (read_header_declared)
-          + static_cast<size_t> (read_declared);
+          static_cast<size_t> (read_header_declared) + static_cast<size_t> (read_declared);
         if (read_buf.size () != read_total_size)
             read_buf.resize (read_total_size);
 
@@ -664,8 +608,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             boost::asio::async_read (
               *tcp_socket, boost::asio::buffer (read_buf),
               boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
+                strand, [self] (const boost::system::error_code &err, size_t bytes) {
                     self->on_read_payload (err, bytes);
                 }));
             return;
@@ -674,17 +617,14 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             boost::asio::async_read (
               *tls_socket, boost::asio::buffer (read_buf),
               boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
+                strand, [self] (const boost::system::error_code &err, size_t bytes) {
                     self->on_read_payload (err, bytes);
                 }));
             return;
         }
 
-        on_read_payload (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
+        on_read_payload (boost::asio::error::make_error_code (boost::asio::error::not_connected),
+                         0);
     }
 
     void on_ws_read (const boost::system::error_code &ec, size_t)
@@ -694,8 +634,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         if (ec) {
             if (std::getenv ("PERF_DEBUG")) {
-                std::fprintf (stderr,
-                              "perf_stream_client: ws_read_error code=%d message=%s\n",
+                std::fprintf (stderr, "perf_stream_client: ws_read_error code=%d message=%s\n",
                               ec.value (), ec.message ().c_str ());
             }
             owner.on_recv_error ();
@@ -712,9 +651,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (bytes > 0) {
             const size_t base = ws_pending_frame.bytes.size ();
             ws_pending_frame.bytes.resize (base + bytes);
-            boost::asio::buffer_copy (
-              boost::asio::buffer (&ws_pending_frame.bytes[base], bytes),
-              ws_read_buffer.data ());
+            boost::asio::buffer_copy (boost::asio::buffer (&ws_pending_frame.bytes[base], bytes),
+                                      ws_read_buffer.data ());
         }
         ws_read_buffer.consume (bytes);
 
@@ -742,51 +680,40 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             read_header_declared = static_cast<uint16_t> (frame.header_size);
             read_declared = static_cast<uint32_t> (frame.payload_size);
             const size_t total_size =
-              static_cast<size_t> (read_header_declared)
-              + static_cast<size_t> (read_declared);
+              static_cast<size_t> (read_header_declared) + static_cast<size_t> (read_declared);
             if (read_buf.size () != total_size)
                 read_buf.resize (total_size);
             if (frame.header_size > 0) {
                 std::memcpy (&read_buf[0], frame.header, frame.header_size);
             }
             if (read_declared > 0) {
-                std::memcpy (&read_buf[static_cast<size_t> (read_header_declared)],
-                             frame.payload, static_cast<size_t> (read_declared));
+                std::memcpy (&read_buf[static_cast<size_t> (read_header_declared)], frame.payload,
+                             static_cast<size_t> (read_declared));
             }
             perf_stream_frame::consume (&ws_pending_frame, frame);
             perf_stream_frame::compact (&ws_pending_frame);
 
-            on_read_payload (boost::system::error_code (),
-                             total_size);
+            on_read_payload (boost::system::error_code (), total_size);
             return;
         }
 
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         if (transport_mode == raw_transport_ws && ws_socket) {
             ws_socket->async_read (
-              ws_read_buffer,
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_ws_read (err, bytes);
-                }));
+              ws_read_buffer, boost::asio::bind_executor (
+                                strand, [self] (const boost::system::error_code &err,
+                                                size_t bytes) { self->on_ws_read (err, bytes); }));
             return;
         }
         if (transport_mode == raw_transport_wss && wss_socket) {
             wss_socket->async_read (
-              ws_read_buffer,
-              boost::asio::bind_executor (
-                strand,
-                [self] (const boost::system::error_code &err, size_t bytes) {
-                    self->on_ws_read (err, bytes);
-                }));
+              ws_read_buffer, boost::asio::bind_executor (
+                                strand, [self] (const boost::system::error_code &err,
+                                                size_t bytes) { self->on_ws_read (err, bytes); }));
             return;
         }
 
-        on_ws_read (
-          boost::asio::error::make_error_code (
-            boost::asio::error::not_connected),
-          0);
+        on_ws_read (boost::asio::error::make_error_code (boost::asio::error::not_connected), 0);
     }
 
     void on_read_header (const boost::system::error_code &ec, size_t bytes)
@@ -796,11 +723,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         if (ec || bytes != sizeof (read_header)) {
             if (std::getenv ("PERF_DEBUG")) {
-                std::fprintf (
-                  stderr,
-                  "perf_stream_client: read_header_error code=%d message=%s bytes=%zu expected=%zu\n",
-                  ec.value (), ec.message ().c_str (), bytes,
-                  sizeof (read_header));
+                std::fprintf (stderr,
+                              "perf_stream_client: read_header_error code=%d message=%s bytes=%zu "
+                              "expected=%zu\n",
+                              ec.value (), ec.message ().c_str (), bytes, sizeof (read_header));
             }
             owner.on_recv_error ();
             if (outstanding > 0) {
@@ -812,8 +738,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
-        const uint16_t header_size =
-          perf_stream_common::perf_stream_load_u16_be (read_header);
+        const uint16_t header_size = perf_stream_common::perf_stream_load_u16_be (read_header);
         read_header_declared = header_size;
         read_declared = perf_stream_common::perf_stream_load_u32_be (read_header + 2);
         start_read_payload ();
@@ -829,16 +754,15 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         const size_t expected_bytes =
-          static_cast<size_t> (read_header_declared)
-          + static_cast<size_t> (read_declared);
+          static_cast<size_t> (read_header_declared) + static_cast<size_t> (read_declared);
         if (ec || bytes != expected_bytes) {
             if (std::getenv ("PERF_DEBUG")) {
-                std::fprintf (
-                  stderr,
-                  "perf_stream_client: read_payload_error code=%d message=%s bytes=%zu expected=%zu header=%u payload=%u\n",
-                  ec.value (), ec.message ().c_str (), bytes, expected_bytes,
-                  static_cast<unsigned> (read_header_declared),
-                  static_cast<unsigned> (read_declared));
+                std::fprintf (stderr,
+                              "perf_stream_client: read_payload_error code=%d message=%s bytes=%zu "
+                              "expected=%zu header=%u payload=%u\n",
+                              ec.value (), ec.message ().c_str (), bytes, expected_bytes,
+                              static_cast<unsigned> (read_header_declared),
+                              static_cast<unsigned> (read_declared));
             }
             owner.on_recv_error ();
             if (outstanding > 0) {
@@ -850,8 +774,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
         }
 
-        if (!perf_stream_common::perf_stream_is_msg_name (
-              bytes > 0 ? &read_buf[0] : NULL, read_header_declared)) {
+        if (!perf_stream_common::perf_stream_is_msg_name (bytes > 0 ? &read_buf[0] : NULL,
+                                                          read_header_declared)) {
             owner.on_size_mismatch ();
         }
         if (read_declared != static_cast<uint32_t> (chunk_size)) {
@@ -868,16 +792,12 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         const size_t payload_bytes = static_cast<size_t> (read_declared);
         const unsigned char *payload_ptr =
-          payload_bytes > 0
-            ? &read_buf[static_cast<size_t> (read_header_declared)]
-            : NULL;
+          payload_bytes > 0 ? &read_buf[static_cast<size_t> (read_header_declared)] : NULL;
 
         uint64_t sent_ts_ns = 0;
-        if (payload_ptr
-            && payload_bytes >= perf_multi_metric::header_size ()) {
+        if (payload_ptr && payload_bytes >= perf_multi_metric::header_size ()) {
             perf_multi_metric::header_t header;
-            if (perf_multi_metric::decode_payload_header (
-                  payload_ptr, payload_bytes, &header)) {
+            if (perf_multi_metric::decode_payload_header (payload_ptr, payload_bytes, &header)) {
                 if (header.msg_size == static_cast<uint32_t> (chunk_size))
                     sent_ts_ns = header.sent_ts_ns;
                 else
@@ -933,8 +853,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         if (wss_socket) {
             wss_socket->next_layer ().next_layer ().cancel (ec);
-            wss_socket->next_layer ().next_layer ().shutdown (
-              tcp::socket::shutdown_both, ec);
+            wss_socket->next_layer ().next_layer ().shutdown (tcp::socket::shutdown_both, ec);
             wss_socket->next_layer ().next_layer ().close (ec);
             wss_socket.reset ();
         }
@@ -975,52 +894,47 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             return;
 
         boost::system::error_code ec;
-        socket->set_option (
-          boost::asio::ip::tcp::no_delay (k_socket_tcp_nodelay != 0), ec);
-        boost::asio::socket_base::send_buffer_size snd (
-          resolve_stream_sndbuf_bytes ());
+        socket->set_option (boost::asio::ip::tcp::no_delay (k_socket_tcp_nodelay != 0), ec);
+        boost::asio::socket_base::send_buffer_size snd (resolve_stream_sndbuf_bytes ());
         socket->set_option (snd, ec);
-        boost::asio::socket_base::receive_buffer_size rcv (
-          resolve_stream_rcvbuf_bytes ());
+        boost::asio::socket_base::receive_buffer_size rcv (resolve_stream_rcvbuf_bytes ());
         socket->set_option (rcv, ec);
     }
 
     // --- Member state ---
 
-    bench_client_iface_t &owner;             // orchestrator (bench_client_t)
+    bench_client_iface_t &owner; // orchestrator (bench_client_t)
     boost::asio::io_context &io;
     raw_transport_mode_t transport_mode;
     boost::asio::ssl::context tls_ctx;
     std::unique_ptr<boost::asio::ip::tcp::socket> tcp_socket;
-    std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket> >
-      tls_socket;
-    std::unique_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket> >
-      ws_socket;
-    std::unique_ptr<boost::beast::websocket::stream<
-      boost::asio::ssl::stream<boost::asio::ip::tcp::socket> > >
+    std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> tls_socket;
+    std::unique_ptr<boost::beast::websocket::stream<boost::asio::ip::tcp::socket>> ws_socket;
+    std::unique_ptr<
+      boost::beast::websocket::stream<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>>
       wss_socket;
     boost::beast::flat_buffer ws_read_buffer;
     perf_stream_frame::buffer_t ws_pending_frame;
 
     boost::asio::strand<boost::asio::io_context::executor_type> strand; // serializes all callbacks
 
-    bool closed;            // permanently shut down
-    bool connected_flag;    // connect succeeded
-    bool connect_started;   // do_connect() called at least once
-    bool connect_reported;  // on_connect_result() sent to owner
+    bool closed;           // permanently shut down
+    bool connected_flag;   // connect succeeded
+    bool connect_started;  // do_connect() called at least once
+    bool connect_reported; // on_connect_result() sent to owner
     bool write_pending;    // async_write in progress
     bool read_pending;     // async_read in progress
-    size_t outstanding;     // un-echoed messages (0 or 1)
+    size_t outstanding;    // un-echoed messages (0 or 1)
 
-    size_t chunk_size;      // current payload size
-    boost::asio::ip::tcp::endpoint endpoint;         // server address
-    boost::asio::ip::tcp::endpoint source_bind_ep;   // loopback shard bind address
+    size_t chunk_size;                             // current payload size
+    boost::asio::ip::tcp::endpoint endpoint;       // server address
+    boost::asio::ip::tcp::endpoint source_bind_ep; // loopback shard bind address
 
-    std::vector<unsigned char> write_buf;   // reusable send buffer [prefix + body]
+    std::vector<unsigned char> write_buf; // reusable send buffer [prefix + body]
     unsigned char read_header[perf_stream_common::k_stream_packet_prefix_size];
-    uint16_t read_header_declared;          // header length from packet prefix
-    uint32_t read_declared;                 // body length from packet prefix
-    std::vector<unsigned char> read_buf;    // reusable receive buffer
+    uint16_t read_header_declared;       // header length from packet prefix
+    uint32_t read_declared;              // body length from packet prefix
+    std::vector<unsigned char> read_buf; // reusable receive buffer
 };
 
 #endif

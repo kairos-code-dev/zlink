@@ -33,8 +33,7 @@ namespace
 {
 namespace spot_io = zlink::spot_data_plane_message_io;
 
-const bool spot_direct_route_debug_on =
-  debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+const bool spot_direct_route_debug_on = debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 
 bool spot_direct_route_debug_enabled_local ()
 {
@@ -75,8 +74,7 @@ int send_remote_mesh_message_local (socket_base_t *socket_,
     spot_data_plane_forwarder_t::pump_socket_commands (socket_);
     socket_->set_all_pipes_nodelay ();
     if (spot_direct_route_debug_enabled_local ()) {
-        std::fprintf (stderr,
-                      "[spot-direct] send remote socket=%d topic=%s parts=%zu\n",
+        std::fprintf (stderr, "[spot-direct] send remote socket=%d topic=%s parts=%zu\n",
                       socket_->socket_id (), topic_.c_str (), parts_.size ());
     }
     if (parts_.empty ()) {
@@ -86,17 +84,16 @@ int send_remote_mesh_message_local (socket_base_t *socket_,
             return -1;
         const int rc = logical_multipart_send_prefixed_frames (
           socket_, spot_control_protocol::peer_pub_route_topic,
-          strlen (spot_control_protocol::peer_pub_route_topic), 0, topic_.data (),
-          topic_.size (), 0, &empty, 1, ZLINK_DONTWAIT);
+          strlen (spot_control_protocol::peer_pub_route_topic), 0, topic_.data (), topic_.size (),
+          0, &empty, 1, ZLINK_DONTWAIT);
         zlink_msg_close (&empty);
         return rc;
     }
 
     return logical_multipart_send_prefixed_frames (
       socket_, spot_control_protocol::peer_pub_route_topic,
-      strlen (spot_control_protocol::peer_pub_route_topic), 0, topic_.data (),
-      topic_.size (), 0, const_cast<zlink_msg_t *> (&parts_[0]), parts_.size (),
-      ZLINK_DONTWAIT);
+      strlen (spot_control_protocol::peer_pub_route_topic), 0, topic_.data (), topic_.size (), 0,
+      const_cast<zlink_msg_t *> (&parts_[0]), parts_.size (), ZLINK_DONTWAIT);
 }
 
 socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
@@ -108,8 +105,7 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
     }
 
     ctx_t *ctx = runtime_->ctx ();
-    socket_base_t *socket = ctx ? ctx->create_socket (ZLINK_CORE_SOCKET_DEALER)
-                                : NULL;
+    socket_base_t *socket = ctx ? ctx->create_socket (ZLINK_CORE_SOCKET_DEALER) : NULL;
     if (!socket)
         return NULL;
 
@@ -118,30 +114,23 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
     size_t local_sub_count = 0;
     size_t connected_peer_count = 0;
     size_t active_peer_count = 0;
-    runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count,
-                                        &connected_peer_count,
+    runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count, &connected_peer_count,
                                         &active_peer_count);
     apply_spot_internal_auto_hwm (
       ctx, socket,
-      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data,
-                                      ZLINK_CORE_SOCKET_DEALER,
-                                      connected_peer_count,
-                                      active_peer_count,
-                                      0, 0, true, true, true, true});
+      spot_internal_auto_hwm_policy_t{auto_hwm_role_spot_data, ZLINK_CORE_SOCKET_DEALER,
+                                      connected_peer_count, active_peer_count, 0, 0, true, true,
+                                      true, true});
 
     std::string ca;
     std::string host;
     int trust_system = 0;
-    spot_node_access_t::snapshot_tls_client_config (runtime_->owner, &ca, &host,
-                                                    &trust_system);
+    spot_node_access_t::snapshot_tls_client_config (runtime_->owner, &ca, &host, &trust_system);
     const int linger = 0;
     const int immediate = 1;
     socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
-    socket->setsockopt (ZLINK_INTERNAL_OPT_IMMEDIATE, &immediate,
-                        sizeof (immediate));
-    if (spot_node_access_t::apply_tls_client (runtime_->owner, socket, ca, host,
-                                              trust_system)
-          != 0
+    socket->setsockopt (ZLINK_INTERNAL_OPT_IMMEDIATE, &immediate, sizeof (immediate));
+    if (spot_node_access_t::apply_tls_client (runtime_->owner, socket, ca, host, trust_system) != 0
         || socket->connect (route_endpoint_.c_str ()) != 0) {
         const int saved_errno = errno != 0 ? errno : EIO;
         socket->close ();
@@ -153,13 +142,11 @@ socket_base_t *create_remote_mesh_sender_socket_local (spot_runtime_t *runtime_,
     return socket;
 }
 
-void refresh_fixed_poller_interest_local (
-  spot_data_plane_runtime_state_t *state_)
+void refresh_fixed_poller_interest_local (spot_data_plane_runtime_state_t *state_)
 {
     const bool pause_mesh =
       state_->remote_mesh.pending_bytes >= state_->remote_mesh.pending_pause_threshold
-      || !state_->staged.mesh_messages.empty ()
-      || !state_->staged.ingress_messages.empty ();
+      || !state_->staged.mesh_messages.empty () || !state_->staged.ingress_messages.empty ();
     const bool resume_mesh =
       state_->remote_mesh.pending_bytes <= state_->remote_mesh.pending_resume_threshold;
     if (!state_->interest.mesh_xsub_pollin_paused && pause_mesh)
@@ -167,30 +154,23 @@ void refresh_fixed_poller_interest_local (
     else if (state_->interest.mesh_xsub_pollin_paused && resume_mesh)
         state_->interest.mesh_xsub_pollin_paused = false;
 
-    const short mesh_xsub_events =
-      state_->interest.mesh_xsub_pollin_paused ? 0 : ZLINK_POLLIN;
-    if (state_->mesh_xsub
-        && state_->interest.mesh_xsub_pollin_armed
-             != (mesh_xsub_events != 0)) {
+    const short mesh_xsub_events = state_->interest.mesh_xsub_pollin_paused ? 0 : ZLINK_POLLIN;
+    if (state_->mesh_xsub && state_->interest.mesh_xsub_pollin_armed != (mesh_xsub_events != 0)) {
         (void) state_->poller->modify (state_->mesh_xsub, mesh_xsub_events);
         state_->interest.mesh_xsub_pollin_armed = mesh_xsub_events != 0;
     }
 
-    const bool mesh_pub_need_pollout =
-      !state_->remote_mesh.broadcast_pending_message_ids.empty ();
-    if (state_->mesh_pub
-        && mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
-        (void) state_->poller->modify (
-          state_->mesh_pub, mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
+    const bool mesh_pub_need_pollout = !state_->remote_mesh.broadcast_pending_message_ids.empty ();
+    if (state_->mesh_pub && mesh_pub_need_pollout != state_->remote_mesh.pollout_armed) {
+        (void) state_->poller->modify (state_->mesh_pub, mesh_pub_need_pollout ? ZLINK_POLLOUT : 0);
         state_->remote_mesh.pollout_armed = mesh_pub_need_pollout;
     }
 }
 
-void refresh_target_pollout_interest_local (
-  spot_data_plane_runtime_state_t *state_,
-  socket_base_t *socket_,
-  const std::deque<uint64_t> &pending_message_ids_,
-  bool *pollout_armed_)
+void refresh_target_pollout_interest_local (spot_data_plane_runtime_state_t *state_,
+                                            socket_base_t *socket_,
+                                            const std::deque<uint64_t> &pending_message_ids_,
+                                            bool *pollout_armed_)
 {
     if (!state_ || !state_->poller || !socket_ || !pollout_armed_)
         return;
@@ -207,9 +187,8 @@ void refresh_local_target_pollout_interest_local (
 {
     if (!target_)
         return;
-    refresh_target_pollout_interest_local (
-      state_, target_->relay_socket, target_->pending_message_ids,
-      &target_->pollout_armed);
+    refresh_target_pollout_interest_local (state_, target_->relay_socket,
+                                           target_->pending_message_ids, &target_->pollout_armed);
 }
 
 void refresh_remote_target_pollout_interest_local (
@@ -218,26 +197,21 @@ void refresh_remote_target_pollout_interest_local (
 {
     if (!target_)
         return;
-    refresh_target_pollout_interest_local (
-      state_, target_->sender_socket, target_->pending_message_ids,
-      &target_->pollout_armed);
+    refresh_target_pollout_interest_local (state_, target_->sender_socket,
+                                           target_->pending_message_ids, &target_->pollout_armed);
 }
 
-size_t publish_message_unit_bytes (spot_runtime_t *runtime_,
-                                   size_t entry_bytes_)
+size_t publish_message_unit_bytes (spot_runtime_t *runtime_, size_t entry_bytes_)
 {
     if (runtime_ && runtime_->owner) {
         const spot_node_pub_defaults_t defaults = runtime_->owner->load_pub_defaults ();
-        if (defaults.auto_hwm_msg_unit_bytes.enabled
-            && defaults.auto_hwm_msg_unit_bytes.value > 0)
-            return static_cast<size_t> (
-              defaults.auto_hwm_msg_unit_bytes.value);
+        if (defaults.auto_hwm_msg_unit_bytes.enabled && defaults.auto_hwm_msg_unit_bytes.value > 0)
+            return static_cast<size_t> (defaults.auto_hwm_msg_unit_bytes.value);
     }
     return entry_bytes_ > 0 ? entry_bytes_ : 1;
 }
 
-queue_admission_plan_t make_queue_admission_plan (int slots_,
-                                                  size_t message_unit_)
+queue_admission_plan_t make_queue_admission_plan (int slots_, size_t message_unit_)
 {
     queue_admission_plan_t plan;
     if (slots_ == 0) {
@@ -297,11 +271,9 @@ bool wait_for_queue_room (std::condition_variable &cv_,
         return true;
     }
     const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (sndtimeo_ms_);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (sndtimeo_ms_);
     while (!ready_ ()) {
-        if (cv_.wait_until (lock_, deadline) == std::cv_status::timeout
-            && !ready_ ())
+        if (cv_.wait_until (lock_, deadline) == std::cv_status::timeout && !ready_ ())
             return false;
     }
     return true;
@@ -319,11 +291,9 @@ find_local_target_by_socket_local (spot_data_plane_runtime_state_t *state_,
     if (socket_it == state_->local_fanout.target_by_socket.end ())
         return NULL;
 
-    spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-      iterator target_it =
-        state_->local_fanout.targets.find (socket_it->second);
-    if (target_it == state_->local_fanout.targets.end ()
-        || !target_it->second.relay_socket)
+    spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator target_it =
+      state_->local_fanout.targets.find (socket_it->second);
+    if (target_it == state_->local_fanout.targets.end () || !target_it->second.relay_socket)
         return NULL;
 
     return &target_it->second;
@@ -338,16 +308,14 @@ int flush_local_target_pending_local (
 
     while (!target_->pending_message_ids.empty ()) {
         const uint64_t message_id = target_->pending_message_ids.front ();
-        spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::
-          iterator msg_it =
-            state_->local_fanout.pending_messages.find (message_id);
+        spot_data_plane_runtime_state_t::local_fanout_state_t::pending_message_map_t::iterator
+          msg_it = state_->local_fanout.pending_messages.find (message_id);
         if (msg_it == state_->local_fanout.pending_messages.end ()) {
             target_->pending_message_ids.pop_front ();
             continue;
         }
 
-        spot_data_plane_forwarder_t::pump_socket_commands (
-          target_->relay_socket);
+        spot_data_plane_forwarder_t::pump_socket_commands (target_->relay_socket);
         if (spot_publish_msg_parts (target_->relay_socket, msg_it->second.topic,
                                     msg_it->second.parts)
             != 0) {
@@ -357,33 +325,28 @@ int flush_local_target_pending_local (
         }
 
         target_->pending_message_ids.pop_front ();
-        spot_data_plane_pending_t::release_local_pending_ref (state_,
-                                                              message_id);
+        spot_data_plane_pending_t::release_local_pending_ref (state_, message_id);
     }
 
     return 0;
 }
 
-int flush_mesh_broadcast_pending_local (
-  spot_data_plane_runtime_state_t *state_)
+int flush_mesh_broadcast_pending_local (spot_data_plane_runtime_state_t *state_)
 {
     if (!state_)
         return 0;
 
     while (!state_->remote_mesh.broadcast_pending_message_ids.empty ()) {
-        const uint64_t message_id =
-          state_->remote_mesh.broadcast_pending_message_ids.front ();
-        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
-          iterator msg_it =
-            state_->remote_mesh.pending_messages.find (message_id);
+        const uint64_t message_id = state_->remote_mesh.broadcast_pending_message_ids.front ();
+        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::iterator
+          msg_it = state_->remote_mesh.pending_messages.find (message_id);
         if (msg_it == state_->remote_mesh.pending_messages.end ()) {
             state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
             continue;
         }
 
         spot_data_plane_forwarder_t::pump_socket_commands (state_->mesh_pub);
-        if (spot_publish_msg_parts (state_->mesh_pub, msg_it->second.topic,
-                                    msg_it->second.parts)
+        if (spot_publish_msg_parts (state_->mesh_pub, msg_it->second.topic, msg_it->second.parts)
             != 0) {
             if (errno == EAGAIN)
                 break;
@@ -391,8 +354,7 @@ int flush_mesh_broadcast_pending_local (
         }
 
         state_->remote_mesh.broadcast_pending_message_ids.pop_front ();
-        spot_data_plane_pending_t::release_mesh_pending_ref (state_,
-                                                             message_id);
+        spot_data_plane_pending_t::release_mesh_pending_ref (state_, message_id);
     }
 
     return 0;
@@ -407,16 +369,14 @@ int flush_remote_target_pending_local (
 
     while (!target_->pending_message_ids.empty ()) {
         const uint64_t message_id = target_->pending_message_ids.front ();
-        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::
-          iterator msg_it =
-            state_->remote_mesh.pending_messages.find (message_id);
+        spot_data_plane_runtime_state_t::remote_mesh_state_t::pending_message_map_t::iterator
+          msg_it = state_->remote_mesh.pending_messages.find (message_id);
         if (msg_it == state_->remote_mesh.pending_messages.end ()) {
             target_->pending_message_ids.pop_front ();
             continue;
         }
 
-        if (send_remote_mesh_message_local (target_->sender_socket,
-                                            msg_it->second.topic,
+        if (send_remote_mesh_message_local (target_->sender_socket, msg_it->second.topic,
                                             msg_it->second.parts)
             != 0) {
             if (errno == EAGAIN)
@@ -425,16 +385,13 @@ int flush_remote_target_pending_local (
         }
 
         target_->pending_message_ids.pop_front ();
-        spot_data_plane_pending_t::release_mesh_pending_ref (state_,
-                                                             message_id);
+        spot_data_plane_pending_t::release_mesh_pending_ref (state_, message_id);
     }
 
     return 0;
 }
 
-int copy_raw_parts_to_owned (zlink_msg_t *parts_,
-                             size_t part_count_,
-                             spot_owned_msg_parts_t *out_)
+int copy_raw_parts_to_owned (zlink_msg_t *parts_, size_t part_count_, spot_owned_msg_parts_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
@@ -504,32 +461,28 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
         retired_relays.swap (runtime_->retired_attachment_relay_sockets);
     }
 
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator it = state_->local_fanout.targets.begin ();
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator it =
+           state_->local_fanout.targets.begin ();
          it != state_->local_fanout.targets.end ();) {
         const std::unordered_map<uint64_t, socket_base_t *>::const_iterator snap_it =
           snapshot.find (it->first);
         if (snap_it == snapshot.end () || snap_it->second == NULL) {
             const uint64_t attachment_id = it->first;
             ++it;
-            spot_data_plane_pending_t::drop_local_target_state (
-              state_, attachment_id);
+            spot_data_plane_pending_t::drop_local_target_state (state_, attachment_id);
             continue;
         }
         if (it->second.relay_socket != snap_it->second) {
             if (it->second.relay_socket)
-                state_->local_fanout.target_by_socket.erase (
-                  it->second.relay_socket);
+                state_->local_fanout.target_by_socket.erase (it->second.relay_socket);
             it->second.relay_socket = snap_it->second;
             if (it->second.relay_socket)
-                state_->local_fanout.target_by_socket[it->second.relay_socket] =
-                  it->first;
+                state_->local_fanout.target_by_socket[it->second.relay_socket] = it->first;
         }
         ++it;
     }
 
-    for (std::unordered_map<uint64_t, socket_base_t *>::const_iterator it =
-           snapshot.begin ();
+    for (std::unordered_map<uint64_t, socket_base_t *>::const_iterator it = snapshot.begin ();
          it != snapshot.end (); ++it) {
         if (state_->local_fanout.targets.find (it->first) != state_->local_fanout.targets.end ())
             continue;
@@ -568,18 +521,15 @@ void spot_data_plane_forwarder_t::sync_remote_mesh_targets (
 
     while (!state_->remote_mesh.targets.empty ()) {
         const std::string endpoint = state_->remote_mesh.targets.begin ()->first;
-        spot_data_plane_pending_t::drop_remote_target_state (runtime_, state_,
-                                                             endpoint);
+        spot_data_plane_pending_t::drop_remote_target_state (runtime_, state_, endpoint);
     }
 }
 
-void spot_data_plane_forwarder_t::drop_remote_mesh_target (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const std::string &endpoint_)
+void spot_data_plane_forwarder_t::drop_remote_mesh_target (spot_runtime_t *runtime_,
+                                                           spot_data_plane_runtime_state_t *state_,
+                                                           const std::string &endpoint_)
 {
-    spot_data_plane_pending_t::drop_remote_target_state (runtime_, state_,
-                                                         endpoint_);
+    spot_data_plane_pending_t::drop_remote_target_state (runtime_, state_, endpoint_);
 }
 
 void spot_data_plane_forwarder_t::update_pending_queue_limits (
@@ -588,11 +538,9 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
     if (!runtime_ || !state_)
         return;
 
-    const int fanout_hwm =
-      spot_data_plane_pending_t::resolve_fanout_hwm (runtime_);
-    const size_t pending_limit =
-      static_cast<size_t> (std::max (fanout_hwm / 2,
-                                     static_cast<int> (default_queue_message_unit_bytes)));
+    const int fanout_hwm = spot_data_plane_pending_t::resolve_fanout_hwm (runtime_);
+    const size_t pending_limit = static_cast<size_t> (
+      std::max (fanout_hwm / 2, static_cast<int> (default_queue_message_unit_bytes)));
     state_->local_fanout.pending_hard_limit = pending_limit;
     state_->remote_mesh.pending_hard_limit = pending_limit;
     state_->local_fanout.pending_pause_threshold = pending_limit;
@@ -603,33 +551,31 @@ void spot_data_plane_forwarder_t::update_pending_queue_limits (
       std::max (pending_limit / 2, default_queue_message_unit_bytes / 2);
 }
 
-void spot_data_plane_forwarder_t::refresh_poller_interest (
-  spot_data_plane_runtime_state_t *state_)
+void spot_data_plane_forwarder_t::refresh_poller_interest (spot_data_plane_runtime_state_t *state_)
 {
     if (!state_ || !state_->poller)
         return;
 
     refresh_fixed_poller_interest_local (state_);
 
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator it = state_->local_fanout.targets.begin ();
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator it =
+           state_->local_fanout.targets.begin ();
          it != state_->local_fanout.targets.end (); ++it) {
         refresh_local_target_pollout_interest_local (state_, &it->second);
     }
 
-    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
-           iterator it = state_->remote_mesh.targets.begin ();
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::iterator it =
+           state_->remote_mesh.targets.begin ();
          it != state_->remote_mesh.targets.end (); ++it) {
         refresh_remote_target_pollout_interest_local (state_, &it->second);
     }
 }
 
-int spot_data_plane_forwarder_t::forward_local_fanout (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const std::string &topic_,
-  const spot_owned_msg_parts_t &parts_,
-  size_t precomputed_encoded_bytes_)
+int spot_data_plane_forwarder_t::forward_local_fanout (spot_runtime_t *runtime_,
+                                                       spot_data_plane_runtime_state_t *state_,
+                                                       const std::string &topic_,
+                                                       const spot_owned_msg_parts_t &parts_,
+                                                       size_t precomputed_encoded_bytes_)
 {
     if (!runtime_ || !state_ || topic_.empty ()) {
         errno = EINVAL;
@@ -642,20 +588,19 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     const size_t encoded_bytes = precomputed_encoded_bytes_ > 0
                                    ? precomputed_encoded_bytes_
                                    : spot_msg_parts_encoded_bytes (parts_);
-    if (!spot_data_plane_pending_t::queue_has_room (
-          state_->local_fanout.pending_bytes,
-          state_->local_fanout.pending_hard_limit, encoded_bytes)) {
+    if (!spot_data_plane_pending_t::queue_has_room (state_->local_fanout.pending_bytes,
+                                                    state_->local_fanout.pending_hard_limit,
+                                                    encoded_bytes)) {
         refresh_poller_interest (state_);
         errno = EAGAIN;
         return -1;
     }
 
     uint64_t local_pending_message_id = 0;
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator target_it = state_->local_fanout.targets.begin ();
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator target_it =
+           state_->local_fanout.targets.begin ();
          target_it != state_->local_fanout.targets.end ();) {
-        spot_data_plane_runtime_state_t::local_target_state_t &target =
-          target_it->second;
+        spot_data_plane_runtime_state_t::local_target_state_t &target = target_it->second;
         if (!target.relay_socket) {
             ++target_it;
             continue;
@@ -672,8 +617,7 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
             errno = EAGAIN;
         if (errno != EAGAIN
             || !spot_data_plane_pending_t::enqueue_local_target_message (
-              state_, &target, topic_, parts_, &local_pending_message_id,
-              encoded_bytes)) {
+              state_, &target, topic_, parts_, &local_pending_message_id, encoded_bytes)) {
             return -1;
         }
         ++target_it;
@@ -683,12 +627,11 @@ int spot_data_plane_forwarder_t::forward_local_fanout (
     return 0;
 }
 
-int spot_data_plane_forwarder_t::forward_mesh_pub (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  const std::string &topic_,
-  const spot_owned_msg_parts_t &parts_,
-  size_t precomputed_encoded_bytes_)
+int spot_data_plane_forwarder_t::forward_mesh_pub (spot_runtime_t *runtime_,
+                                                   spot_data_plane_runtime_state_t *state_,
+                                                   const std::string &topic_,
+                                                   const spot_owned_msg_parts_t &parts_,
+                                                   size_t precomputed_encoded_bytes_)
 {
     if (!runtime_ || !state_ || topic_.empty ()) {
         errno = EINVAL;
@@ -698,9 +641,9 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
     const size_t encoded_bytes = precomputed_encoded_bytes_ > 0
                                    ? precomputed_encoded_bytes_
                                    : spot_msg_parts_encoded_bytes (parts_);
-    if (!spot_data_plane_pending_t::queue_has_room (
-          state_->remote_mesh.pending_bytes,
-          state_->remote_mesh.pending_hard_limit, encoded_bytes)) {
+    if (!spot_data_plane_pending_t::queue_has_room (state_->remote_mesh.pending_bytes,
+                                                    state_->remote_mesh.pending_hard_limit,
+                                                    encoded_bytes)) {
         refresh_poller_interest (state_);
         errno = EAGAIN;
         return -1;
@@ -728,13 +671,12 @@ int spot_data_plane_forwarder_t::forward_mesh_pub (
     return 0;
 }
 
-int spot_data_plane_forwarder_t::stage_message (
-  spot_data_plane_runtime_state_t *state_,
-  const std::string &topic_,
-  const spot_owned_msg_parts_t &parts_,
-  bool source_mesh_,
-  bool need_local_,
-  bool need_mesh_)
+int spot_data_plane_forwarder_t::stage_message (spot_data_plane_runtime_state_t *state_,
+                                                const std::string &topic_,
+                                                const spot_owned_msg_parts_t &parts_,
+                                                bool source_mesh_,
+                                                bool need_local_,
+                                                bool need_mesh_)
 {
     if (!state_) {
         errno = EINVAL;
@@ -742,10 +684,9 @@ int spot_data_plane_forwarder_t::stage_message (
     }
 
     std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> &queue =
-      source_mesh_ ? state_->staged.mesh_messages
-                   : state_->staged.ingress_messages;
-    if (!spot_data_plane_pending_t::stage_publish_message (
-          &queue, topic_, parts_, need_local_, need_mesh_)) {
+      source_mesh_ ? state_->staged.mesh_messages : state_->staged.ingress_messages;
+    if (!spot_data_plane_pending_t::stage_publish_message (&queue, topic_, parts_, need_local_,
+                                                           need_mesh_)) {
         if (errno == 0)
             errno = ENOMEM;
         return -1;
@@ -754,13 +695,12 @@ int spot_data_plane_forwarder_t::stage_message (
     return 0;
 }
 
-int spot_data_plane_forwarder_t::enqueue_publish_ingress (
-  spot_runtime_t *runtime_,
-  const char *topic_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  zlink_send_flags_t flags_,
-  int sndtimeo_ms_)
+int spot_data_plane_forwarder_t::enqueue_publish_ingress (spot_runtime_t *runtime_,
+                                                          const char *topic_,
+                                                          zlink_msg_t *parts_,
+                                                          size_t part_count_,
+                                                          zlink_send_flags_t flags_,
+                                                          int sndtimeo_ms_)
 {
     if (!runtime_ || !topic_ || !*topic_) {
         errno = EINVAL;
@@ -777,21 +717,17 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (
 
     spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
       runtime_->execution.data_plane_state.publish_ingress;
-    const int slots =
-      spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
-    const queue_admission_plan_t plan = make_queue_admission_plan (
-      slots, publish_message_unit_bytes (runtime_, entry.encoded_bytes));
+    const int slots = spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
+    const queue_admission_plan_t plan =
+      make_queue_admission_plan (slots, publish_message_unit_bytes (runtime_, entry.encoded_bytes));
     std::unique_lock<std::mutex> lock (queue.mutex);
     if (!publish_ingress_has_room (queue, plan, entry.encoded_bytes))
         queue.backpressure_active = true;
     const bool dontwait = (flags_ & ZLINK_DONTWAIT) != 0;
     const bool ready =
-      wait_for_queue_room (queue.cv, lock, dontwait ? 0 : sndtimeo_ms_,
-                           [&queue, &plan, &entry] () {
-                               return queue.closed
-                                      || publish_ingress_has_room (
-                                        queue, plan, entry.encoded_bytes);
-                           });
+      wait_for_queue_room (queue.cv, lock, dontwait ? 0 : sndtimeo_ms_, [&queue, &plan, &entry] () {
+          return queue.closed || publish_ingress_has_room (queue, plan, entry.encoded_bytes);
+      });
     if (!ready) {
         spot_clear_msg_parts (&entry.parts);
         errno = EAGAIN;
@@ -818,8 +754,7 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (
 }
 
 int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_)
+  spot_runtime_t *runtime_, spot_data_plane_runtime_state_t *state_)
 {
     if (!runtime_ || !state_)
         return 0;
@@ -827,20 +762,16 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
     std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> local;
     bool notify_recovery = false;
     {
-        spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
-          state_->publish_ingress;
+        spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue = state_->publish_ingress;
         std::lock_guard<std::mutex> lock (queue.mutex);
         size_t moved_bytes = 0;
         size_t moved_count = 0;
         while (!queue.messages.empty ()) {
             const size_t entry_bytes =
-              queue.messages.front ().encoded_bytes > 0
-                ? queue.messages.front ().encoded_bytes
-                : 1;
+              queue.messages.front ().encoded_bytes > 0 ? queue.messages.front ().encoded_bytes : 1;
             if (moved_count > 0
                 && (moved_count >= publish_ingress_drain_batch_limit
-                    || moved_bytes + entry_bytes
-                         > publish_ingress_drain_batch_bytes_limit))
+                    || moved_bytes + entry_bytes > publish_ingress_drain_batch_bytes_limit))
                 break;
             moved_bytes += entry_bytes;
             local.push_back (std::move (queue.messages.front ()));
@@ -851,16 +782,12 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
           queue.queued_bytes > moved_bytes ? queue.queued_bytes - moved_bytes : 0;
         if (queue.backpressure_active
             && publish_ingress_can_resume (
-              queue,
-              make_queue_admission_plan (
-                spot_node_pubsub_admission_hwm (
-                  runtime_->hwm_config_snapshot ()),
-                1))) {
+              queue, make_queue_admission_plan (
+                       spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ()), 1))) {
             queue.backpressure_active = false;
             notify_recovery = true;
         }
-        if (!queue.messages.empty () && !queue.signal_armed
-            && queue.signaler.valid ()) {
+        if (!queue.messages.empty () && !queue.signal_armed && queue.signaler.valid ()) {
             queue.signal_armed = true;
             queue.signaler.send ();
         }
@@ -870,10 +797,9 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
         notify_spot_send_ready_recovery (runtime_->owner);
 
     while (!local.empty ()) {
-        spot_data_plane_runtime_state_t::staged_publish_entry_t &entry =
-          local.front ();
-        if (stage_message (state_, entry.topic, entry.parts, false,
-                           entry.need_local, entry.need_mesh)
+        spot_data_plane_runtime_state_t::staged_publish_entry_t &entry = local.front ();
+        if (stage_message (state_, entry.topic, entry.parts, false, entry.need_local,
+                           entry.need_mesh)
             != 0) {
             spot_clear_msg_parts (&entry.parts);
             return -1;
@@ -884,9 +810,8 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
     return flush_staged_messages (runtime_, state_);
 }
 
-int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_)
+int spot_data_plane_forwarder_t::drain_pub_ingress_socket (spot_runtime_t *runtime_,
+                                                           spot_data_plane_runtime_state_t *state_)
 {
     if (!runtime_ || !state_ || !state_->pub_ingress_sub)
         return 0;
@@ -908,8 +833,7 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
 
         processed_bytes += topic_msg.size ();
         const bool has_payload = (topic_msg.flags () & msg_t::more) != 0;
-        std::string topic (
-          static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
+        std::string topic (static_cast<const char *> (topic_msg.data ()), topic_msg.size ());
         topic_msg.close ();
 
         if (!has_payload) {
@@ -921,8 +845,8 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
         }
 
         spot_owned_msg_parts_t frames;
-        if (spot_io::recv_remaining_frames_to_parts (
-              state_->pub_ingress_sub, &frames, &processed_bytes)
+        if (spot_io::recv_remaining_frames_to_parts (state_->pub_ingress_sub, &frames,
+                                                     &processed_bytes)
             != 0) {
             if (errno == EAGAIN || errno == EINTR)
                 break;
@@ -930,19 +854,15 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
         }
 
         if (topic.empty ()
-            || spot_control_protocol::is_reserved_subject (topic.data (),
-                                                           topic.size ())) {
+            || spot_control_protocol::is_reserved_subject (topic.data (), topic.size ())) {
             spot_clear_msg_parts (&frames);
         } else {
             const bool need_local = !state_->local_fanout.targets.empty ();
             const bool need_mesh = runtime_->mesh_pub != NULL;
 
-            if (need_local
-                && forward_local_fanout (runtime_, state_, topic, frames) != 0) {
+            if (need_local && forward_local_fanout (runtime_, state_, topic, frames) != 0) {
                 if (errno != EAGAIN
-                    || stage_message (state_, topic, frames, false, true,
-                                      need_mesh)
-                         != 0) {
+                    || stage_message (state_, topic, frames, false, true, need_mesh) != 0) {
                     spot_clear_msg_parts (&frames);
                     return -1;
                 }
@@ -950,11 +870,9 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
                 break;
             }
 
-            if (need_mesh && forward_mesh_pub (runtime_, state_, topic, frames)
-                               != 0) {
+            if (need_mesh && forward_mesh_pub (runtime_, state_, topic, frames) != 0) {
                 if (errno != EAGAIN
-                    || stage_message (state_, topic, frames, false, false, true)
-                         != 0) {
+                    || stage_message (state_, topic, frames, false, false, true) != 0) {
                     spot_clear_msg_parts (&frames);
                     return -1;
                 }
@@ -974,8 +892,8 @@ int spot_data_plane_forwarder_t::drain_pub_ingress_socket (
     return flush_staged_messages (runtime_, state_);
 }
 
-int spot_data_plane_forwarder_t::flush_staged_messages (
-  spot_runtime_t *runtime_, spot_data_plane_runtime_state_t *state_)
+int spot_data_plane_forwarder_t::flush_staged_messages (spot_runtime_t *runtime_,
+                                                        spot_data_plane_runtime_state_t *state_)
 {
     if (!runtime_ || !state_)
         return 0;
@@ -986,8 +904,7 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
         if (entry.need_local) {
             if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
-            } else if (forward_local_fanout (runtime_, state_, entry.topic,
-                                             entry.parts,
+            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
                                              entry.encoded_bytes)
                        != 0) {
                 if (errno == EAGAIN)
@@ -998,8 +915,7 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
             }
         }
         if (entry.need_mesh) {
-            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts,
-                                  entry.encoded_bytes)
+            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts, entry.encoded_bytes)
                 != 0) {
                 if (errno == EAGAIN)
                     break;
@@ -1019,8 +935,7 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
         if (entry.need_local) {
             if (state_->local_fanout.targets.empty ()) {
                 entry.need_local = false;
-            } else if (forward_local_fanout (runtime_, state_, entry.topic,
-                                             entry.parts,
+            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
                                              entry.encoded_bytes)
                        != 0) {
                 if (errno == EAGAIN)
@@ -1041,9 +956,7 @@ int spot_data_plane_forwarder_t::flush_staged_messages (
 }
 
 int spot_data_plane_forwarder_t::flush_local_fanout_pending (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  socket_base_t *relay_socket_)
+  spot_runtime_t *runtime_, spot_data_plane_runtime_state_t *state_, socket_base_t *relay_socket_)
 {
     (void) runtime_;
 
@@ -1069,12 +982,11 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
         return 0;
     }
 
-    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::
-           iterator it = state_->local_fanout.targets.begin ();
+    for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator it =
+           state_->local_fanout.targets.begin ();
          it != state_->local_fanout.targets.end (); ++it) {
         spot_data_plane_runtime_state_t::local_target_state_t &target = it->second;
-        if (!target.relay_socket
-            || (relay_socket_ && target.relay_socket != relay_socket_)) {
+        if (!target.relay_socket || (relay_socket_ && target.relay_socket != relay_socket_)) {
             continue;
         }
 
@@ -1086,10 +998,9 @@ int spot_data_plane_forwarder_t::flush_local_fanout_pending (
     return 0;
 }
 
-int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
-  spot_runtime_t *runtime_,
-  spot_data_plane_runtime_state_t *state_,
-  socket_base_t *sender_socket_)
+int spot_data_plane_forwarder_t::flush_mesh_pub_pending (spot_runtime_t *runtime_,
+                                                         spot_data_plane_runtime_state_t *state_,
+                                                         socket_base_t *sender_socket_)
 {
     if (!runtime_ || !state_)
         return 0;
@@ -1099,13 +1010,11 @@ int spot_data_plane_forwarder_t::flush_mesh_pub_pending (
             return -1;
     }
 
-    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::
-           iterator it = state_->remote_mesh.targets.begin ();
+    for (spot_data_plane_runtime_state_t::remote_mesh_state_t::target_map_t::iterator it =
+           state_->remote_mesh.targets.begin ();
          it != state_->remote_mesh.targets.end (); ++it) {
-        spot_data_plane_runtime_state_t::remote_target_state_t &target =
-          it->second;
-        if (!target.sender_socket
-            || (sender_socket_ && target.sender_socket != sender_socket_)) {
+        spot_data_plane_runtime_state_t::remote_target_state_t &target = it->second;
+        if (!target.sender_socket || (sender_socket_ && target.sender_socket != sender_socket_)) {
             continue;
         }
 

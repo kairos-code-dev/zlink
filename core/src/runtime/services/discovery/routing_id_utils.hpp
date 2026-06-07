@@ -26,9 +26,7 @@ inline bool set_socket_routing_id (socket_base_t *socket_,
     } else {
         zlink_routing_id_t rid;
         generate_random_uuid_routing_id (&rid);
-        if (socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, rid.data,
-                                 rid.size)
-            != 0)
+        if (socket_->setsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, rid.data, rid.size) != 0)
             return false;
     }
     if (out_) {

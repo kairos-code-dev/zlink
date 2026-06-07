@@ -111,8 +111,10 @@ struct http_middleware_t
 {
     std::string name;
     std::function<std::shared_ptr<void> ()> create_instance;
-    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)> before;
-    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)> after;
+    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)>
+      before;
+    std::function<void (service_provider_t &, http_context_t &, const std::shared_ptr<void> &)>
+      after;
 };
 
 class http_route_t
@@ -125,10 +127,8 @@ class http_route_t
     bool validates_json_content_type = true;
 
   private:
-    std::function<task_t<http_response_t> (service_provider_t &,
-                                           http_context_t &,
-                                           const http_request_t &,
-                                           const std::string &)>
+    std::function<task_t<http_response_t> (
+      service_provider_t &, http_context_t &, const http_request_t &, const std::string &)>
       invoke;
 
     friend class http_options_builder_t;
@@ -155,7 +155,9 @@ struct http_options_snapshot_t
 class http_tls_options_builder_t
 {
   public:
-    explicit http_tls_options_builder_t (http_tls_options_t &options) noexcept : _options (&options) {}
+    explicit http_tls_options_builder_t (http_tls_options_t &options) noexcept : _options (&options)
+    {
+    }
 
     http_tls_options_builder_t &certificate_file (std::string path)
     {
@@ -176,7 +178,10 @@ class http_tls_options_builder_t
 class http_server_options_builder_t
 {
   public:
-    explicit http_server_options_builder_t (http_server_options_t &options) noexcept : _options (&options) {}
+    explicit http_server_options_builder_t (http_server_options_t &options) noexcept :
+        _options (&options)
+    {
+    }
 
     http_server_options_builder_t &set_max_connections (std::size_t value)
     {
@@ -249,7 +254,8 @@ class http_options_builder_t
         return *this;
     }
 
-    http_options_builder_t &configure_tls (std::function<void (http_tls_options_builder_t &)> configure)
+    http_options_builder_t &
+    configure_tls (std::function<void (http_tls_options_builder_t &)> configure)
     {
         if (_snapshot.endpoints.empty ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -264,7 +270,8 @@ class http_options_builder_t
         return *this;
     }
 
-    http_options_builder_t &configure_server (std::function<void (http_server_options_builder_t &)> configure)
+    http_options_builder_t &
+    configure_server (std::function<void (http_server_options_builder_t &)> configure)
     {
         http_server_options_builder_t builder (_snapshot.server);
         if (configure) {
@@ -356,9 +363,11 @@ class http_options_builder_t
             if (!starts_with (endpoint.uri, "https://")) {
                 continue;
             }
-            if (!endpoint.tls || endpoint.tls->certificate_file.empty () || endpoint.tls->private_key_file.empty ()) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "HTTPS endpoint requires TLS certificate and private key");
+            if (!endpoint.tls || endpoint.tls->certificate_file.empty ()
+                || endpoint.tls->private_key_file.empty ()) {
+                throw framework_exception_t (
+                  framework_error_kind_t::request_protocol_error,
+                  "HTTPS endpoint requires TLS certificate and private key");
             }
         }
         for (const auto &route : _snapshot.routes) {
@@ -392,18 +401,31 @@ class http_options_builder_t
         using type = T;
     };
 
-    template <typename T> static constexpr bool is_task_v = requires { typename task_value_type_t<T>::type; };
+    template <typename T> static constexpr bool is_task_v = requires
+    {
+        typename task_value_type_t<T>::type;
+    };
 
-    template <typename T> static constexpr bool has_request_type_v = requires { typename T::request_type; };
+    template <typename T> static constexpr bool has_request_type_v = requires
+    {
+        typename T::request_type;
+    };
 
-    template <typename T> static constexpr bool has_reply_type_v = requires { typename T::reply_type; };
+    template <typename T> static constexpr bool has_reply_type_v = requires
+    {
+        typename T::reply_type;
+    };
 
     template <typename T>
-    static constexpr bool has_raw_http_shape_v = requires (T handler, const http_request_t &request) {
+    static constexpr bool has_raw_http_shape_v = requires (T handler, const http_request_t &request)
+    {
         handler.handle (request);
     };
 
-    static bool starts_with (const std::string &value, const char *prefix) { return value.rfind (prefix, 0) == 0; }
+    static bool starts_with (const std::string &value, const char *prefix)
+    {
+        return value.rfind (prefix, 0) == 0;
+    }
 
     static std::string route_key (http_method_t method, const std::string &path)
     {
@@ -427,33 +449,34 @@ class http_options_builder_t
     }
 
     template <typename TMiddleware>
-    static void
-    invoke_middleware_before_instance (TMiddleware &middleware, service_provider_t &services, http_context_t &context)
+    static void invoke_middleware_before_instance (TMiddleware &middleware,
+                                                   service_provider_t &services,
+                                                   http_context_t &context)
     {
         if constexpr (requires (TMiddleware value, http_context_t & ctx) { value.before (ctx); }) {
             middleware.before (context);
-        } else if constexpr (requires (TMiddleware value, service_provider_t & provider, http_context_t & ctx) {
-                                 value.before (provider, ctx);
-                             }) {
+        } else if constexpr (requires (TMiddleware value, service_provider_t & provider,
+                                       http_context_t & ctx) { value.before (provider, ctx); }) {
             middleware.before (services, context);
         }
     }
 
     template <typename TMiddleware>
-    static void
-    invoke_middleware_after_instance (TMiddleware &middleware, service_provider_t &services, http_context_t &context)
+    static void invoke_middleware_after_instance (TMiddleware &middleware,
+                                                  service_provider_t &services,
+                                                  http_context_t &context)
     {
         if constexpr (requires (TMiddleware value, http_context_t & ctx) { value.after (ctx); }) {
             middleware.after (context);
-        } else if constexpr (requires (TMiddleware value, service_provider_t & provider, http_context_t & ctx) {
-                                 value.after (provider, ctx);
-                             }) {
+        } else if constexpr (requires (TMiddleware value, service_provider_t & provider,
+                                       http_context_t & ctx) { value.after (provider, ctx); }) {
             middleware.after (services, context);
         }
     }
 
     template <typename TMiddleware>
-    static TMiddleware &resolve_middleware (service_provider_t &services, const std::shared_ptr<void> &instance)
+    static TMiddleware &resolve_middleware (service_provider_t &services,
+                                            const std::shared_ptr<void> &instance)
     {
         if constexpr (std::is_default_constructible_v<TMiddleware>) {
             return *std::static_pointer_cast<TMiddleware> (instance);
@@ -486,7 +509,8 @@ class http_options_builder_t
         if constexpr (requires { handler.handle (request); }) {
             return handler.handle (request);
         } else {
-            static_assert (sizeof (THandler) == 0, "HTTP raw handler must handle const http_request_t&");
+            static_assert (sizeof (THandler) == 0,
+                           "HTTP raw handler must handle const http_request_t&");
         }
     }
 
@@ -505,13 +529,15 @@ class http_options_builder_t
         } else if constexpr (requires { handler.handle (request); }) {
             return handler.handle (request);
         } else {
-            static_assert (sizeof (THandler) == 0, "HTTP typed handler has no supported handle overload");
+            static_assert (sizeof (THandler) == 0,
+                           "HTTP typed handler has no supported handle overload");
         }
     }
 
     template <typename TReply, typename TValue>
-    static http_response_t
-    response_from_value (TValue &&value, serializer_registry_t &serializers, const http_context_t &context)
+    static http_response_t response_from_value (TValue &&value,
+                                                serializer_registry_t &serializers,
+                                                const http_context_t &context)
     {
         using value_type = std::remove_cvref_t<TValue>;
         if constexpr (std::is_same_v<value_type, http_response_t>) {
@@ -520,32 +546,37 @@ class http_options_builder_t
             http_response_t response;
             response.status = context.response_status;
             response.headers = context.response_headers;
-            response.body =
-              context.response_body.value_or (serializers.template get<TReply> ().serialize (value).to_string ());
+            response.body = context.response_body.value_or (
+              serializers.template get<TReply> ().serialize (value).to_string ());
             return response;
         }
     }
 
     template <typename TReply, typename TResult>
-    static task_t<http_response_t>
-    resolve_handler_response (TResult &&result, serializer_registry_t &serializers, const http_context_t &context)
+    static task_t<http_response_t> resolve_handler_response (TResult &&result,
+                                                             serializer_registry_t &serializers,
+                                                             const http_context_t &context)
     {
         using result_type = std::remove_cvref_t<TResult>;
         if constexpr (is_task_v<result_type>) {
             using value_type = typename task_value_type_t<result_type>::type;
-            static_assert (std::is_same_v<value_type, TReply> || std::is_same_v<value_type, http_response_t>,
+            static_assert (std::is_same_v<value_type, TReply>
+                             || std::is_same_v<value_type, http_response_t>,
                            "HTTP handler task_t<T> must return reply_type or http_response_t");
             auto value = co_await std::forward<TResult> (result);
             co_return response_from_value<TReply> (std::move (value), serializers, context);
         } else {
             using value_type = std::remove_cvref_t<TResult>;
-            static_assert (std::is_same_v<value_type, TReply> || std::is_same_v<value_type, http_response_t>,
+            static_assert (std::is_same_v<value_type, TReply>
+                             || std::is_same_v<value_type, http_response_t>,
                            "HTTP handler must return reply_type or http_response_t");
-            co_return response_from_value<TReply> (std::forward<TResult> (result), serializers, context);
+            co_return response_from_value<TReply> (std::forward<TResult> (result), serializers,
+                                                   context);
         }
     }
 
-    template <typename TRequest> static void validate_request (const TRequest &request, const http_context_t &context)
+    template <typename TRequest>
+    static void validate_request (const TRequest &request, const http_context_t &context)
     {
         if constexpr (requires { request.validate (context); }) {
             request.validate (context);
@@ -554,11 +585,13 @@ class http_options_builder_t
         }
     }
 
-    template <typename THandler> http_options_builder_t &add_route (http_method_t method, std::string path)
+    template <typename THandler>
+    http_options_builder_t &add_route (http_method_t method, std::string path)
     {
         if constexpr (has_request_type_v<THandler>) {
             static_assert (!has_raw_http_shape_v<THandler>,
-                           "HTTP handler cannot expose both typed request_type and raw http_request_t route shapes");
+                           "HTTP handler cannot expose both typed request_type and raw "
+                           "http_request_t route shapes");
         }
         register_handler_service<THandler> ();
         register_route_serializers<THandler> ();
@@ -569,7 +602,8 @@ class http_options_builder_t
         route.handler_name = typeid (THandler).name ();
         route.validates_json_content_type = has_request_type_v<THandler>;
         auto *serializers = _serializers;
-        route.invoke = [serializers] (service_provider_t &services, http_context_t &context, const http_request_t &http,
+        route.invoke = [serializers] (service_provider_t &services, http_context_t &context,
+                                      const http_request_t &http,
                                       const std::string &body) -> task_t<http_response_t> {
             if (serializers == nullptr) {
                 throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -580,23 +614,25 @@ class http_options_builder_t
                 if constexpr (has_request_type_v<THandler>) {
                     using request_type = typename THandler::request_type;
                     using reply_type = typename THandler::reply_type;
-                    const auto request =
-                      serializers->template get<request_type> ().deserialize (zlink::message_t::from (body));
+                    const auto request = serializers->template get<request_type> ().deserialize (
+                      zlink::message_t::from (body));
                     validate_request (request, context);
                     auto handler_result = invoke_typed_handler (handler, request, http, context);
-                    co_return co_await resolve_handler_response<reply_type> (std::move (handler_result), *serializers,
-                                                                             context);
+                    co_return co_await resolve_handler_response<reply_type> (
+                      std::move (handler_result), *serializers, context);
                 } else {
                     auto handler_result = invoke_raw_handler (handler, http);
-                    co_return co_await resolve_handler_response<http_response_t> (std::move (handler_result),
-                                                                                  *serializers, context);
+                    co_return co_await resolve_handler_response<http_response_t> (
+                      std::move (handler_result), *serializers, context);
                 }
             }
             catch (const framework_exception_t &ex) {
-                co_return result_t<http_response_t>::failure (ex.kind (), ex.what (), ex.is_retriable ());
+                co_return result_t<http_response_t>::failure (ex.kind (), ex.what (),
+                                                              ex.is_retriable ());
             }
             catch (const std::exception &ex) {
-                co_return result_t<http_response_t>::failure (framework_error_kind_t::request_failed, ex.what ());
+                co_return result_t<http_response_t>::failure (
+                  framework_error_kind_t::request_failed, ex.what ());
             }
         };
         _snapshot.routes.push_back (std::move (route));
@@ -614,8 +650,8 @@ class http_options_builder_t
         if (_services->contains (std::type_index (typeid (THandler)))) {
             return;
         }
-        detail::injected_handler_registrar_t<THandler, typename detail::handler_dependencies_t<THandler>::type>::add (
-          *_services);
+        detail::injected_handler_registrar_t<
+          THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
     }
 
     template <typename T> void register_json_serializer ()

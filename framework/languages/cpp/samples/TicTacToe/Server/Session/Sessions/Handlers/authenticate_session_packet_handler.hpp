@@ -19,7 +19,9 @@ class authenticate_session_packet_handler_t
     authenticate_session_packet_handler_t (authenticate_actor_handler_t &authenticate,
                                            ensure_player_actor_handler_t &ensure_actor,
                                            std::string play_node_name) :
-        _authenticate (authenticate), _ensure_actor (ensure_actor), _play_node_name (std::move (play_node_name))
+        _authenticate (authenticate),
+        _ensure_actor (ensure_actor),
+        _play_node_name (std::move (play_node_name))
     {
     }
 
@@ -39,13 +41,15 @@ class authenticate_session_packet_handler_t
         if (!authenticated.accepted || authenticated.actor_id.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::request_failed,
-              authenticated.reason.empty () ? "Actor authentication failed." : authenticated.reason);
+              authenticated.reason.empty () ? "Actor authentication failed."
+                                            : authenticated.reason);
         }
 
         const auto ensured = _ensure_actor.handle ({authenticated.actor_id});
         auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
 
-        co_await stream.reply_packet (header, zlink::message_t::from_json (authenticate_res_t{ensured.actor_id}))
+        co_await stream
+          .reply_packet (header, zlink::message_t::from_json (authenticate_res_t{ensured.actor_id}))
           .submit ();
 
         co_return bound;
@@ -54,8 +58,9 @@ class authenticate_session_packet_handler_t
   private:
     zlink::framework::actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
     {
-        return zlink::framework::actor_ref_t (zlink::framework::node_rid_t::from_string (_play_node_name),
-                                              ensured.actor_type, ensured.actor.actor_id, ensured.actor.generation);
+        return zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string (_play_node_name), ensured.actor_type,
+          ensured.actor.actor_id, ensured.actor.generation);
     }
 
     authenticate_actor_handler_t &_authenticate;

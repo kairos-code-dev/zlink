@@ -10,9 +10,7 @@
 
 namespace zlink
 {
-int spot_sub_t::set_option (int option_,
-                            const void *optval_,
-                            size_t optvallen_)
+int spot_sub_t::set_option (int option_, const void *optval_, size_t optvallen_)
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {

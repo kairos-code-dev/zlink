@@ -126,7 +126,9 @@ class runtime_event_publisher_t
     friend class detail::monitoring_runtime_t;
 
     explicit runtime_event_publisher_t (std::shared_ptr<detail::monitoring_runtime_state_t> state);
-    void publish_erased (std::type_index event_type, const runtime_event_base_t &base, const void *event) const;
+    void publish_erased (std::type_index event_type,
+                         const runtime_event_base_t &base,
+                         const void *event) const;
 
     std::shared_ptr<detail::monitoring_runtime_state_t> _state;
 };
@@ -215,19 +217,23 @@ class monitoring_builder_t
     monitoring_builder_t &add_socket_events (std::string source_name,
                                              std::initializer_list<socket_event_kind_t> events);
     monitoring_builder_t &add_discovery_events (std::string source_name);
-    monitoring_builder_t &add_registry_events (std::string source_name, std::chrono::milliseconds interval);
-    monitoring_builder_t &add_spot_events (std::string source_name, std::chrono::milliseconds interval);
+    monitoring_builder_t &add_registry_events (std::string source_name,
+                                               std::chrono::milliseconds interval);
+    monitoring_builder_t &add_spot_events (std::string source_name,
+                                           std::chrono::milliseconds interval);
     monitoring_builder_t &add_spot_timer_events (std::string source_name);
     monitoring_builder_t &add_stream_events (std::string source_name);
     monitoring_builder_t &add_actor_events (std::string source_name);
     monitoring_builder_t &on_trace (std::function<void (const runtime_event_base_t &)> hook);
     runtime_event_publisher_t publisher () const;
 
-    template <typename TEvent> monitoring_builder_t &on (std::function<void (const TEvent &)> handler)
+    template <typename TEvent>
+    monitoring_builder_t &on (std::function<void (const TEvent &)> handler)
     {
-        return on_erased (std::type_index (typeid (TEvent)), [handler = std::move (handler)] (const void *event) {
-            handler (*static_cast<const TEvent *> (event));
-        });
+        return on_erased (std::type_index (typeid (TEvent)),
+                          [handler = std::move (handler)] (const void *event) {
+                              handler (*static_cast<const TEvent *> (event));
+                          });
     }
 
   private:
@@ -236,7 +242,8 @@ class monitoring_builder_t
     friend class detail::monitoring_runtime_t;
 
     explicit monitoring_builder_t (std::shared_ptr<detail::monitoring_runtime_state_t> state);
-    monitoring_builder_t &on_erased (std::type_index event_type, std::function<void (const void *)> handler);
+    monitoring_builder_t &on_erased (std::type_index event_type,
+                                     std::function<void (const void *)> handler);
 
     std::shared_ptr<detail::monitoring_runtime_state_t> _state;
 };
@@ -254,8 +261,9 @@ class metrics_builder_t
 
     metrics_builder_t &add_runtime_metrics ();
     bool runtime_metrics_enabled () const noexcept;
-    metrics_builder_t &
-    record_runtime_metric (std::string name, double value, std::map<std::string, std::string> tags = {});
+    metrics_builder_t &record_runtime_metric (std::string name,
+                                              double value,
+                                              std::map<std::string, std::string> tags = {});
 
   private:
     friend class app_t;

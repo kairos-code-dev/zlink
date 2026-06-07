@@ -26,8 +26,7 @@ static zlink::ctx_t *create_ctx ()
 static zlink::socket_base_t *create_socket (zlink::ctx_t *ctx_)
 {
     TEST_ASSERT_NOT_NULL (ctx_);
-    zlink::socket_base_t *socket =
-      ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
+    zlink::socket_base_t *socket = ctx_->create_socket (ZLINK_CORE_SOCKET_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }

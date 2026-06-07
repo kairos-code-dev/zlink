@@ -64,10 +64,11 @@ class bingo_room_t
 
     bingo_room_state_t leave (const std::string &actor_id)
     {
-        _state.players.erase (
-          std::remove_if (_state.players.begin (), _state.players.end (),
-                          [&] (const bingo_player_state_t &player) { return player.actor_id == actor_id; }),
-          _state.players.end ());
+        _state.players.erase (std::remove_if (_state.players.begin (), _state.players.end (),
+                                              [&] (const bingo_player_state_t &player) {
+                                                  return player.actor_id == actor_id;
+                                              }),
+                              _state.players.end ());
         _state.can_start = _state.players.size () >= 2;
         return _state;
     }

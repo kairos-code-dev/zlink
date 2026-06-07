@@ -34,15 +34,14 @@ namespace
 // updates because generic pipes only publish read progress every HWM/2 reads.
 // Keep STREAM credit updates more frequent so the writer sees peer progress
 // sooner, especially on same-connection echo/proxy flows.
-const int stream_pipe_lwm_hint =
-  zlink::env::positive_int ("ZLINK_STREAM_PIPE_LWM_HINT", 4);
+const int stream_pipe_lwm_hint = zlink::env::positive_int ("ZLINK_STREAM_PIPE_LWM_HINT", 4);
 }
 
 zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thread_,
-                                                  bool active_,
-                                                  class socket_base_t *socket_,
-                                                  const options_t &options_,
-                                                  address_t *addr_)
+                                                      bool active_,
+                                                      class socket_base_t *socket_,
+                                                      const options_t &options_,
+                                                      address_t *addr_)
 {
     session_base_t *s = NULL;
     switch (options_.type) {
@@ -54,8 +53,7 @@ zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thre
         case ZLINK_CORE_SOCKET_XSUB:
         case ZLINK_CORE_SOCKET_PAIR:
         case ZLINK_CORE_SOCKET_STREAM:
-            s = new (std::nothrow)
-              session_base_t (io_thread_, active_, socket_, options_, addr_);
+            s = new (std::nothrow) session_base_t (io_thread_, active_, socket_, options_, addr_);
             break;
 
         default:
@@ -67,10 +65,10 @@ zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thre
 }
 
 zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
-                                     bool active_,
-                                     class socket_base_t *socket_,
-                                     const options_t &options_,
-                                     address_t *addr_) :
+                                       bool active_,
+                                       class socket_base_t *socket_,
+                                       const options_t &options_,
+                                       address_t *addr_) :
     own_t (io_thread_, options_),
     io_object_t (io_thread_),
     _active (active_),
@@ -92,8 +90,7 @@ const zlink::endpoint_uri_pair_t &zlink::session_base_t::get_endpoint () const
     return _engine->get_endpoint ();
 }
 
-void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_,
-                                               size_t size_)
+void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
 {
     if (_pipe) {
         _pipe->set_peer_routing_id (data_, size_);
@@ -239,8 +236,7 @@ void zlink::session_base_t::engine_ready ()
 
         const bool conflate = get_effective_conflate_option (options);
 
-        int hwms[2] = {conflate ? -1 : options.rcvhwm,
-                       conflate ? -1 : options.sndhwm};
+        int hwms[2] = {conflate ? -1 : options.rcvhwm, conflate ? -1 : options.sndhwm};
         bool conflates[2] = {conflate, conflate};
         const int rc = pipepair (parents, pipes, hwms, conflates);
         errno_assert (rc == 0);
@@ -248,8 +244,7 @@ void zlink::session_base_t::engine_ready ()
         //  Plug the local end of the pipe.
         pipes[0]->set_event_sink (this);
 
-        if (options.type == ZLINK_CORE_SOCKET_STREAM
-            && stream_pipe_lwm_hint > 0) {
+        if (options.type == ZLINK_CORE_SOCKET_STREAM && stream_pipe_lwm_hint > 0) {
             pipes[0]->set_lwm_hint (stream_pipe_lwm_hint);
             pipes[1]->set_lwm_hint (stream_pipe_lwm_hint);
         }
@@ -277,8 +272,7 @@ void zlink::session_base_t::engine_ready ()
     }
 }
 
-void zlink::session_base_t::engine_error (bool handshaked_,
-                                        zlink::i_engine::error_reason_t reason_)
+void zlink::session_base_t::engine_error (bool handshaked_, zlink::i_engine::error_reason_t reason_)
 {
     //  Engine is dead. Let's forget about it.
     _engine = NULL;
@@ -295,15 +289,13 @@ void zlink::session_base_t::engine_error (bool handshaked_,
         }
 
         //  Only send hiccup message if socket was connected and handshake was completed
-        if (_active && handshaked_ && options.can_recv_hiccup_msg
-            && !options.hiccup_msg.empty ()) {
+        if (_active && handshaked_ && options.can_recv_hiccup_msg && !options.hiccup_msg.empty ()) {
             _pipe->send_hiccup_msg (options.hiccup_msg);
         }
     }
 
-    zlink_assert (reason_ == i_engine::connection_error
-                || reason_ == i_engine::timeout_error
-                || reason_ == i_engine::protocol_error);
+    zlink_assert (reason_ == i_engine::connection_error || reason_ == i_engine::timeout_error
+                  || reason_ == i_engine::protocol_error);
 
     switch (reason_) {
         case i_engine::timeout_error:
@@ -412,8 +404,7 @@ void zlink::session_base_t::reconnect ()
 
     //  For subscriber sockets we hiccup the inbound pipe, which will cause
     //  the socket object to resend all the subscriptions.
-    if (_pipe
-        && (options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB))
+    if (_pipe && (options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB))
         _pipe->hiccup ();
 }
 
@@ -432,20 +423,20 @@ void zlink::session_base_t::start_connecting (bool wait_)
     own_t *connecter = NULL;
     if (_addr->protocol == protocol_name::tcp) {
         //  Use ASIO-based connecter for async_connect
-        connecter = new (std::nothrow)
-          asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
+        connecter =
+          new (std::nothrow) asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #if defined ZLINK_HAVE_TLS && defined ZLINK_HAVE_ASIO_SSL
     else if (_addr->protocol == protocol_name::tls) {
         //  ASIO-only: Use ASIO-based TLS connecter with SSL/TLS encryption
-        connecter = new (std::nothrow)
-          asio_tls_connecter_t (io_thread, this, options, _addr, wait_);
+        connecter =
+          new (std::nothrow) asio_tls_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
 #if defined ZLINK_HAVE_IPC
     else if (_addr->protocol == protocol_name::ipc) {
-        connecter = new (std::nothrow)
-          asio_ipc_connecter_t (io_thread, this, options, _addr, wait_);
+        connecter =
+          new (std::nothrow) asio_ipc_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
 #if defined ZLINK_HAVE_WS
@@ -455,8 +446,7 @@ void zlink::session_base_t::start_connecting (bool wait_)
              || _addr->protocol == protocol_name::wss
 #endif
     ) {
-        connecter = new (std::nothrow)
-          asio_ws_connecter_t (io_thread, this, options, _addr, wait_);
+        connecter = new (std::nothrow) asio_ws_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
     if (connecter != NULL) {
@@ -466,31 +456,26 @@ void zlink::session_base_t::start_connecting (bool wait_)
     }
 
 #ifdef ZLINK_HAVE_OPENPGM
-    if (_addr->protocol == protocol_name::pgm
-        || _addr->protocol == protocol_name::epgm) {
-        zlink_assert (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB
-                    || options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB);
+    if (_addr->protocol == protocol_name::pgm || _addr->protocol == protocol_name::epgm) {
+        zlink_assert (
+          options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB
+          || options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB);
 
-        const bool udp_encapsulation =
-          _addr->protocol == protocol_name::epgm;
+        const bool udp_encapsulation = _addr->protocol == protocol_name::epgm;
 
         if (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB) {
-            pgm_sender_t *pgm_sender =
-              new (std::nothrow) pgm_sender_t (io_thread, options);
+            pgm_sender_t *pgm_sender = new (std::nothrow) pgm_sender_t (io_thread, options);
             alloc_assert (pgm_sender);
 
-            const int rc =
-              pgm_sender->init (udp_encapsulation, _addr->address.c_str ());
+            const int rc = pgm_sender->init (udp_encapsulation, _addr->address.c_str ());
             errno_assert (rc == 0);
 
             send_attach (this, pgm_sender);
         } else {
-            pgm_receiver_t *pgm_receiver =
-              new (std::nothrow) pgm_receiver_t (io_thread, options);
+            pgm_receiver_t *pgm_receiver = new (std::nothrow) pgm_receiver_t (io_thread, options);
             alloc_assert (pgm_receiver);
 
-            const int rc =
-              pgm_receiver->init (udp_encapsulation, _addr->address.c_str ());
+            const int rc = pgm_receiver->init (udp_encapsulation, _addr->address.c_str ());
             errno_assert (rc == 0);
 
             send_attach (this, pgm_receiver);

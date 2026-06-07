@@ -80,8 +80,7 @@ static inline void reserve_tcp_endpoint (char *buf, size_t buf_size)
 
 /* ---- Monitor helpers ----------------------------------------------------- */
 
-static inline void *open_socket_monitor (void *socket,
-                                         zlink_socket_monitor_event_mask_t mask)
+static inline void *open_socket_monitor (void *socket, zlink_socket_monitor_event_mask_t mask)
 {
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
@@ -91,10 +90,8 @@ static inline void *open_socket_monitor (void *socket,
     return monitor;
 }
 
-static inline int wait_for_socket_monitor_event (void *monitor,
-                                                 uint64_t event_type,
-                                                 int64_t value,
-                                                 int timeout_ms)
+static inline int
+wait_for_socket_monitor_event (void *monitor, uint64_t event_type, int64_t value, int timeout_ms)
 {
     void *poller = zlink_poller_new ();
     assert (poller != NULL);
@@ -107,9 +104,8 @@ static inline int wait_for_socket_monitor_event (void *monitor,
     for (;;) {
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
+                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         long remaining = (long) timeout_ms - elapsed_ms;
         if (remaining <= 0)
             break;
@@ -136,19 +132,14 @@ static inline int wait_for_socket_monitor_event (void *monitor,
 }
 
 static inline int wait_for_socket_monitor_event_with_activity (
-  void *monitor,
-  void *activity_socket,
-  uint64_t event_type,
-  int64_t value,
-  int timeout_ms)
+  void *monitor, void *activity_socket, uint64_t event_type, int64_t value, int timeout_ms)
 {
     void *poller = zlink_poller_new ();
     assert (poller != NULL);
     int rc = zlink_poller_add (poller, monitor, monitor, ZLINK_POLLIN);
     assert (rc == 0);
     if (activity_socket != NULL) {
-        rc = zlink_poller_add (poller, activity_socket, activity_socket,
-                               ZLINK_POLLIN);
+        rc = zlink_poller_add (poller, activity_socket, activity_socket, ZLINK_POLLIN);
         assert (rc == 0);
     }
 
@@ -158,9 +149,8 @@ static inline int wait_for_socket_monitor_event_with_activity (
     for (;;) {
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
+                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         long remaining = (long) timeout_ms - elapsed_ms;
         if (remaining <= 0)
             break;
@@ -186,26 +176,21 @@ static inline int wait_for_socket_monitor_event_with_activity (
     return 0;
 }
 
-static inline int wait_connected (void *server_monitor, void *client_monitor,
-                                  int timeout_ms)
+static inline int wait_connected (void *server_monitor, void *client_monitor, int timeout_ms)
 {
-    if (!wait_for_socket_monitor_event (
-          server_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1,
-          timeout_ms))
+    if (!wait_for_socket_monitor_event (server_monitor, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
+                                        -1, timeout_ms))
         return 0;
-    if (!wait_for_socket_monitor_event (
-          client_monitor,
-          ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY, -1,
-          timeout_ms))
+    if (!wait_for_socket_monitor_event (client_monitor, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY,
+                                        -1, timeout_ms))
         return 0;
     return 1;
 }
 
 static inline int wait_stream_connected (void *server_monitor, int timeout_ms)
 {
-    return wait_for_socket_monitor_event (
-      server_monitor, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED, -1, timeout_ms);
+    return wait_for_socket_monitor_event (server_monitor, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED, -1,
+                                          timeout_ms);
 }
 
 static inline int wait_for_subscription_event (void *subject_,
@@ -225,9 +210,8 @@ static inline int wait_for_subscription_event (void *subject_,
     for (;;) {
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
+                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         long remaining = (long) timeout_ms_ - elapsed_ms;
         if (remaining <= 0)
             break;
@@ -238,9 +222,8 @@ static inline int wait_for_subscription_event (void *subject_,
             continue;
 
         const zlink_routing_id_t *source_rid = NULL;
-        rc = zlink_xpub_recv_part (
-          subject_, &source_rid, subscribed_out_, topic_id_out_,
-          *topic_id_len_out_, topic_id_len_out_, ZLINK_DONTWAIT);
+        rc = zlink_xpub_recv_part (subject_, &source_rid, subscribed_out_, topic_id_out_,
+                                   *topic_id_len_out_, topic_id_len_out_, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
             zlink_poller_destroy (&poller);
             return 1;
@@ -267,24 +250,21 @@ static inline void sample_pause_ms (int timeout_ms_)
 
 /* ---- Discovery / readiness helpers -------------------------------------- */
 
-static inline int wait_for_discovery_service (void *discovery_,
-                                              const char *channel_name_,
-                                              int timeout_ms)
+static inline int
+wait_for_discovery_service (void *discovery_, const char *channel_name_, int timeout_ms)
 {
     struct timespec start;
     clock_gettime (CLOCK_MONOTONIC, &start);
 
     for (;;) {
         size_t count = 0;
-        if (zlink_discovery_member_peers (discovery_, NULL, &count) == 0
-            && count > 0) {
+        if (zlink_discovery_member_peers (discovery_, NULL, &count) == 0 && count > 0) {
             zlink_member_peer_entry_t *entries =
               (zlink_member_peer_entry_t *) calloc (count, sizeof (*entries));
             assert (entries != NULL);
             if (zlink_discovery_member_peers (discovery_, entries, &count) == 0) {
                 for (size_t i = 0; i < count; ++i) {
-                    if (!channel_name_
-                        || strcmp (entries[i].channel_name, channel_name_) == 0) {
+                    if (!channel_name_ || strcmp (entries[i].channel_name, channel_name_) == 0) {
                         free (entries);
                         return 1;
                     }
@@ -295,9 +275,8 @@ static inline int wait_for_discovery_service (void *discovery_,
 
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
+                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         long remaining = (long) timeout_ms - elapsed_ms;
         if (remaining <= 0)
             break;
@@ -311,28 +290,23 @@ static inline int wait_for_discovery_service (void *discovery_,
     return 0;
 }
 
-static inline int wait_for_spot_node_subject_ready (void *node_,
-                                                    int timeout_ms)
+static inline int wait_for_spot_node_subject_ready (void *node_, int timeout_ms)
 {
     struct timespec start;
     clock_gettime (CLOCK_MONOTONIC, &start);
 
     for (;;) {
         zlink_spot_node_status_t status;
-        if (zlink_spot_node_status (node_, &status) == 0
-            && status.subject_count > 0
-            && (status.ready_subject_count > 0
-                || status.connected_peer_count > 0
-                || status.active_peer_count > 0
-                || status.configured_peer_count == 0)) {
+        if (zlink_spot_node_status (node_, &status) == 0 && status.subject_count > 0
+            && (status.ready_subject_count > 0 || status.connected_peer_count > 0
+                || status.active_peer_count > 0 || status.configured_peer_count == 0)) {
             return 1;
         }
 
         struct timespec now;
         clock_gettime (CLOCK_MONOTONIC, &now);
-        long elapsed_ms =
-          (long) (now.tv_sec - start.tv_sec) * 1000
-          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
+        long elapsed_ms = (long) (now.tv_sec - start.tv_sec) * 1000
+                          + (long) (now.tv_nsec - start.tv_nsec) / 1000000;
         long remaining = (long) timeout_ms - elapsed_ms;
         if (remaining <= 0)
             break;

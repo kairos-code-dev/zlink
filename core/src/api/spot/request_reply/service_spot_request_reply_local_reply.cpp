@@ -4,8 +4,7 @@
 
 #include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
 
-int zlink::spot_reqrep_internal::dispatch_local_reply (
-  std::vector<zlink_msg_t> *combined_)
+int zlink::spot_reqrep_internal::dispatch_local_reply (std::vector<zlink_msg_t> *combined_)
 {
     return dispatch_local_reply_impl (combined_);
 }

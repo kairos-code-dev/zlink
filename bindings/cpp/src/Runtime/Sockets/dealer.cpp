@@ -12,7 +12,8 @@ namespace zlink
 {
 
 dealer_socket_t::dealer_socket_t (context_t &ctx_) :
-    message_socket_t (ctx_, socket_type::dealer), _default_request_timeout (std::chrono::milliseconds ())
+    message_socket_t (ctx_, socket_type::dealer),
+    _default_request_timeout (std::chrono::milliseconds ())
 {
 }
 
@@ -39,7 +40,8 @@ int dealer_socket_t::recv (received_t &out_, recv_flags_t flags_)
 
 int dealer_socket_t::recv (message_t &part_out_, recv_flags_t flags_)
 {
-    return detail::recv_single_part_message (detail::native_handle (*this), nullptr, part_out_, flags_);
+    return detail::recv_single_part_message (detail::native_handle (*this), nullptr, part_out_,
+                                             flags_);
 }
 
 void dealer_socket_t::set_routing_id (const routing_id_t &routing_id_)
@@ -59,8 +61,8 @@ void dealer_socket_t::get_routing_id (routing_id_t &routing_id_) const
 void dealer_socket_t::channel_name (const std::string &value_)
 {
     detail::validate_bounded_c_string (value_, 255u, "channel_name");
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_socket_set_channel_name (detail::native_handle (*this), value_.c_str ())));
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_socket_set_channel_name (detail::native_handle (*this), value_.c_str ())));
 }
 
 std::string dealer_socket_t::channel_name () const

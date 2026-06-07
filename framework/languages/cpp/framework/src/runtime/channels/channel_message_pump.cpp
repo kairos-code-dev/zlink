@@ -19,7 +19,8 @@ channel_message_pump_t::dispatch_server_message (const std::string &channel_name
                                                  serializer_registry_t &serializers,
                                                  const handler_registry_t &handlers) const
 {
-    return _dispatcher.dispatch_server_message (channel_name, parts, services, serializers, handlers);
+    return _dispatcher.dispatch_server_message (channel_name, parts, services, serializers,
+                                                handlers);
 }
 
 } // namespace zlink::framework::detail

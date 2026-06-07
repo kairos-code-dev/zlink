@@ -40,8 +40,8 @@ void consume_multipart_payload (zlink_msg_t *parts_, size_t part_count_)
     }
 }
 
-zlink_submit_result_t adopt_multipart_payload (
-  spot_owned_msg_parts_t *out_, zlink_msg_t *parts_, size_t part_count_)
+zlink_submit_result_t
+adopt_multipart_payload (spot_owned_msg_parts_t *out_, zlink_msg_t *parts_, size_t part_count_)
 {
     if (!out_ || !valid_multipart_payload (parts_, part_count_))
         return ZLINK_SUBMIT_INVALID_ARGUMENT;

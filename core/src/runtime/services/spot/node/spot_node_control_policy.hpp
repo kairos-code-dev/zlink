@@ -16,14 +16,10 @@ namespace spot_node_control_policy
 uint32_t resolve_effective_ready_count (uint32_t ready_count_,
                                         uint32_t active_peer_count_,
                                         uint32_t connected_ready_count_);
-unsigned int subscription_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_);
-unsigned int subscription_replay_attempt_count (
-  const std::set<std::string> &connected_endpoints_);
-unsigned int subscription_replay_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_);
-unsigned int pub_delivery_ready_holdoff_ticks (
-  const std::set<std::string> &connected_endpoints_);
+unsigned int subscription_ready_holdoff_ticks (const std::set<std::string> &connected_endpoints_);
+unsigned int subscription_replay_attempt_count (const std::set<std::string> &connected_endpoints_);
+unsigned int subscription_replay_holdoff_ticks (const std::set<std::string> &connected_endpoints_);
+unsigned int pub_delivery_ready_holdoff_ticks (const std::set<std::string> &connected_endpoints_);
 std::string make_ready_ack_arg (const std::string &target_endpoint_,
                                 const std::string &raw_filter_,
                                 const std::string &ack_source_id_);

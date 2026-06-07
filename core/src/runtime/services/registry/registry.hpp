@@ -40,28 +40,18 @@ class registry_t
     int add_peer (const char *peer_pub_endpoint_);
     int set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_);
     int set_broadcast_interval (uint32_t interval_ms_);
-    int set_socket_option (int socket_role_,
-                           int option_,
-                           const void *optval_,
-                           size_t optvallen_);
-    int set_tls_server (const char *cert_,
-                        const char *key_,
-                        int require_client_cert_);
-    int set_tls_client (const char *ca_cert_,
-                        const char *hostname_,
-                        int trust_system_);
-    int topology_snapshot (zlink_registry_topology_entry_t *entries_,
-                           size_t *count_);
+    int set_socket_option (int socket_role_, int option_, const void *optval_, size_t optvallen_);
+    int set_tls_server (const char *cert_, const char *key_, int require_client_cert_);
+    int set_tls_client (const char *ca_cert_, const char *hostname_, int trust_system_);
+    int topology_snapshot (zlink_registry_topology_entry_t *entries_, size_t *count_);
     int topology_query (const zlink_registry_topology_filter_t *filter_,
                         zlink_registry_topology_entry_t *entries_,
                         size_t *count_);
-    int member_peers (const char *channel_name_,
-                      zlink_member_peer_entry_t *entries_,
-                      size_t *count_);
+    int
+    member_peers (const char *channel_name_, zlink_member_peer_entry_t *entries_, size_t *count_);
     int status_snapshot (zlink_registry_status_t *out_);
-    int service_summary_snapshot (
-      const zlink_registry_service_summary_filter_t *filter_,
-      std::vector<zlink_registry_service_summary_entry_t> *out_);
+    int service_summary_snapshot (const zlink_registry_service_summary_filter_t *filter_,
+                                  std::vector<zlink_registry_service_summary_entry_t> *out_);
     int start ();
     int destroy ();
 
@@ -112,10 +102,7 @@ class registry_t
         uint32_t source_registry;
         uint64_t registration_id;
 
-        owner_identity_t () :
-            service_role (0), source_registry (0), registration_id (0)
-        {
-        }
+        owner_identity_t () : service_role (0), source_registry (0), registration_id (0) {}
         bool operator< (const owner_identity_t &other_) const
         {
             if (channel_name != other_.channel_name)
@@ -131,8 +118,7 @@ class registry_t
 
         bool operator== (const owner_identity_t &other_) const
         {
-            return channel_name == other_.channel_name
-                   && service_role == other_.service_role
+            return channel_name == other_.channel_name && service_role == other_.service_role
                    && routing_id_key == other_.routing_id_key
                    && source_registry == other_.source_registry
                    && registration_id == other_.registration_id;
@@ -196,8 +182,7 @@ class registry_t
     };
 
     typedef std::set<topology_key_t> topology_key_set_t;
-    typedef std::map<owner_identity_t, topology_key_set_t>
-      topology_owner_index_t;
+    typedef std::map<owner_identity_t, topology_key_set_t> topology_owner_index_t;
 
     struct route_key_t
     {
@@ -218,8 +203,7 @@ class registry_t
 
         bool operator== (const route_key_t &other_) const
         {
-            return channel_name == other_.channel_name && kind == other_.kind
-                   && key == other_.key;
+            return channel_name == other_.channel_name && kind == other_.kind && key == other_.key;
         }
     };
 
@@ -227,13 +211,11 @@ class registry_t
     {
         size_t operator() (const route_key_t &key_) const
         {
-            size_t seed = registry_route_hash::bytes (
-              key_.channel_name.data (), key_.channel_name.size ());
-            seed = registry_route_hash::combine (
-              seed, registry_route_hash::u64 (key_.kind));
+            size_t seed =
+              registry_route_hash::bytes (key_.channel_name.data (), key_.channel_name.size ());
+            seed = registry_route_hash::combine (seed, registry_route_hash::u64 (key_.kind));
             return registry_route_hash::combine (
-              seed,
-              registry_route_hash::bytes (key_.key.data (), key_.key.size ()));
+              seed, registry_route_hash::bytes (key_.key.data (), key_.key.size ()));
         }
     };
 
@@ -241,17 +223,17 @@ class registry_t
     {
         size_t operator() (const owner_identity_t &owner_) const
         {
-            size_t seed = registry_route_hash::bytes (
-              owner_.channel_name.data (), owner_.channel_name.size ());
-            seed = registry_route_hash::combine (
-              seed, registry_route_hash::u64 (owner_.service_role));
+            size_t seed =
+              registry_route_hash::bytes (owner_.channel_name.data (), owner_.channel_name.size ());
+            seed =
+              registry_route_hash::combine (seed, registry_route_hash::u64 (owner_.service_role));
             seed = registry_route_hash::combine (
               seed, registry_route_hash::bytes (owner_.routing_id_key.data (),
                                                 owner_.routing_id_key.size ()));
-            seed = registry_route_hash::combine (
-              seed, registry_route_hash::u64 (owner_.source_registry));
-            return registry_route_hash::combine (
-              seed, registry_route_hash::u64 (owner_.registration_id));
+            seed = registry_route_hash::combine (seed,
+                                                 registry_route_hash::u64 (owner_.source_registry));
+            return registry_route_hash::combine (seed,
+                                                 registry_route_hash::u64 (owner_.registration_id));
         }
     };
 
@@ -288,8 +270,7 @@ class registry_t
         size_t operator() (const route_observation_key_t &key_) const
         {
             size_t seed = route_key_hash_t () (key_.route_key);
-            seed = registry_route_hash::combine (
-              seed, owner_identity_hash_t () (key_.owner));
+            seed = registry_route_hash::combine (seed, owner_identity_hash_t () (key_.owner));
             return registry_route_hash::combine (
               seed, std::hash<uint32_t> () (key_.advertising_registry));
         }
@@ -298,21 +279,15 @@ class registry_t
 #include "services/registry/registry_route_materialized_table_internal.hpp"
 
     typedef route_materialized_table_t route_map_t;
-    typedef std::
-      unordered_map<owner_identity_t, route_key_set_t, owner_identity_hash_t>
-        route_owner_index_t;
-    typedef std::unordered_map<uint32_t, route_key_set_t>
-      route_advertiser_index_t;
-    typedef std::unordered_set<route_observation_key_t,
-                               route_observation_key_hash_t>
+    typedef std::unordered_map<owner_identity_t, route_key_set_t, owner_identity_hash_t>
+      route_owner_index_t;
+    typedef std::unordered_map<uint32_t, route_key_set_t> route_advertiser_index_t;
+    typedef std::unordered_set<route_observation_key_t, route_observation_key_hash_t>
       route_observation_key_set_t;
-    typedef std::unordered_map<route_observation_key_t,
-                               route_entry_t,
-                               route_observation_key_hash_t>
+    typedef std::unordered_map<route_observation_key_t, route_entry_t, route_observation_key_hash_t>
       route_observation_map_t;
-    typedef std::
-      unordered_map<route_key_t, route_observation_key_set_t, route_key_hash_t>
-        route_observations_by_route_t;
+    typedef std::unordered_map<route_key_t, route_observation_key_set_t, route_key_hash_t>
+      route_observations_by_route_t;
 
     struct route_store_limits_t
     {
@@ -359,11 +334,7 @@ class registry_t
     struct route_snapshot_staging_t
     {
         route_snapshot_staging_t () :
-            seq (0),
-            next_chunk_index (0),
-            chunk_count (0),
-            memory_bytes (0),
-            active (false)
+            seq (0), next_chunk_index (0), chunk_count (0), memory_bytes (0), active (false)
         {
         }
 
@@ -382,10 +353,7 @@ class registry_t
         uint64_t created_at;
         uint32_t owner_registry_id;
 
-        channel_contract_t () :
-            auto_connect_type (0), created_at (0), owner_registry_id (0)
-        {
-        }
+        channel_contract_t () : auto_connect_type (0), created_at (0), owner_registry_id (0) {}
     };
 
     static void control_task (void *arg_);
@@ -414,15 +382,12 @@ class registry_t
                                    uint64_t list_seq_,
                                    uint64_t now_ms_,
                                    uint32_t local_registry_id_);
-    bool peer_provider_matches_locked (
-      const provider_entry_t &current_,
-      const provider_entry_t &incoming_,
-      uint32_t peer_registry_id_) const;
-    bool peer_service_snapshot_changed_locked (
-      const service_map_t &incoming_,
-      uint32_t peer_registry_id_) const;
-    void remove_peer_service_providers_locked (uint32_t peer_registry_id_,
-                                               uint64_t now_ms_);
+    bool peer_provider_matches_locked (const provider_entry_t &current_,
+                                       const provider_entry_t &incoming_,
+                                       uint32_t peer_registry_id_) const;
+    bool peer_service_snapshot_changed_locked (const service_map_t &incoming_,
+                                               uint32_t peer_registry_id_) const;
+    void remove_peer_service_providers_locked (uint32_t peer_registry_id_, uint64_t now_ms_);
     void apply_peer_service_snapshot_locked (const service_map_t &incoming_,
                                              uint32_t peer_registry_id_);
     void handle_register (void *router_,
@@ -438,8 +403,7 @@ class registry_t
                            const zlink_msg_t *frames_,
                            size_t frame_count_,
                            const zlink_routing_id_t &sender_id_);
-    void handle_topology_report (const zlink_msg_t *frames_,
-                                 size_t frame_count_);
+    void handle_topology_report (const zlink_msg_t *frames_, size_t frame_count_);
     void handle_topology_query (void *router_,
                                 const zlink_msg_t *frames_,
                                 size_t frame_count_,
@@ -471,10 +435,9 @@ class registry_t
                               const zlink_routing_id_t &sender_id_,
                               uint8_t status_,
                               const std::string &error_);
-    void send_topology_reply (
-      void *router_,
-      const zlink_routing_id_t &sender_id_,
-      const std::vector<zlink_registry_topology_entry_t> &entries_);
+    void send_topology_reply (void *router_,
+                              const zlink_routing_id_t &sender_id_,
+                              const std::vector<zlink_registry_topology_entry_t> &entries_);
     void send_route_reply (void *router_,
                            const zlink_routing_id_t &sender_id_,
                            uint8_t status_,
@@ -485,18 +448,16 @@ class registry_t
                          const zlink_msg_t &key_frame_,
                          const std::string &channel_name_,
                          route_key_t *out_) const;
-    bool owner_routing_id_from_key (const owner_identity_t &owner_,
-                                    zlink_routing_id_t *out_) const;
-    void collect_topology_entries_locked (
-      const zlink_registry_topology_filter_t *filter_,
-      std::vector<zlink_registry_topology_entry_t> *out_) const;
+    bool owner_routing_id_from_key (const owner_identity_t &owner_, zlink_routing_id_t *out_) const;
+    void collect_topology_entries_locked (const zlink_registry_topology_filter_t *filter_,
+                                          std::vector<zlink_registry_topology_entry_t> *out_) const;
     void collect_matching_topology_entries_locked (
       const zlink_registry_topology_filter_t *filter_,
       std::vector<zlink_registry_topology_entry_t> *out_) const;
-    bool select_spot_owner_entry_locked (
-      const std::vector<zlink_registry_topology_entry_t> &matched_,
-      const char *channel_name_,
-      zlink_registry_topology_entry_t *entry_out_) const;
+    bool
+    select_spot_owner_entry_locked (const std::vector<zlink_registry_topology_entry_t> &matched_,
+                                    const char *channel_name_,
+                                    zlink_registry_topology_entry_t *entry_out_) const;
     void send_bootstrap_reply (void *router_,
                                const zlink_routing_id_t &sender_id_,
                                uint32_t status_errno_ = 0);
@@ -505,20 +466,17 @@ class registry_t
                                         uint64_t now_ms_,
                                         uint32_t owner_registry_id_);
     void remove_channel_providers_locked (const std::string &channel_name_);
-    void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_,
-                                uint64_t now_ms_);
+    void upsert_topology_entry (const zlink_registry_topology_entry_t &entry_, uint64_t now_ms_);
     bool find_provider_owner_locked (const std::string &channel_name_,
                                      uint16_t service_role_,
                                      const std::string &endpoint_,
                                      owner_identity_t *owner_out_,
                                      zlink_routing_id_t *routing_id_out_) const;
     bool owner_is_live_locked (const owner_identity_t &owner_) const;
-    void cleanup_owner_records_locked (const owner_identity_t &owner_,
-                                       uint64_t now_ms_);
+    void cleanup_owner_records_locked (const owner_identity_t &owner_, uint64_t now_ms_);
     void remove_topology_owner_index_locked (const topology_key_t &key_,
                                              const topology_entry_t &entry_);
-    void index_topology_owner_locked (const topology_key_t &key_,
-                                      const topology_entry_t &entry_);
+    void index_topology_owner_locked (const topology_key_t &key_, const topology_entry_t &entry_);
     bool route_entry_wins_locked (const route_entry_t &candidate_,
                                   const route_entry_t &current_) const;
     size_t route_entry_memory_bytes (const route_entry_t &entry_) const;
@@ -527,17 +485,15 @@ class registry_t
                                      int *err_out_) const;
     void erase_route_observation_locked (const route_observation_key_t &key_,
                                          route_key_set_t *dirty_routes_);
-    void erase_route_observations_by_route_advertiser_locked (
-      const route_key_t &route_key_,
-      uint32_t advertising_registry_,
-      route_key_set_t *dirty_routes_);
+    void erase_route_observations_by_route_advertiser_locked (const route_key_t &route_key_,
+                                                              uint32_t advertising_registry_,
+                                                              route_key_set_t *dirty_routes_);
     void upsert_route_observation_locked (const route_entry_t &entry_,
                                           route_key_set_t *dirty_routes_);
     void materialize_route_winner_locked (const route_key_t &route_key_);
     void materialize_dirty_routes_locked (const route_key_set_t &dirty_routes_);
     void promote_owner_route_records_locked (const owner_identity_t &owner_);
-    void
-    cleanup_advertised_route_records_locked (uint32_t advertising_registry_);
+    void cleanup_advertised_route_records_locked (uint32_t advertising_registry_);
     void send_service_list (void *pub_);
     void send_route_list (void *pub_);
     void remove_expired (uint64_t now_ms_);
@@ -552,17 +508,14 @@ class registry_t
         int option;
         std::vector<unsigned char> value;
     };
-    void apply_socket_opts (socket_base_t *socket_,
-                            const std::vector<socket_opt_t> &opts_);
+    void apply_socket_opts (socket_base_t *socket_, const std::vector<socket_opt_t> &opts_);
     void promote_runtime_sockets (socket_base_t *pub_,
                                   socket_base_t *router_,
                                   uint64_t now_ms_,
                                   socket_base_t **old_pub_out_,
                                   socket_base_t **old_router_out_);
     int ensure_peer_sub_socket ();
-    void
-    connect_peer_sub_endpoints (void *peer_sub_,
-                                const std::vector<std::string> &peer_pubs_);
+    void connect_peer_sub_endpoints (void *peer_sub_, const std::vector<std::string> &peer_pubs_);
 
     mutex_t _sync;
 

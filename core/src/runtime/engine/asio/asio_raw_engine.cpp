@@ -10,20 +10,18 @@
 #include "sockets/common/socket_base.hpp"
 #include "core/session_base.hpp"
 
-zlink::asio_raw_engine_t::asio_raw_engine_t (
-  fd_t fd_,
-  const options_t &options_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_) :
+zlink::asio_raw_engine_t::asio_raw_engine_t (fd_t fd_,
+                                             const options_t &options_,
+                                             const endpoint_uri_pair_t &endpoint_uri_pair_) :
     asio_engine_t (fd_, options_, endpoint_uri_pair_)
 {
     init_raw_engine ();
 }
 
-zlink::asio_raw_engine_t::asio_raw_engine_t (
-  fd_t fd_,
-  const options_t &options_,
-  const endpoint_uri_pair_t &endpoint_uri_pair_,
-  std::unique_ptr<i_asio_transport> transport_) :
+zlink::asio_raw_engine_t::asio_raw_engine_t (fd_t fd_,
+                                             const options_t &options_,
+                                             const endpoint_uri_pair_t &endpoint_uri_pair_,
+                                             std::unique_ptr<i_asio_transport> transport_) :
     asio_engine_t (fd_, options_, endpoint_uri_pair_, std::move (transport_))
 {
     init_raw_engine ();
@@ -49,10 +47,10 @@ zlink::asio_raw_engine_t::~asio_raw_engine_t ()
 
 void zlink::asio_raw_engine_t::init_raw_engine ()
 {
-    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_raw_engine_t::pull_msg_from_session);
-    _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_raw_engine_t::decode_and_push);
+    _next_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_raw_engine_t::pull_msg_from_session);
+    _process_msg =
+      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_raw_engine_t::decode_and_push);
 }
 
 void zlink::asio_raw_engine_t::plug_internal ()
@@ -63,13 +61,12 @@ void zlink::asio_raw_engine_t::plug_internal ()
     }
 
     if (_decoder == NULL) {
-        size_t initial_read_buffer =
-          _options.in_batch_size > 0 ? static_cast<size_t> (_options.in_batch_size)
-                                     : static_cast<size_t> (4096);
+        size_t initial_read_buffer = _options.in_batch_size > 0
+                                       ? static_cast<size_t> (_options.in_batch_size)
+                                       : static_cast<size_t> (4096);
         if (initial_read_buffer > static_cast<size_t> (8192))
             initial_read_buffer = static_cast<size_t> (8192);
-        if (_options.rcvbuf > 0
-            && static_cast<size_t> (_options.rcvbuf) < initial_read_buffer) {
+        if (_options.rcvbuf > 0 && static_cast<size_t> (_options.rcvbuf) < initial_read_buffer) {
             initial_read_buffer = static_cast<size_t> (_options.rcvbuf);
         }
         if (_options.maxmsgsize > 0
@@ -80,20 +77,16 @@ void zlink::asio_raw_engine_t::plug_internal ()
             initial_read_buffer = 1;
 
         size_t stream_max_read_buffer = initial_read_buffer;
-        if (_options.rcvbuf > 0
-            && static_cast<size_t> (_options.rcvbuf) > stream_max_read_buffer)
-            stream_max_read_buffer =
-              static_cast<size_t> (_options.rcvbuf);
+        if (_options.rcvbuf > 0 && static_cast<size_t> (_options.rcvbuf) > stream_max_read_buffer)
+            stream_max_read_buffer = static_cast<size_t> (_options.rcvbuf);
         if (_options.maxmsgsize > 0
             && static_cast<size_t> (_options.maxmsgsize) < stream_max_read_buffer)
-            stream_max_read_buffer =
-              static_cast<size_t> (_options.maxmsgsize);
+            stream_max_read_buffer = static_cast<size_t> (_options.maxmsgsize);
         if (stream_max_read_buffer == 0)
             stream_max_read_buffer = initial_read_buffer;
 
         _decoder = new (std::nothrow)
-          raw_decoder_t (initial_read_buffer, _options.maxmsgsize,
-                         stream_max_read_buffer);
+          raw_decoder_t (initial_read_buffer, _options.maxmsgsize, stream_max_read_buffer);
         alloc_assert (_decoder);
         _input_in_decoder_buffer = false;
     }
@@ -109,16 +102,16 @@ void zlink::asio_raw_engine_t::plug_internal ()
     if (session ())
         session ()->set_peer_routing_id (NULL, 0);
     if (_options.type != ZLINK_CORE_SOCKET_STREAM)
-        socket ()->event_connection_ready_changed(_endpoint_uri_pair, NULL, 0);
+        socket ()->event_connection_ready_changed (_endpoint_uri_pair, NULL, 0);
 
     start_async_read ();
     start_async_write ();
 }
 
 bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
-                                                     unsigned char *buffer_,
-                                                     size_t buffer_size_,
-                                                     size_t &header_size_)
+                                                    unsigned char *buffer_,
+                                                    size_t buffer_size_,
+                                                    size_t &header_size_)
 {
     LIBZLINK_UNUSED (msg_);
     LIBZLINK_UNUSED (buffer_);
@@ -127,4 +120,4 @@ bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
     return false;
 }
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO

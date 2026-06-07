@@ -22,8 +22,8 @@ struct option_descriptor_t
 };
 
 template <size_t N>
-const option_descriptor_t *lookup_option_descriptor (
-  const option_descriptor_t (&table_)[N], int option_)
+const option_descriptor_t *lookup_option_descriptor (const option_descriptor_t (&table_)[N],
+                                                     int option_)
 {
     for (size_t i = 0; i < N; ++i) {
         if (table_[i].public_option == option_)
@@ -50,8 +50,7 @@ const option_descriptor_t common_option_table[] = {
   {ZLINK_OPT_MAXMSGSIZE, ZLINK_INTERNAL_OPT_MAXMSGSIZE, false},
   {ZLINK_OPT_SNDHWM, ZLINK_INTERNAL_OPT_SNDHWM, false},
   {ZLINK_OPT_RCVHWM, ZLINK_INTERNAL_OPT_RCVHWM, false},
-  {ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
-   ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES, false},
+  {ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES, false},
   {ZLINK_OPT_MULTICAST_HOPS, ZLINK_INTERNAL_OPT_MULTICAST_HOPS, false},
   {ZLINK_OPT_RCVTIMEO, ZLINK_INTERNAL_OPT_RCVTIMEO, false},
   {ZLINK_OPT_SNDTIMEO, ZLINK_INTERNAL_OPT_SNDTIMEO, false},
@@ -68,10 +67,8 @@ const option_descriptor_t common_option_table[] = {
   {ZLINK_OPT_BLOCKY, ZLINK_INTERNAL_OPT_BLOCKY, false},
   {ZLINK_OPT_INVERT_MATCHING, ZLINK_INTERNAL_OPT_INVERT_MATCHING, false},
   {ZLINK_OPT_SUBMIT_RETRY_MODE, ZLINK_INTERNAL_OPT_SUBMIT_RETRY_MODE, false},
-  {ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT,
-   false},
-  {ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS,
-   false},
+  {ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, ZLINK_INTERNAL_OPT_SUBMIT_RETRY_TIMEOUT, false},
+  {ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS, false},
   {ZLINK_OPT_HEARTBEAT_IVL, ZLINK_INTERNAL_OPT_HEARTBEAT_IVL, false},
   {ZLINK_OPT_HEARTBEAT_TTL, ZLINK_INTERNAL_OPT_HEARTBEAT_TTL, false},
   {ZLINK_OPT_HEARTBEAT_TIMEOUT, ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT, false},
@@ -83,27 +80,22 @@ const option_descriptor_t common_option_table[] = {
   {ZLINK_OPT_TLS_KEY, ZLINK_INTERNAL_OPT_TLS_KEY, false},
   {ZLINK_OPT_TLS_CA, ZLINK_INTERNAL_OPT_TLS_CA, false},
   {ZLINK_OPT_TLS_VERIFY, ZLINK_INTERNAL_OPT_TLS_VERIFY, false},
-  {ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT,
-   ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT, false},
+  {ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT, ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT, false},
   {ZLINK_OPT_TLS_HOSTNAME, ZLINK_INTERNAL_OPT_TLS_HOSTNAME, false},
   {ZLINK_OPT_TLS_TRUST_SYSTEM, ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM, false},
   {ZLINK_OPT_TLS_PASSWORD, ZLINK_INTERNAL_OPT_TLS_PASSWORD, false},
   {ZLINK_OPT_ZMP_METADATA, ZLINK_INTERNAL_OPT_ZMP_METADATA, false},
   {ZLINK_OPT_TCP_NODELAY, ZLINK_INTERNAL_OPT_TCP_NODELAY, false},
-  {ZLINK_OPT_RID_DUPLICATE_POLICY, ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY,
-   false},
+  {ZLINK_OPT_RID_DUPLICATE_POLICY, ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY, false},
   {ZLINK_OPT_ROUTE_VALUE_MAX_SIZE, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE, true},
-  {ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
-   true},
-  {ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
-   true},
+  {ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, true},
+  {ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, true},
 };
 
 const option_descriptor_t router_option_table[] = {
   {ZLINK_ROUTER_OPT_MANDATORY, ZLINK_INTERNAL_OPT_ROUTER_MANDATORY, false},
   {ZLINK_ROUTER_OPT_PROBE, ZLINK_INTERNAL_OPT_PROBE_ROUTER, false},
-  {ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-   ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID, false},
+  {ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID, false},
   {ZLINK_ROUTER_OPT_WEIGHT, ZLINK_INTERNAL_OPT_PEER_WEIGHT, false},
 };
 
@@ -120,8 +112,7 @@ const option_descriptor_t pub_option_table[] = {
   {ZLINK_PUB_OPT_VERBOSE, ZLINK_INTERNAL_OPT_XPUB_VERBOSE, false},
   {ZLINK_PUB_OPT_VERBOSER, ZLINK_INTERNAL_OPT_XPUB_VERBOSER, false},
   {ZLINK_PUB_OPT_MANUAL, ZLINK_INTERNAL_OPT_XPUB_MANUAL, false},
-  {ZLINK_PUB_OPT_MANUAL_LAST_VALUE,
-   ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE, false},
+  {ZLINK_PUB_OPT_MANUAL_LAST_VALUE, ZLINK_INTERNAL_OPT_XPUB_MANUAL_LAST_VALUE, false},
   {ZLINK_PUB_OPT_NODROP, ZLINK_INTERNAL_OPT_XPUB_NODROP, false},
   {ZLINK_PUB_OPT_WELCOME_MSG, ZLINK_INTERNAL_OPT_XPUB_WELCOME_MSG, false},
   {ZLINK_PUB_OPT_TOPICS_COUNT, ZLINK_INTERNAL_OPT_TOPICS_COUNT, false},
@@ -140,8 +131,7 @@ zlink::socket_base_t *as_socket (void *handle_)
         errno = EFAULT;
         return NULL;
     }
-    zlink::socket_base_t *socket =
-      static_cast<zlink::socket_base_t *> (handle_);
+    zlink::socket_base_t *socket = static_cast<zlink::socket_base_t *> (handle_);
     if (!socket->check_tag ()) {
         errno = EFAULT;
         return NULL;
@@ -153,8 +143,7 @@ int socket_type_of (zlink::socket_base_t *socket_)
 {
     int type = 0;
     size_t size = sizeof (type);
-    if (!socket_
-        || socket_->getsockopt (ZLINK_INTERNAL_OPT_TYPE, &type, &size) != 0) {
+    if (!socket_ || socket_->getsockopt (ZLINK_INTERNAL_OPT_TYPE, &type, &size) != 0) {
         return -1;
     }
     return type;
@@ -162,43 +151,37 @@ int socket_type_of (zlink::socket_base_t *socket_)
 
 int map_common_option (zlink_option_t option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (common_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (common_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
 int map_router_option (zlink_router_option_t option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (router_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (router_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
 int map_dealer_option (zlink_dealer_option_t option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (dealer_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (dealer_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
 int map_stream_option (zlink_stream_option_t option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (stream_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (stream_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
 int map_pub_option (int option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (pub_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (pub_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
 int map_sub_option (int option_)
 {
-    const option_descriptor_t *descriptor =
-      lookup_option_descriptor (sub_option_table, option_);
+    const option_descriptor_t *descriptor = lookup_option_descriptor (sub_option_table, option_);
     return descriptor ? descriptor->internal_option : -1;
 }
 
@@ -245,10 +228,8 @@ int get_socket_option_checked (zlink::socket_base_t *socket_,
     return socket_->getsockopt (option_, optval_, optvallen_);
 }
 
-zlink_config_result_t zlink_set_option (void *handle_,
-                                       zlink_option_t option_,
-                                       const void *optval_,
-                                       size_t optvallen_)
+zlink_config_result_t
+zlink_set_option (void *handle_, zlink_option_t option_, const void *optval_, size_t optvallen_)
 {
     if (!handle_) {
         errno = EFAULT;
@@ -259,15 +240,14 @@ zlink_config_result_t zlink_set_option (void *handle_,
     if (!descriptor)
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     const int socket_option = descriptor->internal_option;
-    if (option_ == ZLINK_OPT_LAST_ENDPOINT || option_ == ZLINK_OPT_FD
-        || option_ == ZLINK_OPT_EVENTS || option_ == ZLINK_OPT_TYPE) {
+    if (option_ == ZLINK_OPT_LAST_ENDPOINT || option_ == ZLINK_OPT_FD || option_ == ZLINK_OPT_EVENTS
+        || option_ == ZLINK_OPT_TYPE) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
     errno = 0;
-    if (zlink_service_set_common_option (handle_, option_, socket_option, optval_,
-                                         optvallen_)
+    if (zlink_service_set_common_option (handle_, option_, socket_option, optval_, optvallen_)
         == 0) {
         return ZLINK_CONFIG_OK;
     }
@@ -286,10 +266,8 @@ zlink_config_result_t zlink_set_option (void *handle_,
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
-zlink_config_result_t zlink_get_option (void *handle_,
-                                       zlink_option_t option_,
-                                       void *optval_,
-                                       size_t *optvallen_)
+zlink_config_result_t
+zlink_get_option (void *handle_, zlink_option_t option_, void *optval_, size_t *optvallen_)
 {
     if (!handle_) {
         errno = EFAULT;
@@ -302,8 +280,7 @@ zlink_config_result_t zlink_get_option (void *handle_,
     const int socket_option = descriptor->internal_option;
 
     errno = 0;
-    if (zlink_service_get_common_option (handle_, option_, socket_option, optval_,
-                                         optvallen_)
+    if (zlink_service_get_common_option (handle_, option_, socket_option, optval_, optvallen_)
         == 0) {
         return ZLINK_CONFIG_OK;
     }
@@ -358,8 +335,7 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
 
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         size_t size = sizeof (out_->data);
-        const int rc =
-          socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, out_->data, &size);
+        const int rc = socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTING_ID, out_->data, &size);
         if (rc != 0)
             return zlink::config_result_internal::from_rc (rc);
         if (size > sizeof (out_->data)) {
@@ -373,8 +349,7 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
-zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
-                                                     const char *channel_name_)
+zlink_config_result_t zlink_socket_set_channel_name (void *socket_, const char *channel_name_)
 {
     zlink::socket_base_t *socket = as_socket (socket_);
     if (!socket)
@@ -383,30 +358,23 @@ zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
       socket->set_channel_name_metadata (channel_name_));
 }
 
-zlink_config_result_t zlink_socket_get_channel_name (
-  void *socket_,
-  char *channel_name_buf_,
-  size_t channel_name_capacity_,
-  size_t *channel_name_len_out_)
+zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
+                                                     char *channel_name_buf_,
+                                                     size_t channel_name_capacity_,
+                                                     size_t *channel_name_len_out_)
 {
     zlink::socket_base_t *socket = as_socket (socket_);
     if (!socket)
         return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (
-      socket->get_channel_name_metadata (channel_name_buf_,
-                                         channel_name_capacity_,
-                                         channel_name_len_out_));
+    return zlink::config_result_internal::from_rc (socket->get_channel_name_metadata (
+      channel_name_buf_, channel_name_capacity_, channel_name_len_out_));
 }
 
-zlink_config_result_t zlink_set_tls_server (void *handle_,
-                                           const char *cert_,
-                                           const char *key_,
-                                           int require_client_cert_)
+zlink_config_result_t
+zlink_set_tls_server (void *handle_, const char *cert_, const char *key_, int require_client_cert_)
 {
     errno = 0;
-    if (zlink_service_set_tls_server (handle_, cert_, key_,
-                                      require_client_cert_)
-        == 0)
+    if (zlink_service_set_tls_server (handle_, cert_, key_, require_client_cert_) == 0)
         return ZLINK_CONFIG_OK;
     if (errno != EFAULT)
         return zlink::config_result_internal::from_rc (-1);
@@ -417,15 +385,10 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
             return ZLINK_CONFIG_INVALID_HANDLE;
         }
 
-        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, cert_,
-                                strlen (cert_))
-              != 0
-            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, key_,
-                                   strlen (key_))
-                 != 0
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CERT, cert_, strlen (cert_)) != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_KEY, key_, strlen (key_)) != 0
             || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_REQUIRE_CLIENT_CERT,
-                                   &require_client_cert_,
-                                   sizeof (require_client_cert_))
+                                   &require_client_cert_, sizeof (require_client_cert_))
                  != 0) {
             return zlink::config_result_internal::from_rc (-1);
         }
@@ -436,15 +399,11 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
-zlink_config_result_t zlink_set_tls_client (void *handle_,
-                                            const char *ca_cert_,
-                                            const char *hostname_,
-                                            int trust_system_)
+zlink_config_result_t
+zlink_set_tls_client (void *handle_, const char *ca_cert_, const char *hostname_, int trust_system_)
 {
     errno = 0;
-    if (zlink_service_set_tls_client (handle_, ca_cert_, hostname_,
-                                      trust_system_)
-        == 0)
+    if (zlink_service_set_tls_client (handle_, ca_cert_, hostname_, trust_system_) == 0)
         return ZLINK_CONFIG_OK;
     if (errno != EFAULT)
         return zlink::config_result_internal::from_rc (-1);
@@ -455,14 +414,10 @@ zlink_config_result_t zlink_set_tls_client (void *handle_,
             return ZLINK_CONFIG_INVALID_HANDLE;
         }
 
-        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_,
-                                strlen (ca_cert_))
-              != 0
-            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_,
-                                   strlen (hostname_))
+        if (socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_CA, ca_cert_, strlen (ca_cert_)) != 0
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_HOSTNAME, hostname_, strlen (hostname_))
                  != 0
-            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM,
-                                   &trust_system_,
+            || socket->setsockopt (ZLINK_INTERNAL_OPT_TLS_TRUST_SYSTEM, &trust_system_,
                                    sizeof (trust_system_))
                  != 0) {
             return zlink::config_result_internal::from_rc (-1);

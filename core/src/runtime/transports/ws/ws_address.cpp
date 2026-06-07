@@ -25,18 +25,14 @@ zlink::ws_address_t::ws_address_t () : _path ("/"), _port (0)
 }
 
 zlink::ws_address_t::ws_address_t (const sockaddr *sa_, socklen_t sa_len_) :
-    _tcp_address (sa_, sa_len_),
-    _path ("/"),
-    _port (0)
+    _tcp_address (sa_, sa_len_), _path ("/"), _port (0)
 {
     //  Extract port from the sockaddr
     if (sa_->sa_family == AF_INET) {
-        const struct sockaddr_in *sin =
-          reinterpret_cast<const struct sockaddr_in *> (sa_);
+        const struct sockaddr_in *sin = reinterpret_cast<const struct sockaddr_in *> (sa_);
         _port = ntohs (sin->sin_port);
     } else if (sa_->sa_family == AF_INET6) {
-        const struct sockaddr_in6 *sin6 =
-          reinterpret_cast<const struct sockaddr_in6 *> (sa_);
+        const struct sockaddr_in6 *sin6 = reinterpret_cast<const struct sockaddr_in6 *> (sa_);
         _port = ntohs (sin6->sin6_port);
     }
 }
@@ -85,7 +81,7 @@ int zlink::ws_address_t::parse_url (const char *name_)
     //  Parse port number (handle wildcard '*' for ephemeral port)
     char *endptr;
     if (*pos == '*') {
-        _port = 0;  // Wildcard - let the system assign a port
+        _port = 0; // Wildcard - let the system assign a port
         endptr = const_cast<char *> (pos + 1);
     } else {
         long port = strtol (pos, &endptr, 10);
@@ -149,8 +145,7 @@ sa_family_t zlink::ws_address_t::family () const
 
 int zlink::ws_address_t::to_string (std::string &addr_) const
 {
-    if (_tcp_address.family () != AF_INET
-        && _tcp_address.family () != AF_INET6) {
+    if (_tcp_address.family () != AF_INET && _tcp_address.family () != AF_INET6) {
         addr_.clear ();
         return -1;
     }
@@ -165,4 +160,4 @@ int zlink::ws_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-#endif  // ZLINK_HAVE_WS
+#endif // ZLINK_HAVE_WS

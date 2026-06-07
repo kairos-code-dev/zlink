@@ -17,28 +17,24 @@ inline const char *path_from_env (const char *env_, const char *fallback_)
 
 inline const char *ready_ack_log_path ()
 {
-    return path_from_env ("ZLINK_DEBUG_SPOT_READY_ACK_LOG",
-                          "/tmp/zlink_spot_ready_ack.log");
+    return path_from_env ("ZLINK_DEBUG_SPOT_READY_ACK_LOG", "/tmp/zlink_spot_ready_ack.log");
 }
 
 inline const char *ctrl_log_path ()
 {
-    return path_from_env ("ZLINK_SPOT_CTRL_DEBUG_LOG",
-                          "/tmp/zlink_spot_ctrl.log");
+    return path_from_env ("ZLINK_SPOT_CTRL_DEBUG_LOG", "/tmp/zlink_spot_ctrl.log");
 }
 
 inline const char *sub_diag_log_path ()
 {
-    return path_from_env ("ZLINK_SPOT_SUB_DIAG_LOG_PATH",
-                          "/tmp/zlink_spot_sub_diag.log");
+    return path_from_env ("ZLINK_SPOT_SUB_DIAG_LOG_PATH", "/tmp/zlink_spot_sub_diag.log");
 }
 
 inline void route_publish_log_path (int process_id_, char *out_, size_t size_)
 {
     if (!out_ || size_ == 0)
         return;
-    std::snprintf (out_, size_, "/tmp/zlink_spot_route_publish_%d.log",
-                   process_id_);
+    std::snprintf (out_, size_, "/tmp/zlink_spot_route_publish_%d.log", process_id_);
 }
 
 inline bool enabled (const char *env_)
@@ -55,8 +51,7 @@ inline void control (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_,
-                    args);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_, args);
     va_end (args);
 }
 
@@ -64,8 +59,8 @@ inline void ready_ack (const char *prefix_, const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK", prefix_,
-                              ready_ack_log_path (), fmt_, args);
+    debug_vfprintf_with_file ("ZLINK_DEBUG_SPOT_READY_ACK", prefix_, ready_ack_log_path (), fmt_,
+                              args);
     va_end (args);
 }
 
@@ -73,8 +68,8 @@ inline void ctrl (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ",
-                              ctrl_log_path (), fmt_, args);
+    debug_vfprintf_with_file ("ZLINK_SPOT_CTRL_DEBUG", "[spot-ctrl] ", ctrl_log_path (), fmt_,
+                              args);
     va_end (args);
 }
 }

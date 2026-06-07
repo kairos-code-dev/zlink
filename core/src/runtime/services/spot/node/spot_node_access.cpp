@@ -48,8 +48,7 @@ uint64_t &spot_node_t::next_actor_generation ()
     return _actor_state.next_generation;
 }
 
-void spot_node_t::snapshot_active_peer_endpoints (
-  std::set<std::string> *out_) const
+void spot_node_t::snapshot_active_peer_endpoints (std::set<std::string> *out_) const
 {
     if (!out_)
         return;
@@ -79,8 +78,7 @@ void spot_node_t::snapshot_tls_client_config (std::string *ca_out_,
         *trust_system_out_ = _tls_state.tls_trust_system;
 }
 
-void spot_node_t::snapshot_tls_server_config (std::string *cert_out_,
-                                              std::string *key_out_) const
+void spot_node_t::snapshot_tls_server_config (std::string *cert_out_, std::string *key_out_) const
 {
     if (cert_out_)
         cert_out_->clear ();
@@ -94,8 +92,7 @@ void spot_node_t::snapshot_tls_server_config (std::string *cert_out_,
         *key_out_ = _tls_state.tls_key;
 }
 
-void spot_node_t::mark_bound_endpoint_and_server_tls_locked (
-  const std::string &bound_endpoint_)
+void spot_node_t::mark_bound_endpoint_and_server_tls_locked (const std::string &bound_endpoint_)
 {
     scoped_lock_t lock (_sync);
     _endpoint_state.bound_endpoint = bound_endpoint_;
@@ -125,8 +122,7 @@ int spot_node_t::close_owned_socket (socket_base_t *&socket_, int timeout_ms_)
     return _lifecycle.close_socket (socket_, timeout_ms_);
 }
 
-int spot_node_t::close_owned_socket_and_wait (socket_base_t *&socket_,
-                                              int timeout_ms_)
+int spot_node_t::close_owned_socket_and_wait (socket_base_t *&socket_, int timeout_ms_)
 {
     if (!socket_) {
         errno = EFAULT;
@@ -181,67 +177,55 @@ int spot_node_access_t::set_pub_bind (spot_node_t *node_, const char *endpoint_)
     return node_ ? node_->set_pub_bind (endpoint_) : -1;
 }
 
-int spot_node_access_t::set_router_bind (spot_node_t *node_,
-                                         const char *endpoint_)
+int spot_node_access_t::set_router_bind (spot_node_t *node_, const char *endpoint_)
 {
     return node_ ? node_->set_router_bind (endpoint_) : -1;
 }
 
-int spot_node_access_t::connect_peer (spot_node_t *node_,
-                                      const char *peer_endpoint_)
+int spot_node_access_t::connect_peer (spot_node_t *node_, const char *peer_endpoint_)
 {
     return node_ ? node_->connect_peer_pub (peer_endpoint_) : -1;
 }
 
-int spot_node_access_t::disconnect_peer (spot_node_t *node_,
-                                         const char *peer_endpoint_)
+int spot_node_access_t::disconnect_peer (spot_node_t *node_, const char *peer_endpoint_)
 {
     return node_ ? node_->disconnect_peer_pub (peer_endpoint_) : -1;
 }
 
-int spot_node_access_t::disconnect_peer_rid (
-  spot_node_t *node_,
-  const zlink_routing_id_t *target_node_rid_)
+int spot_node_access_t::disconnect_peer_rid (spot_node_t *node_,
+                                             const zlink_routing_id_t *target_node_rid_)
 {
     return node_ ? node_->disconnect_peer_pub_rid (target_node_rid_) : -1;
 }
 
-int spot_node_access_t::connect_router_channel_peer (
-  spot_node_t *node_, const char *channel_name_, const char *endpoint_)
+int spot_node_access_t::connect_router_channel_peer (spot_node_t *node_,
+                                                     const char *channel_name_,
+                                                     const char *endpoint_)
 {
-    return node_ ? node_->connect_router_channel_peer (channel_name_, endpoint_)
+    return node_ ? node_->connect_router_channel_peer (channel_name_, endpoint_) : -1;
+}
+
+int spot_node_access_t::connect_router_channel_peer_rid (spot_node_t *node_,
+                                                         const char *channel_name_,
+                                                         const zlink_routing_id_t *peer_rid_,
+                                                         const char *endpoint_)
+{
+    return node_ ? node_->connect_router_channel_peer_rid (channel_name_, peer_rid_, endpoint_)
                  : -1;
 }
 
-int spot_node_access_t::connect_router_channel_peer_rid (
-  spot_node_t *node_,
-  const char *channel_name_,
-  const zlink_routing_id_t *peer_rid_,
-  const char *endpoint_)
+int spot_node_access_t::disconnect_router_channel_peer (spot_node_t *node_,
+                                                        const char *channel_name_,
+                                                        const char *endpoint_)
 {
-    return node_
-             ? node_->connect_router_channel_peer_rid (channel_name_,
-                                                       peer_rid_, endpoint_)
-             : -1;
+    return node_ ? node_->disconnect_router_channel_peer (channel_name_, endpoint_) : -1;
 }
 
-int spot_node_access_t::disconnect_router_channel_peer (
-  spot_node_t *node_, const char *channel_name_, const char *endpoint_)
+int spot_node_access_t::disconnect_router_channel_peer_rid (spot_node_t *node_,
+                                                            const char *channel_name_,
+                                                            const zlink_routing_id_t *peer_rid_)
 {
-    return node_
-             ? node_->disconnect_router_channel_peer (channel_name_, endpoint_)
-             : -1;
-}
-
-int spot_node_access_t::disconnect_router_channel_peer_rid (
-  spot_node_t *node_,
-  const char *channel_name_,
-  const zlink_routing_id_t *peer_rid_)
-{
-    return node_
-             ? node_->disconnect_router_channel_peer_rid (channel_name_,
-                                                          peer_rid_)
-             : -1;
+    return node_ ? node_->disconnect_router_channel_peer_rid (channel_name_, peer_rid_) : -1;
 }
 
 int spot_node_access_t::set_node_option (spot_node_t *node_,
@@ -262,8 +246,7 @@ int spot_node_access_t::get_node_option (spot_node_t *node_,
 
 int spot_node_access_t::begin_close_or_fail_busy (spot_node_t *node_)
 {
-    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0
-                                                                           : -1;
+    return node_ && node_->public_api_guard ().begin_close_or_fail_busy () ? 0 : -1;
 }
 
 void spot_node_access_t::cancel_close (spot_node_t *node_)
@@ -283,8 +266,7 @@ void spot_node_access_t::delete_handle (spot_node_t *node_)
     delete node_;
 }
 
-int spot_node_access_t::status_snapshot (spot_node_t *node_,
-                                         zlink_spot_node_status_t *out_)
+int spot_node_access_t::status_snapshot (spot_node_t *node_, zlink_spot_node_status_t *out_)
 {
     if (!node_) {
         errno = EFAULT;
@@ -308,55 +290,46 @@ std::string spot_node_access_t::summary_channel_name (spot_node_t *node_)
     return node_->summary_channel_name ();
 }
 
-socket_base_t *spot_node_access_t::select_service_router (
-  spot_node_t *node_,
-  const std::string &channel_name_)
+socket_base_t *spot_node_access_t::select_service_router (spot_node_t *node_,
+                                                          const std::string &channel_name_)
 {
     return node_ ? node_->select_service_router (channel_name_) : NULL;
 }
 
-socket_base_t *spot_node_access_t::service_pub_socket (
-  spot_node_t *node_,
-  const std::string &channel_name_)
+socket_base_t *spot_node_access_t::service_pub_socket (spot_node_t *node_,
+                                                       const std::string &channel_name_)
 {
     return node_ ? node_->service_pub_socket (channel_name_) : NULL;
 }
 
-int spot_node_access_t::service_subscribe_recv (
-  spot_node_t *node_,
-  zlink_routing_id_t *source_rid_out_,
-  zlink_msg_t **parts_out_,
-  size_t *part_count_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_)
+int spot_node_access_t::service_subscribe_recv (spot_node_t *node_,
+                                                zlink_routing_id_t *source_rid_out_,
+                                                zlink_msg_t **parts_out_,
+                                                size_t *part_count_out_,
+                                                char *topic_id_out_,
+                                                size_t *topic_id_len_out_,
+                                                zlink_recv_flags_t flags_)
 {
-    return node_
-             ? node_->service_subscribe_recv (
-                 source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
-                 topic_id_len_out_, flags_)
-             : -1;
+    return node_ ? node_->service_subscribe_recv (source_rid_out_, parts_out_, part_count_out_,
+                                                  topic_id_out_, topic_id_len_out_, flags_)
+                 : -1;
 }
 
-int spot_node_access_t::service_subscription_event_recv (
-  spot_node_t *node_,
-  zlink_routing_id_t *source_rid_out_,
-  int *subscribed_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_)
+int spot_node_access_t::service_subscription_event_recv (spot_node_t *node_,
+                                                         zlink_routing_id_t *source_rid_out_,
+                                                         int *subscribed_out_,
+                                                         char *topic_id_out_,
+                                                         size_t *topic_id_len_out_,
+                                                         zlink_recv_flags_t flags_)
 {
-    return node_
-             ? node_->service_subscription_event_recv (
-                 source_rid_out_, subscribed_out_, topic_id_out_,
-                 topic_id_len_out_, flags_)
-             : -1;
+    return node_ ? node_->service_subscription_event_recv (source_rid_out_, subscribed_out_,
+                                                           topic_id_out_, topic_id_len_out_, flags_)
+                 : -1;
 }
 
-int spot_node_access_t::peers_snapshot (
-  spot_node_t *node_,
-  const zlink_spot_node_peer_filter_t *filter_,
-  std::vector<zlink_spot_node_peer_entry_t> *out_)
+int spot_node_access_t::peers_snapshot (spot_node_t *node_,
+                                        const zlink_spot_node_peer_filter_t *filter_,
+                                        std::vector<zlink_spot_node_peer_entry_t> *out_)
 {
     if (!node_) {
         errno = EFAULT;
@@ -368,10 +341,9 @@ int spot_node_access_t::peers_snapshot (
     return node_->snapshot_peers (filter_, out_);
 }
 
-int spot_node_access_t::subjects_snapshot (
-  spot_node_t *node_,
-  const zlink_spot_node_subject_filter_t *filter_,
-  std::vector<zlink_spot_node_subject_entry_t> *out_)
+int spot_node_access_t::subjects_snapshot (spot_node_t *node_,
+                                           const zlink_spot_node_subject_filter_t *filter_,
+                                           std::vector<zlink_spot_node_subject_entry_t> *out_)
 {
     if (!node_) {
         errno = EFAULT;
@@ -408,22 +380,19 @@ int spot_node_access_t::attach_discovery (spot_node_t *node_, void *discovery_)
     return discovery ? node_->attach_discovery (discovery) : -1;
 }
 
-int spot_node_access_t::attach_router_channel_discovery (
-  spot_node_t *node_, const char *channel_name_, void *discovery_)
+int spot_node_access_t::attach_router_channel_discovery (spot_node_t *node_,
+                                                         const char *channel_name_,
+                                                         void *discovery_)
 {
     if (!node_ || !discovery_) {
         errno = EFAULT;
         return -1;
     }
     discovery_t *discovery = discovery_access_t::from_handle (discovery_);
-    return discovery
-             ? node_->attach_router_channel_discovery (channel_name_, discovery)
-             : -1;
+    return discovery ? node_->attach_router_channel_discovery (channel_name_, discovery) : -1;
 }
 
-int spot_node_access_t::attach_channel_dealer (spot_node_t *node_,
-                                               void *discovery_,
-                                               void *dealer_)
+int spot_node_access_t::attach_channel_dealer (spot_node_t *node_, void *discovery_, void *dealer_)
 {
     if (!node_ || !discovery_ || !dealer_) {
         errno = EFAULT;
@@ -431,8 +400,7 @@ int spot_node_access_t::attach_channel_dealer (spot_node_t *node_,
     }
     discovery_t *discovery = discovery_access_t::from_handle (discovery_);
     socket_base_t *dealer = try_as_socket (dealer_);
-    return discovery && dealer ? node_->attach_channel_dealer (discovery, dealer)
-                               : -1;
+    return discovery && dealer ? node_->attach_channel_dealer (discovery, dealer) : -1;
 }
 
 int spot_node_access_t::attach_channel_dealer_manual (spot_node_t *node_,
@@ -440,9 +408,7 @@ int spot_node_access_t::attach_channel_dealer_manual (spot_node_t *node_,
                                                       void *dealer_)
 {
     socket_base_t *dealer = try_as_socket (dealer_);
-    return node_ && dealer
-             ? node_->attach_channel_dealer_manual (channel_name_, dealer)
-             : -1;
+    return node_ && dealer ? node_->attach_channel_dealer_manual (channel_name_, dealer) : -1;
 }
 
 int spot_node_access_t::attach_pub_ingress (spot_node_t *node_, void *pub_)
@@ -451,8 +417,7 @@ int spot_node_access_t::attach_pub_ingress (spot_node_t *node_, void *pub_)
     return node_ && pub ? node_->attach_pub_ingress (pub) : -1;
 }
 
-int spot_node_access_t::try_register_spot_facade (spot_node_t *node_,
-                                                  spot_handle_t *spot_)
+int spot_node_access_t::try_register_spot_facade (spot_node_t *node_, spot_handle_t *spot_)
 {
     if (!node_ || !spot_) {
         errno = EFAULT;
@@ -461,15 +426,14 @@ int spot_node_access_t::try_register_spot_facade (spot_node_t *node_,
     return node_->try_register_spot_facade (spot_);
 }
 
-void spot_node_access_t::unregister_spot_facade (spot_node_t *node_,
-                                                 spot_handle_t *spot_)
+void spot_node_access_t::unregister_spot_facade (spot_node_t *node_, spot_handle_t *spot_)
 {
     if (node_ && spot_)
         node_->unregister_spot_facade (spot_);
 }
 
-bool spot_node_access_t::is_last_spot_facade_for_logical_state (
-  spot_node_t *node_, spot_handle_t *spot_)
+bool spot_node_access_t::is_last_spot_facade_for_logical_state (spot_node_t *node_,
+                                                                spot_handle_t *spot_)
 {
     return node_ ? node_->is_last_spot_facade_for_logical_state (spot_) : true;
 }
@@ -477,29 +441,22 @@ bool spot_node_access_t::is_last_spot_facade_for_logical_state (
 std::shared_ptr<spot_logical_state_t>
 spot_node_access_t::create_user_spot_state (spot_node_t *node_)
 {
-    return node_ ? node_->create_user_spot_state ()
-                 : std::shared_ptr<spot_logical_state_t> ();
+    return node_ ? node_->create_user_spot_state () : std::shared_ptr<spot_logical_state_t> ();
 }
 
-std::shared_ptr<spot_logical_state_t>
-spot_node_access_t::entry_spot_state (spot_node_t *node_)
+std::shared_ptr<spot_logical_state_t> spot_node_access_t::entry_spot_state (spot_node_t *node_)
 {
-    return node_ ? node_->entry_spot_state ()
-                 : std::shared_ptr<spot_logical_state_t> ();
+    return node_ ? node_->entry_spot_state () : std::shared_ptr<spot_logical_state_t> ();
 }
 
 std::shared_ptr<spot_logical_state_t>
-spot_node_access_t::lookup_spot_state (spot_node_t *node_,
-                                       const zlink_routing_id_t *spot_rid_)
+spot_node_access_t::lookup_spot_state (spot_node_t *node_, const zlink_routing_id_t *spot_rid_)
 {
-    return node_ ? node_->lookup_spot_state (spot_rid_)
-                 : std::shared_ptr<spot_logical_state_t> ();
+    return node_ ? node_->lookup_spot_state (spot_rid_) : std::shared_ptr<spot_logical_state_t> ();
 }
 
-std::shared_ptr<spot_logical_state_t>
-spot_node_access_t::get_or_new_spot_state (spot_node_t *node_,
-                                           const zlink_routing_id_t *spot_rid_,
-                                           bool *created_out_)
+std::shared_ptr<spot_logical_state_t> spot_node_access_t::get_or_new_spot_state (
+  spot_node_t *node_, const zlink_routing_id_t *spot_rid_, bool *created_out_)
 {
     return node_ ? node_->get_or_new_spot_state (spot_rid_, created_out_)
                  : std::shared_ptr<spot_logical_state_t> ();
@@ -562,8 +519,7 @@ bool spot_node_access_t::is_shutting_down (spot_node_t *node_)
     return !node_ || node_->is_shutting_down ();
 }
 
-socket_base_t *spot_node_access_t::create_socket (spot_node_t *node_,
-                                                  int socket_type_)
+socket_base_t *spot_node_access_t::create_socket (spot_node_t *node_, int socket_type_)
 {
     if (!node_) {
         errno = EFAULT;
@@ -572,28 +528,24 @@ socket_base_t *spot_node_access_t::create_socket (spot_node_t *node_,
     return node_->create_socket (socket_type_);
 }
 
-void spot_node_access_t::track_owned_socket (spot_node_t *node_,
-                                             socket_base_t *socket_)
+void spot_node_access_t::track_owned_socket (spot_node_t *node_, socket_base_t *socket_)
 {
     if (node_ && socket_)
         node_->track_owned_socket (socket_);
 }
 
-void spot_node_access_t::untrack_owned_socket (spot_node_t *node_,
-                                               const socket_base_t *socket_)
+void spot_node_access_t::untrack_owned_socket (spot_node_t *node_, const socket_base_t *socket_)
 {
     if (node_ && socket_)
         node_->untrack_owned_socket (socket_);
 }
 
-bool spot_node_access_t::owns_socket (spot_node_t *node_,
-                                      const socket_base_t *socket_)
+bool spot_node_access_t::owns_socket (spot_node_t *node_, const socket_base_t *socket_)
 {
     return node_ && socket_ && node_->owns_socket (socket_);
 }
 
-spot_internal_receiver_t *
-spot_node_access_t::ensure_internal_receiver (spot_node_t *node_)
+spot_internal_receiver_t *spot_node_access_t::ensure_internal_receiver (spot_node_t *node_)
 {
     return node_ ? node_->ensure_internal_receiver () : NULL;
 }
@@ -603,14 +555,12 @@ spot_internal_receiver_t *spot_node_access_t::internal_receiver (spot_node_t *no
     return node_ ? node_->internal_receiver () : NULL;
 }
 
-std::set<actor_handle_t *> &spot_node_access_t::actor_handles (
-  spot_node_t *node_)
+std::set<actor_handle_t *> &spot_node_access_t::actor_handles (spot_node_t *node_)
 {
     return node_->actor_handles ();
 }
 
-std::map<std::string, actor_handle_t *> &spot_node_access_t::actors_by_id (
-  spot_node_t *node_)
+std::map<std::string, actor_handle_t *> &spot_node_access_t::actors_by_id (spot_node_t *node_)
 {
     return node_->actors_by_id ();
 }
@@ -632,8 +582,8 @@ void spot_node_access_t::schedule_subscription_replay (spot_node_t *node_)
         node_->schedule_subscription_replay ();
 }
 
-void spot_node_access_t::snapshot_active_peer_endpoints (
-  spot_node_t *node_, std::set<std::string> *out_)
+void spot_node_access_t::snapshot_active_peer_endpoints (spot_node_t *node_,
+                                                         std::set<std::string> *out_)
 {
     if (!out_)
         return;
@@ -684,8 +634,7 @@ void spot_node_access_t::mark_bound_endpoint_and_server_tls_locked (
     node_->mark_bound_endpoint_and_server_tls_locked (bound_endpoint_);
 }
 
-void spot_node_access_t::snapshot_router_bind_endpoint (spot_node_t *node_,
-                                                        std::string *out_)
+void spot_node_access_t::snapshot_router_bind_endpoint (spot_node_t *node_, std::string *out_)
 {
     if (!out_)
         return;
@@ -718,12 +667,10 @@ int spot_node_access_t::apply_tls_client (spot_node_t *node_,
                                           int trust_system_)
 {
     (void) node_;
-    return spot_node_t::apply_tls_client (socket_, ca_cert_, hostname_,
-                                          trust_system_);
+    return spot_node_t::apply_tls_client (socket_, ca_cert_, hostname_, trust_system_);
 }
 
-bool spot_node_access_t::recv_ctrl_reply (socket_base_t *socket_,
-                                          int *out_errno_)
+bool spot_node_access_t::recv_ctrl_reply (socket_base_t *socket_, int *out_errno_)
 {
     return spot_node_t::recv_ctrl_reply (socket_, out_errno_);
 }
@@ -750,10 +697,9 @@ int spot_node_access_t::close_owned_socket_and_wait (spot_node_t *node_,
     return node_->close_owned_socket_and_wait (socket_, timeout_ms_);
 }
 
-int spot_node_access_t::send_internal_subscription_update (
-  spot_node_t *node_,
-  const std::string &raw_filter_,
-  bool subscribe_)
+int spot_node_access_t::send_internal_subscription_update (spot_node_t *node_,
+                                                           const std::string &raw_filter_,
+                                                           bool subscribe_)
 {
     if (!node_) {
         errno = EFAULT;

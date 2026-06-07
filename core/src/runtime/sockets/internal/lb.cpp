@@ -58,12 +58,12 @@ void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
     //  Remove the pipe from the list; adjust number of active pipes
     //  accordingly.
     if (index < _active) {
-            _active--;
-            _pipes.swap (index, _active);
-            if (_current == _active)
-                _current = 0;
-            mark_weighted_dirty ();
-        }
+        _active--;
+        _pipes.swap (index, _active);
+        if (_current == _active)
+            _current = 0;
+        mark_weighted_dirty ();
+    }
     _pipes.erase (pipe_);
     _weights.erase (pipe_);
     mark_weighted_dirty ();
@@ -71,8 +71,7 @@ void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
 
 void zlink::lb_t::activated (pipe_t *pipe_)
 {
-    const std::map<pipe_t *, uint32_t>::const_iterator weight_it =
-      _weights.find (pipe_);
+    const std::map<pipe_t *, uint32_t>::const_iterator weight_it = _weights.find (pipe_);
     if (weight_it != _weights.end () && weight_it->second == 0)
         return;
 
@@ -137,8 +136,8 @@ uint32_t zlink::lb_t::weight (pipe_t *pipe_) const
 
 bool zlink::lb_t::has_positive_weight_pipe () const
 {
-    for (std::map<pipe_t *, uint32_t>::const_iterator it = _weights.begin ();
-         it != _weights.end (); ++it) {
+    for (std::map<pipe_t *, uint32_t>::const_iterator it = _weights.begin (); it != _weights.end ();
+         ++it) {
         if (it->second > 0)
             return true;
     }
@@ -177,8 +176,7 @@ void zlink::lb_t::rebuild_weighted_schedule ()
     for (pipes_t::size_type i = 0; i < _active; ++i) {
         const uint32_t pipe_weight = weight (_pipes[i]);
         if (pipe_weight > 0)
-            weight_gcd =
-              weight_gcd == 0 ? pipe_weight : gcd_u32 (weight_gcd, pipe_weight);
+            weight_gcd = weight_gcd == 0 ? pipe_weight : gcd_u32 (weight_gcd, pipe_weight);
         if (!have_first) {
             first_weight = pipe_weight;
             have_first = true;
@@ -190,8 +188,7 @@ void zlink::lb_t::rebuild_weighted_schedule ()
     if (_active > 1 && !all_equal) {
         for (pipes_t::size_type i = 0; i < _active; ++i) {
             const uint32_t pipe_weight = weight (_pipes[i]);
-            const uint32_t slots =
-              weight_gcd > 0 ? pipe_weight / weight_gcd : pipe_weight;
+            const uint32_t slots = weight_gcd > 0 ? pipe_weight / weight_gcd : pipe_weight;
             for (uint32_t n = 0; n < slots; ++n)
                 _weighted_schedule.push_back (_pipes[i]);
         }
@@ -275,8 +272,7 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
         while (_active > 0 && !_weighted_schedule.empty ()) {
             pipe_t *pipe = _weighted_schedule[_weighted_current];
             const bool more = (msg_->flags () & msg_t::more) != 0;
-            const bool ok = more ? pipe->write (msg_)
-                                 : pipe->write_and_flush (msg_);
+            const bool ok = more ? pipe->write (msg_) : pipe->write_and_flush (msg_);
             if (ok) {
                 if (pipe_)
                     *pipe_ = pipe;
@@ -299,8 +295,8 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 
     while (_active > 0) {
         const bool more = (msg_->flags () & msg_t::more) != 0;
-        const bool ok = more ? _pipes[_current]->write (msg_)
-                             : _pipes[_current]->write_and_flush (msg_);
+        const bool ok =
+          more ? _pipes[_current]->write (msg_) : _pipes[_current]->write_and_flush (msg_);
         if (ok) {
             if (pipe_)
                 *pipe_ = _pipes[_current];

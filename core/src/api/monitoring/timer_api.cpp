@@ -71,8 +71,8 @@ void *zlink_timer_new (void)
     // Generic timers stay on the generic timer scheduler backend. They must not
     // run on socket I/O threads, and they must not reuse the SpotNode timer
     // scheduler path.
-    std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t (
-      timer_handle_t::backend_global_scheduler));
+    std::unique_ptr<timer_handle_t> timer (
+      new (std::nothrow) timer_handle_t (timer_handle_t::backend_global_scheduler));
     if (!timer) {
         errno = ENOMEM;
         return NULL;
@@ -103,8 +103,7 @@ void *zlink_spot_timer_new (void *spot_)
         return NULL;
     }
 
-    std::shared_ptr<scheduler_state_t> scheduler =
-      resolve_spot_scheduler (spot->node);
+    std::shared_ptr<scheduler_state_t> scheduler = resolve_spot_scheduler (spot->node);
     ensure_scheduler_started (scheduler);
 
     std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t (
@@ -169,9 +168,8 @@ zlink_close_result_t zlink_timer_destroy (void **timer_p_)
     return ZLINK_CLOSE_OK;
 }
 
-zlink_config_result_t zlink_timer_start (void *timer_,
-                                         uint64_t interval_ns_,
-                                         uint64_t repeat_count_)
+zlink_config_result_t
+zlink_timer_start (void *timer_, uint64_t interval_ns_, uint64_t repeat_count_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer) {
@@ -209,8 +207,7 @@ zlink_config_result_t zlink_timer_stop (void *timer_)
     return ZLINK_CONFIG_OK;
 }
 
-zlink_recv_result_t zlink_timer_recv (void *timer_,
-                                      uint64_t *fire_count_out_)
+zlink_recv_result_t zlink_timer_recv (void *timer_, uint64_t *fire_count_out_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer || !fire_count_out_) {
@@ -242,9 +239,8 @@ zlink_recv_result_t zlink_timer_recv (void *timer_,
     return ZLINK_RECV_OK;
 }
 
-zlink_handler_result_t zlink_timer_handler (void *timer_,
-                                            zlink_timer_handler_fn handler_,
-                                            void *userdata_)
+zlink_handler_result_t
+zlink_timer_handler (void *timer_, zlink_timer_handler_fn handler_, void *userdata_)
 {
     timer_handle_t *timer = as_timer_handle (timer_);
     if (!timer) {
@@ -257,8 +253,7 @@ zlink_handler_result_t zlink_timer_handler (void *timer_,
     }
 
     std::lock_guard<std::mutex> lock (timer->mutex);
-    if (timer->recv_in_progress || timer->poller_refs > 0
-        || timer->receive_callback_active) {
+    if (timer->recv_in_progress || timer->poller_refs > 0 || timer->receive_callback_active) {
         errno = EBUSY;
         return ZLINK_HANDLER_BUSY;
     }

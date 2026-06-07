@@ -33,9 +33,7 @@
 #include "services/common/service_event_types_internal.hpp"
 
 extern "C" {
-int zlink_stream_attach_raw (void *s_,
-                             int (*on_raw_) (const zlink_routing_id_t *,
-                                              zlink_msg_t *));
+int zlink_stream_attach_raw (void *s_, int (*on_raw_) (const zlink_routing_id_t *, zlink_msg_t *));
 int zlink_stream_detach (void *s_);
 }
 

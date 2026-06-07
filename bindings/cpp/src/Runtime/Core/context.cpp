@@ -27,7 +27,8 @@ context_t::context_t (io_thread_count_t io_threads_) : _impl (std::make_unique<i
 {
     _impl->ctx = zlink_ctx_new ();
     if (_impl->ctx)
-        (void) zlink_ctx_set (_impl->ctx, static_cast<zlink_ctx_option_t> (1), io_threads_.value ());
+        (void) zlink_ctx_set (_impl->ctx, static_cast<zlink_ctx_option_t> (1),
+                              io_threads_.value ());
 }
 
 context_t::~context_t ()
@@ -61,7 +62,8 @@ void context_t::shutdown ()
 {
     if (!_impl || !_impl->ctx)
         throw close_error_t (close_result_t::invalid_handle);
-    detail::throw_if_failed<close_error_t> (static_cast<close_result_t> (zlink_ctx_shutdown (_impl->ctx)));
+    detail::throw_if_failed<close_error_t> (
+      static_cast<close_result_t> (zlink_ctx_shutdown (_impl->ctx)));
 }
 
 void context_t::term ()
@@ -94,7 +96,8 @@ int context_t::get_option_raw (int option_, int *error_out_) const
 {
     zlink_config_result_t error = static_cast<zlink_config_result_t> (0);
     if (!_impl || !_impl->ctx) {
-        error = static_cast<zlink_config_result_t> (static_cast<int> (config_result_t::invalid_handle));
+        error =
+          static_cast<zlink_config_result_t> (static_cast<int> (config_result_t::invalid_handle));
         if (error_out_)
             *error_out_ = static_cast<int> (error);
         return -1;
@@ -109,15 +112,16 @@ config_result_t context_t::set_option_raw (int option_, int value_)
 {
     if (!_impl || !_impl->ctx)
         return config_result_t::invalid_handle;
-    return static_cast<config_result_t> (zlink_ctx_set (_impl->ctx, static_cast<zlink_ctx_option_t> (option_), value_));
+    return static_cast<config_result_t> (
+      zlink_ctx_set (_impl->ctx, static_cast<zlink_ctx_option_t> (option_), value_));
 }
 
 config_result_t context_t::set_option_data_raw (int option_, std::string_view value_)
 {
     if (!_impl || !_impl->ctx)
         return config_result_t::invalid_handle;
-    return static_cast<config_result_t> (
-      zlink_ctx_set_data (_impl->ctx, static_cast<zlink_ctx_option_t> (option_), value_.data (), value_.size ()));
+    return static_cast<config_result_t> (zlink_ctx_set_data (
+      _impl->ctx, static_cast<zlink_ctx_option_t> (option_), value_.data (), value_.size ()));
 }
 
 namespace detail
@@ -174,7 +178,8 @@ byte_size_t context_options_t::max_msg_size () const
 
 void context_options_t::max_msg_size (byte_size_t value_)
 {
-    detail::throw_if_failed<config_error_t> (_ctx.set_option_raw (5, static_cast<int> (value_.bytes ())));
+    detail::throw_if_failed<config_error_t> (
+      _ctx.set_option_raw (5, static_cast<int> (value_.bytes ())));
 }
 
 std::optional<thread_priority_t> context_options_t::thread_priority () const
@@ -258,7 +263,8 @@ std::chrono::milliseconds context_options_t::auto_hwm_recalc_debounce () const
 
 void context_options_t::auto_hwm_recalc_debounce (std::chrono::milliseconds value_)
 {
-    detail::throw_if_failed<config_error_t> (_ctx.set_option_raw (14, detail::native_option_ms (value_)));
+    detail::throw_if_failed<config_error_t> (
+      _ctx.set_option_raw (14, detail::native_option_ms (value_)));
 }
 
 zlink::auto_hwm_profile context_options_t::auto_hwm_profile () const
@@ -288,7 +294,8 @@ void context_options_t::auto_hwm_msg_unit_bytes (byte_size_t value_)
 {
     if (value_.bytes () < 0 || value_.bytes () > INT_MAX)
         throw config_error_t (config_result_t::invalid_argument, EINVAL);
-    detail::throw_if_failed<config_error_t> (_ctx.set_option_raw (18, static_cast<int> (value_.bytes ())));
+    detail::throw_if_failed<config_error_t> (
+      _ctx.set_option_raw (18, static_cast<int> (value_.bytes ())));
 }
 
 socket_count_t context_options_t::socket_limit () const

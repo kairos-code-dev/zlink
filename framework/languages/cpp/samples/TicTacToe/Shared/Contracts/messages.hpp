@@ -186,7 +186,8 @@ inline void from_json (const nlohmann::json &json, authenticate_actor_res_t &val
 
 inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
 {
-    json = {{"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
+    json = {
+      {"nodeRid", value.node_rid}, {"actorId", value.actor_id}, {"generation", value.generation}};
 }
 
 inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
@@ -310,7 +311,9 @@ inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 
 inline void to_json (nlohmann::json &json, const create_match_res_t &value)
 {
-    json = {{"matchId", value.match_id}, {"ownerActorId", value.owner_actor_id}, {"playEndpoint", value.play_endpoint}};
+    json = {{"matchId", value.match_id},
+            {"ownerActorId", value.owner_actor_id},
+            {"playEndpoint", value.play_endpoint}};
 }
 
 inline void from_json (const nlohmann::json &json, create_match_res_t &value)
@@ -322,7 +325,10 @@ inline void from_json (const nlohmann::json &json, create_match_res_t &value)
 
 inline void to_json (nlohmann::json &json, const join_match_res_t &value)
 {
-    json = {{"matchId", value.match_id}, {"actorId", value.actor_id}, {"mark", value.mark}, {"state", value.state}};
+    json = {{"matchId", value.match_id},
+            {"actorId", value.actor_id},
+            {"mark", value.mark},
+            {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, join_match_res_t &value)
@@ -361,7 +367,8 @@ inline void from_json (const nlohmann::json &json, opponent_joined_notify_t &val
 
 inline void to_json (nlohmann::json &json, const turn_changed_notify_t &value)
 {
-    json = {{"matchId", value.match_id}, {"turnActorId", value.turn_actor_id}, {"state", value.state}};
+    json = {
+      {"matchId", value.match_id}, {"turnActorId", value.turn_actor_id}, {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, turn_changed_notify_t &value)

@@ -34,8 +34,7 @@ void test_endpoint_too_long ()
     }
 
     void *sb = test_context_socket (ZLINK_SOCKET_PAIR);
-    TEST_ASSERT_FAILURE_ERRNO (ENAMETOOLONG,
-                               zlink_bind (sb, endpoint_too_long.data ()));
+    TEST_ASSERT_FAILURE_ERRNO (ENAMETOOLONG, zlink_bind (sb, endpoint_too_long.data ()));
 
     test_context_socket_close (sb);
 }

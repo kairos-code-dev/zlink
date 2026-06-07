@@ -19,9 +19,7 @@ void *&request_completion_owner_tls ()
     return owner;
 }
 
-int move_completion_parts (std::vector<zlink_msg_t> *dest_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_)
+int move_completion_parts (std::vector<zlink_msg_t> *dest_, zlink_msg_t *parts_, size_t part_count_)
 {
     if (!dest_) {
         errno = EFAULT;
@@ -73,10 +71,7 @@ class request_completion_callback_scope_t
         request_completion_owner_tls () = owner_handle_;
     }
 
-    ~request_completion_callback_scope_t ()
-    {
-        request_completion_owner_tls () = previous_owner;
-    }
+    ~request_completion_callback_scope_t () { request_completion_owner_tls () = previous_owner; }
 
   private:
     void *previous_owner;
@@ -84,9 +79,7 @@ class request_completion_callback_scope_t
 }
 
 zlink::request_completion::queued_completion_t::queued_completion_t () :
-    handler (NULL),
-    userdata (NULL),
-    errnum (0)
+    handler (NULL), userdata (NULL), errnum (0)
 {
 }
 
@@ -97,9 +90,7 @@ zlink::request_completion::queued_completion_t::~queued_completion_t ()
 
 zlink::request_completion::queued_completion_t::queued_completion_t (
   queued_completion_t &&other_) noexcept :
-    handler (other_.handler),
-    userdata (other_.userdata),
-    errnum (other_.errnum)
+    handler (other_.handler), userdata (other_.userdata), errnum (other_.errnum)
 {
     parts.swap (other_.parts);
     other_.handler = NULL;
@@ -108,8 +99,7 @@ zlink::request_completion::queued_completion_t::queued_completion_t (
 }
 
 zlink::request_completion::queued_completion_t &
-zlink::request_completion::queued_completion_t::operator= (
-  queued_completion_t &&other_) noexcept
+zlink::request_completion::queued_completion_t::operator= (queued_completion_t &&other_) noexcept
 {
     if (this == &other_)
         return *this;
@@ -126,19 +116,15 @@ zlink::request_completion::queued_completion_t::operator= (
 }
 
 zlink::request_completion::queue_state_t::queue_state_t () :
-    owner_thread_valid (false),
-    signal_pending (false),
-    close_requested (false),
-    poller_refs (0)
+    owner_thread_valid (false), signal_pending (false), close_requested (false), poller_refs (0)
 {
 }
 
 namespace
 {
-int ensure_signal_ready_locked (
-  zlink::request_completion::queue_state_t *state_,
-  zlink::ctx_t *ctx_,
-  const char *prefix_)
+int ensure_signal_ready_locked (zlink::request_completion::queue_state_t *state_,
+                                zlink::ctx_t *ctx_,
+                                const char *prefix_)
 {
     if (state_->close_requested) {
         errno = ETERM;
@@ -186,8 +172,7 @@ int zlink::request_completion::enqueue (queue_state_t *state_,
             return -1;
         if (move_completion_parts (&completion.parts, parts_, part_count_) != 0)
             return -1;
-        const bool should_signal =
-          state_->pending.empty () && !state_->signal_pending;
+        const bool should_signal = state_->pending.empty () && !state_->signal_pending;
         state_->pending.push_back (std::move (completion));
         if (should_signal) {
             state_->signal_pending = true;
@@ -235,8 +220,7 @@ int zlink::request_completion::signal (queue_state_t *state_,
     return 0;
 }
 
-int zlink::request_completion::drain (queue_state_t *state_,
-                                      void *owner_handle_)
+int zlink::request_completion::drain (queue_state_t *state_, void *owner_handle_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -272,12 +256,12 @@ int zlink::request_completion::drain (queue_state_t *state_,
         if (queue_empty)
             break;
 
-        for (std::deque<queued_completion_t>::iterator it = batch.begin ();
-             it != batch.end (); ++it) {
+        for (std::deque<queued_completion_t>::iterator it = batch.begin (); it != batch.end ();
+             ++it) {
             const request_completion_callback_scope_t scope (owner_handle_);
             zlink_msg_t *parts = it->parts.empty () ? NULL : &it->parts[0];
-            zlink::request_reply::complete_reply_callback (
-              it->handler, it->errnum, parts, it->parts.size (), it->userdata);
+            zlink::request_reply::complete_reply_callback (it->handler, it->errnum, parts,
+                                                           it->parts.size (), it->userdata);
             ++drained;
         }
     }
@@ -296,13 +280,11 @@ void zlink::request_completion::close (queue_state_t *state_)
         state_->pending.clear ();
         state_->owner_thread_valid = false;
         state_->close_requested = true;
-        if (state_->poller_refs > 0 && state_->signal.tx_socket ()
-            && !state_->signal_pending) {
+        if (state_->poller_refs > 0 && state_->signal.tx_socket () && !state_->signal_pending) {
             state_->signal_pending = true;
             static const unsigned char signal_byte = 0x7a;
             if (zlink::internal_pair_queue::send_buffer_frame (
-                  state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte),
-                  ZLINK_DONTWAIT)
+                  state_->signal.tx_socket (), &signal_byte, sizeof (signal_byte), ZLINK_DONTWAIT)
                 != 0) {
                 state_->signal_pending = false;
             }
@@ -366,8 +348,7 @@ bool zlink::request_completion::current_thread_is_owner (queue_state_t *state_)
         return false;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    return state_->owner_thread_valid
-           && state_->owner_thread == std::this_thread::get_id ();
+    return state_->owner_thread_valid && state_->owner_thread == std::this_thread::get_id ();
 }
 
 bool zlink::request_completion::has_pending (queue_state_t *state_)
@@ -379,25 +360,21 @@ bool zlink::request_completion::has_pending (queue_state_t *state_)
     return !state_->pending.empty ();
 }
 
-zlink::socket_base_t *
-zlink::request_completion::signal_socket (queue_state_t *state_)
+zlink::socket_base_t *zlink::request_completion::signal_socket (queue_state_t *state_)
 {
     return state_ ? state_->signal.rx_socket () : NULL;
 }
 
-bool zlink::request_completion::in_request_completion_callback (
-  void *owner_handle_)
+bool zlink::request_completion::in_request_completion_callback (void *owner_handle_)
 {
-    return owner_handle_ != NULL
-           && request_completion_owner_tls () == owner_handle_;
+    return owner_handle_ != NULL && request_completion_owner_tls () == owner_handle_;
 }
 
-int zlink::request_completion::wait_input_or_signal (
-  zlink::socket_base_t *input_,
-  zlink::socket_base_t *signal_,
-  long timeout_ms_,
-  bool *input_ready_out_,
-  bool *signal_ready_out_)
+int zlink::request_completion::wait_input_or_signal (zlink::socket_base_t *input_,
+                                                     zlink::socket_base_t *signal_,
+                                                     long timeout_ms_,
+                                                     bool *input_ready_out_,
+                                                     bool *signal_ready_out_)
 {
     if (!signal_ready_out_) {
         errno = EFAULT;
@@ -405,20 +382,17 @@ int zlink::request_completion::wait_input_or_signal (
     }
     *signal_ready_out_ = false;
     wait_signal_t signal = {signal_, signal_ready_out_};
-    return wait_input_or_signals (input_, signal_ ? &signal : NULL,
-                                  signal_ ? 1 : 0, timeout_ms_,
+    return wait_input_or_signals (input_, signal_ ? &signal : NULL, signal_ ? 1 : 0, timeout_ms_,
                                   input_ready_out_);
 }
 
-int zlink::request_completion::wait_input_or_signals (
-  zlink::socket_base_t *input_,
-  const wait_signal_t *signals_,
-  size_t signal_count_,
-  long timeout_ms_,
-  bool *input_ready_out_)
+int zlink::request_completion::wait_input_or_signals (zlink::socket_base_t *input_,
+                                                      const wait_signal_t *signals_,
+                                                      size_t signal_count_,
+                                                      long timeout_ms_,
+                                                      bool *input_ready_out_)
 {
-    if (!input_ || !input_ready_out_
-        || (signal_count_ > 0 && !signals_)) {
+    if (!input_ || !input_ready_out_ || (signal_count_ > 0 && !signals_)) {
         errno = EFAULT;
         return -1;
     }
@@ -433,8 +407,7 @@ int zlink::request_completion::wait_input_or_signals (
     }
 
     if (signal_count_ == 0) {
-        const int wait_rc =
-          zlink::wait_socket_events_internal (input_, ZLINK_POLLIN, timeout_ms_);
+        const int wait_rc = zlink::wait_socket_events_internal (input_, ZLINK_POLLIN, timeout_ms_);
         if (wait_rc < 0)
             return -1;
         if (wait_rc == 0)

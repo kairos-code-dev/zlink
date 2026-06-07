@@ -14,15 +14,14 @@
 
 namespace zlink
 {
-void socket_discovery_attachment_t::report_topology (
-  discovery_t *discovery_,
-  uint16_t local_role_,
-  const std::string &advertise_endpoint_,
-  uint16_t state_,
-  uint32_t desired_count_,
-  uint32_t ready_count_,
-  int error_code_,
-  bool flush_immediately_)
+void socket_discovery_attachment_t::report_topology (discovery_t *discovery_,
+                                                     uint16_t local_role_,
+                                                     const std::string &advertise_endpoint_,
+                                                     uint16_t state_,
+                                                     uint32_t desired_count_,
+                                                     uint32_t ready_count_,
+                                                     int error_code_,
+                                                     bool flush_immediately_)
 {
     if (!discovery_ || advertise_endpoint_.empty ())
         return;
@@ -38,8 +37,7 @@ void socket_discovery_attachment_t::report_topology (
     entry.service_role = static_cast<zlink_service_role_t> (local_role_);
     entry.auto_connect_type =
       static_cast<zlink_auto_connect_type_t> (discovery_->auto_connect_type ());
-    copy_fixed_c_string_from_cstr (entry.channel_name,
-                                   sizeof (entry.channel_name),
+    copy_fixed_c_string_from_cstr (entry.channel_name, sizeof (entry.channel_name),
                                    discovery_->channel_name ().c_str ());
     copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
                                    advertise_endpoint_.c_str ());
@@ -54,11 +52,10 @@ void socket_discovery_attachment_t::report_topology (
         discovery_access_t::flush_topology_reports (discovery_);
 }
 
-void socket_discovery_attachment_t::refresh_peers (
-  discovery_t *discovery_,
-  uint16_t local_role_,
-  const std::string &advertise_endpoint_,
-  bool shutdown_requested_)
+void socket_discovery_attachment_t::refresh_peers (discovery_t *discovery_,
+                                                   uint16_t local_role_,
+                                                   const std::string &advertise_endpoint_,
+                                                   bool shutdown_requested_)
 {
     if (!discovery_ || shutdown_requested_)
         return;
@@ -79,15 +76,12 @@ void socket_discovery_attachment_t::refresh_peers (
     std::map<std::string, std::string> target_peers_by_rid;
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &provider = providers[i];
-        const std::string remote_rid =
-          zlink::routing_id_key (provider.routing_id);
-        if (provider.endpoint.empty ()
-            || advertise_endpoint_ == provider.endpoint
+        const std::string remote_rid = zlink::routing_id_key (provider.routing_id);
+        if (provider.endpoint.empty () || advertise_endpoint_ == provider.endpoint
             || (!local_rid.empty () && local_rid == remote_rid)
             || !discovery_protocol::socket_auto_connect_target_matches (
-              discovery_->auto_connect_type (), local_role_,
-              provider.service_role, local_routing_id, provider.routing_id,
-              advertise_endpoint_, provider.endpoint)) {
+              discovery_->auto_connect_type (), local_role_, provider.service_role,
+              local_routing_id, provider.routing_id, advertise_endpoint_, provider.endpoint)) {
             continue;
         }
         target_endpoints.insert (provider.endpoint);
@@ -105,34 +99,29 @@ void socket_discovery_attachment_t::refresh_peers (
         active_peers_by_rid = _active_peers_by_rid;
         _discovery_managed_peer_endpoints = target_endpoints;
         _discovery_managed_peers_by_rid = target_peers_by_rid;
-        _refresh_seq =
-          discovery_->service_update_seq (discovery_->channel_name ());
+        _refresh_seq = discovery_->service_update_seq (discovery_->channel_name ());
     }
 
-    for (std::map<std::string, std::string>::const_iterator it =
-           target_peers_by_rid.begin ();
+    for (std::map<std::string, std::string>::const_iterator it = target_peers_by_rid.begin ();
          it != target_peers_by_rid.end (); ++it) {
         std::map<std::string, std::string>::const_iterator active =
           active_peers_by_rid.find (it->first);
         if (active != active_peers_by_rid.end () && active->second == it->second)
             continue;
         if (active != active_peers_by_rid.end ())
-            (void) _socket->service_attachment_term_endpoint (
-              active->second.c_str ());
+            (void) _socket->service_attachment_term_endpoint (active->second.c_str ());
         if (_socket->service_attachment_connect (it->second.c_str ()) == 0) {
             scoped_lock_t lock (_sync);
             if (_discovery == discovery_ && !_shutdown_requested) {
-                _active_peer_endpoints.erase (active == active_peers_by_rid.end ()
-                                                ? std::string ()
-                                                : active->second);
+                _active_peer_endpoints.erase (
+                  active == active_peers_by_rid.end () ? std::string () : active->second);
                 _active_peer_endpoints.insert (it->second);
                 _active_peers_by_rid[it->first] = it->second;
             }
         }
     }
 
-    for (std::map<std::string, std::string>::const_iterator it =
-           active_peers_by_rid.begin ();
+    for (std::map<std::string, std::string>::const_iterator it = active_peers_by_rid.begin ();
          it != active_peers_by_rid.end (); ++it) {
         if (target_peers_by_rid.find (it->first) != target_peers_by_rid.end ())
             continue;
@@ -151,8 +140,7 @@ void socket_discovery_attachment_t::refresh_peers (
                 return;
             ready_count = _active_peer_endpoints.size ();
         }
-        report_topology (discovery_, local_role_, advertise_endpoint_,
-                         ZLINK_TOPOLOGY_STATE_READY,
+        report_topology (discovery_, local_role_, advertise_endpoint_, ZLINK_TOPOLOGY_STATE_READY,
                          static_cast<uint32_t> (target_endpoints.size ()),
                          static_cast<uint32_t> (ready_count), 0, false);
     }

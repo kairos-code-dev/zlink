@@ -13,11 +13,14 @@
 #include <thread>
 #include <vector>
 
-namespace {
+namespace
+{
 
 struct dealer_router_recv_state_t
 {
-    dealer_router_recv_state_t () : run_id (0), msg_size (0), payload_size (0), active_received (0) {}
+    dealer_router_recv_state_t () : run_id (0), msg_size (0), payload_size (0), active_received (0)
+    {
+    }
 
     uint32_t run_id;
     size_t msg_size;
@@ -34,25 +37,21 @@ bool setup_dealer_router_session (void *router_,
     if (!router_ || !dealer_)
         return false;
 
-    if (!setup_tls_server (router_, transport_)
-        || !setup_tls_client (dealer_, transport_)) {
+    if (!setup_tls_server (router_, transport_) || !setup_tls_client (dealer_, transport_)) {
         return false;
     }
 
     apply_single_hwm (router_);
     apply_single_hwm (dealer_);
 
-    const std::string endpoint =
-      bind_and_resolve_endpoint (router_, transport_, pair_id_);
+    const std::string endpoint = bind_and_resolve_endpoint (router_, transport_, pair_id_);
     if (endpoint.empty ())
         return false;
 
-    void *router_monitor =
-      open_configured_socket_monitor (router_, ZLINK_EVENT_CONNECTION_READY);
+    void *router_monitor = open_configured_socket_monitor (router_, ZLINK_EVENT_CONNECTION_READY);
     if (!router_monitor)
         return false;
-    void *dealer_monitor =
-      open_configured_socket_monitor (dealer_, ZLINK_EVENT_CONNECTION_READY);
+    void *dealer_monitor = open_configured_socket_monitor (dealer_, ZLINK_EVENT_CONNECTION_READY);
     if (!dealer_monitor) {
         zlink_monitor_close (&router_monitor);
         return false;
@@ -67,8 +66,7 @@ bool setup_dealer_router_session (void *router_,
     apply_single_benchmark_socket_options (router_, transport_);
     apply_single_benchmark_socket_options (dealer_, transport_);
 
-    const int ready_timeout_ms =
-      parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
+    const int ready_timeout_ms = parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000);
     const bool router_ready = wait_for_socket_monitor_event_with_activity (
       router_monitor, router_, ZLINK_EVENT_CONNECTION_READY, ready_timeout_ms);
     const bool dealer_ready = wait_for_socket_monitor_event (
@@ -79,10 +77,8 @@ bool setup_dealer_router_session (void *router_,
         return false;
 
     const int timeout_ms = resolve_single_recv_timeout_ms ();
-    set_sockopt_int (router_, ZLINK_OPT_RCVTIMEO, timeout_ms,
-                     "ZLINK_OPT_RCVTIMEO");
-    set_sockopt_int (dealer_, ZLINK_OPT_RCVTIMEO, timeout_ms,
-                     "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (router_, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
+    set_sockopt_int (dealer_, ZLINK_OPT_RCVTIMEO, timeout_ms, "ZLINK_OPT_RCVTIMEO");
     if (bench_debug_enabled ())
         std::cerr << "[perf-dealer-router] setup complete" << std::endl;
     return true;
@@ -107,9 +103,9 @@ int recv_router_header_flags (void *router_,
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
         return -1;
-    const int rc = zlink_router_recv_part (
-      router_, &source_rid, &source_spot_rid, &request_seq, &part, &has_more,
-      static_cast<zlink_recv_flags_t> (flags_));
+    const int rc =
+      zlink_router_recv_part (router_, &source_rid, &source_spot_rid, &request_seq, &part,
+                              &has_more, static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&part);
@@ -118,16 +114,13 @@ int recv_router_header_flags (void *router_,
         return -1;
     }
 
-    if (!source_rid || source_rid->size == 0
-        || !source_spot_rid || source_spot_rid->size != 0 || request_seq != 0
-        || has_more != ZLINK_PART_FINAL) {
+    if (!source_rid || source_rid->size == 0 || !source_spot_rid || source_spot_rid->size != 0
+        || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-dealer-router] invalid routed recv"
-                      << " rid_size="
-                      << static_cast<int> (source_rid ? source_rid->size : 0)
+                      << " rid_size=" << static_cast<int> (source_rid ? source_rid->size : 0)
                       << " request_seq=" << request_seq
-                      << " has_more=" << static_cast<int> (has_more)
-                      << std::endl;
+                      << " has_more=" << static_cast<int> (has_more) << std::endl;
         }
         zlink_msg_close (&part);
         return -1;
@@ -141,15 +134,14 @@ int recv_router_header_flags (void *router_,
     const bool size_ok = actual_size == payload_size_;
     bool header_ok = false;
     if (size_ok && header_out_) {
-        header_ok = perf_single_metric::decode_payload_header (
-          zlink_msg_data (&part), actual_size, header_out_);
+        header_ok = perf_single_metric::decode_payload_header (zlink_msg_data (&part), actual_size,
+                                                               header_out_);
     }
     zlink_msg_close (&part);
     if (!size_ok) {
         if (bench_debug_enabled ()) {
-            std::cerr << "[perf-dealer-router] unexpected payload size="
-                      << actual_size << " expected=" << payload_size_
-                      << std::endl;
+            std::cerr << "[perf-dealer-router] unexpected payload size=" << actual_size
+                      << " expected=" << payload_size_ << std::endl;
         }
         return -1;
     }
@@ -168,14 +160,12 @@ bool send_dealer_stop_token (void *sender_)
         zlink_msg_t part;
         if (zlink_msg_init_size (&part, std::strlen (k_stop_token)) != 0)
             return false;
-        std::memcpy (zlink_msg_data (&part), k_stop_token,
-                     std::strlen (k_stop_token));
+        std::memcpy (zlink_msg_data (&part), k_stop_token, std::strlen (k_stop_token));
         if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) == 0)
             return true;
         const int err = zlink_errno ();
         zlink_msg_close (&part);
-        if (err != EINTR && err != EAGAIN && err != EWOULDBLOCK
-            && err != ETIMEDOUT)
+        if (err != EINTR && err != EAGAIN && err != EWOULDBLOCK && err != ETIMEDOUT)
             return false;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -192,18 +182,13 @@ bool send_dealer_samples (void *sender_,
         return false;
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (1, duration_s_));
+      std::chrono::steady_clock::now () + std::chrono::seconds (std::max (1, duration_s_));
     uint64_t seq = 1;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (!perf_single_metric::stamp_payload (
-              payload_->data (),
-              payload_->size (),
-              state_->run_id,
-              perf_single_metric::phase_active,
-              state_->msg_size,
-              seq,
-              perf_single_metric::now_ns ())) {
+        if (!perf_single_metric::stamp_payload (payload_->data (), payload_->size (),
+                                                state_->run_id, perf_single_metric::phase_active,
+                                                state_->msg_size, seq,
+                                                perf_single_metric::now_ns ())) {
             return false;
         }
 
@@ -211,14 +196,12 @@ bool send_dealer_samples (void *sender_,
         if (zlink_msg_init_size (&part, payload_->size ()) != 0)
             return false;
         if (!payload_->empty ())
-            std::memcpy (
-              zlink_msg_data (&part), payload_->data (), payload_->size ());
+            std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
 
         if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_SEND_FLAGS_NONE) != 0) {
             const int err = zlink_errno ();
             if (bench_debug_enabled ()) {
-                std::cerr << "[perf-dealer-router] send failed err=" << err
-                          << std::endl;
+                std::cerr << "[perf-dealer-router] send failed err=" << err << std::endl;
             }
             if (err == EINTR || err == EAGAIN)
                 continue;
@@ -239,14 +222,9 @@ int send_dealer_probe_once (void *sender_,
     if (!sender_ || !payload_ || !state_)
         return -1;
 
-    if (!perf_single_metric::stamp_payload (
-          payload_->data (),
-          payload_->size (),
-          state_->run_id,
-          perf_single_metric::phase_active,
-          state_->msg_size,
-          0,
-          perf_single_metric::now_ns ())) {
+    if (!perf_single_metric::stamp_payload (payload_->data (), payload_->size (), state_->run_id,
+                                            perf_single_metric::phase_active, state_->msg_size, 0,
+                                            perf_single_metric::now_ns ())) {
         return -1;
     }
 
@@ -254,8 +232,7 @@ int send_dealer_probe_once (void *sender_,
     if (zlink_msg_init_size (&part, payload_->size ()) != 0)
         return -1;
     if (!payload_->empty ()) {
-        std::memcpy (
-          zlink_msg_data (&part), payload_->data (), payload_->size ());
+        std::memcpy (zlink_msg_data (&part), payload_->data (), payload_->size ());
     }
 
     if (perf_zlink_send_parts (sender_, &part, 1, ZLINK_DONTWAIT) == 0)
@@ -278,13 +255,11 @@ bool wait_for_dealer_router_ready (void *sender_,
 
     const auto deadline =
       std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (
-        parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000));
+      + std::chrono::milliseconds (parse_positive_env ("PERF_CONNECT_READY_TIMEOUT_MS", 1000));
     while (std::chrono::steady_clock::now () < deadline) {
         if (bench_debug_enabled ())
             std::cerr << "[perf-dealer-router] ready probe send" << std::endl;
-        const int send_probe_rc =
-          send_dealer_probe_once (sender_, payload_, state_);
+        const int send_probe_rc = send_dealer_probe_once (sender_, payload_, state_);
         if (send_probe_rc < 0)
             return false;
         if (send_probe_rc == 0) {
@@ -293,31 +268,21 @@ bool wait_for_dealer_router_ready (void *sender_,
         }
 
         const auto probe_deadline =
-          std::min (deadline,
-                    std::chrono::steady_clock::now ()
-                      + std::chrono::milliseconds (50));
-        while (wait_socket_event_until (
-          receiver_, ZLINK_POLLIN, probe_deadline)) {
+          std::min (deadline, std::chrono::steady_clock::now () + std::chrono::milliseconds (50));
+        while (wait_socket_event_until (receiver_, ZLINK_POLLIN, probe_deadline)) {
             for (;;) {
                 perf_single_metric::header_t header;
                 bool header_ok = false;
-                const int recv_rc = recv_router_header_flags (
-                  receiver_,
-                  state_->payload_size,
-                  ZLINK_DONTWAIT,
-                  &header,
-                  &header_ok);
+                const int recv_rc = recv_router_header_flags (receiver_, state_->payload_size,
+                                                              ZLINK_DONTWAIT, &header, &header_ok);
                 if (recv_rc < 0)
                     return false;
                 if (recv_rc == 0)
                     break;
                 if (bench_debug_enabled ()) {
                     std::cerr << "[perf-dealer-router] ready probe recv"
-                              << " header_ok=" << (header_ok ? 1 : 0)
-                              << " run=" << header.run_id
-                              << " phase="
-                              << static_cast<unsigned int> (header.phase)
-                              << std::endl;
+                              << " header_ok=" << (header_ok ? 1 : 0) << " run=" << header.run_id
+                              << " phase=" << static_cast<unsigned int> (header.phase) << std::endl;
                 }
                 if (header_ok && single_header_matches_run (*state_, header))
                     return true;
@@ -340,8 +305,7 @@ bool run_active_phase (void *sender_,
 {
     (void) use_nonblocking_recv_;
     (void) recv_timeout_ms_;
-    if (!sender_ || !receiver_ || !payload_ || !state_ || !received_out_
-        || !latency_out_) {
+    if (!sender_ || !receiver_ || !payload_ || !state_ || !received_out_ || !latency_out_) {
         return false;
     }
 
@@ -355,9 +319,9 @@ bool run_active_phase (void *sender_,
     // PERF_SINGLE_TEST_POLICY § 1.4: sender thread emits active samples,
     // then sends a wire-level stop token so the receiver loop terminates
     // without consulting any atomic flag.
-    std::thread sender_thread ([&]() {
-        const bool active_ok = send_dealer_samples (
-          sender_, payload_, state_, duration_s_, &sent_count);
+    std::thread sender_thread ([&] () {
+        const bool active_ok =
+          send_dealer_samples (sender_, payload_, state_, duration_s_, &sent_count);
         const bool stop_ok = send_dealer_stop_token (sender_);
         sender_ok.store (active_ok && stop_ok, std::memory_order_release);
     });
@@ -368,8 +332,8 @@ bool run_active_phase (void *sender_,
     while (true) {
         perf_single_metric::header_t header;
         bool header_ok = false;
-        const int recv_rc = recv_router_header_flags (
-          receiver_, state_->payload_size, 0, &header, &header_ok);
+        const int recv_rc =
+          recv_router_header_flags (receiver_, state_->payload_size, 0, &header, &header_ok);
         if (recv_rc == 1) {
             if (header_ok && single_header_matches_run (*state_, header)) {
                 ++received;
@@ -390,8 +354,8 @@ bool run_active_phase (void *sender_,
     if (!sender_ok.load (std::memory_order_acquire)) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-dealer-router] active phase failed sent="
-                      << sent_count.load (std::memory_order_relaxed)
-                      << " received=" << received << std::endl;
+                      << sent_count.load (std::memory_order_relaxed) << " received=" << received
+                      << std::endl;
         }
         return false;
     }
@@ -407,9 +371,7 @@ bool run_active_phase (void *sender_,
 
 } // namespace
 
-void run_dealer_router (const std::string &transport,
-                        size_t msg_size,
-                        const std::string &lib_name)
+void run_dealer_router (const std::string &transport, size_t msg_size, const std::string &lib_name)
 {
     if (!transport_available (transport))
         return;
@@ -418,8 +380,7 @@ void run_dealer_router (const std::string &transport,
         print_fail_result (lib_name, "DEALER_ROUTER", transport, msg_size);
     };
 
-    const size_t payload_size =
-      std::max<size_t> (msg_size, perf_single_metric::header_size ());
+    const size_t payload_size = std::max<size_t> (msg_size, perf_single_metric::header_size ());
     std::vector<char> payload (payload_size, 'a');
     dealer_router_recv_state_t state;
     state.run_id = next_single_metric_run_id ();
@@ -446,9 +407,8 @@ void run_dealer_router (const std::string &transport,
         std::_Exit (1);
     }
 
-    if (!setup_dealer_router_session (
-          receiver.get (), sender.get (), transport,
-          lib_name + "_dealer_router")) {
+    if (!setup_dealer_router_session (receiver.get (), sender.get (), transport,
+                                      lib_name + "_dealer_router")) {
         print_fail ();
         fflush (NULL);
         std::_Exit (1);
@@ -457,15 +417,8 @@ void run_dealer_router (const std::string &transport,
     const int recv_timeout_ms = resolve_single_recv_timeout_ms ();
     unsigned long long received = 0;
     latency_stats_t latency;
-    if (!run_active_phase (sender.get (),
-                           receiver.get (),
-                           &payload,
-                           &state,
-                           false,
-                           duration_s,
-                           recv_timeout_ms,
-                           &received,
-                           &latency)) {
+    if (!run_active_phase (sender.get (), receiver.get (), &payload, &state, false, duration_s,
+                           recv_timeout_ms, &received, &latency)) {
         print_fail ();
         fflush (NULL);
         std::_Exit (1);
@@ -473,33 +426,18 @@ void run_dealer_router (const std::string &transport,
     if (bench_debug_enabled ())
         std::cerr << "[perf-dealer-router] active complete" << std::endl;
 
-    emit_single_socket_hwm_detail (receiver.get (),
-                                   "DEALER_ROUTER",
-                                   transport,
-                                   "receiver",
-                                   ZLINK_SOCKET_ROUTER,
-                                   msg_size);
-    emit_single_socket_hwm_detail (sender.get (),
-                                   "DEALER_ROUTER",
-                                   transport,
-                                   "sender",
-                                   ZLINK_SOCKET_DEALER,
-                                   msg_size);
-    print_result (lib_name,
-                  "DEALER_ROUTER",
-                  transport,
-                  msg_size,
-                  static_cast<double> (received)
-                    / static_cast<double> (duration_s),
-                  latency.mean_ns,
-                  latency.p95_ns,
-                  latency.p99_ns);
+    emit_single_socket_hwm_detail (receiver.get (), "DEALER_ROUTER", transport, "receiver",
+                                   ZLINK_SOCKET_ROUTER, msg_size);
+    emit_single_socket_hwm_detail (sender.get (), "DEALER_ROUTER", transport, "sender",
+                                   ZLINK_SOCKET_DEALER, msg_size);
+    print_result (lib_name, "DEALER_ROUTER", transport, msg_size,
+                  static_cast<double> (received) / static_cast<double> (duration_s),
+                  latency.mean_ns, latency.p95_ns, latency.p99_ns);
     fflush (NULL);
     std::_Exit (0);
 }
 
 int main (int argc, char **argv)
 {
-    return run_standard_bench_main (
-      argc, argv, "DEALER_ROUTER", run_dealer_router);
+    return run_standard_bench_main (argc, argv, "DEALER_ROUTER", run_dealer_router);
 }

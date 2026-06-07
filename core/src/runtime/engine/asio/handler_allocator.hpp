@@ -66,31 +66,26 @@ class handler_allocator
 };
 
 
-template <typename T>
-class handler_alloc_std_allocator;
+template <typename T> class handler_alloc_std_allocator;
 
-template <>
-class handler_alloc_std_allocator<void>
+template <> class handler_alloc_std_allocator<void>
 {
   public:
     typedef void value_type;
     typedef void *pointer;
     typedef const void *const_pointer;
 
-    template <typename U>
-    struct rebind
+    template <typename U> struct rebind
     {
         typedef handler_alloc_std_allocator<U> other;
     };
 
-    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept :
-        _allocator (&alloc)
+    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept : _allocator (&alloc)
     {
     }
 
     template <typename U>
-    handler_alloc_std_allocator (
-      const handler_alloc_std_allocator<U> &other) noexcept :
+    handler_alloc_std_allocator (const handler_alloc_std_allocator<U> &other) noexcept :
         _allocator (other._allocator)
     {
     }
@@ -106,14 +101,12 @@ class handler_alloc_std_allocator<void>
     }
 
   private:
-    template <typename U>
-    friend class handler_alloc_std_allocator;
+    template <typename U> friend class handler_alloc_std_allocator;
 
     handler_allocator *_allocator;
 };
 
-template <typename T>
-class handler_alloc_std_allocator
+template <typename T> class handler_alloc_std_allocator
 {
   public:
     typedef T value_type;
@@ -122,20 +115,17 @@ class handler_alloc_std_allocator
     typedef std::size_t size_type;
     typedef std::ptrdiff_t difference_type;
 
-    template <typename U>
-    struct rebind
+    template <typename U> struct rebind
     {
         typedef handler_alloc_std_allocator<U> other;
     };
 
-    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept :
-        _allocator (&alloc)
+    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept : _allocator (&alloc)
     {
     }
 
     template <typename U>
-    handler_alloc_std_allocator (
-      const handler_alloc_std_allocator<U> &other) noexcept :
+    handler_alloc_std_allocator (const handler_alloc_std_allocator<U> &other) noexcept :
         _allocator (other._allocator)
     {
     }
@@ -145,10 +135,7 @@ class handler_alloc_std_allocator
         return static_cast<pointer> (_allocator->allocate (n * sizeof (T)));
     }
 
-    void deallocate (pointer p, size_type)
-    {
-        _allocator->deallocate (p);
-    }
+    void deallocate (pointer p, size_type) { _allocator->deallocate (p); }
 
     bool operator== (const handler_alloc_std_allocator<T> &other) const noexcept
     {
@@ -161,8 +148,7 @@ class handler_alloc_std_allocator
     }
 
   private:
-    template <typename U>
-    friend class handler_alloc_std_allocator;
+    template <typename U> friend class handler_alloc_std_allocator;
 
     handler_allocator *_allocator;
 };
@@ -171,8 +157,7 @@ class handler_alloc_std_allocator
 //  Custom handler wrapper that uses handler hooks for custom allocation.
 //  This wrapper stores a reference to the handler_allocator and allows
 //  ASIO to use it via the asio_handler_allocate/deallocate hooks (ADL).
-template <typename Handler>
-class custom_alloc_handler
+template <typename Handler> class custom_alloc_handler
 {
   public:
     custom_alloc_handler (handler_allocator &alloc, Handler h) :
@@ -192,8 +177,7 @@ class custom_alloc_handler
     {
     }
 
-    template <typename... Args>
-    void operator() (Args &&...args)
+    template <typename... Args> void operator() (Args &&...args)
     {
         _handler (std::forward<Args> (args)...);
     }
@@ -202,8 +186,7 @@ class custom_alloc_handler
     //  Note: In newer Boost.Asio versions (1.74+), these hooks may be ignored
     //  in favor of the associated_allocator mechanism, but they still work
     //  as a fallback and provide compatibility with older versions.
-    friend void *asio_handler_allocate (std::size_t size,
-                                        custom_alloc_handler *this_handler)
+    friend void *asio_handler_allocate (std::size_t size, custom_alloc_handler *this_handler)
     {
         return this_handler->_allocator.allocate (size);
     }
@@ -217,10 +200,7 @@ class custom_alloc_handler
 
     //  Associated allocator support (for newer Boost.Asio versions).
     using allocator_type = handler_alloc_std_allocator<void>;
-    allocator_type get_allocator () const noexcept
-    {
-        return allocator_type (_allocator);
-    }
+    allocator_type get_allocator () const noexcept { return allocator_type (_allocator); }
 
   private:
     handler_allocator &_allocator;
@@ -234,8 +214,7 @@ class custom_alloc_handler
 //        wait_read,
 //        make_custom_alloc_handler(entry_->in_allocator, [this, entry_](...) { ... }));
 template <typename Handler>
-inline custom_alloc_handler<Handler>
-make_custom_alloc_handler (handler_allocator &alloc, Handler h)
+inline custom_alloc_handler<Handler> make_custom_alloc_handler (handler_allocator &alloc, Handler h)
 {
     return custom_alloc_handler<Handler> (alloc, std::move (h));
 }

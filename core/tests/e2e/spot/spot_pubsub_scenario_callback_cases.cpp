@@ -20,25 +20,21 @@ void test_spot_sub_handler_basic ()
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33140;
-    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
-      pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_connect_peer (sub_node, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub, "zone:auto:test"));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_node, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+      bind_spot_node_with_port_seed (pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (sub_node, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub, "zone:auto:test"));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (pub_node, ZLINK_SPOT_ROLE_PUB,
+                                                      ZLINK_MONITOR_STATE_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (sub_node, ZLINK_SPOT_ROLE_SUB,
+                                                      ZLINK_MONITOR_STATE_READY, 1, 5000));
 
     zlink_msg_t part;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
     memcpy (zlink_msg_data (&part), "ping", 4);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub, "zone:auto:test", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub, "zone:auto:test", &part, 1, 0));
 
-    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
-      sub, "zone:auto:test", "ping", 4, 3000));
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (sub, "zone:auto:test", "ping", 4, 3000));
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_node));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&pub_node));
@@ -70,24 +66,19 @@ void test_spot_recv_callback_isolated_by_handle ()
 
     char endpoint[MAX_SOCKET_STRING];
     int port_seed = 33180;
-    TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
-      pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_connect_peer (sub_a, endpoint));
+      bind_spot_node_with_port_seed (pub_node, "tcp://127.0.0.1:", &port_seed, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (sub_a, endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_a_handle, "zone:auto:test"));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      pub_node, ZLINK_SPOT_ROLE_PUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
-    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (
-      sub_a, ZLINK_SPOT_ROLE_SUB, ZLINK_MONITOR_STATE_READY, 1, 5000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_a_handle, "zone:auto:test"));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (pub_node, ZLINK_SPOT_ROLE_PUB,
+                                                      ZLINK_MONITOR_STATE_READY, 1, 5000));
+    TEST_ASSERT_TRUE (wait_for_spot_node_ready_state (sub_a, ZLINK_SPOT_ROLE_SUB,
+                                                      ZLINK_MONITOR_STATE_READY, 1, 5000));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
-    TEST_ASSERT_TRUE (wait_for_spot_recv_message (
-      sub_a_handle, "zone:auto:test", "ping", 4, 3000));
-    TEST_ASSERT_FALSE (wait_for_spot_recv_message (
-      sub_b_handle, "zone:auto:test", "ping", 4, 200));
+    TEST_ASSERT_SUCCESS_ERRNO (publish_text (&zlink_publish, pub, "zone:auto:test", "ping", 0));
+    TEST_ASSERT_TRUE (wait_for_spot_recv_message (sub_a_handle, "zone:auto:test", "ping", 4, 3000));
+    TEST_ASSERT_FALSE (wait_for_spot_recv_message (sub_b_handle, "zone:auto:test", "ping", 4, 200));
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_b));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_node_with_handles (&sub_a));

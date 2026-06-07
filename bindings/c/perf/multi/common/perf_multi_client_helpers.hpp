@@ -18,12 +18,13 @@
 #include <thread>
 #include <vector>
 
-namespace perf_multi_client {
+namespace perf_multi_client
+{
 
 using ::setup_tls_client;
 
-static std::atomic<int> g_debug_one_way_logs(0);
-static std::atomic<int> g_debug_header_logs(0);
+static std::atomic<int> g_debug_one_way_logs (0);
+static std::atomic<int> g_debug_header_logs (0);
 
 enum send_status_t
 {
@@ -34,8 +35,7 @@ enum send_status_t
 
 inline bool is_supported_transport (const std::string &transport)
 {
-    if (transport == "tcp" || transport == "tls" || transport == "ws"
-        || transport == "wss")
+    if (transport == "tcp" || transport == "tls" || transport == "ws" || transport == "wss")
         return true;
 #if !defined(_WIN32)
     if (transport == "ipc")
@@ -46,9 +46,7 @@ inline bool is_supported_transport (const std::string &transport)
     return false;
 }
 
-inline bool parse_endpoint_arg (int argc,
-                                char **argv,
-                                std::string *endpoint_out)
+inline bool parse_endpoint_arg (int argc, char **argv, std::string *endpoint_out)
 {
     if (!endpoint_out)
         return false;
@@ -106,10 +104,7 @@ inline send_status_t send_echo_message_flags (void *socket,
         zlink_routing_id_t target_rid;
         target_rid.size = static_cast<uint8_t> (server_id.size ());
         if (target_rid.size > 0) {
-            std::memcpy (
-              target_rid.data,
-              server_id.data (),
-              static_cast<size_t> (target_rid.size));
+            std::memcpy (target_rid.data, server_id.data (), static_cast<size_t> (target_rid.size));
         }
         const zlink_submit_result_t rc =
           ::perf_zlink_send_rid_parts (socket, &target_rid, &part, 1, base_flags);
@@ -118,8 +113,7 @@ inline send_status_t send_echo_message_flags (void *socket,
         return classify_send_result (rc);
     }
 
-    const zlink_submit_result_t payload_rc =
-      ::perf_zlink_send_parts (socket, &part, 1, base_flags);
+    const zlink_submit_result_t payload_rc = ::perf_zlink_send_parts (socket, &part, 1, base_flags);
     if (payload_rc != ZLINK_SUBMIT_OK)
         zlink_msg_close (&part);
     return classify_send_result (payload_rc);
@@ -132,21 +126,12 @@ inline send_status_t send_echo_message (void *socket,
                                         bool router_send,
                                         bool per_socket_payload)
 {
-    return send_echo_message_flags (
-      socket,
-      server_id,
-      payload,
-      payload_size,
-      router_send,
-      ZLINK_DONTWAIT,
-      per_socket_payload);
+    return send_echo_message_flags (socket, server_id, payload, payload_size, router_send,
+                                    ZLINK_DONTWAIT, per_socket_payload);
 }
 
-inline int recv_one_message (void *socket,
-                             bool router_surface,
-                             std::vector<char> &scratch,
-                             int flags,
-                             size_t capture_bytes)
+inline int recv_one_message (
+  void *socket, bool router_surface, std::vector<char> &scratch, int flags, size_t capture_bytes)
 {
     if (!socket)
         return -1;
@@ -161,18 +146,11 @@ inline int recv_one_message (void *socket,
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     if (router_surface) {
-        rc = ::zlink_router_recv_part (
-          socket,
-          &source_rid,
-          &source_spot_rid,
-          &request_seq,
-          &part,
-          &has_more,
-          static_cast<zlink_recv_flags_t> (flags));
+        rc = ::zlink_router_recv_part (socket, &source_rid, &source_spot_rid, &request_seq, &part,
+                                       &has_more, static_cast<zlink_recv_flags_t> (flags));
     } else {
-        rc = ::zlink_recv_part (
-          socket, &source_rid, &part, &has_more,
-          static_cast<zlink_recv_flags_t> (flags));
+        rc = ::zlink_recv_part (socket, &source_rid, &part, &has_more,
+                                static_cast<zlink_recv_flags_t> (flags));
     }
     if (rc != 0) {
         const int err = zlink_errno ();
@@ -183,8 +161,7 @@ inline int recv_one_message (void *socket,
     }
 
     if (router_surface
-        && ((source_rid && source_rid->size == 0)
-            || (source_spot_rid && source_spot_rid->size != 0)
+        && ((source_rid && source_rid->size == 0) || (source_spot_rid && source_spot_rid->size != 0)
             || request_seq != 0 || has_more != ZLINK_PART_FINAL)) {
         zlink_msg_close (&part);
         errno = EPROTO;
@@ -199,8 +176,7 @@ inline int recv_one_message (void *socket,
 
     if (capture_bytes > 0 && !scratch.empty ()) {
         const size_t copy_size =
-          std::min (std::min (capture_bytes, scratch.size ()),
-                    zlink_msg_size (&part));
+          std::min (std::min (capture_bytes, scratch.size ()), zlink_msg_size (&part));
         if (copy_size > 0) {
             std::memcpy (scratch.data (), zlink_msg_data (&part), copy_size);
         }
@@ -210,25 +186,20 @@ inline int recv_one_message (void *socket,
     return 1;
 }
 
-inline int recv_one_message (void *socket,
-                             bool router_surface,
-                             std::vector<char> &scratch,
-                             int flags)
+inline int
+recv_one_message (void *socket, bool router_surface, std::vector<char> &scratch, int flags)
 {
-    return recv_one_message (
-      socket, router_surface, scratch, flags, scratch.size ());
+    return recv_one_message (socket, router_surface, scratch, flags, scratch.size ());
 }
 
-inline bool wait_client_connect_ready_all (std::vector<ready_monitor_t> &monitors,
-                                           int timeout_ms)
+inline bool wait_client_connect_ready_all (std::vector<ready_monitor_t> &monitors, int timeout_ms)
 {
     if (monitors.empty ())
         return true;
 
     const int bounded_timeout = timeout_ms > 0 ? timeout_ms : 0;
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (bounded_timeout);
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (bounded_timeout);
 
     for (size_t i = 0; i < monitors.size (); ++i) {
         const auto now = std::chrono::steady_clock::now ();
@@ -236,11 +207,9 @@ inline bool wait_client_connect_ready_all (std::vector<ready_monitor_t> &monitor
             return false;
 
         const int remaining_ms = static_cast<int> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            deadline - now)
-            .count ());
-        if (!wait_for_socket_monitor_event (
-              monitors[i], ZLINK_EVENT_CONNECTION_READY, remaining_ms))
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
+        if (!wait_for_socket_monitor_event (monitors[i], ZLINK_EVENT_CONNECTION_READY,
+                                            remaining_ms))
             return false;
     }
 
@@ -269,16 +238,15 @@ inline void close_client_monitors (std::vector<ready_monitor_t> *monitors)
         close_ready_monitor ((*monitors)[i]);
 }
 
-inline bool create_client_sockets (
-  ctx_guard_t &ctx,
-  const std::string &transport,
-  const std::string &endpoint,
-  const multi_bench_settings_t &settings,
-  int client_socket_type,
-  size_t msg_size,
-  std::vector<void *> *sockets_out,
-  std::vector<ready_monitor_t> *monitors_out,
-  bool print_auto_hwm_snapshot = true)
+inline bool create_client_sockets (ctx_guard_t &ctx,
+                                   const std::string &transport,
+                                   const std::string &endpoint,
+                                   const multi_bench_settings_t &settings,
+                                   int client_socket_type,
+                                   size_t msg_size,
+                                   std::vector<void *> *sockets_out,
+                                   std::vector<ready_monitor_t> *monitors_out,
+                                   bool print_auto_hwm_snapshot = true)
 {
     if (!sockets_out)
         return false;
@@ -288,42 +256,32 @@ inline bool create_client_sockets (
         monitors_out->assign (settings.clients, ready_monitor_t ());
 
     for (size_t i = 0; i < sockets_out->size (); ++i) {
-        void *sock = zlink_socket (
-          ctx.get (), static_cast<zlink_socket_type_t> (client_socket_type));
+        void *sock =
+          zlink_socket (ctx.get (), static_cast<zlink_socket_type_t> (client_socket_type));
         if (!sock)
             return false;
 
-        apply_benchmark_socket_options (
-          sock,
-          settings.hwm,
-          transport,
-          static_cast<zlink_socket_type_t> (client_socket_type),
-          msg_size,
-          print_auto_hwm_snapshot);
+        apply_benchmark_socket_options (sock, settings.hwm, transport,
+                                        static_cast<zlink_socket_type_t> (client_socket_type),
+                                        msg_size, print_auto_hwm_snapshot);
 
         if (client_socket_type == ZLINK_SOCKET_ROUTER
             || client_socket_type == ZLINK_SOCKET_DEALER) {
             char id_buf[32];
-            const int id_len =
-              std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
+            const int id_len = std::snprintf (id_buf, sizeof (id_buf), "client_%zu", i);
             if (id_len > 0) {
-                zlink_set_routing_id (
-                  sock, id_buf, static_cast<size_t> (id_len));
+                zlink_set_routing_id (sock, id_buf, static_cast<size_t> (id_len));
             }
         }
 
         if (client_socket_type == ZLINK_SOCKET_ROUTER) {
             static const char k_server_connect_id[] = "SERVER";
-            if (zlink_set_router_option (
-                  sock,
-                  ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
-                  k_server_connect_id,
-                  sizeof (k_server_connect_id) - 1)
+            if (zlink_set_router_option (sock, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID,
+                                         k_server_connect_id, sizeof (k_server_connect_id) - 1)
                 != 0) {
                 if (bench_debug_enabled ()) {
-                    std::cerr
-                      << "set router connect_routing_id failed: "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
+                    std::cerr << "set router connect_routing_id failed: "
+                              << zlink_strerror (zlink_errno ()) << std::endl;
                 }
                 zlink_close (sock);
                 return false;
@@ -332,12 +290,10 @@ inline bool create_client_sockets (
 
         if (client_socket_type == ZLINK_SOCKET_SUB) {
             static const char k_subscribe_all[] = "";
-            if (zlink_set_subscription (sock, k_subscribe_all)
-                != ZLINK_CONFIG_OK) {
+            if (zlink_set_subscription (sock, k_subscribe_all) != ZLINK_CONFIG_OK) {
                 if (bench_debug_enabled ()) {
-                    std::cerr
-                      << "set_subscription failed: "
-                              << zlink_strerror (zlink_errno ()) << std::endl;
+                    std::cerr << "set_subscription failed: " << zlink_strerror (zlink_errno ())
+                              << std::endl;
                 }
                 zlink_close (sock);
                 return false;
@@ -350,15 +306,12 @@ inline bool create_client_sockets (
         }
 
         if (monitors_out) {
-            const bool monitor_opened =
-              open_configured_socket_monitor (
-                sock,
-                ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED
-                  | ZLINK_EVENT_ACCEPT_FAILED | ZLINK_EVENT_CLOSE_FAILED
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
-                  | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
-                &(*monitors_out)[i]);
+            const bool monitor_opened = open_configured_socket_monitor (
+              sock,
+              ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_BIND_FAILED | ZLINK_EVENT_ACCEPT_FAILED
+                | ZLINK_EVENT_CLOSE_FAILED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+              &(*monitors_out)[i]);
             if (!monitor_opened) {
                 zlink_close (sock);
                 return false;
@@ -379,13 +332,12 @@ inline bool create_client_sockets (
     return true;
 }
 
-inline void refresh_connected_client_auto_hwm (
-  void *ctx,
-  const std::vector<void *> &sockets,
-  zlink_socket_type_t client_socket_type,
-  int hwm_value,
-  const std::string &transport,
-  size_t msg_size)
+inline void refresh_connected_client_auto_hwm (void *ctx,
+                                               const std::vector<void *> &sockets,
+                                               zlink_socket_type_t client_socket_type,
+                                               int hwm_value,
+                                               const std::string &transport,
+                                               size_t msg_size)
 {
     (void) apply_benchmark_context_auto_hwm_msg_unit (ctx, msg_size);
     for (size_t i = 0; i < sockets.size (); ++i) {
@@ -395,14 +347,8 @@ inline void refresh_connected_client_auto_hwm (
     }
 
     if (!sockets.empty () && sockets[0]) {
-        perf_print_auto_hwm_snapshot (
-          sockets[0],
-          false,
-          "endpoint",
-          transport,
-          false,
-          msg_size,
-          client_socket_type);
+        perf_print_auto_hwm_snapshot (sockets[0], false, "endpoint", transport, false, msg_size,
+                                      client_socket_type);
     }
 }
 
@@ -421,17 +367,14 @@ inline bool make_routing_id (const char *text, zlink_routing_id_t *routing_id)
     return true;
 }
 
-inline int remaining_poll_timeout_ms (
-  const std::chrono::steady_clock::time_point &deadline)
+inline int remaining_poll_timeout_ms (const std::chrono::steady_clock::time_point &deadline)
 {
-    const std::chrono::steady_clock::time_point now =
-      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
     if (now >= deadline)
         return 0;
 
     const long remaining_ms =
-      std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
-        .count ();
+      std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
     if (remaining_ms <= 0)
         return 0;
     if (remaining_ms > INT_MAX)
@@ -497,19 +440,12 @@ inline bool stamp_metric_payload (std::vector<char> &payload,
                                   size_t msg_size,
                                   uint64_t seq)
 {
-    if (payload_size < perf_multi_metric::header_size ()
-        || payload_size > payload.size ()) {
+    if (payload_size < perf_multi_metric::header_size () || payload_size > payload.size ()) {
         return false;
     }
 
-    return perf_multi_metric::stamp_payload (
-      payload.data (),
-      payload_size,
-      run_id,
-      phase,
-      msg_size,
-      seq,
-      perf_multi_metric::now_ns ());
+    return perf_multi_metric::stamp_payload (payload.data (), payload_size, run_id, phase, msg_size,
+                                             seq, perf_multi_metric::now_ns ());
 }
 
 inline size_t metric_capture_bytes ()
@@ -524,14 +460,9 @@ inline bool decode_metric_header_from_capture (const char *data,
     if (!header_out || !data || size < perf_multi_metric::header_size ())
         return false;
 
-    for (size_t offset = 0;
-         (offset + perf_multi_metric::header_size ()) <= size;
-         ++offset) {
+    for (size_t offset = 0; (offset + perf_multi_metric::header_size ()) <= size; ++offset) {
         perf_multi_metric::header_t candidate;
-        if (!perf_multi_metric::decode_header (
-              data + offset,
-              size - offset,
-              &candidate)) {
+        if (!perf_multi_metric::decode_header (data + offset, size - offset, &candidate)) {
             continue;
         }
         if (candidate.magic != perf_multi_metric::k_magic)
@@ -543,12 +474,10 @@ inline bool decode_metric_header_from_capture (const char *data,
     return false;
 }
 
-inline bool decode_metric_header_from_capture (
-  const std::vector<char> &scratch,
-  perf_multi_metric::header_t *header_out)
+inline bool decode_metric_header_from_capture (const std::vector<char> &scratch,
+                                               perf_multi_metric::header_t *header_out)
 {
-    return decode_metric_header_from_capture (
-      scratch.data (), scratch.size (), header_out);
+    return decode_metric_header_from_capture (scratch.data (), scratch.size (), header_out);
 }
 
 inline int recv_one_message_header (void *socket,
@@ -571,18 +500,11 @@ inline int recv_one_message_header (void *socket,
         return -1;
     int rc = -1;
     if (router_surface) {
-        rc = ::zlink_router_recv_part (
-          socket,
-          &source_rid,
-          &source_spot_rid,
-          &request_seq,
-          &part,
-          &has_more,
-          static_cast<zlink_recv_flags_t> (flags));
+        rc = ::zlink_router_recv_part (socket, &source_rid, &source_spot_rid, &request_seq, &part,
+                                       &has_more, static_cast<zlink_recv_flags_t> (flags));
     } else {
-        rc = ::zlink_recv_part (
-          socket, &source_rid, &part, &has_more,
-          static_cast<zlink_recv_flags_t> (flags));
+        rc = ::zlink_recv_part (socket, &source_rid, &part, &has_more,
+                                static_cast<zlink_recv_flags_t> (flags));
     }
     if (rc != 0) {
         const int err = zlink_errno ();
@@ -593,8 +515,8 @@ inline int recv_one_message_header (void *socket,
     }
 
     if (router_surface
-        && ((source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0 || has_more != ZLINK_PART_FINAL)) {
+        && ((source_spot_rid && source_spot_rid->size != 0) || request_seq != 0
+            || has_more != ZLINK_PART_FINAL)) {
         zlink_msg_close (&part);
         errno = EPROTO;
         return -1;
@@ -608,18 +530,17 @@ inline int recv_one_message_header (void *socket,
 
     bool decoded = false;
     if (header_out) {
-        decoded = perf_multi_metric::decode_payload_header (
-          zlink_msg_data (&part), zlink_msg_size (&part), header_out);
+        decoded = perf_multi_metric::decode_payload_header (zlink_msg_data (&part),
+                                                            zlink_msg_size (&part), header_out);
         if (!decoded && capture_bytes > 0 && !scratch.empty ()) {
             const size_t write_size =
-              std::min (std::min (capture_bytes, scratch.size ()),
-                        zlink_msg_size (&part));
+              std::min (std::min (capture_bytes, scratch.size ()), zlink_msg_size (&part));
             if (write_size > 0) {
                 std::memcpy (scratch.data (), zlink_msg_data (&part), write_size);
             }
             if (write_size >= perf_multi_metric::header_size ()) {
-                decoded = decode_metric_header_from_capture (
-                  scratch.data (), write_size, header_out);
+                decoded =
+                  decode_metric_header_from_capture (scratch.data (), write_size, header_out);
             }
         }
     }
@@ -631,18 +552,17 @@ inline int recv_one_message_header (void *socket,
     return 1;
 }
 
-inline bool drain_socket_non_blocking (
-  void *socket,
-  bool router_surface,
-  std::vector<char> &scratch,
-  size_t expected_msg_size,
-  uint32_t expected_run_id,
-  perf_multi_metric::phase_t expected_phase,
-  bool collect_latency,
-  long *recv_count,
-  double *lat_sum,
-  long *lat_count,
-  bench_latency_sampler_t *lat_samples)
+inline bool drain_socket_non_blocking (void *socket,
+                                       bool router_surface,
+                                       std::vector<char> &scratch,
+                                       size_t expected_msg_size,
+                                       uint32_t expected_run_id,
+                                       perf_multi_metric::phase_t expected_phase,
+                                       bool collect_latency,
+                                       long *recv_count,
+                                       double *lat_sum,
+                                       long *lat_count,
+                                       bench_latency_sampler_t *lat_samples)
 {
     if (!socket)
         return false;
@@ -651,25 +571,17 @@ inline bool drain_socket_non_blocking (
     while (true) {
         perf_multi_metric::header_t header;
         bool decoded = false;
-        const int rc = recv_one_message_header (
-          socket,
-          router_surface,
-          scratch,
-          ZLINK_DONTWAIT,
-          scratch.size (),
-          &header,
-          &decoded);
+        const int rc = recv_one_message_header (socket, router_surface, scratch, ZLINK_DONTWAIT,
+                                                scratch.size (), &header, &decoded);
         if (rc < 0)
             return false;
         if (rc == 0)
             break;
 
         if (!decoded) {
-            if (bench_debug_enabled()
-                && g_debug_one_way_logs.fetch_add(1, std::memory_order_acq_rel)
-                     < 12) {
-                std::cerr << "[perf-multi-one-way] header decode failed"
-                          << std::endl;
+            if (bench_debug_enabled ()
+                && g_debug_one_way_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
+                std::cerr << "[perf-multi-one-way] header decode failed" << std::endl;
             }
             continue;
         }
@@ -677,22 +589,14 @@ inline bool drain_socket_non_blocking (
         if (header.magic != perf_multi_metric::k_magic)
             continue;
 
-        if (!metric_header_matches (
-              header,
-              expected_run_id,
-              expected_phase,
-              expected_msg_size)) {
-            if (bench_debug_enabled()
-                && g_debug_one_way_logs.fetch_add(1, std::memory_order_acq_rel)
-                     < 12) {
-                std::cerr << "[perf-multi-one-way] header mismatch run="
-                          << header.run_id << " phase="
-                          << static_cast<unsigned int>(header.phase)
-                          << " size=" << header.msg_size << " expected_run="
-                          << expected_run_id << " expected_phase="
-                          << static_cast<unsigned int>(expected_phase)
-                          << " expected_size=" << expected_msg_size
-                          << std::endl;
+        if (!metric_header_matches (header, expected_run_id, expected_phase, expected_msg_size)) {
+            if (bench_debug_enabled ()
+                && g_debug_one_way_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
+                std::cerr << "[perf-multi-one-way] header mismatch run=" << header.run_id
+                          << " phase=" << static_cast<unsigned int> (header.phase)
+                          << " size=" << header.msg_size << " expected_run=" << expected_run_id
+                          << " expected_phase=" << static_cast<unsigned int> (expected_phase)
+                          << " expected_size=" << expected_msg_size << std::endl;
             }
             continue;
         }
@@ -701,8 +605,7 @@ inline bool drain_socket_non_blocking (
         if (collect_latency && lat_sum && lat_count) {
             const uint64_t now_ns = perf_multi_metric::now_ns ();
             if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
-                const double sample_ns =
-                  static_cast<double> (now_ns - header.sent_ts_ns);
+                const double sample_ns = static_cast<double> (now_ns - header.sent_ts_ns);
                 *lat_sum += sample_ns;
                 (*lat_count)++;
                 if (lat_samples)
@@ -716,20 +619,19 @@ inline bool drain_socket_non_blocking (
     return true;
 }
 
-inline bool run_one_way_window_loop (
-  const std::vector<void *> &recv_sockets,
-  bool router_surface,
-  const multi_bench_settings_t &settings,
-  size_t expected_msg_size,
-  uint32_t expected_run_id,
-  perf_multi_metric::phase_t expected_phase,
-  size_t scratch_capacity,
-  double duration_seconds,
-  bool collect_latency,
-  long *recv_total,
-  double *lat_sum,
-  long *lat_count,
-  bench_latency_stats_t *latency_stats)
+inline bool run_one_way_window_loop (const std::vector<void *> &recv_sockets,
+                                     bool router_surface,
+                                     const multi_bench_settings_t &settings,
+                                     size_t expected_msg_size,
+                                     uint32_t expected_run_id,
+                                     perf_multi_metric::phase_t expected_phase,
+                                     size_t scratch_capacity,
+                                     double duration_seconds,
+                                     bool collect_latency,
+                                     long *recv_total,
+                                     double *lat_sum,
+                                     long *lat_count,
+                                     bench_latency_stats_t *latency_stats)
 {
     if (recv_sockets.empty ())
         return false;
@@ -745,13 +647,11 @@ inline bool run_one_way_window_loop (
         return true;
     }
 
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (std::max (0.0, duration_seconds)));
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                            std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
-    const size_t scratch_size =
-      std::max<size_t> (scratch_capacity, metric_capture_bytes ());
+    const size_t scratch_size = std::max<size_t> (scratch_capacity, metric_capture_bytes ());
 
     bool fatal_error = false;
     long recv_sum = 0;
@@ -774,10 +674,8 @@ inline bool run_one_way_window_loop (
         for (size_t i = 0; i < poll_items.size (); ++i)
             poll_items[i].revents = 0;
 
-        const int prc = perf_socket_poll (
-          &poll_items[0],
-          static_cast<int> (poll_items.size ()),
-          -1);
+        const int prc =
+          perf_socket_poll (&poll_items[0], static_cast<int> (poll_items.size ()), -1);
         if (prc < 0) {
             if (zlink_errno () != EINTR) {
                 fatal_error = true;
@@ -790,18 +688,12 @@ inline bool run_one_way_window_loop (
                     continue;
 
                 long recv_now = 0;
-                if (!drain_socket_non_blocking (
-                      recv_sockets[i],
-                      router_surface,
-                      scratch,
-                      expected_msg_size,
-                      expected_run_id,
-                      expected_phase,
-                      collect_latency,
-                      &recv_now,
-                      collect_latency ? &lat_sum_local : NULL,
-                      collect_latency ? &lat_count_local : NULL,
-                      collect_latency ? &lat_samples : NULL)) {
+                if (!drain_socket_non_blocking (recv_sockets[i], router_surface, scratch,
+                                                expected_msg_size, expected_run_id, expected_phase,
+                                                collect_latency, &recv_now,
+                                                collect_latency ? &lat_sum_local : NULL,
+                                                collect_latency ? &lat_count_local : NULL,
+                                                collect_latency ? &lat_samples : NULL)) {
                     fatal_error = true;
                     break;
                 }
@@ -822,8 +714,7 @@ inline bool run_one_way_window_loop (
         if (!collect_latency)
             *latency_stats = bench_latency_stats_t ();
         else
-            normalize_latency_stats (
-              lat_sum_local, lat_count_local, &lat_samples, latency_stats);
+            normalize_latency_stats (lat_sum_local, lat_count_local, &lat_samples, latency_stats);
     }
 
     return !fatal_error;
@@ -850,29 +741,18 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     long lat_count = 0;
     bench_latency_stats_t active_latency;
 
-    if (!run_one_way_window_loop (
-          recv_sockets,
-          false,
-          settings,
-          msg_size,
-          run_id,
-          perf_multi_metric::phase_active,
-          scratch_capacity,
-          static_cast<double> (std::max (1, settings.duration_seconds)),
-          true,
-          &recv_count,
-          &lat_sum,
-          &lat_count,
-          &active_latency)) {
+    if (!run_one_way_window_loop (recv_sockets, false, settings, msg_size, run_id,
+                                  perf_multi_metric::phase_active, scratch_capacity,
+                                  static_cast<double> (std::max (1, settings.duration_seconds)),
+                                  true, &recv_count, &lat_sum, &lat_count, &active_latency)) {
         return false;
     }
 
     if (recv_count <= 0 || lat_count <= 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[perf-multi-one-way] active metrics invalid recv="
-                      << recv_count << " lat_count=" << lat_count
-                      << " run_id=" << run_id << " msg_size=" << msg_size
-                      << std::endl;
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-multi-one-way] active metrics invalid recv=" << recv_count
+                      << " lat_count=" << lat_count << " run_id=" << run_id
+                      << " msg_size=" << msg_size << std::endl;
         }
         return false;
     }
@@ -886,25 +766,24 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
     return true;
 }
 
-inline bool run_echo_window_round_robin (
-  const std::vector<void *> &sockets,
-  const multi_bench_settings_t &settings,
-  std::vector<char> &payload,
-  size_t payload_size,
-  size_t expected_msg_size,
-  const std::string &server_id,
-  bool client_router_send,
-  uint32_t run_id,
-  perf_multi_metric::phase_t phase,
-  size_t scratch_capacity,
-  double duration_seconds,
-  bool allow_send,
-  bool collect_latency,
-  bool per_socket_payload,
-  long *recv_total,
-  double *lat_sum,
-  long *lat_count,
-  bench_latency_stats_t *latency_stats)
+inline bool run_echo_window_round_robin (const std::vector<void *> &sockets,
+                                         const multi_bench_settings_t &settings,
+                                         std::vector<char> &payload,
+                                         size_t payload_size,
+                                         size_t expected_msg_size,
+                                         const std::string &server_id,
+                                         bool client_router_send,
+                                         uint32_t run_id,
+                                         perf_multi_metric::phase_t phase,
+                                         size_t scratch_capacity,
+                                         double duration_seconds,
+                                         bool allow_send,
+                                         bool collect_latency,
+                                         bool per_socket_payload,
+                                         long *recv_total,
+                                         double *lat_sum,
+                                         long *lat_count,
+                                         bench_latency_stats_t *latency_stats)
 {
     if (sockets.empty ())
         return false;
@@ -928,21 +807,19 @@ inline bool run_echo_window_round_robin (
     size_t rr = 0;
     uint64_t sequence = 1;
 
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (std::max (0.0, duration_seconds)));
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                            std::chrono::duration<double> (std::max (0.0, duration_seconds)));
 
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, perf_multi_metric::header_size ());
 
     std::vector<char> scratch (scratch_size, '\0');
-    std::vector<std::vector<char> > socket_payloads;
+    std::vector<std::vector<char>> socket_payloads;
     if (allow_send && per_socket_payload)
         socket_payloads.assign (sockets.size (), payload);
     std::vector<uint8_t> awaiting_reply (sockets.size (), 0);
-    std::vector<uint8_t> send_pending (
-      sockets.size (), allow_send ? static_cast<uint8_t> (1) : 0);
+    std::vector<uint8_t> send_pending (sockets.size (), allow_send ? static_cast<uint8_t> (1) : 0);
     std::vector<zlink_pollitem_t> poll_items (sockets.size ());
     std::vector<size_t> poll_indexes (sockets.size (), 0);
     while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
@@ -955,24 +832,15 @@ inline bool run_echo_window_round_robin (
 
                 std::vector<char> &send_payload =
                   per_socket_payload ? socket_payloads[idx] : payload;
-                if (!stamp_metric_payload (
-                      send_payload,
-                      payload_size,
-                      run_id,
-                      phase,
-                      expected_msg_size,
-                      sequence)) {
+                if (!stamp_metric_payload (send_payload, payload_size, run_id, phase,
+                                           expected_msg_size, sequence)) {
                     fatal_error = true;
                     break;
                 }
 
-                const send_status_t send_rc = send_echo_message (
-                  sockets[idx],
-                  server_id,
-                  send_payload,
-                  payload_size,
-                  client_router_send,
-                  per_socket_payload);
+                const send_status_t send_rc =
+                  send_echo_message (sockets[idx], server_id, send_payload, payload_size,
+                                     client_router_send, per_socket_payload);
                 if (send_rc == send_ok) {
                     awaiting_reply[idx] = 1;
                     send_pending[idx] = 0;
@@ -981,12 +849,9 @@ inline bool run_echo_window_round_robin (
                 }
                 if (send_rc == send_blocked) {
                     if (bench_debug_enabled ()
-                        && g_debug_one_way_logs.fetch_add (
-                             1, std::memory_order_acq_rel)
-                             < 12) {
+                        && g_debug_one_way_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
                         std::cerr << "[perf-multi-echo] send blocked phase="
-                                  << static_cast<unsigned int> (phase)
-                                  << " idx=" << idx
+                                  << static_cast<unsigned int> (phase) << " idx=" << idx
                                   << " errno=" << zlink_errno () << std::endl;
                     }
                     continue;
@@ -994,8 +859,7 @@ inline bool run_echo_window_round_robin (
 
                 if (bench_debug_enabled ()) {
                     std::cerr << "[perf-multi-echo] send error phase="
-                              << static_cast<unsigned int> (phase)
-                              << " idx=" << idx
+                              << static_cast<unsigned int> (phase) << " idx=" << idx
                               << " errno=" << zlink_errno () << std::endl;
                 }
                 fatal_error = true;
@@ -1042,15 +906,12 @@ inline bool run_echo_window_round_robin (
             continue;
         }
 
-        const int poll_rc = perf_socket_poll (
-          &poll_items[0],
-          static_cast<int> (poll_count),
-          -1);
+        const int poll_rc = perf_socket_poll (&poll_items[0], static_cast<int> (poll_count), -1);
         if (poll_rc < 0) {
             if (bench_debug_enabled ()) {
                 std::cerr << "[perf-multi-echo] poll error phase="
-                          << static_cast<unsigned int> (phase)
-                          << " errno=" << zlink_errno () << std::endl;
+                          << static_cast<unsigned int> (phase) << " errno=" << zlink_errno ()
+                          << std::endl;
             }
             if (zlink_errno () == EINTR)
                 continue;
@@ -1068,21 +929,14 @@ inline bool run_echo_window_round_robin (
                 while (true) {
                     perf_multi_metric::header_t header;
                     bool decoded = false;
-                    const int recv_rc = recv_one_message_header (
-                      sockets[idx],
-                      client_router_send,
-                      scratch,
-                      ZLINK_DONTWAIT,
-                      scratch.size (),
-                      &header,
-                      &decoded);
+                    const int recv_rc =
+                      recv_one_message_header (sockets[idx], client_router_send, scratch,
+                                               ZLINK_DONTWAIT, scratch.size (), &header, &decoded);
                     if (recv_rc < 0) {
                         if (bench_debug_enabled ()) {
                             std::cerr << "[perf-multi-echo] recv error phase="
-                                      << static_cast<unsigned int> (phase)
-                                      << " idx=" << idx
-                                      << " errno=" << zlink_errno ()
-                                      << std::endl;
+                                      << static_cast<unsigned int> (phase) << " idx=" << idx
+                                      << " errno=" << zlink_errno () << std::endl;
                         }
                         fatal_error = true;
                         break;
@@ -1093,41 +947,31 @@ inline bool run_echo_window_round_robin (
                     awaiting_reply[idx] = 0;
 
                     if (decoded
-                        && metric_header_matches (
-                          header, run_id, phase, expected_msg_size)) {
+                        && metric_header_matches (header, run_id, phase, expected_msg_size)) {
                         ++local_recv;
                         if (collect_latency) {
-                            const uint64_t now_ns =
-                              perf_multi_metric::now_ns ();
-                            if (header.sent_ts_ns > 0
-                                && now_ns >= header.sent_ts_ns) {
+                            const uint64_t now_ns = perf_multi_metric::now_ns ();
+                            if (header.sent_ts_ns > 0 && now_ns >= header.sent_ts_ns) {
                                 const double sample_ns =
-                                  static_cast<double> (
-                                    now_ns - header.sent_ts_ns)
-                                  * 0.5;
+                                  static_cast<double> (now_ns - header.sent_ts_ns) * 0.5;
                                 lat_sum_local += sample_ns;
                                 lat_count_local++;
                                 lat_samples.add (sample_ns);
                             }
                         }
                     } else if (decoded && bench_debug_enabled ()
-                               && g_debug_header_logs.fetch_add (
-                                    1, std::memory_order_acq_rel)
+                               && g_debug_header_logs.fetch_add (1, std::memory_order_acq_rel)
                                     < 16) {
                         std::cerr << "[perf-multi-echo] header mismatch phase="
-                                  << static_cast<unsigned int> (phase)
-                                  << " idx=" << idx
-                                  << " run_id=" << run_id
-                                  << " header_run_id=" << header.run_id
+                                  << static_cast<unsigned int> (phase) << " idx=" << idx
+                                  << " run_id=" << run_id << " header_run_id=" << header.run_id
                                   << " expected_size=" << expected_msg_size
                                   << " header_size=" << header.msg_size
-                                  << " header_phase="
-                                  << static_cast<unsigned int> (header.phase)
+                                  << " header_phase=" << static_cast<unsigned int> (header.phase)
                                   << std::endl;
                     }
 
-                    if (allow_send
-                        && std::chrono::steady_clock::now () < deadline) {
+                    if (allow_send && std::chrono::steady_clock::now () < deadline) {
                         send_pending[idx] = 1;
                     }
 
@@ -1139,17 +983,11 @@ inline bool run_echo_window_round_robin (
             if (fatal_error)
                 break;
 
-            if ((revents & ZLINK_POLLOUT) != 0
-                && allow_send
-                && send_pending[idx] != 0
-                && awaiting_reply[idx] == 0
-                && bench_debug_enabled ()
-                && g_debug_one_way_logs.fetch_add (
-                     1, std::memory_order_acq_rel)
-                     < 12) {
+            if ((revents & ZLINK_POLLOUT) != 0 && allow_send && send_pending[idx] != 0
+                && awaiting_reply[idx] == 0 && bench_debug_enabled ()
+                && g_debug_one_way_logs.fetch_add (1, std::memory_order_acq_rel) < 12) {
                 std::cerr << "[perf-multi-echo] send writable phase="
-                          << static_cast<unsigned int> (phase)
-                          << " idx=" << idx << std::endl;
+                          << static_cast<unsigned int> (phase) << " idx=" << idx << std::endl;
             }
         }
 
@@ -1166,26 +1004,24 @@ inline bool run_echo_window_round_robin (
         if (!collect_latency)
             *latency_stats = bench_latency_stats_t ();
         else
-            normalize_latency_stats (
-              lat_sum_local, lat_count_local, &lat_samples, latency_stats);
+            normalize_latency_stats (lat_sum_local, lat_count_local, &lat_samples, latency_stats);
     }
 
     return !fatal_error;
 }
 
-inline bool run_echo_duration (
-  const std::vector<void *> &sockets,
-  const multi_bench_settings_t &settings,
-  std::vector<char> &payload,
-  size_t payload_size,
-  size_t msg_size,
-  size_t scratch_capacity,
-  const std::string &server_id,
-  bool client_router_send,
-  bool per_socket_payload,
-  uint32_t run_id,
-  double *throughput_out,
-  bench_latency_stats_t *latency_out)
+inline bool run_echo_duration (const std::vector<void *> &sockets,
+                               const multi_bench_settings_t &settings,
+                               std::vector<char> &payload,
+                               size_t payload_size,
+                               size_t msg_size,
+                               size_t scratch_capacity,
+                               const std::string &server_id,
+                               bool client_router_send,
+                               bool per_socket_payload,
+                               uint32_t run_id,
+                               double *throughput_out,
+                               bench_latency_stats_t *latency_out)
 {
     if (!throughput_out || !latency_out)
         return false;
@@ -1201,33 +1037,18 @@ inline bool run_echo_duration (
     bench_latency_stats_t active_latency;
 
     if (!run_echo_window_round_robin (
-          sockets,
-          settings,
-          payload,
-          payload_size,
-          msg_size,
-          server_id,
-          client_router_send,
-          run_id,
-          perf_multi_metric::phase_active,
-          scratch_capacity,
-          static_cast<double> (std::max (1, settings.duration_seconds)),
-          true,
-          true,
-          per_socket_payload,
-          &recv_count,
-          &lat_sum,
-          &lat_count,
-          &active_latency)) {
+          sockets, settings, payload, payload_size, msg_size, server_id, client_router_send, run_id,
+          perf_multi_metric::phase_active, scratch_capacity,
+          static_cast<double> (std::max (1, settings.duration_seconds)), true, true,
+          per_socket_payload, &recv_count, &lat_sum, &lat_count, &active_latency)) {
         return false;
     }
 
     if (recv_count <= 0 || lat_count <= 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[perf-multi-echo] active metrics invalid recv="
-                      << recv_count << " lat_count=" << lat_count
-                      << " run_id=" << run_id << " msg_size=" << msg_size
-                      << std::endl;
+        if (bench_debug_enabled ()) {
+            std::cerr << "[perf-multi-echo] active metrics invalid recv=" << recv_count
+                      << " lat_count=" << lat_count << " run_id=" << run_id
+                      << " msg_size=" << msg_size << std::endl;
         }
         return false;
     }
@@ -1241,40 +1062,25 @@ inline bool run_echo_duration (
     return true;
 }
 
-inline void print_client_result_lines (
-  const char *pattern,
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency)
+inline void print_client_result_lines (const char *pattern,
+                                       const std::string &lib_name,
+                                       const std::string &transport,
+                                       size_t msg_size,
+                                       double throughput,
+                                       const bench_latency_stats_t &latency)
 {
-    print_result (
-      lib_name,
-      pattern,
-      transport,
-      msg_size,
-      throughput,
-      latency.mean_ns,
-      latency.p95_ns,
-      latency.p99_ns);
+    print_result (lib_name, pattern, transport, msg_size, throughput, latency.mean_ns,
+                  latency.p95_ns, latency.p99_ns);
 }
 
-inline void print_echo_client_result_lines (
-  const char *pattern,
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency)
+inline void print_echo_client_result_lines (const char *pattern,
+                                            const std::string &lib_name,
+                                            const std::string &transport,
+                                            size_t msg_size,
+                                            double throughput,
+                                            const bench_latency_stats_t &latency)
 {
-    print_client_result_lines (
-      pattern,
-      lib_name,
-      transport,
-      msg_size,
-      throughput,
-      latency);
+    print_client_result_lines (pattern, lib_name, transport, msg_size, throughput, latency);
 }
 
 inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
@@ -1285,8 +1091,7 @@ inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
     return msg_sizes;
 }
 
-inline size_t resolve_case_max_msg_size (size_t fallback_size,
-                                         const std::vector<size_t> &msg_sizes)
+inline size_t resolve_case_max_msg_size (size_t fallback_size, const std::vector<size_t> &msg_sizes)
 {
     size_t max_msg_size = fallback_size > 0 ? fallback_size : 64;
     for (size_t i = 0; i < msg_sizes.size (); ++i) {

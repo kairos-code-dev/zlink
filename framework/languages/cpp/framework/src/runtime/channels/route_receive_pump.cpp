@@ -7,7 +7,8 @@
 namespace zlink::framework::detail
 {
 
-route_receive_pump_t::route_receive_pump_t (route_packet_dispatcher_t dispatcher) : _dispatcher (std::move (dispatcher))
+route_receive_pump_t::route_receive_pump_t (route_packet_dispatcher_t dispatcher) :
+    _dispatcher (std::move (dispatcher))
 {
 }
 
@@ -25,7 +26,8 @@ result_t<route_receive_result_t> route_receive_pump_t::drain ()
         auto dispatch = _dispatcher.dispatch (packet);
         if (!dispatch) {
             return result_t<route_receive_result_t>::failure (
-              dispatch.error_kind (), dispatch.error () ? dispatch.error ()->what () : "route packet dispatch failed");
+              dispatch.error_kind (),
+              dispatch.error () ? dispatch.error ()->what () : "route packet dispatch failed");
         }
         ++result.dispatched;
         if (dispatch.value ().has_value ()) {

@@ -18,15 +18,13 @@ void test_probe_router_router ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe,
-                               sizeof (probe)));
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe, sizeof (probe)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     //  We expect a routing id=X + empty message from client
     recv_string_expect_success (server, "X", 0);
     unsigned char buffer[255];
-    TEST_ASSERT_EQUAL_INT (
-      0, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, buffer, 255, 0)));
+    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, buffer, 255, 0)));
 
     //  Send a message to client now
     send_string_expect_success (server, "X", ZLINK_SNDMORE);
@@ -34,8 +32,7 @@ void test_probe_router_router ()
 
     // receive the routing ID, which is auto-generated in this case, since the
     // peer did not set one explicitly
-    TEST_ASSERT_EQUAL_INT (
-      16, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, buffer, 255, 0)));
+    TEST_ASSERT_EQUAL_INT (16, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, buffer, 255, 0)));
 
     recv_string_expect_success (client, "Hello", 0);
 
@@ -56,8 +53,7 @@ void test_probe_router_dealer ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "X", 1));
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe,
-                               sizeof (probe)));
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_PROBE, &probe, sizeof (probe)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
     //  We expect a routing id=X + empty message from client

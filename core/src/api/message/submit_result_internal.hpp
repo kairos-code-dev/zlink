@@ -84,8 +84,7 @@ inline zlink_submit_result_t from_request_submit_rc (int rc_)
     if (rc_ == 0)
         return ZLINK_SUBMIT_OK;
 
-    return from_request_submit_errno (
-      zlink::result_errno_internal::rc_errno_or_io ());
+    return from_request_submit_errno (zlink::result_errno_internal::rc_errno_or_io ());
 }
 }
 }

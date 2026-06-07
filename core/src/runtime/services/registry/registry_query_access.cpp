@@ -26,9 +26,7 @@ struct registry_query_client_t
     uint32_t tag;
 
     explicit registry_query_client_t (zlink::ctx_t *ctx_) :
-        ctx (ctx_),
-        dealer (NULL),
-        tag (0x1e6700f1)
+        ctx (ctx_), dealer (NULL), tag (0x1e6700f1)
     {
     }
 
@@ -42,8 +40,7 @@ struct registry_query_client_t
             dealer->close ();
             dealer = NULL;
         }
-        return zlink::discovery_registry_rpc::prepare_query_dealer (
-          ctx, endpoint_, &dealer);
+        return zlink::discovery_registry_rpc::prepare_query_dealer (ctx, endpoint_, &dealer);
     }
 
     int destroy_locked ()
@@ -64,8 +61,7 @@ static registry_query_client_t *as_registry_query_client (void *client_)
         return NULL;
     }
 
-    registry_query_client_t *client =
-      static_cast<registry_query_client_t *> (client_);
+    registry_query_client_t *client = static_cast<registry_query_client_t *> (client_);
     if (!client->check_tag ()) {
         errno = EFAULT;
         return NULL;
@@ -83,9 +79,7 @@ static int recv_topology_reply_frames (zlink::socket_base_t *socket_,
     }
 
     std::vector<zlink_registry_topology_entry_t> decoded;
-    if (zlink::discovery_registry_rpc::recv_topology_reply_entries (
-          socket_, &decoded)
-        != 0)
+    if (zlink::discovery_registry_rpc::recv_topology_reply_entries (socket_, &decoded) != 0)
         return -1;
 
     const size_t remote_count = decoded.size ();
@@ -113,8 +107,7 @@ namespace zlink
 {
 void *registry_query_access_t::create (ctx_t *ctx_)
 {
-    registry_query_client_t *client =
-      new (std::nothrow) registry_query_client_t (ctx_);
+    registry_query_client_t *client = new (std::nothrow) registry_query_client_t (ctx_);
     if (!client) {
         errno = ENOMEM;
         return NULL;
@@ -136,11 +129,10 @@ int registry_query_access_t::connect (void *client_, const char *endpoint_)
     return client->connect_locked (endpoint_);
 }
 
-int registry_query_access_t::topology_query (
-  void *client_,
-  const zlink_registry_topology_filter_t *filter_,
-  zlink_registry_topology_entry_t *entries_,
-  size_t *count_)
+int registry_query_access_t::topology_query (void *client_,
+                                             const zlink_registry_topology_filter_t *filter_,
+                                             zlink_registry_topology_entry_t *entries_,
+                                             size_t *count_)
 {
     registry_query_client_t *client = as_registry_query_client (client_);
     if (!client || !client->dealer) {
@@ -159,8 +151,7 @@ int registry_query_access_t::topology_query (
     }
 
     if (discovery_protocol::send_u16 (static_cast<void *> (client->dealer),
-                                      discovery_protocol::msg_topology_query,
-                                      ZLINK_SNDMORE)
+                                      discovery_protocol::msg_topology_query, ZLINK_SNDMORE)
         < 0)
         return -1;
 
@@ -168,8 +159,8 @@ int registry_query_access_t::topology_query (
     memset (&filter, 0, sizeof (filter));
     if (filter_)
         filter = *filter_;
-    if (discovery_protocol::send_frame (static_cast<void *> (client->dealer),
-                                        &filter, sizeof (filter), 0)
+    if (discovery_protocol::send_frame (static_cast<void *> (client->dealer), &filter,
+                                        sizeof (filter), 0)
         < 0)
         return -1;
 

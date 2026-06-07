@@ -14,7 +14,8 @@ namespace zlink::framework::detail
 namespace
 {
 
-bool enabled_for (const channel_snapshot_t &channel, channel_runtime_manager_t::capability_t capability)
+bool enabled_for (const channel_snapshot_t &channel,
+                  channel_runtime_manager_t::capability_t capability)
 {
     switch (capability) {
         case channel_runtime_manager_t::capability_t::server:
@@ -31,7 +32,8 @@ bool enabled_for (const channel_snapshot_t &channel, channel_runtime_manager_t::
 
 } // namespace
 
-channel_runtime_manager_t::channel_runtime_manager_t (std::shared_ptr<channel_runtime_state_t> state) :
+channel_runtime_manager_t::channel_runtime_manager_t (
+  std::shared_ptr<channel_runtime_state_t> state) :
     _state (std::move (state))
 {
 }
@@ -46,9 +48,11 @@ channel_runtime_manager_t channel_runtime_manager_t::from (const zlink_builder_t
     return channel_runtime_manager_t (builder._state->runtime);
 }
 
-channel_runtime_bundle_t &channel_runtime_manager_t::get_or_create_client_bundle (const std::string &channel_name)
+channel_runtime_bundle_t &
+channel_runtime_manager_t::get_or_create_client_bundle (const std::string &channel_name)
 {
-    if (auto found = _state->client_bundles.find (channel_name); found != _state->client_bundles.end ()) {
+    if (auto found = _state->client_bundles.find (channel_name);
+        found != _state->client_bundles.end ()) {
         return *found->second;
     }
     const auto &channel = require_channel (channel_name, capability_t::client);
@@ -57,9 +61,11 @@ channel_runtime_bundle_t &channel_runtime_manager_t::get_or_create_client_bundle
     return *stored;
 }
 
-channel_runtime_bundle_t &channel_runtime_manager_t::get_or_create_publisher_bundle (const std::string &channel_name)
+channel_runtime_bundle_t &
+channel_runtime_manager_t::get_or_create_publisher_bundle (const std::string &channel_name)
 {
-    if (auto found = _state->publisher_bundles.find (channel_name); found != _state->publisher_bundles.end ()) {
+    if (auto found = _state->publisher_bundles.find (channel_name);
+        found != _state->publisher_bundles.end ()) {
         return *found->second;
     }
     const auto &channel = require_channel (channel_name, capability_t::publisher);
@@ -68,9 +74,11 @@ channel_runtime_bundle_t &channel_runtime_manager_t::get_or_create_publisher_bun
     return *stored;
 }
 
-route_channel_runtime_t &channel_runtime_manager_t::get_route_channel (const std::string &router_channel_id)
+route_channel_runtime_t &
+channel_runtime_manager_t::get_route_channel (const std::string &router_channel_id)
 {
-    if (auto found = _state->route_channels.find (router_channel_id); found != _state->route_channels.end ()) {
+    if (auto found = _state->route_channels.find (router_channel_id);
+        found != _state->route_channels.end ()) {
         return *found->second;
     }
     throw framework_exception_t (framework_error_kind_t::route_not_connected,
@@ -80,12 +88,16 @@ route_channel_runtime_t &channel_runtime_manager_t::get_route_channel (const std
 void channel_runtime_manager_t::initialize_inbound_channels ()
 {
     for (const auto &[channel_name, channel] : _state->channels) {
-        if (channel.server.enabled && _state->server_bundles.find (channel_name) == _state->server_bundles.end ()) {
-            _state->server_bundles[channel_name] = _bundle_factory.create_server_bundle (channel_name, channel);
+        if (channel.server.enabled
+            && _state->server_bundles.find (channel_name) == _state->server_bundles.end ()) {
+            _state->server_bundles[channel_name] =
+              _bundle_factory.create_server_bundle (channel_name, channel);
         }
         if (channel.subscriber.enabled
-            && _state->subscriber_bundles.find (channel_name) == _state->subscriber_bundles.end ()) {
-            _state->subscriber_bundles[channel_name] = _bundle_factory.create_subscriber_bundle (channel_name, channel);
+            && _state->subscriber_bundles.find (channel_name)
+                 == _state->subscriber_bundles.end ()) {
+            _state->subscriber_bundles[channel_name] =
+              _bundle_factory.create_subscriber_bundle (channel_name, channel);
         }
     }
 }
@@ -108,7 +120,8 @@ void channel_runtime_manager_t::initialize_client_channels ()
     }
 }
 
-void channel_runtime_manager_t::initialize_route_channels (const std::vector<std::string> &route_ids)
+void channel_runtime_manager_t::initialize_route_channels (
+  const std::vector<std::string> &route_ids)
 {
     for (const auto &route_id : route_ids) {
         if (_state->route_channels.find (route_id) != _state->route_channels.end ()) {
@@ -149,7 +162,8 @@ void channel_runtime_manager_t::initialize_route_channels (const zlink_builder_t
 std::string channel_runtime_manager_t::monitoring_source (const std::string &source_name)
 {
     const auto [channel_name, capability] = parse_source (source_name);
-    if (capability == "server" && _state->server_bundles.find (channel_name) != _state->server_bundles.end ()) {
+    if (capability == "server"
+        && _state->server_bundles.find (channel_name) != _state->server_bundles.end ()) {
         return source_name;
     }
     if (capability == "subscriber"
@@ -165,11 +179,13 @@ std::string channel_runtime_manager_t::monitoring_source (const std::string &sou
         return source_name;
     }
     throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                 "socket monitoring source '" + source_name + "' is not registered");
+                                 "socket monitoring source '" + source_name
+                                   + "' is not registered");
 }
 
-const channel_snapshot_t &channel_runtime_manager_t::require_channel (const std::string &channel_name,
-                                                                      capability_t capability) const
+const channel_snapshot_t &
+channel_runtime_manager_t::require_channel (const std::string &channel_name,
+                                            capability_t capability) const
 {
     const auto found = _state->channels.find (channel_name);
     if (found == _state->channels.end () || !enabled_for (found->second, capability)) {
@@ -179,7 +195,8 @@ const channel_snapshot_t &channel_runtime_manager_t::require_channel (const std:
     return found->second;
 }
 
-std::pair<std::string, std::string> channel_runtime_manager_t::parse_source (const std::string &source_name)
+std::pair<std::string, std::string>
+channel_runtime_manager_t::parse_source (const std::string &source_name)
 {
     const auto separator = source_name.rfind ('.');
     if (separator == std::string::npos || separator == 0 || separator + 1 == source_name.size ()) {

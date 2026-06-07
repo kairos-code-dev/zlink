@@ -33,8 +33,7 @@ discovery_t::discovery_t (ctx_t *ctx_,
     _discovery_summary_enabled (true)
 {
     zlink_assert (_ctx);
-    zlink_assert (
-      discovery_protocol::is_valid_auto_connect_type (_auto_connect_type));
+    zlink_assert (discovery_protocol::is_valid_auto_connect_type (_auto_connect_type));
     zlink_assert (_bootstrap_runtime);
     zlink_assert (_uplink_runtime);
     if (_channel_name.empty ())
@@ -80,8 +79,7 @@ int discovery_t::close_tracked_socket (socket_base_t *&socket_, int timeout_ms_)
     return _lifecycle.close_socket (socket_, timeout_ms_);
 }
 
-int discovery_t::close_tracked_socket_and_wait (socket_base_t *&socket_,
-                                                int timeout_ms_)
+int discovery_t::close_tracked_socket_and_wait (socket_base_t *&socket_, int timeout_ms_)
 {
     return _lifecycle.close_socket_and_wait (socket_, timeout_ms_);
 }
@@ -100,8 +98,7 @@ int discovery_t::ensure_control_task_active ()
     }
 
     if (_task_id == 0) {
-        _task_id = runtime->add_periodic_task (discovery_t::control_task, this, 1,
-                                               true);
+        _task_id = runtime->add_periodic_task (discovery_t::control_task, this, 1, true);
         return _task_id == 0 ? -1 : 0;
     }
 

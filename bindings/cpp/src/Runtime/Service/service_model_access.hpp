@@ -54,9 +54,10 @@ struct service_model_access_t
         spot_node_status_t out;
         out.channel_name_ = fixed_string_to_string (status_.channel_name);
         out.local_endpoint_ = fixed_string_to_string (status_.local_endpoint);
-        out.node_routing_id_ = status_.node_routing_id.size > 0
-                                 ? std::optional<routing_id_t> (native_routing_id (status_.node_routing_id))
-                                 : std::nullopt;
+        out.node_routing_id_ =
+          status_.node_routing_id.size > 0
+            ? std::optional<routing_id_t> (native_routing_id (status_.node_routing_id))
+            : std::nullopt;
         out.state_ = static_cast<spot_node_state> (status_.state);
         out.configured_peer_count_ = status_.configured_peer_count;
         out.active_peer_count_ = status_.active_peer_count;
@@ -70,7 +71,8 @@ struct service_model_access_t
         return out;
     }
 
-    static registry_service_summary_entry_t from_native (const zlink_registry_service_summary_entry_t &entry_)
+    static registry_service_summary_entry_t
+    from_native (const zlink_registry_service_summary_entry_t &entry_)
     {
         registry_service_summary_entry_t out;
         out.auto_connect_type_ = static_cast<zlink::auto_connect_type> (entry_.auto_connect_type);
@@ -136,7 +138,8 @@ struct service_model_access_t
         out.socket_name_ = fixed_string_to_string (entry_.socket_name);
         out.socket_type_ = static_cast<spot_node_socket_type_t> (entry_.socket_type);
         out.auto_hwm_visible_ = entry_.auto_hwm_visible != 0;
-        out.monitor_status_.source_kind = static_cast<monitor_source_kind> (entry_.monitor_status.source_kind);
+        out.monitor_status_.source_kind =
+          static_cast<monitor_source_kind> (entry_.monitor_status.source_kind);
         out.monitor_status_.state_flags = entry_.monitor_status.state_flags;
         out.monitor_status_.detail_flags = entry_.monitor_status.detail_flags;
         out.monitor_status_.snd_pending_msgs = entry_.monitor_status.snd_pending_msgs;
@@ -145,19 +148,28 @@ struct service_model_access_t
         out.monitor_status_.auto_hwm_profile = entry_.monitor_status.auto_hwm_profile;
         out.monitor_status_.auto_hwm_role = entry_.monitor_status.auto_hwm_role;
         out.monitor_status_.auto_hwm_policy_class = entry_.monitor_status.auto_hwm_policy_class;
-        out.monitor_status_.auto_hwm_unit_budget_bytes = entry_.monitor_status.auto_hwm_unit_budget_bytes;
+        out.monitor_status_.auto_hwm_unit_budget_bytes =
+          entry_.monitor_status.auto_hwm_unit_budget_bytes;
         out.monitor_status_.auto_hwm_size_cap = entry_.monitor_status.auto_hwm_size_cap;
-        out.monitor_status_.auto_hwm_socket_message_slots = entry_.monitor_status.auto_hwm_socket_message_slots;
-        out.monitor_status_.auto_hwm_effective_message_bytes = entry_.monitor_status.auto_hwm_effective_message_bytes;
+        out.monitor_status_.auto_hwm_socket_message_slots =
+          entry_.monitor_status.auto_hwm_socket_message_slots;
+        out.monitor_status_.auto_hwm_effective_message_bytes =
+          entry_.monitor_status.auto_hwm_effective_message_bytes;
         out.monitor_status_.auto_hwm_applied_sndhwm = entry_.monitor_status.auto_hwm_applied_sndhwm;
         out.monitor_status_.auto_hwm_applied_rcvhwm = entry_.monitor_status.auto_hwm_applied_rcvhwm;
-        out.monitor_status_.auto_hwm_effective_sndbuf = entry_.monitor_status.auto_hwm_effective_sndbuf;
-        out.monitor_status_.auto_hwm_effective_rcvbuf = entry_.monitor_status.auto_hwm_effective_rcvbuf;
+        out.monitor_status_.auto_hwm_effective_sndbuf =
+          entry_.monitor_status.auto_hwm_effective_sndbuf;
+        out.monitor_status_.auto_hwm_effective_rcvbuf =
+          entry_.monitor_status.auto_hwm_effective_rcvbuf;
         out.monitor_status_.auto_hwm_last_recalc_ms = entry_.monitor_status.auto_hwm_last_recalc_ms;
-        out.monitor_status_.auto_hwm_last_recalc_reason = entry_.monitor_status.auto_hwm_last_recalc_reason;
-        out.monitor_status_.auto_hwm_send_blocked_ratio_ppm = entry_.monitor_status.auto_hwm_send_blocked_ratio_ppm;
-        out.monitor_status_.auto_hwm_deferred_sndhwm = entry_.monitor_status.auto_hwm_deferred_sndhwm;
-        out.monitor_status_.auto_hwm_deferred_rcvhwm = entry_.monitor_status.auto_hwm_deferred_rcvhwm;
+        out.monitor_status_.auto_hwm_last_recalc_reason =
+          entry_.monitor_status.auto_hwm_last_recalc_reason;
+        out.monitor_status_.auto_hwm_send_blocked_ratio_ppm =
+          entry_.monitor_status.auto_hwm_send_blocked_ratio_ppm;
+        out.monitor_status_.auto_hwm_deferred_sndhwm =
+          entry_.monitor_status.auto_hwm_deferred_sndhwm;
+        out.monitor_status_.auto_hwm_deferred_rcvhwm =
+          entry_.monitor_status.auto_hwm_deferred_rcvhwm;
         return out;
     }
 
@@ -178,9 +190,10 @@ struct service_model_access_t
     {
         spot_node_actor_entry_t out;
         out.actor_ = actor_model_access_t::from_native (entry_.actor);
-        out.current_spot_rid_ = entry_.current_spot_rid.size > 0
-                                  ? std::optional<routing_id_t> (native_routing_id (entry_.current_spot_rid))
-                                  : std::nullopt;
+        out.current_spot_rid_ =
+          entry_.current_spot_rid.size > 0
+            ? std::optional<routing_id_t> (native_routing_id (entry_.current_spot_rid))
+            : std::nullopt;
         out.current_spot_kind_ = static_cast<spot_kind> (entry_.current_spot_kind);
         out.route_synced_ = entry_.route_synced != 0;
         out.pending_message_count_ = entry_.pending_message_count;

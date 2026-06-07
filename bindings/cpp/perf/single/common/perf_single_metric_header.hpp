@@ -63,9 +63,9 @@ inline void store_u64_le (unsigned char *dst, uint64_t value)
 
 inline int64_t now_ns ()
 {
-    return static_cast<int64_t> (
-      std::chrono::duration_cast<std::chrono::nanoseconds> (std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
+    return static_cast<int64_t> (std::chrono::duration_cast<std::chrono::nanoseconds> (
+                                   std::chrono::system_clock::now ().time_since_epoch ())
+                                   .count ());
 }
 
 inline double elapsed_latency_ns (uint64_t now_ns_, int64_t sent_ts_ns_)
@@ -76,8 +76,8 @@ inline double elapsed_latency_ns (uint64_t now_ns_, int64_t sent_ts_ns_)
     return now_ns_ >= sent_ts_ns ? static_cast<double> (now_ns_ - sent_ts_ns) : 0.0;
 }
 
-inline void
-init_header (header_t *out, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, int64_t sent_ts_ns)
+inline void init_header (
+  header_t *out, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, int64_t sent_ts_ns)
 {
     if (!out)
         return;
@@ -120,8 +120,13 @@ inline bool decode_header (const void *src, size_t src_size, header_t *out)
     return true;
 }
 
-inline bool stamp_payload (
-  void *payload, size_t payload_size, uint32_t run_id, phase_t phase, size_t msg_size, uint64_t seq, int64_t sent_ts_ns)
+inline bool stamp_payload (void *payload,
+                           size_t payload_size,
+                           uint32_t run_id,
+                           phase_t phase,
+                           size_t msg_size,
+                           uint64_t seq,
+                           int64_t sent_ts_ns)
 {
     if (!payload || payload_size < header_size ())
         return false;

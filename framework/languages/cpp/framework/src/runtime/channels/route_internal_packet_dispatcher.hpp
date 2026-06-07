@@ -19,8 +19,9 @@ class route_internal_packet_dispatcher_t
 
     virtual result_t<void> dispatch_send (const route_received_packet_t &received) const = 0;
 
-    virtual result_t<zlink::message_t> dispatch_request (const route_received_packet_t &received,
-                                                         const runtime::messaging::envelope_header_t &header) const = 0;
+    virtual result_t<zlink::message_t>
+    dispatch_request (const route_received_packet_t &received,
+                      const runtime::messaging::envelope_header_t &header) const = 0;
 };
 
 class no_route_internal_packet_dispatcher_t final : public route_internal_packet_dispatcher_t
@@ -29,8 +30,9 @@ class no_route_internal_packet_dispatcher_t final : public route_internal_packet
     bool can_handle_send (std::string_view packet_name) const override;
     bool can_handle_request (std::string_view packet_name) const override;
     result_t<void> dispatch_send (const route_received_packet_t &received) const override;
-    result_t<zlink::message_t> dispatch_request (const route_received_packet_t &received,
-                                                 const runtime::messaging::envelope_header_t &header) const override;
+    result_t<zlink::message_t>
+    dispatch_request (const route_received_packet_t &received,
+                      const runtime::messaging::envelope_header_t &header) const override;
 };
 
 class composite_route_internal_packet_dispatcher_t final : public route_internal_packet_dispatcher_t
@@ -41,8 +43,9 @@ class composite_route_internal_packet_dispatcher_t final : public route_internal
     bool can_handle_send (std::string_view packet_name) const override;
     bool can_handle_request (std::string_view packet_name) const override;
     result_t<void> dispatch_send (const route_received_packet_t &received) const override;
-    result_t<zlink::message_t> dispatch_request (const route_received_packet_t &received,
-                                                 const runtime::messaging::envelope_header_t &header) const override;
+    result_t<zlink::message_t>
+    dispatch_request (const route_received_packet_t &received,
+                      const runtime::messaging::envelope_header_t &header) const override;
 
   private:
     const route_internal_packet_dispatcher_t *resolve_send (std::string_view packet_name) const;

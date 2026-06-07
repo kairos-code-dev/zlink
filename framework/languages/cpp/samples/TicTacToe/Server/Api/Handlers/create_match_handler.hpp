@@ -33,8 +33,9 @@ class create_match_handler_t
         _logger.info ("http POST /games");
         _logger.info (std::string ("recv ") + create_match_req_t::packet_name);
         const auto room = _rooms.handle ({});
-        const auto owner =
-          request.owner_actor_id.empty () ? std::string (sample_names_t::x_actor_id) : request.owner_actor_id;
+        const auto owner = request.owner_actor_id.empty ()
+                             ? std::string (sample_names_t::x_actor_id)
+                             : request.owner_actor_id;
         _logger.info (std::string ("reply ") + create_match_req_t::packet_name);
         return {room.match_id, owner, _topology.stream_endpoint};
     }

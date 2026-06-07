@@ -25,7 +25,8 @@ std::shared_ptr<connector_state_t> state_from (const std::shared_ptr<void> &stat
     return std::static_pointer_cast<connector_state_t> (state);
 }
 
-connector_runtime_t::connector_runtime_t (std::shared_ptr<connector_state_t> state) : _state (std::move (state))
+connector_runtime_t::connector_runtime_t (std::shared_ptr<connector_state_t> state) :
+    _state (std::move (state))
 {
 }
 
@@ -61,7 +62,9 @@ std::size_t connector_runtime_t::pending_request_count () const noexcept
     return _state->pending_requests.size ();
 }
 
-void change_state (std::shared_ptr<connector_state_t> state, connection_state_t next, std::optional<error_t> error)
+void change_state (std::shared_ptr<connector_state_t> state,
+                   connection_state_t next,
+                   std::optional<error_t> error)
 {
     const auto previous = state->state;
     state->state = next;
@@ -86,7 +89,8 @@ std::shared_ptr<void> connector_internal_handle (const connector_t &connector)
     return connector._state;
 }
 
-codec_registry_t::codec_registry_t () : _state (std::make_shared<detail::connector_state_t> (connector_options_t{}))
+codec_registry_t::codec_registry_t () :
+    _state (std::make_shared<detail::connector_state_t> (connector_options_t{}))
 {
 }
 
@@ -166,7 +170,8 @@ send_call_t &send_call_t::compress ()
 task_t<void> send_call_t::submit ()
 {
     if (!_state) {
-        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error, "send call has no connector"));
+        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
+                                                      "send call has no connector"));
     }
     return task_t<void> (detail::submit_send (detail::state_from (_state), std::move (_packet)));
 }
@@ -235,13 +240,13 @@ task_t<void> connector_t::connect ()
 {
     auto state = detail::state_from (_state);
     if (state->options.endpoint.empty ()) {
-        return task_t<void> (
-          result_t<void>::failure (error_code_t::configuration_error, "stream connector endpoint is required"));
+        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
+                                                      "stream connector endpoint is required"));
     }
     if (!detail::stream_transport_factory_t::is_supported (state->options.transport)) {
-        return task_t<void> (
-          result_t<void>::failure (error_code_t::configuration_error,
-                                   "stream connector does not support the configured transport in this build"));
+        return task_t<void> (result_t<void>::failure (
+          error_code_t::configuration_error,
+          "stream connector does not support the configured transport in this build"));
     }
     const auto tcp_endpoint = state->options.transport == transport_t::tcp
                                 ? detail::parse_tcp_endpoint (state->options.endpoint)
@@ -252,47 +257,55 @@ task_t<void> connector_t::connect ()
     const auto websocket_endpoint = state->options.transport == transport_t::websocket
                                       ? detail::parse_websocket_endpoint (state->options.endpoint)
                                       : std::optional<detail::websocket_endpoint_parts_t>{};
-    const auto websocket_secure_endpoint = state->options.transport == transport_t::websocket_secure
-                                             ? detail::parse_websocket_secure_endpoint (state->options.endpoint)
-                                             : std::optional<detail::websocket_endpoint_parts_t>{};
+    const auto websocket_secure_endpoint =
+      state->options.transport == transport_t::websocket_secure
+        ? detail::parse_websocket_secure_endpoint (state->options.endpoint)
+        : std::optional<detail::websocket_endpoint_parts_t>{};
     if (state->options.transport == transport_t::tcp && !tcp_endpoint) {
-        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
-                                                      "stream connector endpoint must use tcp://host:port"));
+        return task_t<void> (result_t<void>::failure (
+          error_code_t::configuration_error, "stream connector endpoint must use tcp://host:port"));
     }
     if (state->options.transport == transport_t::tls && !tls_endpoint) {
-        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
-                                                      "stream connector endpoint must use tls://host:port"));
+        return task_t<void> (result_t<void>::failure (
+          error_code_t::configuration_error, "stream connector endpoint must use tls://host:port"));
     }
     if (state->options.transport == transport_t::websocket && !websocket_endpoint) {
-        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
-                                                      "stream connector endpoint must use ws://host:port/path"));
+        return task_t<void> (
+          result_t<void>::failure (error_code_t::configuration_error,
+                                   "stream connector endpoint must use ws://host:port/path"));
     }
     if (state->options.transport == transport_t::websocket_secure && !websocket_secure_endpoint) {
-        return task_t<void> (result_t<void>::failure (error_code_t::configuration_error,
-                                                      "stream connector endpoint must use wss://host:port/path"));
+        return task_t<void> (
+          result_t<void>::failure (error_code_t::configuration_error,
+                                   "stream connector endpoint must use wss://host:port/path"));
     }
 
-    const auto max_attempts =
-      state->options.reconnect.enabled ? std::max (1, state->options.reconnect.max_attempts.value_or (1)) : 1;
+    const auto max_attempts = state->options.reconnect.enabled
+                                ? std::max (1, state->options.reconnect.max_attempts.value_or (1))
+                                : 1;
     auto retry_delay = state->options.reconnect.initial_delay;
     std::string last_error;
 
     for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        detail::change_state (state, attempt == 1 ? connection_state_t::connecting : connection_state_t::reconnecting);
+        detail::change_state (state, attempt == 1 ? connection_state_t::connecting
+                                                  : connection_state_t::reconnecting);
         try {
             if (state->options.transport == transport_t::websocket) {
-                state->connection = detail::connect_websocket (state->io_context, *websocket_endpoint);
+                state->connection =
+                  detail::connect_websocket (state->io_context, *websocket_endpoint);
             } else if (state->options.transport == transport_t::websocket_secure) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
                 state->connection = detail::connect_websocket_secure (
-                  state->io_context, *websocket_secure_endpoint, state->options.skip_server_certificate_validation);
+                  state->io_context, *websocket_secure_endpoint,
+                  state->options.skip_server_certificate_validation);
 #else
                 throw std::runtime_error ("stream connector WSS support requires OpenSSL");
 #endif
             } else if (state->options.transport == transport_t::tls) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-                state->connection = detail::connect_tls (state->io_context, *tls_endpoint,
-                                                         state->options.skip_server_certificate_validation);
+                state->connection =
+                  detail::connect_tls (state->io_context, *tls_endpoint,
+                                       state->options.skip_server_certificate_validation);
 #else
                 throw std::runtime_error ("stream connector TLS support requires OpenSSL");
 #endif
@@ -317,14 +330,16 @@ task_t<void> connector_t::connect ()
             }
             if (attempt < max_attempts) {
                 std::this_thread::sleep_for (retry_delay);
-                retry_delay = std::min (state->options.reconnect.max_delay,
-                                        std::chrono::milliseconds (static_cast<int> (
-                                          retry_delay.count () * state->options.reconnect.backoff_factor)));
+                retry_delay =
+                  std::min (state->options.reconnect.max_delay,
+                            std::chrono::milliseconds (static_cast<int> (
+                              retry_delay.count () * state->options.reconnect.backoff_factor)));
             }
         }
     }
 
-    detail::change_state (state, connection_state_t::disconnected, error_t{error_code_t::connect_timeout, last_error});
+    detail::change_state (state, connection_state_t::disconnected,
+                          error_t{error_code_t::connect_timeout, last_error});
     return task_t<void> (result_t<void>::failure (error_code_t::connect_timeout, last_error));
 }
 
@@ -355,7 +370,8 @@ task_t<packet_t> connector_t::receive (std::chrono::milliseconds timeout)
     return task_t<packet_t> (detail::receive_next (detail::state_from (_state), timeout));
 }
 
-connector_t &connector_t::on_connection_state_changed (std::function<void (const connection_state_changed_t &)> handler)
+connector_t &connector_t::on_connection_state_changed (
+  std::function<void (const connection_state_changed_t &)> handler)
 {
     detail::state_from (_state)->state_handlers.push_back (std::move (handler));
     return *this;
@@ -384,9 +400,11 @@ packet_t connector_t::make_packet (std::type_index type, std::string packet_name
     return packet;
 }
 
-connector_t &connector_t::on_packet_erased (std::string packet_name, std::function<void (const packet_t &)> handler)
+connector_t &connector_t::on_packet_erased (std::string packet_name,
+                                            std::function<void (const packet_t &)> handler)
 {
-    detail::state_from (_state)->packet_handlers[std::move (packet_name)].push_back (std::move (handler));
+    detail::state_from (_state)->packet_handlers[std::move (packet_name)].push_back (
+      std::move (handler));
     return *this;
 }
 

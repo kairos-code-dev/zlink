@@ -45,8 +45,7 @@ void init_string_part (zlink_msg_t *part_, const char *text_)
 
 void set_routing_id_text (void *handle_, const char *text_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (handle_, text_, strlen (text_)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (handle_, text_, strlen (text_)));
 }
 
 std::string msg_to_string (const zlink_msg_t *part_)
@@ -64,10 +63,7 @@ zlink_routing_id_t get_routing_id_value (void *handle_)
     return rid;
 }
 
-void ignore_reply (zlink_request_result_t,
-                   zlink_msg_t *parts_,
-                   size_t part_count_,
-                   void *)
+void ignore_reply (zlink_request_result_t, zlink_msg_t *parts_, size_t part_count_, void *)
 {
     if (parts_ && part_count_ > 0)
         zlink_multipart_close (parts_, part_count_);
@@ -119,8 +115,7 @@ void capture_spot_request_dispatch (void *spot_,
                                     const zlink_spot_dispatch_info_t *info_,
                                     void *userdata_)
 {
-    if (!info_
-        || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE)
+    if (!info_ || info_->event != ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE)
         return;
 
     const zlink_routing_id_t *source_rid = NULL;
@@ -128,13 +123,13 @@ void capture_spot_request_dispatch (void *spot_,
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    if (zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq, &parts,
-                         &part_count, ZLINK_DONTWAIT)
+    if (zlink_spot_recv (spot_, &source_rid, &spot_rid, &request_seq, &parts, &part_count,
+                         ZLINK_DONTWAIT)
         != ZLINK_RECV_OK) {
         return;
     }
-    capture_spot_request_for_reply (source_rid, spot_rid, request_seq, parts,
-                                    part_count, userdata_);
+    capture_spot_request_for_reply (source_rid, spot_rid, request_seq, parts, part_count,
+                                    userdata_);
 }
 
 bool wait_for_spot_request (spot_request_probe_t *probe_, int timeout_ms_)
@@ -149,9 +144,7 @@ bool wait_for_spot_request (spot_request_probe_t *probe_, int timeout_ms_)
     return probe_ && probe_->invoked.load (std::memory_order_acquire);
 }
 
-bool wait_for_spot_reply_via_poller (void *poller_,
-                                     spot_reply_probe_t *probe_,
-                                     int timeout_ms_)
+bool wait_for_spot_reply_via_poller (void *poller_, spot_reply_probe_t *probe_, int timeout_ms_)
 {
     const auto deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
@@ -171,8 +164,7 @@ int drain_completion_via_poller (void *subject_)
     if (!poller)
         return -1;
     int rc = -1;
-    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION)
-        == ZLINK_CONFIG_OK) {
+    if (zlink_poller_add (poller, subject_, NULL, ZLINK_POLLCOMPLETION) == ZLINK_CONFIG_OK) {
         zlink_poller_event_t event;
         rc = zlink_poller_wait (poller, &event, 1, 0, NULL);
         (void) zlink_poller_remove (poller, subject_);
@@ -195,15 +187,12 @@ void test_spot_poller_wait_reports_original_spot_for_subscribe ()
     TEST_ASSERT_NOT_NULL (pub_spot);
     TEST_ASSERT_NOT_NULL (poller);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "poll.spot.topic"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, sub_spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "poll.spot.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, sub_spot, &user_tag, ZLINK_POLLIN));
 
     zlink_msg_t part;
     init_string_part (&part, "poll-spot-subscribe");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "poll.spot.topic", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "poll.spot.topic", &part, 1, 0));
 
     zlink_poller_event_t ev;
     TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1, 1000, NULL));
@@ -218,14 +207,11 @@ void test_spot_poller_wait_reports_original_spot_for_subscribe ()
     char topic[64];
     size_t topic_len = sizeof (topic);
     memset (&source_rid, 0, sizeof (source_rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (
-      sub_spot, &source_rid, &parts, &part_count, topic, &topic_len,
-      ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_STRING ("poll.spot.topic",
-                              std::string (topic, topic_len).c_str ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscribe (sub_spot, &source_rid, &parts, &part_count, topic,
+                                                &topic_len, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_STRING ("poll.spot.topic", std::string (topic, topic_len).c_str ());
     TEST_ASSERT_EQUAL_STRING ("poll-spot-subscribe",
-                              part_count > 0 ? msg_to_string (&parts[0]).c_str ()
-                                             : "");
+                              part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
     zlink_multipart_close (parts, part_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, sub_spot));
@@ -254,14 +240,12 @@ void test_spot_poller_wait_reports_original_spot_for_routed_recv ()
     const zlink_routing_id_t recv_spot_rid = get_routing_id_value (recv_spot);
     set_routing_id_text (router, "poller-router");
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, recv_spot, &user_tag,
-                                                 ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, recv_spot, &user_tag, ZLINK_POLLIN));
 
     zlink_msg_t part;
     init_string_part (&part, "poll-spot-routed");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_request_spot (router, &node_rid, &recv_spot_rid, &part, 1,
-                                 &ignore_reply, NULL, 0, 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_request_spot (router, &node_rid, &recv_spot_rid, &part,
+                                                          1, &ignore_reply, NULL, 0, 1000));
 
     zlink_poller_event_t ev;
     TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, &ev, 1, 1000, NULL));
@@ -275,22 +259,19 @@ void test_spot_poller_wait_reports_original_spot_for_routed_recv ()
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (recv_spot, &source_node_rid, &source_spot_rid, &request_seq,
-                       &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (recv_spot, &source_node_rid, &source_spot_rid,
+                                                &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_NOT_NULL (source_node_rid);
     TEST_ASSERT_TRUE (source_spot_rid == NULL || source_spot_rid->size == 0);
     TEST_ASSERT_TRUE (request_seq != 0);
-    TEST_ASSERT_EQUAL_STRING (
-      "poll-spot-routed",
-      part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
+    TEST_ASSERT_EQUAL_STRING ("poll-spot-routed",
+                              part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
     zlink_multipart_close (parts, part_count);
 
     zlink_msg_t reply_part;
     init_string_part (&reply_part, "poll-spot-reply");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_reply_router (recv_spot, source_node_rid, request_seq,
-                               &reply_part, 1));
+      zlink_spot_reply_router (recv_spot, source_node_rid, request_seq, &reply_part, 1));
     std::this_thread::sleep_for (std::chrono::milliseconds (10));
     TEST_ASSERT_TRUE (drain_completion_via_poller (router) >= 0);
 
@@ -323,8 +304,7 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
     set_routing_id_text (server_spot, "poller-spot-server");
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    const zlink_routing_id_t server_spot_rid =
-      get_routing_id_value (server_spot);
+    const zlink_routing_id_t server_spot_rid = get_routing_id_value (server_spot);
     const zlink_routing_id_t *unused_source_node_rid = NULL;
     const zlink_routing_id_t *unused_source_spot_rid = NULL;
     uint64_t unused_request_seq = 0;
@@ -332,21 +312,18 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
     size_t unused_part_count = 0;
     TEST_ASSERT_EQUAL (ZLINK_RECV_NO_DATA,
                        zlink_spot_recv (client_spot, &unused_source_node_rid,
-                                        &unused_source_spot_rid,
-                                        &unused_request_seq, &unused_parts,
+                                        &unused_source_spot_rid, &unused_request_seq, &unused_parts,
                                         &unused_part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL (EAGAIN, zlink_errno ());
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot,
-                                                 &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
       server_spot, &capture_spot_request_dispatch, &request_probe));
 
     zlink_msg_t request_part;
     init_string_part (&request_part, "poll-spot-request");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
-      client_spot, &node_rid, &server_spot_rid, &request_part,
-      &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
-      ZLINK_PART_FINAL, 1000));
+      client_spot, &node_rid, &server_spot_rid, &request_part, &capture_spot_reply, &reply_probe,
+      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL, 1000));
 
     TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
     TEST_ASSERT_EQUAL_STRING ("poll-spot-request", request_probe.payload.c_str ());
@@ -357,8 +334,7 @@ void test_spot_poller_progresses_spot_request_reply_completion ()
       server_spot, &request_probe.source_node_rid, &request_probe.source_spot_rid,
       request_probe.request_seq, &reply_part, ZLINK_PART_FINAL));
 
-    TEST_ASSERT_TRUE (
-      wait_for_spot_reply_via_poller (poller, &reply_probe, 1000));
+    TEST_ASSERT_TRUE (wait_for_spot_reply_via_poller (poller, &reply_probe, 1000));
     TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, reply_probe.result);
     TEST_ASSERT_EQUAL_STRING ("poll-spot-reply", reply_probe.payload.c_str ());
 
@@ -410,31 +386,27 @@ void test_spot_poller_wait_returns_promptly_after_reply ()
     size_t unused_part_count = 0;
     TEST_ASSERT_EQUAL (ZLINK_RECV_NO_DATA,
                        zlink_spot_recv (client_spot, &unused_source_node_rid,
-                                        &unused_source_spot_rid,
-                                        &unused_request_seq, &unused_parts,
+                                        &unused_source_spot_rid, &unused_request_seq, &unused_parts,
                                         &unused_part_count, ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL (EAGAIN, zlink_errno ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
       server_spot, &capture_spot_request_dispatch, &request_probe));
 
     zlink_msg_t request_part;
     init_string_part (&request_part, "wakeup-request");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
-      client_spot, &node_rid, &server_spot_rid, &request_part,
-      &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
-      ZLINK_PART_FINAL, 5000));
+      client_spot, &node_rid, &server_spot_rid, &request_part, &capture_spot_reply, &reply_probe,
+      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL, 5000));
 
     TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
 
     zlink_msg_t reply_part;
     init_string_part (&reply_part, "wakeup-reply");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
-      server_spot, &request_probe.source_node_rid,
-      &request_probe.source_spot_rid, request_probe.request_seq, &reply_part,
-      ZLINK_PART_FINAL));
+      server_spot, &request_probe.source_node_rid, &request_probe.source_spot_rid,
+      request_probe.request_seq, &reply_part, ZLINK_PART_FINAL));
 
     // Give the dispatcher a moment to enqueue the completion. The signal
     // byte should now be on the inproc PAIR pipe, making the registered
@@ -445,13 +417,10 @@ void test_spot_poller_wait_returns_promptly_after_reply ()
     zlink_poller_event_t events[4];
     const auto wait_start = std::chrono::steady_clock::now ();
     const int rc = zlink_poller_wait (
-      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
-      5000, NULL);
-    const auto wait_elapsed =
-      std::chrono::steady_clock::now () - wait_start;
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+    const auto wait_elapsed = std::chrono::steady_clock::now () - wait_start;
     const long long elapsed_ms =
-      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
-        .count ();
+      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed).count ();
 
     TEST_ASSERT_TRUE (rc >= 0);
     // Allow generous slack for slow CI; the regression caused this call to
@@ -494,17 +463,14 @@ void test_spot_poller_wait_returns_promptly_after_spot_to_spot_send ()
     set_routing_id_text (receiver_spot, "sendsend-spot-receiver");
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    const zlink_routing_id_t receiver_spot_rid =
-      get_routing_id_value (receiver_spot);
+    const zlink_routing_id_t receiver_spot_rid = get_routing_id_value (receiver_spot);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, receiver_spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, receiver_spot, &user_tag, ZLINK_POLLIN));
 
     zlink_msg_t part;
     init_string_part (&part, "sendsend-payload");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_send_spot_part (
-      sender_spot, &node_rid, &receiver_spot_rid, &part,
-      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+      sender_spot, &node_rid, &receiver_spot_rid, &part, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
 
     // Allow the dispatcher to enqueue the routed message. The receiver's
     // routed_recv_queue should now be readable.
@@ -513,13 +479,10 @@ void test_spot_poller_wait_returns_promptly_after_spot_to_spot_send ()
     zlink_poller_event_t events[4];
     const auto wait_start = std::chrono::steady_clock::now ();
     const int rc = zlink_poller_wait (
-      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
-      5000, NULL);
-    const auto wait_elapsed =
-      std::chrono::steady_clock::now () - wait_start;
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+    const auto wait_elapsed = std::chrono::steady_clock::now () - wait_start;
     const long long elapsed_ms =
-      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
-        .count ();
+      std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed).count ();
 
     TEST_ASSERT_TRUE (rc >= 1);
     TEST_ASSERT_TRUE (elapsed_ms < 500);
@@ -530,12 +493,10 @@ void test_spot_poller_wait_returns_promptly_after_spot_to_spot_send ()
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
-                       &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_STRING (
-      "sendsend-payload",
-      part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
+                                                &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_STRING ("sendsend-payload",
+                              part_count > 0 ? msg_to_string (&parts[0]).c_str () : "");
     zlink_multipart_close (parts, part_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, receiver_spot));
@@ -573,14 +534,12 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     set_routing_id_text (receiver_spot, "ssbi-spot-receiver");
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    const zlink_routing_id_t receiver_spot_rid =
-      get_routing_id_value (receiver_spot);
+    const zlink_routing_id_t receiver_spot_rid = get_routing_id_value (receiver_spot);
 
     // The combined POLLIN|POLLOUT registration must succeed. Previously
     // failed with EINVAL.
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (
-      poller, receiver_spot, &user_tag,
-      static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
+      poller, receiver_spot, &user_tag, static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
 
     // POLLOUT half: the spot is initially writable, so a wait with a
     // generous timeout must return immediately with a POLLOUT event.
@@ -588,18 +547,15 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
         zlink_poller_event_t events[4];
         const auto wait_start = std::chrono::steady_clock::now ();
         const int rc = zlink_poller_wait (
-          poller, events,
-          static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
-        const long long elapsed_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            std::chrono::steady_clock::now () - wait_start)
-            .count ();
+          poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+        const long long elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                       std::chrono::steady_clock::now () - wait_start)
+                                       .count ();
         TEST_ASSERT_TRUE (rc >= 1);
         TEST_ASSERT_TRUE (elapsed_ms < 500);
         bool saw_pollout = false;
         for (int i = 0; i < rc; ++i) {
-            if (events[i].socket == receiver_spot
-                && (events[i].events & ZLINK_POLLOUT) != 0) {
+            if (events[i].socket == receiver_spot && (events[i].events & ZLINK_POLLOUT) != 0) {
                 saw_pollout = true;
                 break;
             }
@@ -612,26 +568,22 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     zlink_msg_t part;
     init_string_part (&part, "ssbi-payload");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_send_spot_part (
-      sender_spot, &node_rid, &receiver_spot_rid, &part,
-      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+      sender_spot, &node_rid, &receiver_spot_rid, &part, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
     std::this_thread::sleep_for (std::chrono::milliseconds (20));
 
     {
         zlink_poller_event_t events[4];
         const auto wait_start = std::chrono::steady_clock::now ();
         const int rc = zlink_poller_wait (
-          poller, events,
-          static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
-        const long long elapsed_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (
-            std::chrono::steady_clock::now () - wait_start)
-            .count ();
+          poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+        const long long elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                       std::chrono::steady_clock::now () - wait_start)
+                                       .count ();
         TEST_ASSERT_TRUE (rc >= 1);
         TEST_ASSERT_TRUE (elapsed_ms < 500);
         bool saw_pollin = false;
         for (int i = 0; i < rc; ++i) {
-            if (events[i].socket == receiver_spot
-                && (events[i].events & ZLINK_POLLIN) != 0) {
+            if (events[i].socket == receiver_spot && (events[i].events & ZLINK_POLLIN) != 0) {
                 saw_pollin = true;
                 break;
             }
@@ -644,9 +596,8 @@ void test_spot_poller_accepts_pollin_or_pollout_combined ()
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
-                       &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (receiver_spot, &src_node_rid, &src_spot_rid,
+                                                &request_seq, &parts, &part_count, ZLINK_DONTWAIT));
     zlink_multipart_close (parts, part_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, receiver_spot));
@@ -678,26 +629,22 @@ void test_spot_poller_modify_accepts_combined_readiness ()
     set_routing_id_text (node, "ssbm-spot-node");
     set_routing_id_text (spot, "ssbm-spot");
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, spot, &user_tag, ZLINK_POLLIN));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, spot, &user_tag, ZLINK_POLLIN));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_modify (
-      poller, spot, static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
+      zlink_poller_modify (poller, spot, static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
 
     zlink_poller_event_t events[4];
     const auto wait_start = std::chrono::steady_clock::now ();
     const int rc = zlink_poller_wait (
-      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])),
-      5000, NULL);
-    const long long elapsed_ms =
-      std::chrono::duration_cast<std::chrono::milliseconds> (
-        std::chrono::steady_clock::now () - wait_start)
-        .count ();
+      poller, events, static_cast<int> (sizeof (events) / sizeof (events[0])), 5000, NULL);
+    const long long elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds> (
+                                   std::chrono::steady_clock::now () - wait_start)
+                                   .count ();
     TEST_ASSERT_TRUE (rc >= 1);
     TEST_ASSERT_TRUE (elapsed_ms < 500);
     bool saw_pollout = false;
     for (int i = 0; i < rc; ++i) {
-        if (events[i].socket == spot
-            && events[i].user_data == &user_tag
+        if (events[i].socket == spot && events[i].user_data == &user_tag
             && (events[i].events & ZLINK_POLLOUT) != 0) {
             saw_pollout = true;
             break;
@@ -739,8 +686,7 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
     set_routing_id_text (server_spot, "sustained-reqrep-server");
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    const zlink_routing_id_t server_spot_rid =
-      get_routing_id_value (server_spot);
+    const zlink_routing_id_t server_spot_rid = get_routing_id_value (server_spot);
 
     // Prime the client spot's request-reply state so poller_add wires up
     // the completion signal fd registration.
@@ -750,15 +696,13 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
         uint64_t prime_seq = 0;
         zlink_msg_t *prime_parts = NULL;
         size_t prime_part_count = 0;
-        TEST_ASSERT_EQUAL (
-          ZLINK_RECV_NO_DATA,
-          zlink_spot_recv (client_spot, &prime_node_rid, &prime_spot_rid,
-                           &prime_seq, &prime_parts, &prime_part_count,
-                           ZLINK_RECV_FLAGS_DONTWAIT));
+        TEST_ASSERT_EQUAL (ZLINK_RECV_NO_DATA,
+                           zlink_spot_recv (client_spot, &prime_node_rid, &prime_spot_rid,
+                                            &prime_seq, &prime_parts, &prime_part_count,
+                                            ZLINK_RECV_FLAGS_DONTWAIT));
     }
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot, &user_tag, ZLINK_POLLIN));
     spot_request_probe_t request_probe;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
       server_spot, &capture_spot_request_dispatch, &request_probe));
@@ -771,28 +715,23 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
         zlink_msg_t request_part;
         init_string_part (&request_part, "sustained-request");
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
-          client_spot, &node_rid, &server_spot_rid, &request_part,
-          &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
-          ZLINK_PART_FINAL, 5000));
+          client_spot, &node_rid, &server_spot_rid, &request_part, &capture_spot_reply,
+          &reply_probe, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL, 5000));
 
         TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
 
         zlink_msg_t reply_part;
         init_string_part (&reply_part, "sustained-reply");
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
-          server_spot, &request_probe.source_node_rid,
-          &request_probe.source_spot_rid, request_probe.request_seq,
-          &reply_part, ZLINK_PART_FINAL));
+          server_spot, &request_probe.source_node_rid, &request_probe.source_spot_rid,
+          request_probe.request_seq, &reply_part, ZLINK_PART_FINAL));
 
         zlink_poller_event_t event;
         const auto wait_start = std::chrono::steady_clock::now ();
-        const int rc =
-          zlink_poller_wait (poller, &event, 1, 5000, NULL);
-        const auto wait_elapsed =
-          std::chrono::steady_clock::now () - wait_start;
+        const int rc = zlink_poller_wait (poller, &event, 1, 5000, NULL);
+        const auto wait_elapsed = std::chrono::steady_clock::now () - wait_start;
         const long long elapsed_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed)
-            .count ();
+          std::chrono::duration_cast<std::chrono::milliseconds> (wait_elapsed).count ();
 
         TEST_ASSERT_TRUE (rc >= 0);
         // Wakeup should arrive well within 500 ms; under the bug the
@@ -800,8 +739,7 @@ void test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop ()
         TEST_ASSERT_TRUE (elapsed_ms < 500);
         TEST_ASSERT_TRUE (reply_probe.invoked);
         TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, reply_probe.result);
-        TEST_ASSERT_EQUAL_STRING ("sustained-reply",
-                                  reply_probe.payload.c_str ());
+        TEST_ASSERT_EQUAL_STRING ("sustained-reply", reply_probe.payload.c_str ());
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_remove (poller, client_spot));
@@ -825,15 +763,12 @@ void test_completion_only_spot_registration_has_no_public_recv_event ()
     TEST_ASSERT_NOT_NULL (pub_spot);
     TEST_ASSERT_NOT_NULL (poller);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_subscription (sub_spot, "completion-only.topic"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, sub_spot, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "completion-only.topic"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, sub_spot, NULL, ZLINK_POLLCOMPLETION));
 
     zlink_msg_t part;
     init_string_part (&part, "not-a-completion");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_publish (pub_spot, "completion-only.topic", &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_publish (pub_spot, "completion-only.topic", &part, 1, 0));
 
     zlink_poller_event_t event;
     TEST_ASSERT_EQUAL_INT (0, zlink_poller_wait (poller, &event, 1, 50, NULL));
@@ -858,8 +793,7 @@ void test_completion_only_rejects_combined_pollin ()
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
       zlink_poller_add (poller, dealer, NULL,
-                        static_cast<short> (ZLINK_POLLIN
-                                            | ZLINK_POLLCOMPLETION)));
+                        static_cast<short> (ZLINK_POLLIN | ZLINK_POLLCOMPLETION)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_destroy (&poller));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (dealer));
@@ -885,28 +819,24 @@ void test_completion_only_spot_request_returns_zero_after_callback ()
     set_routing_id_text (client_spot, "completion-spot-client");
     set_routing_id_text (server_spot, "completion-spot-server");
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_poller_add (poller, client_spot, NULL, ZLINK_POLLCOMPLETION));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poller_add (poller, client_spot, NULL, ZLINK_POLLCOMPLETION));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_dispatch_event_handler (
       server_spot, &capture_spot_request_dispatch, &request_probe));
 
     const zlink_routing_id_t node_rid = get_routing_id_value (node);
-    const zlink_routing_id_t server_spot_rid =
-      get_routing_id_value (server_spot);
+    const zlink_routing_id_t server_spot_rid = get_routing_id_value (server_spot);
     zlink_msg_t request_part;
     init_string_part (&request_part, "completion-request");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_request_spot_part (
-      client_spot, &node_rid, &server_spot_rid, &request_part,
-      &capture_spot_reply, &reply_probe, ZLINK_SEND_FLAGS_NONE,
-      ZLINK_PART_FINAL, 5000));
+      client_spot, &node_rid, &server_spot_rid, &request_part, &capture_spot_reply, &reply_probe,
+      ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL, 5000));
 
     TEST_ASSERT_TRUE (wait_for_spot_request (&request_probe, 1000));
     zlink_msg_t reply_part;
     init_string_part (&reply_part, "completion-reply");
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_reply_spot_part (
-      server_spot, &request_probe.source_node_rid,
-      &request_probe.source_spot_rid, request_probe.request_seq, &reply_part,
-      ZLINK_PART_FINAL));
+      server_spot, &request_probe.source_node_rid, &request_probe.source_spot_rid,
+      request_probe.request_seq, &reply_part, ZLINK_PART_FINAL));
 
     zlink_poller_event_t event;
     TEST_ASSERT_EQUAL_INT (0, zlink_poller_wait (poller, &event, 1, 5000, NULL));
@@ -936,8 +866,7 @@ int main (void)
     RUN_TEST (test_spot_poller_wait_returns_promptly_after_spot_to_spot_send);
     RUN_TEST (test_spot_poller_accepts_pollin_or_pollout_combined);
     RUN_TEST (test_spot_poller_modify_accepts_combined_readiness);
-    RUN_TEST (
-      test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);
+    RUN_TEST (test_spot_poller_wait_returns_for_each_reply_in_sustained_request_loop);
     RUN_TEST (test_completion_only_spot_registration_has_no_public_recv_event);
     RUN_TEST (test_completion_only_rejects_combined_pollin);
     RUN_TEST (test_completion_only_spot_request_returns_zero_after_callback);

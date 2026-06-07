@@ -15,11 +15,10 @@
 #endif
 
 #ifndef ZLINK_MAKE_VERSION
-#define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
-    ((major) *10000 + (minor) *100 + (patch))
+#define ZLINK_MAKE_VERSION(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
 #endif
 #ifndef ZLINK_VERSION
-#define ZLINK_VERSION                                                            \
+#define ZLINK_VERSION                                                                              \
     ZLINK_MAKE_VERSION (ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
 #endif
 
@@ -38,9 +37,9 @@
 #if defined ZLINK_STATIC
 #define ZLINK_EXPORT
 #elif defined DLL_EXPORT
-#define ZLINK_EXPORT __declspec(dllexport)
+#define ZLINK_EXPORT __declspec (dllexport)
 #else
-#define ZLINK_EXPORT __declspec(dllimport)
+#define ZLINK_EXPORT __declspec (dllimport)
 #endif
 #else
 #if defined __SUNPRO_C || defined __SUNPRO_CC

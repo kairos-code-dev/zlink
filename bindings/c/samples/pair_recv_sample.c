@@ -18,8 +18,7 @@ static void pair_receiver_thread (void *arg_)
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     assert (zlink_msg_init (&part) == 0);
-    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0)
-            == ZLINK_RECV_OK);
+    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0) == ZLINK_RECV_OK);
     assert (has_more == ZLINK_PART_FINAL);
 
     sample->received_len = zlink_msg_size (&part);
@@ -35,8 +34,7 @@ static void pair_sender_thread (void *arg_)
     zlink_msg_t outbound;
 
     make_message (&outbound, k_pair_payload);
-    assert (zlink_send_part (sample->client, &outbound, 0, ZLINK_PART_FINAL)
-            == ZLINK_SUBMIT_OK);
+    assert (zlink_send_part (sample->client, &outbound, 0, ZLINK_PART_FINAL) == ZLINK_SUBMIT_OK);
 }
 
 int main (void)
@@ -51,10 +49,10 @@ int main (void)
     assert (sample.server != NULL);
     assert (sample.client != NULL);
 
-    void *server_monitor = open_socket_monitor (
-      sample.server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
-    void *client_monitor = open_socket_monitor (
-      sample.client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *server_monitor =
+      open_socket_monitor (sample.server, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
+    void *client_monitor =
+      open_socket_monitor (sample.client, ZLINK_SOCKET_MONITOR_EVENT_CONNECTION_READY);
 
     assert (zlink_bind (sample.server, "tcp://127.0.0.1:0") == ZLINK_BIND_OK);
     char endpoint[256];
@@ -71,8 +69,8 @@ int main (void)
     zlink_thread_join (receiver);
 
     assert (strcmp (sample.received, k_pair_payload) == 0);
-    printf ("[pair/recv] send: \"%s\" -> recv: \"%.*s\"\n",
-            k_pair_payload, (int) sample.received_len, sample.received);
+    printf ("[pair/recv] send: \"%s\" -> recv: \"%.*s\"\n", k_pair_payload,
+            (int) sample.received_len, sample.received);
 
     zlink_monitor_close (&client_monitor);
     zlink_monitor_close (&server_monitor);

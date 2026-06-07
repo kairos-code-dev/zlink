@@ -48,11 +48,9 @@ void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 #endif
 
 #if defined _WIN32_WCE
-    _descriptor = (HANDLE) CreateThread (NULL, stack, &::thread_routine, this,
-                                         0, &_thread_id);
+    _descriptor = (HANDLE) CreateThread (NULL, stack, &::thread_routine, this, 0, &_thread_id);
 #else
-    _descriptor = (HANDLE) _beginthreadex (NULL, stack, &::thread_routine, this,
-                                           0, &_thread_id);
+    _descriptor = (HANDLE) _beginthreadex (NULL, stack, &::thread_routine, this, 0, &_thread_id);
 #endif
     win_assert (_descriptor != NULL);
     _started = true;
@@ -75,8 +73,9 @@ void zlink::thread_t::stop ()
     }
 }
 
-void zlink::thread_t::setSchedulingParameters (
-  int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
+void zlink::thread_t::setSchedulingParameters (int priority_,
+                                               int scheduling_policy_,
+                                               const std::set<int> &affinity_cpus_)
 {
     // Windows builds currently treat scheduling hints as unsupported.
     LIBZLINK_UNUSED (priority_);
@@ -84,8 +83,7 @@ void zlink::thread_t::setSchedulingParameters (
     LIBZLINK_UNUSED (affinity_cpus_);
 }
 
-void zlink::thread_t::
-  applySchedulingParameters () // to be called in secondary thread context
+void zlink::thread_t::applySchedulingParameters () // to be called in secondary thread context
 {
     // No-op: Windows scheduling hints are not exposed by this abstraction.
 }
@@ -107,8 +105,7 @@ struct thread_info_t
 
 #endif
 
-void zlink::thread_t::
-  applyThreadName () // to be called in secondary thread context
+void zlink::thread_t::applyThreadName () // to be called in secondary thread context
 {
     if (!_name[0] || !IsDebuggerPresent ())
         return;
@@ -123,8 +120,7 @@ void zlink::thread_t::
 
     __try {
         const DWORD MS_VC_EXCEPTION = 0x406D1388;
-        RaiseException (MS_VC_EXCEPTION, 0,
-                        sizeof (thread_info) / sizeof (ULONG_PTR),
+        RaiseException (MS_VC_EXCEPTION, 0, sizeof (thread_info) / sizeof (ULONG_PTR),
                         (ULONG_PTR *) &thread_info);
     }
     __except (EXCEPTION_CONTINUE_EXECUTION) {
@@ -161,9 +157,8 @@ void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
     LIBZLINK_UNUSED (name_);
     _tfn = tfn_;
     _arg = arg_;
-    _descriptor = taskSpawn (NULL, DEFAULT_PRIORITY, DEFAULT_OPTIONS,
-                             DEFAULT_STACK_SIZE, (FUNCPTR) thread_routine,
-                             (int) this, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    _descriptor = taskSpawn (NULL, DEFAULT_PRIORITY, DEFAULT_OPTIONS, DEFAULT_STACK_SIZE,
+                             (FUNCPTR) thread_routine, (int) this, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     if (_descriptor != NULL || _descriptor > 0)
         _started = true;
 }
@@ -171,8 +166,7 @@ void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 void zlink::thread_t::stop ()
 {
     if (_started) {
-        while ((_descriptor != NULL || _descriptor > 0)
-               && taskIdVerify (_descriptor) == 0) {
+        while ((_descriptor != NULL || _descriptor > 0) && taskIdVerify (_descriptor) == 0) {
         }
         _descriptor = NULL;
         _started = false;
@@ -184,27 +178,25 @@ bool zlink::thread_t::is_current_thread () const
     return taskIdSelf () == _descriptor;
 }
 
-void zlink::thread_t::setSchedulingParameters (
-  int priority_, int schedulingPolicy_, const std::set<int> &affinity_cpus_)
+void zlink::thread_t::setSchedulingParameters (int priority_,
+                                               int schedulingPolicy_,
+                                               const std::set<int> &affinity_cpus_)
 {
     _thread_priority = priority_;
     _thread_sched_policy = schedulingPolicy_;
     _thread_affinity_cpus = affinity_cpus_;
 }
 
-void zlink::thread_t::
-  applySchedulingParameters () // to be called in secondary thread context
+void zlink::thread_t::applySchedulingParameters () // to be called in secondary thread context
 {
-    int priority =
-      (_thread_priority >= 0 ? _thread_priority : DEFAULT_PRIORITY);
+    int priority = (_thread_priority >= 0 ? _thread_priority : DEFAULT_PRIORITY);
     priority = (priority < UCHAR_MAX ? priority : DEFAULT_PRIORITY);
     if (_descriptor != NULL || _descriptor > 0) {
         taskPrioritySet (_descriptor, priority);
     }
 }
 
-void zlink::thread_t::
-  applyThreadName () // to be called in secondary thread context
+void zlink::thread_t::applyThreadName () // to be called in secondary thread context
 {
     // No-op: VxWorks builds do not expose a portable thread-name hook here.
 }
@@ -265,24 +257,22 @@ bool zlink::thread_t::is_current_thread () const
     return bool (pthread_equal (pthread_self (), _descriptor));
 }
 
-void zlink::thread_t::setSchedulingParameters (
-  int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
+void zlink::thread_t::setSchedulingParameters (int priority_,
+                                               int scheduling_policy_,
+                                               const std::set<int> &affinity_cpus_)
 {
     _thread_priority = priority_;
     _thread_sched_policy = scheduling_policy_;
     _thread_affinity_cpus = affinity_cpus_;
 }
 
-void zlink::thread_t::
-  applySchedulingParameters () // to be called in secondary thread context
+void zlink::thread_t::applySchedulingParameters () // to be called in secondary thread context
 {
-#if defined _POSIX_THREAD_PRIORITY_SCHEDULING                                  \
-  && _POSIX_THREAD_PRIORITY_SCHEDULING >= 0
+#if defined _POSIX_THREAD_PRIORITY_SCHEDULING && _POSIX_THREAD_PRIORITY_SCHEDULING >= 0
     int policy = 0;
     struct sched_param param;
 
-#if _POSIX_THREAD_PRIORITY_SCHEDULING == 0                                     \
-  && defined _SC_THREAD_PRIORITY_SCHEDULING
+#if _POSIX_THREAD_PRIORITY_SCHEDULING == 0 && defined _SC_THREAD_PRIORITY_SCHEDULING
     if (sysconf (_SC_THREAD_PRIORITY_SCHEDULING) < 0) {
         return;
     }
@@ -299,15 +289,13 @@ void zlink::thread_t::
        SCHED_RR policies, and the priority 0 for the remaining policies."
        Other policies may use the "nice value" in place of the priority:
     */
-    bool use_nice_instead_priority =
-      (policy != SCHED_FIFO) && (policy != SCHED_RR);
+    bool use_nice_instead_priority = (policy != SCHED_FIFO) && (policy != SCHED_RR);
 
     if (use_nice_instead_priority)
         param.sched_priority =
           0; // this is the only supported priority for most scheduling policies
     else if (_thread_priority != ZLINK_THREAD_PRIORITY_DFLT)
-        param.sched_priority =
-          _thread_priority; // user should provide a value between 1 and 99
+        param.sched_priority = _thread_priority; // user should provide a value between 1 and 99
 
 #ifdef __NetBSD__
     if (policy == SCHED_OTHER)
@@ -325,8 +313,7 @@ void zlink::thread_t::
     posix_assert (rc);
 
 #if !defined ZLINK_HAVE_VXWORKS
-    if (use_nice_instead_priority
-        && _thread_priority != ZLINK_THREAD_PRIORITY_DFLT
+    if (use_nice_instead_priority && _thread_priority != ZLINK_THREAD_PRIORITY_DFLT
         && _thread_priority > 0) {
         // assume the user wants to decrease the thread's nice value
         // i.e., increase the chance of this thread being scheduled: try setting that to
@@ -348,16 +335,14 @@ void zlink::thread_t::
              it != end; it++) {
             CPU_SET ((int) (*it), &cpuset);
         }
-        rc =
-          pthread_setaffinity_np (pthread_self (), sizeof (cpu_set_t), &cpuset);
+        rc = pthread_setaffinity_np (pthread_self (), sizeof (cpu_set_t), &cpuset);
         posix_assert (rc);
     }
 #endif
 #endif
 }
 
-void zlink::thread_t::
-  applyThreadName () // to be called in secondary thread context
+void zlink::thread_t::applyThreadName () // to be called in secondary thread context
 {
     /* The thread name is a cosmetic string, added to ease debugging of
  * multi-threaded applications. It is not a big issue if this value

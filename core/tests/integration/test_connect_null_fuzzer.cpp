@@ -24,8 +24,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (client, ""));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, my_endpoint));
 
-    fd_t server_accept =
-      TEST_ASSERT_SUCCESS_RAW_ERRNO (accept (server, NULL));
+    fd_t server_accept = TEST_ASSERT_SUCCESS_RAW_ERRNO (accept (server, NULL));
 
     //  If there is not enough data for a full greeting, just send what we can
     //  Otherwise send greeting first, as expected by the protocol
@@ -63,15 +62,13 @@ void test_connect_null_fuzzer ()
 {
     uint8_t **data;
     size_t *len, num_cases = 0;
-    if (fuzzer_corpus_encode (
-          "tests/libzlink-fuzz-corpora/test_connect_null_fuzzer_seed_corpus",
-          &data, &len, &num_cases)
+    if (fuzzer_corpus_encode ("tests/libzlink-fuzz-corpora/test_connect_null_fuzzer_seed_corpus",
+                              &data, &len, &num_cases)
         != 0)
         exit (77);
 
     while (num_cases-- > 0) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
+        TEST_ASSERT_SUCCESS_ERRNO (LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
         free (data[num_cases]);
     }
 

@@ -9,10 +9,7 @@ int zlink_service_poller_add_internal (poller_handle_t *poller_,
                                        void *socket_,
                                        void *user_data_,
                                        short events_);
-int zlink_service_poller_modify_internal (poller_handle_t *poller_,
-                                          void *socket_,
-                                          short events_);
-int zlink_service_poller_remove_internal (poller_handle_t *poller_,
-                                          void *socket_);
+int zlink_service_poller_modify_internal (poller_handle_t *poller_, void *socket_, short events_);
+int zlink_service_poller_remove_internal (poller_handle_t *poller_, void *socket_);
 
 #endif

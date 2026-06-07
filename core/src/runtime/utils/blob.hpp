@@ -18,8 +18,7 @@
 #define ZLINK_MOVE(x) std::move (x)
 #else
 #if defined __SUNPRO_CC
-template <typename K, typename V>
-std::pair<const K, V> make_pair_fix_const (const K &k, const V &v)
+template <typename K, typename V> std::pair<const K, V> make_pair_fix_const (const K &k, const V &v)
 {
     return std::pair<const K, V> (k, v);
 }
@@ -50,9 +49,7 @@ struct blob_t
 
     //  Creates a blob_t of a given size, with uninitialized content.
     explicit blob_t (const size_t size_) :
-        _data (static_cast<unsigned char *> (malloc (size_))),
-        _size (size_),
-        _owned (true)
+        _data (static_cast<unsigned char *> (malloc (size_))), _size (size_), _owned (true)
     {
         alloc_assert (!_size || _data);
     }
@@ -60,9 +57,7 @@ struct blob_t
     //  Creates a blob_t of a given size, an initializes content by copying
     // from another buffer.
     blob_t (const unsigned char *const data_, const size_t size_) :
-        _data (static_cast<unsigned char *> (malloc (size_))),
-        _size (size_),
-        _owned (true)
+        _data (static_cast<unsigned char *> (malloc (size_))), _size (size_), _owned (true)
     {
         alloc_assert (!size_ || _data);
         if (size_ && _data) {
@@ -89,10 +84,9 @@ struct blob_t
     unsigned char *data () { return _data; }
 
     //  Defines an order relationship on blob_t.
-    bool operator<(blob_t const &other_) const
+    bool operator< (blob_t const &other_) const
     {
-        const int cmpres =
-          memcmp (_data, other_._data, std::min (_size, other_._size));
+        const int cmpres = memcmp (_data, other_._data, std::min (_size, other_._size));
         return cmpres < 0 || (cmpres == 0 && _size < other_._size);
     }
 
@@ -144,8 +138,8 @@ struct blob_t
     blob_t &operator= (const blob_t &) = delete;
 
     blob_t (blob_t &&other_) ZLINK_NOEXCEPT : _data (other_._data),
-                                            _size (other_._size),
-                                            _owned (other_._owned)
+                                              _size (other_._size),
+                                              _owned (other_._owned)
     {
         other_._owned = false;
     }
@@ -161,10 +155,7 @@ struct blob_t
         return *this;
     }
 #else
-    blob_t (const blob_t &other) : _owned (false)
-    {
-        set_deep_copy (other);
-    }
+    blob_t (const blob_t &other) : _owned (false) { set_deep_copy (other); }
     blob_t &operator= (const blob_t &other)
     {
         if (this != &other) {

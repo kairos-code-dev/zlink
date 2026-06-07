@@ -17,8 +17,7 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
 
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
@@ -35,8 +34,7 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
     TEST_ASSERT_NOT_EQUAL (zlink::retired_fd, routed_fd);
     TEST_ASSERT_FALSE (state->recv.routed_recv_queue.signal_armed);
     TEST_ASSERT_EQUAL_UINT64 (0, state->recv.routed_recv_queue.pending_count);
-    TEST_ASSERT_NULL (
-      zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
+    TEST_ASSERT_NULL (zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
 
     zlink_msg_t part;
     zlink_msg_init (&part);
@@ -44,9 +42,9 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
     const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-    const zlink_recv_result_t rc = zlink_spot_recv_part (
-      spot, &source_node_rid, &source_spot_rid, &request_seq, &part,
-      &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
+    const zlink_recv_result_t rc =
+      zlink_spot_recv_part (spot, &source_node_rid, &source_spot_rid, &request_seq, &part,
+                            &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
     zlink_msg_close (&part);
@@ -59,8 +57,7 @@ void test_spot_new_keeps_routed_recv_lazy_until_first_recv ()
     TEST_ASSERT_NOT_EQUAL (zlink::retired_fd, routed_fd);
     TEST_ASSERT_FALSE (state->recv.routed_recv_queue.signal_armed);
     TEST_ASSERT_EQUAL_UINT64 (0, state->recv.routed_recv_queue.pending_count);
-    TEST_ASSERT_NOT_NULL (
-      zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
+    TEST_ASSERT_NOT_NULL (zlink::spot_reqrep_internal::spot_completion_signal_socket (state));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -78,25 +75,20 @@ void test_spot_destroy_cleans_identity_with_unread_message ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, 128));
 
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (node, "node-activation",
-                            strlen ("node-activation")));
+      zlink_set_routing_id (node, "node-activation", strlen ("node-activation")));
 
     void *spot = zlink_spot_new (node);
     TEST_ASSERT_NOT_NULL (spot);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (spot, "spot-unread", strlen ("spot-unread")));
-    TEST_ASSERT_NOT_NULL (
-      zlink::spot_reqrep_internal::find_or_create_spot_state (spot).get ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (spot, "spot-unread", strlen ("spot-unread")));
+    TEST_ASSERT_NOT_NULL (zlink::spot_reqrep_internal::find_or_create_spot_state (spot).get ());
 
     zlink::spot_reqrep_internal::routing_pair_t identity;
-    TEST_ASSERT_TRUE (
-      zlink::spot_reqrep_internal::resolve_spot_identity (spot, &identity));
+    TEST_ASSERT_TRUE (zlink::spot_reqrep_internal::resolve_spot_identity (spot, &identity));
 
     zlink_routing_id_t node_rid;
     zlink_routing_id_t spot_rid;
@@ -112,20 +104,17 @@ void test_spot_destroy_cleans_identity_with_unread_message ()
 
     zlink_msg_t part;
     init_string_part_local (&part, "pending");
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_router_send_spot (router, &node_rid, &spot_rid, &part, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_send_spot (router, &node_rid, &spot_rid, &part, 1, 0));
     std::this_thread::sleep_for (std::chrono::milliseconds (50));
 
-    TEST_ASSERT_NOT_NULL (
-      zlink::spot_reqrep_internal::find_spot_state_by_identity (
-        identity.node_rid, identity.spot_rid)
-        .get ());
+    TEST_ASSERT_NOT_NULL (zlink::spot_reqrep_internal::find_spot_state_by_identity (
+                            identity.node_rid, identity.spot_rid)
+                            .get ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
-    TEST_ASSERT_NULL (
-      zlink::spot_reqrep_internal::find_spot_state_by_identity (
-        identity.node_rid, identity.spot_rid)
-        .get ());
+    TEST_ASSERT_NULL (zlink::spot_reqrep_internal::find_spot_state_by_identity (identity.node_rid,
+                                                                                identity.spot_rid)
+                        .get ());
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));

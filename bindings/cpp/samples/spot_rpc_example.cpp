@@ -70,17 +70,20 @@ int main ()
     client_node.connect_peer (server_endpoint);
 
     // 서버 Spot은 라우티드 요청을 받아 같은 평면으로 응답한다.
-    server.set_dispatch_handler ([&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
-        if (info.event != zlink::spot_dispatch_event_t::routed_readable)
-            return;
-        zlink::received_t received;
-        while (s.recv_routed (received, zlink::recv_flags_t::dontwait) == static_cast<int> (zlink::recv_result_t::ok)) {
-            zlink::message_t reply = zlink::message_t::from ("pong");
-            s.reply_to_spot (*received.routing_id (), *received.spot_rid (), *received.request_seq ())
-              .message (reply)
-              .submit ();
-        }
-    });
+    server.set_dispatch_handler (
+      [&] (zlink::service::spot_t &s, const zlink::spot_dispatch_info_t &info) {
+          if (info.event != zlink::spot_dispatch_event_t::routed_readable)
+              return;
+          zlink::received_t received;
+          while (s.recv_routed (received, zlink::recv_flags_t::dontwait)
+                 == static_cast<int> (zlink::recv_result_t::ok)) {
+              zlink::message_t reply = zlink::message_t::from ("pong");
+              s.reply_to_spot (*received.routing_id (), *received.spot_rid (),
+                               *received.request_seq ())
+                .message (reply)
+                .submit ();
+          }
+      });
 
     wait_peer (server_node);
     wait_peer (client_node);
@@ -97,7 +100,8 @@ int main ()
       .timeout (std::chrono::seconds (3))
       .submit ([done] (zlink::request_result_t result, std::vector<zlink::message_t> parts) {
           if (result == zlink::request_result_t::ok && !parts.empty ())
-              std::printf ("[spot/rpc] request \"ping\" -> reply \"%s\"\n", parts[0].to_string ().c_str ());
+              std::printf ("[spot/rpc] request \"ping\" -> reply \"%s\"\n",
+                           parts[0].to_string ().c_str ());
           done->store (true);
       });
 

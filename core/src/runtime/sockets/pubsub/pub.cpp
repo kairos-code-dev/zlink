@@ -6,8 +6,7 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zlink::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
-    xpub_t (parent_, tid_, sid_)
+zlink::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) : xpub_t (parent_, tid_, sid_)
 {
     options.type = ZLINK_CORE_SOCKET_PUB;
     refresh_auto_hwm_policy ();
@@ -17,9 +16,7 @@ zlink::pub_t::~pub_t ()
 {
 }
 
-void zlink::pub_t::xattach_pipe (pipe_t *pipe_,
-                               bool subscribe_to_all_,
-                               bool locally_initiated_)
+void zlink::pub_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     zlink_assert (pipe_);
 

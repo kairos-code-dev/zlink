@@ -23,15 +23,13 @@ void fill_ref (const zlink::spot_actor_api_internal::actor_handle_t *actor_,
     out_->generation = actor_->generation;
 }
 
-void clear_actor_bound_session_fields (
-  zlink::spot_actor_api_internal::actor_handle_t *actor_,
-  bool update_changed_time_)
+void clear_actor_bound_session_fields (zlink::spot_actor_api_internal::actor_handle_t *actor_,
+                                       bool update_changed_time_)
 {
     if (!actor_)
         return;
     actor_->bound_session_node = NULL;
-    memset (&actor_->bound_session_node_rid, 0,
-            sizeof (actor_->bound_session_node_rid));
+    memset (&actor_->bound_session_node_rid, 0, sizeof (actor_->bound_session_node_rid));
     actor_->bound_stream = NULL;
     memset (&actor_->bound_session_rid, 0, sizeof (actor_->bound_session_rid));
     if (update_changed_time_)
@@ -45,63 +43,54 @@ namespace zlink
 namespace spot_actor_api_internal
 {
 
-session_binding_key_t session_key (void *stream_,
-                                   const zlink_routing_id_t *session_rid_)
+session_binding_key_t session_key (void *stream_, const zlink_routing_id_t *session_rid_)
 {
     return session_binding_key_t (stream_, *session_rid_);
 }
 
 actor_session_state_t::binding_map_t::iterator
-actor_session_state_t::find_binding (void *stream_,
-                                     const zlink_routing_id_t *session_rid_)
+actor_session_state_t::find_binding (void *stream_, const zlink_routing_id_t *session_rid_)
 {
     return bindings.find (session_key (stream_, session_rid_));
 }
 
 actor_session_state_t::binding_map_t::const_iterator
-actor_session_state_t::find_binding (
-  const void *stream_, const zlink_routing_id_t *session_rid_) const
+actor_session_state_t::find_binding (const void *stream_,
+                                     const zlink_routing_id_t *session_rid_) const
 {
-    return bindings.find (
-      session_key (const_cast<void *> (stream_), session_rid_));
+    return bindings.find (session_key (const_cast<void *> (stream_), session_rid_));
 }
 
-actor_session_state_t::binding_map_t::iterator
-actor_session_state_t::find_remote_binding (
-  const zlink_routing_id_t &session_rid_,
-  const char *actor_id_,
-  uint64_t generation_)
+actor_session_state_t::binding_map_t::iterator actor_session_state_t::find_remote_binding (
+  const zlink_routing_id_t &session_rid_, const char *actor_id_, uint64_t generation_)
 {
-    for (binding_map_t::iterator binding_it = bindings.begin ();
-         binding_it != bindings.end (); ++binding_it) {
+    for (binding_map_t::iterator binding_it = bindings.begin (); binding_it != bindings.end ();
+         ++binding_it) {
         if (!same_routing_id (binding_it->second.session_rid, session_rid_))
             continue;
-        std::map<std::string, session_binding_t::actor_entry_t>::iterator
-          actor_it = binding_it->second.actors.find (actor_id_);
+        std::map<std::string, session_binding_t::actor_entry_t>::iterator actor_it =
+          binding_it->second.actors.find (actor_id_);
         if (actor_it == binding_it->second.actors.end ())
             continue;
-        if (generation_ != 0
-            && actor_it->second.ref.generation != generation_)
+        if (generation_ != 0 && actor_it->second.ref.generation != generation_)
             continue;
         return binding_it;
     }
     return bindings.end ();
 }
 
-actor_session_state_t::binding_map_t::iterator
-actor_session_state_t::bindings_end ()
+actor_session_state_t::binding_map_t::iterator actor_session_state_t::bindings_end ()
 {
     return bindings.end ();
 }
 
-actor_session_state_t::binding_map_t::const_iterator
-actor_session_state_t::bindings_end () const
+actor_session_state_t::binding_map_t::const_iterator actor_session_state_t::bindings_end () const
 {
     return bindings.end ();
 }
 
-session_binding_t &actor_session_state_t::ensure_binding (
-  void *stream_, const zlink_routing_id_t &session_rid_)
+session_binding_t &actor_session_state_t::ensure_binding (void *stream_,
+                                                          const zlink_routing_id_t &session_rid_)
 {
     return bindings[session_key (stream_, &session_rid_)];
 }
@@ -111,13 +100,12 @@ void actor_session_state_t::erase_binding (binding_map_t::iterator binding_it_)
     bindings.erase (binding_it_);
 }
 
-void actor_session_state_t::bind_actor (
-  zlink::spot_node_t *stream_owner_,
-  void *stream_,
-  const zlink_routing_id_t &session_rid_,
-  actor_handle_t *actor_,
-  uint64_t changed_ms_,
-  actor_handle_t **previous_actor_out_)
+void actor_session_state_t::bind_actor (zlink::spot_node_t *stream_owner_,
+                                        void *stream_,
+                                        const zlink_routing_id_t &session_rid_,
+                                        actor_handle_t *actor_,
+                                        uint64_t changed_ms_,
+                                        actor_handle_t **previous_actor_out_)
 {
     if (previous_actor_out_)
         *previous_actor_out_ = NULL;
@@ -125,8 +113,8 @@ void actor_session_state_t::bind_actor (
     session_binding_t &binding = ensure_binding (stream_, session_rid_);
     binding.stream = stream_;
     binding.session_rid = session_rid_;
-    std::map<std::string, session_binding_t::actor_entry_t>::iterator
-      previous = binding.actors.find (actor_->actor_id);
+    std::map<std::string, session_binding_t::actor_entry_t>::iterator previous =
+      binding.actors.find (actor_->actor_id);
     if (previous != binding.actors.end () && previous->second.actor
         && previous->second.actor != actor_ && previous_actor_out_)
         *previous_actor_out_ = previous->second.actor;
@@ -136,8 +124,7 @@ void actor_session_state_t::bind_actor (
     fill_ref (actor_, &entry.ref);
     binding.actors[actor_->actor_id] = entry;
     actor_->bound_session_node = stream_owner_;
-    memset (&actor_->bound_session_node_rid, 0,
-            sizeof (actor_->bound_session_node_rid));
+    memset (&actor_->bound_session_node_rid, 0, sizeof (actor_->bound_session_node_rid));
     if (stream_owner_)
         (void) stream_owner_->node_routing_id (&actor_->bound_session_node_rid);
     actor_->bound_stream = stream_;
@@ -145,10 +132,9 @@ void actor_session_state_t::bind_actor (
     actor_->last_changed_ms = changed_ms_;
 }
 
-void actor_session_state_t::bind_actor_ref (
-  void *stream_,
-  const zlink_routing_id_t &session_rid_,
-  const zlink_actor_ref_t &actor_ref_)
+void actor_session_state_t::bind_actor_ref (void *stream_,
+                                            const zlink_routing_id_t &session_rid_,
+                                            const zlink_actor_ref_t &actor_ref_)
 {
     session_binding_t &binding = ensure_binding (stream_, session_rid_);
     binding.stream = stream_;
@@ -160,8 +146,8 @@ void actor_session_state_t::bind_actor_ref (
     binding.actors[actor_ref_.actor_id] = entry;
 }
 
-actor_bound_session_transfer_t actor_session_state_t::capture_bound_session (
-  const actor_handle_t *source_) const
+actor_bound_session_transfer_t
+actor_session_state_t::capture_bound_session (const actor_handle_t *source_) const
 {
     actor_bound_session_transfer_t transfer;
     if (!source_ || !source_->bound_stream || !source_->bound_session_node
@@ -176,21 +162,18 @@ actor_bound_session_transfer_t actor_session_state_t::capture_bound_session (
     return transfer;
 }
 
-bool actor_session_state_t::transfer_bound_session (
-  const actor_bound_session_transfer_t &transfer_,
-  actor_handle_t *target_,
-  uint64_t changed_ms_)
+bool actor_session_state_t::transfer_bound_session (const actor_bound_session_transfer_t &transfer_,
+                                                    actor_handle_t *target_,
+                                                    uint64_t changed_ms_)
 {
     if (!transfer_.valid || !target_)
         return false;
 
-    binding_map_t::iterator binding_it =
-      find_binding (transfer_.stream, &transfer_.session_rid);
+    binding_map_t::iterator binding_it = find_binding (transfer_.stream, &transfer_.session_rid);
     if (binding_it == bindings.end ())
         return false;
 
-    session_binding_t::actor_entry_t &entry =
-      binding_it->second.actors[target_->actor_id];
+    session_binding_t::actor_entry_t &entry = binding_it->second.actors[target_->actor_id];
     entry.actor = target_;
     fill_ref (target_, &entry.ref);
     target_->bound_session_node = transfer_.session_node;
@@ -236,8 +219,7 @@ bool actor_session_state_t::has_binding_for_stream (void *stream_) const
 {
     if (!stream_)
         return false;
-    for (binding_map_t::const_iterator it = bindings.begin ();
-         it != bindings.end (); ++it) {
+    for (binding_map_t::const_iterator it = bindings.begin (); it != bindings.end (); ++it) {
         if (it->second.stream == stream_)
             return true;
     }
@@ -248,14 +230,13 @@ void actor_session_state_t::erase_bindings_for_stream (void *stream_)
 {
     if (!stream_)
         return;
-    for (binding_map_t::iterator it = bindings.begin ();
-         it != bindings.end ();) {
+    for (binding_map_t::iterator it = bindings.begin (); it != bindings.end ();) {
         if (it->second.stream != stream_) {
             ++it;
             continue;
         }
-        for (std::map<std::string, session_binding_t::actor_entry_t>::iterator
-               actor_it = it->second.actors.begin ();
+        for (std::map<std::string, session_binding_t::actor_entry_t>::iterator actor_it =
+               it->second.actors.begin ();
              actor_it != it->second.actors.end (); ++actor_it) {
             actor_handle_t *actor = actor_it->second.actor;
             if (actor && actor->bound_stream == stream_)
@@ -265,14 +246,13 @@ void actor_session_state_t::erase_bindings_for_stream (void *stream_)
     }
 }
 
-zlink::spot_node_t *actor_session_state_t::stream_owner (
-  void *stream_, const actor_node_registry_t &nodes_)
+zlink::spot_node_t *actor_session_state_t::stream_owner (void *stream_,
+                                                         const actor_node_registry_t &nodes_)
 {
     zlink::socket_base_t *stream = try_as_socket (stream_);
     if (!stream)
         return NULL;
-    std::map<void *, zlink::spot_node_t *>::const_iterator it =
-      stream_owners.find (stream_);
+    std::map<void *, zlink::spot_node_t *>::const_iterator it = stream_owners.find (stream_);
     if (it != stream_owners.end ())
         return nodes_.known_node (it->second) ? it->second : NULL;
     zlink::spot_node_t *owner = nodes_.find_socket_owner (stream);
@@ -294,8 +274,7 @@ void actor_session_state_t::erase_stream_owner_if_unused (void *stream_)
     stream_owners.erase (stream_);
 }
 
-void actor_session_state_t::set_explicit_stream_owner (
-  void *stream_, zlink::spot_node_t *node_)
+void actor_session_state_t::set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_)
 {
     stream_owners[stream_] = node_;
     explicit_stream_owners.insert (stream_);
@@ -313,11 +292,9 @@ void actor_session_state_t::clear_stream (void *stream_)
     clear_explicit_stream_owner (stream_);
 }
 
-void actor_session_state_t::erase_stream_owners_for_node (
-  zlink::spot_node_t *node_)
+void actor_session_state_t::erase_stream_owners_for_node (zlink::spot_node_t *node_)
 {
-    for (std::map<void *, zlink::spot_node_t *>::iterator it =
-           stream_owners.begin ();
+    for (std::map<void *, zlink::spot_node_t *>::iterator it = stream_owners.begin ();
          it != stream_owners.end ();) {
         if (it->second == node_) {
             explicit_stream_owners.erase (it->first);
@@ -328,11 +305,9 @@ void actor_session_state_t::erase_stream_owners_for_node (
     }
 }
 
-int actor_session_state_t::try_set_explicit_stream_owner (
-  void *stream_, zlink::spot_node_t *node_)
+int actor_session_state_t::try_set_explicit_stream_owner (void *stream_, zlink::spot_node_t *node_)
 {
-    std::map<void *, zlink::spot_node_t *>::const_iterator previous =
-      stream_owners.find (stream_);
+    std::map<void *, zlink::spot_node_t *>::const_iterator previous = stream_owners.find (stream_);
     if (previous != stream_owners.end () && previous->second != node_) {
         errno = EBUSY;
         return -1;

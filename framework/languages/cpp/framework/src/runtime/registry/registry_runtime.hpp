@@ -45,11 +45,14 @@ class registry_runtime_t
   private:
     result_t<void> validate_embedded_registry () const;
     result_t<void> validate_spot_remote_lookup (const zlink_builder_state_t &builder) const;
-    std::optional<std::string> resolve_registry_route_channel (const zlink_builder_state_t &builder,
-                                                               const spot_node_snapshot_t &spot_node) const;
-    void
-    project_channel (const zlink_builder_state_t &builder, const std::string &name, const channel_snapshot_t &channel);
-    void project_spot_node (const zlink_builder_state_t &builder, const spot_node_snapshot_t &spot_node);
+    std::optional<std::string>
+    resolve_registry_route_channel (const zlink_builder_state_t &builder,
+                                    const spot_node_snapshot_t &spot_node) const;
+    void project_channel (const zlink_builder_state_t &builder,
+                          const std::string &name,
+                          const channel_snapshot_t &channel);
+    void project_spot_node (const zlink_builder_state_t &builder,
+                            const spot_node_snapshot_t &spot_node);
 
     std::shared_ptr<registry_runtime_state_t> _state;
 };

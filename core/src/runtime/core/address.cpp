@@ -16,8 +16,8 @@
 #include <sstream>
 
 zlink::address_t::address_t (const std::string &protocol_,
-                           const std::string &address_,
-                           ctx_t *parent_) :
+                             const std::string &address_,
+                             ctx_t *parent_) :
     protocol (protocol_), address (address_), parent (parent_)
 {
     resolved.dummy = NULL;
@@ -55,11 +55,11 @@ int zlink::address_t::to_string (std::string &addr_) const
 #ifdef ZLINK_HAVE_TLS
          || protocol == protocol_name::tls
 #endif
-        ) && resolved.tcp_addr) {
+         )
+        && resolved.tcp_addr) {
         const int rc = resolved.tcp_addr->to_string (addr_);
 #ifdef ZLINK_HAVE_TLS
-        if (rc == 0 && protocol == protocol_name::tls
-            && addr_.compare (0, 6, "tcp://") == 0) {
+        if (rc == 0 && protocol == protocol_name::tls && addr_.compare (0, 6, "tcp://") == 0) {
             addr_.replace (0, 6, "tls://");
         }
 #endif
@@ -80,16 +80,14 @@ int zlink::address_t::to_string (std::string &addr_) const
     return -1;
 }
 
-zlink::zlink_socklen_t zlink::get_socket_address (fd_t fd_,
-                                            socket_end_t socket_end_,
-                                            sockaddr_storage *ss_)
+zlink::zlink_socklen_t
+zlink::get_socket_address (fd_t fd_, socket_end_t socket_end_, sockaddr_storage *ss_)
 {
     zlink_socklen_t sl = static_cast<zlink_socklen_t> (sizeof (*ss_));
 
-    const int rc =
-      socket_end_ == socket_end_local
-        ? getsockname (fd_, reinterpret_cast<struct sockaddr *> (ss_), &sl)
-        : getpeername (fd_, reinterpret_cast<struct sockaddr *> (ss_), &sl);
+    const int rc = socket_end_ == socket_end_local
+                     ? getsockname (fd_, reinterpret_cast<struct sockaddr *> (ss_), &sl)
+                     : getpeername (fd_, reinterpret_cast<struct sockaddr *> (ss_), &sl);
 
     return rc != 0 ? 0 : sl;
 }

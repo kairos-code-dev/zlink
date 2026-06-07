@@ -7,18 +7,16 @@
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
 
-bool zlink::ctx_socket_registry_t::initialize_slot_pool (
-  size_t slot_count_,
-  size_t first_socket_slot_,
-  i_mailbox *term_mailbox_)
+bool zlink::ctx_socket_registry_t::initialize_slot_pool (size_t slot_count_,
+                                                         size_t first_socket_slot_,
+                                                         i_mailbox *term_mailbox_)
 {
     clear ();
 
     try {
         _slots.resize (slot_count_, NULL);
-        _empty_slots.reserve (
-          slot_count_ > first_socket_slot_ ? slot_count_ - first_socket_slot_
-                                           : 0);
+        _empty_slots.reserve (slot_count_ > first_socket_slot_ ? slot_count_ - first_socket_slot_
+                                                               : 0);
     }
     catch (const std::bad_alloc &) {
         errno = ENOMEM;
@@ -42,8 +40,7 @@ void zlink::ctx_socket_registry_t::clear ()
     _slots.clear ();
 }
 
-void zlink::ctx_socket_registry_t::bind_mailbox (uint32_t tid_,
-                                                 i_mailbox *mailbox_)
+void zlink::ctx_socket_registry_t::bind_mailbox (uint32_t tid_, i_mailbox *mailbox_)
 {
     _slots[tid_] = mailbox_;
 }
@@ -98,8 +95,7 @@ size_t zlink::ctx_socket_registry_t::socket_count () const
     return static_cast<size_t> (sockets.size ());
 }
 
-void zlink::ctx_socket_registry_t::collect_sockets (
-  std::vector<socket_base_t *> *out_) const
+void zlink::ctx_socket_registry_t::collect_sockets (std::vector<socket_base_t *> *out_) const
 {
     if (!out_)
         return;
@@ -112,16 +108,14 @@ void zlink::ctx_socket_registry_t::collect_sockets (
         out_->push_back (sockets[i]);
 }
 
-int zlink::ctx_socket_registry_t::wait_for_socket_removal (
-  mutex_t *sync_,
-  const socket_base_t *socket_,
-  int timeout_ms_)
+int zlink::ctx_socket_registry_t::wait_for_socket_removal (mutex_t *sync_,
+                                                           const socket_base_t *socket_,
+                                                           int timeout_ms_)
 {
     if (!socket_)
         return 0;
 
-    const uint64_t deadline_ms =
-      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
+    const uint64_t deadline_ms = timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
     while (true) {
         if (!contains_socket (socket_))
             return 0;
@@ -131,9 +125,7 @@ int zlink::ctx_socket_registry_t::wait_for_socket_removal (
         }
 
         const int wait_ms =
-          timeout_ms_ < 0
-            ? -1
-            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
+          timeout_ms_ < 0 ? -1 : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
         if (wait_ms <= 0) {
             errno = ETIMEDOUT;
             return -1;
@@ -147,13 +139,11 @@ int zlink::ctx_socket_registry_t::wait_for_socket_removal (
     }
 }
 
-int zlink::ctx_socket_registry_t::wait_for_socket_count_at_most (
-  mutex_t *sync_,
-  size_t max_count_,
-  int timeout_ms_)
+int zlink::ctx_socket_registry_t::wait_for_socket_count_at_most (mutex_t *sync_,
+                                                                 size_t max_count_,
+                                                                 int timeout_ms_)
 {
-    const uint64_t deadline_ms =
-      timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
+    const uint64_t deadline_ms = timeout_ms_ >= 0 ? zlink::clock_t ().now_ms () + timeout_ms_ : 0;
     while (true) {
         if (socket_count () <= max_count_)
             return 0;
@@ -163,9 +153,7 @@ int zlink::ctx_socket_registry_t::wait_for_socket_count_at_most (
         }
 
         const int wait_ms =
-          timeout_ms_ < 0
-            ? -1
-            : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
+          timeout_ms_ < 0 ? -1 : static_cast<int> (deadline_ms - zlink::clock_t ().now_ms ());
         if (wait_ms <= 0) {
             errno = ETIMEDOUT;
             return -1;
@@ -179,8 +167,7 @@ int zlink::ctx_socket_registry_t::wait_for_socket_count_at_most (
     }
 }
 
-bool zlink::ctx_socket_registry_t::contains_socket (
-  const socket_base_t *socket_) const
+bool zlink::ctx_socket_registry_t::contains_socket (const socket_base_t *socket_) const
 {
     sockets_t &sockets = const_cast<sockets_t &> (_sockets);
     const sockets_t::size_type size = sockets.size ();

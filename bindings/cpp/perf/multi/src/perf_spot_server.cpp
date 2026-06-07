@@ -114,7 +114,8 @@ int bench_pid ()
 
 int resolve_spot_start_timeout_ms (const perf::multi::multi_bench_settings_t &settings_)
 {
-    return std::max (settings_.connect_ready_timeout_ms, std::max (1000, settings_.connect_ready_timeout_ms * 6));
+    return std::max (settings_.connect_ready_timeout_ms,
+                     std::max (1000, settings_.connect_ready_timeout_ms * 6));
 }
 
 int resolve_spot_barrier_timeout_ms (const perf::multi::multi_bench_settings_t &settings_,
@@ -136,7 +137,8 @@ bool wait_for_start_signal (size_t msg_size_, int timeout_ms_)
 bool wait_for_control_connect (zlink::service::spot_node_t &control_node_, int timeout_ms_)
 {
     std::string endpoint;
-    if (!perf::multi::wait_for_control_connect (&g_control_connect_gate, control_node_, timeout_ms_, &endpoint)) {
+    if (!perf::multi::wait_for_control_connect (&g_control_connect_gate, control_node_, timeout_ms_,
+                                                &endpoint)) {
         return false;
     }
     std::cout << "CONTROL_CONNECTED," << endpoint << std::endl;
@@ -170,8 +172,10 @@ bool run_phase (zlink::service::spot_t &spot_,
     // clean latency. Active aggregation on the client is still the configured
     // duration. Mirrors C reference run_phase
     // (bindings/c/perf/multi/src/perf_multi_spot_server.cpp:334-373).
-    const bool latency_only = resolve_spot_latency_only_mode () && phase_ == perf_metric::phase_active;
-    const auto probe_interval = std::chrono::microseconds (resolve_spot_latency_only_interval_us ());
+    const bool latency_only =
+      resolve_spot_latency_only_mode () && phase_ == perf_metric::phase_active;
+    const auto probe_interval =
+      std::chrono::microseconds (resolve_spot_latency_only_interval_us ());
     auto next_probe_at = std::chrono::steady_clock::now ();
 
     while (std::chrono::steady_clock::now () < deadline) {
@@ -179,8 +183,8 @@ bool run_phase (zlink::service::spot_t &spot_,
         if (latency_only) {
             const auto now = std::chrono::steady_clock::now ();
             if (now < next_probe_at) {
-                const auto wait_for =
-                  std::min<std::chrono::steady_clock::duration> (next_probe_at - now, std::chrono::milliseconds (10));
+                const auto wait_for = std::min<std::chrono::steady_clock::duration> (
+                  next_probe_at - now, std::chrono::milliseconds (10));
                 std::this_thread::sleep_for (wait_for);
                 continue;
             }
@@ -196,8 +200,8 @@ bool run_phase (zlink::service::spot_t &spot_,
                 *saved_errno_out_ = errno;
                 return -1;
             }
-            if (!perf_metric::stamp_payload (part.data (), part.size (), k_run_id, phase_, msg_size_, seq_,
-                                             perf_metric::now_ns ())) {
+            if (!perf_metric::stamp_payload (part.data (), part.size (), k_run_id, phase_,
+                                             msg_size_, seq_, perf_metric::now_ns ())) {
                 const int stamp_errno = errno != 0 ? errno : EFAULT;
                 part.close ();
                 *saved_errno_out_ = stamp_errno;
@@ -206,7 +210,10 @@ bool run_phase (zlink::service::spot_t &spot_,
             }
 
             try {
-                const bool ok = spot_.publish (k_topic).message (part).flags (static_cast<int> (flags_)).submit ();
+                const bool ok = spot_.publish (k_topic)
+                                  .message (part)
+                                  .flags (static_cast<int> (flags_))
+                                  .submit ();
                 *saved_errno_out_ = ok ? 0 : EAGAIN;
                 return ok ? 0 : -1;
             }
@@ -217,7 +224,8 @@ bool run_phase (zlink::service::spot_t &spot_,
         };
 
         int saved_errno = 0;
-        const int rc = publish_once (static_cast<int> (zlink::send_flags_t::dontwait), &saved_errno);
+        const int rc =
+          publish_once (static_cast<int> (zlink::send_flags_t::dontwait), &saved_errno);
 
         if (rc == 0) {
             ++publish_ok_count;
@@ -239,9 +247,10 @@ bool run_phase (zlink::service::spot_t &spot_,
     }
 
     if (std::getenv ("PERF_DEBUG_TRANSITIONS") != NULL) {
-        std::cerr << "[multi-spot-server] phase done size=" << msg_size_ << " phase=" << static_cast<int> (phase_)
-                  << " ok=" << publish_ok_count << " blocked=" << publish_blocked_count
-                  << " wait=" << publish_wait_count << std::endl;
+        std::cerr << "[multi-spot-server] phase done size=" << msg_size_
+                  << " phase=" << static_cast<int> (phase_) << " ok=" << publish_ok_count
+                  << " blocked=" << publish_blocked_count << " wait=" << publish_wait_count
+                  << std::endl;
     }
 
     return true;
@@ -257,11 +266,13 @@ bool perf_spot_server (const std::string &lib_name, const std::string &transport
         return false;
 
     if (!perf::multi::is_supported_transport (transport_)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport_ << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport_
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes = perf::multi::resolve_case_msg_sizes (msg_size_);
 
     perf::multi::ctx_guard_t ctx;
@@ -307,11 +318,13 @@ bool perf_spot_server (const std::string &lib_name, const std::string &transport
     perf::multi::emit_spot_node_auto_hwm_snapshot (node, transport_, snapshot_msg_size);
     perf::multi::emit_spot_node_auto_hwm_snapshot (control_node, transport_, snapshot_msg_size);
 
-    const int base_port = settings.server_bind_port > 0 ? settings.server_bind_port : 39500 + (bench_pid () % 1000) * 8;
+    const int base_port =
+      settings.server_bind_port > 0 ? settings.server_bind_port : 39500 + (bench_pid () % 1000) * 8;
     const std::string endpoint = perf::multi::bind_spot_endpoint (node, transport_, base_port);
     if (endpoint.empty ())
         return false;
-    const std::string control_endpoint = perf::multi::bind_spot_endpoint (control_node, transport_, base_port + 256);
+    const std::string control_endpoint =
+      perf::multi::bind_spot_endpoint (control_node, transport_, base_port + 256);
     if (control_endpoint.empty ())
         return false;
 
@@ -349,16 +362,20 @@ bool perf_spot_server (const std::string &lib_name, const std::string &transport
                 control_sub, control_channel_name, k_control_topic, current_size,
                 std::max<size_t> (1, settings.clients), barrier_timeout_ms,
                 [] (const std::string &payload, size_t *ready_size, size_t *increment) {
-                    return perf::multi::parse_size_count_command_line (payload, "READY_COUNT,", ready_size, increment);
+                    return perf::multi::parse_size_count_command_line (payload, "READY_COUNT,",
+                                                                       ready_size, increment);
                 });
           },
           [&] (size_t current_size) {
               const int barrier_timeout_ms = resolve_spot_barrier_timeout_ms (settings, transport_);
               return perf::multi::publish_control_payload (
-                control_pub, k_control_topic, perf::multi::make_start_command (current_size), barrier_timeout_ms);
+                control_pub, k_control_topic, perf::multi::make_start_command (current_size),
+                barrier_timeout_ms);
           },
-          [&] (size_t current_size, perf_metric::phase_t phase, std::chrono::steady_clock::duration duration) {
-              return run_phase (spot, &send_poller, spot_channel_name, current_size, seq, phase, duration);
+          [&] (size_t current_size, perf_metric::phase_t phase,
+               std::chrono::steady_clock::duration duration) {
+              return run_phase (spot, &send_poller, spot_channel_name, current_size, seq, phase,
+                                duration);
           })) {
         return false;
     }

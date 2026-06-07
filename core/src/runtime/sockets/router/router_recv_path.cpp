@@ -15,17 +15,14 @@
 
 namespace
 {
-const bool router_debug_on =
-  zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+const bool router_debug_on = zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 
 bool router_debug_enabled ()
 {
     return router_debug_on;
 }
 
-void format_routing_id_debug (const zlink_routing_id_t *rid_,
-                              char *buf_,
-                              size_t buf_size_)
+void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t buf_size_)
 {
     if (!buf_ || buf_size_ == 0)
         return;
@@ -39,9 +36,7 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_,
     for (size_t i = 0; i < rid_->size && used + 4 < buf_size_; ++i) {
         const unsigned char c = rid_->data[i];
         const int rc = std::snprintf (buf_ + used, buf_size_ - used, "%c%02X",
-                                      (c >= 32 && c <= 126)
-                                        ? static_cast<char> (c)
-                                        : '.',
+                                      (c >= 32 && c <= 126) ? static_cast<char> (c) : '.',
                                       static_cast<unsigned> (c));
         if (rc <= 0)
             break;
@@ -53,18 +48,14 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_,
     }
 }
 
-void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
-                                   char *buf_,
-                                   size_t buf_size_)
+void format_blob_routing_id_debug (const zlink::blob_t &routing_id_, char *buf_, size_t buf_size_)
 {
     zlink_routing_id_t rid;
-    zlink::copy_routing_id_from_bytes (routing_id_.data (),
-                                       routing_id_.size (), &rid);
+    zlink::copy_routing_id_from_bytes (routing_id_.data (), routing_id_.size (), &rid);
     format_routing_id_debug (&rid, buf_, buf_size_);
 }
 
-void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
-                                  zlink_routing_id_t *out_)
+void copy_router_pipe_source_rid (zlink::pipe_t *pipe_, zlink_routing_id_t *out_)
 {
     if (!out_)
         return;
@@ -75,8 +66,7 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
 
     const zlink::blob_t &routing_id = pipe_->get_routing_id ();
     if (routing_id.size () > 0) {
-        zlink::copy_routing_id_from_bytes (routing_id.data (),
-                                           routing_id.size (), out_);
+        zlink::copy_routing_id_from_bytes (routing_id.data (), routing_id.size (), out_);
         return;
     }
 
@@ -85,14 +75,11 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_,
         return;
 
     const zlink::blob_t &peer_routing_id = peer->get_routing_id ();
-    zlink::copy_routing_id_from_bytes (peer_routing_id.data (),
-                                       peer_routing_id.size (), out_);
+    zlink::copy_routing_id_from_bytes (peer_routing_id.data (), peer_routing_id.size (), out_);
 }
 }
 
-void zlink::router_t::xattach_pipe (pipe_t *pipe_,
-                                    bool subscribe_to_all_,
-                                    bool locally_initiated_)
+void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
 
@@ -112,15 +99,12 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
 
     const bool routing_id_ok = identify_peer (pipe_, locally_initiated_);
     if (router_debug_enabled ()) {
-        fprintf (stderr,
-                 "router xattach_pipe: pipe=%p local=%d routing_id_ok=%d\n",
-                 static_cast<void *> (pipe_), locally_initiated_ ? 1 : 0,
-                 routing_id_ok ? 1 : 0);
+        fprintf (stderr, "router xattach_pipe: pipe=%p local=%d routing_id_ok=%d\n",
+                 static_cast<void *> (pipe_), locally_initiated_ ? 1 : 0, routing_id_ok ? 1 : 0);
     }
     if (routing_id_ok) {
         {
-            std::lock_guard<std::recursive_mutex> dispatch_lock (
-              socket_msg_dispatch_mutex ());
+            std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
             _fq.attach (pipe_);
             (void) pipe_->check_read ();
             if (socket_msg_dispatch_active ())
@@ -135,25 +119,20 @@ void zlink::router_t::xattach_pipe (pipe_t *pipe_,
 
 void zlink::router_t::xread_activated (pipe_t *pipe_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (
-      socket_msg_dispatch_mutex ());
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
     const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
     if (router_debug_enabled ()) {
         char rid_text[160];
-        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
-                                      sizeof (rid_text));
-        fprintf (stderr,
-                 "router xread_activated: pipe=%p anonymous=%d pipe_rid=%s\n",
-                 static_cast<void *> (pipe_), it != _anonymous_pipes.end () ? 1 : 0,
-                 rid_text);
+        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text, sizeof (rid_text));
+        fprintf (stderr, "router xread_activated: pipe=%p anonymous=%d pipe_rid=%s\n",
+                 static_cast<void *> (pipe_), it != _anonymous_pipes.end () ? 1 : 0, rid_text);
     }
     if (it == _anonymous_pipes.end ())
         _fq.activated (pipe_);
     else {
         const bool routing_id_ok = identify_peer (pipe_, false);
         if (router_debug_enabled ()) {
-            fprintf (stderr,
-                     "router xread_activated identify_peer: pipe=%p ok=%d\n",
+            fprintf (stderr, "router xread_activated identify_peer: pipe=%p ok=%d\n",
                      static_cast<void *> (pipe_), routing_id_ok ? 1 : 0);
         }
         if (routing_id_ok) {
@@ -242,8 +221,7 @@ int zlink::router_t::xrecv (msg_t *msg_)
     return 0;
 }
 
-int zlink::router_t::xrecv_routed (msg_t *msg_,
-                                   zlink_routing_id_t *source_rid_out_)
+int zlink::router_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_)
 {
     if (_prefetched) {
         if (source_rid_out_)
@@ -300,17 +278,12 @@ int zlink::router_t::xrecv_routed (msg_t *msg_,
 
 void zlink::router_t::xdispatch_io ()
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (
-      socket_msg_dispatch_mutex ());
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
     if (!socket_msg_dispatch_active ())
         return;
     zlink::drain_socket_dispatch_loop (
-      [this] (msg_t *msg_, pipe_t **pipe_out_) {
-          return _fq.recvpipe (msg_, pipe_out_);
-      },
-      [this] (msg_t *msg_, pipe_t *pipe_) {
-          return xsocket_msg_dispatch (msg_, pipe_);
-      });
+      [this] (msg_t *msg_, pipe_t **pipe_out_) { return _fq.recvpipe (msg_, pipe_out_); },
+      [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
 }
 
 bool zlink::router_t::xhas_in ()
@@ -345,14 +318,12 @@ bool zlink::router_t::xhas_in ()
     return true;
 }
 
-int zlink::router_t::get_peer_state (const void *routing_id_,
-                                     size_t routing_id_size_) const
+int zlink::router_t::get_peer_state (const void *routing_id_, size_t routing_id_size_) const
 {
     int res = 0;
 
-    const blob_t routing_id_blob (
-      static_cast<unsigned char *> (const_cast<void *> (routing_id_)),
-      routing_id_size_, reference_tag_t ());
+    const blob_t routing_id_blob (static_cast<unsigned char *> (const_cast<void *> (routing_id_)),
+                                  routing_id_size_, reference_tag_t ());
     const out_pipe_t *out_pipe = lookup_out_pipe (routing_id_blob);
     if (!out_pipe) {
         errno = EHOSTUNREACH;

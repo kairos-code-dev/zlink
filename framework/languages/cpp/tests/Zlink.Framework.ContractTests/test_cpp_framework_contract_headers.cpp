@@ -66,8 +66,9 @@ static_assert (zlink::framework::version_major == 0);
 static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
 static_assert (!std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit ()),
-                              zlink::framework::task_t<int>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit ()),
+                 zlink::framework::task_t<int>>);
 
 template <typename T> concept has_blocking_wait = requires (T value)
 {
@@ -115,7 +116,8 @@ struct contract_actor_t
 
 struct contract_spot_t : public zlink::framework::spot_t
 {
-    zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &, const zlink::message_t &)
+    zlink::framework::spot_actor_join_response_t on_actor_join (contract_actor_t &,
+                                                                const zlink::message_t &)
     {
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
@@ -203,279 +205,343 @@ struct typed_config_t
     }
 };
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_client_t &> ().request<named_reply_t> (
-                                "sample", named_request_t{})),
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_client_t &> ()
+                                          .request<named_reply_t> ("sample", named_request_t{})),
                               zlink::framework::request_call_t<named_reply_t>>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_send_call_t &> ().metadata ("trace-id", "abc")),
-                 zlink::framework::route_send_call_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::send_call_t &> ().packet_name ("packet")),
-                              zlink::framework::send_call_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::send_call_t &> ().metadata ("trace-id", "abc")),
-                              zlink::framework::send_call_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_send_call_t &> ()
+                                          .metadata ("trace-id", "abc")),
+                              zlink::framework::route_send_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ().packet_name ("packet")),
+  std::is_same_v<decltype (std::declval<zlink::framework::send_call_t &> ().packet_name ("packet")),
+                 zlink::framework::send_call_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::send_call_t &> ().metadata (
+                                "trace-id", "abc")),
+                              zlink::framework::send_call_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ()
+                             .packet_name ("packet")),
                  zlink::framework::request_call_t<named_reply_t> &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ().metadata (
-                                "trace-id", "abc")),
-                              zlink::framework::request_call_t<named_reply_t> &>);
-
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ().metadata ("trace-id", "abc")),
-                 zlink::framework::route_request_call_t &>);
+  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ()
+                             .metadata ("trace-id", "abc")),
+                 zlink::framework::request_call_t<named_reply_t> &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::typed_route_request_call_t<named_reply_t> &> ()
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ()
                                           .metadata ("trace-id", "abc")),
-                              zlink::framework::typed_route_request_call_t<named_reply_t> &>);
+                              zlink::framework::route_request_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ().metadata ("trace-id", "abc")),
-                 zlink::framework::stream_write_call_t &>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::typed_route_request_call_t<named_reply_t> &> ()
+                .metadata ("trace-id", "abc")),
+    zlink::framework::typed_route_request_call_t<named_reply_t> &>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ().packet_name ("packet")),
-                 zlink::framework::stream_write_call_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ().compress ()),
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ()
+                                          .metadata ("trace-id", "abc")),
                               zlink::framework::stream_write_call_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::monitoring_builder_t &> ().add_socket_events (
-                                "profile.server",
-                                std::initializer_list<zlink::framework::socket_event_kind_t>{
-                                  zlink::framework::socket_event_kind_t::connection_ready})),
-                              zlink::framework::monitoring_builder_t &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ()
+                                          .packet_name ("packet")),
+                              zlink::framework::stream_write_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().close ()), zlink::framework::task_t<void>>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::bound_session_t &> ().disconnect ()),
-                              zlink::framework::send_call_t>);
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ().compress ()),
+                 zlink::framework::stream_write_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ().bind<typed_config_t> ("server")),
-                 std::optional<typed_config_t>>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::monitoring_builder_t &> ().add_socket_events (
+      "profile.server",
+      std::initializer_list<zlink::framework::socket_event_kind_t>{
+        zlink::framework::socket_event_kind_t::connection_ready})),
+    zlink::framework::monitoring_builder_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().close ()),
+                              zlink::framework::task_t<void>>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch (
-                   std::declval<std::function<void (zlink::framework::dispatch_options_t &)>> ())),
-                 zlink::framework::zlink_framework_options_t &>);
+  std::is_same_v<decltype (std::declval<zlink::framework::bound_session_t &> ().disconnect ()),
+                 zlink::framework::send_call_t>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()
+                                          .bind<typed_config_t> ("server")),
+                              std::optional<typed_config_t>>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ().response_header ("X-Test", "value")),
-                 zlink::framework::http_context_t &>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().configure_dispatch (
+      std::declval<std::function<void (zlink::framework::dispatch_options_t &)>> ())),
+    zlink::framework::zlink_framework_options_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_context_t &> ()
+                                          .response_header ("X-Test", "value")),
+                              zlink::framework::http_context_t &>);
+
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_response_t &> ()
+                                          .header ("X-Test", "value")),
+                              zlink::framework::http_response_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::http_response_t &> ().header ("X-Test", "value")),
-                 zlink::framework::http_response_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_tls (
-                                std::declval<std::function<void (zlink::framework::http_tls_options_builder_t &)>> ())),
-                              zlink::framework::http_options_builder_t &>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_tls (
+      std::declval<std::function<void (zlink::framework::http_tls_options_builder_t &)>> ())),
+    zlink::framework::http_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_server (
-                   std::declval<std::function<void (zlink::framework::http_server_options_builder_t &)>> ())),
-                 zlink::framework::http_options_builder_t &>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::http_options_builder_t &> ().configure_server (
+      std::declval<std::function<void (zlink::framework::http_server_options_builder_t &)>> ())),
+    zlink::framework::http_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::http_server_options_builder_t &> ().set_max_connections (4)),
+  std::is_same_v<decltype (std::declval<zlink::framework::http_server_options_builder_t &> ()
+                             .set_max_connections (4)),
                  zlink::framework::http_server_options_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
-                                          .add_send<named_send_handler_t> ("api")),
-                              zlink::framework::handler_options_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
-                                          .add_publish<named_publish_handler_t> ("events")),
-                              zlink::framework::handler_options_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_node_options_builder_t &> ()
-                                          .register_session<named_session_t> ()),
-                              zlink::framework::stream_node_options_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ().enable_publisher (
-                                "tcp://127.0.0.1:5000")),
-                              zlink::framework::fanout_channel_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
-                                          .enable_subscriber ("tcp://127.0.0.1:5001")),
-                              zlink::framework::fanout_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
+                             .add_send<named_send_handler_t> ("api")),
+                 zlink::framework::handler_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ().use_handler_group ("events")),
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_options_builder_t &> ()
+                             .add_publish<named_publish_handler_t> ("events")),
+                 zlink::framework::handler_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::stream_node_options_builder_t &> ()
+                             .register_session<named_session_t> ()),
+                 zlink::framework::stream_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
+                             .enable_publisher ("tcp://127.0.0.1:5000")),
                  zlink::framework::fanout_channel_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
-                                          .enable_spot_route_egress ("play.route")),
-                              zlink::framework::client_server_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
+                             .enable_subscriber ("tcp://127.0.0.1:5001")),
+                 zlink::framework::fanout_channel_builder_t &>);
 
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::zlink_framework_options_t &> ().add_fanout_channel ("events")),
-               zlink::framework::fanout_channel_builder_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::fanout_channel_builder_t &> ()
+                             .use_handler_group ("events")),
+                 zlink::framework::fanout_channel_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ().bind (
-                                "tcp://127.0.0.1:5200")),
-                              zlink::framework::dealer_mesh_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
+                             .enable_spot_route_egress ("play.route")),
+                 zlink::framework::client_server_channel_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ().connect (
-                                "tcp://127.0.0.1:5201")),
-                              zlink::framework::dealer_mesh_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
+                             .add_fanout_channel ("events")),
+                 zlink::framework::fanout_channel_builder_t>);
 
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ().use_handler_group ("mesh")),
-               zlink::framework::dealer_mesh_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ().bind (
+                   "tcp://127.0.0.1:5200")),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
-                                          .add_dealer_mesh_channel ("mesh")),
-                              zlink::framework::dealer_mesh_channel_builder_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
+                             .connect ("tcp://127.0.0.1:5201")),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
+                             .use_handler_group ("mesh")),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
+                             .add_dealer_mesh_channel ("mesh")),
+                 zlink::framework::dealer_mesh_channel_builder_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_channel_builder_t &> ()
                                           .enable_spot_route_egress ("play.route")),
                               zlink::framework::route_channel_builder_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
-                                          .enable_spot_route_egress ("play.route")),
-                              zlink::framework::route_mesh_channel_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                             .enable_spot_route_egress ("play.route")),
+                 zlink::framework::route_mesh_channel_builder_t &>);
 
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher ("events")),
-               zlink::framework::spot_node_options_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .attach_publisher ("events")),
+                 zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (std::has_virtual_destructor_v<zlink::framework::spot_t>);
 static_assert (std::has_virtual_destructor_v<zlink::framework::entry_spot_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_t, zlink::framework::entry_spot_t>);
-static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
-                                std::declval<contract_actor_t &> (), std::declval<const zlink::message_t &> ())),
-                              zlink::framework::spot_actor_join_response_t>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
-                              zlink::framework::task_t<bool>>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
-                                "stage", std::declval<zlink::message_t> ())),
-                              zlink::framework::spot_create_result_t>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<
-                                contract_spot_t> ("stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
-                              zlink::framework::spot_node_builder_t &>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot (
-                                "stage", std::declval<zlink::framework::spot_rid_t> (),
-                                std::declval<zlink::message_t> ())),
-                              zlink::framework::spot_create_result_t>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ().join_spot (
-                                std::declval<zlink::framework::spot_rid_t> (),
-                                std::declval<const zlink::message_t &> ())),
+static_assert (
+  std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
+                   std::declval<contract_actor_t &> (), std::declval<const zlink::message_t &> ())),
+                 zlink::framework::spot_actor_join_response_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
+                 zlink::framework::task_t<bool>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
+                   "stage", std::declval<zlink::message_t> ())),
+                 zlink::framework::spot_create_result_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<contract_spot_t> (
+      "stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
+    zlink::framework::spot_node_builder_t &>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_builder_t &> ().get_or_create_spot (
+      "stage", std::declval<zlink::framework::spot_rid_t> (), std::declval<zlink::message_t> ())),
+    zlink::framework::spot_create_result_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ()
+                                          .join_spot (std::declval<zlink::framework::spot_rid_t> (),
+                                                      std::declval<const zlink::message_t &> ())),
                               zlink::framework::actor_join_spot_call_t>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
-                                          .set_routing_id (zlink::routing_id_t::from ("router"))),
-                              zlink::framework::spot_router_capability_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ().connect (
-                                "tcp://127.0.0.1:5501")),
-                              zlink::framework::spot_router_capability_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
-                                          .set_routing_id (zlink::routing_id_t::from ("pub-sub"))),
-                              zlink::framework::spot_pub_sub_capability_builder_t &>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ().connect (
-                                "tcp://127.0.0.1:5502")),
-                              zlink::framework::spot_pub_sub_capability_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
+                             .set_routing_id (zlink::routing_id_t::from ("router"))),
+                 zlink::framework::spot_router_capability_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_router (
-                   "tcp://127.0.0.1:5501",
-                   std::declval<std::function<void (zlink::framework::spot_router_capability_builder_t &)>> ())),
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_router_capability_builder_t &> ()
+                             .connect ("tcp://127.0.0.1:5501")),
+                 zlink::framework::spot_router_capability_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
+                             .set_routing_id (zlink::routing_id_t::from ("pub-sub"))),
+                 zlink::framework::spot_pub_sub_capability_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_pub_sub_capability_builder_t &> ()
+                             .connect ("tcp://127.0.0.1:5502")),
+                 zlink::framework::spot_pub_sub_capability_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_router (
+      "tcp://127.0.0.1:5501",
+      std::declval<std::function<void (zlink::framework::spot_router_capability_builder_t &)>> ())),
+    zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_pub_sub (
+      "tcp://127.0.0.1:5502",
+      std::declval<
+        std::function<void (zlink::framework::spot_pub_sub_capability_builder_t &)>> ())),
+    zlink::framework::spot_node_options_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .attach_channel_client (
+                               "api",
+                               std::declval<std::function<void (
+                                 zlink::framework::attached_channel_client_builder_t &)>> ())),
                  zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().enable_pub_sub (
-                   "tcp://127.0.0.1:5502",
-                   std::declval<std::function<void (zlink::framework::spot_pub_sub_capability_builder_t &)>> ())),
-                 zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_channel_client (
-                 "api", std::declval<std::function<void (zlink::framework::attached_channel_client_builder_t &)>> ())),
-               zlink::framework::spot_node_options_builder_t &>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher (
+      "events",
+      std::declval<std::function<void (zlink::framework::attached_publisher_builder_t &)>> ())),
+    zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().attach_publisher (
-                   "events", std::declval<std::function<void (zlink::framework::attached_publisher_builder_t &)>> ())),
-                 zlink::framework::spot_node_options_builder_t &>);
-
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ().accept_routes_from_channel (
-                   "api",
-                   std::declval<std::function<void (zlink::framework::accepted_spot_route_channel_builder_t &)>> ())),
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_options_builder_t &> ()
+                             .accept_routes_from_channel (
+                               "api",
+                               std::declval<std::function<void (
+                                 zlink::framework::accepted_spot_route_channel_builder_t &)>> ())),
                  zlink::framework::spot_node_options_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::zlink_framework_options_t &> ().dispatch_options ()),
+  std::is_same_v<decltype (std::declval<const zlink::framework::zlink_framework_options_t &> ()
+                             .dispatch_options ()),
                  zlink::framework::dispatch_options_t>);
 
-static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_t &> ().service_summary (
-                                std::declval<zlink::framework::service_summary_filter_t> ())),
-                              std::vector<zlink::framework::service_summary_entry_t>>);
-
-static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_t &> ().topology (
-                                std::declval<zlink::framework::topology_filter_t> ())),
-                              std::vector<zlink::framework::topology_entry_t>>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::registry_query_client_t &> ().connect (
-                                std::declval<zlink::framework::registry_query_client_options_t> ())),
-                              zlink::framework::result_t<void>>);
-
-static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ().topology (
-                                std::declval<zlink::framework::topology_filter_t> ())),
-                              zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ()
-                                          .add_forwarded_metadata_key ("trace-id")),
-                              zlink::framework::message_metadata_policy_t &>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<const zlink::framework::registry_query_t &> ().service_summary (
+      std::declval<zlink::framework::service_summary_filter_t> ())),
+    std::vector<zlink::framework::service_summary_entry_t>>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().find ("trace-id")),
+  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_t &> ().topology (
+                   std::declval<zlink::framework::topology_filter_t> ())),
+                 std::vector<zlink::framework::topology_entry_t>>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::registry_query_client_t &> ().connect (
+                   std::declval<zlink::framework::registry_query_client_options_t> ())),
+                 zlink::framework::result_t<void>>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::registry_query_client_t &> ()
+                             .topology (std::declval<zlink::framework::topology_filter_t> ())),
+                 zlink::framework::result_t<std::vector<zlink::framework::topology_entry_t>>>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::message_metadata_policy_t &> ()
+                             .add_forwarded_metadata_key ("trace-id")),
+                 zlink::framework::message_metadata_policy_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ()
+                             .find ("trace-id")),
                  std::optional<std::string_view>>);
 
-static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ()
-                                          .contains ("trace-id")),
-                              bool>);
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ()
+                             .contains ("trace-id")),
+                 bool>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().empty ()), bool>);
+  std::is_same_v<
+    decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().empty ()),
+    bool>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ()
-                                          .add_forwarded_metadata_key ("trace-id")),
-                              zlink::framework::metadata_policy_builder_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ()
+                             .add_forwarded_metadata_key ("trace-id")),
+                 zlink::framework::metadata_policy_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()
                                           .bind_required<typed_config_t> ("server")),
                               typed_config_t>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ().load_json (
-                                "appsettings.development.json", zlink::framework::optional_t::yes)),
-                              zlink::framework::config_builder_t &>);
-
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ().use_environment ("development")),
+  std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ().load_json (
+                   "appsettings.development.json", zlink::framework::optional_t::yes)),
                  zlink::framework::config_builder_t &>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::config_builder_t &> ().environment ()), std::string>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::config_builder_t &> ()
+                                          .use_environment ("development")),
+                              zlink::framework::config_builder_t &>);
 
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::config_builder_t &> ().is_environment ("development")),
-                 bool>);
+static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::config_builder_t &> ()
+                                          .environment ()),
+                              std::string>);
+
+static_assert (std::is_same_v<decltype (std::declval<const zlink::framework::config_builder_t &> ()
+                                          .is_environment ("development")),
+                              bool>);
 
 class named_handler_t
 {
   public:
     named_reply_t handle (const named_request_t &) { return {}; }
-    named_reply_t handle_context (const named_context_request_t &, const zlink::framework::request_context_t &)
+    named_reply_t handle_context (const named_context_request_t &,
+                                  const zlink::framework::request_context_t &)
     {
         return {};
     }
@@ -496,32 +562,36 @@ class alias_registered_handler_t
 class named_filter_t
 {
   public:
-    zlink::framework::task_t<zlink::message_t> invoke (const zlink::framework::handler_invocation_context_t &,
-                                                       zlink::framework::handler_next_t next)
+    zlink::framework::task_t<zlink::message_t>
+    invoke (const zlink::framework::handler_invocation_context_t &,
+            zlink::framework::handler_next_t next)
     {
         return next ();
     }
 };
 
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_registry_t &> ()
+                                          .use_filter<named_filter_t> ()),
+                              zlink::framework::handler_registry_t &>);
+
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::handler_registry_t &> ().use_filter<named_filter_t> ()),
-                 zlink::framework::handler_registry_t &>);
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().context),
+                 zlink::framework::handler_context_t>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().context),
-                              zlink::framework::handler_context_t>);
-
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().message),
-                              std::shared_ptr<const zlink::message_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().message),
+                 std::shared_ptr<const zlink::message_t>>);
 
 } // namespace
 
 int main ()
 {
     auto callback_kind = zlink::framework::framework_error_kind_t::request_failed;
-    zlink::framework::request_call_t<int> call (
-      zlink::framework::result_t<int>::failure (zlink::framework::framework_error_kind_t::timeout, "timeout"));
+    zlink::framework::request_call_t<int> call (zlink::framework::result_t<int>::failure (
+      zlink::framework::framework_error_kind_t::timeout, "timeout"));
 
-    call.submit ([&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
+    call.submit (
+      [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
 
     auto task = call.submit ();
     const auto coroutine_kind = task.result ().error_kind ();
@@ -529,19 +599,23 @@ int main ()
         return 1;
     }
 
-    zlink::framework::request_call_t<int> shutdown_call (
-      zlink::framework::result_t<int>::failure (zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
+    zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
+      zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
 
-    if (shutdown_call.submit ().result ().error_kind () != zlink::framework::framework_error_kind_t::shutdown) {
+    if (shutdown_call.submit ().result ().error_kind ()
+        != zlink::framework::framework_error_kind_t::shutdown) {
         return 2;
     }
 
     zlink::framework::handler_registry_t handlers;
-    handlers.on_request<named_handler_t, named_request_t, named_reply_t> ("sample", "topic", &named_handler_t::handle);
-    handlers.on_request<named_handler_t, named_context_request_t, named_reply_t> ("sample", "context-topic",
-                                                                                  &named_handler_t::handle_context);
-    handlers.on_send<named_handler_t, named_request_t> ("sample", "send-topic", &named_handler_t::send_context);
-    handlers.on_event<named_handler_t, named_request_t> ("sample", "publish-topic", &named_handler_t::publish_context);
+    handlers.on_request<named_handler_t, named_request_t, named_reply_t> ("sample", "topic",
+                                                                          &named_handler_t::handle);
+    handlers.on_request<named_handler_t, named_context_request_t, named_reply_t> (
+      "sample", "context-topic", &named_handler_t::handle_context);
+    handlers.on_send<named_handler_t, named_request_t> ("sample", "send-topic",
+                                                        &named_handler_t::send_context);
+    handlers.on_event<named_handler_t, named_request_t> ("sample", "publish-topic",
+                                                         &named_handler_t::publish_context);
     const auto *descriptor = handlers.find ("sample", "topic", named_request_t::packet_name);
     if (descriptor == nullptr || descriptor->packet_name != named_request_t::packet_name) {
         return 3;
@@ -552,7 +626,8 @@ int main ()
     zlink::framework::serializer_registry_t serializers;
     zlink::framework::zlink_builder_t zlink;
     zlink::framework::monitoring_builder_t monitoring;
-    zlink::framework::zlink_framework_options_t options (services, option_handlers, serializers, zlink, monitoring);
+    zlink::framework::zlink_framework_options_t options (services, option_handlers, serializers,
+                                                         zlink, monitoring);
     options.use_filter<named_filter_t> ();
     options.handlers ().add<alias_registered_handler_t> ("sample");
 

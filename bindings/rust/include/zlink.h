@@ -9,9 +9,8 @@
 #define ZLINK_VERSION_MINOR 0
 #define ZLINK_VERSION_PATCH 4
 
-#define ZLINK_MAKE_VERSION(major, minor, patch)                                \
-    ((major) *10000 + (minor) *100 + (patch))
-#define ZLINK_VERSION                                                          \
+#define ZLINK_MAKE_VERSION(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
+#define ZLINK_VERSION                                                                              \
     ZLINK_MAKE_VERSION (ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
 
 #include <zlink/common.h>

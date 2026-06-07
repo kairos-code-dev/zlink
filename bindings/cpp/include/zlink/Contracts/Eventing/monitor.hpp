@@ -28,7 +28,8 @@ class socket_monitor_t
   public:
     socket_monitor_t ();
 
-    static socket_monitor_t open (const socket_t &socket_, monitor_event events_ = monitor_event::all);
+    static socket_monitor_t open (const socket_t &socket_,
+                                  monitor_event events_ = monitor_event::all);
 
     ~socket_monitor_t ();
 

@@ -10,8 +10,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 #define WAIT_FOR_BACKGROUND_THREAD_INSPECTION (0)
 
-static void read_socket_auto_hwm_snapshot (void *socket_,
-                                           zlink_monitor_status_t *out_);
+static void read_socket_auto_hwm_snapshot (void *socket_, zlink_monitor_status_t *out_);
 
 #ifdef ZLINK_HAVE_LINUX
 #include <sys/time.h>
@@ -19,8 +18,7 @@ static void read_socket_auto_hwm_snapshot (void *socket_,
 #include <unistd.h> // for sleep()
 #include <sched.h>
 
-#define TEST_POLICY                                                            \
-    (SCHED_OTHER) // NOTE: SCHED_OTHER is the default Linux scheduler
+#define TEST_POLICY (SCHED_OTHER) // NOTE: SCHED_OTHER is the default Linux scheduler
 
 bool is_allowed_to_raise_priority ()
 {
@@ -59,15 +57,13 @@ bool is_allowed_to_raise_priority ()
 void test_ctx_thread_opts ()
 {
     // verify that setting negative values (e.g., default values) fail:
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY,
-                     ZLINK_THREAD_SCHED_POLICY_DFLT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY,
+                                          ZLINK_THREAD_SCHED_POLICY_DFLT));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (get_test_context (), ZLINK_THREAD_PRIORITY,
-                     ZLINK_THREAD_PRIORITY_DFLT));
+      zlink_ctx_set (get_test_context (), ZLINK_THREAD_PRIORITY, ZLINK_THREAD_PRIORITY_DFLT));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
 
@@ -77,8 +73,8 @@ void test_ctx_thread_opts ()
     // as of ZLINK 4.2.3 this has an effect only on POSIX systems (nothing happens on Windows, but still it should return success):
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY, TEST_POLICY));
-    TEST_ASSERT_EQUAL_INT (
-      TEST_POLICY, zlink_ctx_get (get_test_context (), ZLINK_THREAD_SCHED_POLICY, NULL));
+    TEST_ASSERT_EQUAL_INT (TEST_POLICY,
+                           zlink_ctx_get (get_test_context (), ZLINK_THREAD_SCHED_POLICY, NULL));
 
     // test priority:
 
@@ -92,9 +88,9 @@ void test_ctx_thread_opts ()
     // However changing the nice value of a process requires appropriate permissions...
     // check that the current effective user is able to do that:
     if (is_allowed_to_raise_priority ()) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-          get_test_context (), ZLINK_THREAD_PRIORITY,
-          1 /* any positive value different than the default will be ok */));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_ctx_set (get_test_context (), ZLINK_THREAD_PRIORITY,
+                         1 /* any positive value different than the default will be ok */));
     }
 
 
@@ -105,28 +101,24 @@ void test_ctx_thread_opts ()
     // (e.g., 5 to use CPU index 5) and use "top -H" or "taskset -pc" to see the result
 
     int cpus_add[] = {0, 1};
-    for (unsigned int idx = 0; idx < sizeof (cpus_add) / sizeof (cpus_add[0]);
-         idx++) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-          get_test_context (), ZLINK_THREAD_AFFINITY_CPU_ADD, cpus_add[idx]));
+    for (unsigned int idx = 0; idx < sizeof (cpus_add) / sizeof (cpus_add[0]); idx++) {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_ctx_set (get_test_context (), ZLINK_THREAD_AFFINITY_CPU_ADD, cpus_add[idx]));
     }
 
     // you can also remove CPUs from list of affinities:
     int cpus_remove[] = {1};
-    for (unsigned int idx = 0;
-         idx < sizeof (cpus_remove) / sizeof (cpus_remove[0]); idx++) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (),
-                                                ZLINK_THREAD_AFFINITY_CPU_REMOVE,
-                                                cpus_remove[idx]));
+    for (unsigned int idx = 0; idx < sizeof (cpus_remove) / sizeof (cpus_remove[0]); idx++) {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_ctx_set (get_test_context (), ZLINK_THREAD_AFFINITY_CPU_REMOVE, cpus_remove[idx]));
     }
 
 
     // test INTEGER thread name prefix:
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_THREAD_NAME_PREFIX, 1234));
-    TEST_ASSERT_EQUAL_INT (
-      1234, zlink_ctx_get (get_test_context (), ZLINK_THREAD_NAME_PREFIX, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_THREAD_NAME_PREFIX, 1234));
+    TEST_ASSERT_EQUAL_INT (1234,
+                           zlink_ctx_get (get_test_context (), ZLINK_THREAD_NAME_PREFIX, NULL));
 }
 
 void test_ctx_zero_copy ()
@@ -138,8 +130,7 @@ void test_ctx_zero_copy ()
     TEST_ASSERT_EQUAL_INT (1, zero_copy);
 
     // Test we can set it to 0.
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 0));
     zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL);
     TEST_ASSERT_EQUAL_INT (0, zero_copy);
 
@@ -153,8 +144,7 @@ void test_ctx_zero_copy ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (push, endpoint));
 
     const char *small_str = "abcd";
-    const char *large_str =
-      "01234567890123456789012345678901234567890123456789";
+    const char *large_str = "01234567890123456789012345678901234567890123456789";
 
     send_string_expect_success (push, small_str, 0);
     send_string_expect_success (push, large_str, 0);
@@ -165,10 +155,8 @@ void test_ctx_zero_copy ()
     // Clean up.
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (push));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pull));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 1));
-    TEST_ASSERT_EQUAL_INT (
-      1, zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 1));
+    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV, NULL));
 #endif
 }
 
@@ -181,9 +169,10 @@ void test_ctx_option_max_sockets ()
 void test_ctx_option_socket_limit ()
 {
 #if defined(ZLINK_USE_SELECT)
-    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT, NULL));
-#elif defined(ZLINK_USE_POLL) || defined(ZLINK_USE_EPOLL)                          \
-  || defined(ZLINK_USE_DEVPOLL) || defined(ZLINK_USE_KQUEUE)
+    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1,
+                           zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT, NULL));
+#elif defined(ZLINK_USE_POLL) || defined(ZLINK_USE_EPOLL) || defined(ZLINK_USE_DEVPOLL)            \
+  || defined(ZLINK_USE_KQUEUE)
     TEST_ASSERT_EQUAL_INT (65535, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT, NULL));
 #endif
 }
@@ -204,15 +193,12 @@ void test_ctx_option_msg_t_size ()
 
 void test_ctx_option_blocky ()
 {
-    TEST_ASSERT_EQUAL_INT (1,
-                           zlink_ctx_get (get_test_context (),
-                                          ZLINK_CTX_OPT_BLOCKY, NULL));
+    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_BLOCKY, NULL));
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     int value;
     size_t optsize = sizeof (int);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (-1, value);
     test_context_socket_close (router);
 
@@ -225,14 +211,11 @@ void test_ctx_option_blocky ()
     sleep (100);
 #endif
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_BLOCKY, false));
-    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zlink_ctx_get (
-                                get_test_context (), ZLINK_CTX_OPT_BLOCKY,
-                                NULL))));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_BLOCKY, false));
+    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO (
+                                (zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_BLOCKY, NULL))));
     router = test_context_socket (ZLINK_SOCKET_ROUTER);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (0, value);
     test_context_socket_close (router);
 }
@@ -244,20 +227,17 @@ void test_ctx_option_auto_hwm_defaults ()
       zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, NULL));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CTX_AUTO_HWM_PROFILE_DFLT,
-      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     NULL));
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, NULL));
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
     int hwm = -1;
     size_t hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (256, hwm);
     hwm = -1;
     hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (256, hwm);
     test_context_socket_close (router);
 }
@@ -267,84 +247,65 @@ void test_ctx_option_auto_hwm_round_trip ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, 0));
     TEST_ASSERT_EQUAL_INT (
-      0, zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE,
-                        NULL));
+      0, zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, NULL));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-      ZLINK_AUTO_HWM_PROFILE_COMPACT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                                              ZLINK_AUTO_HWM_PROFILE_COMPACT));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_AUTO_HWM_PROFILE_COMPACT,
-      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-      ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY));
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                                              ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY,
-      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     NULL));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-      ZLINK_AUTO_HWM_PROFILE_THROUGHPUT));
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                                              ZLINK_AUTO_HWM_PROFILE_THROUGHPUT));
     TEST_ASSERT_EQUAL_INT (
       ZLINK_AUTO_HWM_PROFILE_THROUGHPUT,
-      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     NULL));
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, NULL));
 
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     999));
+      zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, 999));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_AUTO_HWM_PROFILE_THROUGHPUT,
-      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-                     NULL));
+      zlink_ctx_get (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE, NULL));
 }
 
 void test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT,
-      zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CTX_AUTO_HWM_MSG_UNIT_BYTES_DFLT,
+                           zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
     zlink_config_result_t err = ZLINK_CONFIG_INVALID_ARGUMENT;
-    TEST_ASSERT_EQUAL_INT (
-      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &err));
+    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &err));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, err);
 
     const int negative = -1;
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, negative));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, negative));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (
-      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
 
     const int value = 128;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
-                          sizeof (value) - 1));
+      zlink_ctx_set_data (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value) - 1));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (
-      64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_EQUAL_INT (64, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
-    TEST_ASSERT_EQUAL_INT (
-      0, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, NULL));
 }
 
 void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
 
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
@@ -352,14 +313,12 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (64u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (256u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
@@ -375,8 +334,7 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots ()
 void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
 
     void *explicit_socket = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (explicit_socket);
@@ -384,12 +342,10 @@ void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
     TEST_ASSERT_NOT_NULL (context_socket);
 
     int override_value = 512;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &override_value,
-      sizeof (override_value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                                                 &override_value, sizeof (override_value)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
 
     zlink_monitor_status_t status;
@@ -399,15 +355,13 @@ void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
     TEST_ASSERT_EQUAL_UINT64 (256u, status.auto_hwm_effective_message_bytes);
 
     override_value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &override_value,
-      sizeof (override_value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (explicit_socket, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES,
+                                                 &override_value, sizeof (override_value)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (explicit_socket, &status);
     TEST_ASSERT_EQUAL_UINT64 (256u, status.auto_hwm_effective_message_bytes);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 0));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     read_socket_auto_hwm_snapshot (explicit_socket, &status);
     TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
@@ -416,16 +370,14 @@ void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
     test_context_socket_close (explicit_socket);
 }
 
-static std::vector<zlink_spot_node_socket_entry_t>
-read_spot_internal_socket_snapshot (void *node_)
+static std::vector<zlink_spot_node_socket_entry_t> read_spot_internal_socket_snapshot (void *node_)
 {
     size_t count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets (node_, NULL, NULL, &count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets (node_, NULL, NULL, &count));
     std::vector<zlink_spot_node_socket_entry_t> rows (count);
     if (count != 0) {
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets (
-          node_, NULL, &rows[0], &count));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_internal_sockets (node_, NULL, &rows[0], &count));
         rows.resize (count);
     }
     return rows;
@@ -440,8 +392,8 @@ static void assert_visible_spot_msg_unit (void *node_, uint64_t expected_)
         if (rows[i].auto_hwm_visible == 0)
             continue;
         ++visible_count;
-        TEST_ASSERT_EQUAL_UINT64 (
-          expected_, rows[i].monitor_status.auto_hwm_effective_message_bytes);
+        TEST_ASSERT_EQUAL_UINT64 (expected_,
+                                  rows[i].monitor_status.auto_hwm_effective_message_bytes);
     }
     TEST_ASSERT_TRUE (visible_count > 0);
 }
@@ -449,8 +401,7 @@ static void assert_visible_spot_msg_unit (void *node_, uint64_t expected_)
 void test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets ()
 {
     void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
 
     void *node = zlink_spot_node_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (node);
@@ -459,8 +410,7 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets ()
 
     assert_visible_spot_msg_unit (node, 64u);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
     assert_visible_spot_msg_unit (node, 256u);
 
@@ -470,9 +420,8 @@ void test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets ()
 
 void test_ctx_option_auto_hwm_enabled_applies_profile ()
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-      ZLINK_AUTO_HWM_PROFILE_BALANCED));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                                              ZLINK_AUTO_HWM_PROFILE_BALANCED));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, 1));
 
@@ -480,46 +429,38 @@ void test_ctx_option_auto_hwm_enabled_applies_profile ()
     TEST_ASSERT_NOT_NULL (router);
     int hwm = -1;
     size_t hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (256, hwm);
     hwm = -1;
     hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (256, hwm);
     int buffer = -1;
     size_t buffer_size = sizeof (buffer);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
     TEST_ASSERT_EQUAL_INT (256 * 1024, buffer);
     buffer = -1;
     buffer_size = sizeof (buffer);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
     TEST_ASSERT_EQUAL_INT (256 * 1024, buffer);
 
     test_context_socket_close (router);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
-      get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
-      ZLINK_AUTO_HWM_PROFILE_COMPACT));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
+                                              ZLINK_AUTO_HWM_PROFILE_COMPACT));
     router = test_context_socket (ZLINK_SOCKET_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
     hwm = -1;
     hwm_size = sizeof (hwm);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &hwm, &hwm_size));
     TEST_ASSERT_EQUAL_INT (64, hwm);
     buffer = -1;
     buffer_size = sizeof (buffer);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDBUF, &buffer, &buffer_size));
     TEST_ASSERT_EQUAL_INT (128 * 1024, buffer);
     buffer = -1;
     buffer_size = sizeof (buffer);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_RCVBUF, &buffer, &buffer_size));
     TEST_ASSERT_EQUAL_INT (128 * 1024, buffer);
 
     test_context_socket_close (router);
@@ -527,8 +468,7 @@ void test_ctx_option_auto_hwm_enabled_applies_profile ()
       zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_ENABLE, 0));
 }
 
-static void read_socket_auto_hwm_snapshot (void *socket_,
-                                           zlink_monitor_status_t *out_)
+static void read_socket_auto_hwm_snapshot (void *socket_, zlink_monitor_status_t *out_)
 {
     zlink_socket_monitor_open_options_t opts;
     memset (&opts, 0, sizeof (opts));
@@ -547,51 +487,45 @@ void test_socket_option_auto_hwm_msg_unit_round_trip ()
 
     int value = -1;
     size_t value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
-      router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (0, value);
 
     zlink_monitor_status_t status;
     read_socket_auto_hwm_snapshot (router, &status);
-    TEST_ASSERT_EQUAL_UINT64 (4096u,
-                              status.auto_hwm_effective_message_bytes);
-    TEST_ASSERT_EQUAL_UINT32 (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT,
-                              status.auto_hwm_profile);
+    TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_EQUAL_UINT32 (ZLINK_CTX_AUTO_HWM_PROFILE_DFLT, status.auto_hwm_profile);
     TEST_ASSERT_GREATER_THAN_UINT32 (0u, status.auto_hwm_policy_class);
-    TEST_ASSERT_GREATER_THAN_UINT64 (0u,
-                                     status.auto_hwm_unit_budget_bytes);
+    TEST_ASSERT_GREATER_THAN_UINT64 (0u, status.auto_hwm_unit_budget_bytes);
     TEST_ASSERT_GREATER_THAN_UINT32 (0u, status.auto_hwm_size_cap);
 
     value = 8192;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     value = 0;
     value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
-      router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (8192, value);
     read_socket_auto_hwm_snapshot (router, &status);
-    TEST_ASSERT_EQUAL_UINT64 (8192u,
-                              status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (8192u, status.auto_hwm_effective_message_bytes);
 
     const int negative = -1;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &negative,
-                        sizeof (negative)));
+      zlink_set_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &negative, sizeof (negative)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     value = 0;
     value_size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (
-      router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, &value_size));
     TEST_ASSERT_EQUAL_INT (8192, value);
 
     value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     read_socket_auto_hwm_snapshot (router, &status);
-    TEST_ASSERT_EQUAL_UINT64 (4096u,
-                              status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (4096u, status.auto_hwm_effective_message_bytes);
 
     test_context_socket_close (router);
 }
@@ -603,8 +537,7 @@ void test_socket_option_auto_hwm_stream_default_msg_unit ()
 
     zlink_monitor_status_t status;
     read_socket_auto_hwm_snapshot (stream, &status);
-    TEST_ASSERT_EQUAL_UINT64 (1024u,
-                              status.auto_hwm_effective_message_bytes);
+    TEST_ASSERT_EQUAL_UINT64 (1024u, status.auto_hwm_effective_message_bytes);
 
     test_context_socket_close (stream);
 }
@@ -622,30 +555,26 @@ void test_auto_hwm_msg_unit_rejects_spot_service_handles ()
     const int value = 64;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
-                        sizeof (value)));
+      zlink_set_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value,
-                        sizeof (value)));
+      zlink_set_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     int actual = 0;
     size_t actual_size = sizeof (actual);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual,
-                        &actual_size));
+      zlink_get_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual, &actual_size));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     actual = 0;
     actual_size = sizeof (actual);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual,
-                        &actual_size));
+      zlink_get_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual, &actual_size));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
@@ -664,10 +593,10 @@ void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract 
 
     const int sndbuf = 1048576;
     const int rcvbuf = 2097152;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      router, ZLINK_OPT_SNDBUF, &sndbuf, sizeof (sndbuf)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      router, ZLINK_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDBUF, &sndbuf, sizeof (sndbuf)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_RCVBUF, &rcvbuf, sizeof (rcvbuf)));
 
     read_socket_auto_hwm_snapshot (router, &status);
     TEST_ASSERT_EQUAL_INT32 (initial_sndhwm, status.auto_hwm_applied_sndhwm);
@@ -680,10 +609,10 @@ void test_ctx_option_invalid ()
 {
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_ctx_set (get_test_context (),
-                     static_cast<zlink_ctx_option_t> (-1), 0));
+      zlink_ctx_set (get_test_context (), static_cast<zlink_ctx_option_t> (-1), 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t>(-1), NULL));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_ctx_get (get_test_context (), static_cast<zlink_ctx_option_t> (-1), NULL));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
 

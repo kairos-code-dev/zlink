@@ -22,11 +22,18 @@ namespace zlink
 class subscriber_socket_t : public socket_t
 {
   public:
-    [[nodiscard]] int set_subscription (const std::string &filter_) { return socket_t::set_subscription (filter_); }
+    [[nodiscard]] int set_subscription (const std::string &filter_)
+    {
+        return socket_t::set_subscription (filter_);
+    }
 
-    [[nodiscard]] int unset_subscription (const std::string &filter_) { return socket_t::unset_subscription (filter_); }
+    [[nodiscard]] int unset_subscription (const std::string &filter_)
+    {
+        return socket_t::unset_subscription (filter_);
+    }
 
-    [[nodiscard]] int subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = nullptr)
+    [[nodiscard]] int
+    subscription_at (size_t index_, std::string &filter_, bool *is_pattern_ = nullptr)
     {
         return socket_t::subscription_at (index_, filter_, is_pattern_);
     }
@@ -56,7 +63,8 @@ class pub_socket_t : public publisher_socket_t
 
     service::send_operation_t publish (const std::string &topic_id_);
 
-    [[nodiscard]] int publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
+    [[nodiscard]] int
+    publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
     {
         return socket_t::publish_no_wait_result (result_, topic_id_, part_);
     }
@@ -114,7 +122,8 @@ class sub_socket_t : public subscriber_socket_t
                         bool &has_more_out_,
                         recv_flags_t flags_ = recv_flags_t::none)
     {
-        return socket_t::subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_, flags_);
+        return socket_t::subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_,
+                                         flags_);
     }
 
     template <typename DiscoveryT> void attach_discovery (DiscoveryT &discovery_)
@@ -145,7 +154,8 @@ class xpub_socket_t : public publisher_socket_t
 
     service::send_operation_t publish (const std::string &topic_id_);
 
-    [[nodiscard]] int publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
+    [[nodiscard]] int
+    publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
     {
         return socket_t::publish_no_wait_result (result_, topic_id_, part_);
     }
@@ -155,7 +165,8 @@ class xpub_socket_t : public publisher_socket_t
         socket_t::set_send_ready_handler (std::move (handler_));
     }
 
-    int receive_subscription_event (subscription_event_t &out_, recv_flags_t flags_ = recv_flags_t::none);
+    int receive_subscription_event (subscription_event_t &out_,
+                                    recv_flags_t flags_ = recv_flags_t::none);
 
     pub_socket_options_t options () { return pub_socket_options_t (*this); }
 
@@ -198,7 +209,8 @@ class xsub_socket_t : public subscriber_socket_t
                         bool &has_more_out_,
                         recv_flags_t flags_ = recv_flags_t::none)
     {
-        return socket_t::subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_, flags_);
+        return socket_t::subscribe_part (source_rid_out_, topic_out_, part_out_, has_more_out_,
+                                         flags_);
     }
 
     sub_socket_options_t options () { return sub_socket_options_t (*this); }

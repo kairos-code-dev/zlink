@@ -107,8 +107,7 @@ class fast_mutex_t
             tid = static_cast<uint64_t> (syscall (SYS_gettid));
         return tid;
 #else
-        return static_cast<uint64_t> (
-          reinterpret_cast<uintptr_t> (pthread_self ()));
+        return static_cast<uint64_t> (reinterpret_cast<uintptr_t> (pthread_self ()));
 #endif
     }
 
@@ -126,10 +125,7 @@ namespace zlink
 {
 struct scoped_fast_lock_t
 {
-    scoped_fast_lock_t (fast_mutex_t &mutex_) : _mutex (mutex_)
-    {
-        _mutex.lock ();
-    }
+    scoped_fast_lock_t (fast_mutex_t &mutex_) : _mutex (mutex_) { _mutex.lock (); }
 
     ~scoped_fast_lock_t () { _mutex.unlock (); }
 

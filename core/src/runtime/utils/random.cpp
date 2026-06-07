@@ -91,8 +91,7 @@ void zlink::generate_random_bytes (unsigned char *out_, size_t size_)
         while (offset < size_) {
             const uint32_t rnd = generate_random ();
             const size_t remaining = size_ - offset;
-            const size_t chunk = remaining < sizeof (rnd) ? remaining
-                                                          : sizeof (rnd);
+            const size_t chunk = remaining < sizeof (rnd) ? remaining : sizeof (rnd);
             memcpy (out_ + offset, &rnd, chunk);
             offset += chunk;
         }

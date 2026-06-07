@@ -42,14 +42,12 @@ bool init_control_msg (uint8_t kind_,
     }
 
     const size_t actor_id_len = strlen (actor_id_);
-    if (actor_id_len > UINT16_MAX
-        || session_rid_.size > sizeof (session_rid_.data)) {
+    if (actor_id_len > UINT16_MAX || session_rid_.size > sizeof (session_rid_.data)) {
         errno = EINVAL;
         return false;
     }
 
-    const size_t frame_size = control_header_size + session_rid_.size
-                              + actor_id_len;
+    const size_t frame_size = control_header_size + session_rid_.size + actor_id_len;
     memset (out_, 0, sizeof (*out_));
     if (zlink_msg_init_size (out_, frame_size) != ZLINK_CONFIG_OK)
         return false;
@@ -63,11 +61,9 @@ bool init_control_msg (uint8_t kind_,
     zlink::put_uint64 (data + 8, generation_);
     zlink::put_uint16 (data + 16, static_cast<uint16_t> (actor_id_len));
     if (session_rid_.size > 0)
-        memcpy (data + control_header_size, session_rid_.data,
-                session_rid_.size);
+        memcpy (data + control_header_size, session_rid_.data, session_rid_.size);
     if (actor_id_len > 0)
-        memcpy (data + control_header_size + session_rid_.size, actor_id_,
-                actor_id_len);
+        memcpy (data + control_header_size + session_rid_.size, actor_id_, actor_id_len);
     return true;
 }
 
@@ -79,19 +75,16 @@ bool parse_control_msg (zlink_msg_t *msg_, frame_t *out_)
     }
 
     const size_t size = zlink_msg_size (msg_);
-    const unsigned char *data =
-      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const unsigned char *data = static_cast<const unsigned char *> (zlink_msg_data (msg_));
     if (size < control_header_size
-        || memcmp (data, actor_gateway_magic, sizeof (actor_gateway_magic))
-             != 0) {
+        || memcmp (data, actor_gateway_magic, sizeof (actor_gateway_magic)) != 0) {
         errno = EPROTO;
         return false;
     }
 
     const uint8_t session_size = data[6];
     const uint16_t actor_id_len = zlink::get_uint16 (data + 16);
-    if (session_size == 0 || actor_id_len == 0
-        || actor_id_len >= ZLINK_ACTOR_ID_MAX
+    if (session_size == 0 || actor_id_len == 0 || actor_id_len >= ZLINK_ACTOR_ID_MAX
         || size != control_header_size + session_size + actor_id_len) {
         errno = EPROTO;
         return false;
@@ -103,8 +96,7 @@ bool parse_control_msg (zlink_msg_t *msg_, frame_t *out_)
     frame.session_rid.size = session_size;
     memcpy (frame.session_rid.data, data + control_header_size, session_size);
     frame.generation = zlink::get_uint64 (data + 8);
-    memcpy (frame.actor_id, data + control_header_size + session_size,
-            actor_id_len);
+    memcpy (frame.actor_id, data + control_header_size + session_size, actor_id_len);
     frame.actor_id[actor_id_len] = '\0';
     if (!spot_actor_internal::valid_routing_id (&frame.session_rid)
         || !spot_actor_internal::valid_actor_id (frame.actor_id)) {

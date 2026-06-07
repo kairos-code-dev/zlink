@@ -46,8 +46,7 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
     lifecycle_coordinator ().set_reaper_poller (poller_);
 
     mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-    mailbox->set_io_context (&lifecycle_coordinator ().reaper_poller ()
-                                  ->get_io_context (),
+    mailbox->set_io_context (&lifecycle_coordinator ().reaper_poller ()->get_io_context (),
                              &socket_base_t::reaper_mailbox_handler, this,
                              &socket_base_t::reaper_mailbox_pre_post);
     mailbox->schedule_if_needed ();
@@ -73,8 +72,7 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
         //  depending on CPU speed: It's ~1ms on 3GHz CPU, ~2ms on 1.5GHz CPU
         //  etc. The optimisation makes sense only on platforms where getting
         //  a timestamp is a very cheap operation (tens of nanoseconds).
-        if (tsc && throttle_
-            && command_runtime ().should_skip_throttled_command_poll (tsc))
+        if (tsc && throttle_ && command_runtime ().should_skip_throttled_command_poll (tsc))
             return 0;
     }
 
@@ -102,19 +100,16 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
     return 0;
 }
 
-int zlink::socket_base_t::start_async_mailbox_processing (
-  io_thread_t *io_thread_)
+int zlink::socket_base_t::start_async_mailbox_processing (io_thread_t *io_thread_)
 {
     return lifecycle_coordinator ().start_async_mailbox_processing (
-      static_cast<mailbox_t *> (_mailbox), io_thread_,
-      &socket_base_t::async_mailbox_handler, this,
+      static_cast<mailbox_t *> (_mailbox), io_thread_, &socket_base_t::async_mailbox_handler, this,
       &socket_base_t::async_mailbox_pre_post);
 }
 
 void zlink::socket_base_t::stop_async_mailbox_processing ()
 {
-    lifecycle_coordinator ().stop_async_mailbox_processing (
-      static_cast<mailbox_t *> (_mailbox));
+    lifecycle_coordinator ().stop_async_mailbox_processing (static_cast<mailbox_t *> (_mailbox));
 }
 
 void zlink::socket_base_t::wait_async_quiesced (int timeout_ms_)
@@ -174,8 +169,7 @@ void zlink::socket_base_t::process_term_endpoint (std::string *endpoint_)
 
 void zlink::socket_base_t::set_all_pipes_nodelay ()
 {
-    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-         i != size; ++i) {
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
         pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
         if (pipe)
             pipe->set_nodelay ();
@@ -185,8 +179,7 @@ void zlink::socket_base_t::set_all_pipes_nodelay ()
 void zlink::socket_base_t::refresh_attached_pipe_hwms ()
 {
     scoped_lock_t lock (monitor_runtime ().sync);
-    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count ();
-         i != size; ++i) {
+    for (size_t i = 0, size = endpoint_runtime ().attached_pipe_count (); i != size; ++i) {
         pipe_t *pipe = endpoint_runtime ().attached_pipe (i);
         pipe->set_hwms (options.rcvhwm, options.sndhwm);
         pipe->send_hwms_to_peer (options.sndhwm, options.rcvhwm);
@@ -195,8 +188,7 @@ void zlink::socket_base_t::refresh_attached_pipe_hwms ()
 
 void zlink::socket_base_t::update_pipe_options (int option_)
 {
-    if (option_ == ZLINK_INTERNAL_OPT_SNDHWM
-        || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
+    if (option_ == ZLINK_INTERNAL_OPT_SNDHWM || option_ == ZLINK_INTERNAL_OPT_RCVHWM) {
         refresh_attached_pipe_hwms ();
     }
 }
@@ -262,11 +254,8 @@ void zlink::socket_base_t::check_destroy ()
 
         inc_mailbox_ref ();
         if (lifecycle_coordinator ().reaper_poller ()) {
-            boost::asio::post (
-              lifecycle_coordinator ().reaper_poller ()->get_io_context (),
-              [this]() {
-                this->dec_mailbox_ref ();
-              });
+            boost::asio::post (lifecycle_coordinator ().reaper_poller ()->get_io_context (),
+                               [this] () { this->dec_mailbox_ref (); });
         } else {
             dec_mailbox_ref ();
         }

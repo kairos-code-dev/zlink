@@ -15,8 +15,7 @@
 #include "utils/err.hpp"
 #include "utils/heap_owner.hpp"
 
-zlink::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
-                                     const options_t &options_) :
+zlink::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_, const options_t &options_) :
     io_object_t (parent_),
     has_rx_timer (false),
     pgm_socket (true, options_),
@@ -38,8 +37,7 @@ int zlink::pgm_receiver_t::init (bool udp_encapsulation_, const char *network_)
     return pgm_socket.init (udp_encapsulation_, network_);
 }
 
-void zlink::pgm_receiver_t::plug (io_thread_t *io_thread_,
-                                session_base_t *session_)
+void zlink::pgm_receiver_t::plug (io_thread_t *io_thread_, session_base_t *session_)
 {
     LIBZLINK_UNUSED (io_thread_);
     //  Retrieve PGM fds and start polling.
@@ -60,8 +58,7 @@ void zlink::pgm_receiver_t::plug (io_thread_t *io_thread_,
 void zlink::pgm_receiver_t::unplug ()
 {
     //  Delete decoders.
-    for (peers_t::iterator it = peers.begin (), end = peers.end (); it != end;
-         ++it) {
+    for (peers_t::iterator it = peers.begin (), end = peers.end (); it != end; ++it) {
         if (it->second.decoder != NULL) {
             LIBZLINK_DELETE (it->second.decoder);
         }
@@ -225,8 +222,8 @@ void zlink::pgm_receiver_t::in_event ()
             it->second.joined = true;
 
             //  Create and connect decoder for the peer.
-            it->second.decoder = new (std::nothrow)
-              zmp_decoder_t (options.in_batch_size, options.maxmsgsize);
+            it->second.decoder =
+              new (std::nothrow) zmp_decoder_t (options.in_batch_size, options.maxmsgsize);
             alloc_assert (it->second.decoder);
         }
 

@@ -25,8 +25,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
                                     size_t part_count_,
                                     void *userdata_)
 {
-    socket_request_reply_state_t *state =
-      static_cast<socket_request_reply_state_t *> (userdata_);
+    socket_request_reply_state_t *state = static_cast<socket_request_reply_state_t *> (userdata_);
     if (!state) {
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         return;
@@ -35,39 +34,31 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     zlink::request_reply::parsed_envelope_t envelope;
     if (!zlink::request_reply::parse_envelope (parts_, part_count_, &envelope)) {
         if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            if (dispatch_dealer_message (
-                  state, ZLINK_DEALER_MESSAGE_RAW, 0, NULL, parts_, part_count_)
-                != 0)
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
-        } else {
-            if (dispatch_router_message (state, source_rid_, NULL, 0, parts_,
+            if (dispatch_dealer_message (state, ZLINK_DEALER_MESSAGE_RAW, 0, NULL, parts_,
                                          part_count_)
                 != 0)
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
+        } else {
+            if (dispatch_router_message (state, source_rid_, NULL, 0, parts_, part_count_) != 0)
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         }
         return;
     }
 
     if (envelope.message_type == zlink::request_reply::request_type) {
         if (state->socket_type == ZLINK_CORE_SOCKET_DEALER) {
-            if (dispatch_dealer_message (
-                  state, ZLINK_DEALER_MESSAGE_REQUEST, envelope.request_seq,
-                  zlink::socket_base_t::current_socket_msg_dispatch_pipe (),
-                  envelope.payload_parts, envelope.payload_part_count)
+            if (dispatch_dealer_message (state, ZLINK_DEALER_MESSAGE_REQUEST, envelope.request_seq,
+                                         zlink::socket_base_t::current_socket_msg_dispatch_pipe (),
+                                         envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             }
         } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
                    && has_valid_routing_id (source_rid_)) {
-            if (dispatch_router_message (
-                  state, source_rid_, NULL, envelope.request_seq,
-                  envelope.payload_parts, envelope.payload_part_count)
+            if (dispatch_router_message (state, source_rid_, NULL, envelope.request_seq,
+                                         envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             }
         } else {
             zlink::request_reply::close_request_reply_parts (parts_, part_count_);
@@ -77,8 +68,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
 
     pending_key_t key;
     key.request_seq = envelope.request_seq;
-    if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
-        && has_valid_routing_id (source_rid_)) {
+    if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER && has_valid_routing_id (source_rid_)) {
         key.peer_rid = routing_id_key (source_rid_);
     }
 
@@ -86,9 +76,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     bool found = false;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        std::unordered_map<pending_key_t,
-                           pending_request_t,
-                           pending_key_hash_t>::iterator it =
+        std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
           state->pending_requests.find (key);
         if (it == state->pending_requests.end ()) {
             std::unordered_map<uint64_t, pending_key_t>::iterator seq_it =
@@ -113,21 +101,17 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
               envelope.message_type == zlink::request_reply::error_reply_type
                 ? ZLINK_DEALER_MESSAGE_ERROR_REPLY
                 : ZLINK_DEALER_MESSAGE_REPLY;
-            if (dispatch_dealer_message (
-                  state, dealer_type, envelope.request_seq, NULL,
-                  envelope.payload_parts, envelope.payload_part_count)
+            if (dispatch_dealer_message (state, dealer_type, envelope.request_seq, NULL,
+                                         envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             }
         } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
                    && has_valid_routing_id (source_rid_)) {
-            if (dispatch_router_message (
-                  state, source_rid_, NULL, envelope.request_seq,
-                  envelope.payload_parts, envelope.payload_part_count)
+            if (dispatch_router_message (state, source_rid_, NULL, envelope.request_seq,
+                                         envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
-                zlink::request_reply::close_request_reply_parts (parts_,
-                                                                 part_count_);
+                zlink::request_reply::close_request_reply_parts (parts_, part_count_);
             }
         } else {
             zlink::request_reply::close_request_reply_parts (parts_, part_count_);
@@ -139,29 +123,26 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
     zlink_msg_t *callback_parts = envelope.payload_parts;
     size_t callback_part_count = envelope.payload_part_count;
     if (zlink::request_reply::decode_reply_completion (
-          envelope.message_type, envelope.payload_parts,
-          envelope.payload_part_count, &callback_errno, &callback_parts,
-          &callback_part_count)
+          envelope.message_type, envelope.payload_parts, envelope.payload_part_count,
+          &callback_errno, &callback_parts, &callback_part_count)
         != 0) {
         std::shared_ptr<socket_request_reply_state_t> state_ref (
           state, [] (socket_request_reply_state_t *) {});
-        (void) queue_reply_completion (
-          state_ref, pending.handler, pending.userdata, EPROTO, NULL, 0);
+        (void) queue_reply_completion (state_ref, pending.handler, pending.userdata, EPROTO, NULL,
+                                       0);
         zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         return;
     }
 
     std::shared_ptr<socket_request_reply_state_t> state_ref (
       state, [] (socket_request_reply_state_t *) {});
-    (void) queue_reply_completion (
-      state_ref, pending.handler, pending.userdata, callback_errno,
-      callback_parts, callback_part_count);
+    (void) queue_reply_completion (state_ref, pending.handler, pending.userdata, callback_errno,
+                                   callback_parts, callback_part_count);
     zlink::request_reply::close_request_reply_parts (parts_, part_count_);
 }
 }
 
-int ensure_internal_dispatch_installed (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+int ensure_internal_dispatch_installed (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     if (!state_ || !state_->socket) {
         errno = EFAULT;
@@ -177,8 +158,8 @@ int ensure_internal_dispatch_installed (
         return -1;
     }
 
-    if (state_->socket->socket_set_msg_handler_with_userdata (
-          &socket_request_reply_dispatch, NULL, state_.get ())
+    if (state_->socket->socket_set_msg_handler_with_userdata (&socket_request_reply_dispatch, NULL,
+                                                              state_.get ())
         != 0)
         return -1;
 
@@ -186,8 +167,7 @@ int ensure_internal_dispatch_installed (
     return 0;
 }
 
-int ensure_recv_queue_ready (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+int ensure_recv_queue_ready (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     if (!state_ || !state_->socket) {
         errno = EFAULT;
@@ -195,13 +175,11 @@ int ensure_recv_queue_ready (
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
-    return zlink::internal_pair_queue::ensure (
-      state_->socket->get_ctx (), "zlink.router.reqrep.recv",
-      &state_->recv_queue);
+    return zlink::internal_pair_queue::ensure (state_->socket->get_ctx (),
+                                               "zlink.router.reqrep.recv", &state_->recv_queue);
 }
 
-bool has_pending_request_work (
-  const std::shared_ptr<socket_request_reply_state_t> &state_)
+bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_t> &state_)
 {
     if (!state_)
         return false;
@@ -212,8 +190,7 @@ bool has_pending_request_work (
     return !state_->pending_requests.empty ();
 }
 
-int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_,
-                                              void *owner_handle_)
+int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_, void *owner_handle_)
 {
     if (!handle_.socket) {
         errno = EFAULT;
@@ -221,8 +198,7 @@ int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_,
     }
 
     handle_.socket->socket_msg_dispatch_drain_pending ();
-    const std::shared_ptr<socket_request_reply_state_t> state =
-      find_request_reply_state (handle_);
+    const std::shared_ptr<socket_request_reply_state_t> state = find_request_reply_state (handle_);
     if (!state) {
         errno = 0;
         return 0;
@@ -238,17 +214,14 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
         return -1;
     }
 
-    std::shared_ptr<socket_request_reply_state_t> state =
-      handle_.socket->request_reply_state ();
+    std::shared_ptr<socket_request_reply_state_t> state = handle_.socket->request_reply_state ();
     if (!state)
         return 0;
 
     std::vector<pending_request_t> pending;
     {
         std::lock_guard<std::mutex> lock (state->mutex);
-        for (std::unordered_map<pending_key_t,
-                                pending_request_t,
-                                pending_key_hash_t>::iterator it =
+        for (std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
                state->pending_requests.begin ();
              it != state->pending_requests.end (); ++it) {
             pending.push_back (it->second);
@@ -261,8 +234,7 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
 
     for (size_t i = 0; i < pending.size (); ++i) {
         zlink::request_timeout::cancel (pending[i].timeout_task);
-        if (queue_reply_completion (state, pending[i].handler,
-                                    pending[i].userdata, ETERM, NULL, 0)
+        if (queue_reply_completion (state, pending[i].handler, pending[i].userdata, ETERM, NULL, 0)
             != 0) {
             return -1;
         }
@@ -276,10 +248,9 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (!handle_.socket)
         return;
 
-    std::vector<std::shared_ptr<zlink::request_timeout::task_t> > timeout_tasks;
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t>> timeout_tasks;
     bool close_recv_queue = false;
-    std::shared_ptr<socket_request_reply_state_t> state =
-      handle_.socket->request_reply_state ();
+    std::shared_ptr<socket_request_reply_state_t> state = handle_.socket->request_reply_state ();
     if (state && state->internal_dispatch_installed
         && handle_.socket->socket_msg_dispatch_active ()) {
         (void) handle_.socket->socket_msg_dispatch_stop ();
@@ -287,9 +258,7 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     if (state) {
         std::lock_guard<std::mutex> state_lock (state->mutex);
         state->internal_dispatch_installed = false;
-        for (std::unordered_map<pending_key_t,
-                                pending_request_t,
-                                pending_key_hash_t>::iterator it =
+        for (std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
                state->pending_requests.begin ();
              it != state->pending_requests.end (); ++it) {
             timeout_tasks.push_back (it->second.timeout_task);

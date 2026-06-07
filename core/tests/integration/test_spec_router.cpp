@@ -26,12 +26,10 @@ void test_fair_queue_in (const char *bind_address_)
 
         char *str = strdup ("A");
         str[0] += peer;
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_set_routing_id (senders[peer], str, 2));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (senders[peer], str, 2));
         free (str);
 
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_connect (senders[peer], connect_address));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (senders[peer], connect_address));
     }
 
     msleep (SETTLE_TIME);
@@ -78,10 +76,10 @@ void test_fair_queue_in (const char *bind_address_)
     msleep (SETTLE_TIME);
 }
 
-#define TEST_SUITE(name, bind_address)                                         \
-    void test_fair_queue_in_##name ()                                          \
-    {                                                                          \
-        test_fair_queue_in (bind_address);                                     \
+#define TEST_SUITE(name, bind_address)                                                             \
+    void test_fair_queue_in_##name ()                                                              \
+    {                                                                                              \
+        test_fair_queue_in (bind_address);                                                         \
     }
 
 TEST_SUITE (inproc, "inproc://a")

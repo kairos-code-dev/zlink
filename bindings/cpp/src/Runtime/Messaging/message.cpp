@@ -35,7 +35,8 @@ message_t::message_t (const message_t &other_) : _storage (), _valid (false)
         return;
     if (zlink_msg_init (detail::native_handle (*this)) != 0)
         return;
-    if (zlink_msg_copy (detail::native_handle (*this), const_cast<zlink_msg_t *> (detail::native_handle (other_)))
+    if (zlink_msg_copy (detail::native_handle (*this),
+                        const_cast<zlink_msg_t *> (detail::native_handle (other_)))
         == 0) {
         _valid = true;
         return;
@@ -52,7 +53,8 @@ message_t &message_t::operator= (const message_t &other_)
         return *this;
     if (zlink_msg_init (detail::native_handle (*this)) != 0)
         return *this;
-    if (zlink_msg_copy (detail::native_handle (*this), const_cast<zlink_msg_t *> (detail::native_handle (other_)))
+    if (zlink_msg_copy (detail::native_handle (*this),
+                        const_cast<zlink_msg_t *> (detail::native_handle (other_)))
         == 0) {
         _valid = true;
         return *this;
@@ -137,7 +139,8 @@ void message_t::init (size_t size_)
 
 std::byte *message_t::data () noexcept
 {
-    return _valid ? static_cast<std::byte *> (zlink_msg_data (detail::native_handle (*this))) : nullptr;
+    return _valid ? static_cast<std::byte *> (zlink_msg_data (detail::native_handle (*this)))
+                  : nullptr;
 }
 
 const std::byte *message_t::data () const noexcept

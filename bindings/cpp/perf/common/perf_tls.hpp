@@ -16,7 +16,8 @@ inline bool perf_tls_file_exists (const std::filesystem::path &path)
     return std::filesystem::exists (path, ec) && std::filesystem::is_regular_file (path, ec);
 }
 
-inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start, std::filesystem::path *out_dir)
+inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start,
+                                       std::filesystem::path *out_dir)
 {
     if (!out_dir)
         return false;
@@ -33,8 +34,10 @@ inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start, std::
         if (cur.empty ())
             break;
 
-        const std::filesystem::path repo_candidate = cur / "bindings" / "cpp" / "tests" / "certs" / "gen";
-        if (perf_tls_file_exists (repo_candidate / "server.crt") && perf_tls_file_exists (repo_candidate / "server.key")
+        const std::filesystem::path repo_candidate =
+          cur / "bindings" / "cpp" / "tests" / "certs" / "gen";
+        if (perf_tls_file_exists (repo_candidate / "server.crt")
+            && perf_tls_file_exists (repo_candidate / "server.key")
             && perf_tls_file_exists (repo_candidate / "ca.crt")) {
             *out_dir = repo_candidate;
             return true;
@@ -57,8 +60,10 @@ inline bool resolve_perf_tls_dir_from (const std::filesystem::path &start, std::
     return false;
 }
 
-inline bool
-try_resolve_tls_paths (std::string &cert_out, std::string &key_out, std::string &ca_out, bool verbose = false)
+inline bool try_resolve_tls_paths (std::string &cert_out,
+                                   std::string &key_out,
+                                   std::string &ca_out,
+                                   bool verbose = false)
 {
     cert_out.clear ();
     key_out.clear ();
@@ -85,7 +90,8 @@ try_resolve_tls_paths (std::string &cert_out, std::string &key_out, std::string 
     return true;
 }
 
-template <typename SocketLike> inline bool setup_tls_server (SocketLike &socket, const std::string &transport)
+template <typename SocketLike>
+inline bool setup_tls_server (SocketLike &socket, const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
         return true;
@@ -105,7 +111,8 @@ template <typename SocketLike> inline bool setup_tls_server (SocketLike &socket,
     return true;
 }
 
-template <typename SocketLike> inline bool setup_tls_client (SocketLike &socket, const std::string &transport)
+template <typename SocketLike>
+inline bool setup_tls_client (SocketLike &socket, const std::string &transport)
 {
     if (transport != "tls" && transport != "wss")
         return true;

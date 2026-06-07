@@ -47,7 +47,10 @@ struct recv_envelope_t
     }
 };
 
-inline int recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &envelope_, bool use_router_recv_)
+inline int recv_envelope (void *socket_,
+                          recv_flags_t flags_,
+                          recv_envelope_t &envelope_,
+                          bool use_router_recv_)
 {
     envelope_.reset ();
 
@@ -62,9 +65,9 @@ inline int recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &e
             return -1;
         }
 
-        const int first_rc = zlink_router_recv_part (socket_, &source_rid, &source_spot_rid, &request_seq,
-                                                     detail::native_handle (first_msg), &has_more,
-                                                     static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+        const int first_rc = zlink_router_recv_part (
+          socket_, &source_rid, &source_spot_rid, &request_seq, detail::native_handle (first_msg),
+          &has_more, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
         if (first_rc != ZLINK_RECV_OK)
             return -1;
 
@@ -92,9 +95,10 @@ inline int recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &e
             }
 
             has_more = ZLINK_PART_FINAL;
-            const int rc = zlink_router_recv_part (socket_, &source_rid, &source_spot_rid, &request_seq,
-                                                   detail::native_handle (next_msg), &has_more,
-                                                   static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+            const int rc =
+              zlink_router_recv_part (socket_, &source_rid, &source_spot_rid, &request_seq,
+                                      detail::native_handle (next_msg), &has_more,
+                                      static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
             if (rc != ZLINK_RECV_OK)
                 return -1;
 
@@ -109,8 +113,9 @@ inline int recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &e
             return -1;
 
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        const int first_rc = zlink_recv_part (socket_, &source_rid, first_part.get (), &has_more,
-                                              static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+        const int first_rc =
+          zlink_recv_part (socket_, &source_rid, first_part.get (), &has_more,
+                           static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
         if (first_rc != ZLINK_RECV_OK)
             return first_rc;
 
@@ -131,8 +136,9 @@ inline int recv_envelope (void *socket_, recv_flags_t flags_, recv_envelope_t &e
             if (!next_part.init ())
                 return -1;
 
-            const int rc = zlink_recv_part (socket_, &source_rid, next_part.get (), &has_more,
-                                            static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
+            const int rc =
+              zlink_recv_part (socket_, &source_rid, next_part.get (), &has_more,
+                               static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
             if (rc != ZLINK_RECV_OK)
                 return rc;
 

@@ -5,8 +5,7 @@
 #include "core/msg.hpp"
 #include "protocol/wire.hpp"
 
-zlink::zmp_encoder_t::zmp_encoder_t (size_t bufsize_) :
-    encoder_base_t<zmp_encoder_t> (bufsize_)
+zlink::zmp_encoder_t::zmp_encoder_t (size_t bufsize_) : encoder_base_t<zmp_encoder_t> (bufsize_)
 {
     next_step (NULL, 0, &zmp_encoder_t::header_ready, true);
 }
@@ -48,6 +47,6 @@ void zlink::zmp_encoder_t::header_ready ()
 
 void zlink::zmp_encoder_t::body_ready ()
 {
-    next_step (in_progress ()->data (), in_progress ()->size (),
-               &zmp_encoder_t::header_ready, true);
+    next_step (in_progress ()->data (), in_progress ()->size (), &zmp_encoder_t::header_ready,
+               true);
 }

@@ -36,15 +36,13 @@ struct subject_snapshot_key_hash_t
     size_t operator() (const subject_snapshot_key_t &key_) const
     {
         size_t seed = std::hash<uint32_t> () (key_.subject_kind);
-        seed ^= std::hash<std::string> () (key_.subject) + 0x9e3779b9
-                + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<std::string> () (key_.subject) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
 
-static std::string spot_subject_snapshot_key_local (
-  const std::string &subject_,
-  uint32_t subject_kind_)
+static std::string spot_subject_snapshot_key_local (const std::string &subject_,
+                                                    uint32_t subject_kind_)
 {
     char prefix[16];
     snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
@@ -52,8 +50,7 @@ static std::string spot_subject_snapshot_key_local (
 }
 
 static uint32_t ready_subject_count_local (
-  const std::vector<spot_node_summary_state_t::subject_snapshot_entry_t>
-    &entries_)
+  const std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> &entries_)
 {
     uint32_t ready_count = 0;
     for (size_t i = 0; i < entries_.size (); ++i) {
@@ -63,33 +60,29 @@ static uint32_t ready_subject_count_local (
     return ready_count;
 }
 
-static zlink_registry_topology_entry_t make_topology_summary_entry (
-  const zlink_routing_id_t &rid_,
-  zlink_service_kind_t service_kind_,
-  zlink_spot_kind_t spot_kind_,
-  const char *channel_name_,
-  const char *endpoint_,
-  discovery_t *discovery_,
-  uint16_t state_,
-  int error_code_)
+static zlink_registry_topology_entry_t
+make_topology_summary_entry (const zlink_routing_id_t &rid_,
+                             zlink_service_kind_t service_kind_,
+                             zlink_spot_kind_t spot_kind_,
+                             const char *channel_name_,
+                             const char *endpoint_,
+                             discovery_t *discovery_,
+                             uint16_t state_,
+                             int error_code_)
 {
     zlink_registry_topology_entry_t entry;
     memset (&entry, 0, sizeof (entry));
     entry.routing_id = rid_;
     if (discovery_) {
         entry.auto_connect_type =
-          static_cast<zlink_auto_connect_type_t> (
-            discovery_->auto_connect_type ());
+          static_cast<zlink_auto_connect_type_t> (discovery_->auto_connect_type ());
     }
     entry.service_kind = service_kind_;
     entry.service_role = ZLINK_SERVICE_ROLE_SPOT;
     entry.spot_kind = spot_kind_;
-    copy_fixed_c_string_from_cstr (entry.channel_name,
-                                   sizeof (entry.channel_name),
-                                   channel_name_);
+    copy_fixed_c_string_from_cstr (entry.channel_name, sizeof (entry.channel_name), channel_name_);
     if (endpoint_)
-        copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint),
-                                       endpoint_);
+        copy_fixed_c_string_from_cstr (entry.endpoint, sizeof (entry.endpoint), endpoint_);
     entry.source = ZLINK_TOPOLOGY_SOURCE_DISCOVERY;
     entry.state = static_cast<zlink_topology_state_t> (state_);
     entry.desired_count = 1;
@@ -112,23 +105,19 @@ std::string spot_node_t::summary_channel_name () const
     return std::string ();
 }
 
-void spot_node_t::mark_subject_changed (const std::string &subject_,
-                                        uint32_t subject_kind_)
+void spot_node_t::mark_subject_changed (const std::string &subject_, uint32_t subject_kind_)
 {
     char prefix[16];
     snprintf (prefix, sizeof (prefix), "%u:", subject_kind_);
     const uint64_t now_ms = zlink::clock_t ().now_ms ();
 
     scoped_lock_t lock (_sync);
-    _summary_state.subject_last_changed_ms[std::string (prefix) + subject_] =
-      now_ms;
+    _summary_state.subject_last_changed_ms[std::string (prefix) + subject_] = now_ms;
     _summary_state.summary_last_changed_ms = now_ms;
     _summary_state.mark_subject_snapshot_changed ();
 }
 
-void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
-                                      uint16_t state_,
-                                      int error_code_)
+void spot_node_t::submit_pub_summary (spot_pub_t *pub_, uint16_t state_, int error_code_)
 {
     if (!pub_)
         return;
@@ -140,7 +129,9 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
         scoped_lock_t lock (_sync);
         discovery = _discovery_state.discovery;
         channel_name = _discovery_state.discovery_service;
-        endpoint = _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
+        endpoint = _discovery_state.advertise_endpoint.empty ()
+                     ? _endpoint_state.bound_endpoint
+                     : _discovery_state.advertise_endpoint;
     }
     if (!discovery || channel_name.empty ())
         return;
@@ -149,17 +140,13 @@ void spot_node_t::submit_pub_summary (spot_pub_t *pub_,
     if (pub_->routing_id (&rid) != 0 || rid.size == 0)
         return;
 
-    zlink_registry_topology_entry_t entry =
-      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_PUB,
-                                   ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
-                                   endpoint.c_str (), discovery, state_,
-                                   error_code_);
+    zlink_registry_topology_entry_t entry = make_topology_summary_entry (
+      rid, ZLINK_SERVICE_KIND_SPOT_PUB, ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
+      endpoint.c_str (), discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
-void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
-                                      uint16_t state_,
-                                      int error_code_)
+void spot_node_t::submit_sub_summary (spot_sub_t *sub_, uint16_t state_, int error_code_)
 {
     if (!sub_)
         return;
@@ -179,17 +166,15 @@ void spot_node_t::submit_sub_summary (spot_sub_t *sub_,
         return;
 
     zlink_registry_topology_entry_t entry =
-      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_SUB,
-                                   ZLINK_SPOT_KIND_INVALID, channel_name.c_str (),
-                                   NULL, discovery, state_, error_code_);
+      make_topology_summary_entry (rid, ZLINK_SERVICE_KIND_SPOT_SUB, ZLINK_SPOT_KIND_INVALID,
+                                   channel_name.c_str (), NULL, discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
-void spot_node_t::submit_spot_owner_summary_for_rid (
-  const zlink_routing_id_t &rid_,
-  zlink_spot_kind_t spot_kind_,
-  uint16_t state_,
-  int error_code_)
+void spot_node_t::submit_spot_owner_summary_for_rid (const zlink_routing_id_t &rid_,
+                                                     zlink_spot_kind_t spot_kind_,
+                                                     uint16_t state_,
+                                                     int error_code_)
 {
     if (rid_.size == 0)
         return;
@@ -201,39 +186,35 @@ void spot_node_t::submit_spot_owner_summary_for_rid (
         scoped_lock_t lock (_sync);
         discovery = _discovery_state.discovery;
         channel_name = _discovery_state.discovery_service;
-        endpoint =
-          _discovery_state.advertise_endpoint.empty ()
-            ? _endpoint_state.bound_endpoint
-            : _discovery_state.advertise_endpoint;
+        endpoint = _discovery_state.advertise_endpoint.empty ()
+                     ? _endpoint_state.bound_endpoint
+                     : _discovery_state.advertise_endpoint;
     }
     if (!discovery || channel_name.empty ())
         return;
 
-    zlink_registry_topology_entry_t entry =
-      make_topology_summary_entry (rid_, ZLINK_SERVICE_KIND_SPOT_PUB,
-                                   spot_kind_, channel_name.c_str (),
-                                   endpoint.c_str (), discovery, state_,
-                                   error_code_);
+    zlink_registry_topology_entry_t entry = make_topology_summary_entry (
+      rid_, ZLINK_SERVICE_KIND_SPOT_PUB, spot_kind_, channel_name.c_str (), endpoint.c_str (),
+      discovery, state_, error_code_);
     discovery_access_t::upsert_service_summary (discovery, entry);
 }
 
-void spot_node_t::submit_spot_owner_summary (
-  const std::shared_ptr<spot_logical_state_t> &state_,
-  uint16_t state, int error_code_)
+void spot_node_t::submit_spot_owner_summary (const std::shared_ptr<spot_logical_state_t> &state_,
+                                             uint16_t state,
+                                             int error_code_)
 {
     if (!state_)
         return;
-    submit_spot_owner_summary_for_rid (
-      state_->routing_id,
-      state_->entry ? ZLINK_SPOT_KIND_ENTRY : ZLINK_SPOT_KIND_USER, state,
-      error_code_);
+    submit_spot_owner_summary_for_rid (state_->routing_id,
+                                       state_->entry ? ZLINK_SPOT_KIND_ENTRY : ZLINK_SPOT_KIND_USER,
+                                       state, error_code_);
 }
 
 void spot_node_t::submit_stopped_summaries ()
 {
     std::vector<spot_pub_t *> pubs;
     std::vector<spot_sub_t *> subs;
-    std::vector<std::shared_ptr<spot_logical_state_t> > spots;
+    std::vector<std::shared_ptr<spot_logical_state_t>> spots;
     {
         scoped_lock_t lock (_sync);
         pubs.reserve (_handle_state.pubs.size ());
@@ -241,8 +222,8 @@ void spot_node_t::submit_stopped_summaries ()
         pubs.assign (_handle_state.pubs.begin (), _handle_state.pubs.end ());
         subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
         spots.reserve (_handle_state.spots_by_rid.size ());
-        for (std::map<std::string, std::shared_ptr<spot_logical_state_t> >::
-               const_iterator it = _handle_state.spots_by_rid.begin ();
+        for (std::map<std::string, std::shared_ptr<spot_logical_state_t>>::const_iterator it =
+               _handle_state.spots_by_rid.begin ();
              it != _handle_state.spots_by_rid.end (); ++it)
             spots.push_back (it->second);
     }
@@ -259,7 +240,7 @@ void spot_node_t::refresh_existing_summaries ()
 {
     std::vector<spot_pub_t *> pubs;
     std::vector<spot_sub_t *> subs;
-    std::vector<std::shared_ptr<spot_logical_state_t> > spots;
+    std::vector<std::shared_ptr<spot_logical_state_t>> spots;
     bool bound = false;
     {
         scoped_lock_t lock (_sync);
@@ -268,8 +249,8 @@ void spot_node_t::refresh_existing_summaries ()
         pubs.assign (_handle_state.pubs.begin (), _handle_state.pubs.end ());
         subs.assign (_handle_state.subs.begin (), _handle_state.subs.end ());
         spots.reserve (_handle_state.spots_by_rid.size ());
-        for (std::map<std::string, std::shared_ptr<spot_logical_state_t> >::
-               const_iterator it = _handle_state.spots_by_rid.begin ();
+        for (std::map<std::string, std::shared_ptr<spot_logical_state_t>>::const_iterator it =
+               _handle_state.spots_by_rid.begin ();
              it != _handle_state.spots_by_rid.end (); ++it)
             spots.push_back (it->second);
         bound = !_endpoint_state.bound_endpoint.empty ()
@@ -284,14 +265,12 @@ void spot_node_t::refresh_existing_summaries ()
     }
     for (size_t i = 0; i < subs.size (); ++i) {
         const uint16_t state =
-          subs[i]->has_filters () ? ZLINK_TOPOLOGY_STATE_READY
-                                  : ZLINK_TOPOLOGY_STATE_CONNECTING;
+          subs[i]->has_filters () ? ZLINK_TOPOLOGY_STATE_READY : ZLINK_TOPOLOGY_STATE_CONNECTING;
         submit_sub_summary (subs[i], state, 0);
     }
 }
 
-void spot_node_t::refresh_sub_peer_summaries (bool has_active_peers,
-                                              bool lost_transition)
+void spot_node_t::refresh_sub_peer_summaries (bool has_active_peers, bool lost_transition)
 {
     std::vector<spot_sub_t *> subs;
     {
@@ -305,15 +284,13 @@ void spot_node_t::refresh_sub_peer_summaries (bool has_active_peers,
             submit_sub_summary (subs[i], ZLINK_TOPOLOGY_STATE_LOST, 0);
         } else if (has_active_peers) {
             const bool ready = subs[i]->has_filters ();
-            submit_sub_summary (subs[i], ready ? ZLINK_TOPOLOGY_STATE_READY
-                                               : ZLINK_TOPOLOGY_STATE_CONNECTING,
-                                0);
+            submit_sub_summary (
+              subs[i], ready ? ZLINK_TOPOLOGY_STATE_READY : ZLINK_TOPOLOGY_STATE_CONNECTING, 0);
         }
     }
 }
 
-void spot_node_t::snapshot_raw_subscription_filters (
-  std::set<std::string> *out_) const
+void spot_node_t::snapshot_raw_subscription_filters (std::set<std::string> *out_) const
 {
     if (!out_)
         return;
@@ -321,22 +298,21 @@ void spot_node_t::snapshot_raw_subscription_filters (
     scoped_lock_t lock (_sync);
     for (std::unordered_map<std::string, uint32_t>::const_iterator it =
            _aggregate_subscriptions.local_exact_topic_refcount.begin ();
-         it != _aggregate_subscriptions.local_exact_topic_refcount.end ();
-         ++it) {
+         it != _aggregate_subscriptions.local_exact_topic_refcount.end (); ++it) {
         if (it->second != 0)
             out_->insert (it->first);
     }
     for (std::unordered_map<std::string, uint32_t>::const_iterator it =
            _aggregate_subscriptions.local_prefix_topic_refcount.begin ();
-         it != _aggregate_subscriptions.local_prefix_topic_refcount.end ();
-         ++it) {
+         it != _aggregate_subscriptions.local_prefix_topic_refcount.end (); ++it) {
         if (it->second != 0)
             out_->insert (it->first);
     }
 }
 
-bool spot_node_t::update_aggregate_subscription (
-  const std::string &raw_filter_, bool pattern_, bool subscribe_)
+bool spot_node_t::update_aggregate_subscription (const std::string &raw_filter_,
+                                                 bool pattern_,
+                                                 bool subscribe_)
 {
     if (raw_filter_.empty ())
         return false;
@@ -353,8 +329,7 @@ bool spot_node_t::update_aggregate_subscription (
         return first;
     }
 
-    std::unordered_map<std::string, uint32_t>::iterator it =
-      refcounts.find (raw_filter_);
+    std::unordered_map<std::string, uint32_t>::iterator it = refcounts.find (raw_filter_);
     if (it == refcounts.end () || it->second == 0)
         return false;
     --it->second;
@@ -364,16 +339,16 @@ bool spot_node_t::update_aggregate_subscription (
     return true;
 }
 
-int spot_node_t::update_logical_spot_subscription (
-  const std::string &raw_filter_, bool pattern_, bool subscribe_)
+int spot_node_t::update_logical_spot_subscription (const std::string &raw_filter_,
+                                                   bool pattern_,
+                                                   bool subscribe_)
 {
     if (raw_filter_.empty ()) {
         errno = EINVAL;
         return -1;
     }
 
-    const bool changed = update_aggregate_subscription (raw_filter_, pattern_,
-                                                        subscribe_);
+    const bool changed = update_aggregate_subscription (raw_filter_, pattern_, subscribe_);
     if (!changed)
         return 0;
 
@@ -387,8 +362,7 @@ int spot_node_t::update_logical_spot_subscription (
         return -1;
     }
 
-    if (sub->apply_aggregate_subscription (raw_filter_, pattern_, subscribe_)
-        != 0) {
+    if (sub->apply_aggregate_subscription (raw_filter_, pattern_, subscribe_) != 0) {
         const int err = errno;
         const bool rollback_changed =
           update_aggregate_subscription (raw_filter_, pattern_, !subscribe_);
@@ -418,8 +392,7 @@ void spot_node_t::snapshot_subscription_subjects (
     scoped_lock_t lock (_sync);
     for (std::unordered_map<std::string, uint32_t>::const_iterator it =
            _aggregate_subscriptions.local_exact_topic_refcount.begin ();
-         it != _aggregate_subscriptions.local_exact_topic_refcount.end ();
-         ++it) {
+         it != _aggregate_subscriptions.local_exact_topic_refcount.end (); ++it) {
         if (it->second == 0)
             continue;
         spot_sub_t::subject_descriptor_t subject;
@@ -429,8 +402,7 @@ void spot_node_t::snapshot_subscription_subjects (
     }
     for (std::unordered_map<std::string, uint32_t>::const_iterator it =
            _aggregate_subscriptions.local_prefix_topic_refcount.begin ();
-         it != _aggregate_subscriptions.local_prefix_topic_refcount.end ();
-         ++it) {
+         it != _aggregate_subscriptions.local_prefix_topic_refcount.end (); ++it) {
         if (it->second == 0)
             continue;
         spot_sub_t::subject_descriptor_t subject;
@@ -464,9 +436,8 @@ void spot_node_t::snapshot_subject_summary_entries (
             subject_last_changed = _summary_state.subject_last_changed_ms;
         }
 
-        std::unordered_map<
-          subject_snapshot_key_t,
-          spot_node_summary_state_t::subject_snapshot_entry_t,
+        std::unordered_map<subject_snapshot_key_t,
+                           spot_node_summary_state_t::subject_snapshot_entry_t,
                            subject_snapshot_key_hash_t>
           grouped;
         grouped.reserve (subs.size () * 2);
@@ -479,8 +450,7 @@ void spot_node_t::snapshot_subject_summary_entries (
                 subject_snapshot_key_t key;
                 key.subject_kind = subjects[j].subject_kind;
                 key.subject = subjects[j].subject;
-                spot_node_summary_state_t::subject_snapshot_entry_t &entry =
-                  grouped[key];
+                spot_node_summary_state_t::subject_snapshot_entry_t &entry = grouped[key];
                 if (entry.subject_kind == 0 && entry.subject.empty ()) {
                     entry.subject = subjects[j].subject;
                     entry.subject_kind = subjects[j].subject_kind;
@@ -488,24 +458,19 @@ void spot_node_t::snapshot_subject_summary_entries (
                     entry.last_changed_ms = 0;
                 }
                 entry.ready = entry.ready || subjects[j].ready;
-                std::map<std::string, uint64_t>::const_iterator tsit =
-                  subject_last_changed.find (spot_subject_snapshot_key_local (
-                    subjects[j].subject, subjects[j].subject_kind));
-                if (tsit != subject_last_changed.end ()
-                    && tsit->second > entry.last_changed_ms) {
+                std::map<std::string, uint64_t>::const_iterator tsit = subject_last_changed.find (
+                  spot_subject_snapshot_key_local (subjects[j].subject, subjects[j].subject_kind));
+                if (tsit != subject_last_changed.end () && tsit->second > entry.last_changed_ms) {
                     entry.last_changed_ms = tsit->second;
                 }
             }
         }
 
-        std::vector<spot_node_summary_state_t::subject_snapshot_entry_t>
-          entries;
+        std::vector<spot_node_summary_state_t::subject_snapshot_entry_t> entries;
         entries.reserve (grouped.size ());
-        for (std::unordered_map<
-               subject_snapshot_key_t,
-               spot_node_summary_state_t::subject_snapshot_entry_t,
-               subject_snapshot_key_hash_t>::const_iterator it =
-               grouped.begin ();
+        for (std::unordered_map<subject_snapshot_key_t,
+                                spot_node_summary_state_t::subject_snapshot_entry_t,
+                                subject_snapshot_key_hash_t>::const_iterator it = grouped.begin ();
              it != grouped.end (); ++it) {
             entries.push_back (it->second);
         }
@@ -520,8 +485,8 @@ void spot_node_t::snapshot_subject_summary_entries (
     }
 }
 
-void spot_node_t::snapshot_status_subject_counts (
-  uint32_t *subject_count_out_, uint32_t *ready_subject_count_out_) const
+void spot_node_t::snapshot_status_subject_counts (uint32_t *subject_count_out_,
+                                                  uint32_t *ready_subject_count_out_) const
 {
     if (subject_count_out_)
         *subject_count_out_ = 0;

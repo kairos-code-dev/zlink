@@ -33,8 +33,7 @@
 
 static int clipped_maxsocket (int max_requested_)
 {
-    if (max_requested_ >= zlink::poller_t::max_fds ()
-        && zlink::poller_t::max_fds () != -1)
+    if (max_requested_ >= zlink::poller_t::max_fds () && zlink::poller_t::max_fds () != -1)
         // -1 because we need room for the reaper mailbox.
         max_requested_ = zlink::poller_t::max_fds () - 1;
 
@@ -141,8 +140,7 @@ void zlink::ctx_t::ensure_auto_hwm_recalc_task_started ()
         return;
 
     _auto_hwm_recalc_task_id =
-      runtime->add_periodic_task (&ctx_t::auto_hwm_recalc_task_main, this, 10,
-                                  false);
+      runtime->add_periodic_task (&ctx_t::auto_hwm_recalc_task_main, this, 10, false);
 }
 
 void zlink::ctx_t::stop_auto_hwm_recalc_task ()
@@ -176,12 +174,10 @@ void zlink::ctx_t::schedule_auto_hwm_recalculate ()
             _auto_hwm_recalc_deadline_ms = now_ms;
         } else {
             _auto_hwm_recalc_pending = true;
-            _auto_hwm_recalc_deadline_ms =
-              now_ms + static_cast<uint64_t> (debounce_ms);
+            _auto_hwm_recalc_deadline_ms = now_ms + static_cast<uint64_t> (debounce_ms);
             ensure_auto_hwm_recalc_task_started ();
             if (_auto_hwm_recalc_task_id != 0) {
-                service_control_runtime_t *runtime =
-                  _runtime_resources.service_control_runtime ();
+                service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
                 if (runtime)
                     (void) runtime->wakeup_task (_auto_hwm_recalc_task_id);
             }
@@ -218,8 +214,7 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
         return 0;
 
     auto_hwm_context_plan_t context_plan;
-    auto_hwm_context_plan_make (enabled, profile, &context_plan,
-                                message_unit_bytes);
+    auto_hwm_context_plan_make (enabled, profile, &context_plan, message_unit_bytes);
 
     std::vector<auto_hwm_socket_plan_t> plans;
     plans.reserve (sockets.size ());
@@ -230,8 +225,7 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
             continue;
         }
 
-        auto_hwm_socket_plan_t plan =
-          socket->prepare_auto_hwm_socket_plan (context_plan);
+        auto_hwm_socket_plan_t plan = socket->prepare_auto_hwm_socket_plan (context_plan);
         if (!socket->auto_hwm_policy_enabled ())
             plan.socket_message_slots = 0;
         plans.push_back (plan);
@@ -243,8 +237,8 @@ int zlink::ctx_t::auto_hwm_recalculate_now ()
     for (size_t i = 0; i < sockets.size (); ++i) {
         if (!sockets[i])
             continue;
-        sockets[i]->apply_auto_hwm_socket_plan (
-          context_plan, plans[i], false, ZLINK_AUTO_HWM_RECALC_REASON_REFRESH);
+        sockets[i]->apply_auto_hwm_socket_plan (context_plan, plans[i], false,
+                                                ZLINK_AUTO_HWM_RECALC_REASON_REFRESH);
     }
     return 0;
 }
@@ -254,8 +248,7 @@ void zlink::ctx_t::auto_hwm_recalc_task ()
     bool should_run = false;
     {
         scoped_lock_t lock (_slot_sync);
-        if (_auto_hwm_recalc_pending
-            && zlink::clock_t ().now_ms () >= _auto_hwm_recalc_deadline_ms
+        if (_auto_hwm_recalc_pending && zlink::clock_t ().now_ms () >= _auto_hwm_recalc_deadline_ms
             && _auto_hwm_pending_generation != _auto_hwm_last_applied_generation)
             should_run = true;
     }
@@ -285,15 +278,13 @@ void zlink::ctx_t::debug_dump_sockets_locked (const char *phase_) const
     _socket_registry.collect_sockets (&sockets);
     fprintf (stderr, "[ctx] %s socket_count=%u\n", phase_ ? phase_ : "state",
              static_cast<unsigned> (sockets.size ()));
-    for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size ();
-         i != size; ++i) {
+    for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size (); i != size; ++i) {
         const socket_base_t *socket = sockets[i];
         if (!socket)
             continue;
 
-        fprintf (stderr, "[ctx]   socket[%u]=%p type=%s(%d) sid=%d\n",
-                 static_cast<unsigned> (i), static_cast<const void *> (socket),
-                 socket_type_name (socket->socket_type ()),
+        fprintf (stderr, "[ctx]   socket[%u]=%p type=%s(%d) sid=%d\n", static_cast<unsigned> (i),
+                 static_cast<const void *> (socket), socket_type_name (socket->socket_type ()),
                  socket->socket_type (), socket->socket_id ());
     }
     fflush (stderr);
@@ -383,8 +374,7 @@ int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
                     || value == ZLINK_AUTO_HWM_PROFILE_BALANCED
                     || value == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT)) {
                 scoped_lock_t locker (_opt_sync);
-                _auto_hwm_profile =
-                  static_cast<zlink_auto_hwm_profile_t> (value);
+                _auto_hwm_profile = static_cast<zlink_auto_hwm_profile_t> (value);
                 refresh_auto_hwm = true;
                 break;
             }
@@ -611,19 +601,16 @@ void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
         _runtime_resources.stop_reaper ();
 }
 
-int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_,
-                                           int timeout_ms_)
+int zlink::ctx_t::wait_for_socket_removal (const socket_base_t *socket_, int timeout_ms_)
 {
     if (!socket_)
         return 0;
 
     scoped_lock_t locker (_slot_sync);
-    return _socket_registry.wait_for_socket_removal (&_slot_sync, socket_,
-                                                     timeout_ms_);
+    return _socket_registry.wait_for_socket_removal (&_slot_sync, socket_, timeout_ms_);
 }
 
-int zlink::ctx_t::close_socket_and_wait (socket_base_t *&socket_,
-                                         int timeout_ms_)
+int zlink::ctx_t::close_socket_and_wait (socket_base_t *&socket_, int timeout_ms_)
 {
     if (!socket_)
         return 0;
@@ -641,13 +628,10 @@ size_t zlink::ctx_t::socket_count () const
     return _socket_registry.socket_count ();
 }
 
-int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_,
-                                                 int timeout_ms_)
+int zlink::ctx_t::wait_for_socket_count_at_most (size_t max_count_, int timeout_ms_)
 {
     scoped_lock_t locker (_slot_sync);
-    return _socket_registry.wait_for_socket_count_at_most (&_slot_sync,
-                                                           max_count_,
-                                                           timeout_ms_);
+    return _socket_registry.wait_for_socket_count_at_most (&_slot_sync, max_count_, timeout_ms_);
 }
 
 zlink::object_t *zlink::ctx_t::get_reaper () const
@@ -662,18 +646,16 @@ zlink::thread_ctx_t::thread_ctx_t () :
 }
 
 void zlink::thread_ctx_t::start_thread (thread_t &thread_,
-                                      thread_fn *tfn_,
-                                      void *arg_,
-                                      const char *name_) const
+                                        thread_fn *tfn_,
+                                        void *arg_,
+                                        const char *name_) const
 {
-    thread_.setSchedulingParameters (_thread_priority, _thread_sched_policy,
-                                     _thread_affinity_cpus);
+    thread_.setSchedulingParameters (_thread_priority, _thread_sched_policy, _thread_affinity_cpus);
 
     char namebuf[16] = "";
     snprintf (namebuf, sizeof (namebuf), "%s%sZLINKbg%s%s",
               _thread_name_prefix.empty () ? "" : _thread_name_prefix.c_str (),
-              _thread_name_prefix.empty () ? "" : "/", name_ ? "/" : "",
-              name_ ? name_ : "");
+              _thread_name_prefix.empty () ? "" : "/", name_ ? "/" : "", name_ ? name_ : "");
     thread_.start (tfn_, arg_, namebuf);
 }
 
@@ -730,8 +712,7 @@ int zlink::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen
                 return 0;
             } else if (optvallen_ > 0 && optvallen_ <= 16) {
                 scoped_lock_t locker (_opt_sync);
-                _thread_name_prefix.assign (static_cast<const char *> (optval_),
-                                            optvallen_);
+                _thread_name_prefix.assign (static_cast<const char *> (optval_), optvallen_);
                 return 0;
             }
             break;
@@ -741,9 +722,7 @@ int zlink::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen
     return -1;
 }
 
-int zlink::thread_ctx_t::get (int option_,
-                            void *optval_,
-                            const size_t *optvallen_)
+int zlink::thread_ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
 {
     const bool is_int = (*optvallen_ == sizeof (int));
     int *value = static_cast<int *> (optval_);
@@ -764,8 +743,7 @@ int zlink::thread_ctx_t::get (int option_,
                 return 0;
             } else if (*optvallen_ >= _thread_name_prefix.size ()) {
                 scoped_lock_t locker (_opt_sync);
-                memcpy (optval_, _thread_name_prefix.data (),
-                        _thread_name_prefix.size ());
+                memcpy (optval_, _thread_name_prefix.data (), _thread_name_prefix.size ());
                 return 0;
             }
             break;
@@ -792,14 +770,12 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread_stream (uint64_t affinity_)
     return _runtime_resources.choose_io_thread_stream (affinity_);
 }
 
-int zlink::ctx_t::register_endpoint (const char *addr_,
-                                     const endpoint_t &endpoint_)
+int zlink::ctx_t::register_endpoint (const char *addr_, const endpoint_t &endpoint_)
 {
     return _inproc_registry.register_endpoint (addr_, endpoint_);
 }
 
-int zlink::ctx_t::unregister_endpoint (const std::string &addr_,
-                                       const socket_base_t *const socket_)
+int zlink::ctx_t::unregister_endpoint (const std::string &addr_, const socket_base_t *const socket_)
 {
     return _inproc_registry.unregister_endpoint (addr_, socket_);
 }
@@ -821,8 +797,7 @@ bool zlink::ctx_t::pend_connection (const std::string &addr_,
     return _inproc_registry.pend_connection (addr_, endpoint_, pipes_);
 }
 
-void zlink::ctx_t::connect_pending (const char *addr_,
-                                    zlink::socket_base_t *bind_socket_)
+void zlink::ctx_t::connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_)
 {
     _inproc_registry.connect_pending (addr_, bind_socket_);
 }

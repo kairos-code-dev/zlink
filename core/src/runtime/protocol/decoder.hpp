@@ -26,8 +26,7 @@ namespace zlink
 //  Derived class should implement individual state machine actions.
 //
 //  Buffer management is done by an allocator policy.
-template <typename T, typename A = c_single_allocator>
-class decoder_base_t : public i_decoder
+template <typename T, typename A = c_single_allocator> class decoder_base_t : public i_decoder
 {
   public:
     explicit decoder_base_t (const size_t buf_size_) :
@@ -67,9 +66,7 @@ class decoder_base_t : public i_decoder
     //  whole message was decoded or 0 when more data is required.
     //  On error, -1 is returned and errno set accordingly.
     //  Number of bytes processed is returned in bytes_used_.
-    int decode (const unsigned char *data_,
-                std::size_t size_,
-                std::size_t &bytes_used_) ZLINK_FINAL
+    int decode (const unsigned char *data_, std::size_t size_, std::size_t &bytes_used_) ZLINK_FINAL
     {
         bytes_used_ = 0;
 
@@ -83,8 +80,7 @@ class decoder_base_t : public i_decoder
             bytes_used_ = size_;
 
             while (!_to_read) {
-                const int rc =
-                  (static_cast<T *> (this)->*_next) (data_ + bytes_used_);
+                const int rc = (static_cast<T *> (this)->*_next) (data_ + bytes_used_);
                 if (rc != 0)
                     return rc;
             }
@@ -107,8 +103,7 @@ class decoder_base_t : public i_decoder
             //  If none is available, return.
             while (_to_read == 0) {
                 // pass current address in the buffer
-                const int rc =
-                  (static_cast<T *> (this)->*_next) (data_ + bytes_used_);
+                const int rc = (static_cast<T *> (this)->*_next) (data_ + bytes_used_);
                 if (rc != 0)
                     return rc;
             }
@@ -117,10 +112,7 @@ class decoder_base_t : public i_decoder
         return 0;
     }
 
-    void resize_buffer (std::size_t new_size_) ZLINK_FINAL
-    {
-        _allocator.resize (new_size_);
-    }
+    void resize_buffer (std::size_t new_size_) ZLINK_FINAL { _allocator.resize (new_size_); }
 
   protected:
     //  Prototype of state machine action. Action should return false if

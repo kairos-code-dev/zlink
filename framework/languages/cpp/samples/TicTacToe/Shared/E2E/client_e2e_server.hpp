@@ -20,13 +20,13 @@ class tictactoe_client_e2e_create_game_handler_t
   public:
     using request_type = create_match_req_t;
     using reply_type = create_match_res_t;
-    using dependency_types =
-      zlink::framework::dependency_list_t<sample_topology_t,
-                                          zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t>>;
+    using dependency_types = zlink::framework::dependency_list_t<
+      sample_topology_t,
+      zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t>>;
 
-    explicit tictactoe_client_e2e_create_game_handler_t (sample_topology_t &topology,
-                                                         zlink::framework::logger_t<
-                                                           tictactoe_client_e2e_create_game_handler_t> &logger) :
+    explicit tictactoe_client_e2e_create_game_handler_t (
+      sample_topology_t &topology,
+      zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t> &logger) :
         _topology (topology), _logger (logger)
     {
     }
@@ -36,8 +36,9 @@ class tictactoe_client_e2e_create_game_handler_t
         _logger.info ("http POST /games");
         _logger.info (std::string ("recv ") + create_match_req_t::packet_name);
         _logger.info (std::string ("reply ") + create_match_req_t::packet_name);
-        const auto owner =
-          request.owner_actor_id.empty () ? std::string (sample_names_t::x_actor_id) : request.owner_actor_id;
+        const auto owner = request.owner_actor_id.empty ()
+                             ? std::string (sample_names_t::x_actor_id)
+                             : request.owner_actor_id;
         return {"match-1", owner, _topology.stream_endpoint};
     }
 
@@ -51,7 +52,8 @@ inline zlink::framework::app_t build_client_e2e_api_server (sample_topology_t to
     auto app = zlink::framework::app_t::create ();
     app.logging ().use_file (sample_log_file);
     app.add_zlink_framework ([topology] (zlink::framework::zlink_framework_options_t &options) {
-        options.services ().add_singleton<sample_topology_t> (std::make_unique<sample_topology_t> (topology));
+        options.services ().add_singleton<sample_topology_t> (
+          std::make_unique<sample_topology_t> (topology));
         options.http ()
           .listen (topology.api_http_endpoint)
           .map_post<tictactoe_client_e2e_create_game_handler_t> ("/games");
@@ -85,30 +87,36 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
             state.status = "playing";
             log << "actor relay " << x_actor_id << '\n';
             if (frame->name == authenticate_req_t::packet_name) {
-                const auto request = zlink::message_t::from (frame->payload).parse_json<authenticate_req_t> ();
-                zlink::samples::send_stream_reply_and_push (inbound, *frame, authenticate_res_t{request.actor_id},
-                                                            turn_changed_notify_t::packet_name,
-                                                            turn_changed_notify_t{state.match_id, x_actor_id, state});
+                const auto request =
+                  zlink::message_t::from (frame->payload).parse_json<authenticate_req_t> ();
+                zlink::samples::send_stream_reply_and_push (
+                  inbound, *frame, authenticate_res_t{request.actor_id},
+                  turn_changed_notify_t::packet_name,
+                  turn_changed_notify_t{state.match_id, x_actor_id, state});
             } else if (frame->name == join_match_req_t::packet_name) {
-                const auto request = zlink::message_t::from (frame->payload).parse_json<join_match_req_t> ();
+                const auto request =
+                  zlink::message_t::from (frame->payload).parse_json<join_match_req_t> ();
                 current_match_id = request.match_id;
                 state.match_id = current_match_id;
                 state.x_actor_id = x_actor_id;
-                state.o_actor_id = request.actor_id == x_actor_id ? sample_names_t::o_actor_id : request.actor_id;
+                state.o_actor_id =
+                  request.actor_id == x_actor_id ? sample_names_t::o_actor_id : request.actor_id;
                 zlink::samples::send_stream_reply_and_push (
                   inbound, *frame,
-                  join_match_res_t{current_match_id, request.actor_id, request.actor_id == x_actor_id ? "X" : "O",
-                                   state},
-                  turn_changed_notify_t::packet_name, turn_changed_notify_t{current_match_id, x_actor_id, state});
+                  join_match_res_t{current_match_id, request.actor_id,
+                                   request.actor_id == x_actor_id ? "X" : "O", state},
+                  turn_changed_notify_t::packet_name,
+                  turn_changed_notify_t{current_match_id, x_actor_id, state});
             } else {
-                const auto request = zlink::message_t::from (frame->payload).parse_json<place_mark_req_t> ();
+                const auto request =
+                  zlink::message_t::from (frame->payload).parse_json<place_mark_req_t> ();
                 current_match_id = request.match_id;
                 state.match_id = current_match_id;
                 state.last_move_actor_id = request.actor_id;
                 state.last_move_cell = request.cell;
-                zlink::samples::send_stream_reply_and_push (inbound, *frame, place_mark_res_t{state},
-                                                            turn_changed_notify_t::packet_name,
-                                                            turn_changed_notify_t{current_match_id, x_actor_id, state});
+                zlink::samples::send_stream_reply_and_push (
+                  inbound, *frame, place_mark_res_t{state}, turn_changed_notify_t::packet_name,
+                  turn_changed_notify_t{current_match_id, x_actor_id, state});
             }
             log << "reply " << frame->name << '\n';
             log << "push " << turn_changed_notify_t::packet_name << '\n';

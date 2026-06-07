@@ -30,8 +30,8 @@ struct FLoopbackServer
             return false;
         }
 
-        ListenSocket =
-          SocketSubsystem->CreateSocket (NAME_Stream, TEXT ("ZLinkStreamConnectorAutomationServer"), false);
+        ListenSocket = SocketSubsystem->CreateSocket (
+          NAME_Stream, TEXT ("ZLinkStreamConnectorAutomationServer"), false);
         if (!ListenSocket) {
             return false;
         }
@@ -67,8 +67,10 @@ struct FLoopbackServer
 
     static uint32 ReadU32 (const TArray<uint8> &Bytes, int32 Offset)
     {
-        return (static_cast<uint32> (Bytes[Offset]) << 24) | (static_cast<uint32> (Bytes[Offset + 1]) << 16)
-               | (static_cast<uint32> (Bytes[Offset + 2]) << 8) | static_cast<uint32> (Bytes[Offset + 3]);
+        return (static_cast<uint32> (Bytes[Offset]) << 24)
+               | (static_cast<uint32> (Bytes[Offset + 1]) << 16)
+               | (static_cast<uint32> (Bytes[Offset + 2]) << 8)
+               | static_cast<uint32> (Bytes[Offset + 3]);
     }
 
     static uint64 ReadU64 (const TArray<uint8> &Bytes, int32 &Offset)
@@ -154,8 +156,8 @@ struct FLoopbackServer
             if (Payload.Num () - Offset < 2) {
                 return false;
             }
-            const int32 MatchOffset =
-              static_cast<int32> (Payload[Offset]) | (static_cast<int32> (Payload[Offset + 1]) << 8);
+            const int32 MatchOffset = static_cast<int32> (Payload[Offset])
+                                      | (static_cast<int32> (Payload[Offset + 1]) << 8);
             Offset += 2;
             if (MatchOffset <= 0 || MatchOffset > Output.Num ()) {
                 return false;
@@ -187,7 +189,8 @@ struct FLoopbackServer
         int32 Offset = 0;
         while (ClientSocket && Offset < Count) {
             int32 BytesRead = 0;
-            if (!ClientSocket->Recv (Output.GetData () + Offset, Count - Offset, BytesRead) || BytesRead <= 0) {
+            if (!ClientSocket->Recv (Output.GetData () + Offset, Count - Offset, BytesRead)
+                || BytesRead <= 0) {
                 return false;
             }
             Offset += BytesRead;
@@ -211,7 +214,8 @@ struct FLoopbackServer
         const uint32 PayloadSize = ReadU32 (Prefix, 2);
         TArray<uint8> Header;
         TArray<uint8> PayloadBytes;
-        if (!ReadExact (HeaderSize, Header) || !ReadExact (static_cast<int32> (PayloadSize), PayloadBytes)) {
+        if (!ReadExact (HeaderSize, Header)
+            || !ReadExact (static_cast<int32> (PayloadSize), PayloadBytes)) {
             return false;
         }
         int32 Offset = 0;
@@ -304,9 +308,11 @@ struct FLoopbackServer
                 const FTCHARToUTF8 KeyBytes (*Entry.Key);
                 const FTCHARToUTF8 ValueBytes (*Entry.Value);
                 MetadataBytes.Add (static_cast<uint8> (KeyBytes.Length ()));
-                MetadataBytes.Append (reinterpret_cast<const uint8 *> (KeyBytes.Get ()), KeyBytes.Length ());
+                MetadataBytes.Append (reinterpret_cast<const uint8 *> (KeyBytes.Get ()),
+                                      KeyBytes.Length ());
                 AppendU16 (MetadataBytes, static_cast<uint16> (ValueBytes.Length ()));
-                MetadataBytes.Append (reinterpret_cast<const uint8 *> (ValueBytes.Get ()), ValueBytes.Length ());
+                MetadataBytes.Append (reinterpret_cast<const uint8 *> (ValueBytes.Get ()),
+                                      ValueBytes.Length ());
             }
             AppendU16 (Header, static_cast<uint16> (MetadataBytes.Num ()));
             Header.Append (MetadataBytes);
@@ -314,7 +320,8 @@ struct FLoopbackServer
 
         const FTCHARToUTF8 PayloadText (*Payload);
         TArray<uint8> PayloadBytes;
-        PayloadBytes.Append (reinterpret_cast<const uint8 *> (PayloadText.Get ()), PayloadText.Length ());
+        PayloadBytes.Append (reinterpret_cast<const uint8 *> (PayloadText.Get ()),
+                             PayloadText.Length ());
         if (bCompressed) {
             PayloadBytes = EncodeLz4Payload (PayloadBytes);
         }
@@ -325,7 +332,8 @@ struct FLoopbackServer
         Frame.Append (PayloadBytes);
 
         int32 BytesSent = 0;
-        return ClientSocket->Send (Frame.GetData (), Frame.Num (), BytesSent) && BytesSent == Frame.Num ();
+        return ClientSocket->Send (Frame.GetData (), Frame.Num (), BytesSent)
+               && BytesSent == Frame.Num ();
     }
 
     bool SendPushFrame (const FString &PacketName,
@@ -369,7 +377,8 @@ struct FLoopbackServer
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST (FZLinkStreamConnectorLoopbackTest,
                                   "ZLink.StreamConnector.Loopback",
-                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+                                  EAutomationTestFlags::EditorContext
+                                    | EAutomationTestFlags::EngineFilter)
 
 bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
 {
@@ -387,24 +396,26 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     FName CompletedPacketName;
     FString CompletedTraceId;
     bool bCompletedCompressed = false;
-    Connector->OnPacketReceivedNative.AddLambda ([&bPacketReceived, &ReceivedPacketName, &ReceivedTraceId,
-                                                  &bReceivedCompressed] (const FZLinkStreamPacket &Packet) {
-        bPacketReceived = true;
-        ReceivedPacketName = Packet.PacketName;
-        bReceivedCompressed = Packet.bCompressed;
-        if (const FString *TraceId = Packet.Metadata.Find (TEXT ("traceId"))) {
-            ReceivedTraceId = *TraceId;
-        }
-    });
-    Connector->OnRequestCompletedNative.AddLambda ([&bRequestCompleted, &CompletedPacketName, &CompletedTraceId,
-                                                    &bCompletedCompressed] (const FZLinkStreamPacket &Packet) {
-        bRequestCompleted = true;
-        CompletedPacketName = Packet.PacketName;
-        bCompletedCompressed = Packet.bCompressed;
-        if (const FString *TraceId = Packet.Metadata.Find (TEXT ("traceId"))) {
-            CompletedTraceId = *TraceId;
-        }
-    });
+    Connector->OnPacketReceivedNative.AddLambda (
+      [&bPacketReceived, &ReceivedPacketName, &ReceivedTraceId,
+       &bReceivedCompressed] (const FZLinkStreamPacket &Packet) {
+          bPacketReceived = true;
+          ReceivedPacketName = Packet.PacketName;
+          bReceivedCompressed = Packet.bCompressed;
+          if (const FString *TraceId = Packet.Metadata.Find (TEXT ("traceId"))) {
+              ReceivedTraceId = *TraceId;
+          }
+      });
+    Connector->OnRequestCompletedNative.AddLambda (
+      [&bRequestCompleted, &CompletedPacketName, &CompletedTraceId,
+       &bCompletedCompressed] (const FZLinkStreamPacket &Packet) {
+          bRequestCompleted = true;
+          CompletedPacketName = Packet.PacketName;
+          bCompletedCompressed = Packet.bCompressed;
+          if (const FString *TraceId = Packet.Metadata.Find (TEXT ("traceId"))) {
+              CompletedTraceId = *TraceId;
+          }
+      });
 
     Connector->Connect (Server.Endpoint);
     TestTrue (TEXT ("server accepts connector"), Server.Accept ());
@@ -419,7 +430,8 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     TMap<FString, FString> SendMetadata;
     FString SendPayload;
     TestTrue (TEXT ("server receives send packet"),
-              Server.ReadFrame (SendKind, SendCodec, SendFlags, SendSeq, SendPacketName, SendMetadata, SendPayload));
+              Server.ReadFrame (SendKind, SendCodec, SendFlags, SendSeq, SendPacketName,
+                                SendMetadata, SendPayload));
     TestEqual (TEXT ("send kind"), SendKind, static_cast<uint8> (1));
     TestEqual (TEXT ("send codec"), SendCodec, static_cast<uint8> (1));
     TestEqual (TEXT ("send flags"), SendFlags, static_cast<uint8> (0));
@@ -429,12 +441,16 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     FZLinkStreamSendOptions SendOptions;
     SendOptions.Metadata.Add (TEXT ("traceId"), TEXT ("send-1"));
     SendOptions.bCompress = true;
-    Connector->SendJsonWithOptions (TEXT ("chat.send.metadata"), TEXT ("{\"text\":\"hello\"}"), SendOptions);
+    Connector->SendJsonWithOptions (TEXT ("chat.send.metadata"), TEXT ("{\"text\":\"hello\"}"),
+                                    SendOptions);
     TestTrue (TEXT ("server receives metadata send packet"),
-              Server.ReadFrame (SendKind, SendCodec, SendFlags, SendSeq, SendPacketName, SendMetadata, SendPayload));
+              Server.ReadFrame (SendKind, SendCodec, SendFlags, SendSeq, SendPacketName,
+                                SendMetadata, SendPayload));
     TestEqual (TEXT ("metadata send flags"), SendFlags, static_cast<uint8> (6));
-    TestEqual (TEXT ("metadata send trace id"), SendMetadata[TEXT ("traceId")], FString (TEXT ("send-1")));
-    TestEqual (TEXT ("metadata send compressed payload"), SendPayload, FString (TEXT ("{\"text\":\"hello\"}")));
+    TestEqual (TEXT ("metadata send trace id"), SendMetadata[TEXT ("traceId")],
+               FString (TEXT ("send-1")));
+    TestEqual (TEXT ("metadata send compressed payload"), SendPayload,
+               FString (TEXT ("{\"text\":\"hello\"}")));
 
     Connector->RequestJson (TEXT ("chat.request"), TEXT ("{\"text\":\"hello\"}"), 1.0f);
     uint8 RequestKind = 0;
@@ -445,8 +461,8 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     TMap<FString, FString> RequestMetadata;
     FString RequestPayload;
     TestTrue (TEXT ("server receives request packet"),
-              Server.ReadFrame (RequestKind, RequestCodec, RequestFlags, RequestSeq, RequestPacketName, RequestMetadata,
-                                RequestPayload));
+              Server.ReadFrame (RequestKind, RequestCodec, RequestFlags, RequestSeq,
+                                RequestPacketName, RequestMetadata, RequestPayload));
     TestEqual (TEXT ("request kind"), RequestKind, static_cast<uint8> (2));
     TestEqual (TEXT ("request codec"), RequestCodec, static_cast<uint8> (1));
     TestEqual (TEXT ("request flags"), RequestFlags, static_cast<uint8> (1));
@@ -456,12 +472,15 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     TMap<FString, FString> ResponseMetadata;
     ResponseMetadata.Add (TEXT ("traceId"), TEXT ("reply-1"));
     TestTrue (TEXT ("server sends response"),
-              Server.SendResponseFrame (RequestSeq, TEXT ("reply"), TEXT ("{\"ok\":true}"), ResponseMetadata, true));
-    TestEqual (TEXT ("pending response count before dispatch"), Connector->PendingDispatchCount (), 1);
+              Server.SendResponseFrame (RequestSeq, TEXT ("reply"), TEXT ("{\"ok\":true}"),
+                                        ResponseMetadata, true));
+    TestEqual (TEXT ("pending response count before dispatch"), Connector->PendingDispatchCount (),
+               1);
     TestFalse (TEXT ("response waits for dispatch"), bRequestCompleted);
     Connector->Dispatch ();
     TestTrue (TEXT ("native callback receives response"), bRequestCompleted);
-    TestEqual (TEXT ("pending response count after dispatch"), Connector->PendingDispatchCount (), 0);
+    TestEqual (TEXT ("pending response count after dispatch"), Connector->PendingDispatchCount (),
+               0);
     TestEqual (TEXT ("completed packet name"), CompletedPacketName, FName (TEXT ("reply")));
     TestEqual (TEXT ("completed trace id"), CompletedTraceId, FString (TEXT ("reply-1")));
     TestTrue (TEXT ("completed packet is compressed"), bCompletedCompressed);
@@ -469,14 +488,16 @@ bool FZLinkStreamConnectorLoopbackTest::RunTest (const FString &Parameters)
     FZLinkStreamSendOptions RequestOptions;
     RequestOptions.Metadata.Add (TEXT ("traceId"), TEXT ("request-1"));
     RequestOptions.bCompress = true;
-    Connector->RequestJsonWithOptions (TEXT ("chat.request.metadata"), TEXT ("{\"text\":\"hello\"}"), 1.0f,
-                                       RequestOptions);
+    Connector->RequestJsonWithOptions (TEXT ("chat.request.metadata"),
+                                       TEXT ("{\"text\":\"hello\"}"), 1.0f, RequestOptions);
     TestTrue (TEXT ("server receives metadata request packet"),
-              Server.ReadFrame (RequestKind, RequestCodec, RequestFlags, RequestSeq, RequestPacketName, RequestMetadata,
-                                RequestPayload));
+              Server.ReadFrame (RequestKind, RequestCodec, RequestFlags, RequestSeq,
+                                RequestPacketName, RequestMetadata, RequestPayload));
     TestEqual (TEXT ("metadata request flags"), RequestFlags, static_cast<uint8> (7));
-    TestEqual (TEXT ("metadata request trace id"), RequestMetadata[TEXT ("traceId")], FString (TEXT ("request-1")));
-    TestEqual (TEXT ("metadata request compressed payload"), RequestPayload, FString (TEXT ("{\"text\":\"hello\"}")));
+    TestEqual (TEXT ("metadata request trace id"), RequestMetadata[TEXT ("traceId")],
+               FString (TEXT ("request-1")));
+    TestEqual (TEXT ("metadata request compressed payload"), RequestPayload,
+               FString (TEXT ("{\"text\":\"hello\"}")));
 
     TMap<FString, FString> PushMetadata;
     PushMetadata.Add (TEXT ("traceId"), TEXT ("push-1"));

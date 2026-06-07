@@ -25,8 +25,7 @@ bool submit_retry_enabled (const zlink::options_t &options_, int flags_)
 {
     return (flags_ & ZLINK_DONTWAIT) == 0
            && options_.submit_retry_mode == ZLINK_SUBMIT_RETRY_LOCAL_FAILURE
-           && options_.submit_retry_timeout > 0
-           && options_.submit_retry_attempts > 0
+           && options_.submit_retry_timeout > 0 && options_.submit_retry_attempts > 0
            && options_.reconnect_ivl > 0;
 }
 
@@ -34,9 +33,8 @@ int effective_submit_retry_timeout (const zlink::options_t &options_)
 {
     if (options_.sndtimeo <= 0)
         return options_.submit_retry_timeout;
-    return options_.submit_retry_timeout < options_.sndtimeo
-             ? options_.submit_retry_timeout
-             : options_.sndtimeo;
+    return options_.submit_retry_timeout < options_.sndtimeo ? options_.submit_retry_timeout
+                                                             : options_.sndtimeo;
 }
 
 int submit_retry_wait_ms (int remaining_ms_)
@@ -52,8 +50,8 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     // Hot path: every public single-part send pays this steady-state cost.
     // Keep lifecycle/backpressure logic correct, but avoid thickening the
     // success path with new work that is not contract-critical.
-    socket_public_send_scope_t send_scope (
-      lifecycle_coordinator (), direct_send_needs_public_api_sync ());
+    socket_public_send_scope_t send_scope (lifecycle_coordinator (),
+                                           direct_send_needs_public_api_sync ());
     if (!send_scope.acquired ())
         return -1;
 
@@ -71,19 +69,17 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
                                        msg_t *msg_,
                                        int flags_)
 {
-    socket_public_send_scope_t send_scope (
-      lifecycle_coordinator (), true);
+    socket_public_send_scope_t send_scope (lifecycle_coordinator (), true);
     if (!send_scope.acquired ())
         return -1;
 
     return send_routed_scoped (target_rid_, msg_, flags_, send_scope);
 }
 
-int zlink::socket_base_t::send_routed_scoped (
-  const zlink_routing_id_t *target_rid_,
-  msg_t *msg_,
-  int flags_,
-  socket_public_send_scope_t &send_scope)
+int zlink::socket_base_t::send_routed_scoped (const zlink_routing_id_t *target_rid_,
+                                              msg_t *msg_,
+                                              int flags_,
+                                              socket_public_send_scope_t &send_scope)
 {
     if (unlikely (!target_rid_)) {
         errno = EFAULT;
@@ -98,8 +94,7 @@ zlink::socket_base_t::begin_public_send_scope (bool force_sync_)
 {
     const bool needs_sync = force_sync_ || direct_send_needs_public_api_sync ();
     std::unique_ptr<socket_public_send_scope_t> send_scope (
-      new (std::nothrow)
-        socket_public_send_scope_t (lifecycle_coordinator (), needs_sync));
+      new (std::nothrow) socket_public_send_scope_t (lifecycle_coordinator (), needs_sync));
     if (!send_scope) {
         errno = ENOMEM;
         return std::unique_ptr<socket_public_send_scope_t> ();
@@ -114,20 +109,18 @@ bool zlink::socket_base_t::direct_send_needs_public_api_sync () const
     return options.type != ZLINK_CORE_SOCKET_PAIR;
 }
 
-bool zlink::socket_base_t::xsubmit_retry_allowed (
-  const zlink_routing_id_t *target_rid_,
-  int err_) const
+bool zlink::socket_base_t::xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
+                                                  int err_) const
 {
     LIBZLINK_UNUSED (target_rid_);
     LIBZLINK_UNUSED (err_);
     return true;
 }
 
-int zlink::socket_base_t::send_direct_with_retry (
-  const zlink_routing_id_t *target_rid_,
-  msg_t *msg_,
-  int flags_,
-  socket_public_send_scope_t &send_scope)
+int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *target_rid_,
+                                                  msg_t *msg_,
+                                                  int flags_,
+                                                  socket_public_send_scope_t &send_scope)
 {
     zlink_assert (send_scope.acquired ());
 
@@ -157,7 +150,7 @@ int zlink::socket_base_t::send_direct_with_retry (
         errno = injected_errno;
     } else
 #endif
-    rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+        rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
         return 0;
@@ -172,12 +165,9 @@ int zlink::socket_base_t::send_direct_with_retry (
             return 0;
         }
     }
-    if (unlikely (errno != EAGAIN)
-        && submit_retry_enabled (options, flags_)
-        && is_submit_retry_errno (errno)
-        && xsubmit_retry_allowed (target_rid_, errno)) {
-        const uint64_t end =
-          _clock.now_ms () + effective_submit_retry_timeout (options);
+    if (unlikely (errno != EAGAIN) && submit_retry_enabled (options, flags_)
+        && is_submit_retry_errno (errno) && xsubmit_retry_allowed (target_rid_, errno)) {
+        const uint64_t end = _clock.now_ms () + effective_submit_retry_timeout (options);
         int attempts_left = options.submit_retry_attempts;
         int last_errno = errno;
         while (attempts_left-- > 0) {
@@ -204,7 +194,7 @@ int zlink::socket_base_t::send_direct_with_retry (
                 errno = injected_errno;
             } else
 #endif
-            rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+                rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
             if (rc == 0) {
                 dispatch_runtime ().clear_send_recovery_pending ();
                 return 0;
@@ -220,8 +210,7 @@ int zlink::socket_base_t::send_direct_with_retry (
     if (unlikely (errno != EAGAIN)) {
         dispatch_runtime ().clear_send_recovery_pending ();
         if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
-            if (errno == ENOTCONN || errno == EHOSTUNREACH
-                || errno == ETIMEDOUT) {
+            if (errno == ENOTCONN || errno == EHOSTUNREACH || errno == ETIMEDOUT) {
                 arm_send_ready_notification ();
             }
         }
@@ -266,8 +255,7 @@ int zlink::socket_base_t::send_direct_with_retry (
             dispatch_runtime ().clear_send_recovery_pending ();
             return -1;
         }
-        _auto_hwm_send_blocked_attempts.fetch_add (1,
-                                                   std::memory_order_relaxed);
+        _auto_hwm_send_blocked_attempts.fetch_add (1, std::memory_order_relaxed);
         const bool was_pending = dispatch_runtime ().send_recovery_pending ();
         dispatch_runtime ().mark_send_recovery_pending ();
         if (!was_pending)
@@ -323,8 +311,7 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
         return -1;
     }
 
-    if (command_runtime ().should_poll_commands_after_recv (
-          inbound_poll_rate)) {
+    if (command_runtime ().should_poll_commands_after_recv (inbound_poll_rate)) {
         if (unlikely (process_commands (0, false) != 0))
             return -1;
         command_runtime ().reset_recv_ticks ();
@@ -379,9 +366,7 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     return 0;
 }
 
-int zlink::socket_base_t::recv_pipe (msg_t *msg_,
-                                     pipe_t **pipe_out_,
-                                     int flags_)
+int zlink::socket_base_t::recv_pipe (msg_t *msg_, pipe_t **pipe_out_, int flags_)
 {
     if (pipe_out_)
         *pipe_out_ = NULL;
@@ -396,8 +381,7 @@ int zlink::socket_base_t::recv_pipe (msg_t *msg_,
         return -1;
     }
 
-    if (command_runtime ().should_poll_commands_after_recv (
-          inbound_poll_rate)) {
+    if (command_runtime ().should_poll_commands_after_recv (inbound_poll_rate)) {
         if (unlikely (process_commands (0, false) != 0))
             return -1;
         command_runtime ().reset_recv_ticks ();
@@ -452,9 +436,7 @@ int zlink::socket_base_t::recv_pipe (msg_t *msg_,
     return 0;
 }
 
-int zlink::socket_base_t::recv_routed (msg_t *msg_,
-                                       zlink_routing_id_t *source_rid_out_,
-                                       int flags_)
+int zlink::socket_base_t::recv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_, int flags_)
 {
     if (source_rid_out_)
         source_rid_out_->size = 0;
@@ -469,8 +451,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_,
         return -1;
     }
 
-    if (command_runtime ().should_poll_commands_after_recv (
-          inbound_poll_rate)) {
+    if (command_runtime ().should_poll_commands_after_recv (inbound_poll_rate)) {
         if (unlikely (process_commands (0, false) != 0)) {
             return -1;
         }

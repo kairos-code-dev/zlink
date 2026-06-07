@@ -9,8 +9,7 @@
 
 namespace
 {
-const bool spot_direct_route_trace_on =
-  zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+const bool spot_direct_route_trace_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
 }
 
 int zlink::session_base_t::pull_msg (msg_t *msg_)
@@ -27,21 +26,15 @@ int zlink::session_base_t::pull_msg (msg_t *msg_)
 
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
-    const bool trace_direct_route =
-      spot_direct_route_trace_on && _socket != NULL;
+    const bool trace_direct_route = spot_direct_route_trace_on && _socket != NULL;
 
-    if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe ()
-        && !msg_->is_cancel ()) {
+    if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe () && !msg_->is_cancel ()) {
         if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
             static std::atomic<int> g_router_command_logs (0);
-            if (g_router_command_logs.fetch_add (1, std::memory_order_acq_rel)
-                < 64) {
+            if (g_router_command_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
                 std::fprintf (
-                  stderr,
-                  "[spot-direct] session push command socket=%d size=%zu flags=%u\n",
-                  _socket->socket_id (),
-                  msg_->size (),
-                  static_cast<unsigned> (msg_->flags ()));
+                  stderr, "[spot-direct] session push command socket=%d size=%zu flags=%u\n",
+                  _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
             }
         }
         if (_socket) {
@@ -59,16 +52,13 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
 
     if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
         static std::atomic<int> g_router_payload_logs (0);
-        if (g_router_payload_logs.fetch_add (1, std::memory_order_acq_rel)
-            < 64) {
+        if (g_router_payload_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
             std::fprintf (
               stderr,
-              "[spot-direct] session push payload socket=%d size=%zu flags=%u more=%d routing_id=%d\n",
-              _socket->socket_id (),
-              msg_->size (),
-              static_cast<unsigned> (msg_->flags ()),
-              (msg_->flags () & msg_t::more) != 0 ? 1 : 0,
-              msg_->is_routing_id () ? 1 : 0);
+              "[spot-direct] session push payload socket=%d size=%zu flags=%u more=%d "
+              "routing_id=%d\n",
+              _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
+              (msg_->flags () & msg_t::more) != 0 ? 1 : 0, msg_->is_routing_id () ? 1 : 0);
         }
     }
 
@@ -100,16 +90,13 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
     if (_pipe && _pipe->write (msg_)) {
         if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
             static std::atomic<int> g_router_write_logs (0);
-            if (g_router_write_logs.fetch_add (1, std::memory_order_acq_rel)
-                < 64) {
+            if (g_router_write_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
                 std::fprintf (
                   stderr,
-                  "[spot-direct] session wrote pipe socket=%d size=%zu flags=%u more=%d routing_id=%d\n",
-                  _socket->socket_id (),
-                  msg_->size (),
-                  static_cast<unsigned> (msg_->flags ()),
-                  (msg_->flags () & msg_t::more) != 0 ? 1 : 0,
-                  msg_->is_routing_id () ? 1 : 0);
+                  "[spot-direct] session wrote pipe socket=%d size=%zu flags=%u more=%d "
+                  "routing_id=%d\n",
+                  _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
+                  (msg_->flags () & msg_t::more) != 0 ? 1 : 0, msg_->is_routing_id () ? 1 : 0);
             }
         }
         const int rc = msg_->init ();
@@ -119,14 +106,10 @@ int zlink::session_base_t::push_msg (msg_t *msg_)
 
     if (trace_direct_route && _socket->socket_type () == ZLINK_CORE_SOCKET_ROUTER) {
         static std::atomic<int> g_router_write_fail_logs (0);
-        if (g_router_write_fail_logs.fetch_add (1, std::memory_order_acq_rel)
-            < 64) {
+        if (g_router_write_fail_logs.fetch_add (1, std::memory_order_acq_rel) < 64) {
             std::fprintf (
-              stderr,
-              "[spot-direct] session pipe write failed socket=%d size=%zu flags=%u\n",
-              _socket->socket_id (),
-              msg_->size (),
-              static_cast<unsigned> (msg_->flags ()));
+              stderr, "[spot-direct] session pipe write failed socket=%d size=%zu flags=%u\n",
+              _socket->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
         }
     }
     errno = EAGAIN;

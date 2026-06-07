@@ -11,15 +11,14 @@
 
 void zlink::socket_base_t::finish_close_handoff (int handoff_timeout_ms_)
 {
-    lifecycle_coordinator ().complete_deferred_close_handoff (
-      static_cast<mailbox_t *> (_mailbox), handoff_timeout_ms_);
+    lifecycle_coordinator ().complete_deferred_close_handoff (static_cast<mailbox_t *> (_mailbox),
+                                                              handoff_timeout_ms_);
 
     _tag = 0xdeadbeef;
     send_reap (this);
 }
 
-int zlink::socket_base_t::get_peer_state (const void *routing_id_,
-                                          size_t routing_id_size_) const
+int zlink::socket_base_t::get_peer_state (const void *routing_id_, size_t routing_id_size_) const
 {
     LIBZLINK_UNUSED (routing_id_);
     LIBZLINK_UNUSED (routing_id_size_);
@@ -28,8 +27,7 @@ int zlink::socket_base_t::get_peer_state (const void *routing_id_,
     return -1;
 }
 
-int zlink::socket_base_t::xterm_peer_rid (
-  const zlink_routing_id_t *peer_rid_)
+int zlink::socket_base_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
 {
     if (!peer_rid_ || peer_rid_->size == 0) {
         errno = EINVAL;
@@ -46,18 +44,12 @@ int zlink::socket_base_t::xterm_peer_rid (
             continue;
 
         const blob_t &routing_id = pipe->get_routing_id ();
-        bool matches = routing_id.size () == peer_rid_->size
-                       && routing_id.size () > 0
-                       && memcmp (routing_id.data (), peer_rid_->data,
-                                  peer_rid_->size)
-                            == 0;
+        bool matches = routing_id.size () == peer_rid_->size && routing_id.size () > 0
+                       && memcmp (routing_id.data (), peer_rid_->data, peer_rid_->size) == 0;
         if (!matches && pipe->get_peer ()) {
             const blob_t &peer_routing_id = pipe->get_peer ()->get_routing_id ();
-            matches = peer_routing_id.size () == peer_rid_->size
-                      && peer_routing_id.size () > 0
-                      && memcmp (peer_routing_id.data (), peer_rid_->data,
-                                 peer_rid_->size)
-                           == 0;
+            matches = peer_routing_id.size () == peer_rid_->size && peer_routing_id.size () > 0
+                      && memcmp (peer_routing_id.data (), peer_rid_->data, peer_rid_->size) == 0;
         }
         if (!matches)
             continue;
@@ -100,9 +92,7 @@ void zlink::socket_base_t::attach_pipe (pipe_t *pipe_,
     }
 }
 
-int zlink::socket_base_t::setsockopt (int option_,
-                                      const void *optval_,
-                                      size_t optvallen_)
+int zlink::socket_base_t::setsockopt (int option_, const void *optval_, size_t optvallen_)
 {
     socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
     socket_public_api_scope_t admission (lifecycle);
@@ -136,14 +126,11 @@ int zlink::socket_base_t::setsockopt (int option_,
             else if (option_ == ZLINK_INTERNAL_OPT_RCVBUF)
                 _manual_rcvbuf = true;
             else if (option_ == ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES)
-                _auto_hwm_msg_unit_override =
-                  options.auto_hwm_msg_unit_bytes > 0;
+                _auto_hwm_msg_unit_override = options.auto_hwm_msg_unit_bytes > 0;
 
             if (option_ == ZLINK_INTERNAL_OPT_AUTO_HWM_MSG_UNIT_BYTES
-                || option_ == ZLINK_INTERNAL_OPT_SNDBUF
-                || option_ == ZLINK_INTERNAL_OPT_RCVBUF) {
-                _auto_hwm_last_recalc_reason =
-                  ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
+                || option_ == ZLINK_INTERNAL_OPT_SNDBUF || option_ == ZLINK_INTERNAL_OPT_RCVBUF) {
+                _auto_hwm_last_recalc_reason = ZLINK_AUTO_HWM_RECALC_REASON_REFRESH;
                 refresh_auto_hwm_policy ();
             }
 
@@ -159,9 +146,7 @@ int zlink::socket_base_t::setsockopt (int option_,
     return rc;
 }
 
-int zlink::socket_base_t::getsockopt (int option_,
-                                      void *optval_,
-                                      size_t *optvallen_)
+int zlink::socket_base_t::getsockopt (int option_, void *optval_, size_t *optvallen_)
 {
     socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
     socket_public_api_scope_t admission (lifecycle);
@@ -183,28 +168,26 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZLINK_INTERNAL_OPT_FD) {
-        rc = do_getsockopt<fd_t> (
-          optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
+        rc =
+          do_getsockopt<fd_t> (optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
         return rc;
     }
 
     if (option_ == ZLINK_INTERNAL_OPT_EVENTS) {
-    {
-        socket_public_api_lock_scope_t guard (lifecycle);
-        const int events_rc = process_commands (0, false);
-        if (events_rc != 0 && (errno == EINTR || errno == ETERM))
-            return -1;
+        {
+            socket_public_api_lock_scope_t guard (lifecycle);
+            const int events_rc = process_commands (0, false);
+            if (events_rc != 0 && (errno == EINTR || errno == ETERM))
+                return -1;
 
-        errno_assert (events_rc == 0);
-        return do_getsockopt<int> (optval_, optvallen_,
-                                   has_out () ? ZLINK_POLLOUT : 0);
+            errno_assert (events_rc == 0);
+            return do_getsockopt<int> (optval_, optvallen_, has_out () ? ZLINK_POLLOUT : 0);
         }
     }
 
     if (option_ == ZLINK_INTERNAL_OPT_LAST_ENDPOINT) {
         socket_public_api_lock_scope_t guard (lifecycle);
-        return do_getsockopt (optval_, optvallen_,
-                              endpoint_runtime ().last_endpoint_uri ());
+        return do_getsockopt (optval_, optvallen_, endpoint_runtime ().last_endpoint_uri ());
     }
 
     {
@@ -328,8 +311,7 @@ void zlink::socket_base_t::hiccuped (pipe_t *pipe_)
 
 void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
 {
-    const bool term_pipe_ack_expected =
-      is_terminating () && _term_pipes.erase (pipe_) != 0;
+    const bool term_pipe_ack_expected = is_terminating () && _term_pipes.erase (pipe_) != 0;
 
     endpoint_uri_pair_t endpoint_pair;
     std::vector<unsigned char> routing_id_copy;
@@ -337,11 +319,9 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
         endpoint_pair = pipe_->get_endpoint_pair ();
         const blob_t &routing_id = pipe_->get_routing_id ();
         if (routing_id.size () > 0)
-            routing_id_copy.assign (routing_id.data (),
-                                    routing_id.data () + routing_id.size ());
+            routing_id_copy.assign (routing_id.data (), routing_id.data () + routing_id.size ());
     }
-    const unsigned char *routing_id_data =
-      routing_id_copy.empty () ? NULL : &routing_id_copy[0];
+    const unsigned char *routing_id_data = routing_id_copy.empty () ? NULL : &routing_id_copy[0];
     const size_t routing_id_size = routing_id_copy.size ();
 
     xpipe_terminated (pipe_);
@@ -352,8 +332,8 @@ void zlink::socket_base_t::pipe_terminated (pipe_t *pipe_)
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         endpoint_runtime ().detach_pipe (pipe_);
-        ready_changed = monitor_runtime ().erase_ready_connection (
-          endpoint_pair, routing_id_data, routing_id_size, &ready_count);
+        ready_changed = monitor_runtime ().erase_ready_connection (endpoint_pair, routing_id_data,
+                                                                   routing_id_size, &ready_count);
     }
     if (ready_changed) {
         uint64_t values[1] = {ready_count};

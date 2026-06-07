@@ -64,9 +64,8 @@ inline size_t positive_size (const char *name_,
     return static_cast<size_t> (parsed);
 }
 
-inline unsigned int positive_uint (const char *name_,
-                                   unsigned int fallback_,
-                                   unsigned int max_ = UINT_MAX)
+inline unsigned int
+positive_uint (const char *name_, unsigned int fallback_, unsigned int max_ = UINT_MAX)
 {
     const char *value = std::getenv (name_);
     if (!value || !*value)

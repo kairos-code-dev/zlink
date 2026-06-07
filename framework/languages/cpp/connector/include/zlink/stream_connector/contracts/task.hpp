@@ -19,17 +19,21 @@ template <typename T> class task_t
     {
         std::optional<result_t<T>> result;
 
-        task_t get_return_object () { return task_t (std::coroutine_handle<promise_type>::from_promise (*this)); }
+        task_t get_return_object ()
+        {
+            return task_t (std::coroutine_handle<promise_type>::from_promise (*this));
+        }
         std::suspend_never initial_suspend () noexcept { return {}; }
         std::suspend_always final_suspend () noexcept { return {}; }
         void unhandled_exception ()
         {
-            result =
-              result_t<T>::failure (error_code_t::user_callback_failed, "unhandled connector coroutine exception");
+            result = result_t<T>::failure (error_code_t::user_callback_failed,
+                                           "unhandled connector coroutine exception");
         }
         void return_value (result_t<T> value) { result = std::move (value); }
         template <typename U>
-        requires (!std::is_same_v<std::remove_cvref_t<U>, result_t<T>>) void return_value (U &&value)
+        requires (!std::is_same_v<std::remove_cvref_t<U>, result_t<T>>) void return_value (
+          U &&value)
         {
             result = result_t<T>::success (T (std::forward<U> (value)));
         }
@@ -102,13 +106,16 @@ template <> class task_t<void>
     {
         result_t<void> result = result_t<void>::success ();
 
-        task_t get_return_object () { return task_t (std::coroutine_handle<promise_type>::from_promise (*this)); }
+        task_t get_return_object ()
+        {
+            return task_t (std::coroutine_handle<promise_type>::from_promise (*this));
+        }
         std::suspend_never initial_suspend () noexcept { return {}; }
         std::suspend_always final_suspend () noexcept { return {}; }
         void unhandled_exception ()
         {
-            result =
-              result_t<void>::failure (error_code_t::user_callback_failed, "unhandled connector coroutine exception");
+            result = result_t<void>::failure (error_code_t::user_callback_failed,
+                                              "unhandled connector coroutine exception");
         }
         void return_void () noexcept {}
     };

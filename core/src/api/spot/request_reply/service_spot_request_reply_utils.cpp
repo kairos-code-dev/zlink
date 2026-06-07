@@ -28,8 +28,7 @@ zlink::ctx_t *zlink::spot_reqrep_internal::resolve_spot_ctx (void *spot_)
     return zlink::spot_node_access_t::ctx (spot->node);
 }
 
-zlink::spot_runtime_t *
-zlink::spot_reqrep_internal::resolve_spot_runtime (void *spot_)
+zlink::spot_runtime_t *zlink::spot_reqrep_internal::resolve_spot_runtime (void *spot_)
 {
     spot_handle_t *spot = as_spot_handle (spot_);
     if (!spot || !spot->node) {
@@ -39,34 +38,31 @@ zlink::spot_reqrep_internal::resolve_spot_runtime (void *spot_)
     return zlink::spot_node_access_t::runtime (spot->node);
 }
 
-bool zlink::spot_reqrep_internal::has_valid_routing_id (
-  const zlink_routing_id_t *peer_rid_)
+bool zlink::spot_reqrep_internal::has_valid_routing_id (const zlink_routing_id_t *peer_rid_)
 {
     return zlink::valid_routing_id (peer_rid_);
 }
 
-std::string zlink::spot_reqrep_internal::routing_id_key (
-  const zlink_routing_id_t *peer_rid_)
+std::string zlink::spot_reqrep_internal::routing_id_key (const zlink_routing_id_t *peer_rid_)
 {
     return zlink::routing_id_key (peer_rid_);
 }
 
-bool zlink::spot_reqrep_internal::routing_id_from_key (
-  const std::string &value_, zlink_routing_id_t *out_)
+bool zlink::spot_reqrep_internal::routing_id_from_key (const std::string &value_,
+                                                       zlink_routing_id_t *out_)
 {
     return zlink::routing_id_from_key (value_, out_);
 }
 
-void zlink::spot_reqrep_internal::optional_routing_id_from_key (
-  const std::string &value_, zlink_routing_id_t *out_)
+void zlink::spot_reqrep_internal::optional_routing_id_from_key (const std::string &value_,
+                                                                zlink_routing_id_t *out_)
 {
     zlink::optional_routing_id_from_key (value_, out_);
 }
 
-int zlink::spot_reqrep_internal::send_combined_parts_on_socket (
-  zlink::socket_base_t *socket_,
-  std::vector<zlink_msg_t> *parts_,
-  zlink_send_flags_t flags_)
+int zlink::spot_reqrep_internal::send_combined_parts_on_socket (zlink::socket_base_t *socket_,
+                                                                std::vector<zlink_msg_t> *parts_,
+                                                                zlink_send_flags_t flags_)
 {
     if (!socket_ || !parts_ || parts_->empty ()) {
         errno = EFAULT;
@@ -75,13 +71,10 @@ int zlink::spot_reqrep_internal::send_combined_parts_on_socket (
 
     zlink::spot_data_plane_forwarder_t::pump_socket_commands (socket_);
     socket_->set_all_pipes_nodelay ();
-    return zlink::logical_multipart_send (socket_, &(*parts_)[0],
-                                          parts_->size (), flags_);
+    return zlink::logical_multipart_send (socket_, &(*parts_)[0], parts_->size (), flags_);
 }
 
-bool zlink::spot_reqrep_internal::resolve_spot_identity (
-  void *spot_,
-  routing_pair_t *out_)
+bool zlink::spot_reqrep_internal::resolve_spot_identity (void *spot_, routing_pair_t *out_)
 {
     if (!out_) {
         errno = EFAULT;

@@ -28,15 +28,13 @@ zlink::tcp_address_t::tcp_address_t () : _has_src_addr (false)
     memset (&_source_address, 0, sizeof (_source_address));
 }
 
-zlink::tcp_address_t::tcp_address_t (const sockaddr *sa_, socklen_t sa_len_) :
-    _has_src_addr (false)
+zlink::tcp_address_t::tcp_address_t (const sockaddr *sa_, socklen_t sa_len_) : _has_src_addr (false)
 {
     zlink_assert (sa_ && sa_len_ > 0);
 
     memset (&_address, 0, sizeof (_address));
     memset (&_source_address, 0, sizeof (_source_address));
-    if (sa_->sa_family == AF_INET
-        && sa_len_ >= static_cast<socklen_t> (sizeof (_address.ipv4)))
+    if (sa_->sa_family == AF_INET && sa_len_ >= static_cast<socklen_t> (sizeof (_address.ipv4)))
         memcpy (&_address.ipv4, sa_, sizeof (_address.ipv4));
     else if (sa_->sa_family == AF_INET6
              && sa_len_ >= static_cast<socklen_t> (sizeof (_address.ipv6)))
@@ -64,8 +62,7 @@ int zlink::tcp_address_t::resolve (const char *name_, bool local_, bool ipv6_)
 
         ip_resolver_t src_resolver (src_resolver_opts);
 
-        const int rc =
-          src_resolver.resolve (&_source_address, src_name.c_str ());
+        const int rc = src_resolver.resolve (&_source_address, src_name.c_str ());
         if (rc != 0)
             return -1;
         name_ = src_delimiter + 1;
@@ -92,8 +89,7 @@ static std::string make_address_string (const char *hbuf_,
                                         const char (&ipv6_suffix_)[N2])
 {
     const size_t max_port_str_length = 5;
-    char buf[NI_MAXHOST + sizeof ipv6_prefix_ + sizeof ipv6_suffix_
-             + max_port_str_length];
+    char buf[NI_MAXHOST + sizeof ipv6_prefix_ + sizeof ipv6_suffix_ + max_port_str_length];
     char *pos = buf;
     memcpy (pos, ipv6_prefix_, sizeof ipv6_prefix_ - 1);
     pos += sizeof ipv6_prefix_ - 1;
@@ -118,8 +114,7 @@ int zlink::tcp_address_t::to_string (std::string &addr_) const
     //  Not using service resolving because of
     //  https://github.com/zlink/libzlink/commit/1824574f9b5a8ce786853320e3ea09fe1f822bc4
     char hbuf[NI_MAXHOST];
-    const int rc = getnameinfo (addr (), addrlen (), hbuf, sizeof (hbuf), NULL,
-                                0, NI_NUMERICHOST);
+    const int rc = getnameinfo (addr (), addrlen (), hbuf, sizeof (hbuf), NULL, 0, NI_NUMERICHOST);
     if (rc != 0) {
         addr_.clear ();
         return rc;
@@ -130,11 +125,9 @@ int zlink::tcp_address_t::to_string (std::string &addr_) const
     const char ipv6_prefix[] = "tcp://[";
     const char ipv6_suffix[] = "]:";
     if (_address.family () == AF_INET6) {
-        addr_ = make_address_string (hbuf, _address.ipv6.sin6_port, ipv6_prefix,
-                                     ipv6_suffix);
+        addr_ = make_address_string (hbuf, _address.ipv6.sin6_port, ipv6_prefix, ipv6_suffix);
     } else {
-        addr_ = make_address_string (hbuf, _address.ipv4.sin_port, ipv4_prefix,
-                                     ipv4_suffix);
+        addr_ = make_address_string (hbuf, _address.ipv4.sin_port, ipv4_prefix, ipv4_suffix);
     }
     return 0;
 }
@@ -210,21 +203,16 @@ int zlink::tcp_address_mask_t::resolve (const char *name_, bool ipv6_)
         return rc;
 
     // Parse the cidr mask number.
-    const int full_mask_ipv4 =
-      sizeof (_network_address.ipv4.sin_addr) * CHAR_BIT;
-    const int full_mask_ipv6 =
-      sizeof (_network_address.ipv6.sin6_addr) * CHAR_BIT;
+    const int full_mask_ipv4 = sizeof (_network_address.ipv4.sin_addr) * CHAR_BIT;
+    const int full_mask_ipv6 = sizeof (_network_address.ipv6.sin6_addr) * CHAR_BIT;
     if (mask_str.empty ()) {
-        _address_mask = _network_address.family () == AF_INET6 ? full_mask_ipv6
-                                                               : full_mask_ipv4;
+        _address_mask = _network_address.family () == AF_INET6 ? full_mask_ipv6 : full_mask_ipv4;
     } else if (mask_str == "0")
         _address_mask = 0;
     else {
         const long mask = strtol (mask_str.c_str (), NULL, 10);
-        if ((mask < 1)
-            || (_network_address.family () == AF_INET6 && mask > full_mask_ipv6)
-            || (_network_address.family () != AF_INET6
-                && mask > full_mask_ipv4)) {
+        if ((mask < 1) || (_network_address.family () == AF_INET6 && mask > full_mask_ipv6)
+            || (_network_address.family () != AF_INET6 && mask > full_mask_ipv4)) {
             errno = EINVAL;
             return -1;
         }
@@ -235,11 +223,10 @@ int zlink::tcp_address_mask_t::resolve (const char *name_, bool ipv6_)
 }
 
 bool zlink::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
-                                             const socklen_t ss_len_) const
+                                               const socklen_t ss_len_) const
 {
     zlink_assert (_address_mask != -1 && ss_ != NULL
-                && ss_len_
-                     >= static_cast<socklen_t> (sizeof (struct sockaddr)));
+                  && ss_len_ >= static_cast<socklen_t> (sizeof (struct sockaddr)));
 
     if (ss_->sa_family != _network_address.generic.sa_family)
         return false;
@@ -250,17 +237,14 @@ bool zlink::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
         if (ss_->sa_family == AF_INET6) {
             zlink_assert (ss_len_ == sizeof (struct sockaddr_in6));
             their_bytes = reinterpret_cast<const uint8_t *> (
-              &((reinterpret_cast<const struct sockaddr_in6 *> (ss_))
-                  ->sin6_addr));
-            our_bytes = reinterpret_cast<const uint8_t *> (
-              &_network_address.ipv6.sin6_addr);
+              &((reinterpret_cast<const struct sockaddr_in6 *> (ss_))->sin6_addr));
+            our_bytes = reinterpret_cast<const uint8_t *> (&_network_address.ipv6.sin6_addr);
             mask = sizeof (struct in6_addr) * 8;
         } else {
             zlink_assert (ss_len_ == sizeof (struct sockaddr_in));
-            their_bytes = reinterpret_cast<const uint8_t *> (&(
-              (reinterpret_cast<const struct sockaddr_in *> (ss_))->sin_addr));
-            our_bytes = reinterpret_cast<const uint8_t *> (
-              &_network_address.ipv4.sin_addr);
+            their_bytes = reinterpret_cast<const uint8_t *> (
+              &((reinterpret_cast<const struct sockaddr_in *> (ss_))->sin_addr));
+            our_bytes = reinterpret_cast<const uint8_t *> (&_network_address.ipv4.sin_addr);
             mask = sizeof (struct in_addr) * 8;
         }
         if (_address_mask < mask)

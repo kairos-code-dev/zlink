@@ -38,8 +38,8 @@ bool same_logical_spot (const spot_handle_t *lhs_, const spot_handle_t *rhs_)
 }
 }
 
-handler_scope_t::handler_scope_t (
-  spot_handle_t *spot_, const zlink_spot_actor_lifecycle_info_t &info_) :
+handler_scope_t::handler_scope_t (spot_handle_t *spot_,
+                                  const zlink_spot_actor_lifecycle_info_t &info_) :
     _previous (context ())
 {
     context_t &current = context ();
@@ -61,10 +61,9 @@ bool reenters_same_actor (const zlink_actor_ref_t *actor_ref_)
 
     const context_t &current = context ();
     return current.active
-           && (spot_actor_internal::same_actor_ref_identity (
-                 *actor_ref_, current.previous_actor)
-               || spot_actor_internal::same_actor_ref_identity (
-                 *actor_ref_, current.current_actor));
+           && (spot_actor_internal::same_actor_ref_identity (*actor_ref_, current.previous_actor)
+               || spot_actor_internal::same_actor_ref_identity (*actor_ref_,
+                                                                current.current_actor));
 }
 
 bool reenters_same_spot (const spot_handle_t *spot_)

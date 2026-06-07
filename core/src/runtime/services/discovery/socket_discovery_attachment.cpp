@@ -7,8 +7,7 @@
 
 namespace zlink
 {
-socket_discovery_attachment_t::socket_discovery_attachment_t (
-  socket_base_t *socket_) :
+socket_discovery_attachment_t::socket_discovery_attachment_t (socket_base_t *socket_) :
     _socket (socket_),
     _discovery (NULL),
     _local_role (discovery_protocol::service_role_invalid),
@@ -18,7 +17,9 @@ socket_discovery_attachment_t::socket_discovery_attachment_t (
 {
 }
 
-socket_discovery_attachment_t::~socket_discovery_attachment_t () {}
+socket_discovery_attachment_t::~socket_discovery_attachment_t ()
+{
+}
 
 bool socket_discovery_attachment_t::public_api_forbidden (int *errno_out_) const
 {

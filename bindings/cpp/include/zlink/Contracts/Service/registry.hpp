@@ -67,7 +67,9 @@ class registry_t
 
     void set_broadcast_interval (std::chrono::milliseconds interval_);
 
-    void set_tls_server (const std::string &cert_, const std::string &key_, bool require_client_cert_ = false);
+    void set_tls_server (const std::string &cert_,
+                         const std::string &key_,
+                         bool require_client_cert_ = false);
 
     void set_tls_client (const std::string &ca_cert_,
                          const std::string &hostname_ = std::string (),
@@ -86,7 +88,8 @@ class registry_t
 
     std::vector<registry_topology_entry_t> topology () const;
 
-    std::vector<registry_topology_entry_t> topology (const registry_topology_filter_t &filter_) const;
+    std::vector<registry_topology_entry_t>
+    topology (const registry_topology_filter_t &filter_) const;
 
     std::vector<member_peer_entry_t> member_peers (const std::string &channel_name_) const;
 
@@ -118,7 +121,8 @@ class registry_query_client_t
 
     void connect (const std::string &endpoint_);
 
-    std::vector<registry_topology_entry_t> topology (const registry_topology_filter_t *filter_ = nullptr) const;
+    std::vector<registry_topology_entry_t>
+    topology (const registry_topology_filter_t *filter_ = nullptr) const;
 
     void close ();
 

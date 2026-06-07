@@ -24,9 +24,7 @@ struct queued_actor_part_t
     }
 
     queued_actor_part_t (queued_actor_part_t &&other_) noexcept :
-        owns (other_.owns),
-        info (other_.info),
-        part_flag (other_.part_flag)
+        owns (other_.owns), info (other_.info), part_flag (other_.part_flag)
     {
         part = other_.part;
         other_.owns = false;

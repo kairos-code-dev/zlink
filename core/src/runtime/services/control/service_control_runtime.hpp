@@ -20,9 +20,7 @@ typedef void (service_control_task_fn) (void *);
 class service_control_runtime_t
 {
   public:
-    explicit service_control_runtime_t (ctx_t *ctx_,
-                                        const char *thread_name_ =
-                                          "service-ctrl");
+    explicit service_control_runtime_t (ctx_t *ctx_, const char *thread_name_ = "service-ctrl");
     ~service_control_runtime_t ();
 
     bool start ();
@@ -41,12 +39,7 @@ class service_control_runtime_t
     struct task_entry_t
     {
         task_entry_t () :
-            id (0),
-            fn (NULL),
-            arg (NULL),
-            interval_ms (0),
-            next_run_ms (0),
-            scheduled (false)
+            id (0), fn (NULL), arg (NULL), interval_ms (0), next_run_ms (0), scheduled (false)
         {
         }
 

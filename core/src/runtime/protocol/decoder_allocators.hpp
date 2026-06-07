@@ -17,8 +17,7 @@ class c_single_allocator
 {
   public:
     explicit c_single_allocator (std::size_t bufsize_) :
-        _buf_size (bufsize_),
-        _buf (static_cast<unsigned char *> (std::malloc (_buf_size)))
+        _buf_size (bufsize_), _buf (static_cast<unsigned char *> (std::malloc (_buf_size)))
     {
         alloc_assert (_buf);
     }
@@ -56,8 +55,7 @@ class shared_message_memory_allocator
     explicit shared_message_memory_allocator (std::size_t bufsize_);
 
     // Create an allocator for a maximum number of messages
-    shared_message_memory_allocator (std::size_t bufsize_,
-                                     std::size_t max_messages_);
+    shared_message_memory_allocator (std::size_t bufsize_, std::size_t max_messages_);
 
     // Create an allocator with explicit growth limit.
     shared_message_memory_allocator (std::size_t bufsize_,

@@ -13,9 +13,7 @@ class stream_t;
 class stream_dispatch_context_t
 {
   public:
-    stream_dispatch_context_t (stream_t *socket_,
-                               pipe_t *pipe_,
-                               uint32_t routing_id_);
+    stream_dispatch_context_t (stream_t *socket_, pipe_t *pipe_, uint32_t routing_id_);
     ~stream_dispatch_context_t ();
 
     static bool owns_socket (const stream_t *socket_);

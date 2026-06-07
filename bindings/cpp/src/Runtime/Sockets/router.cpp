@@ -12,7 +12,8 @@ namespace zlink
 {
 
 router_socket_t::router_socket_t (context_t &ctx_) :
-    routed_message_socket_t (ctx_, socket_type::router), _default_request_timeout (std::chrono::milliseconds ())
+    routed_message_socket_t (ctx_, socket_type::router),
+    _default_request_timeout (std::chrono::milliseconds ())
 {
 }
 
@@ -46,7 +47,8 @@ int router_socket_t::recv (received_t &out_, recv_flags_t flags_)
 
 int router_socket_t::recv (routing_id_t &source_rid_out_, message_t &part_out_, recv_flags_t flags_)
 {
-    return detail::recv_single_part_routed_message (detail::native_handle (*this), source_rid_out_, part_out_, flags_);
+    return detail::recv_single_part_routed_message (detail::native_handle (*this), source_rid_out_,
+                                                    part_out_, flags_);
 }
 
 void router_socket_t::set_send_ready_handler (std::function<void ()> handler_)
@@ -77,7 +79,8 @@ service::request_operation_t router_socket_t::request (const routing_id_t &routi
     return service::request_operation_t (std::move (state_ptr));
 }
 
-service::reply_operation_t router_socket_t::reply (const routing_id_t &routing_id_, uint64_t request_seq_)
+service::reply_operation_t router_socket_t::reply (const routing_id_t &routing_id_,
+                                                   uint64_t request_seq_)
 {
     auto state_ptr = service::detail::acquire_state ();
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_reply;

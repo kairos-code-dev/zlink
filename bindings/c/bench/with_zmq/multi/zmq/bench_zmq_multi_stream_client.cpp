@@ -7,7 +7,8 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace
+{
 
 inline int parse_positive_env (const char *name_, int default_value_)
 {
@@ -59,9 +60,7 @@ inline std::vector<size_t> parse_size_list_env (const char *name_)
     return sizes;
 }
 
-inline bool parse_endpoint_arg (int argc_,
-                                char **argv_,
-                                std::string *endpoint_out_)
+inline bool parse_endpoint_arg (int argc_, char **argv_, std::string *endpoint_out_)
 {
     if (!endpoint_out_)
         return false;
@@ -98,8 +97,7 @@ int main (int argc, char **argv)
     opt.ccu = parse_positive_env ("BENCH_MULTI_CLIENTS", opt.ccu);
     opt.runs = 1;
     opt.duration = resolve_multi_int_env ("BENCH_MULTI_DURATION_SECONDS", 5, 1);
-    opt.completion_wait_ms =
-      resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
+    opt.completion_wait_ms = resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
     opt.size_transition_completion_wait_ms =
       resolve_multi_int_env ("BENCH_MULTI_PATTERN_TRANSITION_MS", 0, 0);
     opt.io_threads = parse_positive_env ("BENCH_IO_THREADS", opt.io_threads);
@@ -111,8 +109,8 @@ int main (int argc, char **argv)
     std::string endpoint_transport;
     std::string endpoint_host;
     int endpoint_port = 0;
-    if (!perf_stream_common::perf_stream_parse_endpoint (
-          endpoint, &endpoint_transport, &endpoint_host, &endpoint_port)) {
+    if (!perf_stream_common::perf_stream_parse_endpoint (endpoint, &endpoint_transport,
+                                                         &endpoint_host, &endpoint_port)) {
         std::fprintf (stderr, "invalid --endpoint: %s\n", endpoint.c_str ());
         return 1;
     }

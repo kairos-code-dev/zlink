@@ -32,8 +32,7 @@ void test_issue_566 ()
         //  Leave space for NULL char from sprintf, gcc warning
         char routing_id[11];
         snprintf (routing_id, 11 * sizeof (char), "%09d", cycle);
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_set_routing_id (dealer, routing_id, 10));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, routing_id, 10));
         int rcvtimeo = 1000;
         TEST_ASSERT_SUCCESS_ERRNO (
           zlink_set_option (dealer, ZLINK_OPT_RCVTIMEO, &rcvtimeo, sizeof (int)));

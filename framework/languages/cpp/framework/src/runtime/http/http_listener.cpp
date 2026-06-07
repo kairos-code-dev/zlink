@@ -70,14 +70,16 @@ class http_host_service_t::listener_t
                 socket.close (ec);
                 break;
             }
-            if (_active_connections.load (std::memory_order_acquire) >= _options->server.max_connections) {
+            if (_active_connections.load (std::memory_order_acquire)
+                >= _options->server.max_connections) {
                 reject_overloaded (std::move (socket));
                 continue;
             }
             _active_connections.fetch_add (1, std::memory_order_acq_rel);
             boost::asio::post (_io_workers, [this, socket = std::move (socket)] () mutable {
                 auto guard = std::unique_ptr<void, void (*) (void *)> (this, [] (void *listener) {
-                    static_cast<listener_t *> (listener)->_active_connections.fetch_sub (1, std::memory_order_acq_rel);
+                    static_cast<listener_t *> (listener)->_active_connections.fetch_sub (
+                      1, std::memory_order_acq_rel);
                 });
                 if (_parsed.scheme == "https") {
                     handle_https (std::move (socket));
@@ -113,7 +115,8 @@ class http_host_service_t::listener_t
         }
         _tls_context.emplace (asio::ssl::context::tls_server);
         _tls_context->use_certificate_chain_file (_endpoint->tls->certificate_file);
-        _tls_context->use_private_key_file (_endpoint->tls->private_key_file, asio::ssl::context::pem);
+        _tls_context->use_private_key_file (_endpoint->tls->private_key_file,
+                                            asio::ssl::context::pem);
 #endif
     }
 
@@ -142,8 +145,8 @@ class http_host_service_t::listener_t
             return;
         }
         beast::error_code ec;
-        auto response =
-          make_http_status_response (http::status::service_unavailable, 11, R"({"error":"server overloaded"})", false);
+        auto response = make_http_status_response (http::status::service_unavailable, 11,
+                                                   R"({"error":"server overloaded"})", false);
         http::write (socket, response, ec);
         socket.shutdown (tcp::socket::shutdown_send, ec);
     }
@@ -159,7 +162,8 @@ class http_host_service_t::listener_t
     {
         beast::flat_buffer buffer;
         std::size_t served = 0;
-        while (!_stop->load (std::memory_order_acquire) && served < _options->server.max_keep_alive_requests) {
+        while (!_stop->load (std::memory_order_acquire)
+               && served < _options->server.max_keep_alive_requests) {
             http::request_parser<http::string_body> parser;
             parser.body_limit (_options->server.max_request_body_size);
             parser.header_limit (_options->server.max_header_size);
@@ -174,9 +178,11 @@ class http_host_service_t::listener_t
                 http::write (stream, response, ec);
                 return false;
             }
-            if (parser.content_length () && *parser.content_length () > _options->server.max_request_body_size) {
-                auto response = make_http_status_response (http::status::payload_too_large, 11,
-                                                           R"({"error":"request body too large"})", false);
+            if (parser.content_length ()
+                && *parser.content_length () > _options->server.max_request_body_size) {
+                auto response =
+                  make_http_status_response (http::status::payload_too_large, 11,
+                                             R"({"error":"request body too large"})", false);
                 http::write (stream, response, ec);
                 return false;
             }
@@ -189,7 +195,8 @@ class http_host_service_t::listener_t
             }
             auto request = parser.release ();
             auto response = handle_http_request (*_options, *_services, *_health, request);
-            response.keep_alive (request.keep_alive () && served + 1 < _options->server.max_keep_alive_requests
+            response.keep_alive (request.keep_alive ()
+                                 && served + 1 < _options->server.max_keep_alive_requests
                                  && !_stop->load (std::memory_order_acquire));
             set_request_timeout (stream, _options->server.write_timeout);
             http::write (stream, response, ec);
@@ -244,7 +251,8 @@ class http_host_service_t::listener_t
 #endif
 };
 
-http_host_service_t::http_host_service_t (http_options_snapshot_t options, health_builder_t &health) :
+http_host_service_t::http_host_service_t (http_options_snapshot_t options,
+                                          health_builder_t &health) :
     _options (std::move (options)), _health (&health)
 {
 }
@@ -255,7 +263,8 @@ void http_host_service_t::start (service_provider_t &services)
 {
     _stop.store (false, std::memory_order_release);
     for (const auto &endpoint : _options.endpoints) {
-        auto listener = std::make_unique<listener_t> (endpoint, _options, *_health, services, _stop);
+        auto listener =
+          std::make_unique<listener_t> (endpoint, _options, *_health, services, _stop);
         auto *raw = listener.get ();
         _listeners.push_back (std::move (listener));
         _threads.emplace_back ([raw] { raw->run (); });

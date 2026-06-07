@@ -63,7 +63,6 @@ void test_zlink_socket_monitor_open_null_socket ()
 }
 
 
-
 void test_zlink_bind_null_socket ()
 {
     zlink_bind_result_t rc = zlink_bind (NULL, "inproc://socket");

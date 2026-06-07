@@ -37,9 +37,7 @@ void zlink::ctx_termination_t::flush_pending_inproc_locked (ctx_t &ctx_)
     ctx_._terminating = saved_terminating;
 }
 
-bool zlink::ctx_termination_t::begin_shutdown_locked (
-  ctx_t &ctx_,
-  bool allow_fork_cleanup_)
+bool zlink::ctx_termination_t::begin_shutdown_locked (ctx_t &ctx_, bool allow_fork_cleanup_)
 {
     if (ctx_._starting) {
         ctx_._terminating = true;
@@ -50,8 +48,7 @@ bool zlink::ctx_termination_t::begin_shutdown_locked (
     if (allow_fork_cleanup_ && ctx_._pid != getpid ()) {
         std::vector<socket_base_t *> sockets;
         ctx_._socket_registry.collect_sockets (&sockets);
-        for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size ();
-             i != size; ++i)
+        for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size (); i != size; ++i)
             sockets[i]->get_mailbox ()->forked ();
         ctx_._term_mailbox.forked ();
     }
@@ -67,8 +64,7 @@ bool zlink::ctx_termination_t::begin_shutdown_locked (
     ctx_.debug_dump_sockets_locked ("terminate-before-stop");
     std::vector<socket_base_t *> sockets;
     ctx_._socket_registry.collect_sockets (&sockets);
-    for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size ();
-         i != size; ++i)
+    for (std::vector<socket_base_t *>::size_type i = 0, size = sockets.size (); i != size; ++i)
         sockets[i]->stop ();
     if (sockets.empty ())
         ctx_._runtime_resources.stop_reaper ();

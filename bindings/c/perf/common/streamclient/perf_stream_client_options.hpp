@@ -34,20 +34,20 @@ struct client_options_t
     std::string stop_token;
     int send_stop_token;
 
-    client_options_t ()
-        : transport ("tcp"),
-          pattern ("STREAM"),
-          host ("127.0.0.1"),
-          port (38001),
-          ccu (10000),
-          sizes (),
-          runs (1),
-          duration (10),
-          completion_wait_ms (500),
-          size_transition_completion_wait_ms (0),
-          io_threads (4),
-          stop_token ("__zlink_perf_stop__"),
-          send_stop_token (0)
+    client_options_t () :
+        transport ("tcp"),
+        pattern ("STREAM"),
+        host ("127.0.0.1"),
+        port (38001),
+        ccu (10000),
+        sizes (),
+        runs (1),
+        duration (10),
+        completion_wait_ms (500),
+        size_transition_completion_wait_ms (0),
+        io_threads (4),
+        stop_token ("__zlink_perf_stop__"),
+        send_stop_token (0)
     {
         sizes.push_back (64);
         sizes.push_back (1024);
@@ -70,22 +70,22 @@ struct case_metrics_t
     long recv_error;
     long timeout_error;
     long size_mismatch;
-    bool pass;               // true when no errors and throughput > 0
+    bool pass; // true when no errors and throughput > 0
 
-    case_metrics_t ()
-        : connect_ok (0),
-          connect_fail (0),
-          throughput_bps (0.0),
-          throughput_mib_s (0.0),
-          mean_ns (0.0),
-          p50_ns (0.0),
-          p95_ns (0.0),
-          p99_ns (0.0),
-          send_error (0),
-          recv_error (0),
-          timeout_error (0),
-          size_mismatch (0),
-          pass (false)
+    case_metrics_t () :
+        connect_ok (0),
+        connect_fail (0),
+        throughput_bps (0.0),
+        throughput_mib_s (0.0),
+        mean_ns (0.0),
+        p50_ns (0.0),
+        p95_ns (0.0),
+        p99_ns (0.0),
+        send_error (0),
+        recv_error (0),
+        timeout_error (0),
+        size_mismatch (0),
+        pass (false)
     {
     }
 };
@@ -105,23 +105,20 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.ccu = args.get_int ("--ccu", opt.ccu, 1);
     opt.runs = args.get_int ("--runs", opt.runs, 1);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
-    opt.completion_wait_ms = args.get_int (
-      "--completion-wait-ms", opt.completion_wait_ms, 0);
+    opt.completion_wait_ms = args.get_int ("--completion-wait-ms", opt.completion_wait_ms, 0);
     opt.size_transition_completion_wait_ms = args.get_int (
-      "--size-transition-completion-wait-ms",
-      opt.size_transition_completion_wait_ms, 0);
+      "--size-transition-completion-wait-ms", opt.size_transition_completion_wait_ms, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.stop_token = args.get_string ("--stop-token", opt.stop_token.c_str ());
-    opt.send_stop_token = args.get_int ("--send-stop-token",
-                                        opt.send_stop_token, 0);
+    opt.send_stop_token = args.get_int ("--send-stop-token", opt.send_stop_token, 0);
 
     const std::string endpoint = args.get_string ("--endpoint", "");
     if (!endpoint.empty ()) {
         std::string endpoint_transport;
         std::string endpoint_host;
         int endpoint_port = 0;
-        if (!perf_stream_common::perf_stream_parse_endpoint (
-              endpoint, &endpoint_transport, &endpoint_host, &endpoint_port)) {
+        if (!perf_stream_common::perf_stream_parse_endpoint (endpoint, &endpoint_transport,
+                                                             &endpoint_host, &endpoint_port)) {
             std::fprintf (stderr, "invalid --endpoint: %s\n", endpoint.c_str ());
             return false;
         }
@@ -161,8 +158,7 @@ inline bool send_stop_token_once (const client_options_t &opt)
     if (!client.connect ())
         return false;
 
-    const std::vector<unsigned char> token_payload (opt.stop_token.begin (),
-                                                    opt.stop_token.end ());
+    const std::vector<unsigned char> token_payload (opt.stop_token.begin (), opt.stop_token.end ());
     return client.send_payload (token_payload);
 }
 

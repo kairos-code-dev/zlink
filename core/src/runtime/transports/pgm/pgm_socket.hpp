@@ -34,9 +34,8 @@ class pgm_socket_t
     int init (bool udp_encapsulation_, const char *network_);
 
     //  Resolve PGM socket address.
-    static int init_address (const char *network_,
-                             struct pgm_addrinfo_t **addr,
-                             uint16_t *port_number);
+    static int
+    init_address (const char *network_, struct pgm_addrinfo_t **addr, uint16_t *port_number);
 
     //   Get receiver fds and store them into user allocated memory.
     void get_receiver_fds (fd_t *receive_fd_, fd_t *waiting_pipe_fd_);

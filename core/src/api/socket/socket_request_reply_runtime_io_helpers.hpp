@@ -16,8 +16,7 @@ namespace zlink
 {
 namespace socket_reqrep_internal
 {
-inline void assign_routing_id_compact (zlink_routing_id_t *dest_,
-                                       const zlink_routing_id_t &src_)
+inline void assign_routing_id_compact (zlink_routing_id_t *dest_, const zlink_routing_id_t &src_)
 {
     if (!dest_)
         return;
@@ -27,17 +26,9 @@ inline void assign_routing_id_compact (zlink_routing_id_t *dest_,
 
 struct router_mandatory_scope_t
 {
-    router_mandatory_scope_t () :
-        socket (NULL),
-        restore_required (false),
-        original_value (0)
-    {
-    }
+    router_mandatory_scope_t () : socket (NULL), restore_required (false), original_value (0) {}
 
-    ~router_mandatory_scope_t ()
-    {
-        restore ();
-    }
+    ~router_mandatory_scope_t () { restore (); }
 
     int arm (socket_handle_t handle_)
     {
@@ -45,8 +36,7 @@ struct router_mandatory_scope_t
             return 0;
 
         size_t size = sizeof (original_value);
-        if (handle_.socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
-                                        &original_value, &size)
+        if (handle_.socket->getsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY, &original_value, &size)
             != 0)
             return -1;
 
@@ -54,8 +44,8 @@ struct router_mandatory_scope_t
             return 0;
 
         const int mandatory = 1;
-        if (handle_.socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
-                                        &mandatory, sizeof (mandatory))
+        if (handle_.socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY, &mandatory,
+                                        sizeof (mandatory))
             != 0)
             return -1;
 
@@ -69,8 +59,8 @@ struct router_mandatory_scope_t
         if (!restore_required || !socket)
             return;
 
-        (void) socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY,
-                                   &original_value, sizeof (original_value));
+        (void) socket->setsockopt (ZLINK_INTERNAL_OPT_ROUTER_MANDATORY, &original_value,
+                                   sizeof (original_value));
         restore_required = false;
         socket = NULL;
     }
@@ -89,10 +79,7 @@ struct router_control_frames_t
         zlink_msg_init (&seq);
     }
 
-    ~router_control_frames_t ()
-    {
-        close ();
-    }
+    ~router_control_frames_t () { close (); }
 
     void close ()
     {
@@ -124,13 +111,12 @@ struct routing_id_frame_view_t
     size_t size;
 };
 
-inline routing_id_frame_view_t routing_id_frame_view (
-  const zlink_routing_id_t *rid_)
+inline routing_id_frame_view_t routing_id_frame_view (const zlink_routing_id_t *rid_)
 {
     if (!zlink::valid_routing_id (rid_))
-        return routing_id_frame_view_t{ NULL, 0 };
+        return routing_id_frame_view_t{NULL, 0};
 
-    return routing_id_frame_view_t{ rid_->data, rid_->size };
+    return routing_id_frame_view_t{rid_->data, rid_->size};
 }
 
 inline int recv_internal_queue_frame (zlink::socket_base_t *socket_,
@@ -144,9 +130,7 @@ inline int recv_internal_queue_frame (zlink::socket_base_t *socket_,
         return -1;
     }
 
-    while (socket_->recv (reinterpret_cast<zlink::msg_t *> (msg_),
-                          ZLINK_DONTWAIT)
-           != 0) {
+    while (socket_->recv (reinterpret_cast<zlink::msg_t *> (msg_), ZLINK_DONTWAIT) != 0) {
         const int saved_errno = errno;
         if (saved_errno != EAGAIN) {
             errno = saved_errno;
@@ -169,8 +153,7 @@ inline int recv_internal_queue_frame (zlink::socket_base_t *socket_,
             wait_ms = static_cast<long> (deadline_ms_ - now_ms);
         }
 
-        const int wait_rc =
-          zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, wait_ms);
+        const int wait_rc = zlink::wait_socket_events_internal (socket_, ZLINK_POLLIN, wait_ms);
         if (wait_rc < 0)
             return -1;
         if (wait_rc == 0) {
@@ -182,8 +165,7 @@ inline int recv_internal_queue_frame (zlink::socket_base_t *socket_,
     return 0;
 }
 
-inline int recv_router_followup_frame (zlink::socket_base_t *socket_,
-                                       zlink_msg_t *msg_)
+inline int recv_router_followup_frame (zlink::socket_base_t *socket_, zlink_msg_t *msg_)
 {
     if (!socket_ || !msg_) {
         errno = EFAULT;
@@ -201,8 +183,7 @@ inline bool router_raw_part_has_more (const zlink_msg_t *part_)
     if (!part_)
         return false;
 
-    const zlink::msg_t *msg =
-      reinterpret_cast<const zlink::msg_t *> (part_);
+    const zlink::msg_t *msg = reinterpret_cast<const zlink::msg_t *> (part_);
     if (!msg->check ())
         return false;
 

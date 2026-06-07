@@ -21,9 +21,7 @@ inline int options_sockopt_invalid ()
 }
 
 template <typename T>
-inline int options_do_setsockopt_value (const void *optval_,
-                                        size_t optvallen_,
-                                        T *out_value_)
+inline int options_do_setsockopt_value (const void *optval_, size_t optvallen_, T *out_value_)
 {
     if (optvallen_ == sizeof (T)) {
         memcpy (out_value_, optval_, sizeof (T));
@@ -32,11 +30,10 @@ inline int options_do_setsockopt_value (const void *optval_,
     return options_sockopt_invalid ();
 }
 
-inline int options_do_setsockopt_string_allow_empty_strict (
-  const void *optval_,
-  size_t optvallen_,
-  std::string *out_value_,
-  size_t max_len_)
+inline int options_do_setsockopt_string_allow_empty_strict (const void *optval_,
+                                                            size_t optvallen_,
+                                                            std::string *out_value_,
+                                                            size_t max_len_)
 {
     if (optval_ == NULL && optvallen_ == 0) {
         out_value_->clear ();
@@ -49,12 +46,8 @@ inline int options_do_setsockopt_string_allow_empty_strict (
     return options_sockopt_invalid ();
 }
 
-int options_setsockopt_core_socket (options_t *self_,
-                                    int option_,
-                                    const void *optval_,
-                                    size_t optvallen_,
-                                    bool is_int_,
-                                    int value_);
+int options_setsockopt_core_socket (
+  options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_);
 int options_getsockopt_core_socket (const options_t *self_,
                                     int option_,
                                     void *optval_,
@@ -62,12 +55,8 @@ int options_getsockopt_core_socket (const options_t *self_,
                                     bool is_int_,
                                     int *value_);
 
-int options_setsockopt_transport_network (options_t *self_,
-                                          int option_,
-                                          const void *optval_,
-                                          size_t optvallen_,
-                                          bool is_int_,
-                                          int value_);
+int options_setsockopt_transport_network (
+  options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_);
 int options_getsockopt_transport_network (const options_t *self_,
                                           int option_,
                                           void *optval_,
@@ -75,12 +64,8 @@ int options_getsockopt_transport_network (const options_t *self_,
                                           bool is_int_,
                                           int *value_);
 
-int options_setsockopt_protocol_metadata (options_t *self_,
-                                          int option_,
-                                          const void *optval_,
-                                          size_t optvallen_,
-                                          bool is_int_,
-                                          int value_);
+int options_setsockopt_protocol_metadata (
+  options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_);
 int options_getsockopt_protocol_metadata (const options_t *self_,
                                           int option_,
                                           void *optval_,

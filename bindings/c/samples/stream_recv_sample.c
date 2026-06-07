@@ -18,8 +18,7 @@ typedef struct
     size_t payload_len;
 } stream_recv_sample_t;
 
-static int parse_tcp_endpoint (const char *endpoint, char *host,
-                               size_t host_size, int *port)
+static int parse_tcp_endpoint (const char *endpoint, char *host, size_t host_size, int *port)
 {
     char proto[8] = {0};
     char addr[64] = {0};
@@ -62,8 +61,7 @@ static void stream_server_thread (void *arg_)
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     assert (zlink_msg_init (&part) == 0);
-    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0)
-            == ZLINK_RECV_OK);
+    assert (zlink_recv_part (sample->server, &rid, &part, &has_more, 0) == ZLINK_RECV_OK);
     assert (rid != NULL);
     assert (rid->size > 0);
     assert (has_more == ZLINK_PART_FINAL);
@@ -99,12 +97,12 @@ int main (void)
     assert (sample.server != NULL);
 
     int notify_off = 0;
-    assert (zlink_set_stream_option (sample.server, ZLINK_STREAM_OPT_NOTIFY,
-                                     &notify_off, sizeof (notify_off))
+    assert (zlink_set_stream_option (sample.server, ZLINK_STREAM_OPT_NOTIFY, &notify_off,
+                                     sizeof (notify_off))
             == 0);
 
-    sample.server_monitor = open_socket_monitor (
-      sample.server, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED);
+    sample.server_monitor =
+      open_socket_monitor (sample.server, ZLINK_SOCKET_MONITOR_EVENT_ACCEPTED);
 
     assert (zlink_bind (sample.server, "tcp://127.0.0.1:0") == ZLINK_BIND_OK);
     get_last_endpoint (sample.server, sample.endpoint, sizeof (sample.endpoint));
@@ -123,8 +121,8 @@ int main (void)
     zlink_thread_join (receiver);
 
     assert (strcmp (sample.payload, k_stream_payload) == 0);
-    printf ("[stream/recv] send: \"%s\" -> recv: \"%.*s\"\n",
-            k_stream_payload, (int) sample.payload_len, sample.payload);
+    printf ("[stream/recv] send: \"%s\" -> recv: \"%.*s\"\n", k_stream_payload,
+            (int) sample.payload_len, sample.payload);
 
     callback_signal_destroy (&sample.send_signal);
     zlink_monitor_close (&sample.server_monitor);

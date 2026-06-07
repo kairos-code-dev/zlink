@@ -26,12 +26,11 @@ zlink_config_result_t zlink_msg_init_buffer (zlink_msg_t *msg_, const void *buf_
       (reinterpret_cast<zlink::msg_t *> (msg_))->init_buffer (buf_, size_));
 }
 
-zlink_config_result_t zlink_msg_init_data (
-  zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_)
+zlink_config_result_t
+zlink_msg_init_data (zlink_msg_t *msg_, void *data_, size_t size_, zlink_free_fn *ffn_, void *hint_)
 {
     return zlink::config_result_internal::from_rc (
-      (reinterpret_cast<zlink::msg_t *> (msg_))
-        ->init_data (data_, size_, ffn_, hint_));
+      (reinterpret_cast<zlink::msg_t *> (msg_))->init_data (data_, size_, ffn_, hint_));
 }
 
 zlink_config_result_t zlink_msg_close (zlink_msg_t *msg_)
@@ -43,15 +42,13 @@ zlink_config_result_t zlink_msg_close (zlink_msg_t *msg_)
 zlink_config_result_t zlink_msg_move (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
     return zlink::config_result_internal::from_rc (
-      (reinterpret_cast<zlink::msg_t *> (dest_))
-        ->move (*reinterpret_cast<zlink::msg_t *> (src_)));
+      (reinterpret_cast<zlink::msg_t *> (dest_))->move (*reinterpret_cast<zlink::msg_t *> (src_)));
 }
 
 zlink_config_result_t zlink_msg_copy (zlink_msg_t *dest_, zlink_msg_t *src_)
 {
     return zlink::config_result_internal::from_rc (
-      (reinterpret_cast<zlink::msg_t *> (dest_))
-        ->copy (*reinterpret_cast<zlink::msg_t *> (src_)));
+      (reinterpret_cast<zlink::msg_t *> (dest_))->copy (*reinterpret_cast<zlink::msg_t *> (src_)));
 }
 
 zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_)
@@ -82,8 +79,7 @@ size_t zlink_msg_size (const zlink_msg_t *msg_)
     return ((zlink::msg_t *) msg_)->size ();
 }
 
-int zlink_msg_refcnt (const zlink_msg_t *msg_,
-                      zlink_config_result_t *error_out_)
+int zlink_msg_refcnt (const zlink_msg_t *msg_, zlink_config_result_t *error_out_)
 {
     if (!msg_) {
         errno = EFAULT;

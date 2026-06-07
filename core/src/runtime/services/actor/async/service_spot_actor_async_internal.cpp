@@ -52,16 +52,15 @@ struct actor_async_operation_t
 
 void complete_actor_reply_operation (actor_async_operation_t *operation_)
 {
-    const zlink_request_result_t result =
-      operation_->reply_run ? operation_->reply_run (operation_->arg)
-                            : ZLINK_REQUEST_INTERNAL_ERROR;
+    const zlink_request_result_t result = operation_->reply_run
+                                            ? operation_->reply_run (operation_->arg)
+                                            : ZLINK_REQUEST_INTERNAL_ERROR;
     operation_->reply_handler (result, NULL, 0, operation_->userdata);
 }
 
 void timeout_actor_reply_operation (actor_async_operation_t *operation_)
 {
-    operation_->reply_handler (ZLINK_REQUEST_TIMED_OUT, NULL, 0,
-                               operation_->userdata);
+    operation_->reply_handler (ZLINK_REQUEST_TIMED_OUT, NULL, 0, operation_->userdata);
 }
 
 void complete_actor_lookup_operation (actor_async_operation_t *operation_)
@@ -113,8 +112,7 @@ bool claim_actor_async_operation (actor_async_operation_t *operation_)
 
 void complete_actor_async_operation_scheduled (void *userdata_)
 {
-    actor_async_operation_t *operation =
-      static_cast<actor_async_operation_t *> (userdata_);
+    actor_async_operation_t *operation = static_cast<actor_async_operation_t *> (userdata_);
     if (!operation)
         return;
     if (claim_actor_async_operation (operation)) {
@@ -128,8 +126,7 @@ void complete_actor_async_operation_scheduled (void *userdata_)
 
 void timeout_actor_async_operation_scheduled (void *userdata_)
 {
-    actor_async_operation_t *operation =
-      static_cast<actor_async_operation_t *> (userdata_);
+    actor_async_operation_t *operation = static_cast<actor_async_operation_t *> (userdata_);
     if (!operation)
         return;
     if (claim_actor_async_operation (operation)) {
@@ -141,22 +138,20 @@ void timeout_actor_async_operation_scheduled (void *userdata_)
 
 void cleanup_actor_async_operation_timeout (void *userdata_)
 {
-    release_actor_async_operation (
-      static_cast<actor_async_operation_t *> (userdata_));
+    release_actor_async_operation (static_cast<actor_async_operation_t *> (userdata_));
 }
 
-zlink_submit_result_t schedule_actor_async_operation (
-  actor_async_operation_t *operation_, uint32_t timeout_ms_)
+zlink_submit_result_t schedule_actor_async_operation (actor_async_operation_t *operation_,
+                                                      uint32_t timeout_ms_)
 {
     retain_actor_async_operation (operation_);
-    (void) zlink::request_timeout::schedule (
-      actor_async_timeout_precedence_delay_ms,
-      complete_actor_async_operation_scheduled, operation_);
+    (void) zlink::request_timeout::schedule (actor_async_timeout_precedence_delay_ms,
+                                             complete_actor_async_operation_scheduled, operation_);
     if (timeout_ms_ != 0) {
         retain_actor_async_operation (operation_);
-        operation_->timeout_task = zlink::request_timeout::schedule (
-          timeout_ms_, timeout_actor_async_operation_scheduled, operation_,
-          cleanup_actor_async_operation_timeout);
+        operation_->timeout_task =
+          zlink::request_timeout::schedule (timeout_ms_, timeout_actor_async_operation_scheduled,
+                                            operation_, cleanup_actor_async_operation_timeout);
     }
     return ZLINK_SUBMIT_OK;
 }
@@ -166,12 +161,14 @@ namespace zlink
 {
 namespace spot_actor_async
 {
-zlink_submit_result_t schedule_reply_operation (
-  zlink_reply_handler_fn handler_, void *userdata_, uint32_t timeout_ms_,
-  reply_operation_run_fn run_, void *arg_, operation_cleanup_fn cleanup_)
+zlink_submit_result_t schedule_reply_operation (zlink_reply_handler_fn handler_,
+                                                void *userdata_,
+                                                uint32_t timeout_ms_,
+                                                reply_operation_run_fn run_,
+                                                void *arg_,
+                                                operation_cleanup_fn cleanup_)
 {
-    actor_async_operation_t *operation =
-      new (std::nothrow) actor_async_operation_t;
+    actor_async_operation_t *operation = new (std::nothrow) actor_async_operation_t;
     if (!operation) {
         if (cleanup_ && arg_)
             cleanup_ (arg_);
@@ -188,12 +185,14 @@ zlink_submit_result_t schedule_reply_operation (
     return schedule_actor_async_operation (operation, timeout_ms_);
 }
 
-zlink_submit_result_t schedule_lookup_operation (
-  zlink_actor_lookup_handler_fn handler_, void *userdata_, uint32_t timeout_ms_,
-  lookup_operation_run_fn run_, void *arg_, operation_cleanup_fn cleanup_)
+zlink_submit_result_t schedule_lookup_operation (zlink_actor_lookup_handler_fn handler_,
+                                                 void *userdata_,
+                                                 uint32_t timeout_ms_,
+                                                 lookup_operation_run_fn run_,
+                                                 void *arg_,
+                                                 operation_cleanup_fn cleanup_)
 {
-    actor_async_operation_t *operation =
-      new (std::nothrow) actor_async_operation_t;
+    actor_async_operation_t *operation = new (std::nothrow) actor_async_operation_t;
     if (!operation) {
         if (cleanup_ && arg_)
             cleanup_ (arg_);

@@ -59,16 +59,20 @@ inline void wait_for_stop_stdin ()
 
 } // namespace
 
-bool perf_dealer_router_server (const std::string &lib_name, const std::string &transport, size_t msg_size)
+bool perf_dealer_router_server (const std::string &lib_name,
+                                const std::string &transport,
+                                size_t msg_size)
 {
     perf::multi::set_perf_pattern_env ("DEALER_ROUTER");
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_ROUTER," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << ",MULTI_DEALER_ROUTER," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
 
     perf::multi::ctx_guard_t ctx;
     zlink::router_socket_t server (ctx.ctx ());
@@ -81,8 +85,8 @@ bool perf_dealer_router_server (const std::string &lib_name, const std::string &
     if (!perf::multi::setup_tls_server (server, transport))
         return false;
 
-    const std::string endpoint =
-      perf::multi::bind_and_resolve_endpoint (server, transport, "cpp_multi_dealer_router", settings.server_bind_port);
+    const std::string endpoint = perf::multi::bind_and_resolve_endpoint (
+      server, transport, "cpp_multi_dealer_router", settings.server_bind_port);
     if (endpoint.empty ())
         return false;
     if (!perf::multi::recalculate_auto_hwm (ctx))
@@ -106,7 +110,8 @@ bool perf_dealer_router_server (const std::string &lib_name, const std::string &
     std::deque<pending_reply_t> pending_replies;
     zlink::poller_t poller;
     std::vector<zlink::poll_event_t> events (1);
-    zlink::routing_id_t source_rid = zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("x"), 1);
+    zlink::routing_id_t source_rid =
+      zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> ("x"), 1);
     zlink::message_t part;
     poller.add (server, zlink::poll_event_flag_t::pollin, 0);
 
@@ -142,10 +147,10 @@ bool perf_dealer_router_server (const std::string &lib_name, const std::string &
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         const zlink::poll_event_flag_t mask =
-          pending_replies.empty ()
-            ? zlink::poll_event_flag_t::pollin
-            : static_cast<zlink::poll_event_flag_t> (static_cast<int> (zlink::poll_event_flag_t::pollin)
-                                                     | static_cast<int> (zlink::poll_event_flag_t::pollout));
+          pending_replies.empty () ? zlink::poll_event_flag_t::pollin
+                                   : static_cast<zlink::poll_event_flag_t> (
+                                       static_cast<int> (zlink::poll_event_flag_t::pollin)
+                                       | static_cast<int> (zlink::poll_event_flag_t::pollout));
         const int next_mask = static_cast<int> (mask);
         if (next_mask != poll_event_mask) {
             poller.modify (server, mask);
@@ -157,8 +162,10 @@ bool perf_dealer_router_server (const std::string &lib_name, const std::string &
             if (ready_count == 0)
                 continue;
             const auto revents_value = static_cast<int> (events[0].revents);
-            const bool readable = (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollin)) != 0;
-            const bool writable = (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollout)) != 0;
+            const bool readable =
+              (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollin)) != 0;
+            const bool writable =
+              (revents_value & static_cast<int> (zlink::poll_event_flag_t::pollout)) != 0;
 
             if (writable && !pending_replies.empty ()) {
                 if (!flush_pending ()) {
@@ -184,8 +191,8 @@ bool perf_dealer_router_server (const std::string &lib_name, const std::string &
             const int recv_rc = server.recv (source_rid, part, zlink::recv_flags_t::dontwait);
             if (recv_rc != 0) {
                 const int err = errno;
-                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data) || err == EAGAIN || err == EWOULDBLOCK
-                    || err == EINTR)
+                if (recv_rc == static_cast<int> (zlink::recv_result_t::no_data) || err == EAGAIN
+                    || err == EWOULDBLOCK || err == EINTR)
                     break;
                 failed = true;
                 break;

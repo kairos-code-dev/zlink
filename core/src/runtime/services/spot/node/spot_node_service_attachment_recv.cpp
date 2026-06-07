@@ -26,15 +26,13 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
     }
 
     while (true) {
-        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
-          sub_recv_cache;
+        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t> sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
             sub_recv_cache = _service_attachment_state.sub_recv_cache;
         }
         socket_base_t *ready_socket = NULL;
-        if (!sub_recv_cache
-            || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {
+        if (!sub_recv_cache || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {
             if ((flags_ & ZLINK_DONTWAIT) != 0)
                 return -1;
             continue;
@@ -42,9 +40,8 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
 
         zlink_recv_result_t rc =
           recv_result_internal::from_rc (zlink_socket_subscribe_recv_internal (
-            ready_socket, source_rid_out_, parts_out_, part_count_out_,
-            topic_id_out_, topic_id_len_out_,
-            static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
+            ready_socket, source_rid_out_, parts_out_, part_count_out_, topic_id_out_,
+            topic_id_len_out_, static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {
                 errno = EAGAIN;
@@ -58,12 +55,11 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
     }
 }
 
-int spot_node_t::service_subscription_event_recv (
-  zlink_routing_id_t *source_rid_out_,
-  int *subscribed_out_,
-  char *topic_id_out_,
-  size_t *topic_id_len_out_,
-  zlink_recv_flags_t flags_)
+int spot_node_t::service_subscription_event_recv (zlink_routing_id_t *source_rid_out_,
+                                                  int *subscribed_out_,
+                                                  char *topic_id_out_,
+                                                  size_t *topic_id_len_out_,
+                                                  zlink_recv_flags_t flags_)
 {
     if (!subscribed_out_ || !topic_id_len_out_) {
         errno = EFAULT;
@@ -71,25 +67,21 @@ int spot_node_t::service_subscription_event_recv (
     }
 
     while (true) {
-        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t>
-          sub_recv_cache;
+        std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t> sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
             sub_recv_cache = _service_attachment_state.sub_recv_cache;
         }
         socket_base_t *ready_socket = NULL;
-        if (!sub_recv_cache
-            || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {
+        if (!sub_recv_cache || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {
             if ((flags_ & ZLINK_DONTWAIT) != 0)
                 return -1;
             continue;
         }
 
-        zlink_recv_result_t rc =
-          recv_result_internal::from_rc (zlink_socket_xpub_recv_internal (
-            ready_socket, source_rid_out_, subscribed_out_, topic_id_out_,
-            topic_id_len_out_,
-            static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
+        zlink_recv_result_t rc = recv_result_internal::from_rc (zlink_socket_xpub_recv_internal (
+          ready_socket, source_rid_out_, subscribed_out_, topic_id_out_, topic_id_len_out_,
+          static_cast<zlink_send_flags_t> (ZLINK_DONTWAIT)));
         if (rc == ZLINK_RECV_NO_DATA) {
             if ((flags_ & ZLINK_DONTWAIT) != 0) {
                 errno = EAGAIN;

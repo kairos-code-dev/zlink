@@ -50,8 +50,8 @@ class bingo_client_app_t
         log << "client request " << result.requests.back ().packet_name
             << " completed=" << result.requests.back ().completed << '\n';
         result.sends.push_back (clients[3].leave ("room-1"));
-        log << "client send " << result.sends.back ().packet_name << " completed=" << result.sends.back ().completed
-            << '\n';
+        log << "client send " << result.sends.back ().packet_name
+            << " completed=" << result.sends.back ().completed << '\n';
 
         for (auto &client : clients) {
             client.dispatch ();
@@ -61,12 +61,14 @@ class bingo_client_app_t
             result.ended_notifications += client.notifications ().ended.size ();
             client.close ();
         }
-        log << "client push " << player_joined_notify_t::packet_name << " count=" << result.player_joined_notifications
-            << '\n';
-        log << "client push " << game_started_notify_t::packet_name << " count=" << result.started_notifications
-            << '\n';
-        log << "client push " << number_drawn_notify_t::packet_name << " count=" << result.drawn_notifications << '\n';
-        log << "client push " << game_ended_notify_t::packet_name << " count=" << result.ended_notifications << '\n';
+        log << "client push " << player_joined_notify_t::packet_name
+            << " count=" << result.player_joined_notifications << '\n';
+        log << "client push " << game_started_notify_t::packet_name
+            << " count=" << result.started_notifications << '\n';
+        log << "client push " << number_drawn_notify_t::packet_name
+            << " count=" << result.drawn_notifications << '\n';
+        log << "client push " << game_ended_notify_t::packet_name
+            << " count=" << result.ended_notifications << '\n';
         log << "client game completed\n";
         return result;
     }

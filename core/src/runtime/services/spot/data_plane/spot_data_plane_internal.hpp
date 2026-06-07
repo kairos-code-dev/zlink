@@ -31,18 +31,14 @@ struct spot_data_plane_protocol_state_t
 {
     std::map<std::string, std::string> peer_ctrl_endpoints;
     std::set<std::string> outbound_subscription_filters;
-    std::map<std::string, std::set<std::string> > peer_ready_filters;
-    std::map<std::string, std::map<std::string, std::set<std::string> > >
-      outbound_ready_filters;
+    std::map<std::string, std::set<std::string>> peer_ready_filters;
+    std::map<std::string, std::map<std::string, std::set<std::string>>> outbound_ready_filters;
 };
 
 struct spot_mesh_peer_state_t
 {
     spot_mesh_peer_state_t () :
-        version (0),
-        hwm_version (0),
-        mesh_pub_ready_peer_count (0),
-        connected_ready_peer_count (0)
+        version (0), hwm_version (0), mesh_pub_ready_peer_count (0), connected_ready_peer_count (0)
     {
     }
 
@@ -54,8 +50,8 @@ struct spot_mesh_peer_state_t
     std::set<std::string> connected_endpoints;
 };
 
-inline bool sync_monitor_ready_endpoint (
-  std::set<std::string> *endpoints_, const zlink_monitor_event_t &raw_)
+inline bool sync_monitor_ready_endpoint (std::set<std::string> *endpoints_,
+                                         const zlink_monitor_event_t &raw_)
 {
     if (!endpoints_ || raw_.remote_addr[0] == '\0')
         return false;
@@ -66,8 +62,8 @@ inline bool sync_monitor_ready_endpoint (
     return endpoints_->insert (raw_.remote_addr).second;
 }
 
-inline bool sync_monitor_connected_endpoint (
-  std::set<std::string> *endpoints_, const zlink_monitor_event_t &raw_)
+inline bool sync_monitor_connected_endpoint (std::set<std::string> *endpoints_,
+                                             const zlink_monitor_event_t &raw_)
 {
     if (!endpoints_ || raw_.remote_addr[0] == '\0')
         return false;
@@ -78,28 +74,24 @@ inline bool sync_monitor_connected_endpoint (
     return false;
 }
 
-inline bool apply_monitor_ready_peer_count (uint32_t *ready_peer_count_out_,
-                                            size_t endpoint_count_)
+inline bool apply_monitor_ready_peer_count (uint32_t *ready_peer_count_out_, size_t endpoint_count_)
 {
     if (!ready_peer_count_out_)
         return false;
-    const uint32_t next_ready_count =
-      static_cast<uint32_t> (endpoint_count_);
+    const uint32_t next_ready_count = static_cast<uint32_t> (endpoint_count_);
     if (*ready_peer_count_out_ == next_ready_count)
         return false;
     *ready_peer_count_out_ = next_ready_count;
     return true;
 }
 
-inline uint32_t clamp_ready_peer_count (uint32_t ready_count_,
-                                        uint32_t connected_peer_count_)
+inline uint32_t clamp_ready_peer_count (uint32_t ready_count_, uint32_t connected_peer_count_)
 {
-    return ready_count_ < connected_peer_count_ ? ready_count_
-                                                : connected_peer_count_;
+    return ready_count_ < connected_peer_count_ ? ready_count_ : connected_peer_count_;
 }
 
-inline void snapshot_connected_mesh_peer_endpoints (
-  const spot_mesh_peer_state_t *state_, std::set<std::string> *out_)
+inline void snapshot_connected_mesh_peer_endpoints (const spot_mesh_peer_state_t *state_,
+                                                    std::set<std::string> *out_)
 {
     if (!out_)
         return;
@@ -110,10 +102,9 @@ inline void snapshot_connected_mesh_peer_endpoints (
     *out_ = state_->connected_endpoints;
 }
 
-inline bool sync_mesh_peer_monitor_state (
-  spot_mesh_peer_state_t *state_,
-  const zlink_monitor_event_t &raw_,
-  bool *endpoint_membership_changed_out_ = NULL)
+inline bool sync_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_,
+                                          const zlink_monitor_event_t &raw_,
+                                          bool *endpoint_membership_changed_out_ = NULL)
 {
     if (!state_ || raw_.remote_addr[0] == '\0')
         return false;
@@ -122,21 +113,15 @@ inline bool sync_mesh_peer_monitor_state (
     bool endpoint_membership_changed =
       sync_monitor_connected_endpoint (&state_->connected_endpoints, raw_);
     bool changed = endpoint_membership_changed;
-    if (raw_.event == ZLINK_EVENT_DISCONNECTED
-        && state_->connected_endpoints.empty ()
-        && state_->connected_ready_peer_count.load (std::memory_order_acquire)
-             != 0) {
-        state_->connected_ready_peer_count.store (0,
-                                                  std::memory_order_release);
+    if (raw_.event == ZLINK_EVENT_DISCONNECTED && state_->connected_endpoints.empty ()
+        && state_->connected_ready_peer_count.load (std::memory_order_acquire) != 0) {
+        state_->connected_ready_peer_count.store (0, std::memory_order_release);
         changed = true;
     }
 
-    uint32_t ready_peer_count =
-      state_->connected_ready_peer_count.load (std::memory_order_acquire);
-    if (apply_monitor_ready_peer_count (&ready_peer_count,
-                                        state_->connected_endpoints.size ())) {
-        state_->connected_ready_peer_count.store (ready_peer_count,
-                                                  std::memory_order_release);
+    uint32_t ready_peer_count = state_->connected_ready_peer_count.load (std::memory_order_acquire);
+    if (apply_monitor_ready_peer_count (&ready_peer_count, state_->connected_endpoints.size ())) {
+        state_->connected_ready_peer_count.store (ready_peer_count, std::memory_order_release);
         changed = true;
     }
 
@@ -155,8 +140,7 @@ inline bool clear_mesh_peer_monitor_state (spot_mesh_peer_state_t *state_)
     scoped_lock_t lock (state_->sync);
     if (!state_->connected_endpoints.empty ()) {
         state_->connected_endpoints.clear ();
-        state_->connected_ready_peer_count.store (0,
-                                                  std::memory_order_release);
+        state_->connected_ready_peer_count.store (0, std::memory_order_release);
         state_->version.fetch_add (1, std::memory_order_acq_rel);
         return true;
     }
@@ -171,15 +155,13 @@ inline bool remove_connected_mesh_peer_endpoint (spot_mesh_peer_state_t *state_,
         return false;
 
     scoped_lock_t lock (state_->sync);
-    const std::set<std::string>::iterator it =
-      state_->connected_endpoints.find (endpoint_);
+    const std::set<std::string>::iterator it = state_->connected_endpoints.find (endpoint_);
     if (it == state_->connected_endpoints.end ())
         return false;
 
     state_->connected_endpoints.erase (it);
     if (state_->connected_endpoints.empty ())
-        state_->connected_ready_peer_count.store (0,
-                                                  std::memory_order_release);
+        state_->connected_ready_peer_count.store (0, std::memory_order_release);
     state_->version.fetch_add (1, std::memory_order_acq_rel);
     return true;
 }
@@ -189,14 +171,12 @@ inline bool remove_connected_mesh_peer_endpoint (spot_mesh_peer_state_t *state_,
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
 #endif
 
-inline uint32_t connected_ready_peer_count (
-  const spot_mesh_peer_state_t *state_)
+inline uint32_t connected_ready_peer_count (const spot_mesh_peer_state_t *state_)
 {
     if (!state_)
         return 0u;
 
-    return state_->connected_ready_peer_count.load (
-      std::memory_order_acquire);
+    return state_->connected_ready_peer_count.load (std::memory_order_acquire);
 }
 
 inline uint32_t mesh_pub_ready_peer_count (const spot_mesh_peer_state_t *state_)
@@ -204,8 +184,7 @@ inline uint32_t mesh_pub_ready_peer_count (const spot_mesh_peer_state_t *state_)
     if (!state_)
         return 0u;
 
-    return state_->mesh_pub_ready_peer_count.load (
-      std::memory_order_acquire);
+    return state_->mesh_pub_ready_peer_count.load (std::memory_order_acquire);
 }
 
 inline uint64_t mesh_peer_version (const spot_mesh_peer_state_t *state_)
@@ -239,43 +218,41 @@ inline void reset_mesh_pub_hwm_state (spot_mesh_peer_state_t *state_)
 
 struct spot_data_plane_pending_t
 {
-    static bool queue_has_room (size_t current_bytes_,
-                                size_t hard_limit_bytes_,
-                                size_t message_bytes_);
+    static bool
+    queue_has_room (size_t current_bytes_, size_t hard_limit_bytes_, size_t message_bytes_);
     static int copy_msg_parts_to_owned (const spot_owned_msg_parts_t &src_,
                                         spot_owned_msg_parts_t *dst_);
     static int resolve_fanout_hwm (spot_runtime_t *runtime_);
-    static void release_local_pending_ref (
-      spot_data_plane_runtime_state_t *state_, uint64_t message_id_);
-    static void drop_local_target_state (
-      spot_data_plane_runtime_state_t *state_, uint64_t attachment_id_);
-    static void release_mesh_pending_ref (
-      spot_data_plane_runtime_state_t *state_, uint64_t message_id_);
+    static void release_local_pending_ref (spot_data_plane_runtime_state_t *state_,
+                                           uint64_t message_id_);
+    static void drop_local_target_state (spot_data_plane_runtime_state_t *state_,
+                                         uint64_t attachment_id_);
+    static void release_mesh_pending_ref (spot_data_plane_runtime_state_t *state_,
+                                          uint64_t message_id_);
     static void close_remote_target_socket (spot_runtime_t *runtime_,
                                             const std::string &route_endpoint_,
                                             socket_base_t *&socket_);
     static void drop_remote_target_state (spot_runtime_t *runtime_,
                                           spot_data_plane_runtime_state_t *state_,
                                           const std::string &endpoint_);
-    static bool enqueue_local_target_message (
-      spot_data_plane_runtime_state_t *state_,
-      spot_data_plane_runtime_state_t::local_target_state_t *target_,
-      const std::string &topic_,
-      const spot_owned_msg_parts_t &parts_,
-      uint64_t *message_id_inout_,
-      size_t precomputed_encoded_bytes_ = 0);
-    static bool enqueue_mesh_pending (
-      spot_data_plane_runtime_state_t *state_,
-      spot_data_plane_runtime_state_t::remote_target_state_t *target_,
-      const std::string &topic_,
-      const spot_owned_msg_parts_t &parts_,
-      uint64_t *message_id_inout_);
-    static bool enqueue_mesh_broadcast_pending (
-      spot_data_plane_runtime_state_t *state_,
-      const std::string &topic_,
-      const spot_owned_msg_parts_t &parts_,
-      uint64_t *message_id_inout_,
-      size_t precomputed_encoded_bytes_ = 0);
+    static bool
+    enqueue_local_target_message (spot_data_plane_runtime_state_t *state_,
+                                  spot_data_plane_runtime_state_t::local_target_state_t *target_,
+                                  const std::string &topic_,
+                                  const spot_owned_msg_parts_t &parts_,
+                                  uint64_t *message_id_inout_,
+                                  size_t precomputed_encoded_bytes_ = 0);
+    static bool
+    enqueue_mesh_pending (spot_data_plane_runtime_state_t *state_,
+                          spot_data_plane_runtime_state_t::remote_target_state_t *target_,
+                          const std::string &topic_,
+                          const spot_owned_msg_parts_t &parts_,
+                          uint64_t *message_id_inout_);
+    static bool enqueue_mesh_broadcast_pending (spot_data_plane_runtime_state_t *state_,
+                                                const std::string &topic_,
+                                                const spot_owned_msg_parts_t &parts_,
+                                                uint64_t *message_id_inout_,
+                                                size_t precomputed_encoded_bytes_ = 0);
     static bool stage_publish_message (
       std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> *queue_,
       const std::string &topic_,
@@ -286,51 +263,45 @@ struct spot_data_plane_pending_t
 
 struct spot_data_plane_protocol_t
 {
-    static int recv_ascii_command (socket_base_t *socket_,
-                                   std::vector<std::string> *frames_);
+    static int recv_ascii_command (socket_base_t *socket_, std::vector<std::string> *frames_);
     static int send_subscription_update (socket_base_t *socket_,
                                          const std::string &raw_filter_,
                                          bool subscribe_);
     static int send_errno_reply (socket_base_t *socket_, int error_);
     static int send_ok_reply (socket_base_t *socket_);
-    static int recv_and_process_ctrl_messages (
-      socket_base_t *ctrl_sub_,
-      spot_node_t *node_,
-      spot_data_plane_protocol_state_t *state_);
-    static int recv_and_dispatch_mesh_xsub (
-      socket_base_t *mesh_xsub_,
-      socket_base_t *peer_ctrl_pub_,
-      spot_runtime_t *runtime_,
-      spot_data_plane_runtime_state_t *runtime_state_,
-      spot_node_t *node_,
-      spot_data_plane_protocol_state_t *state_);
-    static int handle_ctrl_command (
-      socket_base_t *ctrl_,
-      spot_node_t *node_,
-      spot_runtime_t *runtime_,
-      socket_poller_t *poller_,
-      socket_base_t *mesh_pub_,
-      socket_base_t *mesh_xsub_,
-      socket_base_t *peer_ctrl_pub_,
-      socket_base_t *peer_ctrl_sub_,
-      const std::vector<std::string> &frames_,
-      spot_data_plane_protocol_state_t *state_,
-      bool *running_out_);
+    static int recv_and_process_ctrl_messages (socket_base_t *ctrl_sub_,
+                                               spot_node_t *node_,
+                                               spot_data_plane_protocol_state_t *state_);
+    static int recv_and_dispatch_mesh_xsub (socket_base_t *mesh_xsub_,
+                                            socket_base_t *peer_ctrl_pub_,
+                                            spot_runtime_t *runtime_,
+                                            spot_data_plane_runtime_state_t *runtime_state_,
+                                            spot_node_t *node_,
+                                            spot_data_plane_protocol_state_t *state_);
+    static int handle_ctrl_command (socket_base_t *ctrl_,
+                                    spot_node_t *node_,
+                                    spot_runtime_t *runtime_,
+                                    socket_poller_t *poller_,
+                                    socket_base_t *mesh_pub_,
+                                    socket_base_t *mesh_xsub_,
+                                    socket_base_t *peer_ctrl_pub_,
+                                    socket_base_t *peer_ctrl_sub_,
+                                    const std::vector<std::string> &frames_,
+                                    spot_data_plane_protocol_state_t *state_,
+                                    bool *running_out_);
     static int publish_bootstrap_descriptor (socket_base_t *mesh_pub_,
                                              spot_node_t *node_,
                                              spot_runtime_t *runtime_);
-    static bool should_publish_bootstrap_descriptor (
-      const spot_runtime_t *runtime_,
-      bool bootstrap_ready_,
-      uint64_t last_published_peer_version_);
-    static uint64_t resolve_bootstrap_broadcast_interval_ms (
-      const spot_runtime_t *runtime_,
-      bool bootstrap_ready_);
-    static void sync_mesh_connected_endpoint (
-      spot_runtime_t *runtime_, const zlink_monitor_event_t &raw_);
+    static bool should_publish_bootstrap_descriptor (const spot_runtime_t *runtime_,
+                                                     bool bootstrap_ready_,
+                                                     uint64_t last_published_peer_version_);
+    static uint64_t resolve_bootstrap_broadcast_interval_ms (const spot_runtime_t *runtime_,
+                                                             bool bootstrap_ready_);
+    static void sync_mesh_connected_endpoint (spot_runtime_t *runtime_,
+                                              const zlink_monitor_event_t &raw_);
     static void clear_mesh_connected_endpoints (spot_runtime_t *runtime_);
-    static void clear_snapshot_sources (
-      spot_node_t *node_, spot_data_plane_protocol_state_t *state_);
+    static void clear_snapshot_sources (spot_node_t *node_,
+                                        spot_data_plane_protocol_state_t *state_);
 };
 
 struct spot_data_plane_forwarder_t
@@ -369,12 +340,10 @@ struct spot_data_plane_forwarder_t
                                         size_t part_count_,
                                         zlink_send_flags_t flags_,
                                         int sndtimeo_ms_);
-    static int drain_publish_ingress_queue (
-      spot_runtime_t *runtime_,
-      spot_data_plane_runtime_state_t *state_);
-    static int drain_pub_ingress_socket (
-      spot_runtime_t *runtime_,
-      spot_data_plane_runtime_state_t *state_);
+    static int drain_publish_ingress_queue (spot_runtime_t *runtime_,
+                                            spot_data_plane_runtime_state_t *state_);
+    static int drain_pub_ingress_socket (spot_runtime_t *runtime_,
+                                         spot_data_plane_runtime_state_t *state_);
     static int flush_local_fanout_pending (spot_runtime_t *runtime_,
                                            spot_data_plane_runtime_state_t *state_,
                                            socket_base_t *relay_socket_ = NULL);

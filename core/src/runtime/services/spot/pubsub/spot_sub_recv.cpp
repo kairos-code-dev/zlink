@@ -21,9 +21,7 @@ static bool may_be_ready_probe_topic (const char *topic_, size_t topic_len_)
     static const char spot_ready_probe_prefix[] = "__zlink.ready__/";
 
     return topic_ && topic_len_ >= sizeof (spot_ready_probe_prefix) - 1
-           && memcmp (topic_, spot_ready_probe_prefix,
-                      sizeof (spot_ready_probe_prefix) - 1)
-                == 0;
+           && memcmp (topic_, spot_ready_probe_prefix, sizeof (spot_ready_probe_prefix) - 1) == 0;
 }
 
 static bool is_ready_probe_message (const char *topic_,
@@ -33,8 +31,7 @@ static bool is_ready_probe_message (const char *topic_,
                                     std::string *raw_filter_out_,
                                     std::string *peer_endpoint_out_)
 {
-    static const char spot_ready_probe_marker[] =
-      "\x00zlink.ready.probe.v1\x00";
+    static const char spot_ready_probe_marker[] = "\x00zlink.ready.probe.v1\x00";
 
     if (!topic_ || topic_len_ == 0 || !parts_ || part_count_ != 2)
         return false;
@@ -53,17 +50,15 @@ static bool is_ready_probe_message (const char *topic_,
     if (raw_filter_out_)
         raw_filter_out_->assign (topic_, topic_len_);
     if (peer_endpoint_out_) {
-        peer_endpoint_out_->assign (
-          static_cast<const char *> (zlink_msg_data (&parts_[1])),
-          zlink_msg_size (&parts_[1]));
+        peer_endpoint_out_->assign (static_cast<const char *> (zlink_msg_data (&parts_[1])),
+                                    zlink_msg_size (&parts_[1]));
     }
     return true;
 }
 
 }
 
-int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
-                                    void *userdata_)
+int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_, void *userdata_)
 {
     socket_base_t *socket = this->socket ();
     if (!socket) {
@@ -79,8 +74,7 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
     {
         scoped_lock_t lock (_sync);
         if (_handler_state.load (std::memory_order_acquire) == handler_active) {
-            const unsigned int next_binding =
-              (_direct_handler_binding_index + 1) % 2;
+            const unsigned int next_binding = (_direct_handler_binding_index + 1) % 2;
             _direct_handler_bindings[next_binding].handler = handler_;
             _direct_handler_bindings[next_binding].userdata = userdata_;
             _active_direct_handler.store (&_direct_handler_bindings[next_binding],
@@ -95,8 +89,7 @@ int spot_sub_t::set_direct_handler (spot_sub_direct_handler_fn handler_,
         _direct_handler_bindings[0].handler = handler_;
         _direct_handler_bindings[0].userdata = userdata_;
         _direct_handler_binding_index = 0;
-        _active_direct_handler.store (&_direct_handler_bindings[0],
-                                      std::memory_order_release);
+        _active_direct_handler.store (&_direct_handler_bindings[0], std::memory_order_release);
         _handler_state.store (handler_active, std::memory_order_release);
     }
 
@@ -149,15 +142,13 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         int rc = 0;
         zlink_msg_t topic_frame;
         zlink_msg_init (&topic_frame);
-        zlink::socket_recv_source_rid_scope_t source_rid_scope (
-          socket, source_rid_out_ != NULL);
+        zlink::socket_recv_source_rid_scope_t source_rid_scope (socket, source_rid_out_ != NULL);
         rc = socket->recv (reinterpret_cast<msg_t *> (&topic_frame), flags_);
         if (rc != 0) {
             zlink_msg_close (&topic_frame);
             return -1;
         }
-        const char *topic_data =
-          static_cast<const char *> (zlink_msg_data (&topic_frame));
+        const char *topic_data = static_cast<const char *> (zlink_msg_data (&topic_frame));
         const size_t topic_size = zlink_msg_size (&topic_frame);
         zlink_msg_t *payload_parts = NULL;
         size_t payload_count = 0;
@@ -165,17 +156,15 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         if (zlink::msg_frame_has_more (topic_frame)) {
             zlink_msg_t first_payload_frame;
             zlink_msg_init (&first_payload_frame);
-            rc = zlink::recv_followup_msg_socket_wait (socket,
-                                                       &first_payload_frame, 0);
+            rc = zlink::recv_followup_msg_socket_wait (socket, &first_payload_frame, 0);
             if (rc != 0) {
                 zlink_msg_close (&first_payload_frame);
                 zlink_msg_close (&topic_frame);
                 return -1;
             }
 
-            if (zlink::export_payload_msg_sequence (
-                  socket, &first_payload_frame, &payload_parts, &payload_count,
-                  false)
+            if (zlink::export_payload_msg_sequence (socket, &first_payload_frame, &payload_parts,
+                                                    &payload_count, false)
                 != 0) {
                 zlink_msg_close (&topic_frame);
                 return -1;
@@ -185,12 +174,8 @@ int spot_sub_t::recv (zlink_routing_id_t *source_rid_out_,
         if (may_be_ready_probe_topic (topic_data, topic_size)) {
             std::string raw_filter;
             std::string peer_endpoint;
-            if (is_ready_probe_message (topic_data,
-                                        topic_size,
-                                        payload_parts,
-                                        payload_count,
-                                        &raw_filter,
-                                        &peer_endpoint)) {
+            if (is_ready_probe_message (topic_data, topic_size, payload_parts, payload_count,
+                                        &raw_filter, &peer_endpoint)) {
                 zlink::recv_tls_view::abort ();
                 zlink_msg_close (&topic_frame);
                 handle_ready_probe (raw_filter, peer_endpoint);
@@ -249,40 +234,35 @@ void spot_sub_t::dispatch_from_io (const zlink_routing_id_t *source_rid_,
     if (may_be_ready_probe_topic (topic_, topic_len_)) {
         std::string raw_filter;
         std::string peer_endpoint;
-        if (is_ready_probe_message (topic_, topic_len_, parts_, part_count_,
-                                    &raw_filter, &peer_endpoint)) {
+        if (is_ready_probe_message (topic_, topic_len_, parts_, part_count_, &raw_filter,
+                                    &peer_endpoint)) {
             self->handle_ready_probe (raw_filter, peer_endpoint);
             zlink_multipart_close (parts_, part_count_);
             return;
         }
     }
 
-    self->dispatch_direct_message (source_rid_, topic_, topic_len_, parts_,
-                                   part_count_);
+    self->dispatch_direct_message (source_rid_, topic_, topic_len_, parts_, part_count_);
 }
 
-void spot_sub_t::dispatch_direct_message (
-  const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_)
+void spot_sub_t::dispatch_direct_message (const zlink_routing_id_t *source_rid_,
+                                          const char *topic_,
+                                          size_t topic_len_,
+                                          zlink_msg_t *parts_,
+                                          size_t part_count_)
 {
-    direct_handler_binding_t *binding =
-      _active_direct_handler.load (std::memory_order_acquire);
-    if (_handler_state.load (std::memory_order_acquire) != handler_active
-        || !binding || !binding->handler) {
+    direct_handler_binding_t *binding = _active_direct_handler.load (std::memory_order_acquire);
+    if (_handler_state.load (std::memory_order_acquire) != handler_active || !binding
+        || !binding->handler) {
         zlink_multipart_close (parts_, part_count_);
         return;
     }
 
     _callback_inflight.add (1);
-    binding->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
-                      binding->userdata);
+    binding->handler (source_rid_, topic_, topic_len_, parts_, part_count_, binding->userdata);
 
     const bool callbacks_remaining = _callback_inflight.sub (1);
-    if (!callbacks_remaining
-        && _handler_state.load (std::memory_order_acquire) != handler_active) {
+    if (!callbacks_remaining && _handler_state.load (std::memory_order_acquire) != handler_active) {
         scoped_lock_t lock (_sync);
         _callback_cv.broadcast ();
     }

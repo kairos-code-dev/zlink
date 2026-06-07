@@ -31,18 +31,15 @@ static void spot_sub_diag_log (const char *stage_)
     if (!fp)
         return;
 
-    fprintf (fp,
-             "ts=%llu pid=%ld stage=%s\n",
+    fprintf (fp, "ts=%llu pid=%ld stage=%s\n",
              static_cast<unsigned long long> (zlink::clock_t ().now_ms ()),
-             static_cast<long> (getpid ()),
-             stage_ ? stage_ : "?");
+             static_cast<long> (getpid ()), stage_ ? stage_ : "?");
     fclose (fp);
 }
 
 }
 
-int spot_sub_t::destroy_internal (bool allow_embedded_default_,
-                                  bool notify_node_)
+int spot_sub_t::destroy_internal (bool allow_embedded_default_, bool notify_node_)
 {
     spot_sub_diag_log ("destroy.begin");
     if (_node_owned_default && !allow_embedded_default_) {
@@ -54,7 +51,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
 
     socket_base_t *socket = this->socket ();
     int first_error = 0;
-    std::vector<std::pair<std::string, std::string> > ready_ack_updates;
+    std::vector<std::pair<std::string, std::string>> ready_ack_updates;
     std::vector<std::string> topics;
     std::vector<std::string> patterns;
     bool had_filters = false;
@@ -70,19 +67,18 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     bool has_handler = false;
     {
         scoped_lock_t lock (_sync);
-        has_handler = _handler_state.load (std::memory_order_acquire)
-                      != handler_none;
+        has_handler = _handler_state.load (std::memory_order_acquire) != handler_none;
         if (has_handler)
             _handler_state.store (handler_clearing, std::memory_order_release);
     }
 
     if (socket) {
         for (size_t i = 0; i < topics.size (); ++i)
-            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE,
-                                       topics[i].c_str (), topics[i].size ());
+            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, topics[i].c_str (),
+                                       topics[i].size ());
         for (size_t i = 0; i < patterns.size (); ++i)
-            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE,
-                                       patterns[i].c_str (), patterns[i].size ());
+            (void) socket->setsockopt (ZLINK_INTERNAL_OPT_UNSUBSCRIBE, patterns[i].c_str (),
+                                       patterns[i].size ());
     }
     if (has_handler && socket && socket->sub_dispatch_active ())
         spot_sub_diag_log ("destroy.before-sub-dispatch-stop");
@@ -105,8 +101,7 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         const std::string ack_source_id = ready_ack_source_id ();
         for (size_t i = 0; i < ready_ack_updates.size (); ++i) {
             (void) _node->send_ready_ack_update (ready_ack_updates[i].second,
-                                                 ready_ack_updates[i].first,
-                                                 ack_source_id, false);
+                                                 ready_ack_updates[i].first, ack_source_id, false);
         }
     }
 
@@ -117,21 +112,18 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
     if (notify_node_ && _node && !node_shutting_down) {
         for (size_t i = 0; i < topics.size (); ++i) {
             if (_node->update_aggregate_subscription (topics[i], false, false))
-                preserve_first_error (
-                  _node->send_subscription_update (topics[i], false),
-                  &first_error);
+                preserve_first_error (_node->send_subscription_update (topics[i], false),
+                                      &first_error);
         }
         for (size_t i = 0; i < patterns.size (); ++i) {
             if (_node->update_aggregate_subscription (patterns[i], true, false))
-                preserve_first_error (
-                  _node->send_subscription_update (patterns[i], false),
-                  &first_error);
+                preserve_first_error (_node->send_subscription_update (patterns[i], false),
+                                      &first_error);
         }
     }
     if (notify_node_ && _node && had_filters && !node_shutting_down) {
         _node->schedule_subscription_replay ();
-        preserve_first_error (_node->replay_subscriptions_if_active_peers (),
-                              &first_error);
+        preserve_first_error (_node->replay_subscriptions_if_active_peers (), &first_error);
     }
     {
         scoped_lock_t lock (_sync);
@@ -147,11 +139,10 @@ int spot_sub_t::destroy_internal (bool allow_embedded_default_,
         if (_node)
             spot_sub_diag_log ("destroy.before-destroy-attachment");
         if (socket && _node)
-            preserve_first_error (
-              !node_shutting_down
-                ? _node->destroy_attachment (_attachment_id)
-                : _node->destroy_attachment_async (_attachment_id),
-              &first_error);
+            preserve_first_error (!node_shutting_down
+                                    ? _node->destroy_attachment (_attachment_id)
+                                    : _node->destroy_attachment_async (_attachment_id),
+                                  &first_error);
         if (socket && _node)
             spot_sub_diag_log ("destroy.after-destroy-attachment");
         else {

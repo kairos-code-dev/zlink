@@ -13,19 +13,14 @@
 
 namespace
 {
-void pipe_debug_log (const zlink::pipe_t *pipe_,
-                     const char *phase_,
-                     int state_,
-                     bool delay_,
-                     const char *identifier_)
+void pipe_debug_log (
+  const zlink::pipe_t *pipe_, const char *phase_, int state_, bool delay_, const char *identifier_)
 {
     if (!zlink::debug_env_enabled ("ZLINK_DEBUG_PIPE_TERM"))
         return;
 
-    fprintf (stderr,
-             "[pipe-term] pipe=%p phase=%s state=%d delay=%d endpoint=%s\n",
-             static_cast<const void *> (pipe_), phase_ ? phase_ : "?",
-             state_, delay_ ? 1 : 0,
+    fprintf (stderr, "[pipe-term] pipe=%p phase=%s state=%d delay=%d endpoint=%s\n",
+             static_cast<const void *> (pipe_), phase_ ? phase_ : "?", state_, delay_ ? 1 : 0,
              identifier_ && *identifier_ ? identifier_ : "<none>");
     fflush (stderr);
 }
@@ -36,9 +31,9 @@ void pipe_debug_log (const zlink::pipe_t *pipe_,
 #include "core/ypipe_conflate.hpp"
 
 int zlink::pipepair (object_t *parents_[2],
-                   pipe_t *pipes_[2],
-                   const int hwms_[2],
-                   const bool conflate_[2])
+                     pipe_t *pipes_[2],
+                     const int hwms_[2],
+                     const bool conflate_[2])
 {
     //   Creates two pipe objects. These objects are connected by two ypipes,
     //   each to pass messages in one direction.
@@ -60,11 +55,11 @@ int zlink::pipepair (object_t *parents_[2],
         upipe2 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe2);
 
-    pipes_[0] = new (std::nothrow)
-      pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0]);
+    pipes_[0] =
+      new (std::nothrow) pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0]);
     alloc_assert (pipes_[0]);
-    pipes_[1] = new (std::nothrow)
-      pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1]);
+    pipes_[1] =
+      new (std::nothrow) pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1]);
     alloc_assert (pipes_[1]);
 
     pipes_[0]->set_peer (pipes_[1]);
@@ -88,8 +83,7 @@ void zlink::send_routing_id (pipe_t *pipe_, const options_t &options_)
 void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
 {
     zlink::msg_t hello;
-    const int rc =
-      hello.init_buffer (&options_.hello_msg[0], options_.hello_msg.size ());
+    const int rc = hello.init_buffer (&options_.hello_msg[0], options_.hello_msg.size ());
     errno_assert (rc == 0);
     const bool written = pipe_->write (&hello);
     zlink_assert (written);
@@ -144,12 +138,8 @@ void zlink::pipe_stream_packet_state_t::reset ()
     memset (prefix, 0, sizeof (prefix));
 }
 
-zlink::pipe_t::pipe_t (object_t *parent_,
-                     upipe_t *inpipe_,
-                     upipe_t *outpipe_,
-                     int inhwm_,
-                     int outhwm_,
-                     bool conflate_) :
+zlink::pipe_t::pipe_t (
+  object_t *parent_, upipe_t *inpipe_, upipe_t *outpipe_, int inhwm_, int outhwm_, bool conflate_) :
     object_t (parent_),
     _in_pipe (inpipe_),
     _out_pipe (outpipe_),
@@ -202,8 +192,7 @@ void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
     _sink = sink_;
 }
 
-void zlink::pipe_t::set_server_socket_routing_id (
-  uint32_t server_socket_routing_id_)
+void zlink::pipe_t::set_server_socket_routing_id (uint32_t server_socket_routing_id_)
 {
     _server_socket_routing_id = server_socket_routing_id_;
 }
@@ -213,8 +202,7 @@ uint32_t zlink::pipe_t::get_server_socket_routing_id () const
     return _server_socket_routing_id;
 }
 
-void zlink::pipe_t::set_router_socket_routing_id (
-  const blob_t &router_socket_routing_id_)
+void zlink::pipe_t::set_router_socket_routing_id (const blob_t &router_socket_routing_id_)
 {
     _router_socket_routing_id.set_deep_copy (router_socket_routing_id_);
 }
@@ -251,8 +239,7 @@ uint64_t zlink::pipe_t::get_msgs_read () const
 
 uint64_t zlink::pipe_t::get_snd_pending_msgs () const
 {
-    scoped_optional_fast_lock_t lock (
-      const_cast<fast_mutex_t *> (&_out_sync));
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
     if (_msgs_written <= _peers_msgs_read)
         return 0;
     return _msgs_written - _peers_msgs_read;
@@ -315,14 +302,12 @@ void zlink::pipe_t::reset_connection_ready_event_emitted ()
     _connection_ready_event_emitted.store (false, std::memory_order_release);
 }
 
-zlink::pipe_t::stream_packet_state_t &
-zlink::pipe_t::stream_packet_state ()
+zlink::pipe_t::stream_packet_state_t &zlink::pipe_t::stream_packet_state ()
 {
     return _stream_packet_state;
 }
 
-const zlink::pipe_t::stream_packet_state_t &
-zlink::pipe_t::stream_packet_state () const
+const zlink::pipe_t::stream_packet_state_t &zlink::pipe_t::stream_packet_state () const
 {
     return _stream_packet_state;
 }
@@ -521,8 +506,7 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     return true;
 }
 
-bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (
-  const msg_t *msg_)
+bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (const msg_t *msg_)
 {
     scoped_fast_lock_t lock (_out_sync);
     if (unlikely (!_out_active || _state != active))
@@ -541,8 +525,7 @@ bool zlink::pipe_t::write_single_message_and_flush_no_recursive_hwm_check (
 
 void zlink::pipe_t::rollback () const
 {
-    scoped_optional_fast_lock_t lock (
-      const_cast<fast_mutex_t *> (&_out_sync));
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
     rollback_unlocked ();
 }
 
@@ -628,13 +611,11 @@ void zlink::pipe_t::process_pipe_term ()
     //  service/socket teardown we can observe a duplicate term command after
     //  we've already transitioned into a peer-terminated state; treat that as
     //  an idempotent no-op instead of asserting.
-    if (_state == waiting_for_delimiter || _state == term_ack_sent
-        || _state == term_req_sent2) {
+    if (_state == waiting_for_delimiter || _state == term_ack_sent || _state == term_req_sent2) {
         return;
     }
 
-    zlink_assert (_state == active || _state == delimiter_received
-                  || _state == term_req_sent1);
+    zlink_assert (_state == active || _state == delimiter_received || _state == term_req_sent1);
 
     //  This is the simple case of peer-induced termination. If there are no
     //  more pending messages to read, or if the pipe was configured to drop
@@ -645,8 +626,7 @@ void zlink::pipe_t::process_pipe_term ()
         bool pending_to_read = _in_pipe && _in_pipe->check_read ();
         if (pending_to_read && _in_pipe->probe (is_delimiter)) {
             msg_t msg;
-            pending_to_read =
-              _in_pipe->read (&msg) ? false : _in_pipe && _in_pipe->check_read ();
+            pending_to_read = _in_pipe->read (&msg) ? false : _in_pipe && _in_pipe->check_read ();
         }
 
         if (_delay && pending_to_read)
@@ -745,8 +725,7 @@ void zlink::pipe_t::set_nodelay ()
 void zlink::pipe_t::terminate (bool delay_)
 {
     scoped_fast_lock_t lock (_out_sync);
-    pipe_debug_log (this, "terminate-begin", _state, delay_,
-                    _endpoint_pair.identifier ().c_str ());
+    pipe_debug_log (this, "terminate-begin", _state, delay_, _endpoint_pair.identifier ().c_str ());
 
     //  Overload the value specified at pipe creation.
     _delay = delay_;
@@ -804,8 +783,7 @@ void zlink::pipe_t::terminate (bool delay_)
         _out_pipe->write (msg, false);
         flush_unlocked ();
     }
-    pipe_debug_log (this, "terminate-end", _state, _delay,
-                    _endpoint_pair.identifier ().c_str ());
+    pipe_debug_log (this, "terminate-end", _state, _delay, _endpoint_pair.identifier ().c_str ());
 }
 
 bool zlink::pipe_t::is_delimiter (const msg_t &msg_)
@@ -877,10 +855,8 @@ void zlink::pipe_t::hiccup ()
     //  responsible for deallocating it.
 
     //  Create new inpipe.
-    _in_pipe =
-      _conflate
-        ? static_cast<upipe_t *> (new (std::nothrow) ypipe_conflate_t<msg_t> ())
-        : new (std::nothrow) ypipe_t<msg_t, message_pipe_granularity> ();
+    _in_pipe = _conflate ? static_cast<upipe_t *> (new (std::nothrow) ypipe_conflate_t<msg_t> ())
+                         : new (std::nothrow) ypipe_t<msg_t, message_pipe_granularity> ();
 
     alloc_assert (_in_pipe);
     _in_active = true;
@@ -922,15 +898,13 @@ void zlink::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)
 
 bool zlink::pipe_t::check_hwm () const
 {
-    scoped_optional_fast_lock_t lock (
-      const_cast<fast_mutex_t *> (&_out_sync));
+    scoped_optional_fast_lock_t lock (const_cast<fast_mutex_t *> (&_out_sync));
     return check_hwm_unlocked ();
 }
 
 bool zlink::pipe_t::check_hwm_unlocked () const
 {
-    const bool full =
-      _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
+    const bool full = _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
     return !full;
 }
 
@@ -976,12 +950,10 @@ void zlink::pipe_t::send_disconnect_msg ()
     }
 }
 
-void zlink::pipe_t::set_disconnect_msg (
-  const std::vector<unsigned char> &disconnect_)
+void zlink::pipe_t::set_disconnect_msg (const std::vector<unsigned char> &disconnect_)
 {
     _disconnect_msg.close ();
-    const int rc =
-      _disconnect_msg.init_buffer (&disconnect_[0], disconnect_.size ());
+    const int rc = _disconnect_msg.init_buffer (&disconnect_[0], disconnect_.size ());
     errno_assert (rc == 0);
 }
 

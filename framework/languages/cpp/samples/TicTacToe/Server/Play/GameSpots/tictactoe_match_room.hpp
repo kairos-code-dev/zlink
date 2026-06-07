@@ -15,7 +15,10 @@ namespace zlink::samples::tictactoe
 class tictactoe_match_room_t
 {
   public:
-    explicit tictactoe_match_room_t (std::string match_id) : _state{.match_id = std::move (match_id)} {}
+    explicit tictactoe_match_room_t (std::string match_id) :
+        _state{.match_id = std::move (match_id)}
+    {
+    }
 
     create_match_res_t create (const create_match_req_t &request)
     {
@@ -48,7 +51,8 @@ class tictactoe_match_room_t
         if (request.actor_id != _state.turn_actor_id) {
             throw std::runtime_error ("not actor turn");
         }
-        if (request.cell < 0 || request.cell >= 9 || _state.board[static_cast<std::size_t> (request.cell)] != '.') {
+        if (request.cell < 0 || request.cell >= 9
+            || _state.board[static_cast<std::size_t> (request.cell)] != '.') {
             throw std::runtime_error ("invalid move");
         }
 
@@ -63,7 +67,8 @@ class tictactoe_match_room_t
             _state.status = "ended";
             _state.draw = true;
         } else {
-            _state.turn_actor_id = request.actor_id == _state.x_actor_id ? _state.o_actor_id : _state.x_actor_id;
+            _state.turn_actor_id =
+              request.actor_id == _state.x_actor_id ? _state.o_actor_id : _state.x_actor_id;
         }
         return _state;
     }

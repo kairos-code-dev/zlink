@@ -37,7 +37,9 @@ enum class framework_error_kind_t
 class framework_exception_t : public std::exception
 {
   public:
-    framework_exception_t (framework_error_kind_t kind, std::string message, bool retriable = false) :
+    framework_exception_t (framework_error_kind_t kind,
+                           std::string message,
+                           bool retriable = false) :
         _kind (kind), _message (std::move (message)), _retriable (retriable)
     {
     }

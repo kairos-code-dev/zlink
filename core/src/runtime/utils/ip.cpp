@@ -118,15 +118,14 @@ void zlink::enable_ipv4_mapping (fd_t s_)
 {
     LIBZLINK_UNUSED (s_);
 
-#if defined IPV6_V6ONLY && !defined ZLINK_HAVE_OPENBSD                           \
-  && !defined ZLINK_HAVE_DRAGONFLY
+#if defined IPV6_V6ONLY && !defined ZLINK_HAVE_OPENBSD && !defined ZLINK_HAVE_DRAGONFLY
 #ifdef ZLINK_HAVE_WINDOWS
     DWORD flag = 0;
 #else
     int flag = 0;
 #endif
-    const int rc = setsockopt (s_, IPPROTO_IPV6, IPV6_V6ONLY,
-                               reinterpret_cast<char *> (&flag), sizeof (flag));
+    const int rc =
+      setsockopt (s_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char *> (&flag), sizeof (flag));
 #ifdef ZLINK_HAVE_WINDOWS
     wsa_assert (rc != SOCKET_ERROR);
 #else
@@ -139,15 +138,13 @@ int zlink::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
 {
     struct sockaddr_storage ss;
 
-    const zlink_socklen_t addrlen =
-      get_socket_address (sockfd_, socket_end_remote, &ss);
+    const zlink_socklen_t addrlen = get_socket_address (sockfd_, socket_end_remote, &ss);
 
     if (addrlen == 0) {
 #ifdef ZLINK_HAVE_WINDOWS
         const int last_error = WSAGetLastError ();
         wsa_assert (last_error != WSANOTINITIALISED && last_error != WSAEFAULT
-                    && last_error != WSAEINPROGRESS
-                    && last_error != WSAENOTSOCK);
+                    && last_error != WSAEINPROGRESS && last_error != WSAENOTSOCK);
 #elif !defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE
         errno_assert (errno != EBADF && errno != EFAULT && errno != ENOTSOCK);
 #else
@@ -157,9 +154,8 @@ int zlink::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
     }
 
     char host[NI_MAXHOST];
-    const int rc =
-      getnameinfo (reinterpret_cast<struct sockaddr *> (&ss), addrlen, host,
-                   sizeof host, NULL, 0, NI_NUMERICHOST);
+    const int rc = getnameinfo (reinterpret_cast<struct sockaddr *> (&ss), addrlen, host,
+                                sizeof host, NULL, 0, NI_NUMERICHOST);
     if (rc != 0)
         return 0;
 
@@ -177,8 +173,8 @@ int zlink::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
 
 void zlink::set_ip_type_of_service (fd_t s_, int iptos_)
 {
-    int rc = setsockopt (s_, IPPROTO_IP, IP_TOS,
-                         reinterpret_cast<char *> (&iptos_), sizeof (iptos_));
+    int rc =
+      setsockopt (s_, IPPROTO_IP, IP_TOS, reinterpret_cast<char *> (&iptos_), sizeof (iptos_));
 
 #ifdef ZLINK_HAVE_WINDOWS
     wsa_assert (rc != SOCKET_ERROR);
@@ -188,8 +184,8 @@ void zlink::set_ip_type_of_service (fd_t s_, int iptos_)
 
     //  Windows and Hurd do not support IPV6_TCLASS
 #if !defined(ZLINK_HAVE_WINDOWS) && defined(IPV6_TCLASS)
-    rc = setsockopt (s_, IPPROTO_IPV6, IPV6_TCLASS,
-                     reinterpret_cast<char *> (&iptos_), sizeof (iptos_));
+    rc = setsockopt (s_, IPPROTO_IPV6, IPV6_TCLASS, reinterpret_cast<char *> (&iptos_),
+                     sizeof (iptos_));
 
     //  If IPv6 is not enabled ENOPROTOOPT will be returned on Linux and
     //  EINVAL on OSX
@@ -202,9 +198,8 @@ void zlink::set_ip_type_of_service (fd_t s_, int iptos_)
 void zlink::set_socket_priority (fd_t s_, int priority_)
 {
 #ifdef ZLINK_HAVE_SO_PRIORITY
-    int rc =
-      setsockopt (s_, SOL_SOCKET, SO_PRIORITY,
-                  reinterpret_cast<char *> (&priority_), sizeof (priority_));
+    int rc = setsockopt (s_, SOL_SOCKET, SO_PRIORITY, reinterpret_cast<char *> (&priority_),
+                         sizeof (priority_));
     errno_assert (rc == 0);
 #else
     LIBZLINK_UNUSED (s_);
@@ -235,8 +230,8 @@ int zlink::set_nosigpipe (fd_t s_)
 int zlink::bind_to_device (fd_t s_, const std::string &bound_device_)
 {
 #ifdef ZLINK_HAVE_SO_BINDTODEVICE
-    int rc = setsockopt (s_, SOL_SOCKET, SO_BINDTODEVICE,
-                         bound_device_.c_str (), bound_device_.length ());
+    int rc =
+      setsockopt (s_, SOL_SOCKET, SO_BINDTODEVICE, bound_device_.c_str (), bound_device_.length ());
     if (rc != 0) {
         assert_success_or_recoverable (s_, rc);
         return -1;
@@ -261,8 +256,7 @@ bool zlink::initialize_network ()
     if (ok != TRUE) {
         //  Invalid parameters don't set pgm_error_t.
         zlink_assert (pgm_error != NULL);
-        if (pgm_error->domain == PGM_ERROR_DOMAIN_TIME
-            && pgm_error->code == PGM_ERROR_FAILED) {
+        if (pgm_error->domain == PGM_ERROR_DOMAIN_TIME && pgm_error->code == PGM_ERROR_FAILED) {
             pgm_error_free (pgm_error);
             errno = EINVAL;
             return false;
@@ -281,8 +275,7 @@ bool zlink::initialize_network ()
     WSADATA wsa_data;
     const int rc = WSAStartup (version_requested, &wsa_data);
     zlink_assert (rc == 0);
-    zlink_assert (LOBYTE (wsa_data.wVersion) == 2
-                && HIBYTE (wsa_data.wVersion) == 2);
+    zlink_assert (LOBYTE (wsa_data.wVersion) == 2 && HIBYTE (wsa_data.wVersion) == 2);
 #endif
 
     return true;
@@ -307,9 +300,8 @@ void zlink::shutdown_network ()
 static void tune_socket (const SOCKET socket_)
 {
     BOOL tcp_nodelay = 1;
-    const int rc =
-      setsockopt (socket_, IPPROTO_TCP, TCP_NODELAY,
-                  reinterpret_cast<char *> (&tcp_nodelay), sizeof tcp_nodelay);
+    const int rc = setsockopt (socket_, IPPROTO_TCP, TCP_NODELAY,
+                               reinterpret_cast<char *> (&tcp_nodelay), sizeof tcp_nodelay);
     wsa_assert (rc != SOCKET_ERROR);
 
     zlink::tcp_tune_loopback_fast_path (socket_);
@@ -347,11 +339,9 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
 
     if (zlink::signaler_port == event_signaler_port) {
 #if !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
-        sync =
-          CreateEventW (&sa, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
+        sync = CreateEventW (&sa, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
 #else
-        sync =
-          CreateEventW (NULL, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
+        sync = CreateEventW (NULL, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
 #endif
         if (sync == NULL && GetLastError () == ERROR_ACCESS_DENIED)
             sync = OpenEventW (SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE,
@@ -361,11 +351,9 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
     } else if (zlink::signaler_port != 0) {
         wchar_t mutex_name[MAX_PATH];
 #ifdef __MINGW32__
-        _snwprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d",
-                    zlink::signaler_port);
+        _snwprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d", zlink::signaler_port);
 #else
-        swprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d",
-                  zlink::signaler_port);
+        swprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d", zlink::signaler_port);
 #endif
 
 #if !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
@@ -392,8 +380,7 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
     //  Set SO_REUSEADDR and TCP_NODELAY on listening socket.
     BOOL so_reuseaddr = 1;
     int rc = setsockopt (listener, SOL_SOCKET, SO_REUSEADDR,
-                         reinterpret_cast<char *> (&so_reuseaddr),
-                         sizeof so_reuseaddr);
+                         reinterpret_cast<char *> (&so_reuseaddr), sizeof so_reuseaddr);
     wsa_assert (rc != SOCKET_ERROR);
 
     tune_socket (listener);
@@ -416,14 +403,12 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
     }
 
     //  Bind listening socket to signaler port.
-    rc = bind (listener, reinterpret_cast<const struct sockaddr *> (&addr),
-               sizeof addr);
+    rc = bind (listener, reinterpret_cast<const struct sockaddr *> (&addr), sizeof addr);
 
     if (rc != SOCKET_ERROR && zlink::signaler_port == 0) {
         //  Retrieve ephemeral port number
         int addrlen = sizeof addr;
-        rc = getsockname (listener, reinterpret_cast<struct sockaddr *> (&addr),
-                          &addrlen);
+        rc = getsockname (listener, reinterpret_cast<struct sockaddr *> (&addr), &addrlen);
     }
 
     //  Listen for incoming connections.
@@ -433,8 +418,7 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
 
     //  Connect writer to the listener.
     if (rc != SOCKET_ERROR) {
-        rc = connect (*w_, reinterpret_cast<struct sockaddr *> (&addr),
-                      sizeof addr);
+        rc = connect (*w_, reinterpret_cast<struct sockaddr *> (&addr), sizeof addr);
     }
 
     //  Accept connection from writer.
@@ -448,10 +432,8 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
     //  Send/receive large chunk to work around TCP slow start
     //  This code is a workaround for #1608
     if (*r_ != INVALID_SOCKET) {
-        const size_t dummy_size =
-          1024 * 1024; //  1M to overload default receive buffer
-        unsigned char *dummy =
-          static_cast<unsigned char *> (malloc (dummy_size));
+        const size_t dummy_size = 1024 * 1024; //  1M to overload default receive buffer
+        unsigned char *dummy = static_cast<unsigned char *> (malloc (dummy_size));
         wsa_assert (dummy);
 
         int still_to_send = static_cast<int> (dummy_size);
@@ -459,17 +441,13 @@ static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
         while (still_to_send || still_to_recv) {
             int nbytes;
             if (still_to_send > 0) {
-                nbytes = ::send (
-                  *w_,
-                  reinterpret_cast<char *> (dummy + dummy_size - still_to_send),
-                  still_to_send, 0);
+                nbytes = ::send (*w_, reinterpret_cast<char *> (dummy + dummy_size - still_to_send),
+                                 still_to_send, 0);
                 wsa_assert (nbytes != SOCKET_ERROR);
                 still_to_send -= nbytes;
             }
-            nbytes = ::recv (
-              *r_,
-              reinterpret_cast<char *> (dummy + dummy_size - still_to_recv),
-              still_to_recv, 0);
+            nbytes = ::recv (*r_, reinterpret_cast<char *> (dummy + dummy_size - still_to_recv),
+                             still_to_recv, 0);
             wsa_assert (nbytes != SOCKET_ERROR);
             still_to_recv -= nbytes;
         }
@@ -565,8 +543,7 @@ int zlink::make_fdpair (fd_t *r_, fd_t *w_)
     }
 
     //  Bind the socket to the file path.
-    rc = bind (listener, const_cast<sockaddr *> (address.addr ()),
-               address.addrlen ());
+    rc = bind (listener, const_cast<sockaddr *> (address.addr ()), address.addrlen ());
     if (rc != 0) {
         errno = wsa_error_to_errno (WSAGetLastError ());
         goto error_closelistener;
@@ -582,8 +559,7 @@ int zlink::make_fdpair (fd_t *r_, fd_t *w_)
         goto error_closelistener;
     }
 
-    rc = getsockname (listener, reinterpret_cast<struct sockaddr *> (&lcladdr),
-                      &lcladdr_len);
+    rc = getsockname (listener, reinterpret_cast<struct sockaddr *> (&lcladdr), &lcladdr_len);
     wsa_assert (rc != -1);
 
     //  Create the client socket.
@@ -594,8 +570,7 @@ int zlink::make_fdpair (fd_t *r_, fd_t *w_)
     }
 
     //  Connect to the remote peer.
-    rc = ::connect (*w_, reinterpret_cast<const struct sockaddr *> (&lcladdr),
-                    lcladdr_len);
+    rc = ::connect (*w_, reinterpret_cast<const struct sockaddr *> (&lcladdr), lcladdr_len);
     if (rc == -1) {
         goto error_closeclient;
     }
@@ -718,8 +693,7 @@ try_tcpip:
     errno_assert (listener != -1);
 
     int on = 1;
-    int rc =
-      setsockopt (listener, IPPROTO_TCP, TCP_NODELAY, (char *) &on, sizeof on);
+    int rc = setsockopt (listener, IPPROTO_TCP, TCP_NODELAY, (char *) &on, sizeof on);
     errno_assert (rc != -1);
 
     rc = bind (listener, (struct sockaddr *) &lcladdr, sizeof lcladdr);
@@ -727,8 +701,7 @@ try_tcpip:
 
     socklen_t lcladdr_len = sizeof lcladdr;
 
-    rc = getsockname (listener, (struct sockaddr *) &lcladdr,
-                      (int *) &lcladdr_len);
+    rc = getsockname (listener, (struct sockaddr *) &lcladdr, (int *) &lcladdr_len);
     errno_assert (rc != -1);
 
     rc = listen (listener, 1);
@@ -777,14 +750,12 @@ try_tcpip:
 
 void zlink::make_socket_noninheritable (fd_t sock_)
 {
-#if defined ZLINK_HAVE_WINDOWS && !defined _WIN32_WCE                            \
-  && !defined ZLINK_HAVE_WINDOWS_UWP
+#if defined ZLINK_HAVE_WINDOWS && !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
     //  On Windows, preventing sockets to be inherited by child processes.
-    const BOOL brc = SetHandleInformation (reinterpret_cast<HANDLE> (sock_),
-                                           HANDLE_FLAG_INHERIT, 0);
+    const BOOL brc =
+      SetHandleInformation (reinterpret_cast<HANDLE> (sock_), HANDLE_FLAG_INHERIT, 0);
     win_assert (brc);
-#elif (!defined ZLINK_HAVE_SOCK_CLOEXEC || !defined HAVE_ACCEPT4)                \
-  && defined FD_CLOEXEC
+#elif (!defined ZLINK_HAVE_SOCK_CLOEXEC || !defined HAVE_ACCEPT4) && defined FD_CLOEXEC
     //  If there 's no SOCK_CLOEXEC, let's try the second best option.
     //  Race condition can cause socket not to be closed (if fork happens
     //  between accept and this point).
@@ -815,20 +786,17 @@ void zlink::assert_success_or_recoverable (zlink::fd_t s_, int rc_)
     socklen_t len = sizeof err;
 #endif
 
-    const int rc = getsockopt (s_, SOL_SOCKET, SO_ERROR,
-                               reinterpret_cast<char *> (&err), &len);
+    const int rc = getsockopt (s_, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *> (&err), &len);
 
     //  Assert if the error was caused by 0MQ bug.
     //  Networking problems are OK. No need to assert.
 #ifdef ZLINK_HAVE_WINDOWS
     zlink_assert (rc == 0);
     if (err != 0) {
-        wsa_assert (err == WSAECONNREFUSED || err == WSAECONNRESET
-                    || err == WSAECONNABORTED || err == WSAEINTR
-                    || err == WSAETIMEDOUT || err == WSAEHOSTUNREACH
-                    || err == WSAENETUNREACH || err == WSAENETDOWN
-                    || err == WSAENETRESET || err == WSAEACCES
-                    || err == WSAEINVAL || err == WSAEADDRINUSE);
+        wsa_assert (err == WSAECONNREFUSED || err == WSAECONNRESET || err == WSAECONNABORTED
+                    || err == WSAEINTR || err == WSAETIMEDOUT || err == WSAEHOSTUNREACH
+                    || err == WSAENETUNREACH || err == WSAENETDOWN || err == WSAENETRESET
+                    || err == WSAEACCES || err == WSAEINVAL || err == WSAEADDRINUSE);
     }
 #else
     //  Following code should handle both Berkeley-derived socket
@@ -837,11 +805,10 @@ void zlink::assert_success_or_recoverable (zlink::fd_t s_, int rc_)
         err = errno;
     if (err != 0) {
         errno = err;
-        errno_assert (errno == ECONNREFUSED || errno == ECONNRESET
-                      || errno == ECONNABORTED || errno == EINTR
-                      || errno == ETIMEDOUT || errno == EHOSTUNREACH
-                      || errno == ENETUNREACH || errno == ENETDOWN
-                      || errno == ENETRESET || errno == EINVAL);
+        errno_assert (errno == ECONNREFUSED || errno == ECONNRESET || errno == ECONNABORTED
+                      || errno == EINTR || errno == ETIMEDOUT || errno == EHOSTUNREACH
+                      || errno == ENETUNREACH || errno == ENETDOWN || errno == ENETRESET
+                      || errno == EINVAL);
     }
 #endif
 }
@@ -856,8 +823,7 @@ char *widechar_to_utf8 (const wchar_t *widestring)
     nch = WideCharToMultiByte (CP_UTF8, 0, widestring, -1, 0, 0, NULL, NULL);
     if (nch > 0) {
         utf8 = (char *) malloc ((nch + 1) * sizeof (char));
-        n = WideCharToMultiByte (CP_UTF8, 0, widestring, -1, utf8, nch, NULL,
-                                 NULL);
+        n = WideCharToMultiByte (CP_UTF8, 0, widestring, -1, utf8, nch, NULL, NULL);
         utf8[nch] = 0;
     }
     return utf8;
@@ -900,8 +866,7 @@ int zlink::create_ipc_wildcard_address (std::string &path_, std::string &file_)
         struct stat statbuf;
 
         // Confirm it is actually a directory before trying to use
-        if (tmpdir != 0 && ::stat (tmpdir, &statbuf) == 0
-            && S_ISDIR (statbuf.st_mode)) {
+        if (tmpdir != 0 && ::stat (tmpdir, &statbuf) == 0 && S_ISDIR (statbuf.st_mode)) {
             tmp_path.assign (tmpdir);
             if (*(tmp_path.rbegin ()) != '/') {
                 tmp_path.push_back ('/');

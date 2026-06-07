@@ -94,7 +94,9 @@ template <typename TCategory = void> class logger_t
         return detail::is_log_enabled (_state, static_cast<int> (level));
     }
 
-    void log (log_level_t level, std::string message, std::initializer_list<log_field_t> fields = {}) const
+    void log (log_level_t level,
+              std::string message,
+              std::initializer_list<log_field_t> fields = {}) const
     {
         detail::emit_log (_state, static_cast<int> (level), _category, std::move (message),
                           std::vector<log_field_t> (fields));

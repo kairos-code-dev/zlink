@@ -29,9 +29,9 @@ packet_t read_stream_packet (connector_state_t &state)
 {
     auto prefix = read_exact (state, 6);
     const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
-    const auto payload_size = (static_cast<std::size_t> (prefix[2]) << 24)
-                              | (static_cast<std::size_t> (prefix[3]) << 16)
-                              | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
+    const auto payload_size =
+      (static_cast<std::size_t> (prefix[2]) << 24) | (static_cast<std::size_t> (prefix[3]) << 16)
+      | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
     auto header_bytes = read_exact (state, header_size);
     auto payload_bytes = read_exact (state, payload_size);
     auto decoded = header_codec_t{}.decode (header_bytes);

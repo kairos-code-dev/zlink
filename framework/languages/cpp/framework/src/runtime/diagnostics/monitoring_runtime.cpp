@@ -18,9 +18,9 @@ bool is_blank (const std::string &value)
 void validate_source_name (const std::string &source_name, const char *kind)
 {
     if (is_blank (source_name)) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       std::string ("monitoring ") + kind
-                                                         + " source name must not be empty");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          std::string ("monitoring ") + kind + " source name must not be empty");
     }
 }
 
@@ -37,20 +37,23 @@ bool contains_source (const std::vector<std::string> &sources, const std::string
 }
 
 template <typename TSource>
-void ensure_unique_source (const std::vector<TSource> &sources, const std::string &source_name, const char *kind)
+void ensure_unique_source (const std::vector<TSource> &sources,
+                           const std::string &source_name,
+                           const char *kind)
 {
     if (contains_source (sources, source_name)) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       std::string ("duplicate monitoring ") + kind + " source");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          std::string ("duplicate monitoring ") + kind + " source");
     }
 }
 
 void validate_polling_interval (std::chrono::milliseconds interval, const char *kind)
 {
     if (interval <= std::chrono::milliseconds::zero ()) {
-        throw zlink::framework::framework_exception_t (zlink::framework::framework_error_kind_t::request_protocol_error,
-                                                       std::string ("monitoring ") + kind
-                                                         + " interval must be greater than zero");
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          std::string ("monitoring ") + kind + " interval must be greater than zero");
     }
 }
 
@@ -60,14 +63,17 @@ namespace zlink::framework
 {
 
 runtime_event_publisher_t::runtime_event_publisher_t () = default;
-runtime_event_publisher_t::runtime_event_publisher_t (std::shared_ptr<detail::monitoring_runtime_state_t> state) :
+runtime_event_publisher_t::runtime_event_publisher_t (
+  std::shared_ptr<detail::monitoring_runtime_state_t> state) :
     _state (std::move (state))
 {
 }
 
 runtime_event_publisher_t::~runtime_event_publisher_t () = default;
-runtime_event_publisher_t::runtime_event_publisher_t (runtime_event_publisher_t &&) noexcept = default;
-runtime_event_publisher_t &runtime_event_publisher_t::operator= (runtime_event_publisher_t &&) noexcept = default;
+runtime_event_publisher_t::runtime_event_publisher_t (runtime_event_publisher_t &&) noexcept =
+  default;
+runtime_event_publisher_t &
+runtime_event_publisher_t::operator= (runtime_event_publisher_t &&) noexcept = default;
 
 void runtime_event_publisher_t::publish_erased (std::type_index event_type,
                                                 const runtime_event_base_t &base,
@@ -88,11 +94,13 @@ void runtime_event_publisher_t::publish_erased (std::type_index event_type,
     }
 }
 
-monitoring_builder_t::monitoring_builder_t () : _state (std::make_shared<detail::monitoring_runtime_state_t> ())
+monitoring_builder_t::monitoring_builder_t () :
+    _state (std::make_shared<detail::monitoring_runtime_state_t> ())
 {
 }
 
-monitoring_builder_t::monitoring_builder_t (std::shared_ptr<detail::monitoring_runtime_state_t> state) :
+monitoring_builder_t::monitoring_builder_t (
+  std::shared_ptr<detail::monitoring_runtime_state_t> state) :
     _state (std::move (state))
 {
 }
@@ -106,8 +114,9 @@ monitoring_builder_t &monitoring_builder_t::add_socket_events (std::string sourc
     return add_socket_events (std::move (source_name), {});
 }
 
-monitoring_builder_t &monitoring_builder_t::add_socket_events (std::string source_name,
-                                                               std::initializer_list<socket_event_kind_t> events)
+monitoring_builder_t &
+monitoring_builder_t::add_socket_events (std::string source_name,
+                                         std::initializer_list<socket_event_kind_t> events)
 {
     validate_source_name (source_name, "socket");
     ensure_unique_source (_state->socket_sources, source_name, "socket");
@@ -130,7 +139,8 @@ monitoring_builder_t &monitoring_builder_t::add_registry_events (std::string sou
     validate_source_name (source_name, "registry");
     validate_polling_interval (interval, "registry");
     ensure_unique_source (_state->registry_sources, source_name, "registry");
-    _state->registry_sources.push_back (detail::monitoring_source_registration_t{std::move (source_name), interval});
+    _state->registry_sources.push_back (
+      detail::monitoring_source_registration_t{std::move (source_name), interval});
     return *this;
 }
 
@@ -140,7 +150,8 @@ monitoring_builder_t &monitoring_builder_t::add_spot_events (std::string source_
     validate_source_name (source_name, "spot");
     validate_polling_interval (interval, "spot");
     ensure_unique_source (_state->spot_sources, source_name, "spot");
-    _state->spot_sources.push_back (detail::monitoring_source_registration_t{std::move (source_name), interval});
+    _state->spot_sources.push_back (
+      detail::monitoring_source_registration_t{std::move (source_name), interval});
     return *this;
 }
 
@@ -168,7 +179,8 @@ monitoring_builder_t &monitoring_builder_t::add_actor_events (std::string source
     return *this;
 }
 
-monitoring_builder_t &monitoring_builder_t::on_trace (std::function<void (const runtime_event_base_t &)> hook)
+monitoring_builder_t &
+monitoring_builder_t::on_trace (std::function<void (const runtime_event_base_t &)> hook)
 {
     _state->tracing_hook = std::move (hook);
     return *this;
@@ -186,11 +198,13 @@ monitoring_builder_t &monitoring_builder_t::on_erased (std::type_index event_typ
     return *this;
 }
 
-metrics_builder_t::metrics_builder_t () : _state (std::make_shared<detail::monitoring_runtime_state_t> ())
+metrics_builder_t::metrics_builder_t () :
+    _state (std::make_shared<detail::monitoring_runtime_state_t> ())
 {
 }
 
-metrics_builder_t::metrics_builder_t (const monitoring_builder_t &monitoring) : _state (monitoring._state)
+metrics_builder_t::metrics_builder_t (const monitoring_builder_t &monitoring) :
+    _state (monitoring._state)
 {
 }
 
@@ -211,12 +225,12 @@ bool metrics_builder_t::runtime_metrics_enabled () const noexcept
     return _state && _state->runtime_metrics_enabled;
 }
 
-metrics_builder_t &
-metrics_builder_t::record_runtime_metric (std::string name, double value, std::map<std::string, std::string> tags)
+metrics_builder_t &metrics_builder_t::record_runtime_metric (
+  std::string name, double value, std::map<std::string, std::string> tags)
 {
     if (runtime_metrics_enabled ()) {
-        runtime_event_publisher_t (_state).publish (
-          metric_event_payload_t{runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::move (tags)});
+        runtime_event_publisher_t (_state).publish (metric_event_payload_t{
+          runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::move (tags)});
     }
     return *this;
 }
@@ -238,14 +252,16 @@ monitoring_runtime_t monitoring_runtime_t::from (const monitoring_builder_t &bui
 
 void monitoring_runtime_t::publish_socket (socket_event_payload_t event) const
 {
-    const auto found = std::find_if (
-      _state->socket_sources.begin (), _state->socket_sources.end (),
-      [&] (const socket_monitoring_source_registration_t &source) { return source.source_name == event.source_name; });
+    const auto found = std::find_if (_state->socket_sources.begin (), _state->socket_sources.end (),
+                                     [&] (const socket_monitoring_source_registration_t &source) {
+                                         return source.source_name == event.source_name;
+                                     });
     if (found == _state->socket_sources.end ()) {
         return;
     }
     if (!found->events.empty ()
-        && std::find (found->events.begin (), found->events.end (), event.event) == found->events.end ()) {
+        && std::find (found->events.begin (), found->events.end (), event.event)
+             == found->events.end ()) {
         return;
     }
     publish (std::move (event));
@@ -259,10 +275,11 @@ void monitoring_runtime_t::publish_discovery (discovery_event_payload_t event) c
     publish (std::move (event));
 }
 
-void monitoring_runtime_t::publish_registry_snapshot (std::string source_name,
-                                                      registry_status_t status,
-                                                      std::vector<topology_entry_t> topology,
-                                                      std::vector<service_summary_entry_t> summary) const
+void monitoring_runtime_t::publish_registry_snapshot (
+  std::string source_name,
+  registry_status_t status,
+  std::vector<topology_entry_t> topology,
+  std::vector<service_summary_entry_t> summary) const
 {
     if (!contains_source (_state->registry_sources, source_name)) {
         return;
@@ -273,8 +290,9 @@ void monitoring_runtime_t::publish_registry_snapshot (std::string source_name,
     } else if (!summary.empty ()) {
         event_kind = registry_event_kind_t::service_summary_changed;
     }
-    publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)}, event_kind, std::move (status),
-                                      std::move (topology), std::move (summary)});
+    publish (registry_event_payload_t{runtime_event_base_t{std::move (source_name)}, event_kind,
+                                      std::move (status), std::move (topology),
+                                      std::move (summary)});
 }
 
 void monitoring_runtime_t::publish_spot_snapshot (spot_event_payload_t event) const
@@ -310,20 +328,21 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
     }
     auto event_kind = failure.stopped ? spot_event_kind_t::timer_stopped_after_unhandled_exception
                                       : spot_event_kind_t::timer_handler_failed;
-    publish (spot_event_payload_t{runtime_event_base_t{std::move (source_name),
-                                                       std::chrono::system_clock::now (),
-                                                       runtime_event_severity_t::error,
-                                                       {},
-                                                       {},
-                                                       health_status_t::degraded},
-                                  event_kind,
-                                  {},
-                                  {},
-                                  {},
-                                  spot_timer_diagnostic_t{std::move (spot_rid), false, std::move (failure.timer_name),
-                                                          failure.handler_type.name (), failure.delivery_index,
-                                                          failure.delivery_index, "std::exception",
-                                                          std::move (failure.message)}});
+    publish (spot_event_payload_t{
+      runtime_event_base_t{std::move (source_name),
+                           std::chrono::system_clock::now (),
+                           runtime_event_severity_t::error,
+                           {},
+                           {},
+                           health_status_t::degraded},
+      event_kind,
+      {},
+      {},
+      {},
+      spot_timer_diagnostic_t{std::move (spot_rid), false, std::move (failure.timer_name),
+                              failure.handler_type.name (), failure.delivery_index,
+                              failure.delivery_index, "std::exception",
+                              std::move (failure.message)}});
 }
 
 } // namespace zlink::framework::detail

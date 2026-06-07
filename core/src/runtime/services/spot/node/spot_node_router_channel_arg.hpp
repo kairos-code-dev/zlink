@@ -29,8 +29,7 @@ inline std::string routing_id_hex (const zlink_routing_id_t &rid_)
     return hex;
 }
 
-inline std::string from_endpoint (const std::string &channel_name_,
-                                  const std::string &endpoint_)
+inline std::string from_endpoint (const std::string &channel_name_, const std::string &endpoint_)
 {
     return channel_name_ + "\n" + endpoint_;
 }
@@ -39,8 +38,7 @@ inline std::string from_routing_id (const std::string &channel_name_,
                                     const zlink_routing_id_t &peer_rid_,
                                     const std::string &endpoint_)
 {
-    return channel_name_ + "\n" + routing_id_hex (peer_rid_) + "\n"
-           + endpoint_;
+    return channel_name_ + "\n" + routing_id_hex (peer_rid_) + "\n" + endpoint_;
 }
 
 }

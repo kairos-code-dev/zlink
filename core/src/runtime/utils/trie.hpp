@@ -29,16 +29,13 @@ class trie_t
     bool check (const unsigned char *data_, size_t size_) const;
 
     //  Apply the function supplied to each subscription in the trie.
-    void apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_),
-                void *arg_) const;
+    void apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_), void *arg_) const;
 
   private:
     void apply_helper (unsigned char **buff_,
                        size_t buffsize_,
                        size_t maxbuffsize_,
-                       void (*func_) (unsigned char *data_,
-                                      size_t size_,
-                                      void *arg_),
+                       void (*func_) (unsigned char *data_, size_t size_, void *arg_),
                        void *arg_) const;
     bool is_redundant () const;
 
@@ -86,8 +83,7 @@ class trie_with_size_t
         return _trie.check (data_, size_);
     }
 
-    void apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_),
-                void *arg_) const
+    void apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_), void *arg_) const
     {
         _trie.apply (func_, arg_);
     }

@@ -58,28 +58,31 @@ struct spot_recv_state_t
     std::atomic<unsigned long long> active_received;
 };
 
-bool header_matches_active_run (const spot_recv_state_t &state_, const perf_single_metric::header_t &header_)
+bool header_matches_active_run (const spot_recv_state_t &state_,
+                                const perf_single_metric::header_t &header_)
 {
     return header_.magic == perf_single_metric::k_magic && header_.run_id == state_.run_id
            && header_.msg_size == static_cast<uint32_t> (state_.msg_size)
            && header_.phase == static_cast<uint8_t> (perf_single_metric::phase_active);
 }
 
-bool send_spot_payload (zlink::service::spot_t &spot_, const void *data_, size_t size_, bool dontwait_, bool *sent_out_)
+bool send_spot_payload (
+  zlink::service::spot_t &spot_, const void *data_, size_t size_, bool dontwait_, bool *sent_out_)
 {
     if (sent_out_)
         *sent_out_ = false;
 
-    zlink::message_t msg =
-      zlink::message_t::from (std::as_bytes (std::span<const char> (static_cast<const char *> (data_), size_)));
+    zlink::message_t msg = zlink::message_t::from (
+      std::as_bytes (std::span<const char> (static_cast<const char *> (data_), size_)));
     if (!msg.valid ())
         return false;
     try {
-        const bool sent = dontwait_ ? std::move (spot_.publish (k_topic)
-                                                   .message (std::move (msg))
-                                                   .flags (static_cast<int> (zlink::send_flags_t::dontwait)))
-                                        .submit ()
-                                    : std::move (spot_.publish (k_topic).message (std::move (msg))).submit ();
+        const bool sent =
+          dontwait_ ? std::move (spot_.publish (k_topic)
+                                   .message (std::move (msg))
+                                   .flags (static_cast<int> (zlink::send_flags_t::dontwait)))
+                        .submit ()
+                    : std::move (spot_.publish (k_topic).message (std::move (msg))).submit ();
         if (sent_out_)
             *sent_out_ = sent;
         return true;
@@ -111,8 +114,8 @@ bool stamp_and_publish (zlink::service::spot_t &spot_,
 {
     if (sent_out_)
         *sent_out_ = false;
-    if (!perf_single_metric::stamp_payload (payload_.data (), payload_.size (), run_id_, phase_, msg_size_, seq_,
-                                            perf_single_metric::now_ns ())) {
+    if (!perf_single_metric::stamp_payload (payload_.data (), payload_.size (), run_id_, phase_,
+                                            msg_size_, seq_, perf_single_metric::now_ns ())) {
         return false;
     }
     return send_spot_payload (spot_, payload_.data (), payload_.size (), dontwait_, sent_out_);
@@ -178,7 +181,8 @@ int recv_spot_header_flags (zlink::service::spot_t &subscriber_,
 }
 
 template <typename Clock, typename Duration>
-std::chrono::milliseconds remaining_milliseconds_until (const std::chrono::time_point<Clock, Duration> &deadline_)
+std::chrono::milliseconds
+remaining_milliseconds_until (const std::chrono::time_point<Clock, Duration> &deadline_)
 {
     const auto now = Clock::now ();
     if (now >= deadline_)
@@ -187,7 +191,8 @@ std::chrono::milliseconds remaining_milliseconds_until (const std::chrono::time_
 }
 
 template <typename Clock, typename Duration>
-bool wait_for_spot_input_until (zlink::poller_t &poller_, const std::chrono::time_point<Clock, Duration> &deadline_)
+bool wait_for_spot_input_until (zlink::poller_t &poller_,
+                                const std::chrono::time_point<Clock, Duration> &deadline_)
 {
     const std::chrono::milliseconds remaining = remaining_milliseconds_until (deadline_);
     if (remaining.count () <= 0)
@@ -217,8 +222,8 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
     if (!state_)
         return false;
 
-    const auto deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms_ > 0 ? timeout_ms_ : 1);
     zlink::poller_t poller;
     try {
         poller.add (subscriber_, zlink::poll_event_flag_t::pollin, 0);
@@ -242,11 +247,12 @@ bool wait_for_local_probe_ready (zlink::service::spot_t &publisher_,
         while (std::chrono::steady_clock::now () < probe_deadline) {
             perf_single_metric::header_t header = {};
             bool header_ok = false;
-            const int recv_rc = recv_spot_header_flags (subscriber_, state_->payload_size,
-                                                        static_cast<int> (zlink::send_flags_t::dontwait), topic, part,
-                                                        &header, &header_ok);
+            const int recv_rc = recv_spot_header_flags (
+              subscriber_, state_->payload_size, static_cast<int> (zlink::send_flags_t::dontwait),
+              topic, part, &header, &header_ok);
             if (recv_rc > 0) {
-                if (header_ok && header.magic == perf_single_metric::k_magic && header.run_id == state_->run_id
+                if (header_ok && header.magic == perf_single_metric::k_magic
+                    && header.run_id == state_->run_id
                     && header.phase == static_cast<uint8_t> (perf_single_metric::phase_warmup)
                     && header.msg_size == static_cast<uint32_t> (state_->msg_size))
                     return true;
@@ -348,16 +354,19 @@ void emit_spot_hwm_detail (zlink::service::spot_node_t &node_,
         if (snapshot.auto_hwm_applied_sndhwm <= 0 && snapshot.auto_hwm_applied_rcvhwm <= 0) {
             continue;
         }
-        std::cout << "AUTO_HWM_DETAIL" << ",pattern=SPOT" << ",transport=" << transport_ << ",component=" << component_
-                  << ",msg_size=" << msg_size_ << ",owner=" << spot_socket_owner_name (entry.owner ())
+        std::cout << "AUTO_HWM_DETAIL" << ",pattern=SPOT" << ",transport=" << transport_
+                  << ",component=" << component_ << ",msg_size=" << msg_size_
+                  << ",owner=" << spot_socket_owner_name (entry.owner ())
                   << ",owner_id=" << entry.owner_id () << ",socket=" << entry.socket_name ()
                   << ",socket_type=" << spot_socket_type_name (entry.socket_type ())
                   << ",role=" << spot_auto_hwm_role_name (snapshot.auto_hwm_role)
-                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
+                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
+                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
                   << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
                   << ",effective_sndbuf=" << snapshot.auto_hwm_effective_sndbuf
                   << ",effective_rcvbuf=" << snapshot.auto_hwm_effective_rcvbuf
-                  << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots << std::endl;
+                  << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
+                  << std::endl;
     }
 }
 
@@ -461,8 +470,10 @@ bool run_pattern_spot (const std::string &transport, size_t msg_size, const std:
 
     std::atomic<bool> sender_ok (true);
     std::atomic<unsigned long long> received (0);
-    perf::single::latency_stats_builder_t latency_builder (perf::single::resolve_single_latency_sample_cap ());
-    const auto active_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
+    perf::single::latency_stats_builder_t latency_builder (
+      perf::single::resolve_single_latency_sample_cap ());
+    const auto active_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (duration_s);
     (void) recv_timeout;
 
     std::thread receiver_thread ([&] () {
@@ -473,16 +484,17 @@ bool run_pattern_spot (const std::string &transport, size_t msg_size, const std:
                 && std::chrono::steady_clock::now () < active_deadline) {
                 received.fetch_add (1, std::memory_order_relaxed);
                 const int64_t now_ns = perf_single_metric::now_ns ();
-                latency_builder.add (perf_single_metric::elapsed_latency_ns (now_ns, header_.sent_ts_ns));
+                latency_builder.add (
+                  perf_single_metric::elapsed_latency_ns (now_ns, header_.sent_ts_ns));
             }
         };
         while (true) {
             perf_single_metric::header_t header = {};
             bool header_ok = false;
             bool stop = false;
-            const int recv_rc =
-              recv_spot_header_flags (sub_spot, payload_size, static_cast<int> (zlink::send_flags_t::dontwait), topic,
-                                      part, &header, &header_ok, &stop);
+            const int recv_rc = recv_spot_header_flags (
+              sub_spot, payload_size, static_cast<int> (zlink::send_flags_t::dontwait), topic, part,
+              &header, &header_ok, &stop);
             if (recv_rc > 0) {
                 if (stop)
                     return;
@@ -504,8 +516,8 @@ bool run_pattern_spot (const std::string &transport, size_t msg_size, const std:
         uint64_t seq = 1;
         while (std::chrono::steady_clock::now () < active_deadline) {
             bool sent = false;
-            if (!stamp_and_publish (pub_spot, payload, state.run_id, msg_size, seq, perf_single_metric::phase_active,
-                                    true, &sent)) {
+            if (!stamp_and_publish (pub_spot, payload, state.run_id, msg_size, seq,
+                                    perf_single_metric::phase_active, true, &sent)) {
                 sender_ok.store (false, std::memory_order_release);
                 break;
             }
@@ -532,7 +544,8 @@ bool run_pattern_spot (const std::string &transport, size_t msg_size, const std:
     receiver_thread.join ();
 
     const unsigned long long received_total = received.load (std::memory_order_relaxed);
-    if (!sender_ok.load (std::memory_order_acquire) || received_total == 0 || latency_builder.count () == 0) {
+    if (!sender_ok.load (std::memory_order_acquire) || received_total == 0
+        || latency_builder.count () == 0) {
         if (perf_debug_enabled ())
             std::cerr << "spot: active phase failed" << std::endl;
         perf::single::print_fail_result (lib_name, "SPOT", transport, msg_size);
@@ -544,9 +557,10 @@ bool run_pattern_spot (const std::string &transport, size_t msg_size, const std:
     emit_spot_hwm_detail (pub_node, "publisher", transport, msg_size);
     emit_spot_hwm_detail (sub_node, "subscriber", transport, msg_size);
 
-    const double throughput = static_cast<double> (received_total) / static_cast<double> (duration_s);
-    perf::single::print_result (lib_name, "SPOT", transport, msg_size, throughput, latency.mean_ns, latency.p95_ns,
-                                latency.p99_ns);
+    const double throughput =
+      static_cast<double> (received_total) / static_cast<double> (duration_s);
+    perf::single::print_result (lib_name, "SPOT", transport, msg_size, throughput, latency.mean_ns,
+                                latency.p95_ns, latency.p99_ns);
     fast_exit_process (0);
 }
 

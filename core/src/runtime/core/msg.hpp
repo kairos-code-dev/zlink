@@ -72,11 +72,8 @@ class msg_t
     bool check () const;
     int init ();
 
-    int init (void *data_,
-              size_t size_,
-              msg_free_fn *ffn_,
-              void *hint_,
-              content_t *content_ = NULL);
+    int
+    init (void *data_, size_t size_, msg_free_fn *ffn_, void *hint_, content_t *content_ = NULL);
 
     int init_size (size_t size_);
     int init_buffer (const void *buf_, size_t size_);
@@ -85,11 +82,8 @@ class msg_t
     // Large-message sources share underlying storage; small sources fall back to
     // a copy.
     int init_view (msg_t &src_, size_t offset_, size_t size_);
-    int init_external_storage (content_t *content_,
-                               void *data_,
-                               size_t size_,
-                               msg_free_fn *ffn_,
-                               void *hint_);
+    int init_external_storage (
+      content_t *content_, void *data_, size_t size_, msg_free_fn *ffn_, void *hint_);
     int init_delimiter ();
     int init_join ();
     int init_leave ();
@@ -150,15 +144,9 @@ class msg_t
 
     //  These are called on each message received by the session_base class,
     //  so get them inlined to avoid the overhead of 2 function calls per msg
-    bool is_subscribe () const
-    {
-        return (_u.base.flags & CMD_TYPE_MASK) == subscribe;
-    }
+    bool is_subscribe () const { return (_u.base.flags & CMD_TYPE_MASK) == subscribe; }
 
-    bool is_cancel () const
-    {
-        return (_u.base.flags & CMD_TYPE_MASK) == cancel;
-    }
+    bool is_cancel () const { return (_u.base.flags & CMD_TYPE_MASK) == cancel; }
 
     size_t command_body_size () const;
     void *command_body ();
@@ -191,9 +179,7 @@ class msg_t
     };
     enum
     {
-        max_vsm_size =
-          msg_t_size
-          - (3 + 16 + sizeof (uint32_t))
+        max_vsm_size = msg_t_size - (3 + 16 + sizeof (uint32_t))
     };
     enum
     {
@@ -266,9 +252,7 @@ class msg_t
     {
         struct
         {
-            unsigned char unused[msg_t_size
-                                 - (2 + sizeof (uint32_t)
-                                    + sizeof (group_t))];
+            unsigned char unused[msg_t_size - (2 + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
@@ -288,8 +272,7 @@ class msg_t
             content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (content_t *) + 2
-                        + sizeof (uint32_t) + sizeof (group_t))];
+                     - (sizeof (content_t *) + 2 + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
@@ -300,8 +283,7 @@ class msg_t
             content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (content_t *) + 2
-                        + sizeof (uint32_t) + sizeof (group_t))];
+                     - (sizeof (content_t *) + 2 + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
@@ -312,8 +294,7 @@ class msg_t
             void *data;
             size_t size;
             unsigned char unused[msg_t_size
-                                 - (sizeof (void *) + sizeof (size_t) + 2
-                                    + sizeof (uint32_t)
+                                 - (sizeof (void *) + sizeof (size_t) + 2 + sizeof (uint32_t)
                                     + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
@@ -322,9 +303,7 @@ class msg_t
         } cmsg;
         struct
         {
-            unsigned char unused[msg_t_size
-                                 - (2 + sizeof (uint32_t)
-                                    + sizeof (group_t))];
+            unsigned char unused[msg_t_size - (2 + sizeof (uint32_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;

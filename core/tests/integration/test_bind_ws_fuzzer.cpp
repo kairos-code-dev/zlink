@@ -21,7 +21,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_set_option (server, ZLINK_OPT_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, my_endpoint, &my_endpoint_size));
     //  Remove trailing /
     my_endpoint[my_endpoint_size - 2] = '\0';
     fd_t client = connect_socket (my_endpoint, AF_INET, IPPROTO_WS);
@@ -69,15 +70,13 @@ void test_bind_ws_fuzzer ()
 {
     uint8_t **data;
     size_t *len, num_cases = 0;
-    if (fuzzer_corpus_encode (
-          "tests/libzlink-fuzz-corpora/test_bind_ws_fuzzer_seed_corpus", &data,
-          &len, &num_cases)
+    if (fuzzer_corpus_encode ("tests/libzlink-fuzz-corpora/test_bind_ws_fuzzer_seed_corpus", &data,
+                              &len, &num_cases)
         != 0)
         exit (77);
 
     while (num_cases-- > 0) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
+        TEST_ASSERT_SUCCESS_ERRNO (LLVMFuzzerTestOneInput (data[num_cases], len[num_cases]));
         free (data[num_cases]);
     }
 

@@ -38,16 +38,14 @@ int attach_socket_monitor_handler_state (void *monitor_,
     }
 
     return set_monitor_handler_state (
-      handle.socket, handler_,
-      state->snapshot_provider.load (std::memory_order_acquire),
+      handle.socket, handler_, state->snapshot_provider.load (std::memory_order_acquire),
       state->snapshot_subject.load (std::memory_order_acquire), userdata_);
 }
 
-void *open_socket_monitor_with_handler_internal (
-  void *s_,
-  zlink_socket_monitor_event_mask_t events_,
-  zlink_monitor_handler_fn handler_,
-  void *userdata_)
+void *open_socket_monitor_with_handler_internal (void *s_,
+                                                 zlink_socket_monitor_event_mask_t events_,
+                                                 zlink_monitor_handler_fn handler_,
+                                                 void *userdata_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
@@ -63,11 +61,10 @@ void *open_socket_monitor_with_handler_internal (
 
     char endpoint[128];
     const uint32_t rand_id = zlink::generate_random ();
-    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
-              static_cast<void *> (s_), rand_id);
+    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u", static_cast<void *> (s_),
+              rand_id);
 
-    const int monitor_rc =
-      handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
+    const int monitor_rc = handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
     if (monitor_rc != 0)
         return NULL;
 
@@ -80,11 +77,9 @@ void *open_socket_monitor_with_handler_internal (
     }
     monitor_socket_base->set_auto_hwm_policy_enabled (false);
     const int monitor_hwm = 4096;
-    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM,
-                                            &monitor_hwm,
+    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_SNDHWM, &monitor_hwm,
                                             sizeof (monitor_hwm));
-    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM,
-                                            &monitor_hwm,
+    (void) monitor_socket_base->setsockopt (ZLINK_INTERNAL_OPT_RCVHWM, &monitor_hwm,
                                             sizeof (monitor_hwm));
 
     if (zlink_connect (monitor_socket, endpoint) != 0) {
@@ -95,8 +90,7 @@ void *open_socket_monitor_with_handler_internal (
 
     if (set_monitor_handler_state (monitor_socket_base, effective_handler,
                                    &socket_monitor_snapshot_provider,
-                                   static_cast<void *> (handle.socket),
-                                   userdata_)
+                                   static_cast<void *> (handle.socket), userdata_)
         != 0) {
         const int err = errno;
         zlink_close (monitor_socket);
@@ -109,21 +103,19 @@ void *open_socket_monitor_with_handler_internal (
 }
 }
 
-void *zlink_socket_monitor_open (
-  void *s_, const zlink_socket_monitor_open_options_t *options_)
+void *zlink_socket_monitor_open (void *s_, const zlink_socket_monitor_open_options_t *options_)
 {
     if (!options_) {
         errno = EINVAL;
         return NULL;
     }
-    return open_socket_monitor_with_handler_internal (
-      s_, options_->events, &zlink_monitor_ignore_handler, NULL);
+    return open_socket_monitor_with_handler_internal (s_, options_->events,
+                                                      &zlink_monitor_ignore_handler, NULL);
 }
 
-zlink_handler_result_t zlink_socket_monitor_handler (
-  void *monitor_,
-  zlink_socket_monitor_handler_fn handler_,
-  void *userdata_)
+zlink_handler_result_t zlink_socket_monitor_handler (void *monitor_,
+                                                     zlink_socket_monitor_handler_fn handler_,
+                                                     void *userdata_)
 {
     return zlink::handler_result_internal::from_rc (
       attach_socket_monitor_handler_state (monitor_, handler_, userdata_));

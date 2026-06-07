@@ -32,8 +32,7 @@ void test_msg_init_ffn ()
     memset (data, 0, 255);
     memcpy (data, (void *) "data", 4);
     memcpy (hint, (void *) "hint", 4);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     msleep (SETTLE_TIME);
@@ -43,8 +42,7 @@ void test_msg_init_ffn ()
     // Making and closing a copy triggers ffn
     zlink_msg_t msg2;
     zlink_msg_init (&msg2);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg2, &msg));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg2));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
@@ -54,8 +52,7 @@ void test_msg_init_ffn ()
     memcpy (hint, (void *) "hint", 4);
 
     // Test that sending a message triggers ffn
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
 
     test_send_single_msg (&msg, dealer, 0);
     char buf[255];
@@ -70,8 +67,7 @@ void test_msg_init_ffn ()
 
     // Sending a copy of a message triggers ffn
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg2));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg2, &msg));
 
     test_send_single_msg (&msg, dealer, 0);

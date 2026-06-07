@@ -52,10 +52,7 @@ template <typename T> class generic_mtrie_t
     //  corresponding to data_ or a prefix of it. The arg_ argument
     //  is passed through to the callback function.
     template <typename Arg>
-    void match (prefix_t data_,
-                size_t size_,
-                void (*func_) (value_t *value_, Arg arg_),
-                Arg arg_);
+    void match (prefix_t data_, size_t size_, void (*func_) (value_t *value_, Arg arg_), Arg arg_);
 
     template <typename Arg>
     void visit_values (void (*func_) (value_t *value_, Arg arg_), Arg arg_) const;

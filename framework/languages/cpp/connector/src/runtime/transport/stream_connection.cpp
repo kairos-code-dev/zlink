@@ -18,13 +18,20 @@ namespace
 class tcp_stream_connection_t final : public stream_connection_t
 {
   public:
-    explicit tcp_stream_connection_t (boost::asio::ip::tcp::socket socket) : _socket (std::move (socket)) {}
+    explicit tcp_stream_connection_t (boost::asio::ip::tcp::socket socket) :
+        _socket (std::move (socket))
+    {
+    }
 
     bool is_open () const override { return _socket.is_open (); }
 
-    std::size_t available (boost::system::error_code &error) override { return _socket.available (error); }
+    std::size_t available (boost::system::error_code &error) override
+    {
+        return _socket.available (error);
+    }
 
-    std::size_t read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
+    std::size_t
+    read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
     {
         return _socket.read_some (boost::asio::buffer (buffer, size), error);
     }
@@ -53,7 +60,8 @@ namespace ssl = boost::asio::ssl;
 class tls_stream_connection_t final : public stream_connection_t
 {
   public:
-    explicit tls_stream_connection_t (ssl::stream<boost::asio::ip::tcp::socket> stream) : _stream (std::move (stream))
+    explicit tls_stream_connection_t (ssl::stream<boost::asio::ip::tcp::socket> stream) :
+        _stream (std::move (stream))
     {
     }
 
@@ -64,7 +72,8 @@ class tls_stream_connection_t final : public stream_connection_t
         return _stream.next_layer ().available (error);
     }
 
-    std::size_t read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
+    std::size_t
+    read_some (std::uint8_t *buffer, std::size_t size, boost::system::error_code &error) override
     {
         return _stream.read_some (boost::asio::buffer (buffer, size), error);
     }
@@ -98,7 +107,8 @@ std::unique_ptr<stream_connection_t> make_tcp_connection (boost::asio::ip::tcp::
 namespace
 {
 
-std::optional<endpoint_parts_t> parse_host_port_endpoint (const std::string &endpoint, std::string_view prefix)
+std::optional<endpoint_parts_t> parse_host_port_endpoint (const std::string &endpoint,
+                                                          std::string_view prefix)
 {
     if (endpoint.rfind (std::string (prefix), 0) != 0) {
         return std::nullopt;
@@ -108,7 +118,8 @@ std::optional<endpoint_parts_t> parse_host_port_endpoint (const std::string &end
     if (colon == std::string::npos || colon <= host_start || colon + 1 >= endpoint.size ()) {
         return std::nullopt;
     }
-    return endpoint_parts_t{endpoint.substr (host_start, colon - host_start), endpoint.substr (colon + 1)};
+    return endpoint_parts_t{endpoint.substr (host_start, colon - host_start),
+                            endpoint.substr (colon + 1)};
 }
 
 } // namespace
@@ -149,7 +160,8 @@ std::unique_ptr<stream_connection_t> connect_tls (boost::asio::io_context &io_co
 
 bool is_transport_connected (const connector_state_t &state)
 {
-    return state.state == connection_state_t::connected && state.connection && state.connection->is_open ();
+    return state.state == connection_state_t::connected && state.connection
+           && state.connection->is_open ();
 }
 
 std::vector<std::uint8_t> read_exact (connector_state_t &state, std::size_t size)
@@ -158,7 +170,8 @@ std::vector<std::uint8_t> read_exact (connector_state_t &state, std::size_t size
     std::size_t offset = 0;
     while (offset < size) {
         boost::system::error_code error;
-        const auto read = state.connection->read_some (bytes.data () + offset, bytes.size () - offset, error);
+        const auto read =
+          state.connection->read_some (bytes.data () + offset, bytes.size () - offset, error);
         if (error) {
             throw boost::system::system_error (error);
         }

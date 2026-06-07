@@ -26,8 +26,7 @@ struct node_send_ready_task_t
 
 struct logical_send_ready_task_t
 {
-    explicit logical_send_ready_task_t (
-      const std::shared_ptr<spot_logical_state_t> &state_) :
+    explicit logical_send_ready_task_t (const std::shared_ptr<spot_logical_state_t> &state_) :
         state (state_)
     {
     }
@@ -37,8 +36,7 @@ struct logical_send_ready_task_t
 
 void run_node_send_ready_task (void *arg_)
 {
-    std::unique_ptr<node_send_ready_task_t> task (
-      static_cast<node_send_ready_task_t *> (arg_));
+    std::unique_ptr<node_send_ready_task_t> task (static_cast<node_send_ready_task_t *> (arg_));
     if (task && task->node)
         task->node->dispatch_send_ready_handler ();
 }
@@ -52,8 +50,7 @@ void run_logical_send_ready_task (void *arg_)
 }
 }
 
-int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_,
-                                         void *userdata_)
+int spot_node_t::set_send_ready_handler (zlink_send_ready_handler_fn handler_, void *userdata_)
 {
     service_public_api_scope_t admission (_public_api);
     if (!admission.acquired ())
@@ -94,9 +91,8 @@ void spot_node_t::drain_send_ready_signal ()
 
 void spot_node_t::notify_send_ready_recovery ()
 {
-    zlink_send_ready_handler_fn node_handler =
-      _send_ready_handler.load (std::memory_order_acquire);
-    std::vector<std::shared_ptr<spot_logical_state_t> > states;
+    zlink_send_ready_handler_fn node_handler = _send_ready_handler.load (std::memory_order_acquire);
+    std::vector<std::shared_ptr<spot_logical_state_t>> states;
     snapshot_spot_states (&states);
 
     bool signal_node = false;
@@ -110,16 +106,12 @@ void spot_node_t::notify_send_ready_recovery ()
     if (signal_node && _send_ready_signaler.valid ())
         _send_ready_signaler.send ();
     if (node_handler && _runtime) {
-        node_send_ready_task_t *task =
-          new (std::nothrow) node_send_ready_task_t (this);
-        if (task && _runtime->post_dispatch_task (&run_node_send_ready_task,
-                                                  task)
-                      != 0)
+        node_send_ready_task_t *task = new (std::nothrow) node_send_ready_task_t (this);
+        if (task && _runtime->post_dispatch_task (&run_node_send_ready_task, task) != 0)
             delete task;
     }
 
-    for (std::vector<std::shared_ptr<spot_logical_state_t> >::iterator it =
-           states.begin ();
+    for (std::vector<std::shared_ptr<spot_logical_state_t>>::iterator it = states.begin ();
          it != states.end (); ++it) {
         const std::shared_ptr<spot_logical_state_t> &state = *it;
         if (!state)
@@ -137,12 +129,8 @@ void spot_node_t::notify_send_ready_recovery ()
         zlink_send_ready_handler_fn handler =
           state->send_ready_handler.load (std::memory_order_acquire);
         if (handler && _runtime) {
-            logical_send_ready_task_t *task =
-              new (std::nothrow) logical_send_ready_task_t (state);
-            if (task
-                && _runtime->post_dispatch_task (&run_logical_send_ready_task,
-                                                 task)
-                     != 0)
+            logical_send_ready_task_t *task = new (std::nothrow) logical_send_ready_task_t (state);
+            if (task && _runtime->post_dispatch_task (&run_logical_send_ready_task, task) != 0)
                 delete task;
         }
     }
@@ -150,13 +138,11 @@ void spot_node_t::notify_send_ready_recovery ()
 
 void spot_node_t::dispatch_send_ready_handler ()
 {
-    zlink_send_ready_handler_fn handler =
-      _send_ready_handler.load (std::memory_order_acquire);
+    zlink_send_ready_handler_fn handler = _send_ready_handler.load (std::memory_order_acquire);
     if (!handler)
         return;
     spot_node_t *previous = enter_spot_node_send_ready_callback (this);
-    handler (this, _send_ready_handler_userdata.load (
-                     std::memory_order_acquire));
+    handler (this, _send_ready_handler_userdata.load (std::memory_order_acquire));
     leave_spot_node_send_ready_callback (previous);
 }
 
@@ -172,28 +158,22 @@ void spot_node_t::dispatch_logical_send_ready_handler (
     if (!handler || !subject)
         return;
 
-    spot_node_t *previous =
-      enter_spot_node_send_ready_callback (state_->node);
-    handler (subject,
-             state_->send_ready_userdata.load (std::memory_order_acquire));
+    spot_node_t *previous = enter_spot_node_send_ready_callback (state_->node);
+    handler (subject, state_->send_ready_userdata.load (std::memory_order_acquire));
     leave_spot_node_send_ready_callback (previous);
 }
 
 uint32_t spot_node_t::max_pub_delivery_ready_count_locked () const
 {
-    const uint32_t active_peer_count =
-      static_cast<uint32_t> (_peer_state.active_endpoints.size ());
+    const uint32_t active_peer_count = static_cast<uint32_t> (_peer_state.active_endpoints.size ());
     const uint32_t connected_ready_count =
-      connected_ready_peer_count (_runtime ? &_runtime->execution.mesh_peer_state
-                                           : NULL);
+      connected_ready_peer_count (_runtime ? &_runtime->execution.mesh_peer_state : NULL);
     uint32_t max_ready_count = 0;
-    for (std::map<std::string, std::set<std::string> >::const_iterator it =
+    for (std::map<std::string, std::set<std::string>>::const_iterator it =
            _peer_state.pub_delivery_ready_sources.begin ();
          it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
-        const uint32_t ready_count =
-          spot_node_control_policy::resolve_effective_ready_count (
-            static_cast<uint32_t> (it->second.size ()), active_peer_count,
-            connected_ready_count);
+        const uint32_t ready_count = spot_node_control_policy::resolve_effective_ready_count (
+          static_cast<uint32_t> (it->second.size ()), active_peer_count, connected_ready_count);
         if (ready_count > max_ready_count)
             max_ready_count = ready_count;
     }
@@ -218,9 +198,8 @@ void spot_node_t::schedule_subscription_ready_refresh ()
     {
         scoped_lock_t lock (_sync);
         _peer_state.subscription_ready_refresh_pending = true;
-        holdoff_ticks =
-          spot_node_control_policy::subscription_ready_holdoff_ticks (
-            _peer_state.connected_endpoints);
+        holdoff_ticks = spot_node_control_policy::subscription_ready_holdoff_ticks (
+          _peer_state.connected_endpoints);
         _peer_state.subscription_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
@@ -236,15 +215,14 @@ void spot_node_t::schedule_pub_delivery_ready_refresh ()
         scoped_lock_t lock (_sync);
         _peer_state.pub_delivery_ready_refresh_pending = true;
         holdoff_ticks =
-          spot_node_control_policy::pub_delivery_ready_holdoff_ticks (
-            _peer_state.active_endpoints);
+          spot_node_control_policy::pub_delivery_ready_holdoff_ticks (_peer_state.active_endpoints);
         _peer_state.pub_delivery_ready_refresh_holdoff_ticks = holdoff_ticks;
     }
     wake_control_task ();
 }
 
 void spot_node_t::clear_peer_readiness_locked (
-  std::vector<std::pair<std::string, uint32_t> > *pub_ready_updates_out_)
+  std::vector<std::pair<std::string, uint32_t>> *pub_ready_updates_out_)
 {
     _peer_state.connected_endpoints.clear ();
     _peer_state.subscription_ready_refresh_pending = false;
@@ -254,7 +232,7 @@ void spot_node_t::clear_peer_readiness_locked (
     _peer_state.pub_delivery_ready_refresh_holdoff_ticks = 0;
     _peer_state.pending_pub_delivery_ready_counts.clear ();
     if (pub_ready_updates_out_) {
-        for (std::map<std::string, std::set<std::string> >::iterator it =
+        for (std::map<std::string, std::set<std::string>>::iterator it =
                _peer_state.pub_delivery_ready_sources.begin ();
              it != _peer_state.pub_delivery_ready_sources.end (); ++it) {
             pub_ready_updates_out_->push_back (
@@ -286,14 +264,13 @@ void spot_node_t::queue_all_subscription_ready_filters ()
 
     {
         scoped_lock_t lock (_sync);
-        _peer_state.pending_subscription_ready_filters.insert (
-          raw_filters.begin (), raw_filters.end ());
+        _peer_state.pending_subscription_ready_filters.insert (raw_filters.begin (),
+                                                               raw_filters.end ());
     }
     schedule_subscription_ready_refresh ();
 }
 
-void spot_node_t::queue_subscription_ready_filter (
-  const std::string &raw_filter_)
+void spot_node_t::queue_subscription_ready_filter (const std::string &raw_filter_)
 {
     if (raw_filter_.empty ())
         return;
@@ -325,8 +302,7 @@ void spot_node_t::emit_pending_subscription_ready_events ()
         scoped_lock_t lock (_sync);
         if (!_peer_state.subscription_ready_refresh_pending)
             return;
-        if (_peer_state.connected_endpoints.empty ()
-            && _peer_state.active_endpoints.empty ()) {
+        if (_peer_state.connected_endpoints.empty () && _peer_state.active_endpoints.empty ()) {
             _peer_state.subscription_ready_refresh_pending = false;
             _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
             _peer_state.pending_subscription_ready_filters.clear ();
@@ -355,16 +331,14 @@ void spot_node_t::emit_pending_subscription_ready_events ()
         _peer_state.subscription_ready_refresh_holdoff_ticks = 0;
     }
 
-    for (std::set<std::string>::const_iterator filter_it =
-           raw_filters.begin ();
+    for (std::set<std::string>::const_iterator filter_it = raw_filters.begin ();
          filter_it != raw_filters.end (); ++filter_it) {
         for (size_t i = 0; i < subs.size (); ++i) {
             std::vector<spot_sub_t::subject_descriptor_t> subjects;
             subjects.reserve (2);
             subs[i]->append_subjects_for_raw_filter (*filter_it, &subjects);
             for (size_t j = 0; j < subjects.size (); ++j)
-                subs[i]->mark_subject_subscription_ready (
-                  subjects[j], ready_endpoint.c_str ());
+                subs[i]->mark_subject_subscription_ready (subjects[j], ready_endpoint.c_str ());
         }
     }
 }
@@ -380,7 +354,7 @@ void spot_node_t::emit_pending_pub_delivery_ready_events ()
     }
 
     std::vector<spot_pub_t *> pubs;
-    std::vector<std::pair<std::string, uint32_t> > updates;
+    std::vector<std::pair<std::string, uint32_t>> updates;
     {
         scoped_lock_t lock (_sync);
         if (!_peer_state.pub_delivery_ready_refresh_pending)
@@ -416,23 +390,22 @@ void spot_node_t::notify_subscription_forwarded (const std::string &raw_filter_)
     queue_subscription_ready_filter (raw_filter_);
 }
 
-void spot_node_t::notify_pub_delivery_ready_ack (
-  const std::string &target_endpoint_,
-  const std::string &subject_,
-  const std::string &ack_source_id_,
-  bool subscribe_)
+void spot_node_t::notify_pub_delivery_ready_ack (const std::string &target_endpoint_,
+                                                 const std::string &subject_,
+                                                 const std::string &ack_source_id_,
+                                                 bool subscribe_)
 {
     if (target_endpoint_.empty () || subject_.empty () || ack_source_id_.empty ())
         return;
-    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0
-        || _runtime->faulted)
+    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0 || _runtime->faulted)
         return;
 
     std::string self_endpoint;
     {
         scoped_lock_t lock (_sync);
-        self_endpoint =
-          _discovery_state.advertise_endpoint.empty () ? _endpoint_state.bound_endpoint : _discovery_state.advertise_endpoint;
+        self_endpoint = _discovery_state.advertise_endpoint.empty ()
+                          ? _endpoint_state.bound_endpoint
+                          : _discovery_state.advertise_endpoint;
     }
     if (self_endpoint.empty () || self_endpoint != target_endpoint_)
         return;
@@ -443,10 +416,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         const uint32_t active_peer_count =
           static_cast<uint32_t> (_peer_state.active_endpoints.size ());
         const uint32_t connected_ready_count =
-          connected_ready_peer_count (
-            _runtime ? &_runtime->execution.mesh_peer_state : NULL);
-        std::set<std::string> &ready_sources =
-          _peer_state.pub_delivery_ready_sources[subject_];
+          connected_ready_peer_count (_runtime ? &_runtime->execution.mesh_peer_state : NULL);
+        std::set<std::string> &ready_sources = _peer_state.pub_delivery_ready_sources[subject_];
 
         if (subscribe_) {
             if (!ready_sources.insert (ack_source_id_).second)
@@ -459,8 +430,7 @@ void spot_node_t::notify_pub_delivery_ready_ack (
         }
 
         ready_count = spot_node_control_policy::resolve_effective_ready_count (
-          static_cast<uint32_t> (ready_sources.size ()), active_peer_count,
-          connected_ready_count);
+          static_cast<uint32_t> (ready_sources.size ()), active_peer_count, connected_ready_count);
 
         publish_mesh_pub_hwm_hint_locked ();
         if (!subscribe_) {
@@ -473,9 +443,8 @@ void spot_node_t::notify_pub_delivery_ready_ack (
     LIBZLINK_UNUSED (ready_count);
 }
 
-void spot_node_t::notify_pub_first_delivery_ready_settled (
-  const std::string &subject_,
-  uint32_t ready_count_)
+void spot_node_t::notify_pub_first_delivery_ready_settled (const std::string &subject_,
+                                                           uint32_t ready_count_)
 {
     if (subject_.empty ())
         return;
@@ -488,21 +457,18 @@ int spot_node_t::send_ready_ack_update (const std::string &target_endpoint_,
                                         const std::string &ack_source_id_,
                                         bool subscribe_)
 {
-    if (target_endpoint_.empty () || raw_filter_.empty ()
-        || ack_source_id_.empty ()) {
+    if (target_endpoint_.empty () || raw_filter_.empty () || ack_source_id_.empty ()) {
         errno = EINVAL;
         return -1;
     }
-    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0
-        || _runtime->faulted)
+    if (is_shutting_down () || !_runtime || _runtime->stop.get () != 0 || _runtime->faulted)
         return 0;
 
     const std::string arg =
-      spot_node_control_policy::make_ready_ack_arg (
-        target_endpoint_, raw_filter_, ack_source_id_);
-    return send_data_plane_command (
-      subscribe_ ? spot_control_protocol::cmd_ready_ack_handle_state_subscribe
-                 : spot_control_protocol::cmd_ready_ack_unsubscribe,
-      arg.c_str ());
+      spot_node_control_policy::make_ready_ack_arg (target_endpoint_, raw_filter_, ack_source_id_);
+    return send_data_plane_command (subscribe_
+                                      ? spot_control_protocol::cmd_ready_ack_handle_state_subscribe
+                                      : spot_control_protocol::cmd_ready_ack_unsubscribe,
+                                    arg.c_str ());
 }
 }

@@ -55,7 +55,8 @@ class route_channel_builder_state_t
 class route_client_state_t
 {
   public:
-    route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime, serializer_registry_t &serializers) :
+    route_client_state_t (std::shared_ptr<channel_runtime_state_t> runtime,
+                          serializer_registry_t &serializers) :
         runtime (std::move (runtime)), serializers (&serializers)
     {
     }
@@ -101,8 +102,10 @@ class zlink_builder_state_t
     std::shared_ptr<channel_runtime_state_t> runtime = std::make_shared<channel_runtime_state_t> ();
     std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
     std::map<std::string, std::shared_ptr<route_channel_builder_state_t>> route_channels;
-    std::shared_ptr<registry_runtime_state_t> registry_runtime = std::make_shared<registry_runtime_state_t> ();
-    std::shared_ptr<stream_runtime_state_t> stream_runtime = std::make_shared<stream_runtime_state_t> ();
+    std::shared_ptr<registry_runtime_state_t> registry_runtime =
+      std::make_shared<registry_runtime_state_t> ();
+    std::shared_ptr<stream_runtime_state_t> stream_runtime =
+      std::make_shared<stream_runtime_state_t> ();
 };
 
 class channel_runtime_t
@@ -127,7 +130,8 @@ class channel_runtime_t
                                   const zlink::message_t &message) const;
 
     result_t<std::uint64_t> reserve_outbound_request (std::string channel_name);
-    result_t<std::uint64_t> queue_pending_send (std::string channel_name, std::string idempotency_key = {});
+    result_t<std::uint64_t> queue_pending_send (std::string channel_name,
+                                                std::string idempotency_key = {});
     result_t<void> complete_outbound_reply (std::uint64_t request_seq);
     result_t<void> mark_send_ready (std::uint64_t operation_id);
     result_t<void> expire_pending (std::uint64_t operation_id);

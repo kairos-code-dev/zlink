@@ -26,12 +26,12 @@ struct spot_peer_state_t
     std::set<std::string> connected_endpoints;
     std::set<std::string> discovery_endpoints;
     std::set<std::string> pending_subscription_ready_filters;
-    std::map<std::string, std::set<std::string> > pub_delivery_ready_sources;
+    std::map<std::string, std::set<std::string>> pub_delivery_ready_sources;
     std::map<std::string, uint32_t> pending_pub_delivery_ready_counts;
     std::map<std::string, spot_peer_observation_t> observations;
     std::map<std::string, uint32_t> peer_weight_by_endpoint;
     std::map<std::string, uint32_t> peer_weight_by_rid;
-    std::map<std::string, std::set<std::string> > peer_endpoints_by_rid;
+    std::map<std::string, std::set<std::string>> peer_endpoints_by_rid;
     bool subscription_ready_refresh_pending;
     unsigned int subscription_ready_refresh_holdoff_ticks;
     bool subscription_replay_pending;

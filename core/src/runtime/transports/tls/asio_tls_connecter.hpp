@@ -122,8 +122,8 @@ class asio_tls_connecter_t ZLINK_FINAL : public own_t, public io_object_t
     bool _connect_timer_started;
 
     //  Connection states
-    bool _tcp_connecting;       // TCP connect in progress
-    bool _terminating;          // process_term called
+    bool _tcp_connecting; // TCP connect in progress
+    bool _terminating;    // process_term called
 
     //  Linger value saved from process_term for deferred termination
     int _linger;
@@ -133,8 +133,8 @@ class asio_tls_connecter_t ZLINK_FINAL : public own_t, public io_object_t
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_tls_connecter_t)
 };
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZLINK_ASIO_TLS_CONNECTER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_TLS_CONNECTER_HPP_INCLUDED__

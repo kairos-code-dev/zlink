@@ -26,11 +26,10 @@
 namespace
 {
 std::mutex g_part_helper_mutex;
-std::unordered_map<void *, std::shared_ptr<zlink::part_helper_internal::handle_state_t> >
+std::unordered_map<void *, std::shared_ptr<zlink::part_helper_internal::handle_state_t>>
   g_part_helper_state;
 
-const bool routed_part_debug_on =
-  zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
+const bool routed_part_debug_on = zlink::debug_env_enabled ("ZLINK_ROUTED_PART_DEBUG");
 
 bool &aggregate_send_mode_tls ()
 {
@@ -43,39 +42,30 @@ bool routed_part_debug_enabled ()
     return routed_part_debug_on;
 }
 
-bool send_family_requires_routed_scope (
-  zlink::part_helper_internal::send_family_t family_)
+bool send_family_requires_routed_scope (zlink::part_helper_internal::send_family_t family_)
 {
     using namespace zlink::part_helper_internal;
-    return family_ == send_family_send_rid
-           || family_ == send_family_router_request
-           || family_ == send_family_dealer_request
-           || family_ == send_family_dealer_request_frame
-           || family_ == send_family_router_reply
-           || family_ == send_family_spot_send_channel
+    return family_ == send_family_send_rid || family_ == send_family_router_request
+           || family_ == send_family_dealer_request || family_ == send_family_dealer_request_frame
+           || family_ == send_family_router_reply || family_ == send_family_spot_send_channel
            || family_ == send_family_spot_request_channel
-           || family_ == send_family_spot_request_spot
-           || family_ == send_family_spot_request_router
-           || family_ == send_family_spot_send_spot
-           || family_ == send_family_spot_reply_spot
-           || family_ == send_family_spot_reply_router
-           || family_ == send_family_router_request_spot
-           || family_ == send_family_router_reply_spot
-           || family_ == send_family_router_send_spot
+           || family_ == send_family_spot_request_spot || family_ == send_family_spot_request_router
+           || family_ == send_family_spot_send_spot || family_ == send_family_spot_reply_spot
+           || family_ == send_family_spot_reply_router || family_ == send_family_router_request_spot
+           || family_ == send_family_router_reply_spot || family_ == send_family_router_send_spot
            || family_ == send_family_dealer_reply;
 }
 
-std::unique_ptr<zlink::socket_public_send_scope_t> create_send_scope (
-  zlink::socket_base_t *sink_socket_,
-  const zlink::part_helper_internal::send_sequence_spec_t &spec_)
+std::unique_ptr<zlink::socket_public_send_scope_t>
+create_send_scope (zlink::socket_base_t *sink_socket_,
+                   const zlink::part_helper_internal::send_sequence_spec_t &spec_)
 {
     if (!sink_socket_) {
         errno = EFAULT;
         return std::unique_ptr<zlink::socket_public_send_scope_t> ();
     }
 
-    const bool needs_sync =
-      send_family_requires_routed_scope (spec_.family);
+    const bool needs_sync = send_family_requires_routed_scope (spec_.family);
     return sink_socket_->begin_public_send_scope (needs_sync);
 }
 }
@@ -110,8 +100,7 @@ try_service_owned_handle_state (void *handle_)
 }
 
 void set_service_owned_handle_state (
-  void *handle_,
-  const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_)
+  void *handle_, const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_)
 {
     if (is_registered_spot_handle (handle_)) {
         spot_handle_t *spot = static_cast<spot_handle_t *> (handle_);
@@ -179,8 +168,7 @@ create_socket_owned_handle_state (void *handle_)
 
 bool uses_service_owned_handle_state (void *handle_)
 {
-    return is_registered_spot_handle (handle_)
-           || is_registered_spot_pub_side_handle (handle_)
+    return is_registered_spot_handle (handle_) || is_registered_spot_pub_side_handle (handle_)
            || is_registered_spot_sub_side_handle (handle_)
            || is_registered_spot_node_handle (handle_);
 }
@@ -204,8 +192,7 @@ zlink::part_helper_internal::send_sequence_spec_t::send_sequence_spec_t () :
 }
 
 zlink::part_helper_internal::send_sequence_state_t::send_sequence_state_t () :
-    active (false),
-    sink_socket (NULL)
+    active (false), sink_socket (NULL)
 {
 }
 
@@ -242,23 +229,19 @@ int zlink::part_helper_internal::validate_part_flag (zlink_part_flag_t part_flag
     return 0;
 }
 
-bool zlink::part_helper_internal::has_valid_routing_id (
-  const zlink_routing_id_t *rid_)
+bool zlink::part_helper_internal::has_valid_routing_id (const zlink_routing_id_t *rid_)
 {
     return zlink::valid_routing_id (rid_);
 }
 
-bool zlink::part_helper_internal::routing_id_equals (
-  const zlink_routing_id_t &lhs_,
-  const zlink_routing_id_t &rhs_)
+bool zlink::part_helper_internal::routing_id_equals (const zlink_routing_id_t &lhs_,
+                                                     const zlink_routing_id_t &rhs_)
 {
-    return lhs_.size == rhs_.size
-           && memcmp (lhs_.data, rhs_.data, lhs_.size) == 0;
+    return lhs_.size == rhs_.size && memcmp (lhs_.data, rhs_.data, lhs_.size) == 0;
 }
 
-void zlink::part_helper_internal::copy_routing_id (
-  const zlink_routing_id_t *src_,
-  zlink_routing_id_t *dest_)
+void zlink::part_helper_internal::copy_routing_id (const zlink_routing_id_t *src_,
+                                                   zlink_routing_id_t *dest_)
 {
     if (!dest_)
         return;
@@ -286,17 +269,14 @@ void zlink::part_helper_internal::consume_send_part (zlink_msg_t *part_)
     errno_assert (init_rc == 0);
 }
 
-bool zlink::part_helper_internal::send_spec_equals (
-  const send_sequence_spec_t &lhs_,
-  const send_sequence_spec_t &rhs_)
+bool zlink::part_helper_internal::send_spec_equals (const send_sequence_spec_t &lhs_,
+                                                    const send_sequence_spec_t &rhs_)
 {
-    if (lhs_.family != rhs_.family || lhs_.flags != rhs_.flags
-        || lhs_.timeout_ms != rhs_.timeout_ms
+    if (lhs_.family != rhs_.family || lhs_.flags != rhs_.flags || lhs_.timeout_ms != rhs_.timeout_ms
         || lhs_.request_seq != rhs_.request_seq || lhs_.handler != rhs_.handler
         || lhs_.userdata != rhs_.userdata || lhs_.has_rid1 != rhs_.has_rid1
         || lhs_.has_rid2 != rhs_.has_rid2 || lhs_.has_text1 != rhs_.has_text1
-        || lhs_.has_text2 != rhs_.has_text2
-        || lhs_.request_like != rhs_.request_like) {
+        || lhs_.has_text2 != rhs_.has_text2 || lhs_.request_like != rhs_.request_like) {
         return false;
     }
 
@@ -321,8 +301,7 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
     }
 
     if (!uses_service_owned_handle_state (handle_)) {
-        std::shared_ptr<handle_state_t> socket_state =
-          create_socket_owned_handle_state (handle_);
+        std::shared_ptr<handle_state_t> socket_state = create_socket_owned_handle_state (handle_);
         if (socket_state)
             return socket_state;
         if (try_as_socket (handle_))
@@ -330,16 +309,14 @@ zlink::part_helper_internal::find_or_create_handle_state (void *handle_)
     }
 
     if (uses_service_owned_handle_state (handle_)) {
-        std::shared_ptr<handle_state_t> service_state =
-          try_service_owned_handle_state (handle_);
+        std::shared_ptr<handle_state_t> service_state = try_service_owned_handle_state (handle_);
         if (service_state)
             return service_state;
         std::lock_guard<std::mutex> lock (g_part_helper_mutex);
         service_state = try_service_owned_handle_state (handle_);
         if (service_state)
             return service_state;
-        std::shared_ptr<handle_state_t> state (
-          new (std::nothrow) handle_state_t ());
+        std::shared_ptr<handle_state_t> state (new (std::nothrow) handle_state_t ());
         if (!state) {
             errno = ENOMEM;
             return std::shared_ptr<handle_state_t> ();
@@ -363,8 +340,7 @@ std::shared_ptr<zlink::part_helper_internal::handle_state_t>
 zlink::part_helper_internal::find_handle_state (void *handle_)
 {
     if (!uses_service_owned_handle_state (handle_)) {
-        std::shared_ptr<handle_state_t> socket_state =
-          try_socket_owned_handle_state (handle_);
+        std::shared_ptr<handle_state_t> socket_state = try_socket_owned_handle_state (handle_);
         if (socket_state)
             return socket_state;
         if (try_as_socket (handle_))
@@ -375,10 +351,9 @@ zlink::part_helper_internal::find_handle_state (void *handle_)
         return try_service_owned_handle_state (handle_);
 
     std::lock_guard<std::mutex> lock (g_part_helper_mutex);
-    std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
+    std::unordered_map<void *, std::shared_ptr<handle_state_t>>::iterator it =
       g_part_helper_state.find (handle_);
-    return it != g_part_helper_state.end () ? it->second
-                                            : std::shared_ptr<handle_state_t> ();
+    return it != g_part_helper_state.end () ? it->second : std::shared_ptr<handle_state_t> ();
 }
 
 bool zlink::part_helper_internal::recv_sequence_active (
@@ -401,16 +376,15 @@ bool zlink::part_helper_internal::send_sequence_active (void *handle_)
     return state->send.active;
 }
 
-int zlink::part_helper_internal::stage_recv_sequence (
-  const std::shared_ptr<handle_state_t> &state_,
-  recv_family_t family_,
-  zlink::socket_base_t *source_socket_,
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  std::thread::id owner_thread_)
+int zlink::part_helper_internal::stage_recv_sequence (const std::shared_ptr<handle_state_t> &state_,
+                                                      recv_family_t family_,
+                                                      zlink::socket_base_t *source_socket_,
+                                                      const zlink_routing_id_t *source_node_rid_,
+                                                      const zlink_routing_id_t *source_spot_rid_,
+                                                      uint64_t request_seq_,
+                                                      zlink_msg_t *parts_,
+                                                      size_t part_count_,
+                                                      std::thread::id owner_thread_)
 {
     if (!state_ || !parts_ || part_count_ == 0) {
         errno = EFAULT;
@@ -427,16 +401,14 @@ int zlink::part_helper_internal::stage_recv_sequence (
     state_->recv.family = family_;
     state_->recv.source_socket = source_socket_;
     state_->recv.owner_thread = owner_thread_;
-    set_recv_metadata (&state_->recv, source_node_rid_, source_spot_rid_,
-                       request_seq_);
+    set_recv_metadata (&state_->recv, source_node_rid_, source_spot_rid_, request_seq_);
     return buffer_recv_parts (&state_->recv, parts_, part_count_);
 }
 
-void zlink::part_helper_internal::set_recv_metadata (
-  recv_sequence_state_t *recv_,
-  const zlink_routing_id_t *source_node_rid_,
-  const zlink_routing_id_t *source_spot_rid_,
-  uint64_t request_seq_)
+void zlink::part_helper_internal::set_recv_metadata (recv_sequence_state_t *recv_,
+                                                     const zlink_routing_id_t *source_node_rid_,
+                                                     const zlink_routing_id_t *source_spot_rid_,
+                                                     uint64_t request_seq_)
 {
     if (!recv_)
         return;
@@ -483,23 +455,20 @@ int zlink::part_helper_internal::take_recv_part (recv_sequence_state_t *recv_,
         errno = EPROTO;
         return -1;
     }
-    if (zlink_msg_move (part_out_, &recv_->buffered_parts[recv_->next_part_index])
-        != 0) {
+    if (zlink_msg_move (part_out_, &recv_->buffered_parts[recv_->next_part_index]) != 0) {
         errno = EFAULT;
         return -1;
     }
 
     ++recv_->next_part_index;
-    *has_more_out_ = recv_->next_part_index < recv_->buffered_parts.size ()
-                       ? ZLINK_PART_MORE
-                       : ZLINK_PART_FINAL;
+    *has_more_out_ =
+      recv_->next_part_index < recv_->buffered_parts.size () ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
     return 0;
 }
 
-int zlink::part_helper_internal::take_recv_part (
-  const std::shared_ptr<handle_state_t> &state_,
-  zlink_msg_t *part_out_,
-  zlink_part_flag_t *has_more_out_)
+int zlink::part_helper_internal::take_recv_part (const std::shared_ptr<handle_state_t> &state_,
+                                                 zlink_msg_t *part_out_,
+                                                 zlink_part_flag_t *has_more_out_)
 {
     if (!state_) {
         errno = EFAULT;
@@ -522,14 +491,11 @@ void zlink::part_helper_internal::export_recv_metadata (
     std::lock_guard<std::mutex> lock (state_->mutex);
     if (source_node_rid_out_) {
         *source_node_rid_out_ =
-          state_->recv.return_source_rid_as_null ? NULL
-                                                 : &state_->recv.source_node_rid;
+          state_->recv.return_source_rid_as_null ? NULL : &state_->recv.source_node_rid;
     }
     if (source_spot_rid_out_) {
         *source_spot_rid_out_ =
-          state_->recv.return_source_spot_rid_as_null
-            ? NULL
-            : &state_->recv.source_spot_rid;
+          state_->recv.return_source_spot_rid_as_null ? NULL : &state_->recv.source_spot_rid;
     }
     if (request_seq_out_)
         *request_seq_out_ = state_->recv.request_seq;
@@ -578,12 +544,11 @@ void zlink::part_helper_internal::set_aggregate_send_mode (bool active_)
     aggregate_send_mode_tls () = active_;
 }
 
-int zlink::part_helper_internal::prepare_send_step (
-  void *handle_,
-  const send_sequence_spec_t &spec_,
-  zlink::socket_base_t *sink_socket_,
-  std::shared_ptr<handle_state_t> *state_out_,
-  bool *first_part_out_)
+int zlink::part_helper_internal::prepare_send_step (void *handle_,
+                                                    const send_sequence_spec_t &spec_,
+                                                    zlink::socket_base_t *sink_socket_,
+                                                    std::shared_ptr<handle_state_t> *state_out_,
+                                                    bool *first_part_out_)
 {
     if (!state_out_ || !first_part_out_) {
         errno = EFAULT;
@@ -632,8 +597,7 @@ int zlink::part_helper_internal::prepare_send_step (
             upgraded.userdata = spec_.userdata;
             const bool can_upgrade_staged_request =
               state->send.spec.request_like && spec_.request_like
-              && state->send.spec.request_seq == 0
-              && spec_.request_seq != 0
+              && state->send.spec.request_seq == 0 && spec_.request_seq != 0
               && send_spec_equals (upgraded, spec_);
             if (can_upgrade_staged_request) {
                 state->send.spec = spec_;
@@ -692,8 +656,7 @@ int zlink::part_helper_internal::prepare_recv_step (
         memset (&state->recv.source_spot_rid, 0, sizeof (state->recv.source_spot_rid));
         *first_part_out_ = true;
     } else {
-        if (state->recv.family != family_
-            || state->recv.owner_thread != current_thread) {
+        if (state->recv.family != family_ || state->recv.owner_thread != current_thread) {
             errno = EINVAL;
             return -1;
         }
@@ -705,9 +668,8 @@ int zlink::part_helper_internal::prepare_recv_step (
     return 0;
 }
 
-void zlink::part_helper_internal::complete_send_step (
-  const std::shared_ptr<handle_state_t> &state_,
-  zlink_part_flag_t part_flag_)
+void zlink::part_helper_internal::complete_send_step (const std::shared_ptr<handle_state_t> &state_,
+                                                      zlink_part_flag_t part_flag_)
 {
     if (!state_ || part_flag_ != ZLINK_PART_FINAL)
         return;
@@ -717,9 +679,8 @@ void zlink::part_helper_internal::complete_send_step (
     state_->cv.notify_all ();
 }
 
-void zlink::part_helper_internal::complete_recv_step (
-  const std::shared_ptr<handle_state_t> &state_,
-  zlink_part_flag_t has_more_)
+void zlink::part_helper_internal::complete_recv_step (const std::shared_ptr<handle_state_t> &state_,
+                                                      zlink_part_flag_t has_more_)
 {
     if (!state_ || has_more_ != ZLINK_PART_FINAL)
         return;
@@ -735,22 +696,19 @@ void zlink::part_helper_internal::complete_recv_step (
     state_->recv.owner_thread = std::thread::id ();
 }
 
-void zlink::part_helper_internal::abort_send_step (
-  const std::shared_ptr<handle_state_t> &state_)
+void zlink::part_helper_internal::abort_send_step (const std::shared_ptr<handle_state_t> &state_)
 {
     if (!state_)
         return;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
     if (state_->send.sink_socket && state_->send.send_scope)
-        (void) state_->send.sink_socket->rollback_scoped (
-          *state_->send.send_scope);
+        (void) state_->send.sink_socket->rollback_scoped (*state_->send.send_scope);
     reset_send_sequence (&state_->send);
     state_->cv.notify_all ();
 }
 
-void zlink::part_helper_internal::abort_recv_step (
-  const std::shared_ptr<handle_state_t> &state_)
+void zlink::part_helper_internal::abort_recv_step (const std::shared_ptr<handle_state_t> &state_)
 {
     if (!state_)
         return;
@@ -803,7 +761,7 @@ void zlink::part_helper_internal::cleanup_handle (void *handle_)
     }
     if (!state) {
         std::lock_guard<std::mutex> lock (g_part_helper_mutex);
-        std::unordered_map<void *, std::shared_ptr<handle_state_t> >::iterator it =
+        std::unordered_map<void *, std::shared_ptr<handle_state_t>>::iterator it =
           g_part_helper_state.find (handle_);
         if (it == g_part_helper_state.end ())
             return;

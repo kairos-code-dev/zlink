@@ -27,9 +27,8 @@ static bool wait_monitor_event (void *monitor_,
                                 unsigned char routing_id_[stream_routing_id_size],
                                 int timeout_ms_)
 {
-    return wait_monitor_event_routing_id (
-      monitor_, activity_socket_, expected_event_, routing_id_,
-      stream_routing_id_size, timeout_ms_);
+    return wait_monitor_event_routing_id (monitor_, activity_socket_, expected_event_, routing_id_,
+                                          stream_routing_id_size, timeout_ms_);
 }
 
 static void send_stream_msg (void *socket_,
@@ -37,14 +36,11 @@ static void send_stream_msg (void *socket_,
                              const void *data_,
                              size_t size_)
 {
-    TEST_ASSERT_EQUAL_INT (
-      static_cast<int> (stream_routing_id_size),
-      TEST_ASSERT_SUCCESS_ERRNO (zlink_send (socket_, routing_id_,
-                                             stream_routing_id_size,
-                                             ZLINK_SNDMORE)));
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (stream_routing_id_size),
+                           TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
+                             socket_, routing_id_, stream_routing_id_size, ZLINK_SNDMORE)));
     TEST_ASSERT_EQUAL_INT ((int) size_,
-                           TEST_ASSERT_SUCCESS_ERRNO (
-                             zlink_send (socket_, data_, size_, 0)));
+                           TEST_ASSERT_SUCCESS_ERRNO (zlink_send (socket_, data_, size_, 0)));
 }
 
 static int recv_stream_msg (void *socket_,
@@ -73,8 +69,7 @@ static int recv_stream_msg (void *socket_,
         zlink_msg_close (&payload_msg);
         return -1;
     }
-    const size_t copy_size =
-      std::min (buf_size_, zlink_msg_size (&payload_msg));
+    const size_t copy_size = std::min (buf_size_, zlink_msg_size (&payload_msg));
     if (buf_ && copy_size > 0)
         memcpy (buf_, zlink_msg_data (&payload_msg), copy_size);
     const int result = static_cast<int> (zlink_msg_size (&payload_msg));
@@ -82,9 +77,7 @@ static int recv_stream_msg (void *socket_,
     return result;
 }
 
-static bool parse_tcp_endpoint (const char *endpoint_,
-                                char host_[64],
-                                int *port_)
+static bool parse_tcp_endpoint (const char *endpoint_, char host_[64], int *port_)
 {
     if (!endpoint_ || !host_ || !port_)
         return false;
@@ -153,9 +146,7 @@ static int connect_raw_tcp (const char *endpoint_)
         return -1;
     }
 
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
+    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr), sizeof (addr)) != 0) {
         const int err = errno;
         close (fd);
         errno = err;
@@ -208,8 +199,7 @@ void test_stream_fastpath_tcp_basic ()
 
     char recv_buf[64];
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (
-      -1, zlink_recv (server, recv_buf, sizeof (recv_buf), ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_recv (server, recv_buf, sizeof (recv_buf), ZLINK_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     zlink_msg_t msg;

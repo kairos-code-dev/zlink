@@ -73,8 +73,8 @@ class asio_ipc_connecter_t ZLINK_FINAL : public own_t, public io_object_t
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ipc_connecter_t)
 };
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC
 
-#endif  // __ZLINK_ASIO_IPC_CONNECTER_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_IPC_CONNECTER_HPP_INCLUDED__

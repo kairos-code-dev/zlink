@@ -79,13 +79,12 @@ void spot_node_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
 
 } // namespace
 
-void spot_subject_composite_sub_handler_adapter (
-  const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_)
+void spot_subject_composite_sub_handler_adapter (const zlink_routing_id_t *source_rid_,
+                                                 const char *topic_,
+                                                 size_t topic_len_,
+                                                 zlink_msg_t *parts_,
+                                                 size_t part_count_,
+                                                 void *userdata_)
 {
     spot_handle_t *spot = static_cast<spot_handle_t *> (userdata_);
     if (!spot || !spot->check_tag () || !spot->handler) {
@@ -94,17 +93,15 @@ void spot_subject_composite_sub_handler_adapter (
     }
 
     const zlink::spot_dispatch_context_t dispatch_context (spot, false);
-    spot->handler (source_rid_, topic_, topic_len_, parts_, part_count_,
-                   spot->handler_userdata);
+    spot->handler (source_rid_, topic_, topic_len_, parts_, part_count_, spot->handler_userdata);
 }
 
-void spot_sub_dispatch_event_handler_adapter (
-  const zlink_routing_id_t *source_rid_,
-  const char *topic_,
-  size_t topic_len_,
-  zlink_msg_t *parts_,
-  size_t part_count_,
-  void *userdata_)
+void spot_sub_dispatch_event_handler_adapter (const zlink_routing_id_t *source_rid_,
+                                              const char *topic_,
+                                              size_t topic_len_,
+                                              zlink_msg_t *parts_,
+                                              size_t part_count_,
+                                              void *userdata_)
 {
     spot_handle_t *spot = static_cast<spot_handle_t *> (userdata_);
     if (!spot || !spot->check_tag ()) {
@@ -112,8 +109,7 @@ void spot_sub_dispatch_event_handler_adapter (
         return;
     }
 
-    if (spot_dispatch_queue_subscribe_message (spot, source_rid_, topic_,
-                                               topic_len_, parts_,
+    if (spot_dispatch_queue_subscribe_message (spot, source_rid_, topic_, topic_len_, parts_,
                                                part_count_)
         != 0) {
         zlink_multipart_close (parts_, part_count_);
@@ -130,8 +126,7 @@ int spot_pub_install_send_ready_handler (void *spot_pub_,
         return -1;
     }
     if (pub->node ()) {
-        zlink::service_public_api_scope_t admission (
-          pub->node ()->public_api_guard ());
+        zlink::service_public_api_scope_t admission (pub->node ()->public_api_guard ());
         if (!admission.acquired ())
             return -1;
     }
@@ -158,8 +153,7 @@ bool in_spot_node_send_ready_callback (zlink::spot_node_t *node_)
     return false;
 }
 
-zlink::spot_node_t *enter_spot_node_send_ready_callback (
-  zlink::spot_node_t *node_)
+zlink::spot_node_t *enter_spot_node_send_ready_callback (zlink::spot_node_t *node_)
 {
     zlink::spot_node_t *previous = spot_node_send_ready_callback_tls ();
     spot_node_send_ready_callback_tls () = node_;
@@ -224,8 +218,7 @@ int spot_node_install_handler (zlink::spot_node_t *node_,
         registry.handlers[node_] = entry;
     }
 
-    if (receiver->set_direct_handler (&spot_node_sub_handler_adapter, node_)
-        == 0)
+    if (receiver->set_direct_handler (&spot_node_sub_handler_adapter, node_) == 0)
         return 0;
 
     {
@@ -319,12 +312,9 @@ int spot_install_send_ready_handler (spot_handle_t *spot_,
         errno = EFAULT;
         return -1;
     }
-    spot_->logical_state->send_ready_userdata.store (
-      userdata_, std::memory_order_release);
-    spot_->logical_state->send_ready_subject.store (
-      spot_, std::memory_order_release);
-    spot_->logical_state->send_ready_handler.store (
-      handler_, std::memory_order_release);
+    spot_->logical_state->send_ready_userdata.store (userdata_, std::memory_order_release);
+    spot_->logical_state->send_ready_subject.store (spot_, std::memory_order_release);
+    spot_->logical_state->send_ready_handler.store (handler_, std::memory_order_release);
     return 0;
 }
 

@@ -59,8 +59,7 @@ bool spot_sub_t::is_node_owned_default () const
     return _node_owned_default;
 }
 
-std::shared_ptr<part_helper_internal::handle_state_t>
-spot_sub_t::part_helper_state () const
+std::shared_ptr<part_helper_internal::handle_state_t> spot_sub_t::part_helper_state () const
 {
     scoped_lock_t lock (_sync);
     return _part_helper_state;
@@ -110,8 +109,7 @@ bool spot_sub_t::is_valid_topic (const char *topic_, std::string *out_)
     return true;
 }
 
-bool spot_sub_t::is_valid_pattern (const char *pattern_,
-                                   std::string *prefix_out_)
+bool spot_sub_t::is_valid_pattern (const char *pattern_, std::string *prefix_out_)
 {
     if (!pattern_ || pattern_[0] == '\0')
         return false;

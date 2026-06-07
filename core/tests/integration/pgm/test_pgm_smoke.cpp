@@ -25,8 +25,7 @@ static bool has_prefix (const char *str_, const char *prefix_)
     return str_ && prefix_ && strncmp (str_, prefix_, strlen (prefix_)) == 0;
 }
 
-static void add_unique_addr (std::vector<std::string> &addrs_,
-                             const char *addr_)
+static void add_unique_addr (std::vector<std::string> &addrs_, const char *addr_)
 {
     for (size_t i = 0; i < addrs_.size (); ++i) {
         if (addrs_[i] == addr_)
@@ -55,8 +54,7 @@ static void collect_multicast_addrs (std::vector<std::string> &addrs_)
             continue;
 
         char addr[INET_ADDRSTRLEN];
-        const struct sockaddr_in *sa =
-          reinterpret_cast<struct sockaddr_in *> (ifa->ifa_addr);
+        const struct sockaddr_in *sa = reinterpret_cast<struct sockaddr_in *> (ifa->ifa_addr);
         if (!inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr)))
             continue;
 
@@ -129,8 +127,7 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
             char buffer[32];
             const int recv_rc = zlink_recv (sub, buffer, sizeof (buffer), 0);
             if (recv_rc >= 0) {
-                if ((size_t) recv_rc == payload_size
-                    && memcmp (buffer, payload, payload_size) == 0)
+                if ((size_t) recv_rc == payload_size && memcmp (buffer, payload, payload_size) == 0)
                     received = true;
             }
         }
@@ -151,20 +148,16 @@ static void test_pgm_smoke_pub_sub ()
     std::vector<std::string> endpoints;
     const char *env_endpoint = getenv ("ZLINK_PGM_SMOKE_ENDPOINT");
     if (env_endpoint && env_endpoint[0] != '\0') {
-        if (!has_prefix (env_endpoint, "pgm://")
-            && !has_prefix (env_endpoint, "epgm://")) {
-            TEST_FAIL_MESSAGE (
-              "ZLINK_PGM_SMOKE_ENDPOINT must start with pgm:// or epgm://");
+        if (!has_prefix (env_endpoint, "pgm://") && !has_prefix (env_endpoint, "epgm://")) {
+            TEST_FAIL_MESSAGE ("ZLINK_PGM_SMOKE_ENDPOINT must start with pgm:// or epgm://");
         }
         endpoints.push_back (env_endpoint);
     } else {
         std::vector<std::string> addrs;
         collect_multicast_addrs (addrs);
         for (size_t i = 0; i < addrs.size (); ++i) {
-            endpoints.push_back (
-              std::string ("epgm://") + addrs[i] + ";239.192.1.1:5555");
-            endpoints.push_back (
-              std::string ("pgm://") + addrs[i] + ";239.192.1.1:5555");
+            endpoints.push_back (std::string ("epgm://") + addrs[i] + ";239.192.1.1:5555");
+            endpoints.push_back (std::string ("pgm://") + addrs[i] + ";239.192.1.1:5555");
         }
     }
 

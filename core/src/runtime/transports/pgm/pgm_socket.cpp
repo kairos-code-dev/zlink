@@ -41,8 +41,8 @@ zlink::pgm_socket_t::pgm_socket_t (bool receiver_, const options_t &options_) :
 //       link-local;224.250.0.1,224.250.0.2;224.250.0.3:8000
 //       ;[fe80::1%en0]:7500
 int zlink::pgm_socket_t::init_address (const char *network_,
-                                     struct pgm_addrinfo_t **res,
-                                     uint16_t *port_number)
+                                       struct pgm_addrinfo_t **res,
+                                       uint16_t *port_number)
 {
     //  Parse port number, start from end for IPv6
     const char *port_delim = strrchr (network_, ':');
@@ -72,8 +72,7 @@ int zlink::pgm_socket_t::init_address (const char *network_,
         if (pgm_error->domain == PGM_ERROR_DOMAIN_IF &&
 
             //  NB: cannot catch EAI_BADFLAGS.
-            (pgm_error->code != PGM_ERROR_SERVICE
-             && pgm_error->code != PGM_ERROR_SOCKTNOSUPPORT)) {
+            (pgm_error->code != PGM_ERROR_SERVICE && pgm_error->code != PGM_ERROR_SOCKTNOSUPPORT)) {
             //  User, host, or network configuration or transient error.
             pgm_error_free (pgm_error);
             errno = EINVAL;
@@ -115,13 +114,11 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
 
     //  Create IP/PGM or UDP/PGM socket.
     if (udp_encapsulation_) {
-        if (!pgm_socket (&sock, sa_family, SOCK_SEQPACKET, IPPROTO_UDP,
-                         &pgm_error)) {
+        if (!pgm_socket (&sock, sa_family, SOCK_SEQPACKET, IPPROTO_UDP, &pgm_error)) {
             //  Invalid parameters don't set pgm_error_t.
             zlink_assert (pgm_error != NULL);
             if (pgm_error->domain == PGM_ERROR_DOMAIN_SOCKET
-                && (pgm_error->code != PGM_ERROR_BADF
-                    && pgm_error->code != PGM_ERROR_FAULT
+                && (pgm_error->code != PGM_ERROR_BADF && pgm_error->code != PGM_ERROR_FAULT
                     && pgm_error->code != PGM_ERROR_NOPROTOOPT
                     && pgm_error->code != PGM_ERROR_FAILED))
 
@@ -134,20 +131,18 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
 
         //  All options are of data type int
         const int encapsulation_port = port_number;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_UDP_ENCAP_UCAST_PORT,
-                             &encapsulation_port, sizeof (encapsulation_port)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_UDP_ENCAP_UCAST_PORT, &encapsulation_port,
+                             sizeof (encapsulation_port)))
             goto err_abort;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_UDP_ENCAP_MCAST_PORT,
-                             &encapsulation_port, sizeof (encapsulation_port)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_UDP_ENCAP_MCAST_PORT, &encapsulation_port,
+                             sizeof (encapsulation_port)))
             goto err_abort;
     } else {
-        if (!pgm_socket (&sock, sa_family, SOCK_SEQPACKET, IPPROTO_PGM,
-                         &pgm_error)) {
+        if (!pgm_socket (&sock, sa_family, SOCK_SEQPACKET, IPPROTO_PGM, &pgm_error)) {
             //  Invalid parameters don't set pgm_error_t.
             zlink_assert (pgm_error != NULL);
             if (pgm_error->domain == PGM_ERROR_DOMAIN_SOCKET
-                && (pgm_error->code != PGM_ERROR_BADF
-                    && pgm_error->code != PGM_ERROR_FAULT
+                && (pgm_error->code != PGM_ERROR_BADF && pgm_error->code != PGM_ERROR_FAULT
                     && pgm_error->code != PGM_ERROR_NOPROTOOPT
                     && pgm_error->code != PGM_ERROR_FAILED))
 
@@ -162,71 +157,59 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
     {
         const int rcvbuf = (int) options.rcvbuf;
         if (rcvbuf >= 0) {
-            if (!pgm_setsockopt (sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf,
-                                 sizeof (rcvbuf)))
+            if (!pgm_setsockopt (sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof (rcvbuf)))
                 goto err_abort;
         }
 
         const int sndbuf = (int) options.sndbuf;
         if (sndbuf >= 0) {
-            if (!pgm_setsockopt (sock, SOL_SOCKET, SO_SNDBUF, &sndbuf,
-                                 sizeof (sndbuf)))
+            if (!pgm_setsockopt (sock, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof (sndbuf)))
                 goto err_abort;
         }
 
         const int max_tpdu = (int) options.multicast_maxtpdu;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MTU, &max_tpdu,
-                             sizeof (max_tpdu)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MTU, &max_tpdu, sizeof (max_tpdu)))
             goto err_abort;
     }
 
     if (receiver) {
         const int recv_only = 1, rxw_max_tpdu = (int) options.multicast_maxtpdu,
-                  rxw_sqns = compute_sqns (rxw_max_tpdu),
-                  peer_expiry = pgm_secs (300), spmr_expiry = pgm_msecs (25),
-                  nak_bo_ivl = pgm_msecs (50), nak_rpt_ivl = pgm_msecs (200),
-                  nak_rdata_ivl = pgm_msecs (200), nak_data_retries = 50,
-                  nak_ncf_retries = 50;
+                  rxw_sqns = compute_sqns (rxw_max_tpdu), peer_expiry = pgm_secs (300),
+                  spmr_expiry = pgm_msecs (25), nak_bo_ivl = pgm_msecs (50),
+                  nak_rpt_ivl = pgm_msecs (200), nak_rdata_ivl = pgm_msecs (200),
+                  nak_data_retries = 50, nak_ncf_retries = 50;
 
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_RECV_ONLY, &recv_only,
-                             sizeof (recv_only))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_RXW_SQNS, &rxw_sqns,
-                                sizeof (rxw_sqns))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_PEER_EXPIRY,
-                                &peer_expiry, sizeof (peer_expiry))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_SPMR_EXPIRY,
-                                &spmr_expiry, sizeof (spmr_expiry))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_BO_IVL, &nak_bo_ivl,
-                                sizeof (nak_bo_ivl))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_RPT_IVL,
-                                &nak_rpt_ivl, sizeof (nak_rpt_ivl))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_RDATA_IVL,
-                                &nak_rdata_ivl, sizeof (nak_rdata_ivl))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_DATA_RETRIES,
-                                &nak_data_retries, sizeof (nak_data_retries))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_NCF_RETRIES,
-                                &nak_ncf_retries, sizeof (nak_ncf_retries)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_RECV_ONLY, &recv_only, sizeof (recv_only))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_RXW_SQNS, &rxw_sqns, sizeof (rxw_sqns))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_PEER_EXPIRY, &peer_expiry,
+                                sizeof (peer_expiry))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_SPMR_EXPIRY, &spmr_expiry,
+                                sizeof (spmr_expiry))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_BO_IVL, &nak_bo_ivl, sizeof (nak_bo_ivl))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_RPT_IVL, &nak_rpt_ivl,
+                                sizeof (nak_rpt_ivl))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_RDATA_IVL, &nak_rdata_ivl,
+                                sizeof (nak_rdata_ivl))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_DATA_RETRIES, &nak_data_retries,
+                                sizeof (nak_data_retries))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_NAK_NCF_RETRIES, &nak_ncf_retries,
+                                sizeof (nak_ncf_retries)))
             goto err_abort;
     } else {
         const int send_only = 1, max_rte = (int) ((options.rate * 1000) / 8),
                   txw_max_tpdu = (int) options.multicast_maxtpdu,
-                  txw_sqns = compute_sqns (txw_max_tpdu),
-                  ambient_spm = pgm_secs (30),
-                  heartbeat_spm[] = {
-                    pgm_msecs (100), pgm_msecs (100),  pgm_msecs (100),
-                    pgm_msecs (100), pgm_msecs (1300), pgm_secs (7),
-                    pgm_secs (16),   pgm_secs (25),    pgm_secs (30)};
+                  txw_sqns = compute_sqns (txw_max_tpdu), ambient_spm = pgm_secs (30),
+                  heartbeat_spm[] = {pgm_msecs (100), pgm_msecs (100),  pgm_msecs (100),
+                                     pgm_msecs (100), pgm_msecs (1300), pgm_secs (7),
+                                     pgm_secs (16),   pgm_secs (25),    pgm_secs (30)};
 
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_SEND_ONLY, &send_only,
-                             sizeof (send_only))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_ODATA_MAX_RTE, &max_rte,
-                                sizeof (max_rte))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_TXW_SQNS, &txw_sqns,
-                                sizeof (txw_sqns))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_AMBIENT_SPM,
-                                &ambient_spm, sizeof (ambient_spm))
-            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_HEARTBEAT_SPM,
-                                &heartbeat_spm, sizeof (heartbeat_spm)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_SEND_ONLY, &send_only, sizeof (send_only))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_ODATA_MAX_RTE, &max_rte, sizeof (max_rte))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_TXW_SQNS, &txw_sqns, sizeof (txw_sqns))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_AMBIENT_SPM, &ambient_spm,
+                                sizeof (ambient_spm))
+            || !pgm_setsockopt (sock, IPPROTO_PGM, PGM_HEARTBEAT_SPM, &heartbeat_spm,
+                                sizeof (heartbeat_spm)))
             goto err_abort;
     }
 
@@ -255,14 +238,13 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
         memcpy (&sa6, &res->ai_recv_addrs[0].gsr_group, sizeof (sa6));
         if_req.ir_scope_id = sa6.sin6_scope_id;
     }
-    if (!pgm_bind3 (sock, &addr, sizeof (addr), &if_req, sizeof (if_req),
-                    &if_req, sizeof (if_req), &pgm_error)) {
+    if (!pgm_bind3 (sock, &addr, sizeof (addr), &if_req, sizeof (if_req), &if_req, sizeof (if_req),
+                    &pgm_error)) {
         //  Invalid parameters don't set pgm_error_t.
         zlink_assert (pgm_error != NULL);
         if ((pgm_error->domain == PGM_ERROR_DOMAIN_SOCKET
              || pgm_error->domain == PGM_ERROR_DOMAIN_IF)
-            && (pgm_error->code != PGM_ERROR_INVAL
-                && pgm_error->code != PGM_ERROR_BADF
+            && (pgm_error->code != PGM_ERROR_INVAL && pgm_error->code != PGM_ERROR_BADF
                 && pgm_error->code != PGM_ERROR_FAULT))
 
             //  User, host, or network configuration or transient error.
@@ -274,12 +256,12 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
 
     //  Join IP multicast groups.
     for (unsigned i = 0; i < res->ai_recv_addrs_len; i++) {
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_JOIN_GROUP,
-                             &res->ai_recv_addrs[i], sizeof (struct group_req)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_JOIN_GROUP, &res->ai_recv_addrs[i],
+                             sizeof (struct group_req)))
             goto err_abort;
     }
-    if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_SEND_GROUP,
-                         &res->ai_send_addrs[0], sizeof (struct group_req)))
+    if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_SEND_GROUP, &res->ai_send_addrs[0],
+                         sizeof (struct group_req)))
         goto err_abort;
 
     pgm_freeaddrinfo (res);
@@ -289,13 +271,13 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
     {
         // Multicast loopback enabled to allow local PUB/SUB tests.
         const int multicast_loop = 1;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MULTICAST_LOOP,
-                             &multicast_loop, sizeof (multicast_loop)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MULTICAST_LOOP, &multicast_loop,
+                             sizeof (multicast_loop)))
             goto err_abort;
 
         const int multicast_hops = options.multicast_hops;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MULTICAST_HOPS,
-                             &multicast_hops, sizeof (multicast_hops)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_MULTICAST_HOPS, &multicast_hops,
+                             sizeof (multicast_hops)))
             goto err_abort;
 
         //  Expedited Forwarding PHB for network elements, no ECN.
@@ -305,8 +287,7 @@ int zlink::pgm_socket_t::init (bool udp_encapsulation_, const char *network_)
             pgm_setsockopt (sock, IPPROTO_PGM, PGM_TOS, &dscp, sizeof (dscp));
 
         const int nonblocking = 1;
-        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_NOBLOCK, &nonblocking,
-                             sizeof (nonblocking)))
+        if (!pgm_setsockopt (sock, IPPROTO_PGM, PGM_NOBLOCK, &nonblocking, sizeof (nonblocking)))
             goto err_abort;
     }
 
@@ -359,8 +340,7 @@ zlink::pgm_socket_t::~pgm_socket_t ()
 
 //  Get receiver fds. receive_fd_ is signaled for incoming packets,
 //  waiting_pipe_fd_ is signaled for state driven events and data.
-void zlink::pgm_socket_t::get_receiver_fds (fd_t *receive_fd_,
-                                          fd_t *waiting_pipe_fd_)
+void zlink::pgm_socket_t::get_receiver_fds (fd_t *receive_fd_, fd_t *waiting_pipe_fd_)
 {
     socklen_t socklen;
     bool rc;
@@ -369,14 +349,12 @@ void zlink::pgm_socket_t::get_receiver_fds (fd_t *receive_fd_,
     zlink_assert (waiting_pipe_fd_);
 
     socklen = sizeof (*receive_fd_);
-    rc =
-      pgm_getsockopt (sock, IPPROTO_PGM, PGM_RECV_SOCK, receive_fd_, &socklen);
+    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_RECV_SOCK, receive_fd_, &socklen);
     zlink_assert (rc);
     zlink_assert (socklen == sizeof (*receive_fd_));
 
     socklen = sizeof (*waiting_pipe_fd_);
-    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_PENDING_SOCK, waiting_pipe_fd_,
-                         &socklen);
+    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_PENDING_SOCK, waiting_pipe_fd_, &socklen);
     zlink_assert (rc);
     zlink_assert (socklen == sizeof (*waiting_pipe_fd_));
 }
@@ -387,9 +365,9 @@ void zlink::pgm_socket_t::get_receiver_fds (fd_t *receive_fd_,
 //  rdata_notify_fd_ is raised for waiting repair transmissions.
 //  pending_notify_fd_ is for state driven events.
 void zlink::pgm_socket_t::get_sender_fds (fd_t *send_fd_,
-                                        fd_t *receive_fd_,
-                                        fd_t *rdata_notify_fd_,
-                                        fd_t *pending_notify_fd_)
+                                          fd_t *receive_fd_,
+                                          fd_t *rdata_notify_fd_,
+                                          fd_t *pending_notify_fd_)
 {
     socklen_t socklen;
     bool rc;
@@ -405,20 +383,17 @@ void zlink::pgm_socket_t::get_sender_fds (fd_t *send_fd_,
     zlink_assert (socklen == sizeof (*receive_fd_));
 
     socklen = sizeof (*receive_fd_);
-    rc =
-      pgm_getsockopt (sock, IPPROTO_PGM, PGM_RECV_SOCK, receive_fd_, &socklen);
+    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_RECV_SOCK, receive_fd_, &socklen);
     zlink_assert (rc);
     zlink_assert (socklen == sizeof (*receive_fd_));
 
     socklen = sizeof (*rdata_notify_fd_);
-    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_REPAIR_SOCK, rdata_notify_fd_,
-                         &socklen);
+    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_REPAIR_SOCK, rdata_notify_fd_, &socklen);
     zlink_assert (rc);
     zlink_assert (socklen == sizeof (*rdata_notify_fd_));
 
     socklen = sizeof (*pending_notify_fd_);
-    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_PENDING_SOCK,
-                         pending_notify_fd_, &socklen);
+    rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_PENDING_SOCK, pending_notify_fd_, &socklen);
     zlink_assert (rc);
     zlink_assert (socklen == sizeof (*pending_notify_fd_));
 }
@@ -436,8 +411,7 @@ size_t zlink::pgm_socket_t::send (unsigned char *data_, size_t data_len_)
         zlink_assert (status == PGM_IO_STATUS_NORMAL);
         zlink_assert (nbytes == data_len_);
     } else {
-        zlink_assert (status == PGM_IO_STATUS_RATE_LIMITED
-                    || status == PGM_IO_STATUS_WOULD_BLOCK);
+        zlink_assert (status == PGM_IO_STATUS_RATE_LIMITED || status == PGM_IO_STATUS_WOULD_BLOCK);
 
         if (status == PGM_IO_STATUS_RATE_LIMITED)
             errno = ENOMEM;
@@ -460,9 +434,8 @@ long zlink::pgm_socket_t::get_rx_timeout ()
     struct timeval tv;
     socklen_t optlen = sizeof (tv);
     const bool rc = pgm_getsockopt (sock, IPPROTO_PGM,
-                                    last_rx_status == PGM_IO_STATUS_RATE_LIMITED
-                                      ? PGM_RATE_REMAIN
-                                      : PGM_TIME_REMAIN,
+                                    last_rx_status == PGM_IO_STATUS_RATE_LIMITED ? PGM_RATE_REMAIN
+                                                                                 : PGM_TIME_REMAIN,
                                     &tv, &optlen);
     zlink_assert (rc);
 
@@ -478,8 +451,7 @@ long zlink::pgm_socket_t::get_tx_timeout ()
 
     struct timeval tv;
     socklen_t optlen = sizeof (tv);
-    const bool rc =
-      pgm_getsockopt (sock, IPPROTO_PGM, PGM_RATE_REMAIN, &tv, &optlen);
+    const bool rc = pgm_getsockopt (sock, IPPROTO_PGM, PGM_RATE_REMAIN, &tv, &optlen);
     zlink_assert (rc);
 
     const long timeout = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
@@ -528,8 +500,8 @@ ssize_t zlink::pgm_socket_t::receive (void **raw_data_, const pgm_tsi_t **tsi_)
         //  from the transport.
         pgm_error_t *pgm_error = NULL;
 
-        const int status = pgm_recvmsgv (sock, pgm_msgv, pgm_msgv_len,
-                                         MSG_ERRQUEUE, &nbytes_rec, &pgm_error);
+        const int status =
+          pgm_recvmsgv (sock, pgm_msgv, pgm_msgv_len, MSG_ERRQUEUE, &nbytes_rec, &pgm_error);
 
         //  Invalid parameters.
         zlink_assert (status != PGM_IO_STATUS_ERROR);
@@ -617,17 +589,15 @@ void zlink::pgm_socket_t::process_upstream ()
     size_t dummy_bytes = 0;
     pgm_error_t *pgm_error = NULL;
 
-    const int status = pgm_recvmsgv (sock, &dummy_msg, 1, MSG_ERRQUEUE,
-                                     &dummy_bytes, &pgm_error);
+    const int status = pgm_recvmsgv (sock, &dummy_msg, 1, MSG_ERRQUEUE, &dummy_bytes, &pgm_error);
 
     //  Invalid parameters.
     zlink_assert (status != PGM_IO_STATUS_ERROR);
 
     //  No data should be returned.
     zlink_assert (dummy_bytes == 0
-                && (status == PGM_IO_STATUS_TIMER_PENDING
-                    || status == PGM_IO_STATUS_RATE_LIMITED
-                    || status == PGM_IO_STATUS_WOULD_BLOCK));
+                  && (status == PGM_IO_STATUS_TIMER_PENDING || status == PGM_IO_STATUS_RATE_LIMITED
+                      || status == PGM_IO_STATUS_WOULD_BLOCK));
 
     last_rx_status = status;
 

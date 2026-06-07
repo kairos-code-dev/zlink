@@ -16,40 +16,41 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace
+{
 
 static const size_t k_stream_slot_count = 8;
 static const size_t k_send_ready_handler_slot_count = 8;
 static const size_t k_socket_monitor_handler_slot_count = 8;
 static const int32_t k_stream_dispatch_len32be = 1;
 
-int classify_try_send_errno()
+int classify_try_send_errno ()
 {
-    switch (zlink_errno()) {
-    case EAGAIN:
-        return ZLINK_SUBMIT_BACKPRESSURED;
+    switch (zlink_errno ()) {
+        case EAGAIN:
+            return ZLINK_SUBMIT_BACKPRESSURED;
 #ifdef ENOTCONN
-    case ENOTCONN:
+        case ENOTCONN:
 #endif
 #ifdef EHOSTUNREACH
-    case EHOSTUNREACH:
+        case EHOSTUNREACH:
 #endif
 #ifdef ETIMEDOUT
-    case ETIMEDOUT:
+        case ETIMEDOUT:
 #endif
-        return ZLINK_SUBMIT_NOT_CONNECTED;
-    default:
-        return -1;
+            return ZLINK_SUBMIT_NOT_CONNECTED;
+        default:
+            return -1;
     }
 }
 
 struct stream_js_payload_t
 {
-    stream_js_payload_t() : packet_count(0) {}
-    ~stream_js_payload_t()
+    stream_js_payload_t () : packet_count (0) {}
+    ~stream_js_payload_t ()
     {
         if (packet_count > 0)
-            close_recv_parts(packets.data(), packet_count);
+            close_recv_parts (packets.data (), packet_count);
     }
 
     std::vector<unsigned char> routing_id;
@@ -64,11 +65,11 @@ struct socket_monitor_handler_js_payload_t
 
 struct request_result_js_payload_t
 {
-    request_result_js_payload_t() : errnum(0), part_count(0) {}
-    ~request_result_js_payload_t()
+    request_result_js_payload_t () : errnum (0), part_count (0) {}
+    ~request_result_js_payload_t ()
     {
         if (part_count > 0)
-            close_recv_parts(parts.data(), part_count);
+            close_recv_parts (parts.data (), part_count);
     }
 
     int errnum;
@@ -86,12 +87,7 @@ struct request_js_state_t
 
 struct stream_js_state_t
 {
-    stream_js_state_t () :
-        used (false),
-        socket (NULL),
-        env (NULL),
-        tsfn (NULL),
-        stop_requested (0)
+    stream_js_state_t () : used (false), socket (NULL), env (NULL), tsfn (NULL), stop_requested (0)
     {
     }
 
@@ -100,7 +96,7 @@ struct stream_js_state_t
     napi_env env;
     napi_threadsafe_function tsfn;
     std::atomic<int> stop_requested;
-    std::vector<std::vector<unsigned char> > peer_routing_ids;
+    std::vector<std::vector<unsigned char>> peer_routing_ids;
 };
 
 static std::mutex g_stream_slots_mu;
@@ -118,8 +114,7 @@ struct send_ready_handler_js_state_t
 
 struct socket_monitor_handler_js_state_t
 {
-    socket_monitor_handler_js_state_t ()
-      : used (false), monitor (NULL), env (NULL), tsfn (NULL) {}
+    socket_monitor_handler_js_state_t () : used (false), monitor (NULL), env (NULL), tsfn (NULL) {}
 
     bool used;
     void *monitor;
@@ -128,79 +123,70 @@ struct socket_monitor_handler_js_state_t
 };
 
 static std::mutex g_send_ready_handler_slots_mu;
-static send_ready_handler_js_state_t
-  g_send_ready_handler_slots[k_send_ready_handler_slot_count];
+static send_ready_handler_js_state_t g_send_ready_handler_slots[k_send_ready_handler_slot_count];
 static std::mutex g_socket_monitor_handler_slots_mu;
 static socket_monitor_handler_js_state_t
   g_socket_monitor_handler_slots[k_socket_monitor_handler_slot_count];
 
-stream_js_state_t *find_stream_slot_by_socket_unsafe(void *socket)
+stream_js_state_t *find_stream_slot_by_socket_unsafe (void *socket)
 {
-    return find_tsfn_slot_by_subject(
-      g_stream_slots, k_stream_slot_count, &stream_js_state_t::socket, socket);
+    return find_tsfn_slot_by_subject (g_stream_slots, k_stream_slot_count,
+                                      &stream_js_state_t::socket, socket);
 }
 
-send_ready_handler_js_state_t *find_send_ready_handler_slot_by_socket_unsafe(
-  void *socket)
+send_ready_handler_js_state_t *find_send_ready_handler_slot_by_socket_unsafe (void *socket)
 {
-    return find_tsfn_slot_by_subject(
-      g_send_ready_handler_slots,
-      k_send_ready_handler_slot_count,
-      &send_ready_handler_js_state_t::socket,
-      socket);
+    return find_tsfn_slot_by_subject (g_send_ready_handler_slots, k_send_ready_handler_slot_count,
+                                      &send_ready_handler_js_state_t::socket, socket);
 }
 
-send_ready_handler_js_state_t *find_free_send_ready_handler_slot_unsafe()
+send_ready_handler_js_state_t *find_free_send_ready_handler_slot_unsafe ()
 {
-    return find_free_tsfn_slot(
-      g_send_ready_handler_slots, k_send_ready_handler_slot_count);
+    return find_free_tsfn_slot (g_send_ready_handler_slots, k_send_ready_handler_slot_count);
 }
 
-socket_monitor_handler_js_state_t *find_socket_monitor_handler_slot_by_monitor_unsafe(
-  void *monitor)
+socket_monitor_handler_js_state_t *
+find_socket_monitor_handler_slot_by_monitor_unsafe (void *monitor)
 {
-    return find_tsfn_slot_by_subject(
-      g_socket_monitor_handler_slots,
-      k_socket_monitor_handler_slot_count,
-      &socket_monitor_handler_js_state_t::monitor,
-      monitor);
+    return find_tsfn_slot_by_subject (g_socket_monitor_handler_slots,
+                                      k_socket_monitor_handler_slot_count,
+                                      &socket_monitor_handler_js_state_t::monitor, monitor);
 }
 
-socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe()
+socket_monitor_handler_js_state_t *find_free_socket_monitor_handler_slot_unsafe ()
 {
-    return find_free_tsfn_slot(
-      g_socket_monitor_handler_slots, k_socket_monitor_handler_slot_count);
+    return find_free_tsfn_slot (g_socket_monitor_handler_slots,
+                                k_socket_monitor_handler_slot_count);
 }
 
-stream_js_state_t *find_free_stream_slot_unsafe()
+stream_js_state_t *find_free_stream_slot_unsafe ()
 {
-    return find_free_tsfn_slot(g_stream_slots, k_stream_slot_count);
+    return find_free_tsfn_slot (g_stream_slots, k_stream_slot_count);
 }
 
-void reset_stream_slot_unsafe(stream_js_state_t *state)
+void reset_stream_slot_unsafe (stream_js_state_t *state)
 {
     if (!state)
         return;
-    reset_tsfn_slot_base(state);
+    reset_tsfn_slot_base (state);
     state->socket = NULL;
-    state->stop_requested.store(0, std::memory_order_release);
-    state->peer_routing_ids.clear();
+    state->stop_requested.store (0, std::memory_order_release);
+    state->peer_routing_ids.clear ();
 }
 
-void reset_send_ready_handler_slot_unsafe(send_ready_handler_js_state_t *state)
+void reset_send_ready_handler_slot_unsafe (send_ready_handler_js_state_t *state)
 {
     if (!state)
         return;
-    reset_tsfn_slot_base(state);
+    reset_tsfn_slot_base (state);
     state->socket = NULL;
 }
 
-void reset_socket_monitor_handler_slot_unsafe(
-  socket_monitor_handler_js_state_t *state)
+void reset_socket_monitor_handler_slot_unsafe (socket_monitor_handler_js_state_t *state)
 {
     if (!state)
         return;
-    reset_tsfn_slot_base(state);
+    reset_tsfn_slot_base (state);
     state->monitor = NULL;
 }
 
@@ -208,110 +194,99 @@ extern "C" {
 int zlink_stream_detach (void *s_);
 }
 
-zlink_socket_type_t translate_socket_type(int32_t type)
+zlink_socket_type_t translate_socket_type (int32_t type)
 {
     switch (type) {
-    case ZLINK_SOCKET_PAIR:
-        return ZLINK_SOCKET_PAIR;
-    case ZLINK_SOCKET_PUB:
-        return ZLINK_SOCKET_PUB;
-    case ZLINK_SOCKET_SUB:
-        return ZLINK_SOCKET_SUB;
-    case ZLINK_SOCKET_DEALER:
-        return ZLINK_SOCKET_DEALER;
-    case ZLINK_SOCKET_ROUTER:
-        return ZLINK_SOCKET_ROUTER;
-    case ZLINK_SOCKET_XPUB:
-        return ZLINK_SOCKET_XPUB;
-    case ZLINK_SOCKET_XSUB:
-        return ZLINK_SOCKET_XSUB;
-    case ZLINK_SOCKET_STREAM:
-        return ZLINK_SOCKET_STREAM;
-    default:
-        return static_cast<zlink_socket_type_t>(type);
+        case ZLINK_SOCKET_PAIR:
+            return ZLINK_SOCKET_PAIR;
+        case ZLINK_SOCKET_PUB:
+            return ZLINK_SOCKET_PUB;
+        case ZLINK_SOCKET_SUB:
+            return ZLINK_SOCKET_SUB;
+        case ZLINK_SOCKET_DEALER:
+            return ZLINK_SOCKET_DEALER;
+        case ZLINK_SOCKET_ROUTER:
+            return ZLINK_SOCKET_ROUTER;
+        case ZLINK_SOCKET_XPUB:
+            return ZLINK_SOCKET_XPUB;
+        case ZLINK_SOCKET_XSUB:
+            return ZLINK_SOCKET_XSUB;
+        case ZLINK_SOCKET_STREAM:
+            return ZLINK_SOCKET_STREAM;
+        default:
+            return static_cast<zlink_socket_type_t> (type);
     }
 }
 
-bool init_msg_from_bytes(zlink_msg_t *msg, const void *data, size_t len)
+bool init_msg_from_bytes (zlink_msg_t *msg, const void *data, size_t len)
 {
-    if (zlink_msg_init_size(msg, len) != 0)
+    if (zlink_msg_init_size (msg, len) != 0)
         return false;
     if (len > 0 && data)
-        memcpy(zlink_msg_data(msg), data, len);
+        memcpy (zlink_msg_data (msg), data, len);
     return true;
 }
 
-int recv_parts(void *sock,
-               zlink_routing_id_t *routing_id,
-               std::vector<zlink_msg_t> *parts,
-               int32_t flags)
+int recv_parts (void *sock,
+                zlink_routing_id_t *routing_id,
+                std::vector<zlink_msg_t> *parts,
+                int32_t flags)
 {
     const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t first_part;
-    if (zlink_msg_init(&first_part) != 0)
+    if (zlink_msg_init (&first_part) != 0)
         return ZLINK_RECV_INTERNAL_ERROR;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    copy_routing_id(routing_id, NULL);
+    copy_routing_id (routing_id, NULL);
     if (parts)
-        parts->clear();
+        parts->clear ();
 
-    int rc = zlink_recv_part(
-      sock,
-      &source_rid,
-      &first_part,
-      &has_more,
-      static_cast<zlink_recv_flags_t>(flags));
+    int rc = zlink_recv_part (sock, &source_rid, &first_part, &has_more,
+                              static_cast<zlink_recv_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&first_part);
+        zlink_msg_close (&first_part);
         return rc;
     }
 
-    copy_routing_id(routing_id, source_rid);
-    return collect_recv_parts(sock, &first_part, has_more, parts);
+    copy_routing_id (routing_id, source_rid);
+    return collect_recv_parts (sock, &first_part, has_more, parts);
 }
 
-int subscribe_parts(void *sock,
-                    zlink_routing_id_t *routing_id,
-                    char *topic,
-                    size_t topic_capacity,
-                    size_t *topic_len,
-                    std::vector<zlink_msg_t> *parts,
-                    int32_t flags)
+int subscribe_parts (void *sock,
+                     zlink_routing_id_t *routing_id,
+                     char *topic,
+                     size_t topic_capacity,
+                     size_t *topic_len,
+                     std::vector<zlink_msg_t> *parts,
+                     int32_t flags)
 {
     const zlink_routing_id_t *source_rid = NULL;
     zlink_msg_t first_part;
-    if (zlink_msg_init(&first_part) != 0)
+    if (zlink_msg_init (&first_part) != 0)
         return ZLINK_RECV_INTERNAL_ERROR;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    copy_routing_id(routing_id, NULL);
+    copy_routing_id (routing_id, NULL);
     if (parts)
-        parts->clear();
+        parts->clear ();
 
-    int rc = zlink_subscribe_part(
-      sock,
-      &source_rid,
-      topic,
-      topic_capacity,
-      topic_len,
-      &first_part,
-      &has_more,
-      static_cast<zlink_recv_flags_t>(flags));
+    int rc = zlink_subscribe_part (sock, &source_rid, topic, topic_capacity, topic_len, &first_part,
+                                   &has_more, static_cast<zlink_recv_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&first_part);
+        zlink_msg_close (&first_part);
         return rc;
     }
 
-    copy_routing_id(routing_id, source_rid);
+    copy_routing_id (routing_id, source_rid);
     if (!parts) {
-        zlink_msg_close(&first_part);
+        zlink_msg_close (&first_part);
         errno = EFAULT;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
-    parts->clear();
-    if (!append_msg_move(parts, &first_part)) {
-        zlink_msg_close(&first_part);
+    parts->clear ();
+    if (!append_msg_move (parts, &first_part)) {
+        zlink_msg_close (&first_part);
         errno = ENOMEM;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
@@ -320,31 +295,24 @@ int subscribe_parts(void *sock,
         char next_topic[256];
         size_t next_topic_len = 0;
         zlink_msg_t next_part;
-        if (zlink_msg_init(&next_part) != 0) {
-            close_msg_vector(*parts);
-            parts->clear();
+        if (zlink_msg_init (&next_part) != 0) {
+            close_msg_vector (*parts);
+            parts->clear ();
             return ZLINK_RECV_INTERNAL_ERROR;
         }
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        rc = zlink_subscribe_part(
-          sock,
-          &next_source_rid,
-          next_topic,
-          sizeof(next_topic),
-          &next_topic_len,
-          &next_part,
-          &more,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        rc = zlink_subscribe_part (sock, &next_source_rid, next_topic, sizeof (next_topic),
+                                   &next_topic_len, &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc != ZLINK_RECV_OK) {
-            zlink_msg_close(&next_part);
-            close_msg_vector(*parts);
-            parts->clear();
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
             return rc;
         }
-        if (!append_msg_move(parts, &next_part)) {
-            zlink_msg_close(&next_part);
-            close_msg_vector(*parts);
-            parts->clear();
+        if (!append_msg_move (parts, &next_part)) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
             errno = ENOMEM;
             return ZLINK_RECV_INTERNAL_ERROR;
         }
@@ -353,50 +321,44 @@ int subscribe_parts(void *sock,
     return ZLINK_RECV_OK;
 }
 
-int router_recv_parts(void *router,
-                      zlink_routing_id_t *peer_rid,
-                      zlink_routing_id_t *spot_rid,
-                      uint64_t *request_seq,
-                      std::vector<zlink_msg_t> *parts,
-                      int32_t flags)
+int router_recv_parts (void *router,
+                       zlink_routing_id_t *peer_rid,
+                       zlink_routing_id_t *spot_rid,
+                       uint64_t *request_seq,
+                       std::vector<zlink_msg_t> *parts,
+                       int32_t flags)
 {
     const zlink_routing_id_t *peer_rid_ptr = NULL;
     const zlink_routing_id_t *spot_rid_ptr = NULL;
     zlink_msg_t first_part;
-    if (zlink_msg_init(&first_part) != 0)
+    if (zlink_msg_init (&first_part) != 0)
         return ZLINK_RECV_INTERNAL_ERROR;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    copy_routing_id(peer_rid, NULL);
-    copy_routing_id(spot_rid, NULL);
+    copy_routing_id (peer_rid, NULL);
+    copy_routing_id (spot_rid, NULL);
     if (request_seq)
         *request_seq = 0;
     if (parts)
-        parts->clear();
+        parts->clear ();
 
-    int rc = zlink_router_recv_part(
-      router,
-      &peer_rid_ptr,
-      &spot_rid_ptr,
-      request_seq,
-      &first_part,
-      &has_more,
-      static_cast<zlink_recv_flags_t>(flags));
+    int rc = zlink_router_recv_part (router, &peer_rid_ptr, &spot_rid_ptr, request_seq, &first_part,
+                                     &has_more, static_cast<zlink_recv_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&first_part);
+        zlink_msg_close (&first_part);
         return rc;
     }
 
-    copy_routing_id(peer_rid, peer_rid_ptr);
-    copy_routing_id(spot_rid, spot_rid_ptr);
+    copy_routing_id (peer_rid, peer_rid_ptr);
+    copy_routing_id (spot_rid, spot_rid_ptr);
     if (!parts) {
-        zlink_msg_close(&first_part);
+        zlink_msg_close (&first_part);
         errno = EFAULT;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
-    parts->clear();
-    if (!append_msg_move(parts, &first_part)) {
-        zlink_msg_close(&first_part);
+    parts->clear ();
+    if (!append_msg_move (parts, &first_part)) {
+        zlink_msg_close (&first_part);
         errno = ENOMEM;
         return ZLINK_RECV_INTERNAL_ERROR;
     }
@@ -405,30 +367,24 @@ int router_recv_parts(void *router,
         const zlink_routing_id_t *next_spot_rid = NULL;
         uint64_t next_request_seq = 0;
         zlink_msg_t next_part;
-        if (zlink_msg_init(&next_part) != 0) {
-            close_msg_vector(*parts);
-            parts->clear();
+        if (zlink_msg_init (&next_part) != 0) {
+            close_msg_vector (*parts);
+            parts->clear ();
             return ZLINK_RECV_INTERNAL_ERROR;
         }
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        rc = zlink_router_recv_part(
-          router,
-          &next_peer_rid,
-          &next_spot_rid,
-          &next_request_seq,
-          &next_part,
-          &more,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        rc = zlink_router_recv_part (router, &next_peer_rid, &next_spot_rid, &next_request_seq,
+                                     &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc != ZLINK_RECV_OK) {
-            zlink_msg_close(&next_part);
-            close_msg_vector(*parts);
-            parts->clear();
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
             return rc;
         }
-        if (!append_msg_move(parts, &next_part)) {
-            zlink_msg_close(&next_part);
-            close_msg_vector(*parts);
-            parts->clear();
+        if (!append_msg_move (parts, &next_part)) {
+            zlink_msg_close (&next_part);
+            close_msg_vector (*parts);
+            parts->clear ();
             errno = ENOMEM;
             return ZLINK_RECV_INTERNAL_ERROR;
         }
@@ -437,10 +393,7 @@ int router_recv_parts(void *router,
     return ZLINK_RECV_OK;
 }
 
-int send_parts(void *sock,
-               zlink_msg_t *parts,
-               size_t part_count,
-               zlink_send_flags_t flags)
+int send_parts (void *sock, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -448,12 +401,11 @@ int send_parts(void *sock,
     }
 
     for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag =
-          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_send_part(sock, &parts[i], flags, part_flag);
+        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_send_part (sock, &parts[i], flags, part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -461,11 +413,11 @@ int send_parts(void *sock,
     return ZLINK_SUBMIT_OK;
 }
 
-int send_parts_rid(void *sock,
-                   const zlink_routing_id_t *routing_id,
-                   zlink_msg_t *parts,
-                   size_t part_count,
-                   zlink_send_flags_t flags)
+int send_parts_rid (void *sock,
+                    const zlink_routing_id_t *routing_id,
+                    zlink_msg_t *parts,
+                    size_t part_count,
+                    zlink_send_flags_t flags)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -473,12 +425,11 @@ int send_parts_rid(void *sock,
     }
 
     for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag =
-          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_send_part_rid(sock, routing_id, &parts[i], flags, part_flag);
+        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_send_part_rid (sock, routing_id, &parts[i], flags, part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -486,11 +437,8 @@ int send_parts_rid(void *sock,
     return ZLINK_SUBMIT_OK;
 }
 
-int publish_parts(void *sock,
-                  const char *topic,
-                  zlink_msg_t *parts,
-                  size_t part_count,
-                  zlink_send_flags_t flags)
+int publish_parts (
+  void *sock, const char *topic, zlink_msg_t *parts, size_t part_count, zlink_send_flags_t flags)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -498,12 +446,11 @@ int publish_parts(void *sock,
     }
 
     for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag =
-          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc = zlink_publish_part(sock, topic, &parts[i], flags, part_flag);
+        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_publish_part (sock, topic, &parts[i], flags, part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -511,13 +458,13 @@ int publish_parts(void *sock,
     return ZLINK_SUBMIT_OK;
 }
 
-int dealer_request_parts(void *dealer,
-                         zlink_msg_t *parts,
-                         size_t part_count,
-                         zlink_reply_handler_fn handler,
-                         void *userdata,
-                         zlink_send_flags_t flags,
-                         uint32_t timeout_ms)
+int dealer_request_parts (void *dealer,
+                          zlink_msg_t *parts,
+                          size_t part_count,
+                          zlink_reply_handler_fn handler,
+                          void *userdata,
+                          zlink_send_flags_t flags,
+                          uint32_t timeout_ms)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -526,19 +473,13 @@ int dealer_request_parts(void *dealer,
 
     for (size_t i = 0; i < part_count; ++i) {
         const bool is_final = (i + 1u == part_count);
-        const zlink_part_flag_t part_flag =
-          is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
-        int rc = zlink_dealer_request_part(
-          dealer,
-          &parts[i],
-          flags,
-          part_flag,
-          is_final ? timeout_ms : 0u,
-          is_final ? handler : NULL,
-          is_final ? userdata : NULL);
+        const zlink_part_flag_t part_flag = is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
+        int rc = zlink_dealer_request_part (dealer, &parts[i], flags, part_flag,
+                                            is_final ? timeout_ms : 0u, is_final ? handler : NULL,
+                                            is_final ? userdata : NULL);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -546,14 +487,14 @@ int dealer_request_parts(void *dealer,
     return ZLINK_SUBMIT_OK;
 }
 
-int router_request_parts(void *router,
-                         const zlink_routing_id_t *peer_rid,
-                         zlink_msg_t *parts,
-                         size_t part_count,
-                         zlink_reply_handler_fn handler,
-                         void *userdata,
-                         zlink_send_flags_t flags,
-                         uint32_t timeout_ms)
+int router_request_parts (void *router,
+                          const zlink_routing_id_t *peer_rid,
+                          zlink_msg_t *parts,
+                          size_t part_count,
+                          zlink_reply_handler_fn handler,
+                          void *userdata,
+                          zlink_send_flags_t flags,
+                          uint32_t timeout_ms)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -562,20 +503,13 @@ int router_request_parts(void *router,
 
     for (size_t i = 0; i < part_count; ++i) {
         const bool is_final = (i + 1u == part_count);
-        const zlink_part_flag_t part_flag =
-          is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
-        int rc = zlink_router_request_part(
-          router,
-          peer_rid,
-          &parts[i],
-          flags,
-          part_flag,
-          is_final ? timeout_ms : 0u,
-          is_final ? handler : NULL,
-          is_final ? userdata : NULL);
+        const zlink_part_flag_t part_flag = is_final ? ZLINK_PART_FINAL : ZLINK_PART_MORE;
+        int rc = zlink_router_request_part (router, peer_rid, &parts[i], flags, part_flag,
+                                            is_final ? timeout_ms : 0u, is_final ? handler : NULL,
+                                            is_final ? userdata : NULL);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -583,11 +517,11 @@ int router_request_parts(void *router,
     return ZLINK_SUBMIT_OK;
 }
 
-int router_reply_parts(void *router,
-                       const zlink_routing_id_t *peer_rid,
-                       uint64_t request_seq,
-                       zlink_msg_t *parts,
-                       size_t part_count)
+int router_reply_parts (void *router,
+                        const zlink_routing_id_t *peer_rid,
+                        uint64_t request_seq,
+                        zlink_msg_t *parts,
+                        size_t part_count)
 {
     if (!parts || part_count == 0) {
         errno = EFAULT;
@@ -595,13 +529,11 @@ int router_reply_parts(void *router,
     }
 
     for (size_t i = 0; i < part_count; ++i) {
-        zlink_part_flag_t part_flag =
-          (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
-        int rc =
-          zlink_router_reply_part(router, peer_rid, request_seq, &parts[i], part_flag);
+        zlink_part_flag_t part_flag = (i + 1u < part_count) ? ZLINK_PART_MORE : ZLINK_PART_FINAL;
+        int rc = zlink_router_reply_part (router, peer_rid, request_seq, &parts[i], part_flag);
         if (rc != ZLINK_SUBMIT_OK) {
             for (size_t j = i + 1u; j < part_count; ++j)
-                zlink_msg_close(&parts[j]);
+                zlink_msg_close (&parts[j]);
             return rc;
         }
     }
@@ -609,384 +541,351 @@ int router_reply_parts(void *router,
     return ZLINK_SUBMIT_OK;
 }
 
-napi_value create_recv_message_value(napi_env env,
-                                     const zlink_routing_id_t &routing_id,
-                                     zlink_msg_t *parts,
-                                     size_t part_count)
+napi_value create_recv_message_value (napi_env env,
+                                      const zlink_routing_id_t &routing_id,
+                                      zlink_msg_t *parts,
+                                      size_t part_count)
 {
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
 
     napi_value parts_array;
-    napi_create_array_with_length(env, part_count, &parts_array);
+    napi_create_array_with_length (env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_message_snapshot_value(
-          env, &routing_id, &parts[i]);
-        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
+        napi_value part = create_message_snapshot_value (env, &routing_id, &parts[i]);
+        napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
     }
 
-    napi_value rid = create_routing_id_value(env, routing_id);
+    napi_value rid = create_routing_id_value (env, routing_id);
     napi_value has_more;
-    napi_get_boolean(env, false, &has_more);
+    napi_get_boolean (env, false, &has_more);
 
-    napi_set_named_property(env, obj, "parts", parts_array);
-    napi_set_named_property(env, obj, "routingId", rid);
-    napi_set_named_property(env, obj, "hasMore", has_more);
+    napi_set_named_property (env, obj, "parts", parts_array);
+    napi_set_named_property (env, obj, "routingId", rid);
+    napi_set_named_property (env, obj, "hasMore", has_more);
     return obj;
 }
 
-napi_value create_router_recv_message_value(napi_env env,
-                                            const zlink_routing_id_t &routing_id,
-                                            const zlink_routing_id_t *spot_routing_id,
-                                            uint64_t request_seq,
-                                            zlink_msg_t *parts,
-                                            size_t part_count)
+napi_value create_router_recv_message_value (napi_env env,
+                                             const zlink_routing_id_t &routing_id,
+                                             const zlink_routing_id_t *spot_routing_id,
+                                             uint64_t request_seq,
+                                             zlink_msg_t *parts,
+                                             size_t part_count)
 {
-    napi_value obj = create_recv_message_value(env, routing_id, parts, part_count);
+    napi_value obj = create_recv_message_value (env, routing_id, parts, part_count);
     napi_value request_seq_value;
     if (request_seq == 0) {
-        napi_get_null(env, &request_seq_value);
+        napi_get_null (env, &request_seq_value);
     } else {
-        napi_create_bigint_uint64(env, request_seq, &request_seq_value);
+        napi_create_bigint_uint64 (env, request_seq, &request_seq_value);
     }
-    napi_set_named_property(env, obj, "requestSeq", request_seq_value);
+    napi_set_named_property (env, obj, "requestSeq", request_seq_value);
     napi_value spot_rid_value;
     if (spot_routing_id && spot_routing_id->size > 0) {
-        spot_rid_value = create_routing_id_value(env, *spot_routing_id);
+        spot_rid_value = create_routing_id_value (env, *spot_routing_id);
     } else {
-        napi_get_null(env, &spot_rid_value);
+        napi_get_null (env, &spot_rid_value);
     }
-    napi_set_named_property(env, obj, "spotRid", spot_rid_value);
+    napi_set_named_property (env, obj, "spotRid", spot_rid_value);
     return obj;
 }
 
-napi_value create_subscription_event_value(napi_env env,
-                                           const zlink_routing_id_t &routing_id,
-                                           int subscribed,
-                                           const char *topic,
-                                           size_t topic_len)
+napi_value create_subscription_event_value (napi_env env,
+                                            const zlink_routing_id_t &routing_id,
+                                            int subscribed,
+                                            const char *topic,
+                                            size_t topic_len)
 {
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
 
-    napi_value rid = create_routing_id_value(env, routing_id);
+    napi_value rid = create_routing_id_value (env, routing_id);
     napi_value topic_value;
-    napi_create_string_utf8(
-      env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
+    napi_create_string_utf8 (env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
     napi_value subscribed_value;
-    napi_get_boolean(env, subscribed != 0, &subscribed_value);
+    napi_get_boolean (env, subscribed != 0, &subscribed_value);
 
-    napi_set_named_property(env, obj, "routingId", rid);
-    napi_set_named_property(env, obj, "topic", topic_value);
-    napi_set_named_property(env, obj, "subscribed", subscribed_value);
+    napi_set_named_property (env, obj, "routingId", rid);
+    napi_set_named_property (env, obj, "topic", topic_value);
+    napi_set_named_property (env, obj, "subscribed", subscribed_value);
     return obj;
 }
 
-napi_value create_socket_monitor_event_value(napi_env env,
-                                             const zlink_monitor_event_t &event)
+napi_value create_socket_monitor_event_value (napi_env env, const zlink_monitor_event_t &event)
 {
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
 
     napi_value value;
-    napi_create_int64(env, static_cast<int64_t>(event.event), &value);
-    napi_set_named_property(env, obj, "event", value);
+    napi_create_int64 (env, static_cast<int64_t> (event.event), &value);
+    napi_set_named_property (env, obj, "event", value);
 
-    napi_create_int64(env, static_cast<int64_t>(event.value), &value);
-    napi_set_named_property(env, obj, "value", value);
+    napi_create_int64 (env, static_cast<int64_t> (event.value), &value);
+    napi_set_named_property (env, obj, "value", value);
 
     napi_value local;
-    napi_create_string_utf8(
-      env, event.local_addr, NAPI_AUTO_LENGTH, &local);
-    napi_set_named_property(env, obj, "local", local);
+    napi_create_string_utf8 (env, event.local_addr, NAPI_AUTO_LENGTH, &local);
+    napi_set_named_property (env, obj, "local", local);
 
     napi_value remote;
-    napi_create_string_utf8(
-      env, event.remote_addr, NAPI_AUTO_LENGTH, &remote);
-    napi_set_named_property(env, obj, "remote", remote);
+    napi_create_string_utf8 (env, event.remote_addr, NAPI_AUTO_LENGTH, &remote);
+    napi_set_named_property (env, obj, "remote", remote);
 
     return obj;
 }
 
-napi_value create_subscribed_value(napi_env env,
-                                   const zlink_routing_id_t &routing_id,
-                                   const char *topic,
-                                   size_t topic_len,
-                                   zlink_msg_t *parts,
-                                   size_t part_count)
+napi_value create_subscribed_value (napi_env env,
+                                    const zlink_routing_id_t &routing_id,
+                                    const char *topic,
+                                    size_t topic_len,
+                                    zlink_msg_t *parts,
+                                    size_t part_count)
 {
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
 
     napi_value parts_array;
-    napi_create_array_with_length(env, part_count, &parts_array);
+    napi_create_array_with_length (env, part_count, &parts_array);
     for (size_t i = 0; i < part_count; ++i) {
-        napi_value part = create_message_snapshot_value(
-          env, &routing_id, &parts[i]);
-        napi_set_element(env, parts_array, static_cast<uint32_t>(i), part);
+        napi_value part = create_message_snapshot_value (env, &routing_id, &parts[i]);
+        napi_set_element (env, parts_array, static_cast<uint32_t> (i), part);
     }
 
-    napi_value rid = create_routing_id_value(env, routing_id);
+    napi_value rid = create_routing_id_value (env, routing_id);
     napi_value topic_value;
-    napi_create_string_utf8(
-      env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
+    napi_create_string_utf8 (env, topic ? topic : "", topic ? topic_len : 0, &topic_value);
 
-    napi_set_named_property(env, obj, "routingId", rid);
-    napi_set_named_property(env, obj, "topic", topic_value);
-    napi_set_named_property(env, obj, "parts", parts_array);
+    napi_set_named_property (env, obj, "routingId", rid);
+    napi_set_named_property (env, obj, "topic", topic_value);
+    napi_set_named_property (env, obj, "parts", parts_array);
     return obj;
 }
 
-bool parse_routing_id(napi_env env,
-                      napi_value value,
-                      zlink_routing_id_t *routing_id)
+bool parse_routing_id (napi_env env, napi_value value, zlink_routing_id_t *routing_id)
 {
     void *data = NULL;
     size_t len = 0;
-    if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "routingId must be Buffer");
+    if (napi_get_buffer_info (env, value, &data, &len) != napi_ok) {
+        napi_throw_type_error (env, NULL, "routingId must be Buffer");
         return false;
     }
     if (len == 0 || len > 255) {
-        napi_throw_range_error(env, NULL, "routingId length must be 1..255 bytes");
+        napi_throw_range_error (env, NULL, "routingId length must be 1..255 bytes");
         return false;
     }
-    memset(routing_id, 0, sizeof(*routing_id));
-    routing_id->size = static_cast<uint8_t>(len);
-    memcpy(routing_id->data, data, len);
+    memset (routing_id, 0, sizeof (*routing_id));
+    routing_id->size = static_cast<uint8_t> (len);
+    memcpy (routing_id->data, data, len);
     return true;
 }
 
-void stream_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint)
+void stream_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
     (void) finalize_hint;
-    stream_js_state_t *state = static_cast<stream_js_state_t *>(finalize_data);
+    stream_js_state_t *state = static_cast<stream_js_state_t *> (finalize_data);
     if (!state)
         return;
-    std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-    reset_stream_slot_unsafe(state);
+    std::lock_guard<std::mutex> lock (g_stream_slots_mu);
+    reset_stream_slot_unsafe (state);
 }
 
-void send_ready_handler_tsfn_finalize(napi_env env,
-                                      void *finalize_data,
-                                      void *finalize_hint)
+void send_ready_handler_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
     (void) finalize_hint;
     send_ready_handler_js_state_t *state =
-      static_cast<send_ready_handler_js_state_t *>(finalize_data);
+      static_cast<send_ready_handler_js_state_t *> (finalize_data);
     if (!state)
         return;
-    std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
-    reset_send_ready_handler_slot_unsafe(state);
+    std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
+    reset_send_ready_handler_slot_unsafe (state);
 }
 
-void socket_monitor_handler_tsfn_finalize(napi_env env,
-                                          void *finalize_data,
-                                          void *finalize_hint)
+void socket_monitor_handler_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
     (void) finalize_hint;
     socket_monitor_handler_js_state_t *state =
-      static_cast<socket_monitor_handler_js_state_t *>(finalize_data);
+      static_cast<socket_monitor_handler_js_state_t *> (finalize_data);
     if (!state)
         return;
-    std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
-    reset_socket_monitor_handler_slot_unsafe(state);
+    std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
+    reset_socket_monitor_handler_slot_unsafe (state);
 }
 
-void stream_tsfn_call_js(napi_env env,
-                         napi_value js_cb,
-                         void *context,
-                         void *data)
+void stream_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
 {
-    std::unique_ptr<stream_js_payload_t> payload(
-      static_cast<stream_js_payload_t *>(data));
-    stream_js_state_t *state = static_cast<stream_js_state_t *>(context);
+    std::unique_ptr<stream_js_payload_t> payload (static_cast<stream_js_payload_t *> (data));
+    stream_js_state_t *state = static_cast<stream_js_state_t *> (context);
     if (!env || !js_cb || !state || !payload)
         return;
 
     napi_value argv[2];
-    if (napi_create_buffer_copy(
-          env, payload->routing_id.size (),
-          payload->routing_id.empty () ? NULL : payload->routing_id.data (),
-          NULL, &argv[0])
+    if (napi_create_buffer_copy (env, payload->routing_id.size (),
+                                 payload->routing_id.empty () ? NULL : payload->routing_id.data (),
+                                 NULL, &argv[0])
         != napi_ok) {
         return;
     }
-    if (napi_create_array_with_length(env, payload->packets.size(), &argv[1])
-        != napi_ok) {
+    if (napi_create_array_with_length (env, payload->packets.size (), &argv[1]) != napi_ok) {
         return;
     }
-    for (size_t i = 0; i < payload->packets.size(); ++i) {
-        napi_value packet_buf =
-          create_message_data_buffer(env, &payload->packets[i]);
+    for (size_t i = 0; i < payload->packets.size (); ++i) {
+        napi_value packet_buf = create_message_data_buffer (env, &payload->packets[i]);
         if (!packet_buf) {
             return;
         }
-        napi_set_element(env, argv[1], static_cast<uint32_t>(i), packet_buf);
+        napi_set_element (env, argv[1], static_cast<uint32_t> (i), packet_buf);
     }
 
     napi_value recv;
     napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    napi_status call_status =
-      napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
+    napi_get_undefined (env, &this_arg);
+    napi_status call_status = napi_call_function (env, this_arg, js_cb, 2, argv, &recv);
     if (call_status != napi_ok) {
-        state->stop_requested.store(1, std::memory_order_release);
+        state->stop_requested.store (1, std::memory_order_release);
         return;
     }
 
     int32_t ret = 0;
-    if (napi_get_value_int32(env, recv, &ret) == napi_ok && ret != 0) {
-        state->stop_requested.store(1, std::memory_order_release);
+    if (napi_get_value_int32 (env, recv, &ret) == napi_ok && ret != 0) {
+        state->stop_requested.store (1, std::memory_order_release);
     }
 }
 
-void send_ready_handler_tsfn_call_js(napi_env env,
-                                     napi_value js_cb,
-                                     void *context,
-                                     void *data)
+void send_ready_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
 {
-    std::unique_ptr<int> payload(static_cast<int *>(data));
+    std::unique_ptr<int> payload (static_cast<int *> (data));
     (void) context;
     if (!env || !js_cb || !payload)
         return;
 
     napi_value recv;
     napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 0, NULL, &recv);
+    napi_get_undefined (env, &this_arg);
+    (void) napi_call_function (env, this_arg, js_cb, 0, NULL, &recv);
 }
 
-void socket_monitor_handler_tsfn_call_js(napi_env env,
-                                         napi_value js_cb,
-                                         void *context,
-                                         void *data)
+void socket_monitor_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
 {
-    std::unique_ptr<socket_monitor_handler_js_payload_t> payload(
-      static_cast<socket_monitor_handler_js_payload_t *>(data));
+    std::unique_ptr<socket_monitor_handler_js_payload_t> payload (
+      static_cast<socket_monitor_handler_js_payload_t *> (data));
     (void) context;
     if (!env || !js_cb || !payload)
         return;
 
     napi_value argv[1];
-    argv[0] = create_socket_monitor_event_value(env, payload->event);
+    argv[0] = create_socket_monitor_event_value (env, payload->event);
     napi_value recv;
     napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+    napi_get_undefined (env, &this_arg);
+    (void) napi_call_function (env, this_arg, js_cb, 1, argv, &recv);
 }
 
-void request_tsfn_call_js(napi_env env,
-                          napi_value js_cb,
-                          void *context,
-                          void *data)
+void request_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
 {
-    std::unique_ptr<request_result_js_payload_t> payload(
-      static_cast<request_result_js_payload_t *>(data));
+    std::unique_ptr<request_result_js_payload_t> payload (
+      static_cast<request_result_js_payload_t *> (data));
     (void) context;
     if (!env || !js_cb || !payload)
         return;
 
     napi_value argv[2];
-    napi_create_int32(env, payload->errnum, &argv[0]);
+    napi_create_int32 (env, payload->errnum, &argv[0]);
     if (payload->errnum != 0) {
-        napi_get_null(env, &argv[1]);
+        napi_get_null (env, &argv[1]);
     } else {
         napi_value parts_array;
-        napi_create_array_with_length(env, payload->parts.size(), &parts_array);
-        for (size_t i = 0; i < payload->parts.size(); ++i) {
-            napi_value part_buf = create_message_data_buffer(env, &payload->parts[i]);
+        napi_create_array_with_length (env, payload->parts.size (), &parts_array);
+        for (size_t i = 0; i < payload->parts.size (); ++i) {
+            napi_value part_buf = create_message_data_buffer (env, &payload->parts[i]);
             if (!part_buf)
                 return;
-            napi_set_element(env, parts_array, static_cast<uint32_t>(i), part_buf);
+            napi_set_element (env, parts_array, static_cast<uint32_t> (i), part_buf);
         }
         argv[1] = parts_array;
     }
 
     napi_value recv;
     napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
+    napi_get_undefined (env, &this_arg);
+    (void) napi_call_function (env, this_arg, js_cb, 2, argv, &recv);
 }
 
-void request_reply_callback_trampoline(zlink_request_result_t errnum_,
-                                       zlink_msg_t *parts_,
-                                       size_t part_count_,
-                                       void *userdata_)
+void request_reply_callback_trampoline (zlink_request_result_t errnum_,
+                                        zlink_msg_t *parts_,
+                                        size_t part_count_,
+                                        void *userdata_)
 {
-    request_js_state_t *state = static_cast<request_js_state_t *>(userdata_);
+    request_js_state_t *state = static_cast<request_js_state_t *> (userdata_);
     if (!state || !state->tsfn) {
-        close_recv_parts(parts_, part_count_);
+        close_recv_parts (parts_, part_count_);
         return;
     }
 
-    std::unique_ptr<request_result_js_payload_t> payload(
-      new request_result_js_payload_t());
+    std::unique_ptr<request_result_js_payload_t> payload (new request_result_js_payload_t ());
     payload->errnum = errnum_;
     if (errnum_ == 0) {
-        payload->parts.resize(part_count_);
+        payload->parts.resize (part_count_);
         for (size_t i = 0; i < part_count_; ++i) {
-            if (zlink_msg_init(&payload->parts[i]) != 0) {
+            if (zlink_msg_init (&payload->parts[i]) != 0) {
                 payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
                 break;
             }
             payload->part_count = i + 1;
-            if (zlink_msg_move(&payload->parts[i], &parts_[i]) != 0) {
+            if (zlink_msg_move (&payload->parts[i], &parts_[i]) != 0) {
                 payload->errnum = ZLINK_REQUEST_INTERNAL_ERROR;
                 break;
             }
         }
     }
-    close_recv_parts(parts_, part_count_);
+    close_recv_parts (parts_, part_count_);
 
-    if (napi_call_threadsafe_function(
-          state->tsfn, payload.get(), napi_tsfn_nonblocking)
+    if (napi_call_threadsafe_function (state->tsfn, payload.get (), napi_tsfn_nonblocking)
         == napi_ok) {
-        payload.release();
+        payload.release ();
     }
-    release_request_tsfn(state);
+    release_request_tsfn (state);
 }
 
-void remember_stream_peer_unsafe(stream_js_state_t *state,
-                                 const zlink_routing_id_t *rid)
+void remember_stream_peer_unsafe (stream_js_state_t *state, const zlink_routing_id_t *rid)
 {
     if (!state || !rid || rid->size == 0)
         return;
 
-    for (size_t i = 0; i < state->peer_routing_ids.size(); ++i) {
+    for (size_t i = 0; i < state->peer_routing_ids.size (); ++i) {
         const std::vector<unsigned char> &known = state->peer_routing_ids[i];
-        if (known.size() != rid->size)
+        if (known.size () != rid->size)
             continue;
-        if (memcmp(known.data(), rid->data, rid->size) == 0)
+        if (memcmp (known.data (), rid->data, rid->size) == 0)
             return;
     }
 
-    std::vector<unsigned char> peer(rid->data, rid->data + rid->size);
-    state->peer_routing_ids.push_back(peer);
+    std::vector<unsigned char> peer (rid->data, rid->data + rid->size);
+    state->peer_routing_ids.push_back (peer);
 }
 
 template <size_t Slot>
-void stream_on_packet_slot(void *stream_,
-                           const zlink_routing_id_t *rid_,
-                           zlink_msg_t *header_,
-                           zlink_msg_t *body_,
-                           void *userdata_)
+void stream_on_packet_slot (void *stream_,
+                            const zlink_routing_id_t *rid_,
+                            zlink_msg_t *header_,
+                            zlink_msg_t *body_,
+                            void *userdata_)
 {
     (void) stream_;
     (void) userdata_;
 
-    const auto close_messages = [header_, body_]() {
+    const auto close_messages = [header_, body_] () {
         if (header_)
-            (void) zlink_msg_close(header_);
+            (void) zlink_msg_close (header_);
         if (body_)
-            (void) zlink_msg_close(body_);
+            (void) zlink_msg_close (body_);
     };
 
     if (!rid_ || !header_ || !body_) {
-        close_messages();
+        close_messages ();
         return;
     }
 
@@ -994,265 +893,233 @@ void stream_on_packet_slot(void *stream_,
     napi_threadsafe_function tsfn = NULL;
     std::unique_ptr<stream_js_payload_t> payload;
     {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
         if (!state->used || !state->tsfn) {
-            close_messages();
+            close_messages ();
             return;
         }
-        if (state->stop_requested.load(std::memory_order_acquire) != 0) {
-            close_messages();
+        if (state->stop_requested.load (std::memory_order_acquire) != 0) {
+            close_messages ();
             return;
         }
         tsfn = state->tsfn;
-        remember_stream_peer_unsafe(state, rid_);
-        payload.reset(new stream_js_payload_t());
-        payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
-        payload->packets.resize(2);
-        if (zlink_msg_init(&payload->packets[0]) != 0) {
-            close_messages();
+        remember_stream_peer_unsafe (state, rid_);
+        payload.reset (new stream_js_payload_t ());
+        payload->routing_id.assign (rid_->data, rid_->data + rid_->size);
+        payload->packets.resize (2);
+        if (zlink_msg_init (&payload->packets[0]) != 0) {
+            close_messages ();
             return;
         }
         payload->packet_count = 1;
-        if (zlink_msg_move(&payload->packets[0], header_) != 0) {
-            close_messages();
+        if (zlink_msg_move (&payload->packets[0], header_) != 0) {
+            close_messages ();
             return;
         }
-        if (zlink_msg_init(&payload->packets[1]) != 0) {
-            close_messages();
+        if (zlink_msg_init (&payload->packets[1]) != 0) {
+            close_messages ();
             return;
         }
         payload->packet_count = 2;
-        if (zlink_msg_move(&payload->packets[1], body_) != 0) {
-            close_messages();
+        if (zlink_msg_move (&payload->packets[1], body_) != 0) {
+            close_messages ();
             return;
         }
     }
 
-    close_messages();
+    close_messages ();
 
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_blocking)
-        == napi_ok) {
-        payload.release();
+    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_blocking) == napi_ok) {
+        payload.release ();
     }
 }
 
-typedef void (*stream_slot_packet_callback_t)(void *,
-                                              const zlink_routing_id_t *,
-                                              zlink_msg_t *,
-                                              zlink_msg_t *,
-                                              void *);
+typedef void (*stream_slot_packet_callback_t) (
+  void *, const zlink_routing_id_t *, zlink_msg_t *, zlink_msg_t *, void *);
 
 #define STREAM_SLOT_PACKET_CALLBACK(N) &stream_on_packet_slot<N>
-static stream_slot_packet_callback_t
-  g_stream_slot_packet_callbacks[k_stream_slot_count] = {
-    STREAM_SLOT_PACKET_CALLBACK(0),
-    STREAM_SLOT_PACKET_CALLBACK(1),
-    STREAM_SLOT_PACKET_CALLBACK(2),
-    STREAM_SLOT_PACKET_CALLBACK(3),
-    STREAM_SLOT_PACKET_CALLBACK(4),
-    STREAM_SLOT_PACKET_CALLBACK(5),
-    STREAM_SLOT_PACKET_CALLBACK(6),
-    STREAM_SLOT_PACKET_CALLBACK(7),
+static stream_slot_packet_callback_t g_stream_slot_packet_callbacks[k_stream_slot_count] = {
+  STREAM_SLOT_PACKET_CALLBACK (0), STREAM_SLOT_PACKET_CALLBACK (1), STREAM_SLOT_PACKET_CALLBACK (2),
+  STREAM_SLOT_PACKET_CALLBACK (3), STREAM_SLOT_PACKET_CALLBACK (4), STREAM_SLOT_PACKET_CALLBACK (5),
+  STREAM_SLOT_PACKET_CALLBACK (6), STREAM_SLOT_PACKET_CALLBACK (7),
 };
 #undef STREAM_SLOT_PACKET_CALLBACK
 
-void stream_release_slot(void *socket)
+void stream_release_slot (void *socket)
 {
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-        stream_js_state_t *state = find_stream_slot_by_socket_unsafe(socket);
+        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
+        stream_js_state_t *state = find_stream_slot_by_socket_unsafe (socket);
         if (!state)
             return;
         tsfn = state->tsfn;
-        reset_stream_slot_unsafe(state);
+        reset_stream_slot_unsafe (state);
     }
     if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+        (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
 }
 
-void request_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint)
+void request_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
     (void) finalize_hint;
-    request_js_state_t *state = static_cast<request_js_state_t *>(finalize_data);
+    request_js_state_t *state = static_cast<request_js_state_t *> (finalize_data);
     delete state;
 }
 
 #define SEND_READY_HANDLER_SLOT_CALLBACK(N) &send_ready_handler_slot_callback<N>
-typedef void (*send_ready_handler_slot_callback_t)(void *, void *);
-template <size_t Slot>
-void send_ready_handler_slot_callback(void *subject_, void *userdata_)
+typedef void (*send_ready_handler_slot_callback_t) (void *, void *);
+template <size_t Slot> void send_ready_handler_slot_callback (void *subject_, void *userdata_)
 {
     (void) userdata_;
     send_ready_handler_js_state_t *state = &g_send_ready_handler_slots[Slot];
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
         if (!state->used || !state->tsfn)
             return;
         tsfn = state->tsfn;
     }
 
-    std::unique_ptr<int> payload(new int(1));
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        == napi_ok) {
-        payload.release();
+    std::unique_ptr<int> payload (new int (1));
+    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_nonblocking) == napi_ok) {
+        payload.release ();
     }
 }
 
-#define SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(N) \
-  &socket_monitor_handler_slot_callback<N>
-typedef void (*socket_monitor_handler_slot_callback_t)(const zlink_monitor_event_t *,
-                                                       void *);
+#define SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(N) &socket_monitor_handler_slot_callback<N>
+typedef void (*socket_monitor_handler_slot_callback_t) (const zlink_monitor_event_t *, void *);
 template <size_t Slot>
-void socket_monitor_handler_slot_callback(const zlink_monitor_event_t *event_,
-                                          void *userdata_)
+void socket_monitor_handler_slot_callback (const zlink_monitor_event_t *event_, void *userdata_)
 {
     (void) userdata_;
-    std::unique_ptr<socket_monitor_handler_js_payload_t> payload(
-      new socket_monitor_handler_js_payload_t());
+    std::unique_ptr<socket_monitor_handler_js_payload_t> payload (
+      new socket_monitor_handler_js_payload_t ());
     socket_monitor_handler_js_state_t *state = &g_socket_monitor_handler_slots[Slot];
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
         if (!state->used || !state->tsfn)
             return;
         tsfn = state->tsfn;
         if (event_)
             payload->event = *event_;
         else
-            memset(&payload->event, 0, sizeof(payload->event));
+            memset (&payload->event, 0, sizeof (payload->event));
     }
 
-    if (napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking)
-        == napi_ok) {
-        payload.release();
+    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_nonblocking) == napi_ok) {
+        payload.release ();
     }
 }
 static socket_monitor_handler_slot_callback_t
   g_socket_monitor_handler_slot_callbacks[k_socket_monitor_handler_slot_count] = {
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(0),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(1),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(2),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(3),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(4),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(5),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(6),
-    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK(7),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (0), SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (1),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (2), SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (3),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (4), SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (5),
+    SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (6), SOCKET_MONITOR_HANDLER_SLOT_CALLBACK (7),
 };
 #undef SOCKET_MONITOR_HANDLER_SLOT_CALLBACK
 
 static send_ready_handler_slot_callback_t
   g_send_ready_handler_slot_callbacks[k_send_ready_handler_slot_count] = {
-    SEND_READY_HANDLER_SLOT_CALLBACK(0),
-    SEND_READY_HANDLER_SLOT_CALLBACK(1),
-    SEND_READY_HANDLER_SLOT_CALLBACK(2),
-    SEND_READY_HANDLER_SLOT_CALLBACK(3),
-    SEND_READY_HANDLER_SLOT_CALLBACK(4),
-    SEND_READY_HANDLER_SLOT_CALLBACK(5),
-    SEND_READY_HANDLER_SLOT_CALLBACK(6),
-    SEND_READY_HANDLER_SLOT_CALLBACK(7),
+    SEND_READY_HANDLER_SLOT_CALLBACK (0), SEND_READY_HANDLER_SLOT_CALLBACK (1),
+    SEND_READY_HANDLER_SLOT_CALLBACK (2), SEND_READY_HANDLER_SLOT_CALLBACK (3),
+    SEND_READY_HANDLER_SLOT_CALLBACK (4), SEND_READY_HANDLER_SLOT_CALLBACK (5),
+    SEND_READY_HANDLER_SLOT_CALLBACK (6), SEND_READY_HANDLER_SLOT_CALLBACK (7),
 };
 #undef SEND_READY_HANDLER_SLOT_CALLBACK
 
-bool attach_send_ready_handler(napi_env env, void *socket, napi_value handler)
+bool attach_send_ready_handler (napi_env env, void *socket, napi_value handler)
 {
     send_ready_handler_js_state_t *slot = NULL;
     size_t slot_index = 0;
     {
-        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
-        if (find_send_ready_handler_slot_by_socket_unsafe(socket)) {
-            napi_throw_error(env, NULL, "sendReadyHandler already attached");
+        std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
+        if (find_send_ready_handler_slot_by_socket_unsafe (socket)) {
+            napi_throw_error (env, NULL, "sendReadyHandler already attached");
             return false;
         }
-        slot = find_free_send_ready_handler_slot_unsafe();
+        slot = find_free_send_ready_handler_slot_unsafe ();
         if (!slot) {
-            napi_throw_error(env, NULL, "no free sendReadyHandler slot");
+            napi_throw_error (env, NULL, "no free sendReadyHandler slot");
             return false;
         }
-        slot_index = static_cast<size_t>(slot - g_send_ready_handler_slots);
+        slot_index = static_cast<size_t> (slot - g_send_ready_handler_slots);
     }
 
     napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-send-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_create_string_utf8 (env, "zlink-send-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      send_ready_handler_tsfn_finalize, slot, send_ready_handler_tsfn_call_js,
-      &tsfn);
+    napi_status tsfn_status = napi_create_threadsafe_function (
+      env, handler, NULL, resource_name, 0, 1, slot, send_ready_handler_tsfn_finalize, slot,
+      send_ready_handler_tsfn_call_js, &tsfn);
     if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "sendReadyHandler failed to create callback queue");
+        napi_throw_error (env, NULL, "sendReadyHandler failed to create callback queue");
         return false;
     }
 
     {
-        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
         slot->used = true;
         slot->socket = socket;
         slot->env = env;
         slot->tsfn = tsfn;
     }
 
-    int rc = zlink_send_ready_handler(
-      socket, g_send_ready_handler_slot_callbacks[slot_index], slot);
+    int rc =
+      zlink_send_ready_handler (socket, g_send_ready_handler_slot_callbacks[slot_index], slot);
     if (rc != 0) {
-        release_socket_send_ready_handler_slot(socket);
-        throw_last_error(env, "sendReadyHandler failed");
+        release_socket_send_ready_handler_slot (socket);
+        throw_last_error (env, "sendReadyHandler failed");
         return false;
     }
     return true;
 }
 
-bool attach_socket_monitor_handler(napi_env env,
-                                   void *monitor,
-                                   napi_value handler)
+bool attach_socket_monitor_handler (napi_env env, void *monitor, napi_value handler)
 {
     socket_monitor_handler_js_state_t *slot = NULL;
     size_t slot_index = 0;
     {
-        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
-        if (find_socket_monitor_handler_slot_by_monitor_unsafe(monitor)) {
-            napi_throw_error(env, NULL, "monitorHandler already attached");
+        std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
+        if (find_socket_monitor_handler_slot_by_monitor_unsafe (monitor)) {
+            napi_throw_error (env, NULL, "monitorHandler already attached");
             return false;
         }
-        slot = find_free_socket_monitor_handler_slot_unsafe();
+        slot = find_free_socket_monitor_handler_slot_unsafe ();
         if (!slot) {
-            napi_throw_error(env, NULL, "no free monitorHandler slot");
+            napi_throw_error (env, NULL, "no free monitorHandler slot");
             return false;
         }
-        slot_index = static_cast<size_t>(slot - g_socket_monitor_handler_slots);
+        slot_index = static_cast<size_t> (slot - g_socket_monitor_handler_slots);
     }
 
     napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_create_string_utf8 (env, "zlink-monitor-handler", NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      socket_monitor_handler_tsfn_finalize, slot,
+    napi_status tsfn_status = napi_create_threadsafe_function (
+      env, handler, NULL, resource_name, 0, 1, slot, socket_monitor_handler_tsfn_finalize, slot,
       socket_monitor_handler_tsfn_call_js, &tsfn);
     if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "monitorHandler failed to create callback queue");
+        napi_throw_error (env, NULL, "monitorHandler failed to create callback queue");
         return false;
     }
 
     {
-        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
         slot->used = true;
         slot->monitor = monitor;
         slot->env = env;
         slot->tsfn = tsfn;
     }
 
-    int rc = zlink_socket_monitor_handler(
+    int rc = zlink_socket_monitor_handler (
       monitor, g_socket_monitor_handler_slot_callbacks[slot_index], slot);
     if (rc != 0) {
-        release_socket_monitor_handler_slot(monitor);
-        throw_last_error(env, "monitorHandler failed");
+        release_socket_monitor_handler_slot (monitor);
+        throw_last_error (env, "monitorHandler failed");
         return false;
     }
     return true;
@@ -1260,132 +1127,125 @@ bool attach_socket_monitor_handler(napi_env env,
 
 } // namespace
 
-void release_socket_send_ready_handler_slot(void *socket)
+void release_socket_send_ready_handler_slot (void *socket)
 {
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_send_ready_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_send_ready_handler_slots_mu);
         send_ready_handler_js_state_t *state =
-          find_send_ready_handler_slot_by_socket_unsafe(socket);
+          find_send_ready_handler_slot_by_socket_unsafe (socket);
         if (!state)
             return;
         tsfn = state->tsfn;
-        reset_send_ready_handler_slot_unsafe(state);
+        reset_send_ready_handler_slot_unsafe (state);
     }
     if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+        (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
 }
 
-void release_socket_monitor_handler_slot(void *monitor)
+void release_socket_monitor_handler_slot (void *monitor)
 {
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_socket_monitor_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_socket_monitor_handler_slots_mu);
         socket_monitor_handler_js_state_t *state =
-          find_socket_monitor_handler_slot_by_monitor_unsafe(monitor);
+          find_socket_monitor_handler_slot_by_monitor_unsafe (monitor);
         if (!state)
             return;
         tsfn = state->tsfn;
-        reset_socket_monitor_handler_slot_unsafe(state);
+        reset_socket_monitor_handler_slot_unsafe (state);
     }
     if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+        (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
 }
 
-napi_value throw_last_error(napi_env env, const char *prefix)
+napi_value throw_last_error (napi_env env, const char *prefix)
 {
-    int err = zlink_errno();
-    const char *msg = zlink_strerror(err);
+    int err = zlink_errno ();
+    const char *msg = zlink_strerror (err);
     char buf[256];
-    snprintf(buf, sizeof(buf), "%s: %s", prefix, msg ? msg : "error");
-    napi_throw_error(env, NULL, buf);
+    snprintf (buf, sizeof (buf), "%s: %s", prefix, msg ? msg : "error");
+    napi_throw_error (env, NULL, buf);
     return NULL;
 }
 
-std::string get_string(napi_env env, napi_value val)
+std::string get_string (napi_env env, napi_value val)
 {
     size_t len = 0;
-    napi_get_value_string_utf8(env, val, NULL, 0, &len);
-    std::string out(len, '\0');
-    napi_get_value_string_utf8(env, val, out.data(), len + 1, &len);
+    napi_get_value_string_utf8 (env, val, NULL, 0, &len);
+    std::string out (len, '\0');
+    napi_get_value_string_utf8 (env, val, out.data (), len + 1, &len);
     return out;
 }
 
-const char *get_c_string_arg(napi_env env,
-                             napi_value val,
-                             char *stack_buf,
-                             size_t stack_buf_size,
-                             std::string *heap_buf)
+const char *get_c_string_arg (
+  napi_env env, napi_value val, char *stack_buf, size_t stack_buf_size, std::string *heap_buf)
 {
     size_t len = 0;
-    napi_get_value_string_utf8(env, val, NULL, 0, &len);
+    napi_get_value_string_utf8 (env, val, NULL, 0, &len);
     if (len + 1 <= stack_buf_size) {
-        napi_get_value_string_utf8(env, val, stack_buf, stack_buf_size, &len);
+        napi_get_value_string_utf8 (env, val, stack_buf, stack_buf_size, &len);
         return stack_buf;
     }
-    heap_buf->assign(len, '\0');
-    napi_get_value_string_utf8(env, val, heap_buf->data(), len + 1, &len);
-    return heap_buf->c_str();
+    heap_buf->assign (len, '\0');
+    napi_get_value_string_utf8 (env, val, heap_buf->data (), len + 1, &len);
+    return heap_buf->c_str ();
 }
 
-bool get_uint64_like(napi_env env, napi_value value, uint64_t *out);
+bool get_uint64_like (napi_env env, napi_value value, uint64_t *out);
 
-request_js_state_t *create_request_js_state(napi_env env, napi_value handler)
+request_js_state_t *create_request_js_state (napi_env env, napi_value handler)
 {
-    request_js_state_t *state = new request_js_state_t();
+    request_js_state_t *state = new request_js_state_t ();
     state->env = env;
 
     napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-request-reply-callback", NAPI_AUTO_LENGTH, &resource_name);
+    napi_create_string_utf8 (env, "zlink-request-reply-callback", NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
-    napi_status status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, state, request_tsfn_finalize,
-      state, request_tsfn_call_js, &tsfn);
+    napi_status status =
+      napi_create_threadsafe_function (env, handler, NULL, resource_name, 0, 1, state,
+                                       request_tsfn_finalize, state, request_tsfn_call_js, &tsfn);
     if (status != napi_ok) {
         delete state;
-        napi_throw_error(env, NULL, "request callback setup failed");
+        napi_throw_error (env, NULL, "request callback setup failed");
         return NULL;
     }
-    (void) napi_unref_threadsafe_function(env, tsfn);
+    (void) napi_unref_threadsafe_function (env, tsfn);
     state->tsfn = tsfn;
     return state;
 }
 
-bool init_msg_from_value(napi_env env, napi_value value, zlink_msg_t *msg);
+bool init_msg_from_value (napi_env env, napi_value value, zlink_msg_t *msg);
 
-static void close_built_msg_vector(std::vector<zlink_msg_t> *parts,
-                                   size_t built)
+static void close_built_msg_vector (std::vector<zlink_msg_t> *parts, size_t built)
 {
     if (!parts)
         return;
     for (size_t i = 0; i < built; ++i)
-        zlink_msg_close(&(*parts)[i]);
-    parts->clear();
+        zlink_msg_close (&(*parts)[i]);
+    parts->clear ();
 }
 
-bool build_msg_vector(napi_env env,
-                      napi_value arr,
-                      std::vector<zlink_msg_t> *out)
+bool build_msg_vector (napi_env env, napi_value arr, std::vector<zlink_msg_t> *out)
 {
     uint32_t len = 0;
-    if (napi_get_array_length(env, arr, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "parts must be an array");
+    if (napi_get_array_length (env, arr, &len) != napi_ok) {
+        napi_throw_type_error (env, NULL, "parts must be an array");
         return false;
     }
-    out->clear();
-    out->resize(len);
+    out->clear ();
+    out->resize (len);
     size_t built = 0;
     for (uint32_t i = 0; i < len; i++) {
         napi_value val;
-        if (napi_get_element(env, arr, i, &val) != napi_ok) {
+        if (napi_get_element (env, arr, i, &val) != napi_ok) {
             for (size_t j = 0; j < built; j++)
-                zlink_msg_close(&(*out)[j]);
-            napi_throw_type_error(env, NULL, "parts element read failed");
+                zlink_msg_close (&(*out)[j]);
+            napi_throw_type_error (env, NULL, "parts element read failed");
             return false;
         }
-        if (!init_msg_from_value(env, val, &(*out)[i])) {
-            close_built_msg_vector(out, built);
+        if (!init_msg_from_value (env, val, &(*out)[i])) {
+            close_built_msg_vector (out, built);
             return false;
         }
         built++;
@@ -1393,182 +1253,180 @@ bool build_msg_vector(napi_env env,
     return true;
 }
 
-bool build_msg_vector_or_single(napi_env env,
-                                napi_value value,
-                                std::vector<zlink_msg_t> *out)
+bool build_msg_vector_or_single (napi_env env, napi_value value, std::vector<zlink_msg_t> *out)
 {
     bool is_array = false;
-    if (napi_is_array(env, value, &is_array) == napi_ok && is_array)
-        return build_msg_vector(env, value, out);
+    if (napi_is_array (env, value, &is_array) == napi_ok && is_array)
+        return build_msg_vector (env, value, out);
 
-    out->clear();
-    out->resize(1);
-    if (!init_msg_from_value(env, value, &(*out)[0])) {
-        out->clear();
+    out->clear ();
+    out->resize (1);
+    if (!init_msg_from_value (env, value, &(*out)[0])) {
+        out->clear ();
         return false;
     }
     return true;
 }
 
-void close_msg_vector(std::vector<zlink_msg_t> &parts)
+void close_msg_vector (std::vector<zlink_msg_t> &parts)
 {
-    for (size_t i = 0; i < parts.size(); i++)
-        zlink_msg_close(&parts[i]);
+    for (size_t i = 0; i < parts.size (); i++)
+        zlink_msg_close (&parts[i]);
 }
 
-bool get_uint64_like(napi_env env, napi_value value, uint64_t *out)
+bool get_uint64_like (napi_env env, napi_value value, uint64_t *out)
 {
     bool lossless = false;
-    if (napi_get_value_bigint_uint64(env, value, out, &lossless) == napi_ok)
+    if (napi_get_value_bigint_uint64 (env, value, out, &lossless) == napi_ok)
         return true;
 
     napi_valuetype type = napi_undefined;
-    if (napi_typeof(env, value, &type) != napi_ok)
+    if (napi_typeof (env, value, &type) != napi_ok)
         return false;
     if (type == napi_number) {
         double number = 0;
-        if (napi_get_value_double(env, value, &number) != napi_ok || number < 0)
+        if (napi_get_value_double (env, value, &number) != napi_ok || number < 0)
             return false;
-        *out = static_cast<uint64_t>(number);
+        *out = static_cast<uint64_t> (number);
         return true;
     }
 
     napi_value coerced;
-    if (napi_coerce_to_string(env, value, &coerced) != napi_ok)
+    if (napi_coerce_to_string (env, value, &coerced) != napi_ok)
         return false;
-    std::string text = get_string(env, coerced);
+    std::string text = get_string (env, coerced);
     char *end = NULL;
     errno = 0;
-    unsigned long long parsed = strtoull(text.c_str(), &end, 10);
-    if (errno != 0 || end == text.c_str() || (end && *end != '\0'))
+    unsigned long long parsed = strtoull (text.c_str (), &end, 10);
+    if (errno != 0 || end == text.c_str () || (end && *end != '\0'))
         return false;
-    *out = static_cast<uint64_t>(parsed);
+    *out = static_cast<uint64_t> (parsed);
     return true;
 }
 
-bool init_msg_from_value(napi_env env, napi_value value, zlink_msg_t *msg)
+bool init_msg_from_value (napi_env env, napi_value value, zlink_msg_t *msg)
 {
     bool is_buf = false;
-    if (napi_is_buffer(env, value, &is_buf) == napi_ok && is_buf) {
+    if (napi_is_buffer (env, value, &is_buf) == napi_ok && is_buf) {
         void *data = NULL;
         size_t len = 0;
-        if (napi_get_buffer_info(env, value, &data, &len) != napi_ok) {
-            napi_throw_type_error(env, NULL, "send buffer invalid");
+        if (napi_get_buffer_info (env, value, &data, &len) != napi_ok) {
+            napi_throw_type_error (env, NULL, "send buffer invalid");
             return false;
         }
-        if (!init_msg_from_bytes(msg, data, len))
+        if (!init_msg_from_bytes (msg, data, len))
             return false;
         return true;
     }
 
     napi_value data_value;
-    if (napi_get_named_property(env, value, "data", &data_value) != napi_ok) {
-        napi_throw_type_error(env, NULL, "message must be a Buffer or message snapshot");
+    if (napi_get_named_property (env, value, "data", &data_value) != napi_ok) {
+        napi_throw_type_error (env, NULL, "message must be a Buffer or message snapshot");
         return false;
     }
     void *data = NULL;
     size_t len = 0;
-    if (napi_get_buffer_info(env, data_value, &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "message snapshot data must be a Buffer");
+    if (napi_get_buffer_info (env, data_value, &data, &len) != napi_ok) {
+        napi_throw_type_error (env, NULL, "message snapshot data must be a Buffer");
         return false;
     }
-    if (!init_msg_from_bytes(msg, data, len))
+    if (!init_msg_from_bytes (msg, data, len))
         return false;
 
     return true;
 }
 
-napi_value version(napi_env env, napi_callback_info info)
+napi_value version (napi_env env, napi_callback_info info)
 {
     int major = 0, minor = 0, patch = 0;
-    zlink_version(&major, &minor, &patch);
+    zlink_version (&major, &minor, &patch);
     napi_value arr;
-    napi_create_array_with_length(env, 3, &arr);
+    napi_create_array_with_length (env, 3, &arr);
     napi_value v0, v1, v2;
-    napi_create_int32(env, major, &v0);
-    napi_create_int32(env, minor, &v1);
-    napi_create_int32(env, patch, &v2);
-    napi_set_element(env, arr, 0, v0);
-    napi_set_element(env, arr, 1, v1);
-    napi_set_element(env, arr, 2, v2);
+    napi_create_int32 (env, major, &v0);
+    napi_create_int32 (env, minor, &v1);
+    napi_create_int32 (env, patch, &v2);
+    napi_set_element (env, arr, 0, v0);
+    napi_set_element (env, arr, 1, v1);
+    napi_set_element (env, arr, 2, v2);
     return arr;
 }
 
-napi_value errno_value(napi_env env, napi_callback_info info)
+napi_value errno_value (napi_env env, napi_callback_info info)
 {
     napi_value out;
-    napi_create_int32(env, zlink_errno(), &out);
+    napi_create_int32 (env, zlink_errno (), &out);
     return out;
 }
 
-napi_value strerror_value(napi_env env, napi_callback_info info)
+napi_value strerror_value (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     int32_t errnum = 0;
     if (argc >= 1)
-        napi_get_value_int32(env, argv[0], &errnum);
+        napi_get_value_int32 (env, argv[0], &errnum);
 
-    const char *message = zlink_strerror(errnum);
+    const char *message = zlink_strerror (errnum);
     napi_value out;
-    napi_create_string_utf8(env, message ? message : "", NAPI_AUTO_LENGTH, &out);
+    napi_create_string_utf8 (env, message ? message : "", NAPI_AUTO_LENGTH, &out);
     return out;
 }
 
-napi_value has(napi_env env, napi_callback_info info)
+napi_value has (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 1) {
-        napi_throw_type_error(env, NULL, "has requires a capability string");
+        napi_throw_type_error (env, NULL, "has requires a capability string");
         return NULL;
     }
 
-    std::string capability = get_string(env, argv[0]);
+    std::string capability = get_string (env, argv[0]);
     napi_value out;
-    napi_get_boolean(env, zlink_has(capability.c_str()), &out);
+    napi_get_boolean (env, zlink_has (capability.c_str ()), &out);
     return out;
 }
 
-napi_value proxy(napi_env env, napi_callback_info info)
+napi_value proxy (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 2) {
-        napi_throw_type_error(env, NULL, "proxy requires frontend and backend");
+        napi_throw_type_error (env, NULL, "proxy requires frontend and backend");
         return NULL;
     }
 
     void *frontend = NULL;
     void *backend = NULL;
     void *capture = NULL;
-    napi_get_value_external(env, argv[0], &frontend);
-    napi_get_value_external(env, argv[1], &backend);
+    napi_get_value_external (env, argv[0], &frontend);
+    napi_get_value_external (env, argv[1], &backend);
     if (argc >= 3) {
         napi_valuetype capture_type = napi_undefined;
-        napi_typeof(env, argv[2], &capture_type);
+        napi_typeof (env, argv[2], &capture_type);
         if (capture_type != napi_undefined && capture_type != napi_null)
-            napi_get_value_external(env, argv[2], &capture);
+            napi_get_value_external (env, argv[2], &capture);
     }
 
-    if (zlink_proxy(frontend, backend, capture) != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "proxy failed");
+    if (zlink_proxy (frontend, backend, capture) != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "proxy failed");
     napi_value out;
-    napi_get_undefined(env, &out);
+    napi_get_undefined (env, &out);
     return out;
 }
 
-napi_value proxy_steerable(napi_env env, napi_callback_info info)
+napi_value proxy_steerable (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 4) {
-        napi_throw_type_error(
-          env, NULL, "proxySteerable requires frontend, backend, capture, control");
+        napi_throw_type_error (env, NULL,
+                               "proxySteerable requires frontend, backend, capture, control");
         return NULL;
     }
 
@@ -1576,1016 +1434,966 @@ napi_value proxy_steerable(napi_env env, napi_callback_info info)
     void *backend = NULL;
     void *capture = NULL;
     void *control = NULL;
-    napi_get_value_external(env, argv[0], &frontend);
-    napi_get_value_external(env, argv[1], &backend);
+    napi_get_value_external (env, argv[0], &frontend);
+    napi_get_value_external (env, argv[1], &backend);
     napi_valuetype capture_type = napi_undefined;
-    napi_typeof(env, argv[2], &capture_type);
+    napi_typeof (env, argv[2], &capture_type);
     if (capture_type != napi_undefined && capture_type != napi_null)
-        napi_get_value_external(env, argv[2], &capture);
-    napi_get_value_external(env, argv[3], &control);
+        napi_get_value_external (env, argv[2], &capture);
+    napi_get_value_external (env, argv[3], &control);
 
-    if (zlink_proxy_steerable(frontend, backend, capture, control) != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "proxySteerable failed");
+    if (zlink_proxy_steerable (frontend, backend, capture, control) != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "proxySteerable failed");
     napi_value out;
-    napi_get_undefined(env, &out);
+    napi_get_undefined (env, &out);
     return out;
 }
 
-napi_value sleep(napi_env env, napi_callback_info info)
+napi_value sleep (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     int32_t seconds = 0;
     if (argc >= 1)
-        napi_get_value_int32(env, argv[0], &seconds);
+        napi_get_value_int32 (env, argv[0], &seconds);
 
-    zlink_sleep(seconds);
+    zlink_sleep (seconds);
     napi_value out;
-    napi_get_undefined(env, &out);
+    napi_get_undefined (env, &out);
     return out;
 }
 
-napi_value ctx_new(napi_env env, napi_callback_info info)
+napi_value ctx_new (napi_env env, napi_callback_info info)
 {
-    void *ctx = zlink_ctx_new();
+    void *ctx = zlink_ctx_new ();
     if (!ctx)
-        return throw_last_error(env, "ctx_new failed");
+        return throw_last_error (env, "ctx_new failed");
     napi_value ext;
-    napi_create_external(env, ctx, NULL, NULL, &ext);
+    napi_create_external (env, ctx, NULL, NULL, &ext);
     return ext;
 }
 
-napi_value ctx_shutdown(napi_env env, napi_callback_info info)
+napi_value ctx_shutdown (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
-    int rc = zlink_ctx_shutdown(ctx);
+    napi_get_value_external (env, argv[0], &ctx);
+    int rc = zlink_ctx_shutdown (ctx);
     if (rc != 0)
-        return throw_last_error(env, "ctx_shutdown failed");
+        return throw_last_error (env, "ctx_shutdown failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value ctx_term(napi_env env, napi_callback_info info)
+napi_value ctx_term (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
+    napi_get_value_external (env, argv[0], &ctx);
     int rc;
     do {
-        rc = zlink_ctx_term(ctx);
-    } while (rc != 0 && zlink_errno() == EINTR);
+        rc = zlink_ctx_term (ctx);
+    } while (rc != 0 && zlink_errno () == EINTR);
     if (rc != 0)
-        return throw_last_error(env, "ctx_term failed");
+        return throw_last_error (env, "ctx_term failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value ctx_setopt(napi_env env, napi_callback_info info)
+napi_value ctx_setopt (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
+    napi_get_value_external (env, argv[0], &ctx);
     int32_t opt = 0;
     int32_t value = 0;
-    napi_get_value_int32(env, argv[1], &opt);
+    napi_get_value_int32 (env, argv[1], &opt);
     bool is_buffer = false;
-    napi_is_buffer(env, argv[2], &is_buffer);
+    napi_is_buffer (env, argv[2], &is_buffer);
     if (is_buffer) {
         void *data = NULL;
         size_t length = 0;
-        napi_get_buffer_info(env, argv[2], &data, &length);
+        napi_get_buffer_info (env, argv[2], &data, &length);
         zlink_config_result_t rc =
-          zlink_ctx_set_data(ctx, static_cast<zlink_ctx_option_t>(opt), data, length);
+          zlink_ctx_set_data (ctx, static_cast<zlink_ctx_option_t> (opt), data, length);
         if (rc != ZLINK_CONFIG_OK)
-            return throw_last_error(env, "ctx_setopt failed");
+            return throw_last_error (env, "ctx_setopt failed");
         napi_value ok;
-        napi_get_undefined(env, &ok);
+        napi_get_undefined (env, &ok);
         return ok;
     }
-    napi_get_value_int32(env, argv[2], &value);
-    int rc = zlink_ctx_set(ctx, static_cast<zlink_ctx_option_t>(opt), value);
+    napi_get_value_int32 (env, argv[2], &value);
+    int rc = zlink_ctx_set (ctx, static_cast<zlink_ctx_option_t> (opt), value);
     if (rc != 0)
-        return throw_last_error(env, "ctx_setopt failed");
+        return throw_last_error (env, "ctx_setopt failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value ctx_getopt(napi_env env, napi_callback_info info)
+napi_value ctx_getopt (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
+    napi_get_value_external (env, argv[0], &ctx);
     int32_t opt = 0;
-    napi_get_value_int32(env, argv[1], &opt);
+    napi_get_value_int32 (env, argv[1], &opt);
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    const int rc = zlink_ctx_get(ctx, static_cast<zlink_ctx_option_t>(opt), &err);
+    const int rc = zlink_ctx_get (ctx, static_cast<zlink_ctx_option_t> (opt), &err);
     if (err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "ctx_getopt failed");
+        return throw_last_error (env, "ctx_getopt failed");
     napi_value out;
-    napi_create_int32(env, rc, &out);
+    napi_create_int32 (env, rc, &out);
     return out;
 }
 
-napi_value ctx_recalculate_auto_hwm(napi_env env, napi_callback_info info)
+napi_value ctx_recalculate_auto_hwm (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
-    napi_get_value_external(env, argv[0], &ctx);
-    zlink_config_result_t rc = zlink_ctx_auto_hwm_recalculate(ctx);
+    napi_get_value_external (env, argv[0], &ctx);
+    zlink_config_result_t rc = zlink_ctx_auto_hwm_recalculate (ctx);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "ctx_auto_hwm_recalculate failed");
+        return throw_last_error (env, "ctx_auto_hwm_recalculate failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_new(napi_env env, napi_callback_info info)
+napi_value socket_new (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     int32_t type = 0;
-    napi_get_value_external(env, argv[0], &ctx);
-    napi_get_value_int32(env, argv[1], &type);
-    void *sock = zlink_socket(ctx, translate_socket_type(type));
+    napi_get_value_external (env, argv[0], &ctx);
+    napi_get_value_int32 (env, argv[1], &type);
+    void *sock = zlink_socket (ctx, translate_socket_type (type));
     if (!sock)
-        return throw_last_error(env, "socket failed");
+        return throw_last_error (env, "socket failed");
     napi_value ext;
-    napi_create_external(env, sock, NULL, NULL, &ext);
+    napi_create_external (env, sock, NULL, NULL, &ext);
     return ext;
 }
 
-napi_value socket_close(napi_env env, napi_callback_info info)
+napi_value socket_close (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    stream_release_slot(sock);
-    release_socket_send_ready_handler_slot(sock);
-    int rc = zlink_close(sock);
+    napi_get_value_external (env, argv[0], &sock);
+    stream_release_slot (sock);
+    release_socket_send_ready_handler_slot (sock);
+    int rc = zlink_close (sock);
     if (rc != 0)
-        return throw_last_error(env, "close failed");
+        return throw_last_error (env, "close failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_bind(napi_env env, napi_callback_info info)
+napi_value socket_bind (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string addr = get_string(env, argv[1]);
-    int rc = zlink_bind(sock, addr.c_str());
+    napi_get_value_external (env, argv[0], &sock);
+    std::string addr = get_string (env, argv[1]);
+    int rc = zlink_bind (sock, addr.c_str ());
     if (rc != 0) {
         char buf[128];
-        snprintf(buf, sizeof(buf), "bind failed (result=%d)", rc);
-        napi_throw_error(env, NULL, buf);
+        snprintf (buf, sizeof (buf), "bind failed (result=%d)", rc);
+        napi_throw_error (env, NULL, buf);
         return NULL;
     }
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_unbind(napi_env env, napi_callback_info info)
+napi_value socket_unbind (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string addr = get_string(env, argv[1]);
-    int rc = zlink_unbind(sock, addr.c_str());
+    napi_get_value_external (env, argv[0], &sock);
+    std::string addr = get_string (env, argv[1]);
+    int rc = zlink_unbind (sock, addr.c_str ());
     if (rc != 0)
-        return throw_last_error(env, "unbind failed");
+        return throw_last_error (env, "unbind failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_connect(napi_env env, napi_callback_info info)
+napi_value socket_connect (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string addr = get_string(env, argv[1]);
-    int rc = zlink_connect(sock, addr.c_str());
+    napi_get_value_external (env, argv[0], &sock);
+    std::string addr = get_string (env, argv[1]);
+    int rc = zlink_connect (sock, addr.c_str ());
     if (rc != 0)
-        return throw_last_error(env, "connect failed");
+        return throw_last_error (env, "connect failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_disconnect(napi_env env, napi_callback_info info)
+napi_value socket_disconnect (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string addr = get_string(env, argv[1]);
-    int rc = zlink_disconnect(sock, addr.c_str());
+    napi_get_value_external (env, argv[0], &sock);
+    std::string addr = get_string (env, argv[1]);
+    int rc = zlink_disconnect (sock, addr.c_str ());
     if (rc != 0)
-        return throw_last_error(env, "disconnect failed");
+        return throw_last_error (env, "disconnect failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_disconnect_rid(napi_env env, napi_callback_info info)
+napi_value socket_disconnect_rid (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id(env, argv[1], &peer_rid))
+    if (!parse_routing_id (env, argv[1], &peer_rid))
         return NULL;
-    int rc = zlink_disconnect_rid(sock, &peer_rid);
+    int rc = zlink_disconnect_rid (sock, &peer_rid);
     if (rc != 0)
-        return throw_last_error(env, "disconnect_rid failed");
+        return throw_last_error (env, "disconnect_rid failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_set_tls_server(napi_env env, napi_callback_info info)
+napi_value socket_set_tls_server (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string cert = get_string(env, argv[1]);
-    std::string key = get_string(env, argv[2]);
+    napi_get_value_external (env, argv[0], &sock);
+    std::string cert = get_string (env, argv[1]);
+    std::string key = get_string (env, argv[2]);
     int32_t require_client = 0;
     if (argc >= 4)
-        napi_get_value_int32(env, argv[3], &require_client);
-    int rc = zlink_set_tls_server(
-      sock, cert.c_str(), key.c_str(), require_client);
+        napi_get_value_int32 (env, argv[3], &require_client);
+    int rc = zlink_set_tls_server (sock, cert.c_str (), key.c_str (), require_client);
     if (rc != 0)
-        return throw_last_error(env, "socket_set_tls_server failed");
+        return throw_last_error (env, "socket_set_tls_server failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_set_tls_client(napi_env env, napi_callback_info info)
+napi_value socket_set_tls_client (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string ca = get_string(env, argv[1]);
-    std::string host = get_string(env, argv[2]);
+    napi_get_value_external (env, argv[0], &sock);
+    std::string ca = get_string (env, argv[1]);
+    std::string host = get_string (env, argv[2]);
     int32_t trust = 0;
     if (argc >= 4)
-        napi_get_value_int32(env, argv[3], &trust);
-    int rc = zlink_set_tls_client(sock, ca.c_str(), host.c_str(), trust);
+        napi_get_value_int32 (env, argv[3], &trust);
+    int rc = zlink_set_tls_client (sock, ca.c_str (), host.c_str (), trust);
     if (rc != 0)
-        return throw_last_error(env, "socket_set_tls_client failed");
+        return throw_last_error (env, "socket_set_tls_client failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_attach_discovery(napi_env env, napi_callback_info info)
+napi_value socket_attach_discovery (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     void *discovery = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    napi_get_value_external(env, argv[1], &discovery);
-    int rc = zlink_socket_attach_discovery(sock, discovery);
+    napi_get_value_external (env, argv[0], &sock);
+    napi_get_value_external (env, argv[1], &discovery);
+    int rc = zlink_socket_attach_discovery (sock, discovery);
     if (rc != 0)
-        return throw_last_error(env, "socket_attach_discovery failed");
+        return throw_last_error (env, "socket_attach_discovery failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_send(napi_env env, napi_callback_info info)
+napi_value socket_send (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[2], &flags);
+    napi_get_value_int32 (env, argv[2], &flags);
     zlink_msg_t msg;
-    if (!init_msg_from_value(env, argv[1], &msg))
-        return throw_last_error(env, "send failed");
-    const size_t len = zlink_msg_size(&msg);
-    int rc = send_parts(sock, &msg, 1, static_cast<zlink_send_flags_t>(flags));
+    if (!init_msg_from_value (env, argv[1], &msg))
+        return throw_last_error (env, "send failed");
+    const size_t len = zlink_msg_size (&msg);
+    int rc = send_parts (sock, &msg, 1, static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_SUBMIT_OK)
-        return throw_last_error(env, "send failed");
+        return throw_last_error (env, "send failed");
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(len), &out);
+    napi_create_int32 (env, static_cast<int32_t> (len), &out);
     return out;
 }
 
-napi_value socket_send_parts(napi_env env, napi_callback_info info)
+napi_value socket_send_parts (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[1], &parts))
+    if (!build_msg_vector_or_single (env, argv[1], &parts))
         return NULL;
 
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[2], &flags);
+    napi_get_value_int32 (env, argv[2], &flags);
     size_t total = 0;
-    for (size_t i = 0; i < parts.size(); ++i)
-        total += zlink_msg_size(&parts[i]);
-    int rc = send_parts(
-      sock, parts.data(), parts.size(), static_cast<zlink_send_flags_t>(flags));
+    for (size_t i = 0; i < parts.size (); ++i)
+        total += zlink_msg_size (&parts[i]);
+    int rc =
+      send_parts (sock, parts.data (), parts.size (), static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_SUBMIT_OK) {
-        return throw_last_error(env, "sendParts failed");
+        return throw_last_error (env, "sendParts failed");
     }
 
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(total), &out);
+    napi_create_int32 (env, static_cast<int32_t> (total), &out);
     return out;
 }
 
-napi_value socket_publish(napi_env env, napi_callback_info info)
+napi_value socket_publish (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     char topic_stack[256];
     std::string topic_heap;
     const char *topic =
-      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
+      get_c_string_arg (env, argv[1], topic_stack, sizeof (topic_stack), &topic_heap);
 
     std::vector<zlink_msg_t> parts;
     zlink_msg_t single_part;
     bool use_single_part = false;
     bool is_array = false;
-    napi_is_array(env, argv[2], &is_array);
+    napi_is_array (env, argv[2], &is_array);
     bool is_buf = false;
     napi_valuetype payload_type = napi_undefined;
-    napi_typeof(env, argv[2], &payload_type);
+    napi_typeof (env, argv[2], &payload_type);
     if (is_array) {
-        if (!build_msg_vector(env, argv[2], &parts))
+        if (!build_msg_vector (env, argv[2], &parts))
             return NULL;
-    } else if ((napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf)
+    } else if ((napi_is_buffer (env, argv[2], &is_buf) == napi_ok && is_buf)
                || payload_type == napi_object) {
-        if (!init_msg_from_value(env, argv[2], &single_part))
-            return throw_last_error(env, "publish failed");
+        if (!init_msg_from_value (env, argv[2], &single_part))
+            return throw_last_error (env, "publish failed");
         use_single_part = true;
-    } else if (!build_msg_vector(env, argv[2], &parts)) {
+    } else if (!build_msg_vector (env, argv[2], &parts)) {
         return NULL;
     }
 
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
+    napi_get_value_int32 (env, argv[3], &flags);
     size_t total = 0;
     if (use_single_part) {
-        total = zlink_msg_size(&single_part);
+        total = zlink_msg_size (&single_part);
     } else {
-        for (size_t i = 0; i < parts.size(); ++i)
-            total += zlink_msg_size(&parts[i]);
+        for (size_t i = 0; i < parts.size (); ++i)
+            total += zlink_msg_size (&parts[i]);
     }
-    int rc = publish_parts(sock,
-                           topic,
-                           use_single_part ? &single_part : parts.data(),
-                           use_single_part ? 1 : parts.size(),
-                           static_cast<zlink_send_flags_t>(flags));
+    int rc =
+      publish_parts (sock, topic, use_single_part ? &single_part : parts.data (),
+                     use_single_part ? 1 : parts.size (), static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_SUBMIT_OK) {
-        return throw_last_error(env, "publish failed");
+        return throw_last_error (env, "publish failed");
     }
 
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(total), &out);
+    napi_create_int32 (env, static_cast<int32_t> (total), &out);
     return out;
 }
 
-napi_value socket_try_publish(napi_env env, napi_callback_info info)
+napi_value socket_try_publish (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     char topic_stack[256];
     std::string topic_heap;
     const char *topic =
-      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
+      get_c_string_arg (env, argv[1], topic_stack, sizeof (topic_stack), &topic_heap);
 
     std::vector<zlink_msg_t> parts;
     zlink_msg_t single_part;
     bool use_single_part = false;
     bool is_array = false;
-    napi_is_array(env, argv[2], &is_array);
+    napi_is_array (env, argv[2], &is_array);
     bool is_buf = false;
     napi_valuetype payload_type = napi_undefined;
-    napi_typeof(env, argv[2], &payload_type);
+    napi_typeof (env, argv[2], &payload_type);
     if (is_array) {
-        if (!build_msg_vector(env, argv[2], &parts))
+        if (!build_msg_vector (env, argv[2], &parts))
             return NULL;
-    } else if (napi_is_buffer(env, argv[2], &is_buf) == napi_ok && is_buf) {
+    } else if (napi_is_buffer (env, argv[2], &is_buf) == napi_ok && is_buf) {
         void *data = NULL;
         size_t len = 0;
-        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
-            napi_throw_type_error(env, NULL, "publish buffer invalid");
+        if (napi_get_buffer_info (env, argv[2], &data, &len) != napi_ok) {
+            napi_throw_type_error (env, NULL, "publish buffer invalid");
             return NULL;
         }
-        if (!init_msg_from_bytes(&single_part, data, len))
-            return throw_last_error(env, "publishNoWaitResult failed");
+        if (!init_msg_from_bytes (&single_part, data, len))
+            return throw_last_error (env, "publishNoWaitResult failed");
         use_single_part = true;
     } else if (payload_type == napi_object) {
-        if (!init_msg_from_value(env, argv[2], &single_part))
-            return throw_last_error(env, "publishNoWaitResult failed");
+        if (!init_msg_from_value (env, argv[2], &single_part))
+            return throw_last_error (env, "publishNoWaitResult failed");
         use_single_part = true;
-    } else if (!build_msg_vector(env, argv[2], &parts)) {
+    } else if (!build_msg_vector (env, argv[2], &parts)) {
         return NULL;
     }
+
+    int rc = publish_parts (sock, topic, use_single_part ? &single_part : parts.data (),
+                            use_single_part ? 1 : parts.size (), ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
+        rc = classify_try_send_errno ();
+    if (rc < 0) {
+        return throw_last_error (env, "publishNoWaitResult failed");
+    }
+    napi_value out;
+    napi_create_int32 (env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external (env, argv[0], &sock);
+    zlink_msg_t msg;
+    if (!init_msg_from_value (env, argv[1], &msg))
+        return throw_last_error (env, "sendNoWaitResult failed");
+    int rc = send_parts (sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
+        rc = classify_try_send_errno ();
+    if (rc < 0)
+        return throw_last_error (env, "sendNoWaitResult failed");
+    napi_value out;
+    napi_create_int32 (env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_parts (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external (env, argv[0], &sock);
+
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[1], &parts))
+        return NULL;
+
+    int rc = send_parts (sock, parts.data (), parts.size (), ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
+        rc = classify_try_send_errno ();
+    if (rc < 0) {
+        return throw_last_error (env, "trySendParts failed");
+    }
+    napi_value out;
+    napi_create_int32 (env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_routing (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external (env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id (env, argv[1], &routing_id))
+        return NULL;
+
+    zlink_msg_t msg;
+    if (!init_msg_from_value (env, argv[2], &msg))
+        return throw_last_error (env, "trySendTo failed");
+    int rc = send_parts_rid (sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    if (rc != ZLINK_SUBMIT_OK)
+        rc = classify_try_send_errno ();
+    if (rc < 0)
+        return throw_last_error (env, "trySendTo failed");
+    napi_value out;
+    napi_create_int32 (env, rc, &out);
+    return out;
+}
+
+napi_value socket_try_send_routing_parts (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external (env, argv[0], &sock);
+
+    zlink_routing_id_t routing_id;
+    if (!parse_routing_id (env, argv[1], &routing_id))
+        return NULL;
+
+    std::vector<zlink_msg_t> parts;
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
+        return NULL;
 
     int rc =
-      publish_parts(sock, topic,
-                    use_single_part ? &single_part : parts.data(),
-                    use_single_part ? 1 : parts.size(),
-                    ZLINK_SEND_FLAGS_DONTWAIT);
+      send_parts_rid (sock, &routing_id, parts.data (), parts.size (), ZLINK_SEND_FLAGS_DONTWAIT);
     if (rc != ZLINK_SUBMIT_OK)
-        rc = classify_try_send_errno();
+        rc = classify_try_send_errno ();
     if (rc < 0) {
-        return throw_last_error(env, "publishNoWaitResult failed");
+        return throw_last_error (env, "trySendPartsTo failed");
     }
     napi_value out;
-    napi_create_int32(env, rc, &out);
+    napi_create_int32 (env, rc, &out);
     return out;
 }
 
-napi_value socket_try_send(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    zlink_msg_t msg;
-    if (!init_msg_from_value(env, argv[1], &msg))
-        return throw_last_error(env, "sendNoWaitResult failed");
-    int rc = send_parts(sock, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK)
-        rc = classify_try_send_errno();
-    if (rc < 0)
-        return throw_last_error(env, "sendNoWaitResult failed");
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
-napi_value socket_try_send_parts(napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-
-    std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[1], &parts))
-        return NULL;
-
-    int rc = send_parts(sock, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK)
-        rc = classify_try_send_errno();
-    if (rc < 0) {
-        return throw_last_error(env, "trySendParts failed");
-    }
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
-napi_value socket_try_send_routing(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-
-    zlink_routing_id_t routing_id;
-    if (!parse_routing_id(env, argv[1], &routing_id))
-        return NULL;
-
-    zlink_msg_t msg;
-    if (!init_msg_from_value(env, argv[2], &msg))
-        return throw_last_error(env, "trySendTo failed");
-    int rc = send_parts_rid(sock, &routing_id, &msg, 1, ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK)
-        rc = classify_try_send_errno();
-    if (rc < 0)
-        return throw_last_error(env, "trySendTo failed");
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
-napi_value socket_try_send_routing_parts(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-
-    zlink_routing_id_t routing_id;
-    if (!parse_routing_id(env, argv[1], &routing_id))
-        return NULL;
-
-    std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[2], &parts))
-        return NULL;
-
-    int rc = send_parts_rid(
-      sock, &routing_id, parts.data(), parts.size(), ZLINK_SEND_FLAGS_DONTWAIT);
-    if (rc != ZLINK_SUBMIT_OK)
-        rc = classify_try_send_errno();
-    if (rc < 0) {
-        return throw_last_error(env, "trySendPartsTo failed");
-    }
-    napi_value out;
-    napi_create_int32(env, rc, &out);
-    return out;
-}
-
-napi_value socket_send_routing(napi_env env, napi_callback_info info)
+napi_value socket_send_routing (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id(env, argv[1], &routing_id))
+    if (!parse_routing_id (env, argv[1], &routing_id))
         return NULL;
 
     zlink_msg_t msg;
-    if (!init_msg_from_value(env, argv[2], &msg))
-        return throw_last_error(env, "send failed");
-    const size_t len = zlink_msg_size(&msg);
+    if (!init_msg_from_value (env, argv[2], &msg))
+        return throw_last_error (env, "send failed");
+    const size_t len = zlink_msg_size (&msg);
 
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
-    int rc = send_parts_rid(
-      sock, &routing_id, &msg, 1, static_cast<zlink_send_flags_t>(flags));
+    napi_get_value_int32 (env, argv[3], &flags);
+    int rc = send_parts_rid (sock, &routing_id, &msg, 1, static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_SUBMIT_OK)
-        return throw_last_error(env, "send failed");
+        return throw_last_error (env, "send failed");
 
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(len), &out);
+    napi_create_int32 (env, static_cast<int32_t> (len), &out);
     return out;
 }
 
-napi_value socket_send_routing_parts(napi_env env, napi_callback_info info)
+napi_value socket_send_routing_parts (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id(env, argv[1], &routing_id))
+    if (!parse_routing_id (env, argv[1], &routing_id))
         return NULL;
 
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[2], &parts))
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
         return NULL;
 
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
-    int rc = send_parts_rid(
-      sock, &routing_id, parts.data(), parts.size(),
-      static_cast<zlink_send_flags_t>(flags));
+    napi_get_value_int32 (env, argv[3], &flags);
+    int rc = send_parts_rid (sock, &routing_id, parts.data (), parts.size (),
+                             static_cast<zlink_send_flags_t> (flags));
     if (rc != ZLINK_SUBMIT_OK)
-        return throw_last_error(env, "sendPartsTo failed");
+        return throw_last_error (env, "sendPartsTo failed");
 
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_recv_message(napi_env env, napi_callback_info info)
+napi_value socket_recv_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     int32_t flags = 0;
     if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
+        napi_get_value_int32 (env, argv[1], &flags);
 
     zlink_routing_id_t routing_id;
     std::vector<zlink_msg_t> parts;
-    int rc = recv_parts(sock, &routing_id, &parts, flags);
+    int rc = recv_parts (sock, &routing_id, &parts, flags);
     if (rc != ZLINK_RECV_OK)
-        return throw_last_error(env, "recv failed");
+        return throw_last_error (env, "recv failed");
 
-    napi_value out =
-      create_recv_message_value(env, routing_id, parts.data(), parts.size());
-    close_msg_vector(parts);
+    napi_value out = create_recv_message_value (env, routing_id, parts.data (), parts.size ());
+    close_msg_vector (parts);
     return out;
 }
 
-napi_value socket_try_recv_message(napi_env env, napi_callback_info info)
+napi_value socket_try_recv_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
     zlink_routing_id_t routing_id;
     std::vector<zlink_msg_t> parts;
-    int rc = recv_parts(
-      sock,
-      &routing_id,
-      &parts,
-      static_cast<int32_t>(ZLINK_RECV_FLAGS_DONTWAIT));
+    int rc =
+      recv_parts (sock, &routing_id, &parts, static_cast<int32_t> (ZLINK_RECV_FLAGS_DONTWAIT));
     if (rc != ZLINK_RECV_OK) {
-        if (zlink_errno() == EAGAIN) {
+        if (zlink_errno () == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        return throw_last_error(env, "tryReceive failed");
+        return throw_last_error (env, "tryReceive failed");
     }
-    napi_value out =
-      create_recv_message_value(env, routing_id, parts.data(), parts.size());
-    close_msg_vector(parts);
+    napi_value out = create_recv_message_value (env, routing_id, parts.data (), parts.size ());
+    close_msg_vector (parts);
     return out;
 }
 
-napi_value socket_subscribe_message(napi_env env, napi_callback_info info)
+napi_value socket_subscribe_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
-    std::vector<char> topic(256, '\0');
+    std::vector<char> topic (256, '\0');
     zlink_routing_id_t routing_id;
     std::vector<zlink_msg_t> parts;
-    size_t topic_len = topic.size();
+    size_t topic_len = topic.size ();
 
     for (;;) {
-        memset(&routing_id, 0, sizeof(routing_id));
-        int rc = subscribe_parts(sock,
-                                 &routing_id,
-                                 topic.data(),
-                                 topic.size(),
-                                 &topic_len,
-                                 &parts,
-                                 ZLINK_RECV_FLAGS_NONE);
+        memset (&routing_id, 0, sizeof (routing_id));
+        int rc = subscribe_parts (sock, &routing_id, topic.data (), topic.size (), &topic_len,
+                                  &parts, ZLINK_RECV_FLAGS_NONE);
         if (rc == ZLINK_RECV_OK) {
-          napi_value out = create_subscribed_value(
-            env, routing_id, topic.data(), topic_len, parts.data(), parts.size());
-          close_msg_vector(parts);
-          return out;
+            napi_value out = create_subscribed_value (env, routing_id, topic.data (), topic_len,
+                                                      parts.data (), parts.size ());
+            close_msg_vector (parts);
+            return out;
         }
-        if (zlink_errno() != EMSGSIZE)
-            return throw_last_error(env, "subscribe failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+        if (zlink_errno () != EMSGSIZE)
+            return throw_last_error (env, "subscribe failed");
+        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }
 
-napi_value socket_try_subscribe_message(napi_env env, napi_callback_info info)
+napi_value socket_try_subscribe_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
-    std::vector<char> topic(256, '\0');
+    std::vector<char> topic (256, '\0');
     zlink_routing_id_t routing_id;
-    size_t topic_len = topic.size();
+    size_t topic_len = topic.size ();
 
     for (;;) {
-        memset(&routing_id, 0, sizeof(routing_id));
+        memset (&routing_id, 0, sizeof (routing_id));
         const zlink_routing_id_t *source_rid = NULL;
         zlink_msg_t first_part;
-        if (zlink_msg_init(&first_part) != 0)
-            return throw_last_error(env, "trySubscribe failed");
+        if (zlink_msg_init (&first_part) != 0)
+            return throw_last_error (env, "trySubscribe failed");
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        int rc = zlink_subscribe_part(
-          sock,
-          &source_rid,
-          topic.data(),
-          topic.size(),
-          &topic_len,
-          &first_part,
-          &has_more,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        int rc = zlink_subscribe_part (sock, &source_rid, topic.data (), topic.size (), &topic_len,
+                                       &first_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
-            copy_routing_id(&routing_id, source_rid);
+            copy_routing_id (&routing_id, source_rid);
             if (!has_more) {
-                napi_value out = create_subscribed_value(
-                  env, routing_id, topic.data(), topic_len, &first_part, 1);
-                zlink_msg_close(&first_part);
+                napi_value out = create_subscribed_value (env, routing_id, topic.data (), topic_len,
+                                                          &first_part, 1);
+                zlink_msg_close (&first_part);
                 return out;
             }
 
             std::vector<zlink_msg_t> parts;
-            rc = collect_recv_parts(sock, &first_part, has_more, &parts);
+            rc = collect_recv_parts (sock, &first_part, has_more, &parts);
             if (rc == ZLINK_RECV_OK) {
-                napi_value out = create_subscribed_value(
-                  env, routing_id, topic.data(), topic_len, parts.data(), parts.size());
-                close_msg_vector(parts);
+                napi_value out = create_subscribed_value (env, routing_id, topic.data (), topic_len,
+                                                          parts.data (), parts.size ());
+                close_msg_vector (parts);
                 return out;
             }
         }
-        const int err = zlink_errno();
-        zlink_msg_close(&first_part);
+        const int err = zlink_errno ();
+        zlink_msg_close (&first_part);
         if (err == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
         if (err != EMSGSIZE)
-            return throw_last_error(env, "subscribeNoWait failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+            return throw_last_error (env, "subscribeNoWait failed");
+        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }
 
-napi_value socket_try_subscribe_payload(napi_env env, napi_callback_info info)
+napi_value socket_try_subscribe_payload (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
-    std::vector<char> topic(256, '\0');
-    size_t topic_len = topic.size();
+    std::vector<char> topic (256, '\0');
+    size_t topic_len = topic.size ();
 
     for (;;) {
         const zlink_routing_id_t *source_rid = NULL;
         zlink_msg_t first_part;
-        if (zlink_msg_init(&first_part) != 0)
-            return throw_last_error(env, "trySubscribePayload failed");
+        if (zlink_msg_init (&first_part) != 0)
+            return throw_last_error (env, "trySubscribePayload failed");
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        int rc = zlink_subscribe_part(
-          sock,
-          &source_rid,
-          topic.data(),
-          topic.size(),
-          &topic_len,
-          &first_part,
-          &has_more,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        int rc = zlink_subscribe_part (sock, &source_rid, topic.data (), topic.size (), &topic_len,
+                                       &first_part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
         (void) source_rid;
         if (rc == ZLINK_RECV_OK) {
             if (has_more == ZLINK_PART_FINAL) {
-                return create_message_data_buffer(env, &first_part);
+                return create_message_data_buffer (env, &first_part);
             }
 
             std::vector<zlink_msg_t> parts;
-            rc = collect_recv_parts(sock, &first_part, has_more, &parts);
-            close_msg_vector(parts);
+            rc = collect_recv_parts (sock, &first_part, has_more, &parts);
+            close_msg_vector (parts);
             if (rc != ZLINK_RECV_OK)
-                return throw_last_error(env, "trySubscribePayload failed");
-            napi_throw_error(
-              env, NULL, "trySubscribePayload requires single-part messages");
+                return throw_last_error (env, "trySubscribePayload failed");
+            napi_throw_error (env, NULL, "trySubscribePayload requires single-part messages");
             return NULL;
         }
-        const int err = zlink_errno();
-        zlink_msg_close(&first_part);
+        const int err = zlink_errno ();
+        zlink_msg_close (&first_part);
         if (err == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
         if (err != EMSGSIZE)
-            return throw_last_error(env, "trySubscribePayload failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+            return throw_last_error (env, "trySubscribePayload failed");
+        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }
 
-napi_value socket_send_ready_handler(napi_env env, napi_callback_info info)
+napi_value socket_send_ready_handler (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 2) {
-        napi_throw_type_error(
-          env, NULL, "sendReadyHandler requires (socket, handler)");
+        napi_throw_type_error (env, NULL, "sendReadyHandler requires (socket, handler)");
         return NULL;
     }
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
+    napi_typeof (env, argv[1], &handler_type);
     if (handler_type != napi_function) {
-        napi_throw_type_error(
-          env, NULL, "sendReadyHandler handler must be a function");
+        napi_throw_type_error (env, NULL, "sendReadyHandler handler must be a function");
         return NULL;
     }
-    if (!attach_send_ready_handler(env, sock, argv[1]))
+    if (!attach_send_ready_handler (env, sock, argv[1]))
         return NULL;
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_subscription_event(napi_env env, napi_callback_info info)
+napi_value socket_subscription_event (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
-    std::vector<char> topic(256, '\0');
+    std::vector<char> topic (256, '\0');
     zlink_routing_id_t routing_id;
     int subscribed = 0;
-    size_t topic_len = topic.size();
+    size_t topic_len = topic.size ();
 
     for (;;) {
         const zlink_routing_id_t *source_rid = NULL;
-        memset(&routing_id, 0, sizeof(routing_id));
-        int rc = zlink_xpub_recv_part(
-          sock,
-          &source_rid,
-          &subscribed,
-          topic.data(),
-          topic.size(),
-          &topic_len,
-          ZLINK_RECV_FLAGS_NONE);
+        memset (&routing_id, 0, sizeof (routing_id));
+        int rc = zlink_xpub_recv_part (sock, &source_rid, &subscribed, topic.data (), topic.size (),
+                                       &topic_len, ZLINK_RECV_FLAGS_NONE);
         if (rc == ZLINK_RECV_OK) {
-            copy_routing_id(&routing_id, source_rid);
-            return create_subscription_event_value(
-              env, routing_id, subscribed, topic.data(), topic_len);
+            copy_routing_id (&routing_id, source_rid);
+            return create_subscription_event_value (env, routing_id, subscribed, topic.data (),
+                                                    topic_len);
         }
-        if (zlink_errno() != EMSGSIZE)
-            return throw_last_error(env, "receiveSubscriptionEvent failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+        if (zlink_errno () != EMSGSIZE)
+            return throw_last_error (env, "receiveSubscriptionEvent failed");
+        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }
 
-napi_value socket_try_subscription_event(napi_env env, napi_callback_info info)
+napi_value socket_try_subscription_event (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
-    std::vector<char> topic(256, '\0');
+    std::vector<char> topic (256, '\0');
     zlink_routing_id_t routing_id;
     int subscribed = 0;
-    size_t topic_len = topic.size();
+    size_t topic_len = topic.size ();
 
     for (;;) {
         const zlink_routing_id_t *source_rid = NULL;
-        memset(&routing_id, 0, sizeof(routing_id));
-        int rc = zlink_xpub_recv_part(
-          sock,
-          &source_rid,
-          &subscribed,
-          topic.data(),
-          topic.size(),
-          &topic_len,
-          ZLINK_RECV_FLAGS_DONTWAIT);
+        memset (&routing_id, 0, sizeof (routing_id));
+        int rc = zlink_xpub_recv_part (sock, &source_rid, &subscribed, topic.data (), topic.size (),
+                                       &topic_len, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
-            copy_routing_id(&routing_id, source_rid);
-            return create_subscription_event_value(
-              env, routing_id, subscribed, topic.data(), topic_len);
+            copy_routing_id (&routing_id, source_rid);
+            return create_subscription_event_value (env, routing_id, subscribed, topic.data (),
+                                                    topic_len);
         }
-        const int err = zlink_errno();
+        const int err = zlink_errno ();
         if (err == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
         if (err != EMSGSIZE)
-            return throw_last_error(env, "tryReceiveSubscriptionEvent failed");
-        topic.assign(topic_len > 0 ? topic_len : 1, '\0');
+            return throw_last_error (env, "tryReceiveSubscriptionEvent failed");
+        topic.assign (topic_len > 0 ? topic_len : 1, '\0');
     }
 }
 
-napi_value subscription_at(napi_env env, napi_callback_info info)
+napi_value subscription_at (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 2) {
-        napi_throw_type_error(env, NULL, "subscriptionAt expects handle, index");
+        napi_throw_type_error (env, NULL, "subscriptionAt expects handle, index");
         return NULL;
     }
 
     void *handle = NULL;
-    napi_get_value_external(env, argv[0], &handle);
+    napi_get_value_external (env, argv[0], &handle);
     uint32_t index = 0;
-    napi_get_value_uint32(env, argv[1], &index);
+    napi_get_value_uint32 (env, argv[1], &index);
 
-    std::vector<char> filter(256, '\0');
-    size_t filter_len = filter.size();
+    std::vector<char> filter (256, '\0');
+    size_t filter_len = filter.size ();
     int is_pattern = 0;
     for (;;) {
-        zlink_config_result_t rc = zlink_subscription_at(
-          handle, static_cast<size_t>(index), filter.data(), &filter_len,
-          &is_pattern);
+        zlink_config_result_t rc = zlink_subscription_at (handle, static_cast<size_t> (index),
+                                                          filter.data (), &filter_len, &is_pattern);
         if (rc == ZLINK_CONFIG_OK) {
             napi_value obj;
-            napi_create_object(env, &obj);
+            napi_create_object (env, &obj);
             napi_value filter_value;
-            napi_create_string_utf8(env, filter.data(), filter_len, &filter_value);
-            napi_set_named_property(env, obj, "filter", filter_value);
+            napi_create_string_utf8 (env, filter.data (), filter_len, &filter_value);
+            napi_set_named_property (env, obj, "filter", filter_value);
             napi_value pattern_value;
-            napi_get_boolean(env, is_pattern != 0, &pattern_value);
-            napi_set_named_property(env, obj, "isPattern", pattern_value);
+            napi_get_boolean (env, is_pattern != 0, &pattern_value);
+            napi_set_named_property (env, obj, "isPattern", pattern_value);
             return obj;
         }
         if (rc == ZLINK_CONFIG_NOT_FOUND) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        if (zlink_errno() != EMSGSIZE)
-            return throw_last_error(env, "subscription_at failed");
-        filter.assign(filter_len > 0 ? filter_len : 1, '\0');
+        if (zlink_errno () != EMSGSIZE)
+            return throw_last_error (env, "subscription_at failed");
+        filter.assign (filter_len > 0 ? filter_len : 1, '\0');
     }
 }
 
-napi_value socket_stream_attach(napi_env env, napi_callback_info info)
+napi_value socket_stream_attach (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 2) {
-        napi_throw_type_error(env, NULL,
-                              "streamAttach requires (socket, handler[, mode])");
+        napi_throw_type_error (env, NULL, "streamAttach requires (socket, handler[, mode])");
         return NULL;
     }
 
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
 
     napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
+    napi_typeof (env, argv[1], &handler_type);
     if (handler_type != napi_function) {
-        napi_throw_type_error(env, NULL, "streamAttach handler must be a function");
+        napi_throw_type_error (env, NULL, "streamAttach handler must be a function");
         return NULL;
     }
 
     int32_t mode = k_stream_dispatch_len32be;
     if (argc >= 3)
-        napi_get_value_int32(env, argv[2], &mode);
+        napi_get_value_int32 (env, argv[2], &mode);
     if (mode != k_stream_dispatch_len32be) {
-        napi_throw_range_error(env, NULL,
-                               "streamAttach mode must be PACKET(1)");
+        napi_throw_range_error (env, NULL, "streamAttach mode must be PACKET(1)");
         return NULL;
     }
 
     {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-        if (find_stream_slot_by_socket_unsafe(sock)) {
-            napi_throw_error(env, NULL, "STREAM callback already attached");
+        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
+        if (find_stream_slot_by_socket_unsafe (sock)) {
+            napi_throw_error (env, NULL, "STREAM callback already attached");
             return NULL;
         }
     }
@@ -2593,690 +2401,644 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
     stream_js_state_t *slot = NULL;
     size_t slot_index = 0;
     {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-        slot = find_free_stream_slot_unsafe();
+        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
+        slot = find_free_stream_slot_unsafe ();
         if (!slot) {
-            napi_throw_error(env, NULL,
-                             "no free STREAM callback slot (max 8 attached sockets)");
+            napi_throw_error (env, NULL, "no free STREAM callback slot (max 8 attached sockets)");
             return NULL;
         }
-        slot_index = static_cast<size_t>(slot - g_stream_slots);
+        slot_index = static_cast<size_t> (slot - g_stream_slots);
     }
 
     napi_value resource_name;
-    napi_create_string_utf8(env, "zlink-stream", NAPI_AUTO_LENGTH,
-                            &resource_name);
+    napi_create_string_utf8 (env, "zlink-stream", NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, argv[1], NULL, resource_name, 0, 1, slot, stream_tsfn_finalize, slot,
-      stream_tsfn_call_js, &tsfn);
+    napi_status tsfn_status =
+      napi_create_threadsafe_function (env, argv[1], NULL, resource_name, 0, 1, slot,
+                                       stream_tsfn_finalize, slot, stream_tsfn_call_js, &tsfn);
     if (tsfn_status != napi_ok) {
-        napi_throw_error(env, NULL, "streamAttach failed to create callback queue");
+        napi_throw_error (env, NULL, "streamAttach failed to create callback queue");
         return NULL;
     }
 
     {
-        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        std::lock_guard<std::mutex> lock (g_stream_slots_mu);
         slot->used = true;
         slot->socket = sock;
         slot->env = env;
         slot->tsfn = tsfn;
-        slot->stop_requested.store(0, std::memory_order_release);
-        slot->peer_routing_ids.clear();
+        slot->stop_requested.store (0, std::memory_order_release);
+        slot->peer_routing_ids.clear ();
     }
 
-    zlink_handler_result_t rc = zlink_stream_packet_handler(
-      sock, g_stream_slot_packet_callbacks[slot_index], NULL);
+    zlink_handler_result_t rc =
+      zlink_stream_packet_handler (sock, g_stream_slot_packet_callbacks[slot_index], NULL);
     if (rc != ZLINK_HANDLER_OK) {
-        stream_release_slot(sock);
-        return throw_last_error(env, "streamAttach failed");
+        stream_release_slot (sock);
+        return throw_last_error (env, "streamAttach failed");
     }
 
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_setopt(napi_env env, napi_callback_info info)
+napi_value socket_setopt (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     int32_t opt = 0;
-    napi_get_value_int32(env, argv[1], &opt);
+    napi_get_value_int32 (env, argv[1], &opt);
     void *data = NULL;
     size_t len = 0;
-    if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "option value must be Buffer");
+    if (napi_get_buffer_info (env, argv[2], &data, &len) != napi_ok) {
+        napi_throw_type_error (env, NULL, "option value must be Buffer");
         return NULL;
     }
-    int rc = set_socket_option(sock, opt, data, len);
+    int rc = set_socket_option (sock, opt, data, len);
     if (rc != 0)
-        return throw_last_error(env, "setsockopt failed");
+        return throw_last_error (env, "setsockopt failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_getopt(napi_env env, napi_callback_info info)
+napi_value socket_getopt (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     int32_t opt = 0;
-    napi_get_value_int32(env, argv[1], &opt);
-    size_t len = initial_getopt_buffer_len(opt);
+    napi_get_value_int32 (env, argv[1], &opt);
+    size_t len = initial_getopt_buffer_len (opt);
     void *data = NULL;
     napi_value buf;
-    napi_create_buffer(env, len, &data, &buf);
-    int rc = get_socket_option(sock, opt, data, &len);
+    napi_create_buffer (env, len, &data, &buf);
+    int rc = get_socket_option (sock, opt, data, &len);
     if (rc != 0)
-        return throw_last_error(env, "getsockopt failed");
-    if (len == initial_getopt_buffer_len(opt))
+        return throw_last_error (env, "getsockopt failed");
+    if (len == initial_getopt_buffer_len (opt))
         return buf;
     napi_value out;
-    napi_create_buffer_copy(env, len, data, NULL, &out);
+    napi_create_buffer_copy (env, len, data, NULL, &out);
     return out;
 }
 
-napi_value socket_set_subscription(napi_env env, napi_callback_info info)
+napi_value socket_set_subscription (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     char topic_stack[256];
     std::string topic_heap;
     const char *topic =
-      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
-    int rc = zlink_set_subscription(sock, topic);
+      get_c_string_arg (env, argv[1], topic_stack, sizeof (topic_stack), &topic_heap);
+    int rc = zlink_set_subscription (sock, topic);
     if (rc != 0)
-        return throw_last_error(env, "set subscription failed");
+        return throw_last_error (env, "set subscription failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_unset_subscription(napi_env env, napi_callback_info info)
+napi_value socket_unset_subscription (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     char topic_stack[256];
     std::string topic_heap;
     const char *topic =
-      get_c_string_arg(env, argv[1], topic_stack, sizeof(topic_stack), &topic_heap);
-    int rc = zlink_unset_subscription(sock, topic);
+      get_c_string_arg (env, argv[1], topic_stack, sizeof (topic_stack), &topic_heap);
+    int rc = zlink_unset_subscription (sock, topic);
     if (rc != 0)
-        return throw_last_error(env, "unset subscription failed");
+        return throw_last_error (env, "unset subscription failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_set_channel_name(napi_env env, napi_callback_info info)
+napi_value socket_set_channel_name (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    std::string channel_name = get_string(env, argv[1]);
-    int rc = zlink_socket_set_channel_name(sock, channel_name.c_str());
+    napi_get_value_external (env, argv[0], &sock);
+    std::string channel_name = get_string (env, argv[1]);
+    int rc = zlink_socket_set_channel_name (sock, channel_name.c_str ());
     if (rc != 0)
-        return throw_last_error(env, "socketSetChannelName failed");
+        return throw_last_error (env, "socketSetChannelName failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value socket_get_channel_name(napi_env env, napi_callback_info info)
+napi_value socket_get_channel_name (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     char channel_name[256];
     size_t channel_name_len = 0;
-    memset(channel_name, 0, sizeof(channel_name));
-    int rc = zlink_socket_get_channel_name(sock, channel_name,
-                                           sizeof(channel_name),
-                                           &channel_name_len);
+    memset (channel_name, 0, sizeof (channel_name));
+    int rc =
+      zlink_socket_get_channel_name (sock, channel_name, sizeof (channel_name), &channel_name_len);
     if (rc != 0)
-        return throw_last_error(env, "socketGetChannelName failed");
+        return throw_last_error (env, "socketGetChannelName failed");
     napi_value out;
-    napi_create_string_utf8(env, channel_name,
-                            static_cast<size_t>(channel_name_len), &out);
+    napi_create_string_utf8 (env, channel_name, static_cast<size_t> (channel_name_len), &out);
     return out;
 }
 
-napi_value handle_set_routing_id(napi_env env, napi_callback_info info)
+napi_value handle_set_routing_id (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *handle = NULL;
-    napi_get_value_external(env, argv[0], &handle);
+    napi_get_value_external (env, argv[0], &handle);
     zlink_routing_id_t routing_id;
-    if (!parse_routing_id(env, argv[1], &routing_id))
+    if (!parse_routing_id (env, argv[1], &routing_id))
         return NULL;
-    int rc = zlink_set_routing_id(handle, routing_id.data, routing_id.size);
+    int rc = zlink_set_routing_id (handle, routing_id.data, routing_id.size);
     if (rc != 0)
-        return throw_last_error(env, "set_routing_id failed");
+        return throw_last_error (env, "set_routing_id failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value handle_get_routing_id(napi_env env, napi_callback_info info)
+napi_value handle_get_routing_id (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *handle = NULL;
-    napi_get_value_external(env, argv[0], &handle);
+    napi_get_value_external (env, argv[0], &handle);
     zlink_routing_id_t routing_id;
-    memset(&routing_id, 0, sizeof(routing_id));
-    int rc = zlink_get_routing_id(handle, &routing_id);
+    memset (&routing_id, 0, sizeof (routing_id));
+    int rc = zlink_get_routing_id (handle, &routing_id);
     if (rc != 0)
-        return throw_last_error(env, "get_routing_id failed");
-    return create_routing_id_value(env, routing_id);
+        return throw_last_error (env, "get_routing_id failed");
+    return create_routing_id_value (env, routing_id);
 }
 
-napi_value dealer_request(napi_env env, napi_callback_info info)
+napi_value dealer_request (napi_env env, napi_callback_info info)
 {
     napi_value argv[5];
     size_t argc = 5;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 5) {
-        napi_throw_type_error(
-          env, NULL, "dealerRequest requires (socket, parts, handler, flags, timeoutMs)");
+        napi_throw_type_error (env, NULL,
+                               "dealerRequest requires (socket, parts, handler, flags, timeoutMs)");
         return NULL;
     }
     void *dealer = NULL;
-    napi_get_value_external(env, argv[0], &dealer);
+    napi_get_value_external (env, argv[0], &dealer);
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[1], &parts))
+    if (!build_msg_vector_or_single (env, argv[1], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[2], &handler_type);
+    napi_typeof (env, argv[2], &handler_type);
     if (handler_type != napi_function) {
-        close_msg_vector(parts);
-        napi_throw_type_error(env, NULL, "dealerRequest handler must be a function");
+        close_msg_vector (parts);
+        napi_throw_type_error (env, NULL, "dealerRequest handler must be a function");
         return NULL;
     }
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
+    napi_get_value_int32 (env, argv[3], &flags);
     int32_t timeout_ms = 0;
-    napi_get_value_int32(env, argv[4], &timeout_ms);
-    request_js_state_t *state = create_request_js_state(env, argv[2]);
+    napi_get_value_int32 (env, argv[4], &timeout_ms);
+    request_js_state_t *state = create_request_js_state (env, argv[2]);
     if (!state) {
-        close_msg_vector(parts);
+        close_msg_vector (parts);
         return NULL;
     }
-    int rc = dealer_request_parts(
-      dealer,
-      parts.data(),
-      parts.size(),
-      request_reply_callback_trampoline,
-      state,
-      static_cast<zlink_send_flags_t>(flags),
-      static_cast<uint32_t>(timeout_ms));
+    int rc = dealer_request_parts (
+      dealer, parts.data (), parts.size (), request_reply_callback_trampoline, state,
+      static_cast<zlink_send_flags_t> (flags), static_cast<uint32_t> (timeout_ms));
     if (rc != ZLINK_SUBMIT_OK) {
         if (state->tsfn) {
-            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
             state->tsfn = NULL;
         }
-        return throw_last_error(env, "dealerRequest failed");
+        return throw_last_error (env, "dealerRequest failed");
     }
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value router_request(napi_env env, napi_callback_info info)
+napi_value router_request (napi_env env, napi_callback_info info)
 {
     napi_value argv[6];
     size_t argc = 6;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 6) {
-        napi_throw_type_error(
+        napi_throw_type_error (
           env, NULL,
           "routerRequest requires (socket, routingId, parts, handler, flags, timeoutMs)");
         return NULL;
     }
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id(env, argv[1], &peer_rid))
+    if (!parse_routing_id (env, argv[1], &peer_rid))
         return NULL;
     std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector_or_single(env, argv[2], &parts))
+    if (!build_msg_vector_or_single (env, argv[2], &parts))
         return NULL;
     napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[3], &handler_type);
+    napi_typeof (env, argv[3], &handler_type);
     if (handler_type != napi_function) {
-        close_msg_vector(parts);
-        napi_throw_type_error(env, NULL, "routerRequest handler must be a function");
+        close_msg_vector (parts);
+        napi_throw_type_error (env, NULL, "routerRequest handler must be a function");
         return NULL;
     }
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[4], &flags);
+    napi_get_value_int32 (env, argv[4], &flags);
     int32_t timeout_ms = 0;
-    napi_get_value_int32(env, argv[5], &timeout_ms);
-    request_js_state_t *state = create_request_js_state(env, argv[3]);
+    napi_get_value_int32 (env, argv[5], &timeout_ms);
+    request_js_state_t *state = create_request_js_state (env, argv[3]);
     if (!state) {
-        close_msg_vector(parts);
+        close_msg_vector (parts);
         return NULL;
     }
-    int rc = router_request_parts(
-      router,
-      &peer_rid,
-      parts.data(),
-      parts.size(),
-      request_reply_callback_trampoline,
-      state,
-      static_cast<zlink_send_flags_t>(flags),
-      static_cast<uint32_t>(timeout_ms));
+    int rc = router_request_parts (
+      router, &peer_rid, parts.data (), parts.size (), request_reply_callback_trampoline, state,
+      static_cast<zlink_send_flags_t> (flags), static_cast<uint32_t> (timeout_ms));
     if (rc != ZLINK_SUBMIT_OK) {
         if (state->tsfn) {
-            (void) napi_release_threadsafe_function(state->tsfn, napi_tsfn_abort);
+            (void) napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
             state->tsfn = NULL;
         }
-        return throw_last_error(env, "routerRequest failed");
+        return throw_last_error (env, "routerRequest failed");
     }
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value router_reply(napi_env env, napi_callback_info info)
+napi_value router_reply (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     if (argc < 4) {
-        napi_throw_type_error(
-          env, NULL, "routerReply requires (socket, routingId, requestSeq, parts)");
+        napi_throw_type_error (env, NULL,
+                               "routerReply requires (socket, routingId, requestSeq, parts)");
         return NULL;
     }
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
     zlink_routing_id_t peer_rid;
-    if (!parse_routing_id(env, argv[1], &peer_rid))
+    if (!parse_routing_id (env, argv[1], &peer_rid))
         return NULL;
     uint64_t request_seq = 0;
-    if (!get_uint64_like(env, argv[2], &request_seq)) {
-        napi_throw_type_error(env, NULL, "requestSeq must be uint64");
+    if (!get_uint64_like (env, argv[2], &request_seq)) {
+        napi_throw_type_error (env, NULL, "requestSeq must be uint64");
         return NULL;
     }
     std::vector<zlink_msg_t> parts;
     zlink_msg_t single_part;
     bool use_single_part = false;
     bool is_array = false;
-    if (napi_is_array(env, argv[3], &is_array) == napi_ok && is_array) {
-        if (!build_msg_vector(env, argv[3], &parts))
+    if (napi_is_array (env, argv[3], &is_array) == napi_ok && is_array) {
+        if (!build_msg_vector (env, argv[3], &parts))
             return NULL;
     } else {
-        if (!init_msg_from_value(env, argv[3], &single_part))
+        if (!init_msg_from_value (env, argv[3], &single_part))
             return NULL;
         use_single_part = true;
     }
-    int rc =
-      router_reply_parts(router,
-                         &peer_rid,
-                         request_seq,
-                         use_single_part ? &single_part : parts.data(),
-                         use_single_part ? 1 : parts.size());
+    int rc = router_reply_parts (router, &peer_rid, request_seq,
+                                 use_single_part ? &single_part : parts.data (),
+                                 use_single_part ? 1 : parts.size ());
     if (rc != ZLINK_SUBMIT_OK) {
-        return throw_last_error(env, "routerReply failed");
+        return throw_last_error (env, "routerReply failed");
     }
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value router_recv_message(napi_env env, napi_callback_info info)
+napi_value router_recv_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
     int32_t flags = 0;
     if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
+        napi_get_value_int32 (env, argv[1], &flags);
 
     zlink_routing_id_t peer_rid;
     zlink_routing_id_t spot_rid;
     uint64_t request_seq = 0;
     std::vector<zlink_msg_t> parts;
-    int rc = router_recv_parts(
-      router, &peer_rid, &spot_rid, &request_seq, &parts, flags);
+    int rc = router_recv_parts (router, &peer_rid, &spot_rid, &request_seq, &parts, flags);
     if (rc != ZLINK_RECV_OK)
-        return throw_last_error(env, "routerRecvMessage failed");
+        return throw_last_error (env, "routerRecvMessage failed");
 
-    napi_value out = create_router_recv_message_value(
-      env,
-      peer_rid,
-      spot_rid.size > 0 ? &spot_rid : NULL,
-      request_seq,
-      parts.data(),
-      parts.size());
-    close_msg_vector(parts);
+    napi_value out =
+      create_router_recv_message_value (env, peer_rid, spot_rid.size > 0 ? &spot_rid : NULL,
+                                        request_seq, parts.data (), parts.size ());
+    close_msg_vector (parts);
     return out;
 }
 
-napi_value router_try_recv_message(napi_env env, napi_callback_info info)
+napi_value router_try_recv_message (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
 
     zlink_routing_id_t peer_rid;
     zlink_routing_id_t spot_rid;
     uint64_t request_seq = 0;
     std::vector<zlink_msg_t> parts;
-    int rc = router_recv_parts(
-      router,
-      &peer_rid,
-      &spot_rid,
-      &request_seq,
-      &parts,
-      ZLINK_RECV_FLAGS_DONTWAIT);
+    int rc = router_recv_parts (router, &peer_rid, &spot_rid, &request_seq, &parts,
+                                ZLINK_RECV_FLAGS_DONTWAIT);
     if (rc != ZLINK_RECV_OK) {
-        if (zlink_errno() == EAGAIN) {
+        if (zlink_errno () == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        return throw_last_error(env, "routerRecvMessageNoWait failed");
+        return throw_last_error (env, "routerRecvMessageNoWait failed");
     }
 
-    napi_value out = create_router_recv_message_value(
-      env,
-      peer_rid,
-      spot_rid.size > 0 ? &spot_rid : NULL,
-      request_seq,
-      parts.data(),
-      parts.size());
-    close_msg_vector(parts);
+    napi_value out =
+      create_router_recv_message_value (env, peer_rid, spot_rid.size > 0 ? &spot_rid : NULL,
+                                        request_seq, parts.data (), parts.size ());
+    close_msg_vector (parts);
     return out;
 }
 
-napi_value router_recv_single_payload(napi_env env, napi_callback_info info)
+napi_value router_recv_single_payload (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
     int32_t flags = 0;
     if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
+        napi_get_value_int32 (env, argv[1], &flags);
 
     const zlink_routing_id_t *peer_rid = NULL;
     const zlink_routing_id_t *spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
-    if (zlink_msg_init(&part) != 0)
-        return throw_last_error(env, "routerRecvSinglePayload failed");
+    if (zlink_msg_init (&part) != 0)
+        return throw_last_error (env, "routerRecvSinglePayload failed");
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    int rc = zlink_router_recv_part(
-      router,
-      &peer_rid,
-      &spot_rid,
-      &request_seq,
-      &part,
-      &has_more,
-      static_cast<zlink_recv_flags_t>(flags));
+    int rc = zlink_router_recv_part (router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
+                                     static_cast<zlink_recv_flags_t> (flags));
     (void) peer_rid;
     (void) spot_rid;
     (void) request_seq;
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&part);
-        if (zlink_errno() == EAGAIN) {
+        zlink_msg_close (&part);
+        if (zlink_errno () == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        return throw_last_error(env, "routerRecvSinglePayload failed");
+        return throw_last_error (env, "routerRecvSinglePayload failed");
     }
 
     if (has_more != ZLINK_PART_FINAL) {
         std::vector<zlink_msg_t> rest;
-        int collect_rc = collect_recv_parts(router, &part, has_more, &rest);
-        close_msg_vector(rest);
+        int collect_rc = collect_recv_parts (router, &part, has_more, &rest);
+        close_msg_vector (rest);
         if (collect_rc != ZLINK_RECV_OK)
-            return throw_last_error(env, "routerRecvSinglePayload failed");
-        napi_throw_error(env, NULL, "routerRecvSinglePayload requires single-part messages");
+            return throw_last_error (env, "routerRecvSinglePayload failed");
+        napi_throw_error (env, NULL, "routerRecvSinglePayload requires single-part messages");
         return NULL;
     }
 
-    return create_message_data_buffer(env, &part);
+    return create_message_data_buffer (env, &part);
 }
 
-napi_value router_recv_single_metric_latency(napi_env env, napi_callback_info info)
+napi_value router_recv_single_metric_latency (napi_env env, napi_callback_info info)
 {
     napi_value argv[7];
     size_t argc = 7;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *router = NULL;
-    napi_get_value_external(env, argv[0], &router);
+    napi_get_value_external (env, argv[0], &router);
     int32_t flags = 0;
     if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
+        napi_get_value_int32 (env, argv[1], &flags);
     uint32_t run_id = 0;
     uint32_t msg_size = 0;
     uint32_t expected_size = 0;
-    napi_get_value_uint32(env, argv[2], &run_id);
-    napi_get_value_uint32(env, argv[3], &msg_size);
-    napi_get_value_uint32(env, argv[4], &expected_size);
+    napi_get_value_uint32 (env, argv[2], &run_id);
+    napi_get_value_uint32 (env, argv[3], &msg_size);
+    napi_get_value_uint32 (env, argv[4], &expected_size);
     uint64_t active_start_ns = 0;
     uint64_t active_stop_ns = UINT64_MAX;
     bool lossless = false;
-    napi_get_value_bigint_uint64(env, argv[5], &active_start_ns, &lossless);
-    napi_get_value_bigint_uint64(env, argv[6], &active_stop_ns, &lossless);
+    napi_get_value_bigint_uint64 (env, argv[5], &active_start_ns, &lossless);
+    napi_get_value_bigint_uint64 (env, argv[6], &active_stop_ns, &lossless);
 
     const zlink_routing_id_t *peer_rid = NULL;
     const zlink_routing_id_t *spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
-    if (zlink_msg_init(&part) != 0)
-        return throw_last_error(env, "routerRecvSingleMetricLatency failed");
+    if (zlink_msg_init (&part) != 0)
+        return throw_last_error (env, "routerRecvSingleMetricLatency failed");
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
-    int rc = zlink_router_recv_part(
-      router,
-      &peer_rid,
-      &spot_rid,
-      &request_seq,
-      &part,
-      &has_more,
-      static_cast<zlink_recv_flags_t>(flags));
+    int rc = zlink_router_recv_part (router, &peer_rid, &spot_rid, &request_seq, &part, &has_more,
+                                     static_cast<zlink_recv_flags_t> (flags));
     (void) peer_rid;
     (void) spot_rid;
     (void) request_seq;
     if (rc != ZLINK_RECV_OK) {
-        zlink_msg_close(&part);
-        if (zlink_errno() == EAGAIN) {
+        zlink_msg_close (&part);
+        if (zlink_errno () == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        return throw_last_error(env, "routerRecvSingleMetricLatency failed");
+        return throw_last_error (env, "routerRecvSingleMetricLatency failed");
     }
 
     if (has_more != ZLINK_PART_FINAL) {
         std::vector<zlink_msg_t> rest;
-        int collect_rc = collect_recv_parts(router, &part, has_more, &rest);
-        close_msg_vector(rest);
+        int collect_rc = collect_recv_parts (router, &part, has_more, &rest);
+        close_msg_vector (rest);
         if (collect_rc != ZLINK_RECV_OK)
-            return throw_last_error(env, "routerRecvSingleMetricLatency failed");
-        napi_throw_error(env, NULL, "routerRecvSingleMetricLatency requires single-part messages");
+            return throw_last_error (env, "routerRecvSingleMetricLatency failed");
+        napi_throw_error (env, NULL, "routerRecvSingleMetricLatency requires single-part messages");
         return NULL;
     }
 
     static const char k_stop_token[] = "__zlink_perf_stop__";
-    const size_t part_size = zlink_msg_size(&part);
-    const void *data = zlink_msg_data(&part);
-    if (part_size == (sizeof(k_stop_token) - 1)
-        && data
-        && std::memcmp(data, k_stop_token, sizeof(k_stop_token) - 1) == 0) {
-        zlink_msg_close(&part);
+    const size_t part_size = zlink_msg_size (&part);
+    const void *data = zlink_msg_data (&part);
+    if (part_size == (sizeof (k_stop_token) - 1) && data
+        && std::memcmp (data, k_stop_token, sizeof (k_stop_token) - 1) == 0) {
+        zlink_msg_close (&part);
         napi_value stop;
-        napi_create_double(env, -1.0, &stop);
+        napi_create_double (env, -1.0, &stop);
         return stop;
     }
 
     uint64_t sent_ts_ns = 0;
-    const uint64_t received_at_ns = perf_now_ns();
+    const uint64_t received_at_ns = perf_now_ns ();
     const bool valid = part_size == expected_size
-      && perf_decode_payload_header(&part, 1, run_id, msg_size, &sent_ts_ns)
-      && received_at_ns >= active_start_ns
-      && received_at_ns <= active_stop_ns
-      && received_at_ns >= sent_ts_ns;
-    zlink_msg_close(&part);
+                       && perf_decode_payload_header (&part, 1, run_id, msg_size, &sent_ts_ns)
+                       && received_at_ns >= active_start_ns && received_at_ns <= active_stop_ns
+                       && received_at_ns >= sent_ts_ns;
+    zlink_msg_close (&part);
 
     if (!valid) {
         napi_value rejected;
-        napi_get_boolean(env, false, &rejected);
+        napi_get_boolean (env, false, &rejected);
         return rejected;
     }
 
     napi_value latency;
-    napi_create_double(env, static_cast<double>(received_at_ns - sent_ts_ns), &latency);
+    napi_create_double (env, static_cast<double> (received_at_ns - sent_ts_ns), &latency);
     return latency;
 }
 
-napi_value monitor_open(napi_env env, napi_callback_info info)
+napi_value monitor_open (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
+    napi_get_value_external (env, argv[0], &sock);
     int32_t events = 0;
-    napi_get_value_int32(env, argv[1], &events);
+    napi_get_value_int32 (env, argv[1], &events);
     zlink_socket_monitor_open_options_t options;
-    options.events = static_cast<zlink_socket_monitor_event_mask_t>(events);
-    void *mon = zlink_socket_monitor_open(sock, &options);
+    options.events = static_cast<zlink_socket_monitor_event_mask_t> (events);
+    void *mon = zlink_socket_monitor_open (sock, &options);
     if (!mon)
-        return throw_last_error(env, "monitor_open failed");
+        return throw_last_error (env, "monitor_open failed");
     napi_value ext;
-    napi_create_external(env, mon, NULL, NULL, &ext);
+    napi_create_external (env, mon, NULL, NULL, &ext);
     return ext;
 }
 
-napi_value monitor_handler(napi_env env, napi_callback_info info)
+napi_value monitor_handler (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *mon = NULL;
-    napi_get_value_external(env, argv[0], &mon);
+    napi_get_value_external (env, argv[0], &mon);
 
     napi_valuetype handler_type = napi_undefined;
-    napi_typeof(env, argv[1], &handler_type);
+    napi_typeof (env, argv[1], &handler_type);
     if (handler_type != napi_function) {
-        napi_throw_type_error(env, NULL, "monitorHandler handler must be a function");
+        napi_throw_type_error (env, NULL, "monitorHandler handler must be a function");
         return NULL;
     }
 
-    if (!attach_socket_monitor_handler(env, mon, argv[1]))
+    if (!attach_socket_monitor_handler (env, mon, argv[1]))
         return NULL;
 
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value monitor_recv(napi_env env, napi_callback_info info)
+napi_value monitor_recv (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *mon = NULL;
-    napi_get_value_external(env, argv[0], &mon);
+    napi_get_value_external (env, argv[0], &mon);
     (void) argv;
     zlink_monitor_event_t evt;
-    int rc = zlink_socket_monitor_recv(mon, &evt, ZLINK_RECV_FLAGS_NONE);
+    int rc = zlink_socket_monitor_recv (mon, &evt, ZLINK_RECV_FLAGS_NONE);
     if (rc != 0)
-        return throw_last_error(env, "monitor_recv failed");
+        return throw_last_error (env, "monitor_recv failed");
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
     napi_value event, value, local, remote;
-    napi_create_int64(env, (int64_t)evt.event, &event);
-    napi_create_int64(env, (int64_t)evt.value, &value);
-    napi_create_string_utf8(env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
-    napi_create_string_utf8(env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
-    napi_set_named_property(env, obj, "event", event);
-    napi_set_named_property(env, obj, "value", value);
-    napi_set_named_property(env, obj, "local", local);
-    napi_set_named_property(env, obj, "remote", remote);
+    napi_create_int64 (env, (int64_t) evt.event, &event);
+    napi_create_int64 (env, (int64_t) evt.value, &value);
+    napi_create_string_utf8 (env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
+    napi_create_string_utf8 (env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
+    napi_set_named_property (env, obj, "event", event);
+    napi_set_named_property (env, obj, "value", value);
+    napi_set_named_property (env, obj, "local", local);
+    napi_set_named_property (env, obj, "remote", remote);
     return obj;
 }
 
-napi_value monitor_try_recv(napi_env env, napi_callback_info info)
+napi_value monitor_try_recv (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *mon = NULL;
-    napi_get_value_external(env, argv[0], &mon);
+    napi_get_value_external (env, argv[0], &mon);
 
     zlink_monitor_event_t evt;
-    int rc = zlink_socket_monitor_recv(mon, &evt, ZLINK_RECV_FLAGS_DONTWAIT);
+    int rc = zlink_socket_monitor_recv (mon, &evt, ZLINK_RECV_FLAGS_DONTWAIT);
     if (rc != 0) {
-        if (zlink_errno() == EAGAIN) {
+        if (zlink_errno () == EAGAIN) {
             napi_value none;
-            napi_get_null(env, &none);
+            napi_get_null (env, &none);
             return none;
         }
-        return throw_last_error(env, "monitor_try_recv failed");
+        return throw_last_error (env, "monitor_try_recv failed");
     }
 
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
     napi_value event, value, local, remote;
-    napi_create_int64(env, (int64_t) evt.event, &event);
-    napi_create_int64(env, (int64_t) evt.value, &value);
-    napi_create_string_utf8(env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
-    napi_create_string_utf8(env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
-    napi_set_named_property(env, obj, "event", event);
-    napi_set_named_property(env, obj, "value", value);
-    napi_set_named_property(env, obj, "local", local);
-    napi_set_named_property(env, obj, "remote", remote);
+    napi_create_int64 (env, (int64_t) evt.event, &event);
+    napi_create_int64 (env, (int64_t) evt.value, &value);
+    napi_create_string_utf8 (env, evt.local_addr, NAPI_AUTO_LENGTH, &local);
+    napi_create_string_utf8 (env, evt.remote_addr, NAPI_AUTO_LENGTH, &remote);
+    napi_set_named_property (env, obj, "event", event);
+    napi_set_named_property (env, obj, "value", value);
+    napi_set_named_property (env, obj, "local", local);
+    napi_set_named_property (env, obj, "remote", remote);
     return obj;
 }
 
-napi_value monitor_status(napi_env env, napi_callback_info info)
+napi_value monitor_status (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *monitor = NULL;
-    napi_get_value_external(env, argv[0], &monitor);
+    napi_get_value_external (env, argv[0], &monitor);
 
     zlink_monitor_status_t snapshot;
-    memset(&snapshot, 0, sizeof(snapshot));
-    int rc = zlink_monitor_status(monitor, &snapshot);
+    memset (&snapshot, 0, sizeof (snapshot));
+    int rc = zlink_monitor_status (monitor, &snapshot);
     if (rc != 0)
-        return throw_last_error(env, "monitor_status failed");
+        return throw_last_error (env, "monitor_status failed");
 
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
     napi_value source_kind, state_flags, detail_flags;
     napi_value snd_pending, rcv_pending;
     napi_value auto_hwm_enabled, auto_hwm_profile, auto_hwm_role;
@@ -3291,189 +3053,157 @@ napi_value monitor_status(napi_env env, napi_callback_info info)
     napi_value auto_hwm_last_recalc_reason;
     napi_value auto_hwm_send_blocked_ratio_ppm;
     napi_value auto_hwm_deferred_sndhwm, auto_hwm_deferred_rcvhwm;
-    napi_create_uint32(env, static_cast<uint32_t>(snapshot.source_kind),
-                       &source_kind);
-    napi_create_uint32(env, snapshot.state_flags, &state_flags);
-    napi_create_uint32(env, snapshot.detail_flags, &detail_flags);
-    napi_create_int64(env, static_cast<int64_t>(snapshot.snd_pending_msgs),
-                      &snd_pending);
-    napi_create_int64(env, static_cast<int64_t>(snapshot.rcv_pending_msgs),
-                      &rcv_pending);
-    napi_get_boolean(env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
-    napi_create_uint32(env, snapshot.auto_hwm_profile, &auto_hwm_profile);
-    napi_create_uint32(env, snapshot.auto_hwm_role, &auto_hwm_role);
-    napi_create_uint32(env, snapshot.auto_hwm_policy_class,
-                       &auto_hwm_policy_class);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_unit_budget_bytes),
-                      &auto_hwm_unit_budget_bytes);
-    napi_create_uint32(env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_socket_message_slots),
-                      &auto_hwm_socket_message_slots);
-    napi_create_int64(env,
-                      static_cast<int64_t> (
-                        snapshot.auto_hwm_effective_message_bytes),
-                      &auto_hwm_effective_message_bytes);
-    napi_create_int32(env, snapshot.auto_hwm_applied_sndhwm,
-                      &auto_hwm_applied_sndhwm);
-    napi_create_int32(env, snapshot.auto_hwm_applied_rcvhwm,
-                      &auto_hwm_applied_rcvhwm);
-    napi_create_int32(env, snapshot.auto_hwm_effective_sndbuf,
-                      &auto_hwm_effective_sndbuf);
-    napi_create_int32(env, snapshot.auto_hwm_effective_rcvbuf,
-                      &auto_hwm_effective_rcvbuf);
-    napi_create_int64(env,
-                      static_cast<int64_t> (snapshot.auto_hwm_last_recalc_ms),
-                      &auto_hwm_last_recalc_ms);
-    napi_create_uint32(env, snapshot.auto_hwm_last_recalc_reason,
-                       &auto_hwm_last_recalc_reason);
-    napi_create_uint32(env, snapshot.auto_hwm_send_blocked_ratio_ppm,
-                       &auto_hwm_send_blocked_ratio_ppm);
-    napi_create_int32(env, snapshot.auto_hwm_deferred_sndhwm,
-                      &auto_hwm_deferred_sndhwm);
-    napi_create_int32(env, snapshot.auto_hwm_deferred_rcvhwm,
-                      &auto_hwm_deferred_rcvhwm);
-    napi_set_named_property(env, obj, "sourceKind", source_kind);
-    napi_set_named_property(env, obj, "stateFlags", state_flags);
-    napi_set_named_property(env, obj, "detailFlags", detail_flags);
-    napi_set_named_property(env, obj, "sndPendingMsgs", snd_pending);
-    napi_set_named_property(env, obj, "rcvPendingMsgs", rcv_pending);
-    napi_set_named_property(env, obj, "autoHwmEnabled", auto_hwm_enabled);
-    napi_set_named_property(env, obj, "autoHwmProfile", auto_hwm_profile);
-    napi_set_named_property(env, obj, "autoHwmRole", auto_hwm_role);
-    napi_set_named_property(env, obj, "autoHwmPolicyClass",
-                            auto_hwm_policy_class);
-    napi_set_named_property(env, obj, "autoHwmUnitBudgetBytes",
-                            auto_hwm_unit_budget_bytes);
-    napi_set_named_property(env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
-    napi_set_named_property(env, obj, "autoHwmSocketMessageSlots",
-                            auto_hwm_socket_message_slots);
-    napi_set_named_property(env, obj, "autoHwmEffectiveMessageBytes",
-                            auto_hwm_effective_message_bytes);
-    napi_set_named_property(env, obj, "autoHwmAppliedSndHwm",
-                            auto_hwm_applied_sndhwm);
-    napi_set_named_property(env, obj, "autoHwmAppliedRcvHwm",
-                            auto_hwm_applied_rcvhwm);
-    napi_set_named_property(env, obj, "autoHwmEffectiveSndBuf",
-                            auto_hwm_effective_sndbuf);
-    napi_set_named_property(env, obj, "autoHwmEffectiveRcvBuf",
-                            auto_hwm_effective_rcvbuf);
-    napi_set_named_property(env, obj, "autoHwmLastRecalcMs",
-                            auto_hwm_last_recalc_ms);
-    napi_set_named_property(env, obj, "autoHwmLastRecalcReason",
-                            auto_hwm_last_recalc_reason);
-    napi_set_named_property(env, obj, "autoHwmSendBlockedRatioPpm",
-                            auto_hwm_send_blocked_ratio_ppm);
-    napi_set_named_property(env, obj, "autoHwmDeferredSndHwm",
-                            auto_hwm_deferred_sndhwm);
-    napi_set_named_property(env, obj, "autoHwmDeferredRcvHwm",
-                            auto_hwm_deferred_rcvhwm);
+    napi_create_uint32 (env, static_cast<uint32_t> (snapshot.source_kind), &source_kind);
+    napi_create_uint32 (env, snapshot.state_flags, &state_flags);
+    napi_create_uint32 (env, snapshot.detail_flags, &detail_flags);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.snd_pending_msgs), &snd_pending);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.rcv_pending_msgs), &rcv_pending);
+    napi_get_boolean (env, snapshot.auto_hwm_enabled != 0, &auto_hwm_enabled);
+    napi_create_uint32 (env, snapshot.auto_hwm_profile, &auto_hwm_profile);
+    napi_create_uint32 (env, snapshot.auto_hwm_role, &auto_hwm_role);
+    napi_create_uint32 (env, snapshot.auto_hwm_policy_class, &auto_hwm_policy_class);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_unit_budget_bytes),
+                       &auto_hwm_unit_budget_bytes);
+    napi_create_uint32 (env, snapshot.auto_hwm_size_cap, &auto_hwm_size_cap);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_socket_message_slots),
+                       &auto_hwm_socket_message_slots);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_effective_message_bytes),
+                       &auto_hwm_effective_message_bytes);
+    napi_create_int32 (env, snapshot.auto_hwm_applied_sndhwm, &auto_hwm_applied_sndhwm);
+    napi_create_int32 (env, snapshot.auto_hwm_applied_rcvhwm, &auto_hwm_applied_rcvhwm);
+    napi_create_int32 (env, snapshot.auto_hwm_effective_sndbuf, &auto_hwm_effective_sndbuf);
+    napi_create_int32 (env, snapshot.auto_hwm_effective_rcvbuf, &auto_hwm_effective_rcvbuf);
+    napi_create_int64 (env, static_cast<int64_t> (snapshot.auto_hwm_last_recalc_ms),
+                       &auto_hwm_last_recalc_ms);
+    napi_create_uint32 (env, snapshot.auto_hwm_last_recalc_reason, &auto_hwm_last_recalc_reason);
+    napi_create_uint32 (env, snapshot.auto_hwm_send_blocked_ratio_ppm,
+                        &auto_hwm_send_blocked_ratio_ppm);
+    napi_create_int32 (env, snapshot.auto_hwm_deferred_sndhwm, &auto_hwm_deferred_sndhwm);
+    napi_create_int32 (env, snapshot.auto_hwm_deferred_rcvhwm, &auto_hwm_deferred_rcvhwm);
+    napi_set_named_property (env, obj, "sourceKind", source_kind);
+    napi_set_named_property (env, obj, "stateFlags", state_flags);
+    napi_set_named_property (env, obj, "detailFlags", detail_flags);
+    napi_set_named_property (env, obj, "sndPendingMsgs", snd_pending);
+    napi_set_named_property (env, obj, "rcvPendingMsgs", rcv_pending);
+    napi_set_named_property (env, obj, "autoHwmEnabled", auto_hwm_enabled);
+    napi_set_named_property (env, obj, "autoHwmProfile", auto_hwm_profile);
+    napi_set_named_property (env, obj, "autoHwmRole", auto_hwm_role);
+    napi_set_named_property (env, obj, "autoHwmPolicyClass", auto_hwm_policy_class);
+    napi_set_named_property (env, obj, "autoHwmUnitBudgetBytes", auto_hwm_unit_budget_bytes);
+    napi_set_named_property (env, obj, "autoHwmSizeCap", auto_hwm_size_cap);
+    napi_set_named_property (env, obj, "autoHwmSocketMessageSlots", auto_hwm_socket_message_slots);
+    napi_set_named_property (env, obj, "autoHwmEffectiveMessageBytes",
+                             auto_hwm_effective_message_bytes);
+    napi_set_named_property (env, obj, "autoHwmAppliedSndHwm", auto_hwm_applied_sndhwm);
+    napi_set_named_property (env, obj, "autoHwmAppliedRcvHwm", auto_hwm_applied_rcvhwm);
+    napi_set_named_property (env, obj, "autoHwmEffectiveSndBuf", auto_hwm_effective_sndbuf);
+    napi_set_named_property (env, obj, "autoHwmEffectiveRcvBuf", auto_hwm_effective_rcvbuf);
+    napi_set_named_property (env, obj, "autoHwmLastRecalcMs", auto_hwm_last_recalc_ms);
+    napi_set_named_property (env, obj, "autoHwmLastRecalcReason", auto_hwm_last_recalc_reason);
+    napi_set_named_property (env, obj, "autoHwmSendBlockedRatioPpm",
+                             auto_hwm_send_blocked_ratio_ppm);
+    napi_set_named_property (env, obj, "autoHwmDeferredSndHwm", auto_hwm_deferred_sndhwm);
+    napi_set_named_property (env, obj, "autoHwmDeferredRcvHwm", auto_hwm_deferred_rcvhwm);
     return obj;
 }
 
-napi_value monitor_close(napi_env env, napi_callback_info info)
+napi_value monitor_close (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *monitor = NULL;
-    napi_get_value_external(env, argv[0], &monitor);
-    release_socket_monitor_handler_slot(monitor);
+    napi_get_value_external (env, argv[0], &monitor);
+    release_socket_monitor_handler_slot (monitor);
     void *tmp = monitor;
-    int rc = zlink_monitor_close(&tmp);
+    int rc = zlink_monitor_close (&tmp);
     if (rc != 0)
-        return throw_last_error(env, "monitor_close failed");
+        return throw_last_error (env, "monitor_close failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-static napi_value create_external_or_null(napi_env env, void *ptr)
+static napi_value create_external_or_null (napi_env env, void *ptr)
 {
     napi_value out;
     if (!ptr) {
-        napi_get_null(env, &out);
+        napi_get_null (env, &out);
         return out;
     }
-    napi_create_external(env, ptr, NULL, NULL, &out);
+    napi_create_external (env, ptr, NULL, NULL, &out);
     return out;
 }
 
-static napi_value create_userdata_value(napi_env env, void *ptr)
+static napi_value create_userdata_value (napi_env env, void *ptr)
 {
     napi_value out;
     if (!ptr) {
-        napi_get_null(env, &out);
+        napi_get_null (env, &out);
         return out;
     }
-    napi_create_bigint_uint64(
-      env, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(ptr)), &out);
+    napi_create_bigint_uint64 (env, static_cast<uint64_t> (reinterpret_cast<uintptr_t> (ptr)),
+                               &out);
     return out;
 }
 
-static void *get_external_or_null(napi_env env, napi_value value)
+static void *get_external_or_null (napi_env env, napi_value value)
 {
     if (!value)
         return NULL;
     napi_valuetype type;
-    if (napi_typeof(env, value, &type) != napi_ok)
+    if (napi_typeof (env, value, &type) != napi_ok)
         return NULL;
     if (type == napi_null || type == napi_undefined)
         return NULL;
     if (type == napi_bigint) {
         uint64_t raw = 0;
         bool lossless = false;
-        if (napi_get_value_bigint_uint64(env, value, &raw, &lossless) == napi_ok
-            && lossless)
-            return reinterpret_cast<void *>(static_cast<uintptr_t>(raw));
+        if (napi_get_value_bigint_uint64 (env, value, &raw, &lossless) == napi_ok && lossless)
+            return reinterpret_cast<void *> (static_cast<uintptr_t> (raw));
         return NULL;
     }
     if (type == napi_number) {
         uint32_t raw = 0;
-        if (napi_get_value_uint32(env, value, &raw) == napi_ok)
-            return reinterpret_cast<void *>(static_cast<uintptr_t>(raw));
+        if (napi_get_value_uint32 (env, value, &raw) == napi_ok)
+            return reinterpret_cast<void *> (static_cast<uintptr_t> (raw));
         return NULL;
     }
     if (type != napi_external)
         return NULL;
     void *ptr = NULL;
-    if (napi_get_value_external(env, value, &ptr) != napi_ok)
+    if (napi_get_value_external (env, value, &ptr) != napi_ok)
         return NULL;
     return ptr;
 }
 
-static napi_value create_poller_event_value(napi_env env,
-                                           const zlink_poller_event_t &event)
+static napi_value create_poller_event_value (napi_env env, const zlink_poller_event_t &event)
 {
     napi_value obj;
-    napi_create_object(env, &obj);
+    napi_create_object (env, &obj);
 
     napi_value value;
-    napi_create_uint32(env, static_cast<uint32_t>(event.source_kind), &value);
-    napi_set_named_property(env, obj, "sourceKind", value);
-    napi_set_named_property(env, obj, "socket", create_external_or_null(env, event.socket));
-    napi_create_int64(env, static_cast<int64_t>(event.fd), &value);
-    napi_set_named_property(env, obj, "fd", value);
-    napi_set_named_property(env, obj, "timer", create_external_or_null(env, event.timer));
-    napi_set_named_property(env, obj, "userData", create_userdata_value(env, event.user_data));
-    napi_create_int32(env, static_cast<int32_t>(event.events), &value);
-    napi_set_named_property(env, obj, "events", value);
+    napi_create_uint32 (env, static_cast<uint32_t> (event.source_kind), &value);
+    napi_set_named_property (env, obj, "sourceKind", value);
+    napi_set_named_property (env, obj, "socket", create_external_or_null (env, event.socket));
+    napi_create_int64 (env, static_cast<int64_t> (event.fd), &value);
+    napi_set_named_property (env, obj, "fd", value);
+    napi_set_named_property (env, obj, "timer", create_external_or_null (env, event.timer));
+    napi_set_named_property (env, obj, "userData", create_userdata_value (env, event.user_data));
+    napi_create_int32 (env, static_cast<int32_t> (event.events), &value);
+    napi_set_named_property (env, obj, "events", value);
     return obj;
 }
 
-static napi_value create_poller_event_result(napi_env env,
-                                            const zlink_poller_event_t &event,
-                                            int rc)
+static napi_value
+create_poller_event_result (napi_env env, const zlink_poller_event_t &event, int rc)
 {
     if (rc <= 0) {
         napi_value none;
-        napi_get_null(env, &none);
+        napi_get_null (env, &none);
         return none;
     }
-    return create_poller_event_value(env, event);
+    return create_poller_event_value (env, event);
 }
 
 struct timer_handler_js_state_t
@@ -3490,697 +3220,675 @@ static const size_t k_timer_handler_slot_count = 8;
 static std::mutex g_timer_handler_slots_mu;
 static timer_handler_js_state_t g_timer_handler_slots[k_timer_handler_slot_count];
 
-static timer_handler_js_state_t *find_timer_handler_slot_by_timer_unsafe(void *timer)
+static timer_handler_js_state_t *find_timer_handler_slot_by_timer_unsafe (void *timer)
 {
-    return find_tsfn_slot_by_subject(
-      g_timer_handler_slots,
-      k_timer_handler_slot_count,
-      &timer_handler_js_state_t::timer,
-      timer);
+    return find_tsfn_slot_by_subject (g_timer_handler_slots, k_timer_handler_slot_count,
+                                      &timer_handler_js_state_t::timer, timer);
 }
 
-static timer_handler_js_state_t *find_free_timer_handler_slot_unsafe()
+static timer_handler_js_state_t *find_free_timer_handler_slot_unsafe ()
 {
-    return find_free_tsfn_slot(g_timer_handler_slots, k_timer_handler_slot_count);
+    return find_free_tsfn_slot (g_timer_handler_slots, k_timer_handler_slot_count);
 }
 
-static void reset_timer_handler_slot_unsafe(timer_handler_js_state_t *state)
+static void reset_timer_handler_slot_unsafe (timer_handler_js_state_t *state)
 {
     if (!state)
         return;
-    reset_tsfn_slot_base(state);
+    reset_tsfn_slot_base (state);
     state->timer = NULL;
 }
 
-static void timer_handler_tsfn_finalize(napi_env env,
-                                        void *finalize_data,
-                                        void *finalize_hint)
+static void timer_handler_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
 {
     (void) env;
     (void) finalize_hint;
-    timer_handler_js_state_t *state =
-      static_cast<timer_handler_js_state_t *>(finalize_data);
+    timer_handler_js_state_t *state = static_cast<timer_handler_js_state_t *> (finalize_data);
     if (!state)
         return;
-    std::lock_guard<std::mutex> lock(g_timer_handler_slots_mu);
-    reset_timer_handler_slot_unsafe(state);
+    std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
+    reset_timer_handler_slot_unsafe (state);
 }
 
-static void timer_handler_tsfn_call_js(napi_env env,
-                                       napi_value js_cb,
-                                       void *context,
-                                       void *data)
+static void timer_handler_tsfn_call_js (napi_env env, napi_value js_cb, void *context, void *data)
 {
     (void) context;
-    std::unique_ptr<uint64_t> fire_count(static_cast<uint64_t *>(data));
+    std::unique_ptr<uint64_t> fire_count (static_cast<uint64_t *> (data));
     if (!env || !js_cb || !fire_count)
         return;
 
     napi_value argv[1];
-    napi_create_bigint_uint64(env, *fire_count, &argv[0]);
+    napi_create_bigint_uint64 (env, *fire_count, &argv[0]);
     napi_value recv;
     napi_value this_arg;
-    napi_get_undefined(env, &this_arg);
-    (void) napi_call_function(env, this_arg, js_cb, 1, argv, &recv);
+    napi_get_undefined (env, &this_arg);
+    (void) napi_call_function (env, this_arg, js_cb, 1, argv, &recv);
 }
 
-static void release_timer_handler_slot(void *timer)
+static void release_timer_handler_slot (void *timer)
 {
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_timer_handler_slots_mu);
-        timer_handler_js_state_t *state =
-          find_timer_handler_slot_by_timer_unsafe(timer);
+        std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
+        timer_handler_js_state_t *state = find_timer_handler_slot_by_timer_unsafe (timer);
         if (!state)
             return;
         tsfn = state->tsfn;
-        reset_timer_handler_slot_unsafe(state);
+        reset_timer_handler_slot_unsafe (state);
     }
     if (tsfn)
-        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+        (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
 }
 
-static void timer_handler_dispatch(void *timer_, uint64_t fire_count_, void *closure)
+static void timer_handler_dispatch (void *timer_, uint64_t fire_count_, void *closure)
 {
     (void) timer_;
-    timer_handler_js_state_t *state =
-      static_cast<timer_handler_js_state_t *>(closure);
+    timer_handler_js_state_t *state = static_cast<timer_handler_js_state_t *> (closure);
     if (!state)
         return;
 
     napi_threadsafe_function tsfn = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_timer_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
         if (!state->used || !state->tsfn)
             return;
         tsfn = state->tsfn;
     }
 
-    std::unique_ptr<uint64_t> payload(new uint64_t(fire_count_));
-    if (napi_call_threadsafe_function(
-          tsfn, payload.get(), napi_tsfn_nonblocking)
-        != napi_ok) {
+    std::unique_ptr<uint64_t> payload (new uint64_t (fire_count_));
+    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_nonblocking) != napi_ok) {
         return;
     }
-    (void) payload.release();
+    (void) payload.release ();
 }
 
-static napi_value create_stopwatch_value(napi_env env, unsigned long value)
+static napi_value create_stopwatch_value (napi_env env, unsigned long value)
 {
     napi_value out;
-    napi_create_double(env, static_cast<double>(value), &out);
+    napi_create_double (env, static_cast<double> (value), &out);
     return out;
 }
 
-napi_value poller_new(napi_env env, napi_callback_info info)
+napi_value poller_new (napi_env env, napi_callback_info info)
 {
     (void) info;
-    void *poller = zlink_poller_new();
+    void *poller = zlink_poller_new ();
     if (!poller)
-        return throw_last_error(env, "poller_new failed");
+        return throw_last_error (env, "poller_new failed");
     napi_value out;
-    napi_create_external(env, poller, NULL, NULL, &out);
+    napi_create_external (env, poller, NULL, NULL, &out);
     return out;
 }
 
-napi_value poller_destroy(napi_env env, napi_callback_info info)
+napi_value poller_destroy (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     void *tmp = poller;
-    int rc = zlink_poller_destroy(&tmp);
+    int rc = zlink_poller_destroy (&tmp);
     if (rc != 0)
-        return throw_last_error(env, "poller_destroy failed");
+        return throw_last_error (env, "poller_destroy failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_size(napi_env env, napi_callback_info info)
+napi_value poller_size (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int size = zlink_poller_size(poller, &err);
+    int size = zlink_poller_size (poller, &err);
     if (err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_size failed");
+        return throw_last_error (env, "poller_size failed");
     napi_value out;
-    napi_create_int32(env, size, &out);
+    napi_create_int32 (env, size, &out);
     return out;
 }
 
-napi_value poller_add(napi_env env, napi_callback_info info)
+napi_value poller_add (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *socket = NULL;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &socket);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &socket);
     int32_t events = 0;
-    napi_get_value_int32(env, argv[3], &events);
-    void *user_data = argc >= 3 ? get_external_or_null(env, argv[2]) : NULL;
-    zlink_config_result_t rc = zlink_poller_add(poller, socket, user_data, (short)events);
+    napi_get_value_int32 (env, argv[3], &events);
+    void *user_data = argc >= 3 ? get_external_or_null (env, argv[2]) : NULL;
+    zlink_config_result_t rc = zlink_poller_add (poller, socket, user_data, (short) events);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_add failed");
+        return throw_last_error (env, "poller_add failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_modify(napi_env env, napi_callback_info info)
+napi_value poller_modify (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *socket = NULL;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &socket);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &socket);
     int32_t events = 0;
-    napi_get_value_int32(env, argv[2], &events);
-    zlink_config_result_t rc = zlink_poller_modify(poller, socket, (short)events);
+    napi_get_value_int32 (env, argv[2], &events);
+    zlink_config_result_t rc = zlink_poller_modify (poller, socket, (short) events);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_modify failed");
+        return throw_last_error (env, "poller_modify failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_remove(napi_env env, napi_callback_info info)
+napi_value poller_remove (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *socket = NULL;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &socket);
-    zlink_config_result_t rc = zlink_poller_remove(poller, socket);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &socket);
+    zlink_config_result_t rc = zlink_poller_remove (poller, socket);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_remove failed");
+        return throw_last_error (env, "poller_remove failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_add_fd(napi_env env, napi_callback_info info)
+napi_value poller_add_fd (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     int32_t fd = 0, events = 0;
-    napi_get_value_int32(env, argv[1], &fd);
-    napi_get_value_int32(env, argv[3], &events);
-    void *user_data = argc >= 3 ? get_external_or_null(env, argv[2]) : NULL;
-    zlink_config_result_t rc = zlink_poller_add_fd(poller, fd, user_data, (short)events);
+    napi_get_value_int32 (env, argv[1], &fd);
+    napi_get_value_int32 (env, argv[3], &events);
+    void *user_data = argc >= 3 ? get_external_or_null (env, argv[2]) : NULL;
+    zlink_config_result_t rc = zlink_poller_add_fd (poller, fd, user_data, (short) events);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_add_fd failed");
+        return throw_last_error (env, "poller_add_fd failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_modify_fd(napi_env env, napi_callback_info info)
+napi_value poller_modify_fd (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     int32_t fd = 0, events = 0;
-    napi_get_value_int32(env, argv[1], &fd);
-    napi_get_value_int32(env, argv[2], &events);
-    zlink_config_result_t rc = zlink_poller_modify_fd(poller, fd, (short)events);
+    napi_get_value_int32 (env, argv[1], &fd);
+    napi_get_value_int32 (env, argv[2], &events);
+    zlink_config_result_t rc = zlink_poller_modify_fd (poller, fd, (short) events);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_modify_fd failed");
+        return throw_last_error (env, "poller_modify_fd failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_remove_fd(napi_env env, napi_callback_info info)
+napi_value poller_remove_fd (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     int32_t fd = 0;
-    napi_get_value_int32(env, argv[1], &fd);
-    zlink_config_result_t rc = zlink_poller_remove_fd(poller, fd);
+    napi_get_value_int32 (env, argv[1], &fd);
+    zlink_config_result_t rc = zlink_poller_remove_fd (poller, fd);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_remove_fd failed");
+        return throw_last_error (env, "poller_remove_fd failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_add_timer(napi_env env, napi_callback_info info)
+napi_value poller_add_timer (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &timer);
-    void *user_data = argc >= 3 ? get_external_or_null(env, argv[2]) : NULL;
-    zlink_config_result_t rc = zlink_poller_add_timer(poller, timer, user_data);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &timer);
+    void *user_data = argc >= 3 ? get_external_or_null (env, argv[2]) : NULL;
+    zlink_config_result_t rc = zlink_poller_add_timer (poller, timer, user_data);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_add_timer failed");
+        return throw_last_error (env, "poller_add_timer failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_remove_timer(napi_env env, napi_callback_info info)
+napi_value poller_remove_timer (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &timer);
-    zlink_config_result_t rc = zlink_poller_remove_timer(poller, timer);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &timer);
+    zlink_config_result_t rc = zlink_poller_remove_timer (poller, timer);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_remove_timer failed");
+        return throw_last_error (env, "poller_remove_timer failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value poller_wait(napi_env env, napi_callback_info info)
+napi_value poller_wait (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
-    napi_get_value_external(env, argv[0], &poller);
+    napi_get_value_external (env, argv[0], &poller);
     int32_t timeout = 0;
-    napi_get_value_int32(env, argv[1], &timeout);
+    napi_get_value_int32 (env, argv[1], &timeout);
     zlink_poller_event_t event;
-    memset(&event, 0, sizeof(event));
+    memset (&event, 0, sizeof (event));
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int rc = zlink_poller_wait(poller, &event, 1, timeout, &err);
+    int rc = zlink_poller_wait (poller, &event, 1, timeout, &err);
     if (err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_wait failed");
-    return create_poller_event_result(env, event, rc);
+        return throw_last_error (env, "poller_wait failed");
+    return create_poller_event_result (env, event, rc);
 }
 
-napi_value poll_events_new(napi_env env, napi_callback_info info)
+napi_value poll_events_new (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     int32_t capacity = 0;
-    napi_get_value_int32(env, argv[0], &capacity);
+    napi_get_value_int32 (env, argv[0], &capacity);
     if (capacity <= 0) {
-        napi_throw_range_error(env, NULL, "capacity must be a positive integer");
+        napi_throw_range_error (env, NULL, "capacity must be a positive integer");
         return NULL;
     }
-    zlink_poller_event_t *events =
-      new zlink_poller_event_t[static_cast<size_t>(capacity)]();
+    zlink_poller_event_t *events = new zlink_poller_event_t[static_cast<size_t> (capacity)]();
     napi_value out;
-    napi_create_external(env, events, NULL, NULL, &out);
+    napi_create_external (env, events, NULL, NULL, &out);
     return out;
 }
 
-napi_value poll_events_destroy(napi_env env, napi_callback_info info)
+napi_value poll_events_destroy (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ptr = NULL;
-    napi_get_value_external(env, argv[0], &ptr);
-    delete[] static_cast<zlink_poller_event_t *>(ptr);
+    napi_get_value_external (env, argv[0], &ptr);
+    delete[] static_cast<zlink_poller_event_t *> (ptr);
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-static bool poll_events_args(napi_env env,
-                             napi_callback_info info,
-                             zlink_poller_event_t **events,
-                             int32_t *index)
+static bool poll_events_args (napi_env env,
+                              napi_callback_info info,
+                              zlink_poller_event_t **events,
+                              int32_t *index)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *ptr = NULL;
-    napi_get_value_external(env, argv[0], &ptr);
-    napi_get_value_int32(env, argv[1], index);
+    napi_get_value_external (env, argv[0], &ptr);
+    napi_get_value_int32 (env, argv[1], index);
     if (!ptr || *index < 0) {
-        napi_throw_range_error(env, NULL, "invalid poll event index");
+        napi_throw_range_error (env, NULL, "invalid poll event index");
         return false;
     }
-    *events = static_cast<zlink_poller_event_t *>(ptr);
+    *events = static_cast<zlink_poller_event_t *> (ptr);
     return true;
 }
 
-napi_value poll_events_source_kind(napi_env env, napi_callback_info info)
+napi_value poll_events_source_kind (napi_env env, napi_callback_info info)
 {
     zlink_poller_event_t *events = NULL;
     int32_t index = 0;
-    if (!poll_events_args(env, info, &events, &index))
+    if (!poll_events_args (env, info, &events, &index))
         return NULL;
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(events[index].source_kind), &out);
+    napi_create_int32 (env, static_cast<int32_t> (events[index].source_kind), &out);
     return out;
 }
 
-napi_value poll_events_slot(napi_env env, napi_callback_info info)
+napi_value poll_events_slot (napi_env env, napi_callback_info info)
 {
     zlink_poller_event_t *events = NULL;
     int32_t index = 0;
-    if (!poll_events_args(env, info, &events, &index))
+    if (!poll_events_args (env, info, &events, &index))
         return NULL;
     napi_value out;
-    napi_create_double(
-      env,
-      static_cast<double>(reinterpret_cast<uintptr_t>(events[index].user_data)),
-      &out);
+    napi_create_double (
+      env, static_cast<double> (reinterpret_cast<uintptr_t> (events[index].user_data)), &out);
     return out;
 }
 
-napi_value poll_events_revents(napi_env env, napi_callback_info info)
+napi_value poll_events_revents (napi_env env, napi_callback_info info)
 {
     zlink_poller_event_t *events = NULL;
     int32_t index = 0;
-    if (!poll_events_args(env, info, &events, &index))
+    if (!poll_events_args (env, info, &events, &index))
         return NULL;
     napi_value out;
-    napi_create_int32(env, static_cast<int32_t>(events[index].events), &out);
+    napi_create_int32 (env, static_cast<int32_t> (events[index].events), &out);
     return out;
 }
 
-napi_value poll_events_fd(napi_env env, napi_callback_info info)
+napi_value poll_events_fd (napi_env env, napi_callback_info info)
 {
     zlink_poller_event_t *events = NULL;
     int32_t index = 0;
-    if (!poll_events_args(env, info, &events, &index))
+    if (!poll_events_args (env, info, &events, &index))
         return NULL;
     napi_value out;
-    napi_create_int64(env, static_cast<int64_t>(events[index].fd), &out);
+    napi_create_int64 (env, static_cast<int64_t> (events[index].fd), &out);
     return out;
 }
 
-napi_value poller_wait_into(napi_env env, napi_callback_info info)
+napi_value poller_wait_into (napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *poller = NULL;
     void *events_ptr = NULL;
     int32_t capacity = 0;
     int32_t timeout = 0;
-    napi_get_value_external(env, argv[0], &poller);
-    napi_get_value_external(env, argv[1], &events_ptr);
-    napi_get_value_int32(env, argv[2], &capacity);
-    napi_get_value_int32(env, argv[3], &timeout);
+    napi_get_value_external (env, argv[0], &poller);
+    napi_get_value_external (env, argv[1], &events_ptr);
+    napi_get_value_int32 (env, argv[2], &capacity);
+    napi_get_value_int32 (env, argv[3], &timeout);
     if (!events_ptr || capacity <= 0) {
-        napi_throw_range_error(env, NULL, "events capacity must be positive");
+        napi_throw_range_error (env, NULL, "events capacity must be positive");
         return NULL;
     }
     zlink_config_result_t err = ZLINK_CONFIG_OK;
-    int rc = zlink_poller_wait(
-      poller,
-      static_cast<zlink_poller_event_t *>(events_ptr),
-      capacity,
-      timeout,
-      &err);
+    int rc = zlink_poller_wait (poller, static_cast<zlink_poller_event_t *> (events_ptr), capacity,
+                                timeout, &err);
     if (err != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "poller_wait_into failed");
+        return throw_last_error (env, "poller_wait_into failed");
     napi_value out;
-    napi_create_int32(env, rc, &out);
+    napi_create_int32 (env, rc, &out);
     return out;
 }
 
-napi_value timer_new(napi_env env, napi_callback_info info)
+napi_value timer_new (napi_env env, napi_callback_info info)
 {
     (void) info;
-    void *timer = zlink_timer_new();
+    void *timer = zlink_timer_new ();
     if (!timer)
-        return throw_last_error(env, "timer_new failed");
+        return throw_last_error (env, "timer_new failed");
     napi_value out;
-    napi_create_external(env, timer, NULL, NULL, &out);
+    napi_create_external (env, timer, NULL, NULL, &out);
     return out;
 }
 
-napi_value spot_timer_new(napi_env env, napi_callback_info info)
+napi_value spot_timer_new (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *timer = zlink_spot_timer_new(spot);
+    napi_get_value_external (env, argv[0], &spot);
+    void *timer = zlink_spot_timer_new (spot);
     if (!timer)
-        return throw_last_error(env, "spot_timer_new failed");
+        return throw_last_error (env, "spot_timer_new failed");
     napi_value out;
-    napi_create_external(env, timer, NULL, NULL, &out);
+    napi_create_external (env, timer, NULL, NULL, &out);
     return out;
 }
 
-napi_value timer_destroy(napi_env env, napi_callback_info info)
+napi_value timer_destroy (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &timer);
-    release_timer_handler_slot(timer);
+    napi_get_value_external (env, argv[0], &timer);
+    release_timer_handler_slot (timer);
     void *tmp = timer;
-    int rc = zlink_timer_destroy(&tmp);
+    int rc = zlink_timer_destroy (&tmp);
     if (rc != 0)
-        return throw_last_error(env, "timer_destroy failed");
+        return throw_last_error (env, "timer_destroy failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value timer_start(napi_env env, napi_callback_info info)
+napi_value timer_start (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
     size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &timer);
+    napi_get_value_external (env, argv[0], &timer);
     bool lossless = false;
     uint64_t interval = 0;
     uint64_t repeat = 0;
-    napi_get_value_bigint_uint64(env, argv[1], &interval, &lossless);
-    napi_get_value_bigint_uint64(env, argv[2], &repeat, &lossless);
-    zlink_config_result_t rc = zlink_timer_start(timer, interval, repeat);
+    napi_get_value_bigint_uint64 (env, argv[1], &interval, &lossless);
+    napi_get_value_bigint_uint64 (env, argv[2], &repeat, &lossless);
+    zlink_config_result_t rc = zlink_timer_start (timer, interval, repeat);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "timer_start failed");
+        return throw_last_error (env, "timer_start failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value timer_stop(napi_env env, napi_callback_info info)
+napi_value timer_stop (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &timer);
-    zlink_config_result_t rc = zlink_timer_stop(timer);
+    napi_get_value_external (env, argv[0], &timer);
+    zlink_config_result_t rc = zlink_timer_stop (timer);
     if (rc != ZLINK_CONFIG_OK)
-        return throw_last_error(env, "timer_stop failed");
+        return throw_last_error (env, "timer_stop failed");
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value timer_recv(napi_env env, napi_callback_info info)
+napi_value timer_recv (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &timer);
+    napi_get_value_external (env, argv[0], &timer);
     int32_t flags = 0;
     if (argc >= 2)
-        napi_get_value_int32(env, argv[1], &flags);
+        napi_get_value_int32 (env, argv[1], &flags);
     uint64_t fire_count = 0;
-    zlink_recv_result_t rc = zlink_timer_recv(timer, &fire_count);
+    zlink_recv_result_t rc = zlink_timer_recv (timer, &fire_count);
     if (rc != ZLINK_RECV_OK)
-        return throw_last_error(env, "timer_recv failed");
+        return throw_last_error (env, "timer_recv failed");
     napi_value out;
-    napi_create_bigint_uint64(env, fire_count, &out);
+    napi_create_bigint_uint64 (env, fire_count, &out);
     return out;
 }
 
-napi_value timer_handler(napi_env env, napi_callback_info info)
+napi_value timer_handler (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *timer = NULL;
-    napi_get_value_external(env, argv[0], &timer);
+    napi_get_value_external (env, argv[0], &timer);
     napi_value handler = argv[1];
 
     timer_handler_js_state_t *slot = NULL;
     {
-        std::lock_guard<std::mutex> lock(g_timer_handler_slots_mu);
-        if (find_timer_handler_slot_by_timer_unsafe(timer)) {
-            napi_throw_error(env, NULL, "timer handler already attached");
+        std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
+        if (find_timer_handler_slot_by_timer_unsafe (timer)) {
+            napi_throw_error (env, NULL, "timer handler already attached");
             return NULL;
         }
-        slot = find_free_timer_handler_slot_unsafe();
+        slot = find_free_timer_handler_slot_unsafe ();
         if (!slot) {
-            napi_throw_error(env, NULL, "no free timer handler slot");
+            napi_throw_error (env, NULL, "no free timer handler slot");
             return NULL;
         }
     }
 
     napi_value resource_name;
-    napi_create_string_utf8(
-      env, "zlink-timer-handler", NAPI_AUTO_LENGTH, &resource_name);
+    napi_create_string_utf8 (env, "zlink-timer-handler", NAPI_AUTO_LENGTH, &resource_name);
     napi_threadsafe_function tsfn = NULL;
-    napi_status tsfn_status = napi_create_threadsafe_function(
-      env, handler, NULL, resource_name, 0, 1, slot,
-      timer_handler_tsfn_finalize, slot, timer_handler_tsfn_call_js, &tsfn);
+    napi_status tsfn_status = napi_create_threadsafe_function (
+      env, handler, NULL, resource_name, 0, 1, slot, timer_handler_tsfn_finalize, slot,
+      timer_handler_tsfn_call_js, &tsfn);
     if (tsfn_status != napi_ok) {
-        napi_throw_error(
-          env, NULL, "timer handler failed to create callback queue");
+        napi_throw_error (env, NULL, "timer handler failed to create callback queue");
         return NULL;
     }
 
     {
-        std::lock_guard<std::mutex> lock(g_timer_handler_slots_mu);
+        std::lock_guard<std::mutex> lock (g_timer_handler_slots_mu);
         slot->used = true;
         slot->timer = timer;
         slot->env = env;
         slot->tsfn = tsfn;
     }
 
-    zlink_handler_result_t rc = zlink_timer_handler(timer, &timer_handler_dispatch, slot);
+    zlink_handler_result_t rc = zlink_timer_handler (timer, &timer_handler_dispatch, slot);
     if (rc != ZLINK_HANDLER_OK) {
-        release_timer_handler_slot(timer);
-        return throw_last_error(env, "timer_handler failed");
+        release_timer_handler_slot (timer);
+        return throw_last_error (env, "timer_handler failed");
     }
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value stopwatch_start(napi_env env, napi_callback_info info)
+napi_value stopwatch_start (napi_env env, napi_callback_info info)
 {
     (void) info;
-    void *watch = zlink_stopwatch_start();
+    void *watch = zlink_stopwatch_start ();
     if (!watch)
-        return throw_last_error(env, "stopwatch_start failed");
+        return throw_last_error (env, "stopwatch_start failed");
     napi_value out;
-    napi_create_external(env, watch, NULL, NULL, &out);
+    napi_create_external (env, watch, NULL, NULL, &out);
     return out;
 }
 
-napi_value stopwatch_intermediate(napi_env env, napi_callback_info info)
+napi_value stopwatch_intermediate (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *watch = NULL;
-    napi_get_value_external(env, argv[0], &watch);
-    unsigned long value = zlink_stopwatch_intermediate(watch);
-    return create_stopwatch_value(env, value);
+    napi_get_value_external (env, argv[0], &watch);
+    unsigned long value = zlink_stopwatch_intermediate (watch);
+    return create_stopwatch_value (env, value);
 }
 
-napi_value stopwatch_stop(napi_env env, napi_callback_info info)
+napi_value stopwatch_stop (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *watch = NULL;
-    napi_get_value_external(env, argv[0], &watch);
-    unsigned long value = zlink_stopwatch_stop(watch);
-    return create_stopwatch_value(env, value);
+    napi_get_value_external (env, argv[0], &watch);
+    unsigned long value = zlink_stopwatch_stop (watch);
+    return create_stopwatch_value (env, value);
 }
 
-napi_value atomic_counter_new(napi_env env, napi_callback_info info)
+napi_value atomic_counter_new (napi_env env, napi_callback_info info)
 {
     (void) info;
-    void *counter = zlink_atomic_counter_new();
+    void *counter = zlink_atomic_counter_new ();
     if (!counter)
-        return throw_last_error(env, "atomic_counter_new failed");
+        return throw_last_error (env, "atomic_counter_new failed");
     napi_value out;
-    napi_create_external(env, counter, NULL, NULL, &out);
+    napi_create_external (env, counter, NULL, NULL, &out);
     return out;
 }
 
-napi_value atomic_counter_set(napi_env env, napi_callback_info info)
+napi_value atomic_counter_set (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
     size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *counter = NULL;
     int32_t value = 0;
-    napi_get_value_external(env, argv[0], &counter);
-    napi_get_value_int32(env, argv[1], &value);
-    zlink_atomic_counter_set(counter, value);
+    napi_get_value_external (env, argv[0], &counter);
+    napi_get_value_int32 (env, argv[1], &value);
+    zlink_atomic_counter_set (counter, value);
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }
 
-napi_value atomic_counter_inc(napi_env env, napi_callback_info info)
+napi_value atomic_counter_inc (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *counter = NULL;
-    napi_get_value_external(env, argv[0], &counter);
+    napi_get_value_external (env, argv[0], &counter);
     napi_value out;
-    napi_create_int32(env, zlink_atomic_counter_inc(counter), &out);
+    napi_create_int32 (env, zlink_atomic_counter_inc (counter), &out);
     return out;
 }
 
-napi_value atomic_counter_dec(napi_env env, napi_callback_info info)
+napi_value atomic_counter_dec (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *counter = NULL;
-    napi_get_value_external(env, argv[0], &counter);
+    napi_get_value_external (env, argv[0], &counter);
     napi_value out;
-    napi_create_int32(env, zlink_atomic_counter_dec(counter), &out);
+    napi_create_int32 (env, zlink_atomic_counter_dec (counter), &out);
     return out;
 }
 
-napi_value atomic_counter_value(napi_env env, napi_callback_info info)
+napi_value atomic_counter_value (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *counter = NULL;
-    napi_get_value_external(env, argv[0], &counter);
+    napi_get_value_external (env, argv[0], &counter);
     napi_value out;
-    napi_create_int32(env, zlink_atomic_counter_value(counter), &out);
+    napi_create_int32 (env, zlink_atomic_counter_value (counter), &out);
     return out;
 }
 
-napi_value atomic_counter_destroy(napi_env env, napi_callback_info info)
+napi_value atomic_counter_destroy (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *counter = NULL;
-    napi_get_value_external(env, argv[0], &counter);
-    zlink_atomic_counter_destroy(&counter);
+    napi_get_value_external (env, argv[0], &counter);
+    zlink_atomic_counter_destroy (&counter);
     napi_value ok;
-    napi_get_undefined(env, &ok);
+    napi_get_undefined (env, &ok);
     return ok;
 }

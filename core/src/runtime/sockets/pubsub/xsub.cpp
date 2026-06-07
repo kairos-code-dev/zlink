@@ -14,17 +14,14 @@ namespace
 {
 unsigned int resolve_non_matching_skip_budget ()
 {
-    return zlink::env::positive_uint ("ZLINK_XSUB_NON_MATCHING_SKIP_BUDGET",
-                                      64u);
+    return zlink::env::positive_uint ("ZLINK_XSUB_NON_MATCHING_SKIP_BUDGET", 64u);
 }
 
-const unsigned int xsub_non_matching_skip_budget =
-  resolve_non_matching_skip_budget ();
+const unsigned int xsub_non_matching_skip_budget = resolve_non_matching_skip_budget ();
 
 struct xsub_snapshot_arg_t
 {
-    explicit xsub_snapshot_arg_t (
-      std::vector<zlink::xsub_t::subscription_descriptor_t> *out_) :
+    explicit xsub_snapshot_arg_t (std::vector<zlink::xsub_t::subscription_descriptor_t> *out_) :
         out (out_)
     {
     }
@@ -55,9 +52,7 @@ static void close_dispatch_frame (zlink_msg_t *frame_)
     errno_assert (rc == 0);
 }
 
-static void snapshot_subscription (unsigned char *data_,
-                                   size_t size_,
-                                   void *arg_)
+static void snapshot_subscription (unsigned char *data_, size_t size_, void *arg_)
 {
     xsub_snapshot_arg_t *arg = static_cast<xsub_snapshot_arg_t *> (arg_);
     if (!arg || !arg->out)
@@ -119,8 +114,7 @@ uint32_t zlink::xsub_t::compute_delivery_ready_count () const
     return has_attached_pipes () ? 1u : 0u;
 }
 
-void zlink::xsub_t::refresh_delivery_ready_state (
-  const endpoint_uri_pair_t &endpoint_uri_pair_)
+void zlink::xsub_t::refresh_delivery_ready_state (const endpoint_uri_pair_t &endpoint_uri_pair_)
 {
     LIBZLINK_UNUSED (endpoint_uri_pair_);
     const uint32_t ready_count = compute_delivery_ready_count ();
@@ -140,8 +134,7 @@ zlink::xsub_t::~xsub_t ()
     errno_assert (rc == 0);
 }
 
-void zlink::xsub_t::snapshot_subscriptions (
-  std::vector<subscription_descriptor_t> *out_) const
+void zlink::xsub_t::snapshot_subscriptions (std::vector<subscription_descriptor_t> *out_) const
 {
     if (!out_)
         return;
@@ -151,9 +144,7 @@ void zlink::xsub_t::snapshot_subscriptions (
     _subscriptions.apply (&snapshot_subscription, &arg);
 }
 
-void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
-                                bool subscribe_to_all_,
-                                bool locally_initiated_)
+void zlink::xsub_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
     LIBZLINK_UNUSED (locally_initiated_);
@@ -172,10 +163,8 @@ void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
     for (size_t i = 0; i < subscriptions.size (); ++i) {
         unsigned char *data = subscriptions[i].filter.empty ()
                                 ? NULL
-                                : reinterpret_cast<unsigned char *> (
-                                    &subscriptions[i].filter[0]);
-        send_subscription (
-          data, subscriptions[i].filter.size (), pipe_);
+                                : reinterpret_cast<unsigned char *> (&subscriptions[i].filter[0]);
+        send_subscription (data, subscriptions[i].filter.size (), pipe_);
     }
     pipe_->flush ();
     refresh_delivery_ready_state (pipe_->get_endpoint_pair ());
@@ -212,17 +201,13 @@ void zlink::xsub_t::xhiccuped (pipe_t *pipe_)
     for (size_t i = 0; i < subscriptions.size (); ++i) {
         unsigned char *data = subscriptions[i].filter.empty ()
                                 ? NULL
-                                : reinterpret_cast<unsigned char *> (
-                                    &subscriptions[i].filter[0]);
-        send_subscription (
-          data, subscriptions[i].filter.size (), pipe_);
+                                : reinterpret_cast<unsigned char *> (&subscriptions[i].filter[0]);
+        send_subscription (data, subscriptions[i].filter.size (), pipe_);
     }
     pipe_->flush ();
 }
 
-int zlink::xsub_t::xsetsockopt (int option_,
-                              const void *optval_,
-                              size_t optvallen_)
+int zlink::xsub_t::xsetsockopt (int option_, const void *optval_, size_t optvallen_)
 {
     errno = EINVAL;
     return -1;
@@ -240,8 +225,7 @@ int zlink::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
         uint64_t num_subscriptions = _subscriptions.num_prefixes ();
 #endif
 
-        return do_getsockopt<int> (optval_, optvallen_,
-                                   (int) num_subscriptions);
+        return do_getsockopt<int> (optval_, optvallen_, (int) num_subscriptions);
     }
 
     // room for future options here
@@ -276,12 +260,10 @@ int zlink::xsub_t::xsend (msg_t *msg_)
             size = size - 1;
         }
         {
-            std::lock_guard<std::mutex> subscriptions_lock (
-              _subscriptions_mu);
+            std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
             _subscriptions.add (data, size);
             if (size == 0)
-                _has_empty_subscription.store (true,
-                                               std::memory_order_release);
+                _has_empty_subscription.store (true, std::memory_order_release);
         }
         _process_subscribe = true;
         const int rc = _dist.send_to_all (msg_);
@@ -297,12 +279,10 @@ int zlink::xsub_t::xsend (msg_t *msg_)
         _process_subscribe = true;
         bool rm_result = false;
         {
-            std::lock_guard<std::mutex> subscriptions_lock (
-              _subscriptions_mu);
+            std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
             rm_result = _subscriptions.rm (data, size);
             if (size == 0 && rm_result)
-                _has_empty_subscription.store (false,
-                                               std::memory_order_release);
+                _has_empty_subscription.store (false, std::memory_order_release);
         }
         if (rm_result || _verbose_unsubs) {
             const int rc = _dist.send_to_all (msg_);
@@ -328,8 +308,7 @@ bool zlink::xsub_t::xhas_out ()
     return true;
 }
 
-int zlink::xsub_t::sub_dispatch_start (spot_sub_io_handler_fn callback_,
-                                       void *userdata_)
+int zlink::xsub_t::sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_)
 {
     if (!callback_) {
         errno = EINVAL;
@@ -497,9 +476,8 @@ int zlink::xsub_t::dispatch_ready_messages_serialized ()
     _dispatch_pending.store (true, std::memory_order_release);
 
     bool expected = false;
-    if (!_dispatch_draining.compare_exchange_strong (
-          expected, true, std::memory_order_acq_rel,
-          std::memory_order_acquire)) {
+    if (!_dispatch_draining.compare_exchange_strong (expected, true, std::memory_order_acq_rel,
+                                                     std::memory_order_acquire)) {
         return 0;
     }
 
@@ -517,16 +495,14 @@ int zlink::xsub_t::dispatch_ready_messages_serialized ()
 
     if (_dispatch_pending.exchange (false, std::memory_order_acq_rel)) {
         expected = false;
-        if (_dispatch_draining.compare_exchange_strong (
-              expected, true, std::memory_order_acq_rel,
-              std::memory_order_acquire)) {
+        if (_dispatch_draining.compare_exchange_strong (expected, true, std::memory_order_acq_rel,
+                                                        std::memory_order_acquire)) {
             for (;;) {
                 _dispatch_pending.store (false, std::memory_order_release);
                 rc = dispatch_ready_messages ();
                 if (rc != 0)
                     break;
-                if (!_dispatch_pending.exchange (
-                      false, std::memory_order_acq_rel))
+                if (!_dispatch_pending.exchange (false, std::memory_order_acq_rel))
                     break;
             }
             _dispatch_draining.store (false, std::memory_order_release);
@@ -585,8 +561,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
     while (true) {
         store_socket_msg_part (&_dispatch_parts, msg_);
         msg_t *stored_msg =
-          reinterpret_cast<msg_t *> (
-            &_dispatch_parts[_dispatch_parts.size () - 1]);
+          reinterpret_cast<msg_t *> (&_dispatch_parts[_dispatch_parts.size () - 1]);
 
         if ((stored_msg->flags () & msg_t::more) == 0)
             break;
@@ -599,8 +574,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
         }
     }
 
-    spot_sub_io_handler_fn callback =
-      _dispatch_callback.load (std::memory_order_acquire);
+    spot_sub_io_handler_fn callback = _dispatch_callback.load (std::memory_order_acquire);
     if (!_dispatch_active.load (std::memory_order_acquire) || !callback) {
         close_dispatch_frames (&_dispatch_parts);
         return 0;
@@ -620,17 +594,15 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
       static_cast<const char *> (zlink_msg_data (const_cast<zlink_msg_t *> (&topic)));
     const size_t topic_size = zlink_msg_size (const_cast<zlink_msg_t *> (&topic));
     const zlink_msg_t *payload =
-      _dispatch_parts.size () > 1 ? &_dispatch_parts[1]
-                                  : static_cast<zlink_msg_t *> (NULL);
+      _dispatch_parts.size () > 1 ? &_dispatch_parts[1] : static_cast<zlink_msg_t *> (NULL);
     const size_t payload_count = _dispatch_parts.size () - 1;
     zlink_routing_id_t source_rid;
     resolve_socket_msg_source_rid (pipe_, &source_rid);
 
     {
         const zlink::xsub_dispatch_context_t dispatch_scope (this);
-        callback (&source_rid, topic_data, topic_size,
-                  const_cast<zlink_msg_t *> (payload), payload_count,
-                  userdata);
+        callback (&source_rid, topic_data, topic_size, const_cast<zlink_msg_t *> (payload),
+                  payload_count, userdata);
     }
 
     // The callback owns payload frames. The topic frame stays internal and is
@@ -644,8 +616,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
 
 void zlink::xsub_t::notify_dispatch_stopped ()
 {
-    const uint32_t remaining =
-      _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel) - 1;
+    const uint32_t remaining = _dispatch_inflight.fetch_sub (1, std::memory_order_acq_rel) - 1;
     if (remaining == 0) {
         std::lock_guard<std::mutex> lk (_dispatch_inflight_mu);
         _dispatch_inflight_cv.notify_all ();
@@ -688,24 +659,20 @@ int zlink::xsub_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
 bool zlink::xsub_t::match (msg_t *msg_)
 {
-    if (!options.invert_matching
-        && _has_empty_subscription.load (std::memory_order_acquire))
+    if (!options.invert_matching && _has_empty_subscription.load (std::memory_order_acquire))
         return true;
 
     std::lock_guard<std::mutex> subscriptions_lock (_subscriptions_mu);
-    if (!options.invert_matching
-        && _has_empty_subscription.load (std::memory_order_relaxed))
+    if (!options.invert_matching && _has_empty_subscription.load (std::memory_order_relaxed))
         return true;
 
-    const bool matching = _subscriptions.check (
-      static_cast<unsigned char *> (msg_->data ()), msg_->size ());
+    const bool matching =
+      _subscriptions.check (static_cast<unsigned char *> (msg_->data ()), msg_->size ());
 
     return matching ^ options.invert_matching;
 }
 
-void zlink::xsub_t::send_subscription (unsigned char *data_,
-                                     size_t size_,
-                                     void *arg_)
+void zlink::xsub_t::send_subscription (unsigned char *data_, size_t size_, void *arg_)
 {
     pipe_t *pipe = static_cast<pipe_t *> (arg_);
 

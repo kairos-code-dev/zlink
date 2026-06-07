@@ -15,22 +15,18 @@ std::atomic<int> g_submit_retry_fault_errno (ENOTCONN);
 
 extern "C" void zlink_test_set_submit_retry_fault (int count_, int err_)
 {
-    g_submit_retry_fault_errno.store (err_ == 0 ? ENOTCONN : err_,
-                                      std::memory_order_relaxed);
-    g_submit_retry_faults_remaining.store (count_ < 0 ? 0 : count_,
-                                           std::memory_order_relaxed);
+    g_submit_retry_fault_errno.store (err_ == 0 ? ENOTCONN : err_, std::memory_order_relaxed);
+    g_submit_retry_faults_remaining.store (count_ < 0 ? 0 : count_, std::memory_order_relaxed);
 }
 
 bool zlink::socket_submit_retry_fault::consume (int *err_out_)
 {
-    int remaining = g_submit_retry_faults_remaining.load (
-      std::memory_order_relaxed);
+    int remaining = g_submit_retry_faults_remaining.load (std::memory_order_relaxed);
     while (remaining > 0) {
-        if (g_submit_retry_faults_remaining.compare_exchange_weak (
-              remaining, remaining - 1, std::memory_order_relaxed)) {
+        if (g_submit_retry_faults_remaining.compare_exchange_weak (remaining, remaining - 1,
+                                                                   std::memory_order_relaxed)) {
             if (err_out_)
-                *err_out_ =
-                  g_submit_retry_fault_errno.load (std::memory_order_relaxed);
+                *err_out_ = g_submit_retry_fault_errno.load (std::memory_order_relaxed);
             return true;
         }
     }

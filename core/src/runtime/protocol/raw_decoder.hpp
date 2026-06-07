@@ -15,15 +15,11 @@ class raw_decoder_t ZLINK_FINAL : public i_decoder
 {
   public:
     raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_);
-    raw_decoder_t (size_t bufsize_,
-                   int64_t maxmsgsize_,
-                   size_t max_buffer_size_);
+    raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_, size_t max_buffer_size_);
     ~raw_decoder_t ();
 
     void get_buffer (unsigned char **data_, size_t *size_) ZLINK_FINAL;
-    int decode (const unsigned char *data_,
-                size_t size_,
-                size_t &bytes_used_) ZLINK_FINAL;
+    int decode (const unsigned char *data_, size_t size_, size_t &bytes_used_) ZLINK_FINAL;
     void resize_buffer (size_t new_size_) ZLINK_FINAL
     {
         // STREAM/raw growth path: keep capacity monotonic to avoid

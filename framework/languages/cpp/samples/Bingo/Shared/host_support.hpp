@@ -44,7 +44,9 @@ class sample_stream_server_service_t final : public zlink::framework::hosted_ser
   public:
     using run_server_fn_t = void (*) (zlink::stream_socket_t &, const std::string &);
 
-    sample_stream_server_service_t (zlink::framework::app_t &app, std::string endpoint, run_server_fn_t run_server) :
+    sample_stream_server_service_t (zlink::framework::app_t &app,
+                                    std::string endpoint,
+                                    run_server_fn_t run_server) :
         _app (app), _endpoint (std::move (endpoint)), _run_server (run_server)
     {
     }

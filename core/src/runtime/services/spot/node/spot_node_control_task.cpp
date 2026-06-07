@@ -23,8 +23,7 @@ static void spot_control_diagf (const char *fmt_, ...)
 {
     va_list args;
     va_start (args, fmt_);
-    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_,
-                    args);
+    debug_vfprintf ("ZLINK_DEBUG_SPOT_CONTROL", "[spot-control] ", fmt_, args);
     va_end (args);
 }
 }
@@ -41,9 +40,7 @@ int spot_node_t::replay_subscriptions_if_active_peers ()
         return 0;
     if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
         std::fprintf (stderr, "[spot-replay] immediate replay request\n");
-    if (send_data_plane_command (
-          spot_control_protocol::cmd_replay_handle_state_subscriptions)
-        != 0)
+    if (send_data_plane_command (spot_control_protocol::cmd_replay_handle_state_subscriptions) != 0)
         return -1;
     queue_all_subscription_ready_filters ();
     return 0;
@@ -69,8 +66,7 @@ void spot_node_t::schedule_subscription_replay ()
         attempts = _peer_state.subscription_replay_attempts;
     }
     if (spot_debug::enabled ("ZLINK_DEBUG_SPOT_REPLAY"))
-        std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n",
-                      attempts);
+        std::fprintf (stderr, "[spot-replay] scheduled attempts=%u\n", attempts);
     wake_control_task ();
 }
 
@@ -99,8 +95,7 @@ int spot_node_t::ensure_control_task_running ()
     }
 
     const uint64_t task_id =
-      runtime->add_periodic_task (control_task, this,
-                                  spot_control_task_interval_ms, true);
+      runtime->add_periodic_task (control_task, this, spot_control_task_interval_ms, true);
     if (task_id == 0)
         return -1;
 
@@ -134,8 +129,8 @@ bool spot_node_t::can_suspend_control_task () const
         return false;
     if (!_service_attachment_state.discoveries.empty ())
         return false;
-    for (std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator
-           it = _service_attachment_state.router_channel_peers.begin ();
+    for (std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator it =
+           _service_attachment_state.router_channel_peers.begin ();
          it != _service_attachment_state.router_channel_peers.end (); ++it) {
         if (it->second.discovery)
             return false;
@@ -144,8 +139,7 @@ bool spot_node_t::can_suspend_control_task () const
         return false;
     if (!_service_attachment_state.pending_router_channel_refreshes.empty ())
         return false;
-    if (_peer_state.subscription_replay_pending
-        || _peer_state.subscription_ready_refresh_pending
+    if (_peer_state.subscription_replay_pending || _peer_state.subscription_ready_refresh_pending
         || _peer_state.pub_delivery_ready_refresh_pending) {
         return false;
     }
@@ -167,8 +161,7 @@ void spot_node_t::control_tick ()
     bool has_pending_router_channel_refresh = false;
     {
         scoped_lock_t lock (_sync);
-        has_pending_service_refresh =
-          !_service_attachment_state.pending_refresh_services.empty ();
+        has_pending_service_refresh = !_service_attachment_state.pending_refresh_services.empty ();
         has_pending_router_channel_refresh =
           !_service_attachment_state.pending_router_channel_refreshes.empty ();
     }
@@ -183,8 +176,7 @@ void spot_node_t::control_tick ()
         const uint64_t connected_peer_version =
           mesh_peer_version (&_runtime->execution.mesh_peer_state);
         skip_extra = _discovery_state.discovery == NULL
-                     && connected_peer_version
-                          == _runtime->connected_peer_version_seen ()
+                     && connected_peer_version == _runtime->connected_peer_version_seen ()
                      && !_peer_state.subscription_replay_pending
                      && !_peer_state.subscription_ready_refresh_pending
                      && !_peer_state.pub_delivery_ready_refresh_pending;
@@ -199,9 +191,7 @@ void spot_node_t::control_tick ()
 
     spot_runtime_t *runtime_state = _runtime;
     const uint64_t task_id =
-      runtime_state && can_suspend_control_task ()
-        ? runtime_state->clear_control_task_id ()
-        : 0;
+      runtime_state && can_suspend_control_task () ? runtime_state->clear_control_task_id () : 0;
 
     if (task_id != 0) {
         service_control_runtime_t *runtime = _ctx->service_control_runtime ();

@@ -138,8 +138,9 @@ raw_http_response_t to_raw_response (const http::response<http::string_body> &re
 }
 
 template <typename TStream>
-raw_http_response_t
-exchange_request (TStream &stream, const http::request<http::string_body> &request, beast::flat_buffer &buffer)
+raw_http_response_t exchange_request (TStream &stream,
+                                      const http::request<http::string_body> &request,
+                                      beast::flat_buffer &buffer)
 {
     http::write (stream, request);
     http::response<http::string_body> response;
@@ -147,9 +148,10 @@ exchange_request (TStream &stream, const http::request<http::string_body> &reque
     return to_raw_response (response);
 }
 
-zlink::framework::result_t<raw_http_response_t> finish_response (raw_http_response_t response,
-                                                                 std::chrono::steady_clock::time_point started_at,
-                                                                 std::chrono::milliseconds timeout)
+zlink::framework::result_t<raw_http_response_t>
+finish_response (raw_http_response_t response,
+                 std::chrono::steady_clock::time_point started_at,
+                 std::chrono::milliseconds timeout)
 {
     if (std::chrono::steady_clock::now () - started_at > timeout) {
         return zlink::framework::result_t<raw_http_response_t>::failure (
@@ -166,12 +168,14 @@ zlink::framework::result_t<raw_http_response_t> map_exception (const std::except
 
 } // namespace
 
-http_client_runtime_t::http_client_runtime_t (http_client_options_t options) : _options (std::move (options))
+http_client_runtime_t::http_client_runtime_t (http_client_options_t options) :
+    _options (std::move (options))
 {
     (void) parse_base_url (_options.base_url);
 }
 
-zlink::framework::result_t<raw_http_response_t> http_client_runtime_t::execute (const http_request_t &request) const
+zlink::framework::result_t<raw_http_response_t>
+http_client_runtime_t::execute (const http_request_t &request) const
 {
     try {
         const auto started_at = std::chrono::steady_clock::now ();
@@ -230,11 +234,13 @@ zlink::framework::result_t<raw_http_response_t> http_client_runtime_t::execute (
         return finish_response (std::move (raw), started_at, _options.timeout);
 #else
         return zlink::framework::result_t<raw_http_response_t>::failure (
-          zlink::framework::framework_error_kind_t::request_protocol_error, "HTTPS support requires OpenSSL");
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTPS support requires OpenSSL");
 #endif
     }
     catch (const boost::system::system_error &ex) {
-        if (ex.code () == boost::beast::error::timeout || ex.code () == boost::asio::error::timed_out) {
+        if (ex.code () == boost::beast::error::timeout
+            || ex.code () == boost::asio::error::timed_out) {
             return zlink::framework::result_t<raw_http_response_t>::failure (
               zlink::framework::framework_error_kind_t::timeout, ex.what (), true);
         }

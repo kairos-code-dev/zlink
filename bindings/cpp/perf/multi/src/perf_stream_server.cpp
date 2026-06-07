@@ -74,7 +74,8 @@ inline bool is_stop_payload (const zlink::message_t &body_)
 {
     const void *data = body_.data ();
     const size_t size = body_.size ();
-    return data && size == std::strlen (k_stop_token) && std::memcmp (data, k_stop_token, size) == 0;
+    return data && size == std::strlen (k_stop_token)
+           && std::memcmp (data, k_stop_token, size) == 0;
 }
 
 inline void store_u32_be (unsigned char *dst_, uint32_t value_)
@@ -85,7 +86,8 @@ inline void store_u32_be (unsigned char *dst_, uint32_t value_)
     dst_[3] = static_cast<unsigned char> (value_ & 0xFF);
 }
 
-inline zlink::message_t build_packet_frame (const zlink::message_t &header_, const zlink::message_t &body_)
+inline zlink::message_t build_packet_frame (const zlink::message_t &header_,
+                                            const zlink::message_t &body_)
 {
     const size_t header_size = header_.size ();
     const size_t body_size = body_.size ();
@@ -105,11 +107,15 @@ inline zlink::message_t build_packet_frame (const zlink::message_t &header_, con
     return packet;
 }
 
-bool try_send_packet (stream_handler_context_t &ctx_, const zlink::routing_id_t &source_rid_, zlink::message_t &packet_)
+bool try_send_packet (stream_handler_context_t &ctx_,
+                      const zlink::routing_id_t &source_rid_,
+                      zlink::message_t &packet_)
 {
     try {
-        const bool sent =
-          std::move (ctx_.server->send (source_rid_)).message (packet_).flags (zlink::send_flags_t::dontwait).submit ();
+        const bool sent = std::move (ctx_.server->send (source_rid_))
+                            .message (packet_)
+                            .flags (zlink::send_flags_t::dontwait)
+                            .submit ();
         if (sent)
             return true;
         errno = EAGAIN;
@@ -122,7 +128,9 @@ bool try_send_packet (stream_handler_context_t &ctx_, const zlink::routing_id_t 
     }
 }
 
-void enqueue_packet (stream_handler_context_t &ctx_, const zlink::routing_id_t &source_rid_, zlink::message_t &&packet_)
+void enqueue_packet (stream_handler_context_t &ctx_,
+                     const zlink::routing_id_t &source_rid_,
+                     zlink::message_t &&packet_)
 {
     {
         std::lock_guard<std::mutex> lock (ctx_.pending_mutex);
@@ -208,7 +216,8 @@ void run_server_event_loop (stream_handler_context_t &handler_context_)
         if (pending_packet_count (handler_context_) == 0) {
             std::unique_lock<std::mutex> stop_lock (g_stop_mutex);
             g_stop_cv.wait (stop_lock, [&handler_context_] () {
-                return g_stop_requested.load (std::memory_order_acquire) || pending_packet_count (handler_context_) > 0;
+                return g_stop_requested.load (std::memory_order_acquire)
+                       || pending_packet_count (handler_context_) > 0;
             });
             continue;
         }
@@ -242,12 +251,14 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
     perf::multi::set_perf_pattern_env (k_pattern);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << "," << transport
+                  << std::endl;
         return true;
     }
 
     try {
-        const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+        const perf::multi::multi_bench_settings_t settings =
+          perf::multi::resolve_multi_bench_settings ();
 
         perf::multi::ctx_guard_t ctx;
         zlink::stream_socket_t server (ctx.ctx ());
@@ -256,8 +267,10 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
 
         zlink::stream_socket_options_t options = server.options ();
         if (perf::multi::manual_socket_overrides_enabled ()) {
-            options.send_hwm (zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
-            options.recv_hwm (zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
+            options.send_hwm (
+              zlink::message_count_t::value (settings.sndhwm > 0 ? settings.sndhwm : 1));
+            options.recv_hwm (
+              zlink::message_count_t::value (settings.rcvhwm > 0 ? settings.rcvhwm : 1));
         }
         const int io_timeout_ms = perf::multi::parse_positive_env (
           "PERF_STREAM_TIMEOUT_MS", std::max (settings.sndtimeo_ms, settings.rcvtimeo_ms));
@@ -265,7 +278,8 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
         options.recv_timeout (std::chrono::milliseconds (io_timeout_ms));
         options.linger (std::chrono::milliseconds (0));
         options.tcp_no_delay (true);
-        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size) || !perf::multi::recalculate_auto_hwm (ctx))
+        if (!perf::multi::apply_benchmark_auto_hwm_msg_unit (ctx, msg_size)
+            || !perf::multi::recalculate_auto_hwm (ctx))
             return false;
 
         if (!perf::multi::setup_tls_server (server, transport))
@@ -276,19 +290,22 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
         server.bind (bind_endpoint);
         ctx.ctx ().recalculate_auto_hwm ();
 
-        const std::string endpoint = transport == "inproc"
-                                       ? bind_endpoint
-                                       : perf::multi::normalize_endpoint_host (server.options ().last_endpoint ());
+        const std::string endpoint =
+          transport == "inproc"
+            ? bind_endpoint
+            : perf::multi::normalize_endpoint_host (server.options ().last_endpoint ());
         if (endpoint.empty ())
             return false;
-        perf::multi::emit_auto_hwm_detail (server, "server", "server", transport, msg_size, "stream");
+        perf::multi::emit_auto_hwm_detail (server, "server", "server", transport, msg_size,
+                                           "stream");
 
         g_stop_requested.store (false, std::memory_order_release);
         install_signal_handlers ();
 
         stream_handler_context_t handler_context;
         handler_context.server = &server;
-        server.set_packet_handler ([&handler_context] (const zlink::routing_id_t &source_rid_, zlink::message_t header_,
+        server.set_packet_handler ([&handler_context] (const zlink::routing_id_t &source_rid_,
+                                                       zlink::message_t header_,
                                                        zlink::message_t body_) {
             handle_packet (handler_context, source_rid_, header_, body_);
         });
@@ -296,7 +313,8 @@ bool perf_stream_server (const std::string &lib_name, const std::string &transpo
         std::thread stdin_watcher (&wait_for_stop_stdin);
         stdin_watcher.detach ();
 
-        std::thread event_loop_thread ([&handler_context] () { run_server_event_loop (handler_context); });
+        std::thread event_loop_thread (
+          [&handler_context] () { run_server_event_loop (handler_context); });
         perf::multi::print_ready (endpoint);
         event_loop_thread.join ();
         return true;

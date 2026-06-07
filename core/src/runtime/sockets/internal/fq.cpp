@@ -15,19 +15,16 @@ zlink::fq_t::~fq_t ()
     zlink_assert (_pipes.empty ());
 }
 
-bool zlink::fq_t::try_get_pipe_index (pipe_t *pipe_,
-                                      pipes_t::size_type *index_out_)
+bool zlink::fq_t::try_get_pipe_index (pipe_t *pipe_, pipes_t::size_type *index_out_)
 {
     if (!pipe_)
         return false;
 
-    const int claimed_index =
-      static_cast<array_item_t<1> *> (pipe_)->get_array_index ();
+    const int claimed_index = static_cast<array_item_t<1> *> (pipe_)->get_array_index ();
     if (claimed_index < 0)
         return false;
 
-    const pipes_t::size_type index =
-      static_cast<pipes_t::size_type> (claimed_index);
+    const pipes_t::size_type index = static_cast<pipes_t::size_type> (claimed_index);
     if (index >= _pipes.size () || _pipes[index] != pipe_)
         return false;
 

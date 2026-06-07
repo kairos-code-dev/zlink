@@ -29,9 +29,7 @@ struct queue_t
     friend int ensure (zlink::ctx_t *ctx_, const char *prefix_, queue_t *queue_);
 
     bool ready () const;
-    void adopt (zlink::socket_base_t *rx_,
-                zlink::socket_base_t *tx_,
-                const char *endpoint_);
+    void adopt (zlink::socket_base_t *rx_, zlink::socket_base_t *tx_, const char *endpoint_);
     void clear ();
 
     zlink::socket_base_t *_rx;
@@ -44,14 +42,9 @@ void close_and_wait (queue_t *queue_);
 
 int ensure (zlink::ctx_t *ctx_, const char *prefix_, queue_t *queue_);
 
-int send_buffer_frame (zlink::socket_base_t *socket_,
-                       const void *data_,
-                       size_t size_,
-                       int flags_);
+int send_buffer_frame (zlink::socket_base_t *socket_, const void *data_, size_t size_, int flags_);
 
-int recv_followup_with_retry (zlink::socket_base_t *socket_,
-                              zlink_msg_t *msg_,
-                              int flags_);
+int recv_followup_with_retry (zlink::socket_base_t *socket_, zlink_msg_t *msg_, int flags_);
 }
 }
 

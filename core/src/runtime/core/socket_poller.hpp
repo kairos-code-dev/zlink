@@ -71,11 +71,9 @@ class socket_poller_t
 #endif
     } item_t;
 
-    static void zero_trail_events (zlink::socket_poller_t::event_t *events_,
-                                   int n_events_,
-                                   int found_);
-    int check_socket_events (zlink::socket_poller_t::event_t *events_,
-                             int n_events_);
+    static void
+    zero_trail_events (zlink::socket_poller_t::event_t *events_, int n_events_, int found_);
+    int check_socket_events (zlink::socket_poller_t::event_t *events_, int n_events_);
 #if defined ZLINK_POLL_BASED_ON_POLL
     int check_events (zlink::socket_poller_t::event_t *events_, int n_events_);
 #elif defined ZLINK_POLL_BASED_ON_SELECT
@@ -89,10 +87,7 @@ class socket_poller_t
     {
         return item.socket == socket_;
     }
-    static bool is_fd (const item_t &item, fd_t fd_)
-    {
-        return !item.socket && item.fd == fd_;
-    }
+    static bool is_fd (const item_t &item, fd_t fd_) { return !item.socket && item.fd == fd_; }
 
     int rebuild ();
 

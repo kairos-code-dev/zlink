@@ -23,8 +23,8 @@ void test_basic ()
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     int mandatory = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
 
     //  Send a message to an unknown peer with the default setting
     //  This will not report any error
@@ -34,7 +34,8 @@ void test_basic ()
     //  Send a message to an unknown peer with mandatory routing
     //  This will fail
     mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory, sizeof (mandatory)));
     int rc = zlink_send (router, "UNKNOWN", 7, ZLINK_SNDMORE);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EHOSTUNREACH, errno);

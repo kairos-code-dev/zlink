@@ -36,9 +36,7 @@ class object_t
     ctx_t *get_ctx () const;
     void process_command (const zlink::command_t &cmd_);
     void send_inproc_connected (zlink::socket_base_t *socket_);
-    void send_bind (zlink::own_t *destination_,
-                    zlink::pipe_t *pipe_,
-                    bool inc_seqnum_ = true);
+    void send_bind (zlink::own_t *destination_, zlink::pipe_t *pipe_, bool inc_seqnum_ = true);
 
   protected:
     //  Using following function, socket is able to access global
@@ -47,9 +45,7 @@ class object_t
     int unregister_endpoint (const std::string &addr_, socket_base_t *socket_);
     void unregister_endpoints (zlink::socket_base_t *socket_);
     zlink::endpoint_t find_endpoint (const char *addr_) const;
-    bool pend_connection (const std::string &addr_,
-                          const endpoint_t &endpoint_,
-                          pipe_t **pipes_);
+    bool pend_connection (const std::string &addr_, const endpoint_t &endpoint_, pipe_t **pipes_);
     void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);
 
     void destroy_socket (zlink::socket_base_t *socket_);

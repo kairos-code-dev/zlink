@@ -17,7 +17,8 @@ int main ()
         return 1;
     }
     for (const auto &descriptor : descriptors) {
-        if (descriptor.target_name.rfind ("zlink::framework_extension_", 0) != 0 || !descriptor.depends_on_core_only) {
+        if (descriptor.target_name.rfind ("zlink::framework_extension_", 0) != 0
+            || !descriptor.depends_on_core_only) {
             return 2;
         }
     }
@@ -48,13 +49,15 @@ int main ()
     ext::advanced_retry_extension_t retry;
     retry.policy ({.max_attempts = 5, .preserve_ordering = true, .require_idempotency_key = true});
     if (!retry.current_policy.preserve_ordering || !retry.current_policy.require_idempotency_key
-        || retry.current_policy.duplicate_delivery_policy.find ("idempotency") == std::string::npos) {
+        || retry.current_policy.duplicate_delivery_policy.find ("idempotency")
+             == std::string::npos) {
         return 4;
     }
 
     int dead_letter_count = 0;
     ext::dead_letter_storage_extension_t dead_letter;
-    dead_letter.store ([&] (const zlink::framework::channel_reliability_event_t &) { ++dead_letter_count; });
+    dead_letter.store (
+      [&] (const zlink::framework::channel_reliability_event_t &) { ++dead_letter_count; });
     dead_letter.storage_sink (zlink::framework::channel_reliability_event_t{
       "game.moves", "id-1", zlink::framework::framework_error_kind_t::timeout, "timeout"});
     if (dead_letter_count != 1) {

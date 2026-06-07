@@ -111,7 +111,8 @@ template <typename T> class task_completion_source_t
     std::shared_ptr<task_shared_state_t<T>> _state;
 };
 
-template <typename T, typename TCallback> void observe_task_completion (task_t<T> &task, TCallback &&callback);
+template <typename T, typename TCallback>
+void observe_task_completion (task_t<T> &task, TCallback &&callback);
 
 } // namespace detail
 
@@ -131,24 +132,27 @@ template <typename T> class task_t
                 throw;
             }
             catch (const framework_exception_t &error) {
-                completion.complete (result_t<T>::failure (error.kind (), error.what (), error.is_retriable ()));
+                completion.complete (
+                  result_t<T>::failure (error.kind (), error.what (), error.is_retriable ()));
             }
             catch (...) {
-                completion.complete (
-                  result_t<T>::failure (framework_error_kind_t::request_failed, "unhandled coroutine exception"));
+                completion.complete (result_t<T>::failure (framework_error_kind_t::request_failed,
+                                                           "unhandled coroutine exception"));
             }
         }
 
         void return_value (result_t<T> result) { completion.complete (std::move (result)); }
 
         template <typename U>
-        requires (!std::is_same_v<std::remove_cvref_t<U>, result_t<T>>) void return_value (U &&value)
+        requires (!std::is_same_v<std::remove_cvref_t<U>, result_t<T>>) void return_value (
+          U &&value)
         {
             completion.complete (result_t<T>::success (T (std::forward<U> (value))));
         }
     };
 
-    explicit task_t (result_t<T> result) : _state (std::make_shared<detail::task_shared_state_t<T>> ())
+    explicit task_t (result_t<T> result) :
+        _state (std::make_shared<detail::task_shared_state_t<T>> ())
     {
         _state->complete (std::move (result));
     }
@@ -160,13 +164,19 @@ template <typename T> class task_t
     ~task_t () = default;
 
     bool await_ready () const noexcept { return _state->is_ready (); }
-    void await_suspend (std::coroutine_handle<> continuation) { _state->set_continuation (continuation); }
+    void await_suspend (std::coroutine_handle<> continuation)
+    {
+        _state->set_continuation (continuation);
+    }
     T await_resume () { return result ().value (); }
 
     const result_t<T> &result () const { return _state->result (); }
 
   private:
-    explicit task_t (std::shared_ptr<detail::task_shared_state_t<T>> state) : _state (std::move (state)) {}
+    explicit task_t (std::shared_ptr<detail::task_shared_state_t<T>> state) :
+        _state (std::move (state))
+    {
+    }
 
     std::shared_ptr<detail::task_shared_state_t<T>> _state;
 
@@ -191,17 +201,19 @@ template <> class task_t<void>
                 throw;
             }
             catch (const framework_exception_t &error) {
-                completion.complete (result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
+                completion.complete (
+                  result_t<void>::failure (error.kind (), error.what (), error.is_retriable ()));
             }
             catch (...) {
-                completion.complete (
-                  result_t<void>::failure (framework_error_kind_t::request_failed, "unhandled coroutine exception"));
+                completion.complete (result_t<void>::failure (
+                  framework_error_kind_t::request_failed, "unhandled coroutine exception"));
             }
         }
         void return_void () noexcept { completion.complete (result_t<void>::success ()); }
     };
 
-    explicit task_t (result_t<void> result) : _state (std::make_shared<detail::task_shared_state_t<void>> ())
+    explicit task_t (result_t<void> result) :
+        _state (std::make_shared<detail::task_shared_state_t<void>> ())
     {
         _state->complete (std::move (result));
     }
@@ -213,13 +225,19 @@ template <> class task_t<void>
     ~task_t () = default;
 
     bool await_ready () const noexcept { return _state->is_ready (); }
-    void await_suspend (std::coroutine_handle<> continuation) { _state->set_continuation (continuation); }
+    void await_suspend (std::coroutine_handle<> continuation)
+    {
+        _state->set_continuation (continuation);
+    }
     void await_resume () { result ().value (); }
 
     const result_t<void> &result () const { return _state->result (); }
 
   private:
-    explicit task_t (std::shared_ptr<detail::task_shared_state_t<void>> state) : _state (std::move (state)) {}
+    explicit task_t (std::shared_ptr<detail::task_shared_state_t<void>> state) :
+        _state (std::move (state))
+    {
+    }
 
     std::shared_ptr<detail::task_shared_state_t<void>> _state;
 
@@ -236,9 +254,11 @@ template <typename T> task_t<T> task_completion_source_t<T>::task ()
     return task_t<T> (_state);
 }
 
-template <typename T, typename TCallback> void observe_task_completion (task_t<T> &task, TCallback &&callback)
+template <typename T, typename TCallback>
+void observe_task_completion (task_t<T> &task, TCallback &&callback)
 {
-    task._state->on_completed (std::function<void (const result_t<T> &)> (std::forward<TCallback> (callback)));
+    task._state->on_completed (
+      std::function<void (const result_t<T> &)> (std::forward<TCallback> (callback)));
 }
 
 } // namespace detail

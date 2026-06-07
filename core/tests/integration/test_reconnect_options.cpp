@@ -17,11 +17,9 @@ void expect_monitor_sequence (test_monitor_probe_t *probe_,
                               int count_,
                               int timeout_ms_)
 {
-    TEST_ASSERT_TRUE (
-      test_monitor_probe_wait_count (probe_, count_, timeout_ms_));
+    TEST_ASSERT_TRUE (test_monitor_probe_wait_count (probe_, count_, timeout_ms_));
     for (int i = 0; i < count_; ++i)
-        TEST_ASSERT_EQUAL_UINT64 (
-          expected_[i], test_monitor_probe_event_at (probe_, i));
+        TEST_ASSERT_EQUAL_UINT64 (expected_[i], test_monitor_probe_event_at (probe_, i));
 }
 
 void make_rid (const char *value_, zlink_routing_id_t *out_)
@@ -31,13 +29,10 @@ void make_rid (const char *value_, zlink_routing_id_t *out_)
     memcpy (out_->data, value_, out_->size);
 }
 
-void wait_router_send_ready (void *router_,
-                             const zlink_routing_id_t *rid_,
-                             void *receiver_)
+void wait_router_send_ready (void *router_, const zlink_routing_id_t *rid_, void *receiver_)
 {
     for (int i = 0; i < 100; ++i) {
-        if (test_stream_send_bytes (router_, rid_, "ready", 5, ZLINK_DONTWAIT)
-            == 5) {
+        if (test_stream_send_bytes (router_, rid_, "ready", 5, ZLINK_DONTWAIT) == 5) {
             recv_string_expect_success (receiver_, "ready", 0);
             return;
         }
@@ -49,8 +44,7 @@ void wait_router_send_ready (void *router_,
 void recv_router_payload_expect_success (void *router_, const char *payload_)
 {
     char source[256];
-    TEST_ASSERT_GREATER_THAN (
-      0, zlink_recv (router_, source, sizeof (source), 0));
+    TEST_ASSERT_GREATER_THAN (0, zlink_recv (router_, source, sizeof (source), 0));
     recv_string_expect_success (router_, payload_, 0);
 }
 
@@ -59,22 +53,18 @@ void configure_submit_retry (void *socket_, int timeout_ms_)
     int retry_mode = ZLINK_SUBMIT_RETRY_LOCAL_FAILURE;
     int retry_attempts = 8;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_MODE, &retry_mode,
-                        sizeof (retry_mode)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, &timeout_ms_,
-                        sizeof (timeout_ms_)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS,
-                        &retry_attempts, sizeof (retry_attempts)));
+      zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_MODE, &retry_mode, sizeof (retry_mode)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_TIMEOUT,
+                                                 &timeout_ms_, sizeof (timeout_ms_)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (socket_, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS,
+                                                 &retry_attempts, sizeof (retry_attempts)));
 }
 
 long elapsed_ms_since (std::chrono::steady_clock::time_point start_)
 {
-    return static_cast<long> (
-      std::chrono::duration_cast<std::chrono::milliseconds> (
-        std::chrono::steady_clock::now () - start_)
-        .count ());
+    return static_cast<long> (std::chrono::duration_cast<std::chrono::milliseconds> (
+                                std::chrono::steady_clock::now () - start_)
+                                .count ());
 }
 
 void init_string_msg (zlink_msg_t *msg_, const char *value_)
@@ -101,24 +91,19 @@ void reconnect_default ()
       zlink_set_option (sub, ZLINK_OPT_RECONNECT_IVL, &interval, sizeof (interval)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
-    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
-                                       ZLINK_EVENT_CONNECTED,
+    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,
                                        ZLINK_EVENT_CONNECTION_READY};
     expect_monitor_sequence (&probe, initial_events,
-                             sizeof (initial_events) / sizeof (initial_events[0]),
-                             3000);
+                             sizeof (initial_events) / sizeof (initial_events[0]), 3000);
 
     test_context_socket_close_zero_linger (pub);
 
     const uint64_t disconnect_events[] = {
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED};
-    expect_monitor_sequence (
-      &probe, disconnect_events,
-      sizeof (disconnect_events) / sizeof (disconnect_events[0]), 3000);
-    TEST_ASSERT_TRUE (
-      test_monitor_probe_wait_no_additional (&probe, 6, 2000));
+      ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY,
+      ZLINK_EVENT_DISCONNECTED,    ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED};
+    expect_monitor_sequence (&probe, disconnect_events,
+                             sizeof (disconnect_events) / sizeof (disconnect_events[0]), 3000);
+    TEST_ASSERT_TRUE (test_monitor_probe_wait_no_additional (&probe, 6, 2000));
 
     close_test_monitor_probe (&monitor, &probe);
     test_context_socket_close_zero_linger (sub);
@@ -139,41 +124,32 @@ void reconnect_success ()
       zlink_set_option (sub, ZLINK_OPT_RECONNECT_IVL, &interval, sizeof (interval)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, ENDPOINT_0));
 
-    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED,
-                                       ZLINK_EVENT_CONNECTED,
+    const uint64_t initial_events[] = {ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,
                                        ZLINK_EVENT_CONNECTION_READY};
     expect_monitor_sequence (&probe, initial_events,
-                             sizeof (initial_events) / sizeof (initial_events[0]),
-                             3000);
+                             sizeof (initial_events) / sizeof (initial_events[0]), 3000);
 
     test_context_socket_close_zero_linger (pub);
 
     const uint64_t reconnect_wait_events[] = {
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED};
-    expect_monitor_sequence (
-      &probe, reconnect_wait_events,
-      sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]), 3000);
-    TEST_ASSERT_TRUE (
-      test_monitor_probe_wait_no_additional (&probe, 6, SETTLE_TIME));
+      ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY,
+      ZLINK_EVENT_DISCONNECTED,    ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED};
+    expect_monitor_sequence (&probe, reconnect_wait_events,
+                             sizeof (reconnect_wait_events) / sizeof (reconnect_wait_events[0]),
+                             3000);
+    TEST_ASSERT_TRUE (test_monitor_probe_wait_no_additional (&probe, 6, SETTLE_TIME));
 
     pub = test_context_socket (ZLINK_SOCKET_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, ENDPOINT_0));
 
     const uint64_t reconnect_success_events[] = {
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_DISCONNECTED,
-      ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED,
-      ZLINK_EVENT_CONNECT_DELAYED,  ZLINK_EVENT_CONNECTED,
-      ZLINK_EVENT_CONNECTION_READY};
+      ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY,
+      ZLINK_EVENT_DISCONNECTED,    ZLINK_EVENT_CONNECTION_READY, ZLINK_EVENT_CONNECT_RETRIED,
+      ZLINK_EVENT_CONNECT_DELAYED, ZLINK_EVENT_CONNECTED,        ZLINK_EVENT_CONNECTION_READY};
     expect_monitor_sequence (
       &probe, reconnect_success_events,
-      sizeof (reconnect_success_events)
-        / sizeof (reconnect_success_events[0]),
-      3000);
-    TEST_ASSERT_TRUE (
-      test_monitor_probe_wait_no_additional (&probe, 9, SETTLE_TIME));
+      sizeof (reconnect_success_events) / sizeof (reconnect_success_events[0]), 3000);
+    TEST_ASSERT_TRUE (test_monitor_probe_wait_no_additional (&probe, 9, SETTLE_TIME));
 
     close_test_monitor_probe (&monitor, &probe);
     test_context_socket_close_zero_linger (sub);
@@ -187,25 +163,21 @@ void submit_retry_absorbs_short_active_router_disconnect ()
     void *server_rebind = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server_rebind, ZLINK_OPT_LINGER, &zero,
-                        sizeof (zero)));
+      zlink_set_option (server_rebind, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int reconnect_ivl = 20;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl,
-                        sizeof (reconnect_ivl)));
+      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl, sizeof (reconnect_ivl)));
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server, "S", 1));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server_rebind, "S", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
     configure_submit_retry (client, 500);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, ENDPOINT_1));
@@ -214,8 +186,7 @@ void submit_retry_absorbs_short_active_router_disconnect ()
     zlink_routing_id_t rid;
     make_rid ("S", &rid);
     for (int i = 0; i < 100; ++i) {
-        if (test_stream_send_bytes (client, &rid, "ready", 5, ZLINK_DONTWAIT)
-            == 5) {
+        if (test_stream_send_bytes (client, &rid, "ready", 5, ZLINK_DONTWAIT) == 5) {
             recv_router_payload_expect_success (server, "ready");
             break;
         }
@@ -248,18 +219,16 @@ void submit_retry_returns_not_connected_when_budget_expires ()
     void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int reconnect_ivl = 20;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl,
-                        sizeof (reconnect_ivl)));
+      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl, sizeof (reconnect_ivl)));
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
     configure_submit_retry (client, 40);
     zlink_test_set_submit_retry_fault (64, ENOTCONN);
 
@@ -268,16 +237,12 @@ void submit_retry_returns_not_connected_when_budget_expires ()
     zlink_routing_id_t rid;
     make_rid ("S", &rid);
 
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
-    TEST_ASSERT_EQUAL_INT (
-      -1, test_stream_send_bytes (client, &rid, "expired", 7, 0));
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
+    TEST_ASSERT_EQUAL_INT (-1, test_stream_send_bytes (client, &rid, "expired", 7, 0));
     TEST_ASSERT_TRUE (errno == ENOTCONN || errno == EHOSTUNREACH);
     const long elapsed_ms = elapsed_ms_since (start);
-    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms >= 20,
-                              "retry budget should wait for local reconnect");
-    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 200,
-                              "retry budget should expire promptly");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms >= 20, "retry budget should wait for local reconnect");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 200, "retry budget should expire promptly");
 
     zlink_test_set_submit_retry_fault (0, 0);
     test_context_socket_close_zero_linger (client);
@@ -289,21 +254,18 @@ void submit_retry_retries_multipart_final_frame ()
     void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int reconnect_ivl = 20;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl,
-                        sizeof (reconnect_ivl)));
+      zlink_set_option (client, ZLINK_OPT_RECONNECT_IVL, &reconnect_ivl, sizeof (reconnect_ivl)));
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (server, "S", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (client, ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID, "S", 1));
     configure_submit_retry (client, 200);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, ENDPOINT_1));
@@ -312,8 +274,7 @@ void submit_retry_retries_multipart_final_frame ()
     zlink_routing_id_t rid;
     make_rid ("S", &rid);
     for (int i = 0; i < 100; ++i) {
-        if (test_stream_send_bytes (client, &rid, "ready", 5, ZLINK_DONTWAIT)
-            == 5) {
+        if (test_stream_send_bytes (client, &rid, "ready", 5, ZLINK_DONTWAIT) == 5) {
             recv_router_payload_expect_success (server, "ready");
             break;
         }
@@ -325,23 +286,18 @@ void submit_retry_retries_multipart_final_frame ()
     zlink_msg_t first;
     init_string_msg (&first, "one");
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_SUBMIT_OK,
-      zlink_send_part_rid (client, &rid, &first,
-                           static_cast<zlink_send_flags_t> (0),
-                           ZLINK_PART_MORE));
+      ZLINK_SUBMIT_OK, zlink_send_part_rid (client, &rid, &first,
+                                            static_cast<zlink_send_flags_t> (0), ZLINK_PART_MORE));
 
     zlink_test_set_submit_retry_fault (1, ENOTCONN);
     zlink_msg_t second;
     init_string_msg (&second, "two");
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_SUBMIT_OK,
-      zlink_send_part_rid (client, &rid, &second,
-                           static_cast<zlink_send_flags_t> (0),
-                           ZLINK_PART_FINAL));
+      ZLINK_SUBMIT_OK, zlink_send_part_rid (client, &rid, &second,
+                                            static_cast<zlink_send_flags_t> (0), ZLINK_PART_FINAL));
 
     char source[256];
-    TEST_ASSERT_GREATER_THAN (
-      0, zlink_recv (server, source, sizeof (source), 0));
+    TEST_ASSERT_GREATER_THAN (0, zlink_recv (server, source, sizeof (source), 0));
     recv_string_expect_success (server, "one", 0);
     recv_string_expect_success (server, "two", 0);
 
@@ -356,16 +312,13 @@ void submit_retry_does_not_wait_for_passive_router_route ()
     void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
 
     int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (dealer, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (dealer, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_routing_id (dealer, "D", 1));
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "D", 1));
     configure_submit_retry (router, 300);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, ENDPOINT_1));
@@ -378,14 +331,11 @@ void submit_retry_does_not_wait_for_passive_router_route ()
     test_context_socket_close_zero_linger (dealer);
     msleep (SETTLE_TIME * 2);
 
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
-    TEST_ASSERT_EQUAL_INT (
-      -1, test_stream_send_bytes (router, &rid, "retry", 5, 0));
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
+    TEST_ASSERT_EQUAL_INT (-1, test_stream_send_bytes (router, &rid, "retry", 5, 0));
     const long elapsed_ms = elapsed_ms_since (start);
-    TEST_ASSERT_TRUE_MESSAGE (
-      elapsed_ms < 100,
-      "passive router route should not consume retry budget");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 100,
+                              "passive router route should not consume retry budget");
 
     test_context_socket_close_zero_linger (router);
 }
@@ -395,25 +345,21 @@ void submit_retry_does_not_wait_for_dontwait ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
     configure_submit_retry (router, 300);
 
     zlink_routing_id_t rid;
     make_rid ("missing", &rid);
 
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
-    TEST_ASSERT_EQUAL_INT (
-      -1,
-      test_stream_send_bytes (router, &rid, "dontwait", 8, ZLINK_DONTWAIT));
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
+    TEST_ASSERT_EQUAL_INT (-1,
+                           test_stream_send_bytes (router, &rid, "dontwait", 8, ZLINK_DONTWAIT));
     const long elapsed_ms = elapsed_ms_since (start);
-    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 100,
-                              "DONTWAIT should not consume retry budget");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 100, "DONTWAIT should not consume retry budget");
 
     test_context_socket_close_zero_linger (router);
 }
@@ -423,25 +369,21 @@ void submit_retry_does_not_wait_for_unknown_route ()
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
 
     int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
 
     int one = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &one, sizeof (one)));
 
     configure_submit_retry (router, 300);
 
     zlink_routing_id_t rid;
     make_rid ("missing", &rid);
 
-    const std::chrono::steady_clock::time_point start =
-      std::chrono::steady_clock::now ();
-    TEST_ASSERT_EQUAL_INT (
-      -1, test_stream_send_bytes (router, &rid, "drop", 4, 0));
+    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now ();
+    TEST_ASSERT_EQUAL_INT (-1, test_stream_send_bytes (router, &rid, "drop", 4, 0));
     const long elapsed_ms = elapsed_ms_since (start);
-    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 100,
-                              "unknown route should not consume retry budget");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 100, "unknown route should not consume retry budget");
 
     test_context_socket_close_zero_linger (router);
 }

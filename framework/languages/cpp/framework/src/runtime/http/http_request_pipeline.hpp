@@ -26,14 +26,18 @@ struct parsed_http_endpoint_t
 
 parsed_http_endpoint_t parse_http_endpoint (const std::string &uri);
 
-http::response<http::string_body> handle_http_request (const http_options_snapshot_t &options,
-                                                       service_provider_t &services,
-                                                       health_builder_t &health,
-                                                       const http::request<http::string_body> &request);
-
 http::response<http::string_body>
-make_http_status_response (http::status status, unsigned version, std::string body, bool keep_alive);
+handle_http_request (const http_options_snapshot_t &options,
+                     service_provider_t &services,
+                     health_builder_t &health,
+                     const http::request<http::string_body> &request);
 
-http::response<http::string_body> make_http_parser_error_response (beast::error_code ec, unsigned version);
+http::response<http::string_body> make_http_status_response (http::status status,
+                                                             unsigned version,
+                                                             std::string body,
+                                                             bool keep_alive);
+
+http::response<http::string_body> make_http_parser_error_response (beast::error_code ec,
+                                                                   unsigned version);
 
 } // namespace zlink::framework::runtime

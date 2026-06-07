@@ -21,7 +21,8 @@ class app_state_t
   public:
     app_state_t () : metrics (monitoring) {}
 
-    void start_hosted_services (service_provider_t &provider, std::vector<hosted_service_t *> &started)
+    void start_hosted_services (service_provider_t &provider,
+                                std::vector<hosted_service_t *> &started)
     {
         for (const auto &service : hosted_services) {
             service->start (provider);
@@ -162,15 +163,16 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
-    zlink_framework_options_t options (_state->services, _state->handlers, _state->serializers, _state->zlink,
-                                       _state->monitoring);
+    zlink_framework_options_t options (_state->services, _state->handlers, _state->serializers,
+                                       _state->zlink, _state->monitoring);
     if (configure) {
         configure (options);
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
     if (!http_snapshot.endpoints.empty ()) {
-        add_hosted_service (std::make_unique<runtime::http_host_service_t> (http_snapshot, _state->health));
+        add_hosted_service (
+          std::make_unique<runtime::http_host_service_t> (http_snapshot, _state->health));
     }
     runtime::configure_handler_coroutine_executor (options.handler_coroutine_workers ());
     return *this;
@@ -188,7 +190,8 @@ app_t &app_t::add_module (module_t &module)
 app_t &app_t::add_hosted_service (std::unique_ptr<hosted_service_t> service)
 {
     if (!service) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error, "hosted service must not be null");
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "hosted service must not be null");
     }
     _state->hosted_services.push_back (std::move (service));
     return *this;

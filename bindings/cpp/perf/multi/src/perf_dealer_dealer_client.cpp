@@ -74,7 +74,10 @@ struct socket_state_t
     bool pollout_enabled;
     bool pending;
 
-    socket_state_t () : sock (NULL), payload_size (0), message (), pollout_enabled (false), pending (false) {}
+    socket_state_t () :
+        sock (NULL), payload_size (0), message (), pollout_enabled (false), pending (false)
+    {
+    }
 };
 
 class dealer_dealer_client_bench_t
@@ -152,7 +155,8 @@ class dealer_dealer_client_bench_t
                     return false;
                 }
                 _monitors.push_back (perf::multi::connect_monitor_t ());
-                zlink::socket_monitor_t monitor = sock.monitor_open (zlink::monitor_event::connection_ready);
+                zlink::socket_monitor_t monitor =
+                  sock.monitor_open (zlink::monitor_event::connection_ready);
                 if (!monitor.valid ()) {
                     debug_log ("open connect monitor failed");
                     return false;
@@ -164,11 +168,13 @@ class dealer_dealer_client_bench_t
                 state.sock = &sock;
                 state.payload_size = std::max<size_t> (_msg_size, perf_metric::header_size ());
                 _socket_states.push_back (state);
-                (void) _poller.add (sock, zlink::poll_event_flag_t::pollout, _socket_states.size () - 1);
+                (void) _poller.add (sock, zlink::poll_event_flag_t::pollout,
+                                    _socket_states.size () - 1);
                 (void) _poller.modify (sock, zlink::poll_event_flag_t::none);
             }
 
-            const bool ready = perf::multi::wait_connect_ready_all (_monitors, _settings.connect_ready_timeout_ms);
+            const bool ready =
+              perf::multi::wait_connect_ready_all (_monitors, _settings.connect_ready_timeout_ms);
             for (size_t i = 0; i < _monitors.size (); ++i)
                 perf::multi::close_connect_monitor (_monitors[i]);
             if (!ready) {
@@ -188,7 +194,8 @@ class dealer_dealer_client_bench_t
         (void) perf::multi::apply_benchmark_auto_hwm_msg_unit (_ctx, _msg_size);
         (void) perf::multi::recalculate_auto_hwm (_ctx);
         if (!_holders.empty () && _holders[0].get () && _holders[0]->valid ()) {
-            perf::multi::emit_auto_hwm_detail (*_holders[0], "client", "endpoint", _transport, _msg_size, "dealer");
+            perf::multi::emit_auto_hwm_detail (*_holders[0], "client", "endpoint", _transport,
+                                               _msg_size, "dealer");
         }
     }
 
@@ -199,7 +206,8 @@ class dealer_dealer_client_bench_t
         if (state.pollout_enabled == enabled)
             return true;
         try {
-            _poller.modify (*state.sock, enabled ? zlink::poll_event_flag_t::pollout : zlink::poll_event_flag_t::none);
+            _poller.modify (*state.sock, enabled ? zlink::poll_event_flag_t::pollout
+                                                 : zlink::poll_event_flag_t::none);
             state.pollout_enabled = enabled;
             return true;
         }
@@ -218,7 +226,8 @@ class dealer_dealer_client_bench_t
             return false;
 
         const bool collect_latency = lat_out && phase == perf_metric::phase_active;
-        const auto t0 = collect_latency ? std::chrono::steady_clock::now () : std::chrono::steady_clock::time_point ();
+        const auto t0 = collect_latency ? std::chrono::steady_clock::now ()
+                                        : std::chrono::steady_clock::time_point ();
         bool sent = false;
         const size_t payload_size = state.payload_size;
         if (payload_size == 0) {
@@ -236,7 +245,8 @@ class dealer_dealer_client_bench_t
             return false;
         }
         const uint64_t sent_ts_ns = perf_metric::now_ns ();
-        if (!perf_metric::stamp_payload (payload, payload_size, _run_id, phase, _msg_size, _seq, sent_ts_ns)) {
+        if (!perf_metric::stamp_payload (payload, payload_size, _run_id, phase, _msg_size, _seq,
+                                         sent_ts_ns)) {
             debug_log ("stamp payload failed");
             return false;
         }
@@ -260,8 +270,8 @@ class dealer_dealer_client_bench_t
                 ++(*count);
             if (collect_latency) {
                 const auto t1 = std::chrono::steady_clock::now ();
-                const double ns =
-                  static_cast<double> (std::chrono::duration_cast<std::chrono::nanoseconds> (t1 - t0).count ());
+                const double ns = static_cast<double> (
+                  std::chrono::duration_cast<std::chrono::nanoseconds> (t1 - t0).count ());
                 lat_out->add (ns);
             }
             return true;
@@ -280,14 +290,16 @@ class dealer_dealer_client_bench_t
         if (!state.sock)
             return false;
         const size_t token_size = std::strlen (perf::multi::k_stop_token);
-        zlink::message_t part =
-          zlink::message_t::from (std::as_bytes (std::span<const char> (perf::multi::k_stop_token, token_size)));
+        zlink::message_t part = zlink::message_t::from (
+          std::as_bytes (std::span<const char> (perf::multi::k_stop_token, token_size)));
         if (!part.valid ())
             return false;
 
         try {
-            const bool sent =
-              std::move (state.sock->send ()).message (part).flags (zlink::send_flags_t::dontwait).submit ();
+            const bool sent = std::move (state.sock->send ())
+                                .message (part)
+                                .flags (zlink::send_flags_t::dontwait)
+                                .submit ();
             if (sent)
                 return true;
         }
@@ -303,7 +315,8 @@ class dealer_dealer_client_bench_t
     bool send_stop_tokens ()
     {
         const int wait_ms = std::max (1, _settings.sndtimeo_ms);
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (wait_ms);
+        const auto deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (wait_ms);
         std::vector<uint8_t> sent (_socket_states.size (), 0);
         size_t sent_count = 0;
 
@@ -316,10 +329,12 @@ class dealer_dealer_client_bench_t
                     ++sent_count;
                 }
                 const int err = errno;
-                if (err != 0 && err != EINTR && err != EAGAIN && err != EWOULDBLOCK && err != ETIMEDOUT)
+                if (err != 0 && err != EINTR && err != EAGAIN && err != EWOULDBLOCK
+                    && err != ETIMEDOUT)
                     return false;
             }
-            if (sent_count == _socket_states.size () || g_stop_requested.load (std::memory_order_acquire))
+            if (sent_count == _socket_states.size ()
+                || g_stop_requested.load (std::memory_order_acquire))
                 return true;
             std::this_thread::yield ();
         } while (std::chrono::steady_clock::now () < deadline);
@@ -384,7 +399,8 @@ class dealer_dealer_client_bench_t
                 // steady_clock deadline check above.
                 if (_poll_events.empty ())
                     _poll_events.resize (1);
-                const size_t ready_count = _poller.wait (_poll_events.data (), 1, std::chrono::milliseconds (-1));
+                const size_t ready_count =
+                  _poller.wait (_poll_events.data (), 1, std::chrono::milliseconds (-1));
                 if (ready_count == 0)
                     continue;
 
@@ -421,8 +437,10 @@ class dealer_dealer_client_bench_t
     {
         zlink::dealer_socket_options_t options = socket.options ();
         if (perf::multi::manual_socket_overrides_enabled ()) {
-            options.send_hwm (zlink::message_count_t::value (_settings.sndhwm > 0 ? _settings.sndhwm : 1));
-            options.recv_hwm (zlink::message_count_t::value (_settings.rcvhwm > 0 ? _settings.rcvhwm : 1));
+            options.send_hwm (
+              zlink::message_count_t::value (_settings.sndhwm > 0 ? _settings.sndhwm : 1));
+            options.recv_hwm (
+              zlink::message_count_t::value (_settings.rcvhwm > 0 ? _settings.rcvhwm : 1));
         }
         options.send_timeout (std::chrono::milliseconds (_settings.sndtimeo_ms));
         options.recv_timeout (std::chrono::milliseconds (_settings.rcvtimeo_ms));
@@ -459,19 +477,21 @@ bool perf_dealer_dealer_client (const std::string &lib_name,
     perf::multi::set_perf_pattern_env (k_pattern_env);
 
     if (!perf::multi::is_supported_transport (transport)) {
-        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport << std::endl;
+        std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern_result << "," << transport
+                  << std::endl;
         return true;
     }
 
-    const perf::multi::multi_bench_settings_t settings = perf::multi::resolve_multi_bench_settings ();
+    const perf::multi::multi_bench_settings_t settings =
+      perf::multi::resolve_multi_bench_settings ();
 
     g_stop_requested.store (false, std::memory_order_release);
     install_signal_handlers ();
 
     dealer_dealer_client_bench_t bench (transport, lib_name, msg_size, endpoint, settings);
     if (!bench.run ()) {
-        std::cerr << "DEALER_DEALER_CLIENT_FAIL,transport=" << transport << ",size=" << msg_size << ",errno=" << errno
-                  << std::endl;
+        std::cerr << "DEALER_DEALER_CLIENT_FAIL,transport=" << transport << ",size=" << msg_size
+                  << ",errno=" << errno << std::endl;
         return false;
     }
 

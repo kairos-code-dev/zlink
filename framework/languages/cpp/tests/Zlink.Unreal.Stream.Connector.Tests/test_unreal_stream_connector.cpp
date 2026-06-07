@@ -8,11 +8,13 @@ int main ()
 {
     UZLinkStreamConnector connector;
     connector.Connect ("tcp://127.0.0.1:9400");
-    if (!connector.IsConnected () || connector.LastState () != EZLinkStreamConnectionState::Connected) {
+    if (!connector.IsConnected ()
+        || connector.LastState () != EZLinkStreamConnectionState::Connected) {
         return 1;
     }
     if (connector.OnConnectionStateChanged.NumBroadcasts () == 0
-        || connector.OnConnectionStateChanged.LastBroadcastValue () != EZLinkStreamConnectionState::Connected) {
+        || connector.OnConnectionStateChanged.LastBroadcastValue ()
+             != EZLinkStreamConnectionState::Connected) {
         return 6;
     }
 
@@ -25,7 +27,8 @@ int main ()
     FZLinkStreamSendOptions request_options;
     request_options.Metadata.emplace ("traceId", "request-1");
     request_options.bCompress = true;
-    connector.RequestJsonWithOptions ("chat.request.metadata", "{\"text\":\"hello\"}", 0.01f, request_options);
+    connector.RequestJsonWithOptions ("chat.request.metadata", "{\"text\":\"hello\"}", 0.01f,
+                                      request_options);
     int request_completed_count = 0;
     connector.OnRequestCompletedNative.AddLambda (
       [&request_completed_count] (const FZLinkStreamPacket &) { ++request_completed_count; });
@@ -39,7 +42,8 @@ int main ()
     if (connector.IsConnected () || connector.LastState () != EZLinkStreamConnectionState::Closed) {
         return 3;
     }
-    if (connector.OnConnectionStateChanged.LastBroadcastValue () != EZLinkStreamConnectionState::Closed) {
+    if (connector.OnConnectionStateChanged.LastBroadcastValue ()
+        != EZLinkStreamConnectionState::Closed) {
         return 7;
     }
 

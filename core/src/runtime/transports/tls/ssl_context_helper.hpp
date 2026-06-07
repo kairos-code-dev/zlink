@@ -31,10 +31,10 @@ class ssl_context_helper_t
     //  Verification modes
     enum verification_mode
     {
-        verify_none = 0,      //  No verification
-        verify_peer = 1,      //  Verify peer certificate
-        verify_fail = 2,      //  Fail if no peer certificate
-        verify_client = 3     //  Verify client certificate (server mode)
+        verify_none = 0,  //  No verification
+        verify_peer = 1,  //  Verify peer certificate
+        verify_fail = 2,  //  Fail if no peer certificate
+        verify_client = 3 //  Verify client certificate (server mode)
     };
 
     //  Create a server SSL context with certificate and private key.
@@ -79,17 +79,15 @@ class ssl_context_helper_t
     //  Create a client SSL context with client certificate from PEM strings.
     //  Returns nullptr on failure.
     static std::unique_ptr<boost::asio::ssl::context>
-    create_client_context_with_cert_from_pem (
-      const std::string &ca_cert_pem,
-      const std::string &client_cert_pem,
-      const std::string &client_key_pem,
-      const std::string &password = std::string (),
-      bool trust_system = true,
-      verification_mode mode = verify_peer);
+    create_client_context_with_cert_from_pem (const std::string &ca_cert_pem,
+                                              const std::string &client_cert_pem,
+                                              const std::string &client_key_pem,
+                                              const std::string &password = std::string (),
+                                              bool trust_system = true,
+                                              verification_mode mode = verify_peer);
 
     //  Configure verification on an existing context
-    static bool configure_verification (boost::asio::ssl::context &ctx,
-                                        verification_mode mode);
+    static bool configure_verification (boost::asio::ssl::context &ctx, verification_mode mode);
 
     //  Load CA certificate from file into context
     static bool load_ca_certificate (boost::asio::ssl::context &ctx,
@@ -102,20 +100,20 @@ class ssl_context_helper_t
     //  Set hostname verification callback for RFC2818 verification
     //  This enables hostname verification against the server's certificate
     static bool set_hostname_verification (boost::asio::ssl::context &ctx,
-                                            const std::string &hostname);
+                                           const std::string &hostname);
 
     //  Configure server verification mode based on client cert requirement
     //  If require_client_cert is true, sets verify_peer | verify_fail_if_no_peer_cert
     //  If false, sets verify_none (optional client cert)
     static bool configure_server_verification (boost::asio::ssl::context &ctx,
-                                                bool require_client_cert);
+                                               bool require_client_cert);
 
     //  Get OpenSSL error string
     static std::string get_ssl_error_string ();
 };
 
-}  // namespace zlink
+} // namespace zlink
 
-#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
+#endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZLINK_SSL_CONTEXT_HELPER_HPP_INCLUDED__
+#endif // __ZLINK_SSL_CONTEXT_HELPER_HPP_INCLUDED__

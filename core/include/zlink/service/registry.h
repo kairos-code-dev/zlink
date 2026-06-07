@@ -30,25 +30,23 @@ ZLINK_EXPORT void *zlink_registry_new (void *ctx);
  * @param router_endpoint  ROUTER endpoint for receiving registrations.
  */
 ZLINK_EXPORT zlink_bind_result_t zlink_registry_bind (void *registry,
-                                      const char *pub_endpoint,
-                                      const char *router_endpoint);
+                                                      const char *pub_endpoint,
+                                                      const char *router_endpoint);
 
 /** @brief Set the registry unique ID (used for cluster configuration). */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_set_id (void *registry, uint32_t registry_id);
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_set (
-  void *registry,
-  zlink_registry_option_t option,
-  uint32_t value);
+ZLINK_EXPORT zlink_config_result_t zlink_registry_set (void *registry,
+                                                       zlink_registry_option_t option,
+                                                       uint32_t value);
 
-ZLINK_EXPORT uint32_t zlink_registry_get (
-  void *registry,
-  zlink_registry_option_t option,
-  zlink_config_result_t *error_out);
+ZLINK_EXPORT uint32_t zlink_registry_get (void *registry,
+                                          zlink_registry_option_t option,
+                                          zlink_config_result_t *error_out);
 
 /** @brief Add a peer registry PUB endpoint (for cluster synchronization). */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_add_peer (void *registry,
-                                      const char *peer_pub_endpoint);
+                                                            const char *peer_pub_endpoint);
 
 /**
  * @brief Set heartbeat interval and timeout.
@@ -59,15 +57,15 @@ ZLINK_EXPORT zlink_config_result_t zlink_registry_add_peer (void *registry,
  *                     milliseconds.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_set_heartbeat (void *registry,
-                                           uint32_t interval_ms,
-                                           uint32_t timeout_ms);
+                                                                 uint32_t interval_ms,
+                                                                 uint32_t timeout_ms);
 
 /**
  * @brief Set the service list broadcast interval in milliseconds.
  * Default is 30000 ms.
  */
 ZLINK_EXPORT zlink_config_result_t zlink_registry_set_broadcast_interval (void *registry,
-                                                    uint32_t interval_ms);
+                                                                          uint32_t interval_ms);
 
 /** @brief Destroy the registry and release all resources. */
 ZLINK_EXPORT zlink_close_result_t zlink_registry_destroy (void **registry_p);
@@ -105,19 +103,17 @@ typedef struct zlink_registry_service_summary_filter_t
     char channel_name[256];
 } zlink_registry_service_summary_filter_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_status (
-  void *registry_,
-  zlink_registry_status_t *out_);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_service_summary (
-  void *registry_,
-  const zlink_registry_service_summary_filter_t *filter_,
-  zlink_registry_service_summary_entry_t *entries_,
-  size_t *count_);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peers (
-  void *registry_,
-  const char *channel_name_,
-  zlink_member_peer_entry_t *entries_,
-  size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_registry_status (void *registry_,
+                                                          zlink_registry_status_t *out_);
+ZLINK_EXPORT zlink_config_result_t
+zlink_registry_service_summary (void *registry_,
+                                const zlink_registry_service_summary_filter_t *filter_,
+                                zlink_registry_service_summary_entry_t *entries_,
+                                size_t *count_);
+ZLINK_EXPORT zlink_config_result_t zlink_registry_member_peers (void *registry_,
+                                                                const char *channel_name_,
+                                                                zlink_member_peer_entry_t *entries_,
+                                                                size_t *count_);
 
 typedef struct zlink_registry_topology_entry_t
 {
@@ -147,20 +143,20 @@ typedef struct zlink_registry_topology_filter_t
     zlink_topology_source_t source;
 } zlink_registry_topology_filter_t;
 
-ZLINK_EXPORT zlink_config_result_t zlink_registry_topology (
-  void *registry,
-  const zlink_registry_topology_filter_t *filter,
-  zlink_registry_topology_entry_t *entries,
-  size_t *count);
+ZLINK_EXPORT zlink_config_result_t
+zlink_registry_topology (void *registry,
+                         const zlink_registry_topology_filter_t *filter,
+                         zlink_registry_topology_entry_t *entries,
+                         size_t *count);
 
 ZLINK_EXPORT void *zlink_registry_query_client_new (void *ctx);
 ZLINK_EXPORT zlink_connect_result_t zlink_registry_query_client_connect (void *client,
-                                                      const char *endpoint);
-ZLINK_EXPORT zlink_config_result_t zlink_registry_query_client_topology (
-  void *client,
-  const zlink_registry_topology_filter_t *filter,
-  zlink_registry_topology_entry_t *entries,
-  size_t *count);
+                                                                         const char *endpoint);
+ZLINK_EXPORT zlink_config_result_t
+zlink_registry_query_client_topology (void *client,
+                                      const zlink_registry_topology_filter_t *filter,
+                                      zlink_registry_topology_entry_t *entries,
+                                      size_t *count);
 
 ZLINK_EXPORT zlink_close_result_t zlink_registry_query_client_destroy (void **client_p);
 

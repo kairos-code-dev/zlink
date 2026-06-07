@@ -8,19 +8,14 @@
 #include "utils/err.hpp"
 
 zlink::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
-    object_t (ctx_, tid_),
-    _poller (NULL),
-    _sockets (0),
-    _terminating (false),
-    _done_sent (false)
+    object_t (ctx_, tid_), _poller (NULL), _sockets (0), _terminating (false), _done_sent (false)
 {
     if (!_mailbox.valid ())
         return;
 
     _poller = new (std::nothrow) poller_t (*ctx_);
     alloc_assert (_poller);
-    _mailbox.set_io_context (&_poller->get_io_context (),
-                             &reaper_t::mailbox_handler, this, NULL);
+    _mailbox.set_io_context (&_poller->get_io_context (), &reaper_t::mailbox_handler, this, NULL);
     _mailbox.schedule_if_needed ();
 
 #ifdef HAVE_FORK

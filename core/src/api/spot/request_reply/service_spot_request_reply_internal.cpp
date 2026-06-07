@@ -44,12 +44,10 @@ int current_process_id ()
 
 size_t hash_combine (size_t seed_, size_t value_)
 {
-    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6)
-                    + (seed_ >> 2));
+    return seed_ ^ (value_ + 0x9e3779b97f4a7c15ULL + (seed_ << 6) + (seed_ >> 2));
 }
 
-const bool spot_route_stats_on =
-  debug_env_enabled ("ZLINK_DEBUG_SPOT_ROUTE_STATS");
+const bool spot_route_stats_on = debug_env_enabled ("ZLINK_DEBUG_SPOT_ROUTE_STATS");
 
 bool spot_route_stats_enabled ()
 {
@@ -67,22 +65,17 @@ struct spot_route_stats_t
     {
         if (!spot_route_stats_enabled ())
             return;
-        const unsigned long long count =
-          publish_count.load (std::memory_order_relaxed);
-        const unsigned long long total_ns =
-          publish_ns.load (std::memory_order_relaxed);
+        const unsigned long long count = publish_count.load (std::memory_order_relaxed);
+        const unsigned long long total_ns = publish_ns.load (std::memory_order_relaxed);
         const unsigned long long avg_ns = count == 0 ? 0 : total_ns / count;
-        std::fprintf (stderr,
-                      "[spot-route-stats] publish count=%llu ns=%llu avg_ns=%llu\n",
-                      count, total_ns, avg_ns);
+        std::fprintf (stderr, "[spot-route-stats] publish count=%llu ns=%llu avg_ns=%llu\n", count,
+                      total_ns, avg_ns);
         std::fflush (stderr);
         char path[128];
-        spot_debug::route_publish_log_path (current_process_id (), path,
-                                            sizeof (path));
+        spot_debug::route_publish_log_path (current_process_id (), path, sizeof (path));
         FILE *fp = std::fopen (path, "a");
         if (fp) {
-            std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count,
-                          total_ns, avg_ns);
+            std::fprintf (fp, "count=%llu ns=%llu avg_ns=%llu\n", count, total_ns, avg_ns);
             std::fclose (fp);
         }
     }
@@ -93,10 +86,8 @@ spot_route_stats_t g_spot_route_stats;
 
 bool pending_spot_key_t::operator== (const pending_spot_key_t &other_) const
 {
-    return request_seq == other_.request_seq
-           && source_class == other_.source_class
-           && source_rid == other_.source_rid
-           && source_spot_rid == other_.source_spot_rid;
+    return request_seq == other_.request_seq && source_class == other_.source_class
+           && source_rid == other_.source_rid && source_spot_rid == other_.source_spot_rid;
 }
 
 bool pending_spot_key_t::operator< (const pending_spot_key_t &other_) const
@@ -115,8 +106,7 @@ size_t pending_spot_key_hash_t::operator() (const pending_spot_key_t &key_) cons
     size_t seed = std::hash<uint64_t> () (key_.request_seq);
     seed = hash_combine (seed, std::hash<uint8_t> () (key_.source_class));
     seed = hash_combine (seed, std::hash<std::string> () (key_.source_rid));
-    return hash_combine (seed,
-                         std::hash<std::string> () (key_.source_spot_rid));
+    return hash_combine (seed, std::hash<std::string> () (key_.source_spot_rid));
 }
 
 spot_dispatch_state_t::spot_dispatch_state_t () :
@@ -130,8 +120,7 @@ spot_dispatch_state_t::spot_dispatch_state_t () :
     memset (&active_info, 0, sizeof (active_info));
 }
 
-spot_channel_reply_source_t::spot_channel_reply_source_t (void *dealer_) :
-    dealer (dealer_)
+spot_channel_reply_source_t::spot_channel_reply_source_t (void *dealer_) : dealer (dealer_)
 {
 }
 
@@ -156,8 +145,8 @@ queued_spot_subscribe_message_t::queued_spot_subscribe_message_t (
     other_.parts.clear ();
 }
 
-queued_spot_subscribe_message_t &queued_spot_subscribe_message_t::operator= (
-  queued_spot_subscribe_message_t &&other_) noexcept
+queued_spot_subscribe_message_t &
+queued_spot_subscribe_message_t::operator= (queued_spot_subscribe_message_t &&other_) noexcept
 {
     if (this == &other_)
         return *this;
@@ -174,13 +163,11 @@ queued_spot_subscribe_message_t &queued_spot_subscribe_message_t::operator= (
     return *this;
 }
 
-spot_subscribe_dispatch_queue_t::spot_subscribe_dispatch_queue_t () :
-    closed (false)
+spot_subscribe_dispatch_queue_t::spot_subscribe_dispatch_queue_t () : closed (false)
 {
 }
 
-queued_routed_message_t::queued_routed_message_t () :
-    request_seq (0)
+queued_routed_message_t::queued_routed_message_t () : request_seq (0)
 {
     memset (&source_rid, 0, sizeof (source_rid));
     memset (&spot_rid, 0, sizeof (spot_rid));
@@ -192,8 +179,7 @@ queued_routed_message_t::~queued_routed_message_t ()
         zlink_msg_close (&parts[i]);
 }
 
-queued_routed_message_t::queued_routed_message_t (
-  queued_routed_message_t &&other_) noexcept :
+queued_routed_message_t::queued_routed_message_t (queued_routed_message_t &&other_) noexcept :
     source_rid (other_.source_rid),
     spot_rid (other_.spot_rid),
     request_seq (other_.request_seq),
@@ -205,8 +191,8 @@ queued_routed_message_t::queued_routed_message_t (
     other_.parts.clear ();
 }
 
-queued_routed_message_t &queued_routed_message_t::operator= (
-  queued_routed_message_t &&other_) noexcept
+queued_routed_message_t &
+queued_routed_message_t::operator= (queued_routed_message_t &&other_) noexcept
 {
     if (this == &other_)
         return *this;
@@ -226,9 +212,7 @@ queued_routed_message_t &queued_routed_message_t::operator= (
     return *this;
 }
 
-routed_message_queue_t::routed_message_queue_t () :
-    pending_count (0),
-    signal_armed (false)
+routed_message_queue_t::routed_message_queue_t () : pending_count (0), signal_armed (false)
 {
 }
 
@@ -241,24 +225,19 @@ spot_request_reply_recv_state_t::spot_request_reply_recv_state_t ()
 }
 
 spot_request_reply_completion_state_t::spot_request_reply_completion_state_t () :
-    pending_channel_requests (0),
-    phase (spot_request_reply_completion_open)
+    pending_channel_requests (0), phase (spot_request_reply_completion_open)
 {
 }
 
-spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) :
-    owner (owner_)
+spot_request_reply_state_t::spot_request_reply_state_t (void *owner_) : owner (owner_)
 {
 }
 
-router_spot_request_reply_request_state_t::
-  router_spot_request_reply_request_state_t ()
+router_spot_request_reply_request_state_t::router_spot_request_reply_request_state_t ()
 {
 }
 
-router_spot_request_reply_state_t::router_spot_request_reply_state_t (
-  void *owner_) :
-    owner (owner_)
+router_spot_request_reply_state_t::router_spot_request_reply_state_t (void *owner_) : owner (owner_)
 {
 }
 

@@ -35,8 +35,7 @@
 
 //  Workaround missing mstcpip.h in mingw32 (MinGW64 provides this)
 //  __MINGW64_VERSION_MAJOR is only defined when using in mingw-w64
-#if defined __MINGW32__ && !defined SIO_KEEPALIVE_VALS                         \
-  && !defined __MINGW64_VERSION_MAJOR
+#if defined __MINGW32__ && !defined SIO_KEEPALIVE_VALS && !defined __MINGW64_VERSION_MAJOR
 struct tcp_keepalive
 {
     u_long onoff;
@@ -67,7 +66,7 @@ static inline int poll (struct pollfd *pfd, unsigned long nfds, int timeout)
 //  In MSVC prior to v14, snprintf is not available
 //  The closest implementation is the _snprintf_s function
 #if defined(_MSC_VER) && _MSC_VER < 1900
-#define snprintf(buffer_, count_, format_, ...)                                \
+#define snprintf(buffer_, count_, format_, ...)                                                    \
     _snprintf_s (buffer_, count_, _TRUNCATE, format_, __VA_ARGS__)
 #endif
 

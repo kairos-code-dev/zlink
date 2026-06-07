@@ -9,10 +9,7 @@ namespace zlink
 {
 static const uint32_t registry_tag_value = 0x1e6700d5;
 
-registry_t::registry_t (ctx_t *ctx_) :
-    _ctx (ctx_),
-    _tag (registry_tag_value),
-    _lifecycle (ctx_)
+registry_t::registry_t (ctx_t *ctx_) : _ctx (ctx_), _tag (registry_tag_value), _lifecycle (ctx_)
 {
     zlink_assert (_ctx);
 

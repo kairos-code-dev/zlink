@@ -53,9 +53,7 @@ int zlink::dealer_t::sendpipe_to (pipe_t *pipe_, msg_t *msg_, int flags_)
     return 0;
 }
 
-void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
-                                  bool subscribe_to_all_,
-                                  bool locally_initiated_)
+void zlink::dealer_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
     LIBZLINK_UNUSED (locally_initiated_);
@@ -76,8 +74,7 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
     }
 
     {
-        std::lock_guard<std::recursive_mutex> dispatch_lock (
-          socket_msg_dispatch_mutex ());
+        std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
         _fq.attach (pipe_);
         if (socket_msg_dispatch_active ()) {
             pipe_->check_read ();
@@ -89,9 +86,7 @@ void zlink::dealer_t::xattach_pipe (pipe_t *pipe_,
         send_local_peer_weight (pipe_);
 }
 
-int zlink::dealer_t::xsetsockopt (int option_,
-                                const void *optval_,
-                                size_t optvallen_)
+int zlink::dealer_t::xsetsockopt (int option_, const void *optval_, size_t optvallen_)
 {
     const bool is_int = (optvallen_ == sizeof (int));
     int value = 0;
@@ -114,9 +109,7 @@ int zlink::dealer_t::xsetsockopt (int option_,
     return -1;
 }
 
-int zlink::dealer_t::xgetsockopt (int option_,
-                                  void *optval_,
-                                  size_t *optvallen_)
+int zlink::dealer_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
 {
     if (option_ == ZLINK_INTERNAL_OPT_PROBE_ROUTER) {
         if (!optval_ || !optvallen_ || *optvallen_ != sizeof (int)) {
@@ -158,18 +151,13 @@ bool zlink::dealer_t::xhas_out ()
 
 void zlink::dealer_t::xread_activated (pipe_t *pipe_)
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (
-      socket_msg_dispatch_mutex ());
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
     _fq.activated (pipe_);
     if (!socket_msg_dispatch_active ())
         return;
     zlink::drain_socket_dispatch_loop (
-      [this] (msg_t *msg_, pipe_t **pipe_out_) {
-          return recvpipe (msg_, pipe_out_);
-      },
-      [this] (msg_t *msg_, pipe_t *pipe_) {
-          return xsocket_msg_dispatch (msg_, pipe_);
-      });
+      [this] (msg_t *msg_, pipe_t **pipe_out_) { return recvpipe (msg_, pipe_out_); },
+      [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
 }
 
 void zlink::dealer_t::xwrite_activated (pipe_t *pipe_)
@@ -199,9 +187,7 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
         return 0;
 
     store_socket_msg_part (&_dispatch_parts, msg_);
-    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags ()
-         & msg_t::more)
-        != 0) {
+    if ((reinterpret_cast<msg_t *> (&_dispatch_parts.back ())->flags () & msg_t::more) != 0) {
         return 1;
     }
 
@@ -213,8 +199,7 @@ int zlink::dealer_t::xsocket_msg_dispatch (msg_t *msg_, pipe_t *pipe_)
 
     zlink_routing_id_t source_rid;
     resolve_socket_msg_source_rid (pipe_, &source_rid);
-    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0],
-                               _dispatch_parts.size ());
+    invoke_socket_msg_handler (handler, &source_rid, &_dispatch_parts[0], _dispatch_parts.size ());
     _dispatch_parts.clear ();
     return 1;
 }
@@ -234,24 +219,18 @@ void zlink::dealer_t::xlocal_peer_weight_changed ()
 
 void zlink::dealer_t::xarm_socket_msg_dispatch ()
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (
-      socket_msg_dispatch_mutex ());
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
     _fq.arm_dispatch ();
 }
 
 void zlink::dealer_t::xdispatch_io ()
 {
-    std::lock_guard<std::recursive_mutex> dispatch_lock (
-      socket_msg_dispatch_mutex ());
+    std::lock_guard<std::recursive_mutex> dispatch_lock (socket_msg_dispatch_mutex ());
     if (!socket_msg_dispatch_active ())
         return;
     zlink::drain_socket_dispatch_loop (
-      [this] (msg_t *msg_, pipe_t **pipe_out_) {
-          return recvpipe (msg_, pipe_out_);
-      },
-      [this] (msg_t *msg_, pipe_t *pipe_) {
-          return xsocket_msg_dispatch (msg_, pipe_);
-      });
+      [this] (msg_t *msg_, pipe_t **pipe_out_) { return recvpipe (msg_, pipe_out_); },
+      [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
 }
 
 int zlink::dealer_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)

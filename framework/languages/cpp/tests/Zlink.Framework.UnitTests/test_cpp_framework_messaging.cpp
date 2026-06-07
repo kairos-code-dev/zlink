@@ -19,7 +19,10 @@ namespace
 class sample_call_t : public zlink::framework::detail::call_facade_t<sample_call_t, int>
 {
   public:
-    explicit sample_call_t (int value) : call_facade_t (zlink::framework::result_t<int>::success (value)) {}
+    explicit sample_call_t (int value) :
+        call_facade_t (zlink::framework::result_t<int>::success (value))
+    {
+    }
 };
 
 struct envelope_payload_t
@@ -34,18 +37,25 @@ int main ()
     {
         zlink::framework::serializer_registry_t serializers;
         serializers.add<envelope_payload_t> (
-          [] (const envelope_payload_t &payload) { return zlink::message_t::from (std::to_string (payload.value)); },
-          [] (const zlink::message_t &message) { return envelope_payload_t{std::stoi (message.to_string ())}; });
+          [] (const envelope_payload_t &payload) {
+              return zlink::message_t::from (std::to_string (payload.value));
+          },
+          [] (const zlink::message_t &message) {
+              return envelope_payload_t{std::stoi (message.to_string ())};
+          });
 
         zlink::framework::runtime::messaging::client_call_codec_t client_codec;
-        const auto header = client_codec.create_envelope (zlink::framework::runtime::messaging::message_kind_t::request,
-                                                          "profile", "EnvelopePayload", std::chrono::milliseconds (10),
-                                                          std::string ("lookup"), std::string ("client"));
-        const auto parts = client_codec.encode_envelope_parts (header, envelope_payload_t{42}, serializers);
+        const auto header = client_codec.create_envelope (
+          zlink::framework::runtime::messaging::message_kind_t::request, "profile",
+          "EnvelopePayload", std::chrono::milliseconds (10), std::string ("lookup"),
+          std::string ("client"));
+        const auto parts =
+          client_codec.encode_envelope_parts (header, envelope_payload_t{42}, serializers);
         zlink::framework::runtime::messaging::envelope_codec_t envelope_codec;
         const auto decoded_header = envelope_codec.decode_header (parts);
         if (!decoded_header
-            || decoded_header.value ().kind != zlink::framework::runtime::messaging::message_kind_t::request
+            || decoded_header.value ().kind
+                 != zlink::framework::runtime::messaging::message_kind_t::request
             || decoded_header.value ().channel_name != "profile"
             || decoded_header.value ().message_name != "EnvelopePayload"
             || decoded_header.value ().content_type != "application/json"
@@ -55,7 +65,9 @@ int main ()
             return 11;
         }
         const auto decoded_body = envelope_codec.decode_body (parts);
-        if (!decoded_body || serializers.get<envelope_payload_t> ().deserialize (decoded_body.value ()).value != 42) {
+        if (!decoded_body
+            || serializers.get<envelope_payload_t> ().deserialize (decoded_body.value ()).value
+                 != 42) {
             return 12;
         }
 
@@ -64,8 +76,8 @@ int main ()
         reply_header.channel_name = "profile";
         reply_header.message_name = "EnvelopePayload";
         reply_header.correlation_id = header.correlation_id;
-        const auto reply =
-          envelope_codec.encode_raw_body_parts (reply_header, zlink::message_t::from (std::string ("7")));
+        const auto reply = envelope_codec.encode_raw_body_parts (
+          reply_header, zlink::message_t::from (std::string ("7")));
         const auto reply_result = client_codec.decode_envelope_reply<envelope_payload_t> (
           reply, serializers, "empty reply", "reply failed", "profile request");
         if (!reply_result || reply_result.value ().value != 7) {
@@ -78,11 +90,13 @@ int main ()
         error_header.message_name = "EnvelopePayload";
         error_header.error_code = "route_not_connected";
         error_header.error_message = "route is down";
-        const auto error_reply =
-          envelope_codec.encode_raw_body_parts (error_header, zlink::message_t::from (std::string{}));
+        const auto error_reply = envelope_codec.encode_raw_body_parts (
+          error_header, zlink::message_t::from (std::string{}));
         const auto error_result = client_codec.decode_envelope_reply<envelope_payload_t> (
           error_reply, serializers, "empty reply", "reply failed", "profile request");
-        if (error_result || error_result.error_kind () != zlink::framework::framework_error_kind_t::route_not_connected
+        if (error_result
+            || error_result.error_kind ()
+                 != zlink::framework::framework_error_kind_t::route_not_connected
             || error_result.error () == nullptr || !error_result.error ()->is_retriable ()) {
             return 14;
         }
@@ -102,12 +116,14 @@ int main ()
         }
         const auto timed_out = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::timed_out, "profile request");
-        if (timed_out.kind () != zlink::framework::framework_error_kind_t::timeout || timed_out.is_retriable ()) {
+        if (timed_out.kind () != zlink::framework::framework_error_kind_t::timeout
+            || timed_out.is_retriable ()) {
             return 18;
         }
-        const auto busy =
-          mapper.completion_exception (zlink::framework::runtime::messaging::request_result_t::busy, "profile request");
-        if (busy.kind () != zlink::framework::framework_error_kind_t::request_rejected || !busy.is_retriable ()) {
+        const auto busy = mapper.completion_exception (
+          zlink::framework::runtime::messaging::request_result_t::busy, "profile request");
+        if (busy.kind () != zlink::framework::framework_error_kind_t::request_rejected
+            || !busy.is_retriable ()) {
             return 15;
         }
         const auto conflict = mapper.completion_exception (
@@ -115,9 +131,11 @@ int main ()
         const auto rejected = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::rejected, "profile request");
         const auto protocol = mapper.completion_exception (
-          zlink::framework::runtime::messaging::request_result_t::protocol_error, "profile request");
+          zlink::framework::runtime::messaging::request_result_t::protocol_error,
+          "profile request");
         const auto invalid_argument = mapper.completion_exception (
-          zlink::framework::runtime::messaging::request_result_t::invalid_argument, "profile request");
+          zlink::framework::runtime::messaging::request_result_t::invalid_argument,
+          "profile request");
         const auto invalid_state = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::invalid_state, "profile request");
         const auto not_supported = mapper.completion_exception (
@@ -125,8 +143,10 @@ int main ()
         const auto terminated = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::terminated, "profile request");
         const auto internal_error = mapper.completion_exception (
-          zlink::framework::runtime::messaging::request_result_t::internal_error, "profile request");
-        if (conflict.kind () != zlink::framework::framework_error_kind_t::request_rejected || !conflict.is_retriable ()
+          zlink::framework::runtime::messaging::request_result_t::internal_error,
+          "profile request");
+        if (conflict.kind () != zlink::framework::framework_error_kind_t::request_rejected
+            || !conflict.is_retriable ()
             || rejected.kind () != zlink::framework::framework_error_kind_t::request_rejected
             || rejected.is_retriable ()
             || protocol.kind () != zlink::framework::framework_error_kind_t::request_protocol_error
@@ -137,33 +157,44 @@ int main ()
             || internal_error.kind () != zlink::framework::framework_error_kind_t::request_failed) {
             return 22;
         }
-        const auto timeout_header = mapper.error_header_exception ("timeout", "", "profile request");
+        const auto timeout_header =
+          mapper.error_header_exception ("timeout", "", "profile request");
         const auto timeout_with_message =
           mapper.error_header_exception ("timeout", "explicit timeout", "profile request");
-        const auto route_header = mapper.error_header_exception ("route_not_connected", "", "profile request");
-        const auto not_found_header = mapper.error_header_exception ("request_target_not_found", "", "profile request");
-        const auto unknown_header = mapper.error_header_exception ("unknown", "", "profile request");
-        const auto unknown_with_message = mapper.error_header_exception ("unknown", "explicit", "profile request");
+        const auto route_header =
+          mapper.error_header_exception ("route_not_connected", "", "profile request");
+        const auto not_found_header =
+          mapper.error_header_exception ("request_target_not_found", "", "profile request");
+        const auto unknown_header =
+          mapper.error_header_exception ("unknown", "", "profile request");
+        const auto unknown_with_message =
+          mapper.error_header_exception ("unknown", "explicit", "profile request");
         if (timeout_header.kind () != zlink::framework::framework_error_kind_t::timeout
             || std::string (timeout_with_message.what ()) != "explicit timeout"
             || route_header.kind () != zlink::framework::framework_error_kind_t::route_not_connected
             || !route_header.is_retriable ()
-            || not_found_header.kind () != zlink::framework::framework_error_kind_t::request_target_not_found
+            || not_found_header.kind ()
+                 != zlink::framework::framework_error_kind_t::request_target_not_found
             || unknown_header.kind () != zlink::framework::framework_error_kind_t::request_failed
             || std::string (unknown_with_message.what ()) != "explicit") {
             return 23;
         }
-        const auto rejected_header = mapper.error_header_exception ("request_rejected", "", "profile request");
+        const auto rejected_header =
+          mapper.error_header_exception ("request_rejected", "", "profile request");
         if (rejected_header.kind () != zlink::framework::framework_error_kind_t::request_rejected
             || rejected_header.is_retriable ()) {
             return 19;
         }
-        const auto protocol_header = mapper.error_header_exception ("request_protocol_error", "", "profile request");
-        if (protocol_header.kind () != zlink::framework::framework_error_kind_t::request_protocol_error) {
+        const auto protocol_header =
+          mapper.error_header_exception ("request_protocol_error", "", "profile request");
+        if (protocol_header.kind ()
+            != zlink::framework::framework_error_kind_t::request_protocol_error) {
             return 20;
         }
-        const auto missing_handler_header = mapper.error_header_exception ("handler_not_found", "", "profile request");
-        if (missing_handler_header.kind () != zlink::framework::framework_error_kind_t::handler_not_found) {
+        const auto missing_handler_header =
+          mapper.error_header_exception ("handler_not_found", "", "profile request");
+        if (missing_handler_header.kind ()
+            != zlink::framework::framework_error_kind_t::handler_not_found) {
             return 21;
         }
     }
@@ -172,8 +203,10 @@ int main ()
     using zlink::framework::runtime::messaging::submit_queue_t;
 
     bool callback_seen = false;
-    auto callback_operation = sample_call_t (42).submit (
-      [&] (zlink::framework::result_t<int> result) { callback_seen = result.has_value () && result.value () == 42; });
+    auto callback_operation =
+      sample_call_t (42).submit ([&] (zlink::framework::result_t<int> result) {
+          callback_seen = result.has_value () && result.value () == 42;
+      });
     if (!callback_seen || !callback_operation.valid () || !callback_operation.completed ()
         || callback_operation.cancel ()) {
         return 1;
@@ -188,7 +221,8 @@ int main ()
       },
       std::nullopt, [&] { ++wake_count; });
     auto command_operation = command.operation ();
-    if (!command.try_submit () || !command_submitted || !command_operation.completed () || wake_count != 1) {
+    if (!command.try_submit () || !command_submitted || !command_operation.completed ()
+        || wake_count != 1) {
         return 2;
     }
 
@@ -243,10 +277,11 @@ int main ()
         return 7;
     }
 
-    auto expired = pending_submit_t::create_command ([] { return true; },
-                                                     pending_submit_t::clock_t::now () - std::chrono::milliseconds (1));
+    auto expired = pending_submit_t::create_command (
+      [] { return true; }, pending_submit_t::clock_t::now () - std::chrono::milliseconds (1));
     auto expired_operation = expired.operation ();
-    if (expired.try_submit () || !expired_operation.completed () || expired_operation.cancelled ()) {
+    if (expired.try_submit () || !expired_operation.completed ()
+        || expired_operation.cancelled ()) {
         return 8;
     }
 

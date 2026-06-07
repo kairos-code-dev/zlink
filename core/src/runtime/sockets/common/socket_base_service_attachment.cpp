@@ -73,8 +73,7 @@ int zlink::socket_base_t::close (int handoff_timeout_ms_)
     if (_service_attachment && _service_attachment->on_public_close () != 0)
         return -1;
 
-    const bool from_self_callback =
-      socket_send_ready_dispatch_scope_t::dispatching_socket (this);
+    const bool from_self_callback = socket_send_ready_dispatch_scope_t::dispatching_socket (this);
     if (!lifecycle_coordinator ().begin_close_or_fail_busy (from_self_callback))
         return -1;
     if (from_self_callback)
@@ -87,8 +86,7 @@ int zlink::socket_base_t::close (int handoff_timeout_ms_)
 int zlink::socket_base_t::attach_discovery (discovery_t *discovery_)
 {
     if (!_service_attachment) {
-        _service_attachment = new (std::nothrow)
-          socket_discovery_attachment_t (this);
+        _service_attachment = new (std::nothrow) socket_discovery_attachment_t (this);
         if (!_service_attachment) {
             errno = ENOMEM;
             return -1;

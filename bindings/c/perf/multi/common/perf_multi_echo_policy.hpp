@@ -8,7 +8,8 @@
 #include <chrono>
 #include <vector>
 
-namespace perf_multi_echo_policy {
+namespace perf_multi_echo_policy
+{
 
 // Structural contract:
 // - state: fatal, fatal_errno, collect_active, active_run_id,
@@ -36,13 +37,11 @@ template <typename State> inline void echo_mark_fatal (State *state, int err)
         return;
 
     state->fatal.store (true, std::memory_order_release);
-    state->fatal_errno.store (
-      err != 0 ? err : EIO, std::memory_order_release);
+    state->fatal_errno.store (err != 0 ? err : EIO, std::memory_order_release);
 }
 
-inline double echo_percentile_from_sorted (
-  const std::vector<double> &sorted_samples,
-  double quantile)
+inline double echo_percentile_from_sorted (const std::vector<double> &sorted_samples,
+                                           double quantile)
 {
     if (sorted_samples.empty ())
         return 0.0;
@@ -51,13 +50,11 @@ inline double echo_percentile_from_sorted (
     if (quantile >= 1.0)
         return sorted_samples.back ();
 
-    const double pos =
-      (static_cast<double> (sorted_samples.size ()) - 1.0) * quantile;
+    const double pos = (static_cast<double> (sorted_samples.size ()) - 1.0) * quantile;
     const size_t lo = static_cast<size_t> (pos);
     const size_t hi = lo + 1 < sorted_samples.size () ? lo + 1 : lo;
     const double frac = pos - static_cast<double> (lo);
-    return sorted_samples[lo]
-           + (sorted_samples[hi] - sorted_samples[lo]) * frac;
+    return sorted_samples[lo] + (sorted_samples[hi] - sorted_samples[lo]) * frac;
 }
 
 template <typename State>
@@ -73,11 +70,8 @@ inline void echo_reset_active_metrics (State *state, uint32_t run_id, size_t msg
 }
 
 template <typename Slot>
-inline void echo_configure_phase_slot (Slot *slot,
-                                       uint32_t run_id,
-                                       size_t msg_size,
-                                       perf_multi_metric::phase_t phase,
-                                       bool send_enabled)
+inline void echo_configure_phase_slot (
+  Slot *slot, uint32_t run_id, size_t msg_size, perf_multi_metric::phase_t phase, bool send_enabled)
 {
     slot->run_id = run_id;
     slot->msg_size = msg_size;
@@ -111,11 +105,10 @@ inline void echo_append_slot_latency (const Slot *slot,
         slot->latency.append_samples (latency_samples_out);
 }
 
-inline bool echo_finalize_latency_stats (
-  unsigned long long latency_count,
-  double latency_sum_ns,
-  std::vector<double> &latency_samples,
-  bench_latency_stats_t *latency_out)
+inline bool echo_finalize_latency_stats (unsigned long long latency_count,
+                                         double latency_sum_ns,
+                                         std::vector<double> &latency_samples,
+                                         bench_latency_stats_t *latency_out)
 {
     if (!latency_out)
         return latency_count > 0;
@@ -125,8 +118,7 @@ inline bool echo_finalize_latency_stats (
         return false;
     }
 
-    latency_out->mean_ns =
-      latency_sum_ns / static_cast<double> (latency_count);
+    latency_out->mean_ns = latency_sum_ns / static_cast<double> (latency_count);
     if (latency_samples.empty ()) {
         latency_out->p95_ns = latency_out->mean_ns;
         latency_out->p99_ns = latency_out->mean_ns;
@@ -134,10 +126,8 @@ inline bool echo_finalize_latency_stats (
     }
 
     std::sort (latency_samples.begin (), latency_samples.end ());
-    latency_out->p95_ns =
-      echo_percentile_from_sorted (latency_samples, 0.95);
-    latency_out->p99_ns =
-      echo_percentile_from_sorted (latency_samples, 0.99);
+    latency_out->p95_ns = echo_percentile_from_sorted (latency_samples, 0.95);
+    latency_out->p99_ns = echo_percentile_from_sorted (latency_samples, 0.99);
     return true;
 }
 
@@ -163,15 +153,12 @@ inline bool echo_run_two_phase_request_flow (State *state,
     reset_fn ();
     active_start_fn ();
     configure_fn (perf_multi_metric::phase_active, true);
-    if (!echo_start_phase_requests (state,
-                                    timeout_ms,
-                                    seed_fn,
+    if (!echo_start_phase_requests (state, timeout_ms, seed_fn,
                                     [&] (State *, int slice_ms, bool *progressed) {
                                         return service_fn (slice_ms, progressed);
                                     }))
         return false;
-    if (!echo_wait_phase_duration (state,
-                                   active_seconds,
+    if (!echo_wait_phase_duration (state, active_seconds,
                                    [&] (State *, int slice_ms, bool *progressed) {
                                        return service_fn (slice_ms, progressed);
                                    }))
@@ -180,28 +167,25 @@ inline bool echo_run_two_phase_request_flow (State *state,
     return true;
 }
 
-inline bool echo_emit_client_results (
-  const char *pattern,
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  int duration_seconds,
-  bool fatal,
-  unsigned long long active_received,
-  unsigned long long latency_count,
-  const bench_latency_stats_t &latency)
+inline bool echo_emit_client_results (const char *pattern,
+                                      const std::string &lib_name,
+                                      const std::string &transport,
+                                      size_t msg_size,
+                                      int duration_seconds,
+                                      bool fatal,
+                                      unsigned long long active_received,
+                                      unsigned long long latency_count,
+                                      const bench_latency_stats_t &latency)
 {
-    if (!pattern || duration_seconds <= 0 || fatal || active_received == 0
-        || latency_count == 0) {
+    if (!pattern || duration_seconds <= 0 || fatal || active_received == 0 || latency_count == 0) {
         errno = EINVAL;
         return false;
     }
 
     const double throughput =
-      static_cast<double> (active_received)
-      / static_cast<double> (duration_seconds);
-    perf_multi_client::print_client_result_lines (
-      pattern, lib_name, transport, msg_size, throughput, latency);
+      static_cast<double> (active_received) / static_cast<double> (duration_seconds);
+    perf_multi_client::print_client_result_lines (pattern, lib_name, transport, msg_size,
+                                                  throughput, latency);
     return true;
 }
 
@@ -215,8 +199,7 @@ inline bool echo_start_phase_requests (State *state,
         return false;
 
     const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (1, timeout_ms));
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (1, timeout_ms));
 
     while (std::chrono::steady_clock::now () < deadline) {
         bool all_started = false;
@@ -228,8 +211,7 @@ inline bool echo_start_phase_requests (State *state,
         if (all_started)
             return true;
 
-        const int remaining_ms = perf_multi_client::remaining_poll_timeout_ms (
-          deadline);
+        const int remaining_ms = perf_multi_client::remaining_poll_timeout_ms (deadline);
         if (remaining_ms <= 0)
             break;
 
@@ -242,24 +224,20 @@ inline bool echo_start_phase_requests (State *state,
 }
 
 template <typename State, typename ServiceFn>
-inline bool echo_wait_phase_duration (State *state,
-                                      double seconds,
-                                      const ServiceFn &service_fn)
+inline bool echo_wait_phase_duration (State *state, double seconds, const ServiceFn &service_fn)
 {
     if (!state)
         return false;
     if (seconds <= 0.0)
         return true;
 
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-          std::chrono::duration<double> (seconds));
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                            std::chrono::duration<double> (seconds));
 
     while (!state->fatal.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < deadline) {
-        const int remaining_ms = perf_multi_client::remaining_poll_timeout_ms (
-          deadline);
+        const int remaining_ms = perf_multi_client::remaining_poll_timeout_ms (deadline);
         if (remaining_ms <= 0)
             break;
 

@@ -21,7 +21,8 @@ int main ()
     subscriber.set_subscription (topic);
 
     zlink::subscription_event_t event;
-    assert (publisher.receive_subscription_event (event) == static_cast<int> (zlink::recv_result_t::ok));
+    assert (publisher.receive_subscription_event (event)
+            == static_cast<int> (zlink::recv_result_t::ok));
     assert (event.subscribed);
     assert (event.topic == topic);
 
@@ -36,8 +37,8 @@ int main ()
     const std::string received = inbound.parts ()[0].to_string ();
     assert (received == detail::k_pubsub_payload);
     inbound.close ();
-    std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n", topic.c_str (), sent.c_str (),
-                 topic.c_str (), received.c_str ());
+    std::printf ("[pubsub/recv] publish: \"%s/%s\" → subscribe: \"%s/%s\"\n", topic.c_str (),
+                 sent.c_str (), topic.c_str (), received.c_str ());
     return 0;
     // --8<-- [end:doc]
 }

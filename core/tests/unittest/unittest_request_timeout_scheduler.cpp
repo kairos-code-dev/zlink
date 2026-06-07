@@ -41,9 +41,8 @@ void wait_until_entered (callback_state_t *state_)
     void *watch = zlink_stopwatch_start ();
     while (state_->entered.load (std::memory_order_relaxed) == 0) {
         msleep (1);
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (
-          timeout_ms, zlink_stopwatch_intermediate (watch),
-          "Timeout waiting for request timeout handler");
+        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (timeout_ms, zlink_stopwatch_intermediate (watch),
+                                           "Timeout waiting for request timeout handler");
     }
     zlink_stopwatch_stop (watch);
 }
@@ -62,8 +61,7 @@ void test_cancel_before_deadline_prevents_handler_and_runs_cleanup ()
     callback_state_t state;
 
     std::shared_ptr<zlink::request_timeout::task_t> task =
-      zlink::request_timeout::schedule (100, timeout_handler, &state,
-                                        cleanup_handler);
+      zlink::request_timeout::schedule (100, timeout_handler, &state, cleanup_handler);
     TEST_ASSERT_TRUE (task.get () != NULL);
 
     zlink::request_timeout::cancel (task);
@@ -73,8 +71,7 @@ void test_cancel_before_deadline_prevents_handler_and_runs_cleanup ()
 
     TEST_ASSERT_EQUAL_INT (0, state.entered.load (std::memory_order_relaxed));
     TEST_ASSERT_EQUAL_INT (0, state.finished.load (std::memory_order_relaxed));
-    TEST_ASSERT_EQUAL_INT (1,
-                           state.cleanup_count.load (std::memory_order_relaxed));
+    TEST_ASSERT_EQUAL_INT (1, state.cleanup_count.load (std::memory_order_relaxed));
 }
 
 void test_cancel_while_handler_is_firing_waits_for_handler_completion ()
@@ -82,8 +79,7 @@ void test_cancel_while_handler_is_firing_waits_for_handler_completion ()
     callback_state_t state;
 
     std::shared_ptr<zlink::request_timeout::task_t> task =
-      zlink::request_timeout::schedule (1, timeout_handler, &state,
-                                        cleanup_handler);
+      zlink::request_timeout::schedule (1, timeout_handler, &state, cleanup_handler);
     TEST_ASSERT_TRUE (task.get () != NULL);
 
     wait_until_entered (&state);
@@ -93,8 +89,7 @@ void test_cancel_while_handler_is_firing_waits_for_handler_completion ()
 
     TEST_ASSERT_EQUAL_INT (1, state.entered.load (std::memory_order_relaxed));
     TEST_ASSERT_EQUAL_INT (1, state.finished.load (std::memory_order_relaxed));
-    TEST_ASSERT_EQUAL_INT (0,
-                           state.cleanup_count.load (std::memory_order_relaxed));
+    TEST_ASSERT_EQUAL_INT (0, state.cleanup_count.load (std::memory_order_relaxed));
 }
 
 int main (void)
@@ -103,8 +98,7 @@ int main (void)
 
     setup_test_environment ();
 
-    RUN_TEST (
-      test_cancel_before_deadline_prevents_handler_and_runs_cleanup);
+    RUN_TEST (test_cancel_before_deadline_prevents_handler_and_runs_cleanup);
     RUN_TEST (test_cancel_while_handler_is_firing_waits_for_handler_completion);
 
     return UNITY_END ();

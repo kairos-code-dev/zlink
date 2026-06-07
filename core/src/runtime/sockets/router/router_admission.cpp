@@ -13,12 +13,9 @@
 
 namespace
 {
-const bool router_debug_on =
-  zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
+const bool router_debug_on = zlink::debug_env_enabled ("ZLINK_ROUTER_DEBUG");
 
-void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
-                                   char *buf_,
-                                   size_t buf_size_)
+void format_blob_routing_id_debug (const zlink::blob_t &routing_id_, char *buf_, size_t buf_size_)
 {
     if (!buf_ || buf_size_ == 0)
         return;
@@ -31,9 +28,7 @@ void format_blob_routing_id_debug (const zlink::blob_t &routing_id_,
     for (size_t i = 0; i < routing_id_.size () && used + 4 < buf_size_; ++i) {
         const unsigned char c = routing_id_.data ()[i];
         const int rc = std::snprintf (buf_ + used, buf_size_ - used, "%c%02X",
-                                      (c >= 32 && c <= 126)
-                                        ? static_cast<char> (c)
-                                        : '.',
+                                      (c >= 32 && c <= 126) ? static_cast<char> (c) : '.',
                                       static_cast<unsigned> (c));
         if (rc <= 0)
             break;
@@ -60,9 +55,8 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     if (locally_initiated_ && connect_routing_id_is_set ()) {
         const std::string connect_routing_id = extract_connect_routing_id ();
-        routing_id.set (
-          reinterpret_cast<const unsigned char *> (connect_routing_id.c_str ()),
-          connect_routing_id.length ());
+        routing_id.set (reinterpret_cast<const unsigned char *> (connect_routing_id.c_str ()),
+                        connect_routing_id.length ());
     } else {
         msg.init ();
         const bool ok = pipe_->read (&msg);
@@ -75,12 +69,10 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
             routing_id.set (buf, sizeof buf);
             msg.close ();
         } else {
-            routing_id.set (static_cast<unsigned char *> (msg.data ()),
-                            msg.size ());
+            routing_id.set (static_cast<unsigned char *> (msg.data ()), msg.size ());
             msg.close ();
 
-            const out_pipe_t *const existing_outpipe =
-              lookup_out_pipe (routing_id);
+            const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id);
 
             if (existing_outpipe) {
                 if (!_handover)
@@ -106,13 +98,10 @@ bool router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         }
     }
 
-    return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id),
-                                  locally_initiated_);
+    return adopt_peer_routing_id (pipe_, ZLINK_MOVE (routing_id), locally_initiated_);
 }
 
-bool router_t::adopt_peer_routing_id (pipe_t *pipe_,
-                                      blob_t routing_id_,
-                                      bool locally_initiated_)
+bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool locally_initiated_)
 {
     const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id_);
     if (existing_outpipe) {
@@ -128,8 +117,7 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_,
 
         erase_out_pipe (old_pipe);
         old_pipe->set_router_socket_routing_id (new_routing_id);
-        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe,
-                      existing_outpipe->locally_initiated);
+        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, existing_outpipe->locally_initiated);
 
         if (old_pipe == _current_in)
             _terminate_current_in = true;
@@ -141,10 +129,8 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_,
     add_out_pipe (ZLINK_MOVE (routing_id_), pipe_, locally_initiated_);
     if (router_debug_enabled ()) {
         char rid_text[160];
-        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text,
-                                      sizeof (rid_text));
-        fprintf (stderr, "router identify_peer: add out pipe rid=%s\n",
-                 rid_text);
+        format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text, sizeof (rid_text));
+        fprintf (stderr, "router identify_peer: add out pipe rid=%s\n", rid_text);
     }
     if (local_peer_weight () != 100)
         send_local_peer_weight (pipe_);

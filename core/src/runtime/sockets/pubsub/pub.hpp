@@ -15,9 +15,7 @@ class msg_t;
 class pub_t ZLINK_FINAL : public xpub_t
 {
   public:
-    pub_t (zlink::ctx_t *parent_,
-           uint32_t tid_,
-           int sid_);
+    pub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~pub_t ();
 
     //  Implementations of virtual functions from socket_base_t.

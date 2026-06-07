@@ -28,11 +28,7 @@ const char *g_self_path = NULL;
 struct process_capture_t
 {
     process_capture_t () :
-        pid (-1),
-        stdout_file (NULL),
-        stderr_file (NULL),
-        stdout_done (false),
-        stderr_done (false)
+        pid (-1), stdout_file (NULL), stderr_file (NULL), stdout_done (false), stderr_done (false)
     {
     }
 
@@ -145,8 +141,7 @@ bool start_process (const std::string &path_,
         std::vector<std::string> env_storage;
         for (char **it = environ; it && *it; ++it)
             env_storage.push_back (*it);
-        env_storage.insert (env_storage.end (), env_overrides_.begin (),
-                            env_overrides_.end ());
+        env_storage.insert (env_storage.end (), env_overrides_.begin (), env_overrides_.end ());
 
         std::vector<char *> envp;
         for (size_t i = 0; i < env_storage.size (); ++i)
@@ -174,10 +169,8 @@ bool start_process (const std::string &path_,
         return false;
     }
 
-    out_->stdout_thread =
-      std::thread (&reader_loop, out_->stdout_file, out_, true);
-    out_->stderr_thread =
-      std::thread (&reader_loop, out_->stderr_file, out_, false);
+    out_->stdout_thread = std::thread (&reader_loop, out_->stdout_file, out_, true);
+    out_->stderr_thread = std::thread (&reader_loop, out_->stderr_file, out_, false);
     return true;
 }
 
@@ -243,9 +236,8 @@ bool parse_spot_throughput (const std::vector<std::string> &lines_,
     if (!transport_ || !msg_size_ || !throughput_out_)
         return false;
 
-    const std::string prefix = std::string ("RESULT,current,SPOT,")
-                               + transport_ + "," + msg_size_
-                               + ",throughput,";
+    const std::string prefix =
+      std::string ("RESULT,current,SPOT,") + transport_ + "," + msg_size_ + ",throughput,";
     for (size_t i = 0; i < lines_.size (); ++i) {
         const std::string &line = lines_[i];
         if (line.compare (0, prefix.size (), prefix) != 0)
@@ -282,23 +274,19 @@ double run_single_spot_process_case (const char *self_path_,
     env.push_back (std::string ("PERF_RECV_MODE=") + recv_mode_);
     {
         char buf[32];
-        snprintf (buf, sizeof (buf), "PERF_SINGLE_DURATION_SECONDS=%d",
-                  duration_seconds_);
+        snprintf (buf, sizeof (buf), "PERF_SINGLE_DURATION_SECONDS=%d", duration_seconds_);
         env.push_back (buf);
     }
     {
         char buf[32];
-        snprintf (buf, sizeof (buf), "PERF_SINGLE_WARMUP_SECONDS=%d",
-                  warmup_seconds_);
+        snprintf (buf, sizeof (buf), "PERF_SINGLE_WARMUP_SECONDS=%d", warmup_seconds_);
         env.push_back (buf);
     }
 
-    TEST_ASSERT_TRUE_MESSAGE (start_process (path, args, env, &proc),
-                              path.c_str ());
+    TEST_ASSERT_TRUE_MESSAGE (start_process (path, args, env, &proc), path.c_str ());
 
     int rc = INT_MIN;
-    const int timeout_ms =
-      std::max (60000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
+    const int timeout_ms = std::max (60000, (duration_seconds_ + warmup_seconds_ + 10) * 1000);
     TEST_ASSERT_TRUE_MESSAGE (wait_for_exit_code (&proc, timeout_ms, &rc),
                               capture_debug_text (&proc).c_str ());
     close_process_capture (&proc);
@@ -309,8 +297,7 @@ double run_single_spot_process_case (const char *self_path_,
 
     double throughput = 0.0;
     TEST_ASSERT_TRUE_MESSAGE (
-      parse_spot_throughput (proc.stdout_lines, transport_, msg_size_,
-                             &throughput),
+      parse_spot_throughput (proc.stdout_lines, transport_, msg_size_, &throughput),
       debug_text.c_str ());
     TEST_ASSERT_TRUE_MESSAGE (throughput > 0.0, debug_text.c_str ());
     return throughput;
@@ -335,8 +322,7 @@ void run_single_spot_reject_case (const char *self_path_, const char *recv_mode_
     TEST_ASSERT_TRUE (wait_for_exit_code (&proc, 15000, &rc));
     close_process_capture (&proc);
     TEST_ASSERT_NOT_EQUAL (0, rc);
-    TEST_ASSERT_TRUE (
-      proc.stderr_text.find ("policy violation") != std::string::npos);
+    TEST_ASSERT_TRUE (proc.stderr_text.find ("policy violation") != std::string::npos);
 }
 } // namespace
 
@@ -352,26 +338,22 @@ void test_single_spot_process_callback_is_rejected ()
 
 void test_single_spot_process_recv_tcp_256_keeps_up_with_64 ()
 {
-    const double throughput_64 =
-      run_single_spot_process_case (g_self_path, "recv", "tcp", "64");
-    const double throughput_256 =
-      run_single_spot_process_case (g_self_path, "recv", "tcp", "256");
+    const double throughput_64 = run_single_spot_process_case (g_self_path, "recv", "tcp", "64");
+    const double throughput_256 = run_single_spot_process_case (g_self_path, "recv", "tcp", "256");
 
     TEST_ASSERT_TRUE (throughput_256 >= throughput_64 * 0.4);
 }
 
 void test_single_spot_process_recv_ws_256_smoke ()
 {
-    (void) run_single_spot_process_case (g_self_path, "recv", "ws", "256",
-                                         5, 2);
+    (void) run_single_spot_process_case (g_self_path, "recv", "ws", "256", 5, 2);
 }
 
 void test_single_spot_process_recv_ws_64_exit_cleanly ()
 {
     std::string debug_text;
     const double throughput =
-      run_single_spot_process_case (g_self_path, "recv", "ws", "64", 5, 2,
-                                    &debug_text);
+      run_single_spot_process_case (g_self_path, "recv", "ws", "64", 5, 2, &debug_text);
     TEST_ASSERT_TRUE_MESSAGE (throughput > 0.0, debug_text.c_str ());
 }
 

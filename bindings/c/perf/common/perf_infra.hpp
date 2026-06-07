@@ -32,64 +32,66 @@ static const size_t MAX_SOCKET_STRING = 256;
 // ---------------------------------------------------------------------------
 // parse_positive_env - parse a positive integer from an environment variable
 // ---------------------------------------------------------------------------
-inline int parse_positive_env(const char *name_, int default_value_)
+inline int parse_positive_env (const char *name_, int default_value_)
 {
     if (!name_)
         return default_value_;
 
-    const char *env = std::getenv(name_);
+    const char *env = std::getenv (name_);
     if (!env || !*env)
         return default_value_;
 
     errno = 0;
     char *end = NULL;
-    const long parsed = std::strtol(env, &end, 10);
+    const long parsed = std::strtol (env, &end, 10);
     if (errno != 0 || end == env || parsed <= 0)
         return default_value_;
 
     if (parsed > INT_MAX)
         return INT_MAX;
-    return static_cast<int>(parsed);
+    return static_cast<int> (parsed);
 }
 
 // ---------------------------------------------------------------------------
 // stopwatch_t - simple steady-clock stopwatch
 // ---------------------------------------------------------------------------
-class stopwatch_t {
-public:
-    void start() { _start = std::chrono::steady_clock::now(); }
-    double elapsed_ms() const {
-        auto end = std::chrono::steady_clock::now();
-        return std::chrono::duration<double, std::milli>(end - _start).count();
+class stopwatch_t
+{
+  public:
+    void start () { _start = std::chrono::steady_clock::now (); }
+    double elapsed_ms () const
+    {
+        auto end = std::chrono::steady_clock::now ();
+        return std::chrono::duration<double, std::milli> (end - _start).count ();
     }
-private:
+
+  private:
     std::chrono::steady_clock::time_point _start;
 };
 
 // ---------------------------------------------------------------------------
 // bench_debug_enabled - check PERF_DEBUG environment variable
 // ---------------------------------------------------------------------------
-inline bool bench_debug_enabled() {
-    static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
+inline bool bench_debug_enabled ()
+{
+    static const bool enabled = std::getenv ("PERF_DEBUG") != nullptr;
     return enabled;
 }
 
 // ---------------------------------------------------------------------------
 // set_sockopt_int - set an integer socket option with debug logging
 // ---------------------------------------------------------------------------
-inline bool set_sockopt_int(void *socket_,
-                            zlink_option_t option_,
-                            int value_,
-                            const char *name_) {
-    const int rc = zlink_set_option(socket_, option_, &value_, sizeof(value_));
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "setsockopt(" << name_ << ") failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+inline bool set_sockopt_int (void *socket_, zlink_option_t option_, int value_, const char *name_)
+{
+    const int rc = zlink_set_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
-    if (bench_debug_enabled()) {
+    if (bench_debug_enabled ()) {
         int out = 0;
-        size_t out_size = sizeof(out);
-        const int grc = zlink_get_option(socket_, option_, &out, &out_size);
+        size_t out_size = sizeof (out);
+        const int grc = zlink_get_option (socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -97,27 +99,23 @@ inline bool set_sockopt_int(void *socket_,
     return rc == 0;
 }
 
-inline bool set_ctx_opt_int(void *ctx_,
-                            zlink_ctx_option_t option_,
-                            int value_,
-                            const char *name_) {
-    const int rc = zlink_ctx_set(ctx_, option_, value_);
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "zlink_ctx_set(" << name_ << ") failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+inline bool set_ctx_opt_int (void *ctx_, zlink_ctx_option_t option_, int value_, const char *name_)
+{
+    const int rc = zlink_ctx_set (ctx_, option_, value_);
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "zlink_ctx_set(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
     return rc == 0;
 }
 
-inline bool set_pub_opt_int(void *socket_,
-                            zlink_pub_option_t option_,
-                            int value_,
-                            const char *name_) {
-    const int rc =
-      zlink_set_pub_option(socket_, option_, &value_, sizeof(value_));
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "set_pub_option(" << name_ << ") failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
+inline bool
+set_pub_opt_int (void *socket_, zlink_pub_option_t option_, int value_, const char *name_)
+{
+    const int rc = zlink_set_pub_option (socket_, option_, &value_, sizeof (value_));
+    if (rc != 0 && bench_debug_enabled ()) {
+        std::cerr << "set_pub_option(" << name_ << ") failed: " << zlink_strerror (zlink_errno ())
+                  << std::endl;
     }
     return rc == 0;
 }
@@ -125,22 +123,23 @@ inline bool set_pub_opt_int(void *socket_,
 // ---------------------------------------------------------------------------
 // make_endpoint / make_fixed_endpoint - construct transport endpoints
 // ---------------------------------------------------------------------------
-inline std::string make_endpoint(const std::string& transport, const std::string& id) {
+inline std::string make_endpoint (const std::string &transport, const std::string &id)
+{
     if (transport == "pgm" || transport == "epgm") {
         if (transport == "pgm") {
-            if (const char *env = std::getenv("PERF_PGM_ENDPOINT")) {
+            if (const char *env = std::getenv ("PERF_PGM_ENDPOINT")) {
                 if (*env)
-                    return std::string(env);
+                    return std::string (env);
             }
         } else {
-            if (const char *env = std::getenv("PERF_EPGM_ENDPOINT")) {
+            if (const char *env = std::getenv ("PERF_EPGM_ENDPOINT")) {
                 if (*env)
-                    return std::string(env);
+                    return std::string (env);
             }
         }
 #if !defined(_WIN32)
         struct ifaddrs *ifaddr = nullptr;
-        if (getifaddrs(&ifaddr) == 0) {
+        if (getifaddrs (&ifaddr) == 0) {
             for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
                 if (!ifa->ifa_addr)
                     continue;
@@ -154,248 +153,238 @@ inline std::string make_endpoint(const std::string& transport, const std::string
                     continue;
                 char addr[INET_ADDRSTRLEN];
                 const struct sockaddr_in *sa =
-                  reinterpret_cast<const struct sockaddr_in *>(ifa->ifa_addr);
-                if (inet_ntop(AF_INET, &sa->sin_addr, addr, sizeof(addr))) {
-                    std::string endpoint =
-                      transport + "://" + addr + ";239.192.1.1:5555";
-                    freeifaddrs(ifaddr);
+                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
+                if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
+                    std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
+                    freeifaddrs (ifaddr);
                     return endpoint;
                 }
             }
-            freeifaddrs(ifaddr);
+            freeifaddrs (ifaddr);
         }
 #endif
-        return std::string();
+        return std::string ();
     }
-    if (transport == "inproc") return "inproc://" + id;
-    if (transport == "ipc") return "ipc://*";
-    if (transport == "ws") return "ws://127.0.0.1:*";
-    if (transport == "wss") return "wss://127.0.0.1:*";
-    if (transport == "tls") return "tls://127.0.0.1:*";
+    if (transport == "inproc")
+        return "inproc://" + id;
+    if (transport == "ipc")
+        return "ipc://*";
+    if (transport == "ws")
+        return "ws://127.0.0.1:*";
+    if (transport == "wss")
+        return "wss://127.0.0.1:*";
+    if (transport == "tls")
+        return "tls://127.0.0.1:*";
     return "tcp://127.0.0.1:*";
 }
 
-inline std::string make_fixed_endpoint(const std::string& transport, int port) {
-    const std::string host =
-      (transport == "tls" || transport == "wss") ? "localhost" : "127.0.0.1";
-    const std::string port_str = std::to_string(port);
-    if (transport == "ws") return "ws://" + host + ":" + port_str;
-    if (transport == "wss") return "wss://" + host + ":" + port_str;
-    if (transport == "tls") return "tls://" + host + ":" + port_str;
+inline std::string make_fixed_endpoint (const std::string &transport, int port)
+{
+    const std::string host = (transport == "tls" || transport == "wss") ? "localhost" : "127.0.0.1";
+    const std::string port_str = std::to_string (port);
+    if (transport == "ws")
+        return "ws://" + host + ":" + port_str;
+    if (transport == "wss")
+        return "wss://" + host + ":" + port_str;
+    if (transport == "tls")
+        return "tls://" + host + ":" + port_str;
     return "tcp://" + host + ":" + port_str;
 }
 
-inline bool perf_supports_service_transport(const std::string &transport)
+inline bool perf_supports_service_transport (const std::string &transport)
 {
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss" || transport == "ipc"
-           || transport == "inproc";
+    return transport == "tcp" || transport == "tls" || transport == "ws" || transport == "wss"
+           || transport == "ipc" || transport == "inproc";
 }
 
-inline bool perf_is_tls_transport(const std::string &transport)
+inline bool perf_is_tls_transport (const std::string &transport)
 {
     return transport == "tls" || transport == "wss";
 }
 
-inline const char *perf_loopback_host_for_transport(
-  const std::string &transport)
+inline const char *perf_loopback_host_for_transport (const std::string &transport)
 {
-    return perf_is_tls_transport(transport) ? "localhost" : "127.0.0.1";
+    return perf_is_tls_transport (transport) ? "localhost" : "127.0.0.1";
 }
 
-inline std::string perf_normalize_bind_endpoint_host(
-  const std::string &endpoint,
-  const std::string &transport)
+inline std::string perf_normalize_bind_endpoint_host (const std::string &endpoint,
+                                                      const std::string &transport)
 {
     std::string normalized = endpoint;
     const std::string any_v4 = "://0.0.0.0:";
     const std::string any_v6 = "://[::]:";
     const std::string loopback_v4 = "://127.0.0.1:";
     const std::string host =
-      std::string("://") + perf_loopback_host_for_transport(transport) + ":";
-    size_t pos = normalized.find(any_v4);
+      std::string ("://") + perf_loopback_host_for_transport (transport) + ":";
+    size_t pos = normalized.find (any_v4);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v4.size(), host);
-    pos = normalized.find(any_v6);
+        normalized.replace (pos, any_v4.size (), host);
+    pos = normalized.find (any_v6);
     if (pos != std::string::npos)
-        normalized.replace(pos, any_v6.size(), host);
-    if (perf_is_tls_transport(transport)) {
-        pos = normalized.find(loopback_v4);
+        normalized.replace (pos, any_v6.size (), host);
+    if (perf_is_tls_transport (transport)) {
+        pos = normalized.find (loopback_v4);
         if (pos != std::string::npos)
-            normalized.replace(pos, loopback_v4.size(), host);
+            normalized.replace (pos, loopback_v4.size (), host);
     }
-    if ((transport == "ws" || transport == "wss") && normalized.size() > 1
-        && normalized[normalized.size() - 1] == '/') {
-        normalized.erase(normalized.size() - 1);
+    if ((transport == "ws" || transport == "wss") && normalized.size () > 1
+        && normalized[normalized.size () - 1] == '/') {
+        normalized.erase (normalized.size () - 1);
     }
     return normalized;
 }
 
-inline void perf_close_multipart(zlink_msg_t *parts_, size_t part_count_)
+inline void perf_close_multipart (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_)
         return;
     for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close(&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 }
 
-typedef int (*perf_bind_endpoint_fn_t)(void *, const char *);
+typedef int (*perf_bind_endpoint_fn_t) (void *, const char *);
 
-inline int perf_bind_socket_endpoint(void *socket_, const char *endpoint_)
+inline int perf_bind_socket_endpoint (void *socket_, const char *endpoint_)
 {
-    return zlink_bind(socket_, endpoint_);
+    return zlink_bind (socket_, endpoint_);
 }
 
-inline int perf_bind_spot_node_endpoint(void *node_, const char *endpoint_)
+inline int perf_bind_spot_node_endpoint (void *node_, const char *endpoint_)
 {
-    return zlink_spot_node_set_pub_bind(node_, endpoint_);
+    return zlink_spot_node_set_pub_bind (node_, endpoint_);
 }
 
-inline int perf_set_spot_node_router_endpoint_raw(void *node_,
-                                                  const std::string &endpoint_)
+inline int perf_set_spot_node_router_endpoint_raw (void *node_, const std::string &endpoint_)
 {
-    if (!node_ || endpoint_.empty()) {
+    if (!node_ || endpoint_.empty ()) {
         errno = EINVAL;
         return -1;
     }
-    return zlink_spot_node_set_router_bind(node_, endpoint_.c_str())
-           == ZLINK_CONFIG_OK
-             ? 0
-             : -1;
+    return zlink_spot_node_set_router_bind (node_, endpoint_.c_str ()) == ZLINK_CONFIG_OK ? 0 : -1;
 }
 
-inline int perf_set_spot_node_router_endpoint(void *node_,
-                                              const std::string &transport_,
-                                              int port_)
+inline int
+perf_set_spot_node_router_endpoint (void *node_, const std::string &transport_, int port_)
 {
-    const std::string endpoint =
-      port_ > 0 ? make_fixed_endpoint(transport_, port_)
-                : make_endpoint(transport_, "perf-spot-router");
-    return perf_set_spot_node_router_endpoint_raw(node_, endpoint);
+    const std::string endpoint = port_ > 0 ? make_fixed_endpoint (transport_, port_)
+                                           : make_endpoint (transport_, "perf-spot-router");
+    return perf_set_spot_node_router_endpoint_raw (node_, endpoint);
 }
 
-inline std::string perf_bind_endpoint_once(void *target_,
-                                           const std::string &endpoint_,
-                                           const std::string &transport_,
-                                           perf_bind_endpoint_fn_t bind_fn_,
-                                           bool resolve_last_endpoint_)
+inline std::string perf_bind_endpoint_once (void *target_,
+                                            const std::string &endpoint_,
+                                            const std::string &transport_,
+                                            perf_bind_endpoint_fn_t bind_fn_,
+                                            bool resolve_last_endpoint_)
 {
-    if (!target_ || !bind_fn_ || endpoint_.empty())
-        return std::string();
+    if (!target_ || !bind_fn_ || endpoint_.empty ())
+        return std::string ();
 
-    if (bind_fn_(target_, endpoint_.c_str()) != 0) {
-        std::cerr << "bind failed for " << endpoint_ << ": "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-        return std::string();
+    if (bind_fn_ (target_, endpoint_.c_str ()) != 0) {
+        std::cerr << "bind failed for " << endpoint_ << ": " << zlink_strerror (zlink_errno ())
+                  << std::endl;
+        return std::string ();
     }
 
     std::string resolved = endpoint_;
     if (resolve_last_endpoint_) {
         char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof(last_endpoint);
-        if (zlink_get_option(target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                             &size)
-            == 0) {
-            resolved.assign(last_endpoint);
+        size_t size = sizeof (last_endpoint);
+        if (zlink_get_option (target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint, &size) == 0) {
+            resolved.assign (last_endpoint);
         }
     }
 
-    return perf_normalize_bind_endpoint_host(resolved, transport_);
+    return perf_normalize_bind_endpoint_host (resolved, transport_);
 }
 
-inline std::string perf_bind_routed_spot_node_fixed_endpoint_range(
-  void *node_,
-  const std::string &transport_,
-  int data_base_port_,
-  int router_base_port_,
-  int attempts_)
+inline std::string perf_bind_routed_spot_node_fixed_endpoint_range (void *node_,
+                                                                    const std::string &transport_,
+                                                                    int data_base_port_,
+                                                                    int router_base_port_,
+                                                                    int attempts_)
 {
     if (!node_ || attempts_ <= 0)
-        return std::string();
+        return std::string ();
 
     for (int attempt = 0; attempt < attempts_; ++attempt) {
-        const std::string endpoint =
-          make_fixed_endpoint(transport_, data_base_port_ + attempt);
-        if (endpoint.empty())
+        const std::string endpoint = make_fixed_endpoint (transport_, data_base_port_ + attempt);
+        if (endpoint.empty ())
             continue;
-        if (perf_set_spot_node_router_endpoint(
-              node_, transport_, router_base_port_ + attempt)
+        if (perf_set_spot_node_router_endpoint (node_, transport_, router_base_port_ + attempt)
             != 0)
             continue;
-        if (zlink_spot_node_set_pub_bind(node_, endpoint.c_str()) != ZLINK_CONFIG_OK)
+        if (zlink_spot_node_set_pub_bind (node_, endpoint.c_str ()) != ZLINK_CONFIG_OK)
             continue;
 
         zlink_spot_node_status_t status;
-        std::memset(&status, 0, sizeof(status));
-        if (zlink_spot_node_status(node_, &status) != ZLINK_CONFIG_OK
+        std::memset (&status, 0, sizeof (status));
+        if (zlink_spot_node_status (node_, &status) != ZLINK_CONFIG_OK
             || status.local_endpoint[0] == '\0')
             return endpoint;
-        return perf_normalize_bind_endpoint_host(status.local_endpoint,
-                                                transport_);
+        return perf_normalize_bind_endpoint_host (status.local_endpoint, transport_);
     }
 
-    return std::string();
+    return std::string ();
 }
 
-inline std::string perf_bind_fixed_endpoint_range(
-  void *target_,
-  const std::string &transport_,
-  int base_port_,
-  int attempts_,
-  perf_bind_endpoint_fn_t bind_fn_,
-  bool resolve_last_endpoint_ = false)
+inline std::string perf_bind_fixed_endpoint_range (void *target_,
+                                                   const std::string &transport_,
+                                                   int base_port_,
+                                                   int attempts_,
+                                                   perf_bind_endpoint_fn_t bind_fn_,
+                                                   bool resolve_last_endpoint_ = false)
 {
     if (!target_ || !bind_fn_ || attempts_ <= 0)
-        return std::string();
+        return std::string ();
 
     for (int attempt = 0; attempt < attempts_; ++attempt) {
-        const std::string endpoint =
-          make_fixed_endpoint(transport_, base_port_ + attempt);
-        if (endpoint.empty())
+        const std::string endpoint = make_fixed_endpoint (transport_, base_port_ + attempt);
+        if (endpoint.empty ())
             continue;
-        if (bind_fn_(target_, endpoint.c_str()) != 0)
+        if (bind_fn_ (target_, endpoint.c_str ()) != 0)
             continue;
 
         std::string resolved = endpoint;
         if (resolve_last_endpoint_) {
             char last_endpoint[MAX_SOCKET_STRING] = "";
-            size_t size = sizeof(last_endpoint);
-            if (zlink_get_option(target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint,
-                                 &size)
-                == 0) {
-                resolved.assign(last_endpoint);
+            size_t size = sizeof (last_endpoint);
+            if (zlink_get_option (target_, ZLINK_OPT_LAST_ENDPOINT, last_endpoint, &size) == 0) {
+                resolved.assign (last_endpoint);
             }
         }
 
-        return perf_normalize_bind_endpoint_host(resolved, transport_);
+        return perf_normalize_bind_endpoint_host (resolved, transport_);
     }
 
-    return std::string();
+    return std::string ();
 }
 
 // ---------------------------------------------------------------------------
 // resolve_symbol - dlsym / GetProcAddress wrapper
 // ---------------------------------------------------------------------------
-inline void *resolve_symbol(const char *name) {
+inline void *resolve_symbol (const char *name)
+{
 #if defined(_WIN32)
-    HMODULE module = GetModuleHandleA(NULL);
+    HMODULE module = GetModuleHandleA (NULL);
     if (!module)
         return NULL;
-    return reinterpret_cast<void *>(GetProcAddress(module, name));
+    return reinterpret_cast<void *> (GetProcAddress (module, name));
 #else
-    return dlsym(RTLD_DEFAULT, name);
+    return dlsym (RTLD_DEFAULT, name);
 #endif
 }
 
 // ---------------------------------------------------------------------------
 // resolve_bench_count - read bench count from environment
 // ---------------------------------------------------------------------------
-inline int resolve_bench_count(const char *env_name, int default_value) {
-    if (const char *env = std::getenv(env_name)) {
+inline int resolve_bench_count (const char *env_name, int default_value)
+{
+    if (const char *env = std::getenv (env_name)) {
         errno = 0;
-        const long override = std::strtol(env, NULL, 10);
+        const long override = std::strtol (env, NULL, 10);
         if (errno == 0 && override > 0)
-            return static_cast<int>(override);
+            return static_cast<int> (override);
     }
     return default_value;
 }

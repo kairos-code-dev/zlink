@@ -94,24 +94,20 @@ inline size_t initial_target_cap ()
     return env::positive_size ("ZLINK_ASIO_STREAM_INITIAL_TARGET_CAP", 4096);
 }
 
-inline size_t clamp_stream_target_limit (size_t target_,
-                                         const zlink::options_t &options_,
-                                         bool read_path_)
+inline size_t
+clamp_stream_target_limit (size_t target_, const zlink::options_t &options_, bool read_path_)
 {
     size_t clamped = target_ > 0 ? target_ : default_target_size ();
 
-    if (read_path_ && options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) < clamped) {
+    if (read_path_ && options_.rcvbuf > 0 && static_cast<size_t> (options_.rcvbuf) < clamped) {
         clamped = static_cast<size_t> (options_.rcvbuf);
     }
 
-    if (!read_path_ && options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) < clamped) {
+    if (!read_path_ && options_.sndbuf > 0 && static_cast<size_t> (options_.sndbuf) < clamped) {
         clamped = static_cast<size_t> (options_.sndbuf);
     }
 
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < clamped) {
+    if (options_.maxmsgsize > 0 && static_cast<size_t> (options_.maxmsgsize) < clamped) {
         clamped = static_cast<size_t> (options_.maxmsgsize);
     }
 
@@ -122,11 +118,9 @@ inline size_t decoder_initial_read_target (const zlink::options_t &options_,
                                            size_t stream_min_target_,
                                            size_t target_cap_)
 {
-    size_t target = options_.in_batch_size > 0
-                      ? static_cast<size_t> (options_.in_batch_size)
-                      : default_target_size ();
-    if (options_.type == ZLINK_CORE_SOCKET_STREAM
-        && target < stream_min_target_)
+    size_t target = options_.in_batch_size > 0 ? static_cast<size_t> (options_.in_batch_size)
+                                               : default_target_size ();
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < stream_min_target_)
         target = stream_min_target_;
     if (target > target_cap_)
         target = target_cap_;
@@ -146,12 +140,10 @@ inline size_t decoder_max_read_target (const zlink::options_t &options_,
       decoder_initial_read_target (options_, stream_min_target_, target_cap_);
     size_t max_target = initial_target;
 
-    if (options_.rcvbuf > 0
-        && static_cast<size_t> (options_.rcvbuf) > max_target)
+    if (options_.rcvbuf > 0 && static_cast<size_t> (options_.rcvbuf) > max_target)
         max_target = static_cast<size_t> (options_.rcvbuf);
 
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target)
+    if (options_.maxmsgsize > 0 && static_cast<size_t> (options_.maxmsgsize) < max_target)
         max_target = static_cast<size_t> (options_.maxmsgsize);
 
     if (max_target == 0)
@@ -169,11 +161,9 @@ inline size_t encoder_initial_write_target (const zlink::options_t &options_,
                                             size_t stream_min_target_,
                                             size_t target_cap_)
 {
-    size_t target = options_.out_batch_size > 0
-                      ? static_cast<size_t> (options_.out_batch_size)
-                      : default_target_size ();
-    if (options_.type == ZLINK_CORE_SOCKET_STREAM
-        && target < stream_min_target_)
+    size_t target = options_.out_batch_size > 0 ? static_cast<size_t> (options_.out_batch_size)
+                                                : default_target_size ();
+    if (options_.type == ZLINK_CORE_SOCKET_STREAM && target < stream_min_target_)
         target = stream_min_target_;
     if (target > target_cap_)
         target = target_cap_;
@@ -193,12 +183,10 @@ inline size_t encoder_max_write_target (const zlink::options_t &options_,
       encoder_initial_write_target (options_, stream_min_target_, target_cap_);
     size_t max_target = initial_target;
 
-    if (options_.sndbuf > 0
-        && static_cast<size_t> (options_.sndbuf) > max_target)
+    if (options_.sndbuf > 0 && static_cast<size_t> (options_.sndbuf) > max_target)
         max_target = static_cast<size_t> (options_.sndbuf);
 
-    if (options_.maxmsgsize > 0
-        && static_cast<size_t> (options_.maxmsgsize) < max_target)
+    if (options_.maxmsgsize > 0 && static_cast<size_t> (options_.maxmsgsize) < max_target)
         max_target = static_cast<size_t> (options_.maxmsgsize);
 
     if (max_target == 0)
@@ -213,9 +201,9 @@ inline size_t encoder_max_write_target (const zlink::options_t &options_)
 }
 
 inline size_t next_stream_target_after_full_hit (size_t current_,
-                                                size_t max_,
-                                                size_t *full_hits_,
-                                                size_t required_hits_)
+                                                 size_t max_,
+                                                 size_t *full_hits_,
+                                                 size_t required_hits_)
 {
     if (!full_hits_ || current_ >= max_)
         return 0;
@@ -237,13 +225,11 @@ inline size_t next_stream_target_after_full_hit (size_t current_,
 }
 
 template <typename Engine>
-inline size_t output_target_batch (const Engine &engine_,
-                                   const zlink::options_t &options_)
+inline size_t output_target_batch (const Engine &engine_, const zlink::options_t &options_)
 {
     if (options_.type == ZLINK_CORE_SOCKET_STREAM) {
         const size_t stream_target = engine_.stream_encoder_write_target_size ();
-        return stream_target > 0 ? stream_target
-                                 : static_cast<size_t> (options_.out_batch_size);
+        return stream_target > 0 ? stream_target : static_cast<size_t> (options_.out_batch_size);
     }
 
     return static_cast<size_t> (options_.out_batch_size);

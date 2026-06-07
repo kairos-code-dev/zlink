@@ -16,7 +16,8 @@ class registry_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.enable_registry (topology.registry_pub_endpoint, topology.registry_router_endpoint);
+            options.enable_registry (topology.registry_pub_endpoint,
+                                     topology.registry_router_endpoint);
         });
         return app;
     }

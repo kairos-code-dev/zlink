@@ -47,8 +47,7 @@ bool zlink::trie_t::add (unsigned char *prefix_, size_t size_)
             const unsigned char oldc = _min;
             trie_t *oldp = _next.node;
             _count = (_min < c ? c - _min : _min - c) + 1;
-            _next.table =
-              static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
+            _next.table = static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
             alloc_assert (_next.table);
             for (unsigned short i = 0; i != _count; ++i)
                 _next.table[i] = 0;
@@ -58,8 +57,8 @@ bool zlink::trie_t::add (unsigned char *prefix_, size_t size_)
             //  The new character is above the current character range.
             const unsigned short old_count = _count;
             _count = c - _min + 1;
-            _next.table = static_cast<trie_t **> (
-              realloc (_next.table, sizeof (trie_t *) * _count));
+            _next.table =
+              static_cast<trie_t **> (realloc (_next.table, sizeof (trie_t *) * _count));
             zlink_assert (_next.table);
             for (unsigned short i = old_count; i != _count; i++)
                 _next.table[i] = NULL;
@@ -67,11 +66,10 @@ bool zlink::trie_t::add (unsigned char *prefix_, size_t size_)
             //  The new character is below the current character range.
             const unsigned short old_count = _count;
             _count = (_min + old_count) - c;
-            _next.table = static_cast<trie_t **> (
-              realloc (_next.table, sizeof (trie_t *) * _count));
+            _next.table =
+              static_cast<trie_t **> (realloc (_next.table, sizeof (trie_t *) * _count));
             zlink_assert (_next.table);
-            memmove (_next.table + _min - c, _next.table,
-                     old_count * sizeof (trie_t *));
+            memmove (_next.table + _min - c, _next.table, old_count * sizeof (trie_t *));
             for (unsigned short i = 0; i != _min - c; i++)
                 _next.table[i] = NULL;
             _min = c;
@@ -174,12 +172,10 @@ bool zlink::trie_t::rm (unsigned char *prefix_, size_t size_)
                 zlink_assert (_count > new_min - _min);
 
                 _count = _count - (new_min - _min);
-                _next.table =
-                  static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
+                _next.table = static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
                 alloc_assert (_next.table);
 
-                memmove (_next.table, old_table + (new_min - _min),
-                         sizeof (trie_t *) * _count);
+                memmove (_next.table, old_table + (new_min - _min), sizeof (trie_t *) * _count);
                 free (old_table);
 
                 _min = new_min;
@@ -198,8 +194,7 @@ bool zlink::trie_t::rm (unsigned char *prefix_, size_t size_)
                 _count = new_count;
 
                 trie_t **old_table = _next.table;
-                _next.table =
-                  static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
+                _next.table = static_cast<trie_t **> (malloc (sizeof (trie_t *) * _count));
                 alloc_assert (_next.table);
 
                 memmove (_next.table, old_table, sizeof (trie_t *) * _count);
@@ -243,9 +238,8 @@ bool zlink::trie_t::check (const unsigned char *data_, size_t size_) const
     }
 }
 
-void zlink::trie_t::apply (
-  void (*func_) (unsigned char *data_, size_t size_, void *arg_),
-  void *arg_) const
+void zlink::trie_t::apply (void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+                           void *arg_) const
 {
     unsigned char *buff = NULL;
     apply_helper (&buff, 0, 0, func_, arg_);
@@ -253,12 +247,10 @@ void zlink::trie_t::apply (
 }
 
 void zlink::trie_t::apply_helper (unsigned char **buff_,
-                                size_t buffsize_,
-                                size_t maxbuffsize_,
-                                void (*func_) (unsigned char *data_,
-                                               size_t size_,
-                                               void *arg_),
-                                void *arg_) const
+                                  size_t buffsize_,
+                                  size_t maxbuffsize_,
+                                  void (*func_) (unsigned char *data_, size_t size_, void *arg_),
+                                  void *arg_) const
 {
     //  If this node is a subscription, apply the function.
     if (_refcnt)
@@ -287,8 +279,7 @@ void zlink::trie_t::apply_helper (unsigned char **buff_,
     for (unsigned short c = 0; c != _count; c++) {
         (*buff_)[buffsize_] = _min + c;
         if (_next.table[c])
-            _next.table[c]->apply_helper (buff_, buffsize_ + 1, maxbuffsize_,
-                                          func_, arg_);
+            _next.table[c]->apply_helper (buff_, buffsize_ + 1, maxbuffsize_, func_, arg_);
     }
 }
 

@@ -25,7 +25,8 @@ std::vector<zlink::message_t> copy_parts (const runtime::messaging::message_part
     return copied;
 }
 
-template <typename TOperation> auto append_remaining_parts (TOperation operation, std::vector<zlink::message_t> &parts)
+template <typename TOperation>
+auto append_remaining_parts (TOperation operation, std::vector<zlink::message_t> &parts)
 {
     for (std::size_t index = 1; index < parts.size (); ++index) {
         operation = std::move (operation).message (parts[index]);
@@ -44,8 +45,9 @@ native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) 
 {
 }
 
-result_t<void> native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
-                                                    const runtime::messaging::message_parts_t &parts)
+result_t<void>
+native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
+                                     const runtime::messaging::message_parts_t &parts)
 {
     if (_router == nullptr) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
@@ -75,13 +77,15 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
                                         std::chrono::milliseconds timeout)
 {
     if (_router == nullptr) {
-        return result_t<runtime::messaging::message_parts_t>::failure (framework_error_kind_t::request_protocol_error,
-                                                                       "native route backend has no router socket");
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "native route backend has no router socket");
     }
     auto copied = copy_parts (parts);
     if (copied.empty ()) {
         return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::request_protocol_error, "native route request requires at least one message part");
+          framework_error_kind_t::request_protocol_error,
+          "native route request requires at least one message part");
     }
     try {
         auto submit = std::move (_router->request (target_node_rid)).message (copied[0]);
@@ -91,8 +95,8 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
           runtime::messaging::message_parts_t (std::move (reply)));
     }
     catch (const std::exception &ex) {
-        return result_t<runtime::messaging::message_parts_t>::failure (framework_error_kind_t::request_failed,
-                                                                       ex.what ());
+        return result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::request_failed, ex.what ());
     }
 }
 

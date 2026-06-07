@@ -42,13 +42,18 @@ class stop_after_start_service_t final : public zlink::framework::hosted_service
 class sample_stream_server_service_t final : public zlink::framework::hosted_service_t
 {
   public:
-    using run_server_fn_t = void (*) (zlink::stream_socket_t &, const std::string &, const std::string &);
+    using run_server_fn_t = void (*) (zlink::stream_socket_t &,
+                                      const std::string &,
+                                      const std::string &);
 
     sample_stream_server_service_t (zlink::framework::app_t &app,
                                     std::string endpoint,
                                     std::string actor_id,
                                     run_server_fn_t run_server) :
-        _app (app), _endpoint (std::move (endpoint)), _actor_id (std::move (actor_id)), _run_server (run_server)
+        _app (app),
+        _endpoint (std::move (endpoint)),
+        _actor_id (std::move (actor_id)),
+        _run_server (run_server)
     {
     }
 

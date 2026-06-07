@@ -24,8 +24,7 @@ class i_decoder
     //  When a message is decoded, 1 is returned.
     //  When the decoder needs more data, 0 is returned.
     //  On error, -1 is returned and errno is set accordingly.
-    virtual int
-    decode (const unsigned char *data_, size_t size_, size_t &processed_) = 0;
+    virtual int decode (const unsigned char *data_, size_t size_, size_t &processed_) = 0;
 
     virtual msg_t *msg () = 0;
 };

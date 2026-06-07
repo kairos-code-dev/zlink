@@ -39,7 +39,9 @@ int main ()
 {
     zlink::framework::serializer_registry_t serializers;
     serializers.add<payload_t> (
-      [] (const payload_t &payload) { return zlink::message_t::from (std::to_string (payload.value)); },
+      [] (const payload_t &payload) {
+          return zlink::message_t::from (std::to_string (payload.value));
+      },
       [] (const zlink::message_t &message) { return payload_t{std::stoi (message.to_string ())}; });
 
     const auto encoded = serializers.get<payload_t> ().serialize ({42});
@@ -71,7 +73,8 @@ int main ()
                                     [] (const zlink::message_t &) { return payload_t{}; });
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        duplicate_failed = error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
+        duplicate_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
     }
     if (!duplicate_failed) {
         return 5;
@@ -82,7 +85,8 @@ int main ()
         (void) serializers.get<missing_t> ().serialize ({1});
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        missing_failed = error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
+        missing_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
     }
     if (!missing_failed) {
         return 6;
@@ -90,10 +94,12 @@ int main ()
 
     bool decode_failed = false;
     try {
-        (void) serializers.get<payload_t> ().deserialize (zlink::message_t::from (std::string ("not-an-int")));
+        (void) serializers.get<payload_t> ().deserialize (
+          zlink::message_t::from (std::string ("not-an-int")));
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        decode_failed = error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
+        decode_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::payload_decode_failed;
     }
     if (!decode_failed) {
         return 7;

@@ -16,8 +16,8 @@ struct actor_model_access_t
 {
     static actor_ref_t from_native (const zlink_actor_ref_t &native_)
     {
-        return actor_ref_t (native_routing_id (native_.node_rid), fixed_string_to_string (native_.actor_id),
-                            native_.generation);
+        return actor_ref_t (native_routing_id (native_.node_rid),
+                            fixed_string_to_string (native_.actor_id), native_.generation);
     }
 
     static zlink_actor_ref_t to_native (const actor_ref_t &actor_) noexcept
@@ -95,7 +95,8 @@ struct actor_model_access_t
         return out;
     }
 
-    static actor_join_entry_spot_result_t from_native (const zlink_actor_join_entry_spot_result_t &native_)
+    static actor_join_entry_spot_result_t
+    from_native (const zlink_actor_join_entry_spot_result_t &native_)
     {
         actor_join_entry_spot_result_t out;
         out.result = static_cast<request_result_t> (native_.result);
@@ -115,23 +116,27 @@ struct actor_model_access_t
         return out;
     }
 
-    static spot_actor_lifecycle_info_t from_native (const zlink_spot_actor_lifecycle_info_t &native_)
+    static spot_actor_lifecycle_info_t
+    from_native (const zlink_spot_actor_lifecycle_info_t &native_)
     {
         spot_actor_lifecycle_info_t out;
         out.previous_actor = from_native (native_.previous_actor);
         out.current_actor = from_native (native_.current_actor);
-        out.previous_spot_rid = native_.previous_spot_rid.size > 0
-                                  ? std::optional<routing_id_t> (native_routing_id (native_.previous_spot_rid))
-                                  : std::nullopt;
-        out.current_spot_rid = native_.current_spot_rid.size > 0
-                                 ? std::optional<routing_id_t> (native_routing_id (native_.current_spot_rid))
-                                 : std::nullopt;
+        out.previous_spot_rid =
+          native_.previous_spot_rid.size > 0
+            ? std::optional<routing_id_t> (native_routing_id (native_.previous_spot_rid))
+            : std::nullopt;
+        out.current_spot_rid =
+          native_.current_spot_rid.size > 0
+            ? std::optional<routing_id_t> (native_routing_id (native_.current_spot_rid))
+            : std::nullopt;
         out.join_epoch = native_.join_epoch;
         out.flags = native_.flags;
         return out;
     }
 
-    static spot_actor_lifecycle_event_t from_native (const zlink_spot_actor_lifecycle_event_t &native_)
+    static spot_actor_lifecycle_event_t
+    from_native (const zlink_spot_actor_lifecycle_event_t &native_)
     {
         spot_actor_lifecycle_event_t out;
         out.kind = static_cast<spot_actor_lifecycle_event_kind_t> (native_.kind);
@@ -143,9 +148,10 @@ struct actor_model_access_t
     {
         actor_route_t out;
         out.actor = from_native (native_.actor);
-        out.current_spot_rid = native_.current_spot_rid.size > 0
-                                 ? std::optional<routing_id_t> (native_routing_id (native_.current_spot_rid))
-                                 : std::nullopt;
+        out.current_spot_rid =
+          native_.current_spot_rid.size > 0
+            ? std::optional<routing_id_t> (native_routing_id (native_.current_spot_rid))
+            : std::nullopt;
         out.current_spot_kind = static_cast<spot_kind> (native_.current_spot_kind);
         return out;
     }

@@ -27,9 +27,8 @@ void socket_discovery_attachment_t::on_local_peer_weight_changed ()
     if (!registered || !discovery || advertise_endpoint.empty ())
         return;
 
-    (void) discovery_owned_service::update_attributes (
-      discovery, advertise_endpoint.c_str (), local_role,
-      _socket->local_peer_weight ());
+    (void) discovery_owned_service::update_attributes (discovery, advertise_endpoint.c_str (),
+                                                       local_role, _socket->local_peer_weight ());
 }
 
 int socket_discovery_attachment_t::attach (discovery_t *discovery_)
@@ -68,8 +67,7 @@ int socket_discovery_attachment_t::attach (discovery_t *discovery_)
 
     std::string advertise_endpoint;
     if (!bound_endpoint.empty ()
-        && register_bound_endpoint (discovery_, local_role, bound_endpoint,
-                                    &advertise_endpoint)
+        && register_bound_endpoint (discovery_, local_role, bound_endpoint, &advertise_endpoint)
              != 0) {
         scoped_lock_t lock (_sync);
         _discovery = NULL;
@@ -89,18 +87,14 @@ int socket_discovery_attachment_t::attach (discovery_t *discovery_)
     {
         scoped_lock_t lock (_sync);
         _registered = !bound_endpoint.empty ();
-        _advertise_endpoint =
-          advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint;
+        _advertise_endpoint = advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint;
     }
 
     report_topology (discovery_, local_role,
-                     advertise_endpoint.empty () ? bound_endpoint
-                                                : advertise_endpoint,
+                     advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint,
                      ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, false);
-    refresh_peers (discovery_, local_role, advertise_endpoint.empty ()
-                                              ? bound_endpoint
-                                              : advertise_endpoint,
-                   false);
+    refresh_peers (discovery_, local_role,
+                   advertise_endpoint.empty () ? bound_endpoint : advertise_endpoint, false);
     return 0;
 }
 
@@ -149,9 +143,7 @@ int socket_discovery_attachment_t::on_bind_success (const std::string &endpoint_
     }
 
     std::string resolved_endpoint;
-    if (register_bound_endpoint (discovery, local_role, endpoint_,
-                                 &resolved_endpoint)
-        != 0) {
+    if (register_bound_endpoint (discovery, local_role, endpoint_, &resolved_endpoint) != 0) {
         scoped_lock_t lock (_sync);
         if (_discovery == discovery && !_registered)
             _advertise_endpoint.clear ();
@@ -163,16 +155,14 @@ int socket_discovery_attachment_t::on_bind_success (const std::string &endpoint_
         if (_discovery != discovery || _shutdown_requested)
             return 0;
         _registered = true;
-        _advertise_endpoint =
-          resolved_endpoint.empty () ? endpoint_ : resolved_endpoint;
+        _advertise_endpoint = resolved_endpoint.empty () ? endpoint_ : resolved_endpoint;
     }
 
     report_topology (discovery, local_role,
                      resolved_endpoint.empty () ? endpoint_ : resolved_endpoint,
                      ZLINK_TOPOLOGY_STATE_READY, 0, 0, 0, false);
     refresh_peers (discovery, local_role,
-                   resolved_endpoint.empty () ? endpoint_ : resolved_endpoint,
-                   false);
+                   resolved_endpoint.empty () ? endpoint_ : resolved_endpoint, false);
     return 0;
 }
 
@@ -212,8 +202,7 @@ int socket_discovery_attachment_t::on_public_close () const
     return -1;
 }
 
-void socket_discovery_attachment_t::on_service_update (
-  const std::string &channel_name_)
+void socket_discovery_attachment_t::on_service_update (const std::string &channel_name_)
 {
     discovery_t *discovery = NULL;
     uint16_t local_role = discovery_protocol::service_role_invalid;
@@ -228,12 +217,10 @@ void socket_discovery_attachment_t::on_service_update (
         advertise_endpoint = _advertise_endpoint;
         shutdown_requested = _shutdown_requested;
     }
-    refresh_peers (discovery, local_role, advertise_endpoint,
-                   shutdown_requested);
+    refresh_peers (discovery, local_role, advertise_endpoint, shutdown_requested);
 }
 
-void socket_discovery_attachment_t::on_discovery_shutdown_requested (
-  discovery_t *discovery_)
+void socket_discovery_attachment_t::on_discovery_shutdown_requested (discovery_t *discovery_)
 {
     discovery_t *discovery = NULL;
     uint16_t local_role = discovery_protocol::service_role_invalid;
@@ -258,10 +245,10 @@ void socket_discovery_attachment_t::on_discovery_shutdown_requested (
     }
 
     if (registered && discovery && !advertise_endpoint.empty ()) {
-        report_topology (discovery, local_role, advertise_endpoint,
-                         ZLINK_TOPOLOGY_STATE_STOPPED, 0, 0, 0, true);
-        (void) discovery_owned_service::unregister_endpoint (
-          discovery, advertise_endpoint.c_str (), local_role);
+        report_topology (discovery, local_role, advertise_endpoint, ZLINK_TOPOLOGY_STATE_STOPPED, 0,
+                         0, 0, true);
+        (void) discovery_owned_service::unregister_endpoint (discovery, advertise_endpoint.c_str (),
+                                                             local_role);
     }
 
     for (std::set<std::string>::const_iterator it = active_endpoints.begin ();
@@ -269,8 +256,7 @@ void socket_discovery_attachment_t::on_discovery_shutdown_requested (
         (void) _socket->service_attachment_term_endpoint (it->c_str ());
 }
 
-void socket_discovery_attachment_t::on_discovery_destroyed (
-  discovery_t *discovery_)
+void socket_discovery_attachment_t::on_discovery_destroyed (discovery_t *discovery_)
 {
     {
         scoped_lock_t lock (_sync);

@@ -20,9 +20,10 @@ monitor_event_t make_monitor_event (const zlink_monitor_event_t &native_)
     monitor_event_t event;
     event.event = static_cast<monitor_event> (native_.event);
     event.value = native_.value;
-    event.routing_id = native_.routing_id.size > 0
-                         ? std::optional<routing_id_t> (detail::native_routing_id (native_.routing_id))
-                         : std::nullopt;
+    event.routing_id =
+      native_.routing_id.size > 0
+        ? std::optional<routing_id_t> (detail::native_routing_id (native_.routing_id))
+        : std::nullopt;
     event.local_addr = native_.local_addr;
     event.remote_addr = native_.remote_addr;
     return event;
@@ -109,7 +110,8 @@ socket_monitor_t socket_monitor_t::open (const socket_t &socket_, monitor_event 
     zlink_socket_monitor_open_options_t options;
     options.events = static_cast<zlink_socket_monitor_event_mask_t> (events_);
     socket_monitor_t out;
-    out._impl->handle = zlink_socket_monitor_open (const_cast<void *> (detail::native_handle (socket_)), &options);
+    out._impl->handle =
+      zlink_socket_monitor_open (const_cast<void *> (detail::native_handle (socket_)), &options);
     if (!out._impl->handle)
         throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
     return out;
@@ -118,23 +120,24 @@ socket_monitor_t socket_monitor_t::open (const socket_t &socket_, monitor_event 
 void socket_monitor_t::on_event (std::function<void (const monitor_event_t &)> handler_)
 {
     _impl->event_function_handler = std::move (handler_);
-    detail::throw_if_failed<handler_error_t> (static_cast<handler_result_t> (zlink_socket_monitor_handler (
-      _impl->handle,
-      [] (const zlink_monitor_event_t *event_, void *userdata_) {
-          socket_monitor_t *self = static_cast<socket_monitor_t *> (userdata_);
-          if (!self || !self->_impl || !self->_impl->event_function_handler || !event_)
-              return;
-          const monitor_event_t event = make_monitor_event (*event_);
-          self->_impl->event_function_handler (event);
-      },
-      this)));
+    detail::throw_if_failed<handler_error_t> (
+      static_cast<handler_result_t> (zlink_socket_monitor_handler (
+        _impl->handle,
+        [] (const zlink_monitor_event_t *event_, void *userdata_) {
+            socket_monitor_t *self = static_cast<socket_monitor_t *> (userdata_);
+            if (!self || !self->_impl || !self->_impl->event_function_handler || !event_)
+                return;
+            const monitor_event_t event = make_monitor_event (*event_);
+            self->_impl->event_function_handler (event);
+        },
+        this)));
 }
 
 std::optional<monitor_event_t> socket_monitor_t::recv (recv_flags_t flags_)
 {
     zlink_monitor_event_t event;
-    const recv_result_t result = static_cast<recv_result_t> (
-      zlink_socket_monitor_recv (_impl->handle, &event, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+    const recv_result_t result = static_cast<recv_result_t> (zlink_socket_monitor_recv (
+      _impl->handle, &event, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
     if (result == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
         return std::nullopt;
     if (result != recv_result_t::ok)

@@ -37,10 +37,7 @@ struct handle_state_t;
 
 struct spot_logical_pubsub_message_t
 {
-    ~spot_logical_pubsub_message_t ()
-    {
-        zlink::spot_clear_msg_parts (&parts);
-    }
+    ~spot_logical_pubsub_message_t () { zlink::spot_clear_msg_parts (&parts); }
 
     zlink_routing_id_t source_rid;
     std::string topic_id;
@@ -73,8 +70,7 @@ struct spot_logical_state_t
     zlink::mutex_t pubsub_sync;
     std::set<std::string> subscription_topics;
     std::set<std::string> subscription_patterns;
-    std::deque<std::shared_ptr<spot_logical_pubsub_message_t> >
-      subscribe_queue;
+    std::deque<std::shared_ptr<spot_logical_pubsub_message_t>> subscribe_queue;
     zlink::signaler_t subscribe_signaler;
     bool subscribe_signal_armed;
     zlink::signaler_t send_ready_signaler;
@@ -82,8 +78,7 @@ struct spot_logical_state_t
     std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
     std::atomic<void *> send_ready_subject;
     std::atomic<void *> send_ready_userdata;
-    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t>
-      request_reply_state;
+    std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> request_reply_state;
 };
 
 struct spot_handle_t
@@ -111,8 +106,7 @@ struct spot_handle_t
     zlink::spot_node_sub_defaults_t pending_sub_defaults;
     zlink::service_mode_state_t mode_state;
     std::mutex part_helper_mutex;
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t>
-      part_helper_state;
+    std::shared_ptr<zlink::part_helper_internal::handle_state_t> part_helper_state;
 };
 
 #endif

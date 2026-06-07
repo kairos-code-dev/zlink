@@ -19,13 +19,15 @@ class pending_submit_t
     using try_submit_fn = std::function<bool ()>;
     using wake_fn = std::function<void ()>;
 
-    static pending_submit_t create_command (try_submit_fn try_submit,
-                                            std::optional<clock_t::time_point> deadline = std::nullopt,
-                                            wake_fn wake = {});
+    static pending_submit_t
+    create_command (try_submit_fn try_submit,
+                    std::optional<clock_t::time_point> deadline = std::nullopt,
+                    wake_fn wake = {});
 
-    static pending_submit_t create_request (try_submit_fn try_submit,
-                                            std::optional<clock_t::time_point> deadline = std::nullopt,
-                                            wake_fn wake = {});
+    static pending_submit_t
+    create_request (try_submit_fn try_submit,
+                    std::optional<clock_t::time_point> deadline = std::nullopt,
+                    wake_fn wake = {});
 
     pending_operation_t operation () const noexcept { return _operation; }
     bool complete_on_accepted () const noexcept { return _complete_on_accepted; }

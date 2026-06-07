@@ -31,9 +31,7 @@ zlink::routing_socket_base_t::~routing_socket_base_t ()
     _submit_retry_local_rids.clear ();
 }
 
-int zlink::routing_socket_base_t::xsetsockopt (int option_,
-                                               const void *optval_,
-                                               size_t optvallen_)
+int zlink::routing_socket_base_t::xsetsockopt (int option_, const void *optval_, size_t optvallen_)
 {
     switch (option_) {
         case ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID:
@@ -41,8 +39,7 @@ int zlink::routing_socket_base_t::xsetsockopt (int option_,
                 _connect_routing_id.clear ();
                 return 0;
             } else {
-                _connect_routing_id.assign (static_cast<const char *> (optval_),
-                                            optvallen_);
+                _connect_routing_id.assign (static_cast<const char *> (optval_), optvallen_);
                 return 0;
             }
     }
@@ -75,8 +72,7 @@ void zlink::routing_socket_base_t::add_out_pipe (blob_t routing_id_,
 {
     const out_pipe_t outpipe = {pipe_, true, locally_initiated_, 100};
     if (locally_initiated_)
-        _submit_retry_local_rids.insert (
-          blob_t (routing_id_.data (), routing_id_.size ()));
+        _submit_retry_local_rids.insert (blob_t (routing_id_.data (), routing_id_.size ()));
     const std::pair<out_pipes_t::iterator, bool> insert_res =
       _out_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (ZLINK_MOVE (routing_id_), outpipe);
     const bool ok = insert_res.second;
@@ -121,12 +117,10 @@ void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
     if (!pipe_)
         return;
 
-    const out_pipe_index_t::iterator index_it =
-      _out_pipe_index.find (const_cast<pipe_t *> (pipe_));
+    const out_pipe_index_t::iterator index_it = _out_pipe_index.find (const_cast<pipe_t *> (pipe_));
     if (index_it != _out_pipe_index.end ()) {
         const out_pipes_t::iterator out_it = index_it->second;
-        if (out_it->second.pipe != NULL && out_it->second.active
-            && out_it->second.weight > 0)
+        if (out_it->second.pipe != NULL && out_it->second.active && out_it->second.weight > 0)
             --_writable_weighted_out_pipes;
         _out_pipes.erase (out_it);
         _out_pipe_index.erase (index_it);
@@ -135,9 +129,7 @@ void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
 
     // Routing id may have been refreshed after attach. Fall back to
     // pointer-based lookup to keep teardown idempotent and avoid stale pipes.
-    for (out_pipes_t::iterator it = _out_pipes.begin (),
-                               end = _out_pipes.end ();
-         it != end; ++it) {
+    for (out_pipes_t::iterator it = _out_pipes.begin (), end = _out_pipes.end (); it != end; ++it) {
         if (it->second.pipe == pipe_) {
             if (it->second.active && it->second.weight > 0)
                 --_writable_weighted_out_pipes;
@@ -203,8 +195,7 @@ void zlink::routing_socket_base_t::mark_out_pipe_inactive (out_pipe_t *out_pipe_
     out_pipe_->active = false;
 }
 
-void zlink::routing_socket_base_t::update_out_pipe_weight (out_pipe_t *out_pipe_,
-                                                           uint32_t weight_)
+void zlink::routing_socket_base_t::update_out_pipe_weight (out_pipe_t *out_pipe_, uint32_t weight_)
 {
     if (!out_pipe_ || out_pipe_->weight == weight_)
         return;
@@ -222,9 +213,8 @@ bool zlink::routing_socket_base_t::has_writable_weighted_out_pipes () const
     return _writable_weighted_out_pipes != 0;
 }
 
-bool zlink::routing_socket_base_t::xsubmit_retry_allowed (
-  const zlink_routing_id_t *target_rid_,
-  int err_) const
+bool zlink::routing_socket_base_t::xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
+                                                          int err_) const
 {
     if (!target_rid_ || !is_routing_submit_retry_errno (err_))
         return true;

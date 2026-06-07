@@ -40,10 +40,10 @@ std::string error_code_name (framework_error_kind_t kind)
 
 } // namespace
 
-runtime::messaging::envelope_header_t
-channel_reply_writer_t::create_reply_header (runtime::messaging::message_kind_t kind,
-                                             std::string channel_name,
-                                             const runtime::messaging::envelope_header_t &request) const
+runtime::messaging::envelope_header_t channel_reply_writer_t::create_reply_header (
+  runtime::messaging::message_kind_t kind,
+  std::string channel_name,
+  const runtime::messaging::envelope_header_t &request) const
 {
     runtime::messaging::envelope_header_t header;
     header.kind = kind;
@@ -59,7 +59,8 @@ channel_reply_writer_t::create_error_header (std::string channel_name,
                                              const runtime::messaging::envelope_header_t &request,
                                              const framework_exception_t &error) const
 {
-    auto header = create_reply_header (runtime::messaging::message_kind_t::error, std::move (channel_name), request);
+    auto header = create_reply_header (runtime::messaging::message_kind_t::error,
+                                       std::move (channel_name), request);
     header.error_code = error_code_name (error.kind ());
     header.error_message = error.what ();
     return header;

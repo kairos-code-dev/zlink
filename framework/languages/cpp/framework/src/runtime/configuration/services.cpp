@@ -32,12 +32,16 @@ class service_registry_t
     {
         const auto found = descriptors.find (type);
         if (found == descriptors.end ()) {
-            throw framework_exception_t (framework_error_kind_t::request_target_not_found, "service is not registered");
+            throw framework_exception_t (framework_error_kind_t::request_target_not_found,
+                                         "service is not registered");
         }
         return found->second;
     }
 
-    bool contains (std::type_index type) const { return descriptors.find (type) != descriptors.end (); }
+    bool contains (std::type_index type) const
+    {
+        return descriptors.find (type) != descriptors.end ();
+    }
 
     std::map<std::type_index, service_descriptor_t> descriptors;
 };
@@ -64,7 +68,8 @@ namespace zlink::framework
 
 service_provider_t::service_provider_t () :
     _registry (std::make_shared<detail::service_registry_t> ()),
-    _scope (std::make_shared<detail::service_scope_state_t> (false, service_scope_kind_t::handler_invocation))
+    _scope (std::make_shared<detail::service_scope_state_t> (
+      false, service_scope_kind_t::handler_invocation))
 {
 }
 
@@ -83,7 +88,8 @@ service_provider_t &service_provider_t::operator= (service_provider_t &&) noexce
 service_scope_t service_provider_t::create_scope (service_scope_kind_t kind)
 {
     if (is_closed ()) {
-        throw framework_exception_t (framework_error_kind_t::shutdown, "service provider is closed");
+        throw framework_exception_t (framework_error_kind_t::shutdown,
+                                     "service provider is closed");
     }
     return service_scope_t (
       service_provider_t (_registry, std::make_shared<detail::service_scope_state_t> (true, kind)));
@@ -106,7 +112,8 @@ bool service_provider_t::is_closed () const noexcept
 std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
 {
     if (is_closed ()) {
-        throw framework_exception_t (framework_error_kind_t::shutdown, "service provider is closed");
+        throw framework_exception_t (framework_error_kind_t::shutdown,
+                                     "service provider is closed");
     }
 
     auto &descriptor = _registry->required (type);
@@ -136,7 +143,8 @@ std::shared_ptr<void> service_provider_t::resolve (std::type_index type)
         }
     }
 
-    throw framework_exception_t (framework_error_kind_t::request_failed, "unknown service lifetime");
+    throw framework_exception_t (framework_error_kind_t::request_failed,
+                                 "unknown service lifetime");
 }
 
 service_scope_t::service_scope_t (service_provider_t provider) : _provider (std::move (provider))
@@ -162,7 +170,8 @@ service_scope_kind_t service_scope_t::kind () const noexcept
     return _provider._scope->kind;
 }
 
-service_collection_t::service_collection_t () : _registry (std::make_shared<detail::service_registry_t> ())
+service_collection_t::service_collection_t () :
+    _registry (std::make_shared<detail::service_registry_t> ())
 {
 }
 
@@ -172,8 +181,9 @@ service_collection_t::service_collection_t (service_collection_t &&) noexcept = 
 
 service_collection_t &service_collection_t::operator= (service_collection_t &&) noexcept = default;
 
-service_collection_t &
-service_collection_t::add_descriptor (std::type_index type, service_lifetime_t lifetime, service_factory_t factory)
+service_collection_t &service_collection_t::add_descriptor (std::type_index type,
+                                                            service_lifetime_t lifetime,
+                                                            service_factory_t factory)
 {
     _registry->add (type, detail::service_descriptor_t{lifetime, std::move (factory), nullptr});
     return *this;
@@ -181,8 +191,8 @@ service_collection_t::add_descriptor (std::type_index type, service_lifetime_t l
 
 service_provider_t service_collection_t::build_provider () const
 {
-    return service_provider_t (
-      _registry, std::make_shared<detail::service_scope_state_t> (false, service_scope_kind_t::handler_invocation));
+    return service_provider_t (_registry, std::make_shared<detail::service_scope_state_t> (
+                                            false, service_scope_kind_t::handler_invocation));
 }
 
 bool service_collection_t::contains (std::type_index type) const

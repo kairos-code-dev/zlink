@@ -20,8 +20,7 @@ namespace
 {
 void *create_sync_socket (int type_)
 {
-    void *socket =
-      zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
+    void *socket = zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
     TEST_ASSERT_NOT_NULL (socket);
     return socket;
 }
@@ -45,8 +44,7 @@ void test_router_multiple_dealers_tcp ()
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
@@ -91,8 +89,7 @@ void test_router_multiple_dealers_ipc ()
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_LAST_ENDPOINT, endpoint, &len));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
@@ -134,12 +131,9 @@ void test_router_multiple_dealers_inproc ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer1, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer2, "D2", 2));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_bind (router, "inproc://test_router_multi_dealers"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer1, "inproc://test_router_multi_dealers"));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_connect (dealer2, "inproc://test_router_multi_dealers"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "inproc://test_router_multi_dealers"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, "inproc://test_router_multi_dealers"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, "inproc://test_router_multi_dealers"));
 
     // Both dealers send messages
     send_string_expect_success (dealer1, "from_dealer1", 0);

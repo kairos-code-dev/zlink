@@ -55,15 +55,17 @@ class stream_runtime_t
                                     const stream_header_t &header,
                                     const zlink::message_t &payload) const;
     result_t<void> dispatch_disconnected (packet_stream_session_t &session, stream_t &stream) const;
-    result_t<void>
-    dispatch_error (packet_stream_session_t &session, stream_t &stream, const stream_error_t &error) const;
+    result_t<void> dispatch_error (packet_stream_session_t &session,
+                                   stream_t &stream,
+                                   const stream_error_t &error) const;
 
     std::vector<std::string> serial_log (const stream_t &stream) const;
     std::vector<stream_header_t> written_headers (const stream_t &stream) const;
 
   private:
-    result_t<void>
-    dispatch_serial (stream_t &stream, std::string operation, std::function<task_t<void> ()> callback) const;
+    result_t<void> dispatch_serial (stream_t &stream,
+                                    std::string operation,
+                                    std::function<task_t<void> ()> callback) const;
 
     std::shared_ptr<stream_runtime_state_t> _state;
 };

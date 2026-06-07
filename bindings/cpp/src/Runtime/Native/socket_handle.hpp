@@ -18,7 +18,10 @@ class socket_handle_t
   public:
     socket_handle_t () noexcept : _socket (nullptr), _own (false) {}
 
-    explicit socket_handle_t (void *socket_, bool own_ = true) noexcept : _socket (socket_), _own (own_) {}
+    explicit socket_handle_t (void *socket_, bool own_ = true) noexcept :
+        _socket (socket_), _own (own_)
+    {
+    }
 
     ~socket_handle_t () { (void) close (); }
 
@@ -95,12 +98,14 @@ inline const void *native_handle (const socket_handle_t &socket_) noexcept
     return socket_._socket;
 }
 
-template <typename T> inline auto native_handle (T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
+template <typename T>
+inline auto native_handle (T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
 {
     return handle_owner_.handle ();
 }
 
-template <typename T> inline auto native_handle (const T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
+template <typename T>
+inline auto native_handle (const T &handle_owner_) noexcept -> decltype (handle_owner_.handle ())
 {
     return handle_owner_.handle ();
 }

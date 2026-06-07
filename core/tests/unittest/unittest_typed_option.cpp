@@ -29,8 +29,7 @@ bool allocate_loopback_tcp_endpoint (char *endpoint_out_, size_t endpoint_size_)
             continue;
 
         int reuse = 1;
-        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse),
-                    sizeof (reuse));
+        setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, as_setsockopt_opt_t (&reuse), sizeof (reuse));
 
         struct sockaddr_in addr;
         memset (&addr, 0, sizeof (addr));
@@ -38,17 +37,13 @@ bool allocate_loopback_tcp_endpoint (char *endpoint_out_, size_t endpoint_size_)
         addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
         addr.sin_port = 0;
 
-        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr),
-                  sizeof (addr))
-            == 0) {
+        if (bind (fd, reinterpret_cast<struct sockaddr *> (&addr), sizeof (addr)) == 0) {
 #if defined ZLINK_HAVE_WINDOWS
             int addr_len = sizeof (addr);
 #else
             socklen_t addr_len = sizeof (addr);
 #endif
-            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr),
-                             &addr_len)
-                == 0) {
+            if (getsockname (fd, reinterpret_cast<struct sockaddr *> (&addr), &addr_len) == 0) {
                 close (fd);
                 snprintf (endpoint_out_, endpoint_size_, "tcp://127.0.0.1:%u",
                           static_cast<unsigned> (ntohs (addr.sin_port)));
@@ -135,53 +130,44 @@ void test_typed_raw_socket_options ()
 
     int value = 42;
     size_t size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (router, ZLINK_OPT_SNDHWM, &value, sizeof (value)));
     value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (router, ZLINK_OPT_SNDHWM, &value, &size));
     TEST_ASSERT_EQUAL_INT (42, value);
 
     value = 1;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (stream, ZLINK_OPT_IPV6, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (stream, ZLINK_OPT_IPV6, &value, sizeof (value)));
     value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (stream, ZLINK_OPT_IPV6, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (stream, ZLINK_OPT_IPV6, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
     value = 2500;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (
-      dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, &size));
     TEST_ASSERT_EQUAL_INT (2500, value);
 
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (xpub, ZLINK_OPT_TYPE, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (xpub, ZLINK_OPT_TYPE, &value, &size));
     TEST_ASSERT_EQUAL_INT (ZLINK_CORE_SOCKET_XPUB, value);
 
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
-                        &size));
+      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value, &size));
     TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_REJECT, value);
 
     value = ZLINK_RID_DUPLICATE_HANDOVER;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
-                        sizeof (value)));
+      zlink_set_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value, sizeof (value)));
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value,
-                        &size));
+      zlink_get_option (router, ZLINK_OPT_RID_DUPLICATE_POLICY, &value, &size));
     TEST_ASSERT_EQUAL_INT (ZLINK_RID_DUPLICATE_HANDOVER, value);
 
     value = -1;
@@ -192,8 +178,7 @@ void test_typed_raw_socket_options ()
 
     value = ZLINK_SUBMIT_RETRY_LOCAL_FAILURE;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_MODE, &value,
-                        sizeof (value)));
+      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_MODE, &value, sizeof (value)));
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -202,8 +187,7 @@ void test_typed_raw_socket_options ()
 
     value = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, &value,
-                        sizeof (value)));
+      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_TIMEOUT, &value, sizeof (value)));
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -212,87 +196,83 @@ void test_typed_raw_socket_options ()
 
     value = 2;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value,
-                        sizeof (value)));
+      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value, sizeof (value)));
     value = -1;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value,
-                        &size));
+      zlink_get_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value, &size));
     TEST_ASSERT_EQUAL_INT (2, value);
 
     value = 17;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value,
-                        sizeof (value)));
+      zlink_set_option (router, ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS, &value, sizeof (value)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     value = 1;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &value, sizeof (value)));
     value = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
-      router, ZLINK_ROUTER_OPT_MANDATORY, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
     value = 4321;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS,
+                                                        &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
-      router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_router_option (router, ZLINK_ROUTER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
     TEST_ASSERT_EQUAL_INT (4321, value);
 
     value = 50;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_router_option (
-      router, ZLINK_ROUTER_OPT_WEIGHT, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_router_option (
-      router, ZLINK_ROUTER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_router_option (router, ZLINK_ROUTER_OPT_WEIGHT, &value, &size));
     TEST_ASSERT_EQUAL_INT (50, value);
 
     value = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
-      dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_PROBE, &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
-      dealer, ZLINK_DEALER_OPT_PROBE, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_PROBE, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
     value = 3210;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
-      dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS,
+                                                        &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
-      dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS, &value, &size));
     TEST_ASSERT_EQUAL_INT (3210, value);
 
     value = 25;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_dealer_option (
-      dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_dealer_option (
-      dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_dealer_option (dealer, ZLINK_DEALER_OPT_WEIGHT, &value, &size));
     TEST_ASSERT_EQUAL_INT (25, value);
 
     value = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_stream_option (
-      stream, ZLINK_STREAM_OPT_NOTIFY, &value, sizeof (value)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &value, sizeof (value)));
     value = 0;
     size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_stream_option (
-      stream, ZLINK_STREAM_OPT_NOTIFY, &value, &size));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_set_routing_id (stream, "s1", 2));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK, zlink_set_routing_id (stream, "s1", 2));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     value = 1;
@@ -309,8 +289,7 @@ void test_typed_raw_socket_options ()
     char filter[32];
     size_t filter_len = sizeof (filter);
     int is_pattern = -1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscription_at (xsub, 0, filter, &filter_len, &is_pattern));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_at (xsub, 0, filter, &filter_len, &is_pattern));
     TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
     TEST_ASSERT_EQUAL_MEMORY ("topic", filter, 5);
     TEST_ASSERT_EQUAL_INT (0, is_pattern);
@@ -334,18 +313,15 @@ void test_typed_spot_node_unified_options ()
     int pub_hwm = 77;
     int sub_hwm = 88;
     size_t size = sizeof (pub_hwm);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (node, ZLINK_OPT_SNDHWM, &pub_hwm, sizeof (pub_hwm)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_set_option (node, ZLINK_OPT_SNDHWM, &pub_hwm, sizeof (pub_hwm)));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (node, ZLINK_OPT_RCVHWM, &sub_hwm, sizeof (sub_hwm)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_set_option (node, ZLINK_OPT_RCVHWM, &sub_hwm, sizeof (sub_hwm)));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
-                                  &sub_hwm, sizeof (sub_hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
+                                                           &sub_hwm, sizeof (sub_hwm)));
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "npub", 4));
 
@@ -356,15 +332,13 @@ void test_typed_spot_node_unified_options ()
 
     int got = 0;
     size = sizeof (got);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     size = sizeof (got);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (node, ZLINK_OPT_RCVHWM, &got, &size));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
+                           zlink_get_option (node, ZLINK_OPT_RCVHWM, &got, &size));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
     size = sizeof (got);
@@ -375,8 +349,7 @@ void test_typed_spot_node_unified_options ()
     char filter[32];
     size_t filter_len = sizeof (filter);
     int is_pattern = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_subscription_at (spot, 0, filter, &filter_len, &is_pattern));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_at (spot, 0, filter, &filter_len, &is_pattern));
     TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
     TEST_ASSERT_EQUAL_MEMORY ("alpha", filter, 5);
     TEST_ASSERT_EQUAL_INT (0, is_pattern);
@@ -389,69 +362,58 @@ void test_typed_spot_node_unified_options ()
 void test_typed_service_handle_dispatch_domains ()
 {
     void *ctx = new_ctx ();
-    void *discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-alpha");
+    void *discovery = zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-alpha");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_NOT_NULL (registry);
 
     size_t route_value_limit = 91;
     size_t size = sizeof (route_value_limit);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
-                        &route_value_limit, sizeof (route_value_limit)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
+                                                 &route_value_limit, sizeof (route_value_limit)));
     route_value_limit = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE,
-                        &route_value_limit, &size));
+      zlink_get_option (discovery, ZLINK_OPT_ROUTE_VALUE_MAX_SIZE, &route_value_limit, &size));
     TEST_ASSERT_EQUAL_UINT (91, (unsigned int) route_value_limit);
 
     int spot_owner_sync = -1;
     size = sizeof (spot_owner_sync);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
-                        &spot_owner_sync, &size));
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &spot_owner_sync, &size));
     TEST_ASSERT_EQUAL_INT (0, spot_owner_sync);
     spot_owner_sync = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
-                        &spot_owner_sync, sizeof (spot_owner_sync)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                                                 &spot_owner_sync, sizeof (spot_owner_sync)));
     spot_owner_sync = 0;
     size = sizeof (spot_owner_sync);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
-                        &spot_owner_sync, &size));
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC, &spot_owner_sync, &size));
     TEST_ASSERT_EQUAL_INT (1, spot_owner_sync);
     spot_owner_sync = 2;
     errno = 0;
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
-                        &spot_owner_sync, sizeof (spot_owner_sync)));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_SPOT_OWNER_SYNC,
+                                             &spot_owner_sync, sizeof (spot_owner_sync)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     int actor_route_sync = -1;
     size = sizeof (actor_route_sync);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
-                        &actor_route_sync, &size));
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, &actor_route_sync, &size));
     TEST_ASSERT_EQUAL_INT (0, actor_route_sync);
     actor_route_sync = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
-                        &actor_route_sync, sizeof (actor_route_sync)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+                                                 &actor_route_sync, sizeof (actor_route_sync)));
     actor_route_sync = 0;
     size = sizeof (actor_route_sync);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
-                        &actor_route_sync, &size));
+      zlink_get_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC, &actor_route_sync, &size));
     TEST_ASSERT_EQUAL_INT (1, actor_route_sync);
     actor_route_sync = 2;
     errno = 0;
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK,
-      zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
-                        &actor_route_sync, sizeof (actor_route_sync)));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK,
+                           zlink_set_option (discovery, ZLINK_OPT_DISCOVERY_ACTOR_ROUTE_SYNC,
+                                             &actor_route_sync, sizeof (actor_route_sync)));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
@@ -461,16 +423,12 @@ void test_typed_service_handle_dispatch_domains ()
     TEST_ASSERT_EQUAL_UINT8 (4, rid.size);
     TEST_ASSERT_EQUAL_MEMORY ("disc", rid.data, 4);
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_client (discovery, "ca.pem", "disc-host", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_server (registry, "srv-cert.pem", "srv-key.pem", 1));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_tls_client (registry, "ca.pem", "registry-host", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (discovery, "ca.pem", "disc-host", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (registry, "srv-cert.pem", "srv-key.pem", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_client (registry, "ca.pem", "registry-host", 0));
 
     errno = 0;
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_set_routing_id (registry, "rid", 3));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK, zlink_set_routing_id (registry, "rid", 3));
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
@@ -486,9 +444,7 @@ void test_spot_node_internal_socket_snapshot_is_supported ()
     void *spot = make_test_spot_handle (node);
     TEST_ASSERT_NOT_NULL (spot);
     size_t socket_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_internal_sockets (node, NULL, NULL,
-                                                 &socket_count));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets (node, NULL, NULL, &socket_count));
     TEST_ASSERT_GREATER_THAN_UINT (0, socket_count);
 
     destroy_test_spot_handle (&spot);
@@ -504,8 +460,7 @@ void test_discovery_routing_id_locks_after_registry_connect ()
     }
 
     void *ctx = new_ctx ();
-    void *discovery =
-      zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-lock");
+    void *discovery = zlink_discovery_new (ctx, ZLINK_AUTO_CONNECT_SPOT_MESH, "svc-lock");
     void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_NOT_NULL (registry);
@@ -513,19 +468,14 @@ void test_discovery_routing_id_locks_after_registry_connect ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (discovery, "disc", 4));
     char pub_endpoint[MAX_SOCKET_STRING];
     char router_endpoint[MAX_SOCKET_STRING];
-    TEST_ASSERT_TRUE (
-      allocate_loopback_tcp_endpoint (pub_endpoint, sizeof (pub_endpoint)));
-    TEST_ASSERT_TRUE (allocate_loopback_tcp_endpoint (
-      router_endpoint, sizeof (router_endpoint)));
+    TEST_ASSERT_TRUE (allocate_loopback_tcp_endpoint (pub_endpoint, sizeof (pub_endpoint)));
+    TEST_ASSERT_TRUE (allocate_loopback_tcp_endpoint (router_endpoint, sizeof (router_endpoint)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_registry_bind (registry, pub_endpoint, router_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_discovery_connect_registry (discovery, router_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_bind (registry, pub_endpoint, router_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (discovery, router_endpoint));
 
     errno = 0;
-    TEST_ASSERT_NOT_EQUAL (
-      ZLINK_CONFIG_OK, zlink_set_routing_id (discovery, "next", 4));
+    TEST_ASSERT_NOT_EQUAL (ZLINK_CONFIG_OK, zlink_set_routing_id (discovery, "next", 4));
     TEST_ASSERT_EQUAL_INT (EFSM, errno);
 
     zlink_routing_id_t rid;
@@ -541,120 +491,85 @@ void test_discovery_routing_id_locks_after_registry_connect ()
 
 void test_option_owner_map_matches_domains ()
 {
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT));
 
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_transport_network,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_transport_network,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_BINDTODEVICE));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_BINDTODEVICE));
 
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_protocol_metadata,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL));
 #ifdef ZLINK_HAVE_TLS
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_protocol_metadata,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TLS_CERT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_TLS_CERT));
 #endif
 
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_LAST_ENDPOINT));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_unknown,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_BLOCKY));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_LAST_ENDPOINT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_unknown,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_BLOCKY));
+
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::common_option_owner_of (ZLINK_OPT_SNDHWM));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::common_option_owner_of (ZLINK_OPT_RID_DUPLICATE_POLICY));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::common_option_owner_of (ZLINK_OPT_SUBMIT_RETRY_MODE));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
+                           zlink::common_option_owner_of (ZLINK_OPT_TCP_NODELAY));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
+                           zlink::common_option_owner_of (ZLINK_OPT_HEARTBEAT_TTL));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::common_option_owner_of (ZLINK_OPT_LAST_ENDPOINT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_unknown,
+                           zlink::common_option_owner_of (ZLINK_OPT_BLOCKY));
+
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::router_option_owner_of (ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::router_option_owner_of (ZLINK_ROUTER_OPT_WEIGHT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_PROBE));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_WEIGHT));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
+                           zlink::stream_option_owner_of (ZLINK_STREAM_OPT_NOTIFY));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::pub_option_owner_of (ZLINK_PUB_OPT_MANUAL_LAST_VALUE));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+                           zlink::sub_option_owner_of (ZLINK_SUB_OPT_TOPICS_COUNT));
 
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_core_socket,
-      zlink::common_option_owner_of (ZLINK_OPT_SNDHWM));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::common_option_owner_of (ZLINK_OPT_RID_DUPLICATE_POLICY));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::common_option_owner_of (ZLINK_OPT_SUBMIT_RETRY_MODE));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::option_owner_of (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_transport_network,
-      zlink::common_option_owner_of (ZLINK_OPT_TCP_NODELAY));
+      zlink::option_owner_of_bag_field (zlink::options_bag_field_monitor_event_version));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
+                           zlink::option_owner_of_bag_field (zlink::options_bag_field_hello_msg));
     TEST_ASSERT_EQUAL_INT (
       zlink::options_owner_protocol_metadata,
-      zlink::common_option_owner_of (ZLINK_OPT_HEARTBEAT_TTL));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::common_option_owner_of (ZLINK_OPT_LAST_ENDPOINT));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_unknown,
-      zlink::common_option_owner_of (ZLINK_OPT_BLOCKY));
-
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::router_option_owner_of (ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::router_option_owner_of (ZLINK_ROUTER_OPT_WEIGHT));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_PROBE));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_WEIGHT));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::stream_option_owner_of (ZLINK_STREAM_OPT_NOTIFY));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::pub_option_owner_of (ZLINK_PUB_OPT_MANUAL_LAST_VALUE));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_service_specific,
-      zlink::sub_option_owner_of (ZLINK_SUB_OPT_TOPICS_COUNT));
-
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_core_socket,
-      zlink::option_owner_of_bag_field (
-        zlink::options_bag_field_monitor_event_version));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_protocol_metadata,
-      zlink::option_owner_of_bag_field (zlink::options_bag_field_hello_msg));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_protocol_metadata,
-      zlink::option_owner_of_bag_field (
-        zlink::options_bag_field_disconnect_msg));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_protocol_metadata,
-      zlink::option_owner_of_bag_field (zlink::options_bag_field_hiccup_msg));
-    TEST_ASSERT_EQUAL_INT (
-      zlink::options_owner_transport_network,
-      zlink::option_owner_of_bag_field (zlink::options_bag_field_busy_poll));
+      zlink::option_owner_of_bag_field (zlink::options_bag_field_disconnect_msg));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
+                           zlink::option_owner_of_bag_field (zlink::options_bag_field_hiccup_msg));
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
+                           zlink::option_owner_of_bag_field (zlink::options_bag_field_busy_poll));
 
     TEST_ASSERT_EQUAL_STRING (
-      "core-socket",
-      zlink::option_owner_name (
-        zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM)));
+      "core-socket", zlink::option_owner_name (zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM)));
     TEST_ASSERT_EQUAL_STRING (
       "transport-network",
-      zlink::option_owner_name (
-        zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY)));
+      zlink::option_owner_name (zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY)));
     TEST_ASSERT_EQUAL_STRING (
       "protocol-metadata",
-      zlink::option_owner_name (
-        zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL)));
-    TEST_ASSERT_EQUAL_STRING (
-      "service-specific",
-      zlink::option_owner_name (
-        zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT)));
+      zlink::option_owner_name (zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL)));
+    TEST_ASSERT_EQUAL_STRING ("service-specific", zlink::option_owner_name (zlink::option_owner_of (
+                                                    ZLINK_INTERNAL_OPT_TOPICS_COUNT)));
 }
 
 int main (void)

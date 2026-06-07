@@ -19,16 +19,14 @@ int send_request_frame (zlink::socket_base_t *socket_,
                         const void *data_,
                         size_t size_,
                         int flags_);
-int send_request_payload_part (
-  zlink::socket_base_t *socket_,
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  const zlink_routing_id_t *peer_rid_,
-  zlink_msg_t *part_,
-  zlink_send_flags_t flags_,
-  zlink_part_flag_t part_flag_);
-int stage_request_payload_part (
-  zlink::part_helper_internal::handle_state_t *helper_state_,
-  zlink_msg_t *part_);
+int send_request_payload_part (zlink::socket_base_t *socket_,
+                               zlink::part_helper_internal::handle_state_t *helper_state_,
+                               const zlink_routing_id_t *peer_rid_,
+                               zlink_msg_t *part_,
+                               zlink_send_flags_t flags_,
+                               zlink_part_flag_t part_flag_);
+int stage_request_payload_part (zlink::part_helper_internal::handle_state_t *helper_state_,
+                                zlink_msg_t *part_);
 }
 }
 

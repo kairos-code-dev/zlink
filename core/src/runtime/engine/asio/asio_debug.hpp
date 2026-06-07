@@ -15,15 +15,15 @@
 
 #ifdef ZLINK_ASIO_DEBUG
 
-#define ASIO_DBG(category, fmt, ...)                                           \
-    do {                                                                       \
-        fprintf (stderr, "[ASIO:" category "] " fmt "\n", ##__VA_ARGS__);      \
+#define ASIO_DBG(category, fmt, ...)                                                               \
+    do {                                                                                           \
+        fprintf (stderr, "[ASIO:" category "] " fmt "\n", ##__VA_ARGS__);                          \
     } while (0)
 
-#define ASIO_DBG_THIS(category, fmt, ...)                                      \
-    do {                                                                       \
-        fprintf (stderr, "[ASIO:" category ":%p] " fmt "\n",                   \
-                 static_cast<void *> (this), ##__VA_ARGS__);                   \
+#define ASIO_DBG_THIS(category, fmt, ...)                                                          \
+    do {                                                                                           \
+        fprintf (stderr, "[ASIO:" category ":%p] " fmt "\n", static_cast<void *> (this),           \
+                 ##__VA_ARGS__);                                                                   \
     } while (0)
 
 #else

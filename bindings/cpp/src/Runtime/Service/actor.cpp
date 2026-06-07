@@ -54,8 +54,8 @@ actor_t::actor_t (spot_node_t &node_, const std::string &actor_id_) :
     zlink::detail::validate_bounded_c_string (actor_id_, 256 - 1u, "actor_id");
     zlink_actor_ref_t native;
     std::memset (&native, 0, sizeof (native));
-    const config_result_t rc = static_cast<config_result_t> (
-      zlink_spot_node_actor_new (zlink::detail::native_handle (node_), actor_id_.c_str (), &native));
+    const config_result_t rc = static_cast<config_result_t> (zlink_spot_node_actor_new (
+      zlink::detail::native_handle (node_), actor_id_.c_str (), &native));
     if (rc == config_result_t::ok) {
         _ref = zlink::detail::actor_model_access_t::from_native (native);
         _active = true;
@@ -73,7 +73,8 @@ void actor_t::close (std::chrono::milliseconds timeout_)
     std::future<std::vector<message_t>> future = state->promise->get_future ();
     const submit_result_t rc = static_cast<submit_result_t> (zlink_spot_node_actor_destroy (
       zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-      &detail::request_callback_trampoline, state.get (), zlink::detail::native_timeout_ms (timeout_)));
+      &detail::request_callback_trampoline, state.get (),
+      zlink::detail::native_timeout_ms (timeout_)));
     if (rc != submit_result_t::ok)
         throw submit_error_t (rc, zlink_errno ());
     state.release ();
@@ -83,9 +84,10 @@ void actor_t::close (std::chrono::milliseconds timeout_)
 
 void actor_t::close_bound_session (std::chrono::milliseconds timeout_)
 {
-    detail::throw_if_failed<request_error_t> (static_cast<request_result_t> (zlink_spot_node_actor_close_bound_session (
-      zlink::detail::native_handle (*_node), zlink::detail::actor_ref_native (_ref),
-      zlink::detail::native_timeout_ms (timeout_))));
+    detail::throw_if_failed<request_error_t> (static_cast<request_result_t> (
+      zlink_spot_node_actor_close_bound_session (zlink::detail::native_handle (*_node),
+                                                 zlink::detail::actor_ref_native (_ref),
+                                                 zlink::detail::native_timeout_ms (timeout_))));
 }
 
 actor_t spot_node_t::create_actor (const std::string &actor_id_)

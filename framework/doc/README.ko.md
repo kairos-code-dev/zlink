@@ -32,14 +32,16 @@
 | [Framework API](./spec/framework-api.ko.md) | 언어별 framework API의 공통 방향 |
 | [Actor 모델](./spec/actor-model.ko.md) | actor 위치, session binding, Entry Spot, user Spot, dispatch 기준 |
 | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | session과 actor를 연결하는 helper와 routing 정책 |
+| [공통 샘플 시나리오](./spec/sample/README.ko.md) | Bingo와 TicTacToe의 언어 중립 샘플 기준 |
 | [Use case 목록](./spec/use-cases/README.ko.md) | use case 문서 전체 목록과 관리 규칙 |
 | [Use case 검증](./spec/usecase-validation.ko.md) | 현재 스펙이 use case를 얼마나 설명하는지 점검 |
 | [Session Gateway 보관본](./spec/archive/session-gateway.ko.md) | 이전 초안의 제거 이력과 배경 (참고용) |
 
 공통 스펙 영역의 미확정 초안은 [spec/draft/](./spec/draft/README.ko.md)에 둔다.
 
-언어 중립 샘플 설계는 [spec/sample/tictactoe/](./spec/sample/tictactoe/README.ko.md)에
-둔다. 일반(stream 직결)과 session actor dispatch 두 구성을 같은 게임 규칙으로 비교한다.
+언어 중립 샘플 설계는 [spec/sample/](./spec/sample/README.ko.md)에 둔다.
+Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와 Play 서버만으로
+구성한 직접 play 연결 구조를 맡는다.
 
 ## 3. 언어별 문서
 

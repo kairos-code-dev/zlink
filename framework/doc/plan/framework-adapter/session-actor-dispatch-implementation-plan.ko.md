@@ -398,7 +398,7 @@ rg -n "InMemoryRoutedChannel|UseManualConnections|Retry|Warmup|Task\\.Delay|Samp
 | `bindings/dotnet/stream-samples.ko.md` | sample code가 이전 attach/bind 용어를 쓰는지 |
 | `bindings/dotnet/spot-samples.ko.md` | actor/spot 연결 예시가 새 session actor dispatch 모델과 충돌하는지 |
 | `bindings/dotnet/regression-test-matrix.ko.md` | 회귀 테스트 항목이 새 resolver, writer, `SessionProxy`, metadata 정책을 포함하는지 |
-| `spec/sample/tictactoe/session-gateway.ko.md` | 기존 `BindActorAsync`, `OpenActorRelay`, `SendToActor` sample 흐름을 새 sample 흐름으로 바꿔야 하는지 |
+| `spec/sample/tictactoe/README.ko.md` | TicTacToe 공통 샘플은 기본 direct play 시나리오만 남기고, session gateway 흐름은 Bingo 샘플과 session actor dispatch 스펙으로 분리되었는지 |
 | worklog 문서 | 과거 구현 기록과 현재 목표가 구분되어 있는지 |
 
 검색 결과는 아래처럼 분류한다.

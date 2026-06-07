@@ -65,8 +65,6 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 4. sample spec
    - [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)
    - [README.ko.md](../../spec/sample/tictactoe/README.ko.md)
-   - [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)
-   - [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)
 5. use case validation
    - [usecase-validation.ko.md](../../spec/usecase-validation.ko.md)
    - [use-cases/README.ko.md](../../spec/use-cases/README.ko.md)
@@ -623,15 +621,12 @@ fi
 
 ### 12.1 리뷰 절차
 
-1. [direct.ko.md](../../spec/sample/tictactoe/direct.ko.md)를 sample code와 대조한다.
-2. [session-gateway.ko.md](../../spec/sample/tictactoe/session-gateway.ko.md)를 sample
-   code와 대조한다.
-3. [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)를
+1. [README.ko.md](../../spec/sample/tictactoe/README.ko.md)를 sample code와 대조한다.
+2. [tictactoe-game-sample.ko.md](../../../languages/dotnet/doc/guide/samples/tictactoe-game-sample.ko.md)를
    sample code와 대조한다.
-4. [README.ko.md](../../spec/sample/tictactoe/README.ko.md)를 sample code와 대조한다.
-5. packet suffix, project name, directory ownership, log, smoke scenario를 확인한다.
-6. 누락이 있으면 sample code나 문서를 수정한다.
-7. 다시 1번으로 돌아간다.
+3. packet suffix, project name, directory ownership, log, smoke scenario를 확인한다.
+4. 누락이 있으면 sample code나 문서를 수정한다.
+5. 다시 1번으로 돌아간다.
 
 종료 조건:
 

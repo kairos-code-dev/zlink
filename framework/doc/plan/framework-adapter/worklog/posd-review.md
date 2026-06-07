@@ -468,9 +468,10 @@ dispatch에 사용하는 handle로 분리하는 쪽이 깊은 모듈에 맞다.
   `DisconnectActorAsync(...)` 기반 session actor bridge를 public 표면으로 설명한다.
   새 draft는 actor 실행 객체와 dispatch handle을 분리하고 session은 `IZLinkActorRef`를
   저장해야 하므로 같은 개념의 API가 일치하지 않는다.
-- `verified`: `spec/sample/tictactoe/session-gateway.ko.md`가 기존
+- `verified`: 이전 TicTacToe gateway 샘플 문서가 기존
   `OpenActorRelay(...)`, `BindActorAsync(...)`, `SendToActor(...)` 흐름을 sample 완료
-  기준으로 적고 있다. 새 sample 기준은 session actor dispatch helper와 `SessionProxy`다.
+  기준으로 적고 있었다. 현재 TicTacToe 공통 샘플은 기본 direct play 시나리오만 남기고,
+  session gateway 흐름은 Bingo 샘플과 session actor dispatch 스펙으로 분리한다.
 - `verified`: `regression-test-matrix.ko.md`에는 새 resolver, writer, binding token,
   metadata policy, `SessionProxy` 회귀 항목이 아직 반영되지 않았고, 기존
   `AttachActorAsync(...)` 회귀 항목이 남아 있다.

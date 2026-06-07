@@ -4,7 +4,7 @@
 
 [Framework 문서](../README.ko.md) | [공통 스펙 초안](./draft/README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/draft/README.ko.md)
+[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [공통 샘플](./sample/README.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/draft/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -48,20 +48,22 @@
 | 6 | [framework-api.ko.md](./framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향. 각 환경에서 handler와 client가 어떤 모양으로 보이는지 다룬다. |
 | 7 | [actor-model.ko.md](./actor-model.ko.md) | actor 개념을 cross-binding 기준으로 정의한다. actor 라이프사이클 (Entry Spot / session bind / user Spot join), application 로직 vs framework 자동 처리, outbound actor 호출, session actor dispatch 패턴, 등록 표면을 다룬다. |
 | 8 | [Session Actor Dispatch](./session-actor-dispatch.ko.md) | actor 모델의 한 use case로서 session actor dispatch의 cross-binding 사용성 결정 사항. typed handler 의미, route resolver 계약, helper 의미, `SessionProxy` 의미, error 매트릭스를 다룬다. 구체 .NET 시그니처와 등록 코드, sample은 [bindings/dotnet/session-actor-dispatch.ko.md](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md)에 분리되어 있다. |
-| 9 | [Session Gateway 보관본](./archive/session-gateway.ko.md) | 이전 session gateway/actor relay 초안의 보관본. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. 현재 기준은 위 §8이다. |
-| 10 | [.NET 문서](../../languages/dotnet/doc/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
-| 11 | [Java 문서](../../languages/java/doc/draft/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
-| 12 | [Node.js 문서](../../languages/node/doc/draft/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
-| 13 | [Python 문서](../../languages/python/doc/draft/README.ko.md) | `Python`과 `FastAPI` 전용 문서 진입점. |
-| 14 | [Go 문서](../../languages/go/doc/draft/README.ko.md) | `Go`와 `net/http` 계열 전용 문서 진입점. |
-| 15 | [Rust 문서](../../languages/rust/doc/draft/README.ko.md) | `Rust`와 `Axum` 전용 문서 진입점. |
-| 16 | [C++ 문서](../../languages/cpp/doc/draft/README.ko.md) | `C++` standalone host/runtime 전용 문서 진입점. |
-| 17 | [Use case 검증](./usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
+| 9 | [공통 샘플 시나리오](./sample/README.ko.md) | Bingo와 TicTacToe의 언어 중립 샘플 기준. 서버 역할, 메시지 흐름, handler 등록 방식 차이를 정의한다. |
+| 10 | [Session Gateway 보관본](./archive/session-gateway.ko.md) | 이전 session gateway/actor relay 초안의 보관본. 현재 public API 기준이 아니며, 배경과 문제 맥락을 확인할 때만 사용한다. 현재 기준은 위 §8이다. |
+| 11 | [.NET 문서](../../languages/dotnet/doc/README.ko.md) | `.NET`과 `ASP.NET Core` 전용 문서. handler 인터페이스, 샘플, SPOT 통합, Registry 통합을 포함한다. |
+| 12 | [Java 문서](../../languages/java/doc/draft/README.ko.md) | `Java`와 `Spring Boot` 전용 문서 진입점. |
+| 13 | [Node.js 문서](../../languages/node/doc/draft/README.ko.md) | `Node.js`와 `NestJS` 전용 문서 진입점. |
+| 14 | [Python 문서](../../languages/python/doc/draft/README.ko.md) | `Python`과 `FastAPI` 전용 문서 진입점. |
+| 15 | [Go 문서](../../languages/go/doc/draft/README.ko.md) | `Go`와 `net/http` 계열 전용 문서 진입점. |
+| 16 | [Rust 문서](../../languages/rust/doc/draft/README.ko.md) | `Rust`와 `Axum` 전용 문서 진입점. |
+| 17 | [C++ 문서](../../languages/cpp/doc/draft/README.ko.md) | `C++` standalone host/runtime 전용 문서 진입점. |
+| 18 | [Use case 검증](./usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
 모델(3-4)로 설계 방향을 확인하고, topology(5)로 내부 매핑을 이해하고,
-API 표면(6)을 본 다음, actor 모델(7)과 그 use case 정책(8)을 잡고 (이전 보관본은
-§9), 언어별 상세(10-16)로 내려간 뒤, 마지막으로 검증(17)에서 빠진 부분을 확인하는
+API 표면(6)을 본 다음, actor 모델(7)과 그 use case 정책(8)을 잡고, 공통 샘플(9)로
+대표 흐름을 확인한다. 이전 보관본은 §10에서 배경만 확인하고, 언어별 상세(11-17)로
+내려간 뒤, 마지막으로 검증(18)에서 빠진 부분을 확인하는
 흐름이다.
 
 언어별 상세 문서를 새로 읽을 때는 아래 순서를 기본으로 본다.

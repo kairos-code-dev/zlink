@@ -153,5 +153,9 @@ wait_port session-route "${BINGO_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${BINGO_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${BINGO_STREAM_ENDPOINT}"
 
+dotnet run --no-build --project "${SCRIPT_DIR}/Probe/Bingo.Probe.csproj" -- \
+  --registry-endpoint "${BINGO_REGISTRY_ROUTER_ENDPOINT}" \
+  --timeout-seconds 10
+
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-endpoint "${BINGO_STREAM_ENDPOINT}"

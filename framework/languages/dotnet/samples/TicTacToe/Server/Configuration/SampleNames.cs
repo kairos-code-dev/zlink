@@ -38,6 +38,7 @@ internal static class SampleTypes
     public const string GameSpot = "tictactoe-game";
 
     public const string PlayRouterId = "1001";
+    public const string PlaySpotNodeId = "2001";
 }
 
 internal static class SampleDefaults

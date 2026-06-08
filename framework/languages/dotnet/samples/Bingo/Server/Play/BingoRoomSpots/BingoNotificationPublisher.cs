@@ -54,10 +54,6 @@ internal sealed class BingoNotificationPublisher
                         roomEvent.State))
                 .PacketName(SampleNames.NumberDrawnPacket)
                 .Submit(cancellationToken),
-            BingoRoomEventKind.State => roomEvent.Recipient.Context.BoundSession
-                .Send(new BingoStateNotify(roomEvent.State))
-                .PacketName(SampleNames.StatePacket)
-                .Submit(cancellationToken),
             BingoRoomEventKind.GameEnded => roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameEndedNotify(roomEvent.State))
                 .PacketName(SampleNames.GameEndedPacket)

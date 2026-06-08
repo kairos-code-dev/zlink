@@ -11,10 +11,11 @@ using Bingo.Server.Play.Actors;
 using Bingo.Server.Play.BingoRoomSpots;
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.EntrySpot.Handlers;
 
-internal sealed class MatchBingoActorHandler
+internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>
 {
     public async ValueTask<MatchBingoRes> HandleAsync(
@@ -25,12 +26,14 @@ internal sealed class MatchBingoActorHandler
         CancellationToken cancellationToken)
     {
         _ = context;
+        logger.LogInformation("match: actor request. actor={ActorId}, mode={Mode}", actor.ActorId, message.Mode);
         var matched = await entrySpot.Context.Outbound.RequestToChannel(
                 SampleNames.ApiChannel,
                 new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync<MatchBingoApiRes>(cancellationToken)
             ;
+        logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
         var roomRid = RoutingId.FromHex(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
@@ -39,6 +42,7 @@ internal sealed class MatchBingoActorHandler
             .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync(cancellationToken)
             ;
+        logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
         return new MatchBingoRes(matched.RoomId, joined.Reply.Decode<BingoRoomJoinRes>().State);
     }

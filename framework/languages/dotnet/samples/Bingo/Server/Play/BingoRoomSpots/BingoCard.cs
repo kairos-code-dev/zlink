@@ -1,20 +1,10 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-
-namespace Bingo.Server.Play;
+namespace Bingo.Server.Play.BingoRoomSpots;
 
 internal sealed class BingoCard
 {
-    public const int Size = 5;
+    public const int Size = 3;
     public const int CellCount = Size * Size;
-    public const int FreeCellIndex = 12;
+    public const int FreeCellIndex = 4;
 
     private readonly int[] _numbers;
     private readonly bool[] _marks;
@@ -25,10 +15,32 @@ internal sealed class BingoCard
         _marks = marks;
     }
 
-    public static BingoCard Create()
+    public static BingoCard FromSubmittedNumbers(IReadOnlyList<int> submitted)
     {
-        var numbers = Enumerable.Range(1, 75).Take(CellCount).ToArray();
-        numbers[FreeCellIndex] = 0;
+        if (submitted.Count != CellCount)
+        {
+            throw new InvalidOperationException($"Bingo card must contain {CellCount} cells.");
+        }
+
+        var numbers = submitted.ToArray();
+        if (numbers[FreeCellIndex] != 0)
+        {
+            throw new InvalidOperationException("Bingo card center cell must be 0.");
+        }
+
+        var playableNumbers = numbers
+            .Where(static number => number != 0)
+            .ToArray();
+        if (playableNumbers.Any(static number => number < 1 || number > 15))
+        {
+            throw new InvalidOperationException("Bingo card numbers must be between 1 and 15.");
+        }
+
+        if (playableNumbers.Distinct().Count() != playableNumbers.Length)
+        {
+            throw new InvalidOperationException("Bingo card numbers must be unique.");
+        }
+
         var marks = new bool[CellCount];
         marks[FreeCellIndex] = true;
         return new BingoCard(numbers, marks);

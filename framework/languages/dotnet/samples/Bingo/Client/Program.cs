@@ -1,3 +1,6 @@
+using Bingo.Shared.Configuration;
+using Systems.Zlink.Stream.Connector.Contracts;
+
 namespace Bingo.Client;
 
 internal static class Program
@@ -11,9 +14,24 @@ internal static class Program
 
         var streamEndpoint = ReadOption(args, "--stream-endpoint")
             ?? throw new ArgumentException("Missing --stream-endpoint.");
-        var result = await new BingoClientApp().RunAsync(
-            new BingoClientOptions(streamEndpoint));
-        result.WriteTo(Console.Out);
+        await using var client1 = CreateClient(streamEndpoint);
+        await using var client2 = CreateClient(streamEndpoint);
+
+        await new BingoClientApp().RunAsync(
+            client1,
+            client2);
+        Console.WriteLine("bingo=completed");
+    }
+
+    private static IZlinkStreamConnector CreateClient(string streamEndpoint)
+    {
+        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(streamEndpoint),
+            ConnectTimeout = SampleTimings.ConnectTimeout,
+            RequestTimeout = SampleTimings.RequestTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        });
     }
 
     private static string? ReadOption(string[] args, string name)

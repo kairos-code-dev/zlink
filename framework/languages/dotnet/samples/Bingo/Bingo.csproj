@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="Shared\Bingo.Shared.csproj" />
     <ProjectReference Include="Client\Bingo.Client.csproj" />
+    <ProjectReference Include="Probe\Bingo.Probe.csproj" />
     <ProjectReference Include="Server\Api\Bingo.Server.Api.csproj" />
     <ProjectReference Include="Server\Play\Bingo.Server.Play.csproj" />
     <ProjectReference Include="Server\Registry\Bingo.Server.Registry.csproj" />

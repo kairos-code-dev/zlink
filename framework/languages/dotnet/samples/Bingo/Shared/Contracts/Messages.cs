@@ -41,7 +41,9 @@ public sealed record MatchBingoApiReq(
 
 public sealed record MatchBingoApiRes(string RoomId);
 
-public sealed record AllocateBingoRoomReq(string Mode);
+public sealed record AllocateBingoRoomReq(
+    string Mode,
+    string ActorId);
 
 public sealed record AllocateBingoRoomRes(string RoomId);
 
@@ -52,13 +54,11 @@ public sealed record BingoRoomJoinReq(
 
 public sealed record BingoRoomJoinRes(BingoRoomState State);
 
-public sealed record StartBingoGameReq(string RoomId);
+public sealed record SubmitBingoCardReq(
+    string RoomId,
+    IReadOnlyList<int> Card);
 
-public sealed record StartBingoGameRes(BingoRoomState State);
-
-public sealed record LeaveRoomReq(string RoomId);
-
-public sealed record LeaveRoomRes(BingoRoomState State);
+public sealed record SubmitBingoCardRes(BingoRoomState State);
 
 public sealed record PlayerJoinedNotify(
     string RoomId,
@@ -75,8 +75,6 @@ public sealed record BingoNumberDrawnNotify(
     int DrawSeq,
     int Number,
     BingoRoomState State);
-
-public sealed record BingoStateNotify(BingoRoomState State);
 
 public sealed record BingoGameEndedNotify(BingoRoomState State);
 

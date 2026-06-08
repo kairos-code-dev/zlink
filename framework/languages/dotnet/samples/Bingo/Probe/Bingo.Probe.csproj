@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -8,7 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <ProjectReference Include="..\Shared\Bingo.Shared.csproj" />
     <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj" />
+    <ProjectReference Include="../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
+    <ProjectReference Include="../../../../../../bindings/dotnet/codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
   </ItemGroup>
 </Project>

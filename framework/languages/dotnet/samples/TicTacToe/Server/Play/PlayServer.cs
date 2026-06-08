@@ -71,6 +71,7 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddStreamNode(SampleNodes.ClientStream, stream =>
             {
+                stream.AttachActorGateway(SampleNodes.PlaySpot);
                 stream.Bind(settings.PlayEndpoint);
                 stream.RegisterSession<PlaySession>();
             });
@@ -82,6 +83,7 @@ internal sealed class PlayServer(SampleSettings settings)
                     spot.EnableRouter(router =>
                     {
                         router.BindRouter(settings.SpotEndpoint);
+                        router.SetRoutingId(RoutingId.From(SampleTypes.PlaySpotNodeId));
                     });
                     spot.AddEntrySpot<PlayEntrySpot>();
                     spot.AddSpotFactory<TicTacToeGame>();

@@ -24,12 +24,11 @@ internal sealed record BingoRoomSettings(
     string RoomName,
     string Mode,
     int RequiredPlayers,
-    int MaxDrawNumber,
-    TimeSpan DrawPeriod)
+    int MaxDrawNumber)
 {
     public static BingoRoomSettings Create(string mode, int roomSeq)
     {
-        if (!string.Equals(mode, "four-player", StringComparison.Ordinal))
+        if (!string.Equals(mode, "two-player", StringComparison.Ordinal))
         {
             throw new InvalidOperationException($"Unsupported bingo mode. mode={mode}");
         }
@@ -37,9 +36,8 @@ internal sealed record BingoRoomSettings(
         return new BingoRoomSettings(
             $"Bingo Room {roomSeq:000}",
             mode,
-            RequiredPlayers: 4,
-            MaxDrawNumber: 75,
-            DrawPeriod: SampleTimings.DrawPeriod);
+            RequiredPlayers: 2,
+            MaxDrawNumber: 15);
     }
 }
 
@@ -48,7 +46,6 @@ internal enum BingoRoomEventKind
     PlayerJoined,
     GameStarted,
     NumberDrawn,
-    State,
     GameEnded,
 }
 
@@ -62,14 +59,18 @@ internal sealed record BingoRoomEvent(
     bool IsHost = false,
     int DrawnNumber = 0);
 
-internal sealed record BingoRoomJoinResult(
+internal sealed record BingoGameEvent(
+    BingoRoomEventKind Kind,
+    string RecipientActorId,
     BingoRoomState State,
-    IReadOnlyList<BingoRoomEvent> Events);
+    string? JoinedActorId = null,
+    string? JoinedDisplayName = null,
+    int Seat = -1,
+    bool IsHost = false,
+    int DrawnNumber = 0);
 
-internal sealed record BingoRoomStartResult(
+internal sealed record BingoGameChange(
     BingoRoomState State,
-    IReadOnlyList<BingoRoomEvent> Events);
-
-internal sealed record BingoRoomDrawResult(
-    BingoRoomState State,
-    IReadOnlyList<BingoRoomEvent> Events);
+    IReadOnlyList<BingoGameEvent> Events,
+    bool ShouldStartDrawTimer = false,
+    bool ShouldStopDrawTimer = false);

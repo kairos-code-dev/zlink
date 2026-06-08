@@ -294,8 +294,9 @@ sealed class TicTacToeGame(
             .Select(static player => player.Actor)
             .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
             .ToArray();
-        QueueSessionPush(recipients, actor => actor.Context.BoundSession.Send(message).Submit());
-        return ValueTask.CompletedTask;
+        return SendSessionPushAsync(
+            recipients,
+            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
     }
 
     private ValueTask NotifyPlayerJoinedAsync(
@@ -315,16 +316,19 @@ sealed class TicTacToeGame(
             .Select(static player => player.Actor)
             .Where(actor => !string.Equals(actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
             .ToArray();
-        QueueSessionPush(recipients, actor => actor.Context.BoundSession.Send(message).Submit());
-        return ValueTask.CompletedTask;
+        return SendSessionPushAsync(
+            recipients,
+            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
     }
 
-    private static void QueueSessionPush(
+    private static async ValueTask SendSessionPushAsync(
         IReadOnlyList<PlayActor> recipients,
         Func<PlayActor, ValueTask> sendAsync)
     {
-        _ = recipients;
-        _ = sendAsync;
+        foreach (var recipient in recipients)
+        {
+            await sendAsync(recipient);
+        }
     }
 
     private sealed class PlayerSlot(PlayActor actor, string mark)

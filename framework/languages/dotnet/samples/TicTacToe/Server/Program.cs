@@ -86,7 +86,7 @@ internal static class Program
         {
             ApiUrl = new Uri(settings.ApiPublicUrl),
         };
-        var result = await new TicTacToeClient().RunAsync(options, cancellationToken);
-        result.WriteTo(Console.Out);
+        await new TicTacToeClient().RunAsync(options, cancellationToken);
+        Console.WriteLine("tictactoe=completed");
     }
 }

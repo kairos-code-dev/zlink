@@ -8,11 +8,14 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
 using Bingo.Shared.Contracts;
+using Microsoft.Extensions.Logging;
 
 namespace Bingo.Server.Play.Handlers;
 
 [ZLinkHandlerGroup("play")]
-internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)
+internal sealed class AllocateBingoRoomHandler(
+    BingoRoomDirectory rooms,
+    ILogger<AllocateBingoRoomHandler> logger)
     : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
     public async ValueTask<AllocateBingoRoomRes> HandleAsync(
@@ -21,8 +24,16 @@ internal sealed class AllocateBingoRoomHandler(BingoRoomDirectory rooms)
         CancellationToken cancellationToken)
     {
         _ = context;
-        var roomId = await rooms.AllocateAsync(request.Mode, cancellationToken)
+        logger.LogInformation(
+                "play allocate: request. actor={ActorId}, mode={Mode}",
+                request.ActorId,
+                request.Mode);
+        var roomId = await rooms.AllocateAsync(request.Mode, request.ActorId, cancellationToken)
             ;
+        logger.LogInformation(
+            "play allocate: allocated. actor={ActorId}, room={RoomId}",
+            request.ActorId,
+            roomId);
 
         return new AllocateBingoRoomRes(roomId);
     }

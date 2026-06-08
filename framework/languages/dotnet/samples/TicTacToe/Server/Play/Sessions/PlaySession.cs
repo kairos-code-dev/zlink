@@ -77,14 +77,15 @@ sealed class PlaySession(
         {
             var authenticated = await AuthenticateAsync(payload, cancellationToken);
             _actorId = authenticated.ActorId;
-            _actor = authenticated.Actor;
             return;
         }
 
-        if (actorId is null || _actor is not { } actor)
+        if (actorId is null)
         {
             throw new InvalidOperationException("AuthenticateReq is required before play packets.");
         }
+
+        var actor = await EnsureActorBoundAsync(actorId, cancellationToken);
 
         logger.LogInformation(
             "play stream -> actor: dispatching packet. name={MessageName}, actor={ActorId}",
@@ -109,27 +110,71 @@ sealed class PlaySession(
             .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
-        var playerActor = await actors.GetOrCreateAsync(
-            reply.ActorId,
-            SampleTypes.PlayerActor,
-            cancellationToken);
-
-        var actor = await Context.Actors.BindAsync(
-            playerActor,
-            cancellationToken);
         await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
             .Submit();
 
         logger.LogInformation(
-            "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}, actor={ActorId}",
+            "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
             Context.SessionId,
-            reply.ActorId,
-            actor.ActorId);
+            reply.ActorId);
 
-        return new AuthenticatedPlaySession(reply.ActorId, actor);
+        return new AuthenticatedPlaySession(reply.ActorId);
     }
 
-    private readonly record struct AuthenticatedPlaySession(
-        string ActorId,
-        IZLinkSessionActor Actor);
+    private async ValueTask<IZLinkSessionActor> EnsureActorBoundAsync(
+        string actorId,
+        CancellationToken cancellationToken)
+    {
+        if (_actor is { } existing)
+        {
+            return existing;
+        }
+
+        try
+        {
+            logger.LogInformation(
+                "play stream: creating actor before dispatch. sessionId={SessionId}, actor={ActorId}",
+                Context.SessionId,
+                actorId);
+            var playerActor = await actors.GetOrCreateAsync(
+                actorId,
+                SampleTypes.PlayerActor,
+                cancellationToken);
+
+            logger.LogInformation(
+                "play stream: joining actor to entry spot. sessionId={SessionId}, actor={ActorId}",
+                Context.SessionId,
+                actorId);
+            await playerActor.Context.JoinEntrySpot(RoutingId.From(SampleTypes.PlaySpotNodeId))
+                .Timeout(SampleTimeouts.Request)
+                .SubmitAsync(cancellationToken);
+
+            logger.LogInformation(
+                "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",
+                Context.SessionId,
+                actorId);
+            var actor = await Context.Actors.BindAsync(
+                playerActor,
+                cancellationToken);
+            _actor = actor;
+
+            logger.LogInformation(
+                "play stream: actor bound to session. sessionId={SessionId}, actor={ActorId}",
+                Context.SessionId,
+                actor.ActorId);
+
+            return actor;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "play stream: actor bind failed. sessionId={SessionId}, actor={ActorId}",
+                Context.SessionId,
+                actorId);
+            throw;
+        }
+    }
+
+    private readonly record struct AuthenticatedPlaySession(string ActorId);
 }

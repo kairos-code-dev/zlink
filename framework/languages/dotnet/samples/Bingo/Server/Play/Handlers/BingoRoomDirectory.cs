@@ -17,18 +17,30 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _currentRoomId;
     private BingoRoomSettings? _currentRoomSettings;
+    private readonly Dictionary<string, string> _roomsByActor = new(StringComparer.Ordinal);
     private int _reservedSeats;
     private int _roomSeq;
 
     public async ValueTask<string> AllocateAsync(
         string mode,
+        string actorId,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            throw new InvalidOperationException("Actor id is required for room allocation.");
+        }
+
         var settings = BingoRoomSettings.Create(mode, _roomSeq + 1);
 
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (_roomsByActor.TryGetValue(actorId, out var existingRoomId))
+            {
+                return existingRoomId;
+            }
+
             if (_currentRoomId is null
                 || _currentRoomSettings is null
                 || !string.Equals(_currentRoomSettings.Mode, settings.Mode, StringComparison.Ordinal)
@@ -48,6 +60,7 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
             }
 
             _reservedSeats++;
+            _roomsByActor[actorId] = _currentRoomId;
             return _currentRoomId;
         }
         finally

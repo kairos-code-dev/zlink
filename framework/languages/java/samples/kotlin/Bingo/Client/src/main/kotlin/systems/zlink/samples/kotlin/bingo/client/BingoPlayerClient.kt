@@ -73,9 +73,8 @@ class BingoPlayerClient(
     suspend fun authenticate(): AuthenticateRes =
         awaitWithDispatch(
             ZLinkStreamJson.request(connector, AuthenticateReq(playerId))
-            .packetName("AuthenticateReq")
-            .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(),
+                .timeout(SampleTimings.RequestTimeout)
+                .submitAsync(),
         )
             .let { ZLinkStreamJson.decode(it, AuthenticateRes::class.java) }
 
@@ -85,9 +84,8 @@ class BingoPlayerClient(
             try {
                 return awaitWithDispatch(
                     ZLinkStreamJson.request(connector, MatchBingoReq("four-player"))
-                    .packetName("MatchBingoReq")
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submitAsync(),
+                        .timeout(SampleTimings.RequestTimeout)
+                        .submitAsync(),
                 )
                     .let { ZLinkStreamJson.decode(it, MatchBingoRes::class.java) }
             } catch (ex: TimeoutException) {
@@ -100,9 +98,8 @@ class BingoPlayerClient(
     suspend fun start(roomId: String): StartBingoGameRes =
         awaitWithDispatch(
             ZLinkStreamJson.request(connector, StartBingoGameReq(roomId))
-            .packetName("StartBingoGameReq")
-            .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(),
+                .timeout(SampleTimings.RequestTimeout)
+                .submitAsync(),
         )
             .let { ZLinkStreamJson.decode(it, StartBingoGameRes::class.java) }
 

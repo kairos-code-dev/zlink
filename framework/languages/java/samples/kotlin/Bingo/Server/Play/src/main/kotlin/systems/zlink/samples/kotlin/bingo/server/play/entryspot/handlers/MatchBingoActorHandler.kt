@@ -40,7 +40,6 @@ class MatchBingoActorHandler(
                 request.mode,
             ),
         )
-            .packetName("MatchBingoApiReq")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(MatchBingoApiRes::class.java)
             .await()

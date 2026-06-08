@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots
 
 import kotlinx.coroutines.future.await
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameEndedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameStartedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoNumberDrawnNotify
@@ -29,14 +28,12 @@ class BingoNotificationPublisher {
                             event.state,
                         ),
                     )
-                    .packetName(SampleNames.PlayerJoinedPacket)
                     .submitAsync()
                     .await()
 
             BingoRoomEventKind.GAME_STARTED ->
                 event.recipient.context().boundSession()
                     .send(BingoGameStartedNotify(event.state))
-                    .packetName(SampleNames.GameStartedPacket)
                     .submitAsync()
                     .await()
 
@@ -50,21 +47,18 @@ class BingoNotificationPublisher {
                             event.state,
                         ),
                     )
-                    .packetName(SampleNames.NumberDrawnPacket)
                     .submitAsync()
                     .await()
 
             BingoRoomEventKind.STATE ->
                 event.recipient.context().boundSession()
                     .send(BingoStateNotify(event.state))
-                    .packetName(SampleNames.StatePacket)
                     .submitAsync()
                     .await()
 
             BingoRoomEventKind.GAME_ENDED ->
                 event.recipient.context().boundSession()
                     .send(BingoGameEndedNotify(event.state))
-                    .packetName(SampleNames.GameEndedPacket)
                     .submitAsync()
                     .await()
         }

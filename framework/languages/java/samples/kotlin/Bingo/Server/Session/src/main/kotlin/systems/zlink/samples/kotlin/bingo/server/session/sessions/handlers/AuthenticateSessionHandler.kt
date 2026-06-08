@@ -46,7 +46,6 @@ class AuthenticateSessionHandler(
 
         val authenticated = channels
             .requestToChannel(SampleNames.ApiChannel, AuthenticatePlayerReq(request.accessToken))
-            .packetName("AuthenticatePlayer")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(AuthenticatePlayerRes::class.java)
             .await()
@@ -66,7 +65,6 @@ class AuthenticateSessionHandler(
                     authenticated.displayName,
                 ),
             )
-            .packetName("EnsurePlayerActor")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(EnsurePlayerActorRes::class.java)
             .await()

@@ -284,7 +284,6 @@ public final class TicTacToeGame implements ZLinkSpot {
             .filter(actor -> excludedActorId == null || !actor.actorId().equals(excludedActorId))
             .map(actor -> actor.context().boundSession()
                 .send(new GameStateNotify(state))
-                .packetName("GameStateNotify")
                 .submitAsync())
             .toList();
         return allOf(sends);
@@ -304,7 +303,6 @@ public final class TicTacToeGame implements ZLinkSpot {
             .filter(actor -> !actor.actorId().equals(joinedActor.actorId()))
             .map(actor -> actor.context().boundSession()
                 .send(message)
-                .packetName("PlayerJoinedNotify")
                 .submitAsync())
             .toList();
         return allOf(sends);

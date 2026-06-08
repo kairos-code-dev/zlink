@@ -43,7 +43,6 @@ class PlaySession(
                     SampleNames.ApiChannel,
                     AuthenticatePlayerReq(request.accessToken),
                 )
-                .packetName("AuthenticatePlayer")
                 .submitAsync(AuthenticatePlayerRes::class.java)
                 .await()
             val authenticatedActorId = authenticated.actorId

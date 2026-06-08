@@ -66,7 +66,6 @@ public final class PlaySession implements ZLinkSession {
                     .requestToChannel(
                         SampleNames.ApiChannel,
                         new AuthenticatePlayerReq(request.accessToken()))
-                    .packetName("AuthenticatePlayer")
                     .submitAsync(AuthenticatePlayerRes.class)
                     .thenCompose(authenticated -> {
                         actorId = authenticated.actorId();

@@ -3,7 +3,6 @@ package systems.zlink.samples.bingo.server.play.bingoroomspots;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoNotificationPublisher {
@@ -25,11 +24,9 @@ public final class BingoNotificationPublisher {
                     event.seat(),
                     event.host(),
                     event.state()))
-                .packetName(SampleNames.PlayerJoinedPacket)
                 .submitAsync();
             case GAME_STARTED -> event.recipient().context().boundSession()
                 .send(new Messages.BingoGameStartedNotify(event.state()))
-                .packetName(SampleNames.GameStartedPacket)
                 .submitAsync();
             case NUMBER_DRAWN -> event.recipient().context().boundSession()
                 .send(new Messages.BingoNumberDrawnNotify(
@@ -37,15 +34,12 @@ public final class BingoNotificationPublisher {
                     event.state().drawSeq(),
                     event.drawnNumber(),
                     event.state()))
-                .packetName(SampleNames.NumberDrawnPacket)
                 .submitAsync();
             case STATE -> event.recipient().context().boundSession()
                 .send(new Messages.BingoStateNotify(event.state()))
-                .packetName(SampleNames.StatePacket)
                 .submitAsync();
             case GAME_ENDED -> event.recipient().context().boundSession()
                 .send(new Messages.BingoGameEndedNotify(event.state()))
-                .packetName(SampleNames.GameEndedPacket)
                 .submitAsync();
         };
     }

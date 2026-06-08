@@ -27,7 +27,6 @@ public final class MatchBingoHandler
         return client.requestToChannel(
                 SampleNames.PlayChannel,
                 new Messages.AllocateBingoRoomReq(request.actorId(), request.mode()))
-            .packetName("AllocateBingoRoomReq")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(Messages.AllocateBingoRoomRes.class)
             .thenApply(allocated -> new Messages.MatchBingoApiRes(allocated.roomId()));

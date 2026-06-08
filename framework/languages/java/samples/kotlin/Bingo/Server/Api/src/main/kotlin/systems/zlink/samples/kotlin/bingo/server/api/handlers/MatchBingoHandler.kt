@@ -24,9 +24,8 @@ class MatchBingoHandler(
     ) = coroutines.completionStage {
         val allocated = client
             .requestToChannel(SampleNames.PlayChannel, AllocateBingoRoomReq(request.actorId, request.mode))
-                .packetName("AllocateBingoRoomReq")
-                .timeout(SampleTimings.RequestTimeout)
-                .submitAsync(AllocateBingoRoomRes::class.java)
+            .timeout(SampleTimings.RequestTimeout)
+            .submitAsync(AllocateBingoRoomRes::class.java)
             .await()
 
         MatchBingoApiRes(allocated.roomId)

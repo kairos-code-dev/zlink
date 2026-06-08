@@ -30,7 +30,6 @@ public final class MatchBingoActorHandler
                     actor.actorId(),
                     actor.displayName(),
                     request.mode()))
-            .packetName("MatchBingoApiReq")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(Messages.MatchBingoApiRes.class)
             .thenCompose(matched -> {

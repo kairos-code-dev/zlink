@@ -47,7 +47,6 @@ public final class AuthenticateSessionHandler
         }
         return channels
             .requestToChannel(SampleNames.ApiChannel, new Messages.AuthenticatePlayerReq(request.accessToken()))
-            .packetName("AuthenticatePlayer")
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync(Messages.AuthenticatePlayerRes.class)
             .thenCompose(authenticated -> {
@@ -67,7 +66,6 @@ public final class AuthenticateSessionHandler
                         new Messages.EnsurePlayerActorReq(
                             authenticated.actorId(),
                             authenticated.displayName()))
-                    .packetName("EnsurePlayerActor")
                     .timeout(SampleTimings.RequestTimeout)
                     .submitAsync(Messages.EnsurePlayerActorRes.class)
                     .thenCompose(ensured -> context.actors()

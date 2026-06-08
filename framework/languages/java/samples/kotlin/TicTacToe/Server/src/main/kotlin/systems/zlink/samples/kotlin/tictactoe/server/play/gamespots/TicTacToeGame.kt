@@ -219,7 +219,6 @@ class TicTacToeGame(
             .forEach { actor ->
                 actor.context().boundSession()
                     .send(GameStateNotify(state))
-                    .packetName("GameStateNotify")
                     .submitAsync()
                     .await()
             }
@@ -243,7 +242,6 @@ class TicTacToeGame(
             .forEach { actor ->
                 actor.context().boundSession()
                     .send(message)
-                    .packetName("PlayerJoinedNotify")
                     .submitAsync()
                     .await()
             }

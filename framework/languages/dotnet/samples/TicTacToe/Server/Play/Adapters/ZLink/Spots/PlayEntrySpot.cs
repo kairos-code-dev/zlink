@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;
-using TicTacToe.Server.Play.Actors;
-using TicTacToe.Server.Play.EntrySpot.Handlers;
+using TicTacToe.Server.Play.Adapters.ZLink.Actors;
+using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
 
-namespace TicTacToe.Server.Play.EntrySpot;
+namespace TicTacToe.Server.Play.Adapters.ZLink.Spots;
 
 internal sealed class PlayEntrySpot(
     IZLinkEntrySpotContext context,

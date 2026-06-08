@@ -8,7 +8,7 @@ using System.Text.Json;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 
-namespace TicTacToe.Server.Play.Sessions;
+namespace TicTacToe.Server.Play.Adapters.ZLink.Sessions;
 
 sealed class PlaySession(
     IZLinkSessionContext context,

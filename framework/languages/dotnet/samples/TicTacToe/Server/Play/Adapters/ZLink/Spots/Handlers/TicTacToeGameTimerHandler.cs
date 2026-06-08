@@ -1,7 +1,8 @@
+using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
-namespace TicTacToe.Server.Play.GameSpots.Handlers;
+namespace TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
 
 sealed class TicTacToeGameTimerHandler : IZLinkSpotTimerHandler<TicTacToeGame>
 {

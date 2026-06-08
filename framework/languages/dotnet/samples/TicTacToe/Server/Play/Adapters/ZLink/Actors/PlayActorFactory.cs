@@ -1,6 +1,6 @@
 using Zlink.Framework.Contracts.Actors;
 
-namespace TicTacToe.Server.Play.Actors;
+namespace TicTacToe.Server.Play.Adapters.ZLink.Actors;
 
 internal sealed class PlayActorFactory : IZLinkActorFactory
 {

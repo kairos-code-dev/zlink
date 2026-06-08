@@ -1,12 +1,10 @@
 using Systems.Zlink.Codecs.Json;
+using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using TicTacToe.Server.Api;
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play;
-using TicTacToe.Server.Play.EntrySpot;
-using TicTacToe.Server.Play.GameSpots;
-using TicTacToe.Server.Play.Sessions;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
@@ -86,7 +84,29 @@ internal static class Program
         {
             ApiUrl = new Uri(settings.ApiPublicUrl),
         };
-        await new TicTacToeClient().RunAsync(options, cancellationToken);
+        using var api = new HttpClient
+        {
+            BaseAddress = options.ApiUrl,
+            Timeout = options.HttpTimeout,
+        };
+
+        using var createGameResponse = await api.PostAsJsonAsync(
+            "/games",
+            new CreateGameHttpReq(options.GameName),
+            cancellationToken);
+        createGameResponse.EnsureSuccessStatusCode();
+
+        var game = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>(cancellationToken)
+                   ?? throw new InvalidOperationException("API returned an empty game response.");
+        await using var client1 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
+        await using var client2 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
+
+        await new TicTacToeClientApp().RunAsync(
+            game,
+            client1,
+            client2,
+            options,
+            cancellationToken);
         Console.WriteLine("tictactoe=completed");
     }
 }

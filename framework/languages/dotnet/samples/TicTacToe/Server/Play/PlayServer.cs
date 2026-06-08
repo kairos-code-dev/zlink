@@ -3,10 +3,10 @@ using Microsoft.Extensions.Logging;
 using TicTacToe.Server.Api;
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
-using TicTacToe.Server.Play;
-using TicTacToe.Server.Play.EntrySpot;
-using TicTacToe.Server.Play.GameSpots;
-using TicTacToe.Server.Play.Sessions;
+using TicTacToe.Server.Play.Adapters.ZLink.Actors;
+using TicTacToe.Server.Play.Adapters.ZLink.Sessions;
+using TicTacToe.Server.Play.Adapters.ZLink.Spots;
+using TicTacToe.Server.Play.Application.GameCreation;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
@@ -24,7 +24,6 @@ using Zlink.Framework.Runtime.Registry;
 using Microsoft.Extensions.Hosting;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
-using TicTacToe.Server.Play.Actors;
 
 namespace TicTacToe.Server.Play;
 
@@ -36,6 +35,7 @@ internal sealed class PlayServer(SampleSettings settings)
         SampleLogging.Configure(builder.Logging, settings, "play");
 
         builder.Services.AddSingleton(settings);
+        builder.Services.AddSingleton<TicTacToeGameCreator>();
 
         builder.Services.AddZLinkFramework(options =>
         {

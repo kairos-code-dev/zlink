@@ -2016,6 +2016,11 @@ int main ()
     ok &= require_exists (
       root
       / "samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp");
+    ok &= require_exists (
+      root / "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/play_session.hpp");
+    ok &= require_exists (root
+                          / "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/Handlers/"
+                            "authenticate_play_session_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Play/play_server_host_factory.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Server/Registry",
                           "TicTacToe uses manual endpoints and has no Registry role");

@@ -2,7 +2,9 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
+#include "../Api/Handlers/authenticate_player_handler.hpp"
 #include "Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "Adapters/ZLink/Sessions/play_session.hpp"
 #include "Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
 #include "Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
 #include "Application/GameCreation/create_game_room_handler.hpp"
@@ -23,6 +25,7 @@ class play_server_host_factory_t
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.handlers ()
+              .add<authenticate_player_handler_t> ("play")
               .add<create_game_room_handler_t> ("play")
               .add<ensure_player_actor_handler_t> ("play");
             options.codecs ().add_json ();
@@ -47,6 +50,10 @@ class play_server_host_factory_t
               .add_entry_spot<entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type);
+            options.add_stream_node (sample_names_t::stream_name)
+              .bind (topology.stream_endpoint)
+              .register_session<play_session_t> ()
+              .attach_actor_gateway (sample_names_t::spot_node);
         });
         return app;
     }

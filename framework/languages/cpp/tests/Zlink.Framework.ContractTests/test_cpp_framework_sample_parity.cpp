@@ -401,6 +401,11 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_router"), std::string::npos);
     EXPECT_NE (play_factory.find (".accept_routes_from_channel"), std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find (".register_session<play_session_t> ()"), std::string::npos);
+    EXPECT_NE (play_factory.find (".attach_actor_gateway (sample_names_t::spot_node)"),
+               std::string::npos);
     EXPECT_NE (api_factory.find (".listen (topology.api_http_endpoint)"), std::string::npos);
     EXPECT_NE (api_factory.find (".map_post<create_game_handler_t> (\"/games\")"),
                std::string::npos);

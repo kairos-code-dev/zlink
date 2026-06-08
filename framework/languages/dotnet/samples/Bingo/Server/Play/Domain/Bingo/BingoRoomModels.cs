@@ -1,17 +1,6 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.Actors;
-using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Play.BingoRoomSpots;
+namespace Bingo.Server.Play.Domain.Bingo;
 
 internal static class BingoRoomStatus
 {
@@ -48,16 +37,6 @@ internal enum BingoRoomEventKind
     NumberDrawn,
     GameEnded,
 }
-
-internal sealed record BingoRoomEvent(
-    BingoRoomEventKind Kind,
-    PlayerActor Recipient,
-    BingoRoomState State,
-    string? JoinedActorId = null,
-    string? JoinedDisplayName = null,
-    int Seat = -1,
-    bool IsHost = false,
-    int DrawnNumber = 0);
 
 internal sealed record BingoGameEvent(
     BingoRoomEventKind Kind,

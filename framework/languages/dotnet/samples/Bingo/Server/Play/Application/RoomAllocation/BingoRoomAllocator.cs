@@ -1,18 +1,12 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.BingoRoomSpots;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Server.Play.Adapters.ZLink.Spots;
 
-namespace Bingo.Server.Play.Handlers;
+namespace Bingo.Server.Play.Application.RoomAllocation;
 
-internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
+internal sealed class BingoRoomAllocator(IZLinkSpotManager spots)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _currentRoomId;
@@ -48,7 +42,7 @@ internal sealed class BingoRoomDirectory(IZLinkSpotManager spots)
             {
                 settings = settings with { RoomName = $"Bingo Room {++_roomSeq:000}" };
                 using var settingsPart = settings.ToJson();
-                var room = await spots.CreateAsync<BingoRoomSpot>(settingsPart, cancellationToken);
+                var room = await spots.CreateAsync<BingoRoom>(settingsPart, cancellationToken);
                 if (room.State != ZLinkSpotCreateState.Created)
                 {
                     throw new InvalidOperationException("Bingo room creation was rejected.");

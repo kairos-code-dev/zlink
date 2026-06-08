@@ -1,14 +1,16 @@
-using Bingo.Server.Play.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Server.Play.Adapters.ZLink.Spots;
 using Bingo.Shared.Contracts;
 using Zlink.Framework.Contracts.Spots;
 
-namespace Bingo.Server.Play.BingoRoomSpots.Handlers;
+namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
 internal sealed class SubmitBingoCardHandler
-    : IZLinkSpotActorRequestHandler<BingoRoomSpot, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>
+    : IZLinkSpotActorRequestHandler<BingoRoom, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>
 {
     public async ValueTask<SubmitBingoCardRes> HandleAsync(
-        BingoRoomSpot spot,
+        BingoRoom spot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
         SubmitBingoCardReq message,

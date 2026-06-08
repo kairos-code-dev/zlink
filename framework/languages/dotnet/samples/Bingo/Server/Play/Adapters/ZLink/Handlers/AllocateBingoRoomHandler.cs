@@ -1,20 +1,13 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
+using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Bingo.Server.Play.Handlers;
+namespace Bingo.Server.Play.Adapters.ZLink.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(
-    BingoRoomDirectory rooms,
+    BingoRoomAllocator allocator,
     ILogger<AllocateBingoRoomHandler> logger)
     : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
@@ -25,11 +18,10 @@ internal sealed class AllocateBingoRoomHandler(
     {
         _ = context;
         logger.LogInformation(
-                "play allocate: request. actor={ActorId}, mode={Mode}",
-                request.ActorId,
-                request.Mode);
-        var roomId = await rooms.AllocateAsync(request.Mode, request.ActorId, cancellationToken)
-            ;
+            "play allocate: request. actor={ActorId}, mode={Mode}",
+            request.ActorId,
+            request.Mode);
+        var roomId = await allocator.AllocateAsync(request.Mode, request.ActorId, cancellationToken);
         logger.LogInformation(
             "play allocate: allocated. actor={ActorId}, room={RoomId}",
             request.ActorId,

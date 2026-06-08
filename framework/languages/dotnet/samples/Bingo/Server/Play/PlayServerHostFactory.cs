@@ -7,10 +7,11 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.Actors;
-using Bingo.Server.Play.BingoRoomSpots;
-using Bingo.Server.Play.EntrySpot;
-using Bingo.Server.Play.Handlers;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Handlers;
+using Bingo.Server.Play.Adapters.ZLink.Notifications;
+using Bingo.Server.Play.Application.RoomAllocation;
+using Bingo.Server.Play.Adapters.ZLink.Spots;
 using Bingo.Shared.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,7 +25,7 @@ public static class PlayServerHostFactory
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton<BingoRoomDirectory>();
+        builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
 
         builder.Services.AddZLinkFramework(options =>
@@ -57,7 +58,7 @@ public static class PlayServerHostFactory
                     });
                     spot.AttachChannelClient(SampleNames.ApiChannel);
                     spot.AddEntrySpot<BingoEntrySpot>();
-                    spot.AddSpotFactory<BingoRoomSpot>();
+                    spot.AddSpotFactory<BingoRoom>();
                 });
             });
         });

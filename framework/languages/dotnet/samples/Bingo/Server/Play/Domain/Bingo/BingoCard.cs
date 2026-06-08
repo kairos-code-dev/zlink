@@ -1,4 +1,4 @@
-namespace Bingo.Server.Play.BingoRoomSpots;
+namespace Bingo.Server.Play.Domain.Bingo;
 
 internal sealed class BingoCard
 {
@@ -51,6 +51,11 @@ internal sealed class BingoCard
     public int[] NumbersSnapshot() => (int[])_numbers.Clone();
 
     public bool[] MarksSnapshot() => (bool[])_marks.Clone();
+
+    public BingoCardSnapshot Snapshot()
+    {
+        return new BingoCardSnapshot(NumbersSnapshot(), MarksSnapshot(), CompletedLines);
+    }
 
     public void MarkDrawnNumber(int number)
     {

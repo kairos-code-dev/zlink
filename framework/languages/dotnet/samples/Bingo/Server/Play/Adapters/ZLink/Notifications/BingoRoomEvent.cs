@@ -1,0 +1,15 @@
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Shared.Contracts;
+
+namespace Bingo.Server.Play.Adapters.ZLink.Notifications;
+
+internal sealed record BingoRoomEvent(
+    BingoRoomEventKind Kind,
+    PlayerActor Recipient,
+    BingoRoomState State,
+    string? JoinedActorId = null,
+    string? JoinedDisplayName = null,
+    int Seat = -1,
+    bool IsHost = false,
+    int DrawnNumber = 0);

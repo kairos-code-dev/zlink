@@ -1,19 +1,13 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.Actors;
-using Bingo.Server.Play.BingoRoomSpots;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Spots;
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Bingo.Server.Play.EntrySpot.Handlers;
+namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
 internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> logger)
     : IZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>

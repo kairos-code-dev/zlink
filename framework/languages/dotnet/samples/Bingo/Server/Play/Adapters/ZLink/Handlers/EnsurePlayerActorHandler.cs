@@ -7,11 +7,11 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Shared.Configuration;
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Server.Play.Handlers;
+namespace Bingo.Server.Play.Adapters.ZLink.Handlers;
 
 [ZLinkHandlerGroup("play")]
 internal sealed class EnsurePlayerActorHandler(

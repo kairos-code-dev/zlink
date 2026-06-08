@@ -1,12 +1,13 @@
+using Bingo.Server.Play.Adapters.ZLink.Spots;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 
-namespace Bingo.Server.Play.BingoRoomSpots.Handlers;
+namespace Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 
-internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRoomSpot>
+internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRoom>
 {
     public async ValueTask HandleAsync(
-        BingoRoomSpot spot,
+        BingoRoom spot,
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {

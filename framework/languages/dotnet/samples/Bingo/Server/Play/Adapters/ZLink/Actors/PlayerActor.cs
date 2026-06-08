@@ -1,6 +1,6 @@
 using Zlink.Framework.Contracts.Actors;
 
-namespace Bingo.Server.Play.Actors;
+namespace Bingo.Server.Play.Adapters.ZLink.Actors;
 
 internal sealed class PlayerActor(
     string actorId,

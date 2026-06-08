@@ -2,17 +2,19 @@ using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
-using Bingo.Server.Play.Actors;
-using Bingo.Server.Play.BingoRoomSpots.Handlers;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Domain.Bingo;
+using Bingo.Server.Play.Adapters.ZLink.Notifications;
+using Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace Bingo.Server.Play.BingoRoomSpots;
+namespace Bingo.Server.Play.Adapters.ZLink.Spots;
 
-internal sealed class BingoRoomSpot(
+internal sealed class BingoRoom(
     IZLinkSpotContext context,
     BingoNotificationPublisher notifications,
-    ILogger<BingoRoomSpot> logger) : IZLinkSpot<PlayerActor>
+    ILogger<BingoRoom> logger) : IZLinkSpot<PlayerActor>
 {
     private static readonly BingoRoomSettings DefaultSettings = BingoRoomSettings.Create("two-player", 0);
     internal static readonly TimeSpan DrawPeriod = TimeSpan.FromMilliseconds(200);
@@ -22,14 +24,6 @@ internal sealed class BingoRoomSpot(
     private IZLinkTimer? _drawTimer;
 
     public IZLinkSpotContext Context { get; } = context;
-
-    public string Status => _game.Status;
-
-    public string RoomName => _game.RoomName;
-
-    public string Mode => _game.Mode;
-
-    public int RequiredPlayers => _game.RequiredPlayers;
 
     public void Configure()
     {
@@ -124,7 +118,7 @@ internal sealed class BingoRoomSpot(
     {
         if (!_game.IsReadyToDraw
             || _drawTimer is not null
-            || Status != BingoRoomStatus.Running)
+            || _game.Status != BingoRoomStatus.Running)
         {
             return;
         }
@@ -150,11 +144,6 @@ internal sealed class BingoRoomSpot(
 
         _drawTimer = null;
         _ = timer.CancelAsync().AsTask();
-    }
-
-    internal BingoRoomState Snapshot()
-    {
-        return _game.Snapshot();
     }
 
     internal BingoGameChange SubmitCard(string actorId, BingoCard card)

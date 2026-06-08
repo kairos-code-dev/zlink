@@ -1,9 +1,9 @@
 using Zlink.Framework.Contracts.Spots;
-using Bingo.Server.Play.Actors;
-using Bingo.Server.Play.EntrySpot.Handlers;
+using Bingo.Server.Play.Adapters.ZLink.Actors;
+using Bingo.Server.Play.Adapters.ZLink.Spots.Handlers;
 using Microsoft.Extensions.Logging;
 
-namespace Bingo.Server.Play.EntrySpot;
+namespace Bingo.Server.Play.Adapters.ZLink.Spots;
 
 internal sealed class BingoEntrySpot(
     IZLinkEntrySpotContext context,

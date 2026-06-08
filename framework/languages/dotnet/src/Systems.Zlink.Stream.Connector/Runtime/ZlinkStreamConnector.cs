@@ -10,6 +10,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
+    private readonly ZlinkStreamReceivedMessages _receivedMessages = new();
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly ZlinkStreamTaskRunner _taskRunner;
@@ -45,6 +46,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _headerCodec,
             _pending,
             _typedHandlers,
+            _receivedMessages,
             _frameSender,
             _callbacks);
         _receiveLoop = new ZlinkStreamReceiveLoop(
@@ -97,6 +99,13 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     public int PendingDispatchCount => _callbacks.PendingDispatchCount;
 
+    public int ReceivedCount(string name)
+    {
+        ThrowIfDisposed();
+        ValidateName(name);
+        return _receivedMessages.Count(name);
+    }
+
     public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.ConnectAsync(
@@ -133,6 +142,28 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         ValidateName(name);
 
         return _typedHandlers.Add(name, handler);
+    }
+
+    public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        string name,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateName(name);
+        return _receivedMessages.WaitForAsync(name, timeout, cancellationToken);
+    }
+
+    public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        string name,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        ThrowIfDisposed();
+        ValidateName(name);
+        return _receivedMessages.WaitForAsync(name, predicate, timeout, cancellationToken);
     }
 
     async ValueTask IZlinkStreamConnectorInternal.SendEncodedAsync(

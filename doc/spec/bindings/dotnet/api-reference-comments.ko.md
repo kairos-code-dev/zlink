@@ -1,44 +1,33 @@
 # .NET API Reference 주석
 
 이 문서는 .NET 바인딩 공개 API reference에 쓰이는 XML 문서 주석의
-작성 기준을 정의한다.
+언어별 기준을 정의한다. 모든 언어에 공통으로 적용되는 원칙은
+[`source-comment-principles.ko.md`](../../../principal/source-comment-principles.ko.md)를
+따른다.
 
 `bindings/dotnet/src/Zlink/Contracts/`의 XML 주석은 계약 문구다. 이 폴더의
 public으로 보이는 모든 type과 member에는 XML 문서가 있어야 한다. 호출자가
 API를 올바르게 쓰기 위해 알아야 하는 공개 동작을 설명해야 하며,
 `core/include/zlink.h`와 바인딩 계약 문서와 맞아야 한다.
 
-## 범위
+## .NET 적용 범위
 
-모든 공개 계약 멤버에는 XML 주석을 작성한다. 특히 아래 계약 결정을 드러내는
-멤버는 더 신중하게 작성한다.
-
-- `Message`와 `Received` payload의 소유권, 해제, 소유권 이동.
-- 빌린 view와 복사된 buffer의 차이.
-- blocking, timeout, cancellation, callback, non-blocking 결과 동작.
-- boolean 반환값과 result enum의 의미.
-- 다음에 호출할 수 있는 메서드가 계약 일부인 staged operation builder 흐름.
-- 호출자가 계약을 지키면 피할 수 있는 예외.
-
-공개 XML 주석에는 private 구현 방식을 적지 않는다. native handle, polling
-전략, wire encoding, progress pump 세부 사항은 runtime 주석이나
+`bindings/dotnet/src/Zlink/Contracts/` 아래 public 계약 멤버에는 XML 주석을
+작성한다. runtime 구현 세부 사항은 public XML 주석이 아니라 runtime 주석이나
 `doc/internals/`에 둔다.
 
 메인 `Zlink.csproj`에서는 `CS1591`을 억제하지 않는다. XML 문서 경고를 켠
 상태의 clean rebuild가 contract assembly의 누락 검증 기준이다. codec project는
 별도 package이므로 자체 정책을 둘 수 있다.
 
-## 주석 형태
+## .NET 주석 형태
 
 - XML 주석 본문은 영어로 작성한다.
 - summary는 짧고 호출자 관점으로 작성한다.
 - 단순 enum 값과 DTO field는 짧은 한 줄 summary로 충분하다.
 - 한 줄 summary에 담기 어려운 계약 세부 사항만 `<remarks>`에 적는다.
-- owns, borrows, copies, transfers, disposes처럼 소유권을 명확히 드러내는
-  표현을 우선 사용한다.
-- overload 차이를 설명해야 하는 경우가 아니면 메서드 이름을 prose로 반복하지
-  않는다.
-- 현재 구현 최적화나 우회 경로를 공개 보장처럼 설명하지 않는다.
+- timeout, cancellation, callback, ownership, disposal, exception 계약은
+  공통 소스 주석 원칙에 맞춰 `<remarks>` 또는 `<exception>`으로 명시한다.
 
 ## Guide와의 분리
 
@@ -54,8 +43,5 @@ API reference 주석은 튜토리얼이 아니다. 각 type 또는 member의 정
 
 - `dotnet build bindings/dotnet/src/Zlink/Zlink.csproj --no-restore -t:Rebuild`
   실행 결과 XML 문서 경고가 0개인가?
-- 호출자가 반환된 모든 `Message`의 소유자를 알 수 있는가?
-- buffer view가 빌린 것인지 복사된 것인지 분명한가?
-- false, timeout, cancellation, callback 경로가 설명되어 있는가?
-- runtime 내부 세부 사항을 피하고 있는가?
+- 공통 소스 주석 원칙의 공개 API 체크리스트를 만족하는가?
 - 생성될 API reference 대상과 문구가 맞는가?

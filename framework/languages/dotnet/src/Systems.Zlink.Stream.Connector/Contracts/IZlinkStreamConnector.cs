@@ -1,32 +1,134 @@
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
+/// <summary>
+/// Represents a client-side stream connection to a ZLink stream endpoint.
+/// </summary>
+/// <remarks>
+/// <see cref="On"/> is the normal callback path for long-lived push handling.
+/// <see cref="WaitForAsync(string, TimeSpan, CancellationToken)"/> is a
+/// deterministic wait path for samples, command-line flows, and e2e scenario
+/// tests.
+/// </remarks>
 public interface IZlinkStreamConnector : IAsyncDisposable
 {
+    /// <summary>
+    /// Raised when the endpoint sends an error message.
+    /// </summary>
     event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived;
 
+    /// <summary>
+    /// Raised after the connector becomes disconnected.
+    /// </summary>
     event Func<CancellationToken, ValueTask>? Disconnected;
 
+    /// <summary>
+    /// Raised when the connection state changes.
+    /// </summary>
     event Func<ZlinkStreamConnectionStateChanged, CancellationToken, ValueTask>? ConnectionStateChanged;
 
+    /// <summary>
+    /// Gets whether the connector is currently connected.
+    /// </summary>
     bool IsConnected { get; }
 
+    /// <summary>
+    /// Gets the current connection state.
+    /// </summary>
     ZlinkStreamConnectionState State { get; }
 
+    /// <summary>
+    /// Gets the options used by this connector.
+    /// </summary>
     ZlinkStreamConnectorOptions Options { get; }
 
+    /// <summary>
+    /// Gets the number of messages waiting for manual dispatch.
+    /// </summary>
     int PendingDispatchCount { get; }
 
+    /// <summary>
+    /// Gets the number of received messages with <paramref name="name"/>.
+    /// </summary>
+    /// <remarks>
+    /// The count includes messages that may already have been handled by a
+    /// callback or consumed by a wait operation, so it is intended for
+    /// diagnostics and scenario assertions rather than production flow control.
+    /// </remarks>
+    int ReceivedCount(string name);
+
+    /// <summary>
+    /// Opens the stream connection.
+    /// </summary>
     ValueTask ConnectAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Closes the stream connection.
+    /// </summary>
     ValueTask CloseAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Dispatches one pending received message when manual dispatch mode is used.
+    /// </summary>
     ValueTask DispatchAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Starts a send operation for an encoded payload.
+    /// </summary>
     IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload);
 
+    /// <summary>
+    /// Starts a request operation for an encoded payload.
+    /// </summary>
     IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload);
 
+    /// <summary>
+    /// Registers a callback for messages with the given packet name.
+    /// </summary>
+    /// <remarks>
+    /// The returned registration removes the callback when disposed. This is the
+    /// normal API for production push handling.
+    /// </remarks>
     IDisposable On(
         string name,
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
+
+    /// <summary>
+    /// Waits for the next unread received message with the given packet name.
+    /// </summary>
+    /// <remarks>
+    /// The matched message is consumed by this wait operation. Use this API for
+    /// deterministic sample, CLI, or e2e scenario flow; production clients
+    /// should normally use <see cref="On"/>.
+    /// </remarks>
+    /// <exception cref="TimeoutException">
+    /// Thrown when no matching message is received before <paramref name="timeout"/>.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// Thrown when <paramref name="cancellationToken"/> is canceled.
+    /// </exception>
+    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        string name,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Waits for an unread received message with the given packet name that
+    /// satisfies <paramref name="predicate"/>.
+    /// </summary>
+    /// <remarks>
+    /// The matching message is consumed. Unmatched messages remain available for
+    /// later waits, which is useful when a scenario expects several message
+    /// types or sequence numbers in a non-strict arrival order.
+    /// </remarks>
+    /// <exception cref="TimeoutException">
+    /// Thrown when no matching message is received before <paramref name="timeout"/>.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// Thrown when <paramref name="cancellationToken"/> is canceled.
+    /// </exception>
+    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        string name,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default);
 }

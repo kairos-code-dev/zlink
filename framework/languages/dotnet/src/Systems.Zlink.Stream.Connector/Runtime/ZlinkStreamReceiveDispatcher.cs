@@ -6,6 +6,7 @@ internal sealed class ZlinkStreamReceiveDispatcher(
     ZlinkStreamHeaderCodec headerCodec,
     ZlinkStreamPendingRequests pending,
     ZlinkStreamTypedHandlerRegistry typedHandlers,
+    ZlinkStreamReceivedMessages receivedMessages,
     ZlinkStreamFrameSender frameSender,
     ZlinkStreamConnectorCallbacks callbacks)
 {
@@ -69,21 +70,19 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         ReadOnlyMemory<byte> wirePayload,
         CancellationToken cancellationToken)
     {
-        var handlers = typedHandlers.Snapshot(header.Name);
-        if (handlers.Count == 0)
-        {
-            return;
-        }
-
         var payload = frameSender.DecompressIfNeeded(header, wirePayload);
+        var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
+        var message = new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(header.Name, header.Metadata, payloadObject);
+        receivedMessages.Record(message);
+        var dispatchMessage = new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject);
+
+        var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
         {
             try
             {
-                var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
-                var message = new ZlinkStreamMessage(header.Name, header.Metadata, payloadObject);
                 await callbacks.DispatchUserCallbackAsync(
-                        dispatchedToken => handler.Invoke(message, payloadObject, dispatchedToken),
+                        dispatchedToken => handler.Invoke(dispatchMessage, payloadObject, dispatchedToken),
                         cancellationToken)
                     .ConfigureAwait(false);
             }

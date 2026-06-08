@@ -60,6 +60,21 @@
 
 ---
 
+## Source Comment Rules
+
+코드 안에 공개 API 주석이나 내부 주석을 작성할 때는 아래 문서를 따른다.
+
+**[`doc/principal/source-comment-principles.ko.md`](./doc/principal/source-comment-principles.ko.md)**
+
+핵심 원칙:
+- 공개 API 주석은 계약 문구다. 호출자가 API를 올바르게 쓰기 위해 알아야 하는 공개 동작만 적는다.
+- 사용법, 예제, 설계 배경은 주석에 길게 넣지 말고 `doc/guide/` 또는 언어별 guide 문서에 둔다.
+- 내부 구현, 현재 최적화, 우회 경로를 공개 보장처럼 설명하지 않는다.
+- timeout, cancellation, callback, ownership, disposal, error 같은 계약은 명확히 적는다.
+- 코드가 무엇을 하는지 반복하는 주석은 피하고, 코드만으로 드러나지 않는 결정만 설명한다.
+
+---
+
 ## ASCII Diagram Rules
 
 문서 내 ASCII 다이어그램(stacked-layer, box diagram 등)은 아래 규칙을 따른다.

@@ -182,6 +182,27 @@ void spot_runtime_t::set_external_route_id (const std::string &peer_endpoint_,
     }
 }
 
+bool spot_runtime_t::external_route_id_matches (const std::string &peer_endpoint_,
+                                                const std::string &route_id_,
+                                                const std::string &route_endpoint_) const
+{
+    if (peer_endpoint_.empty () || route_id_.empty ())
+        return false;
+
+    scoped_lock_t lock (routed_send_sync);
+    std::map<std::string, std::string>::const_iterator route_it =
+      external_route_ids_by_endpoint.find (peer_endpoint_);
+    if (route_it == external_route_ids_by_endpoint.end () || route_it->second != route_id_)
+        return false;
+
+    const std::string expected_endpoint =
+      route_endpoint_.empty () ? peer_endpoint_ : route_endpoint_;
+    std::map<std::string, std::string>::const_iterator endpoint_it =
+      external_route_endpoints_by_endpoint.find (peer_endpoint_);
+    return endpoint_it != external_route_endpoints_by_endpoint.end ()
+           && endpoint_it->second == expected_endpoint;
+}
+
 std::string spot_runtime_t::erase_external_route_id (const std::string &peer_endpoint_)
 {
     scoped_lock_t lock (routed_send_sync);

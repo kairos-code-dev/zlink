@@ -2290,6 +2290,87 @@ void test_stream_remote_actor_gateway_routes_same_process_remote_ref ()
     TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_stream_remote_actor_gateway_first_send_does_not_fake_success ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_spot_node_options_t options;
+    options.mode = ZLINK_SPOT_NODE_MODE_ROUTED;
+    void *session_owner = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (session_owner);
+    void *actor_owner = zlink_spot_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (actor_owner);
+
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (session_owner, "fg-session-node", 15));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK,
+                       zlink_set_routing_id (actor_owner, "fg-actor-node", 13));
+
+    char session_endpoint[MAX_SOCKET_STRING];
+    char actor_endpoint[MAX_SOCKET_STRING];
+    TEST_ASSERT_TRUE (
+      bind_spot_router_endpoint (session_owner, session_endpoint, sizeof (session_endpoint)));
+    TEST_ASSERT_TRUE (
+      bind_spot_router_endpoint (actor_owner, actor_endpoint, sizeof (actor_endpoint)));
+
+    void *entry = NULL;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_spot_node_entry_spot (actor_owner, &entry));
+    TEST_ASSERT_NOT_NULL (entry);
+    actor_probe_t probe;
+    TEST_ASSERT_EQUAL (ZLINK_HANDLER_OK,
+                       zlink_spot_dispatch_event_handler (entry, on_dispatch, &probe));
+
+    void *actor = zlink_spot_node_actor_new (actor_owner, "first-gateway");
+    TEST_ASSERT_NOT_NULL (actor);
+    zlink_actor_ref_t ref;
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_actor_get_ref (actor, &ref));
+
+    zlink_routing_id_t session_node_rid;
+    memset (&session_node_rid, 0, sizeof (session_node_rid));
+    TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_get_routing_id (session_owner, &session_node_rid));
+
+    TEST_ASSERT_EQUAL (ZLINK_CONNECT_OK,
+                       zlink_spot_node_connect_router_channel_peer_rid (
+                         session_owner, "actor-node", &ref.node_rid, actor_endpoint));
+    TEST_ASSERT_EQUAL (ZLINK_CONNECT_OK,
+                       zlink_spot_node_connect_router_channel_peer_rid (
+                         actor_owner, "session-node", &session_node_rid, session_endpoint));
+
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    zlink_routing_id_t session_rid;
+    set_rid (&session_rid, "first-gateway-session");
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK,
+                       wait_stream_bind_actor (session_owner, stream, &session_rid, &ref, 1000));
+
+    zlink_msg_t part;
+    init_text_msg (&part, "first-gateway-payload");
+    const zlink_submit_result_t rc =
+      test_stream_send_bound_actor_part (session_owner, stream, &session_rid, "first-gateway",
+                                         &part, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
+
+    if (rc == ZLINK_SUBMIT_OK) {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (lock, std::chrono::seconds (2), [&] {
+            return probe.actor_event || probe.failed;
+        }));
+        TEST_ASSERT_FALSE (probe.failed);
+        TEST_ASSERT_EQUAL_STRING ("first-gateway-payload", probe.payload.c_str ());
+    } else {
+        TEST_ASSERT_TRUE (rc == ZLINK_SUBMIT_NOT_CONNECTED || rc == ZLINK_SUBMIT_BACKPRESSURED);
+        TEST_ASSERT_EQUAL_STRING ("first-gateway-payload", msg_text (&part).c_str ());
+        TEST_ASSERT_EQUAL (ZLINK_CONFIG_OK, zlink_msg_close (&part));
+    }
+
+    TEST_ASSERT_EQUAL (ZLINK_REQUEST_OK, zlink_actor_destroy (&actor, 0));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&actor_owner));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_spot_node_destroy (&session_owner));
+    TEST_ASSERT_EQUAL (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 
 void test_stream_multipart_selector_and_unbound_relay ()
 {
@@ -2721,6 +2802,7 @@ int main ()
     RUN_TEST (test_stream_bind_external_remote_actor_ref_keeps_logical_binding);
     RUN_TEST (test_stream_bind_same_process_remote_actor_ref_keeps_logical_binding);
     RUN_TEST (test_stream_remote_actor_gateway_routes_same_process_remote_ref);
+    RUN_TEST (test_stream_remote_actor_gateway_first_send_does_not_fake_success);
     RUN_TEST (test_stream_multipart_selector_and_unbound_relay);
     RUN_TEST (test_actor_queue_dispatch_receive_and_backpressure);
     RUN_TEST (test_actor_route_move_joined_publish_and_provider_cleanup);

@@ -61,9 +61,16 @@ int connect_external_router_peer (spot_node_t *node_,
     if (!runtime_->external_router)
         return 0;
 
+    if (!runtime_->external_router_bind_endpoint.empty ()
+        && peer_route_endpoint_ == runtime_->external_router_bind_endpoint)
+        return 0;
+
     std::string route_id;
     if (!node_->external_route_id_for_peer_endpoint (peer_data_endpoint_, &route_id))
         route_id = peer_route_endpoint_;
+
+    if (runtime_->external_route_id_matches (peer_data_endpoint_, route_id, peer_route_endpoint_))
+        return 0;
 
     if (runtime_->external_router->setsockopt (ZLINK_INTERNAL_OPT_CONNECT_ROUTING_ID,
                                                route_id.data (), route_id.size ())

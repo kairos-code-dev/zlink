@@ -166,6 +166,9 @@ struct spot_runtime_t
     void set_external_route_id (const std::string &peer_endpoint_,
                                 const std::string &route_id_,
                                 const std::string &route_endpoint_);
+    bool external_route_id_matches (const std::string &peer_endpoint_,
+                                    const std::string &route_id_,
+                                    const std::string &route_endpoint_) const;
     std::string erase_external_route_id (const std::string &peer_endpoint_);
     std::vector<std::string> clear_external_route_ids ();
     bool missing_external_routes_for_ready_peer () const;

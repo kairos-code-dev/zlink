@@ -113,10 +113,15 @@ int zlink::router_t::xsend (msg_t *msg_)
             if (router_debug_enabled ()) {
                 fprintf (stderr, "router xsend: drop message size=%zu\n", msg_->size ());
             }
-            const int rc = msg_->close ();
-            errno_assert (rc == 0);
             _current_out->rollback ();
             _current_out = NULL;
+            if (_mandatory) {
+                _more_out = false;
+                errno = EHOSTUNREACH;
+                return -1;
+            }
+            const int rc = msg_->close ();
+            errno_assert (rc == 0);
         } else if (!_more_out) {
             _current_out = NULL;
         }
@@ -194,10 +199,15 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
                 fprintf (stderr, "router xsend_routed: write failed rid_size=%u\n",
                          static_cast<unsigned> (target_rid_->size));
             }
-            const int rc = msg_->close ();
-            errno_assert (rc == 0);
             _current_out->rollback ();
             _current_out = NULL;
+            if (_mandatory) {
+                _more_out = false;
+                errno = EHOSTUNREACH;
+                return -1;
+            }
+            const int rc = msg_->close ();
+            errno_assert (rc == 0);
         } else if (!_more_out) {
             _current_out = NULL;
         }

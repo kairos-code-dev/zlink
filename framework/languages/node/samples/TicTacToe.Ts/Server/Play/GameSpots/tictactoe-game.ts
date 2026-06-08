@@ -7,7 +7,7 @@ class TicTacToeGameDirectory {
     this.games = new Map();
   }
 
-  create(gameName, playEndpoint) {
+  create(gameName: string, playEndpoint: string): any {
     this.nextId += 1;
     const gameId = `${gameName}-${this.nextId}`;
     const room = new TicTacToeMatchRoom(gameId, gameName, playEndpoint);
@@ -15,7 +15,7 @@ class TicTacToeGameDirectory {
     return room;
   }
 
-  require(gameId) {
+  require(gameId: string): any {
     const room = this.games.get(gameId);
     if (room === undefined) {
       throw new Error(`Game '${gameId}' does not exist.`);

@@ -2,7 +2,7 @@ require('reflect-metadata');
 
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
+const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { SampleBoundSessionRuntime } = require('./bound-session-runtime');
 const { PlayerActorFactory } = require('./Actors/player-actor-factory');
@@ -17,19 +17,19 @@ const { BingoNotificationsHandler } = require('./Handlers/bingo-notifications-ha
 const { EnsurePlayerActorHandler } = require('./Handlers/ensure-player-actor-handler');
 const { MatchBingoChannelHandler } = require('./Handlers/match-bingo-channel-handler');
 const { StartBingoGameChannelHandler } = require('./Handlers/start-bingo-game-channel-handler');
+const { PacketNames } = require('../../Shared/Contracts/messages');
 
 class BingoPlayModule {}
 
 Module({
   imports: [
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        'bingo.play': {
-          server: { bind: process.env.BINGO_PLAY_ENDPOINT },
-          handlerGroups: ['play']
-        }
-      }
-    })
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .clientServerChannel('bingo.play', (channel) => channel
+          .server(process.env.BINGO_PLAY_ENDPOINT)
+          .handlerGroup('play'))
+        .build()
+    )
   ],
   providers: [
     SampleBoundSessionRuntime,
@@ -40,17 +40,17 @@ Module({
     BingoRoomTimerHandler,
     BingoEntrySpot,
     MatchBingoActorHandler,
-    ...zlinkHandlerGroup('play', [
-      [BingoNotificationsHandler, 'BingoNotificationsReq'],
-      [AllocateBingoRoomHandler, 'AllocateBingoRoom'],
-      [EnsurePlayerActorHandler, 'EnsurePlayerActorReq'],
-      [MatchBingoChannelHandler, 'MatchBingoReq'],
-      [StartBingoGameChannelHandler, 'StartBingoGameReq']
-    ])
+    ...zlinkHandlers('play')
+      .request(BingoNotificationsHandler, PacketNames.bingoNotificationsReq)
+      .request(AllocateBingoRoomHandler, PacketNames.allocateBingoRoom)
+      .request(EnsurePlayerActorHandler, PacketNames.ensurePlayerActorReq)
+      .request(MatchBingoChannelHandler, PacketNames.matchBingoReq)
+      .request(StartBingoGameChannelHandler, PacketNames.startBingoGameReq)
+      .providers()
   ]
 })(BingoPlayModule);
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(BingoPlayModule, {
     logger: false,
     abortOnError: false
@@ -69,7 +69,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap().catch((error) => {
+bootstrap().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

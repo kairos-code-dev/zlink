@@ -2,36 +2,35 @@ require('reflect-metadata');
 
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
+const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { MatchBingoHandler } = require('./Handlers/match-bingo-handler');
+const { PacketNames } = require('../../Shared/Contracts/messages');
 
 class BingoApiModule {}
 
 Module({
   imports: [
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        'bingo.api': {
-          server: { bind: process.env.BINGO_API_ENDPOINT },
-          handlerGroups: ['api']
-        },
-        'bingo.play': {
-          client: { manualConnections: [process.env.BINGO_PLAY_ENDPOINT] }
-        }
-      }
-    })
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .clientServerChannel('bingo.api', (channel) => channel
+          .server(process.env.BINGO_API_ENDPOINT)
+          .handlerGroup('api'))
+        .clientServerChannel('bingo.play', (channel) => channel
+          .client(process.env.BINGO_PLAY_ENDPOINT))
+        .build()
+    )
   ],
   providers: [
-    ...zlinkHandlerGroup('api', [
-      [AuthenticatePlayerHandler, 'AuthenticatePlayerReq'],
-      [MatchBingoHandler, 'MatchBingoApiReq']
-    ])
+    ...zlinkHandlers('api')
+      .request(AuthenticatePlayerHandler, PacketNames.authenticatePlayerReq)
+      .request(MatchBingoHandler, PacketNames.matchBingoApiReq)
+      .providers()
   ]
 })(BingoApiModule);
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(BingoApiModule, {
     logger: false,
     abortOnError: false
@@ -50,7 +49,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap().catch((error) => {
+bootstrap().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

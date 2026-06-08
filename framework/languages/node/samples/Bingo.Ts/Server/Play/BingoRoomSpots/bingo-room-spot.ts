@@ -1,10 +1,51 @@
-const { createJsonMessage, deterministicCard, readJsonMessage } = require('../../../Shared/Contracts/messages');
+const {
+  createJsonMessage,
+  deterministicCard,
+  numberDrawnNotify,
+  playerJoinedNotify,
+  readJsonMessage,
+  roomJoinError,
+  stateEnvelope
+} = require('../../../Shared/Contracts/messages');
 const { BingoCard } = require('./bingo-card');
 const { BingoRoomStatus } = require('./bingo-room-models');
+import type {
+  BingoRoomJoinReq,
+  StateEnvelope
+} from '../../../Shared/Contracts/messages';
+
+type BingoActor = {
+  actorId: string;
+  displayName: string;
+};
+
+type BingoRoomSettings = {
+  requiredPlayers: number;
+  drawDeck: number[];
+};
+
+type BingoPlayerSeat = {
+  actor: BingoActor;
+  seat: number;
+  card: any;
+  isHost: boolean;
+};
+
+type BingoRoomSnapshot = {
+  roomId: string;
+  status: string;
+  hostActorId: string | null;
+  canStart: boolean;
+  drawSeq: number;
+  lastDrawnNumber: number | null;
+  drawnNumbers: number[];
+  players: any[];
+  winners: string[];
+};
 
 class BingoRoomSpot {
   [key: string]: any;
-  constructor(roomId, settings, notifications) {
+  constructor(roomId: string, settings: BingoRoomSettings, notifications: any) {
     this.roomId = roomId;
     this.settings = settings;
     this.notifications = notifications;
@@ -15,39 +56,32 @@ class BingoRoomSpot {
     this.winners = [];
   }
 
-  async onActorJoin(actor, request) {
-    const admission = readJsonMessage(request);
+  async onActorJoin(actor: BingoActor, request: any): Promise<{ accepted: boolean; reply: any }> {
+    const admission = readJsonMessage(request) as BingoRoomJoinReq;
     actor.displayName = admission.displayName ?? actor.displayName;
     if (this.players.some((player) => player.actor.actorId === actor.actorId)) {
-      return { accepted: true, reply: createJsonMessage({ state: this.snapshot() }) };
+      return { accepted: true, reply: createJsonMessage(stateEnvelope(this.snapshot())) };
     }
     if (this.status !== BingoRoomStatus.waitingForPlayers || this.players.length >= this.settings.requiredPlayers) {
       return {
         accepted: false,
-        reply: createJsonMessage({ error: `Room ${this.roomId} cannot accept more players.` })
+        reply: createJsonMessage(roomJoinError(`Room ${this.roomId} cannot accept more players.`))
       };
     }
 
     const seat = this.players.length;
     const card = new BingoCard(deterministicCard(actor.actorId));
-    const player = { actor, seat, card, isHost: seat === 0 };
+    const player: BingoPlayerSeat = { actor, seat, card, isHost: seat === 0 };
     this.players.push(player);
     this.cards.set(actor.actorId, card);
     const state = this.snapshot();
     await this.notifications.publish(this.players.map((entry) =>
-      this.notifications.playerJoined(entry.actor, {
-        roomId: this.roomId,
-        actorId: actor.actorId,
-        displayName: actor.displayName,
-        seat,
-        isHost: player.isHost,
-        state
-      })
+      this.notifications.playerJoined(entry.actor, playerJoinedNotify(this.roomId, actor, seat, player.isHost, state))
     ));
-    return { accepted: true, reply: createJsonMessage({ state }) };
+    return { accepted: true, reply: createJsonMessage(stateEnvelope(state)) };
   }
 
-  async start(actor) {
+  async start(actor: BingoActor): Promise<StateEnvelope> {
     if (!this.players.some((player) => player.actor.actorId === actor.actorId && player.isHost)) {
       throw new Error('Only the room host can start Bingo.');
     }
@@ -58,13 +92,13 @@ class BingoRoomSpot {
       this.status = BingoRoomStatus.running;
       const state = this.snapshot();
       await this.notifications.publish(this.players.map((player) =>
-        this.notifications.gameStarted(player.actor, { state })
+        this.notifications.gameStarted(player.actor, stateEnvelope(state))
       ));
     }
-    return { state: this.snapshot() };
+    return stateEnvelope(this.snapshot());
   }
 
-  async runTimerDraws() {
+  async runTimerDraws(): Promise<BingoRoomSnapshot> {
     while (this.status === BingoRoomStatus.running && this.settings.drawDeck.length > 0) {
       const number = this.settings.drawDeck.shift();
       this.drawnNumbers.push(number);
@@ -79,23 +113,18 @@ class BingoRoomSpot {
         this.status = BingoRoomStatus.finished;
         const ended = this.snapshot();
         await this.notifications.publish(this.players.map((player) =>
-          this.notifications.gameEnded(player.actor, { state: ended })
+          this.notifications.gameEnded(player.actor, stateEnvelope(ended))
         ));
         return ended;
       }
       await this.notifications.publish(this.players.map((player) =>
-        this.notifications.numberDrawn(player.actor, {
-          roomId: this.roomId,
-          drawSeq: this.drawnNumbers.length,
-          number,
-          state
-        })
+        this.notifications.numberDrawn(player.actor, numberDrawnNotify(this.roomId, this.drawnNumbers.length, number, state))
       ));
     }
     return this.snapshot();
   }
 
-  snapshot() {
+  snapshot(): BingoRoomSnapshot {
     return {
       roomId: this.roomId,
       status: this.status,

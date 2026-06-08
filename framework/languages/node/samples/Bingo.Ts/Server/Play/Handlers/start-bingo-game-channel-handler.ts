@@ -3,16 +3,23 @@ const { PlayerActorFactory } = require('../Actors/player-actor-factory');
 const { BingoRoomDirectory } = require('./bingo-room-directory');
 const { StartBingoGameHandler } = require('../BingoRoomSpots/Handlers/start-bingo-game-handler');
 const { BingoRoomTimerHandler } = require('../BingoRoomSpots/Handlers/bingo-room-timer-handler');
+const { rejectedCommandRes } = require('../../../Shared/Contracts/messages');
+import type {
+  PlayerIdentity,
+  RejectedCommandRes,
+  StartBingoGameReq,
+  StateEnvelope
+} from '../../../Shared/Contracts/messages';
 
 class StartBingoGameChannelHandler {
   [key: string]: any;
-  constructor(actorFactory, rooms, startBingoGame, timer) {
+  constructor(actorFactory: any, rooms: any, startBingoGame: any, timer: any) {
     this.actorFactory = actorFactory;
     this.rooms = rooms;
     this.startBingoGame = startBingoGame;
     this.timer = timer;
   }
-  async handle(request) {
+  async handle(request: StartBingoGameReq & PlayerIdentity): Promise<StateEnvelope | RejectedCommandRes> {
     const actor = await this.actorFactory.ensure(request.actorId, request.displayName);
     const room = this.rooms.require(request.roomId);
     try {
@@ -22,10 +29,8 @@ class StartBingoGameChannelHandler {
       }
       return started;
     } catch (error) {
-      return {
-        rejected: true,
-        reason: error.message
-      };
+      const reason = error instanceof Error ? error.message : String(error);
+      return rejectedCommandRes(reason);
     }
   }
 }

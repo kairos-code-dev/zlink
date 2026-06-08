@@ -70,24 +70,24 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 
 | dotnet builder 호출 | node options 키 |
 | --- | --- |
-| `AddClientServerChannel(name, ch => ...)` | `clientServerChannels[name] = { server, client, requestHandlers, handlerGroups }` |
-| `AddFanoutChannel(name, ch => ...)` | `fanoutChannels[name] = { publisher, subscriber, publishHandlers, handlerGroups }` |
+| `AddClientServerChannel(name, ch => ...)` | `zlinkFramework().clientServerChannel(name, channel => ...)` |
+| `AddFanoutChannel(name, ch => ...)` | `zlinkFramework().fanoutChannel(name, channel => ...)` |
 | `AddDealerMeshChannel(name, ch => ...)` | `dealerMeshChannels[name] = { bind?, client }` |
-| `AddRouteMeshChannel(name, ch => ...)` | `routerMeshes[name] = { bind, manualConnections?, requestHandlers, sendHandlers, handlerGroups }` |
-| `channel.EnableServer(s => s.Bind(...))` | `server: { bind: '...' }` |
-| `channel.EnableClient()` | `client: {}` |
-| `channel.EnableClient(c => c.UseManualConnections(...))` | `client: { manualConnections: [...] }` |
-| `channel.EnablePublisher(p => p.Bind(...))` | `publisher: { bind: '...' }` |
-| `channel.EnableSubscriber()` | `subscriber: {}` |
-| `channel.EnableSubscriber(s => s.UseManualConnections(...))` | `subscriber: { manualConnections: [...] }` |
-| `channel.AddHandlerGroup("api")` | `handlerGroups: ['api']` |
-| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkHandlerGroup(..., [[H, 'Packet']])` + `handlerGroups` |
-| `channel.AddSendHandler<H, TMsg>()` | `zlinkHandlerGroup(..., [[H, 'Packet']], { kind: 'send' })` + `handlerGroups` |
-| `channel.AddPublishHandler<H, TMsg>()` | `zlinkHandlerGroup(..., ..., { kind: 'publish' })` + `handlerGroups` |
+| `AddRouteMeshChannel(name, ch => ...)` | `zlinkFramework().routerMesh(name, mesh => ...)` |
+| `channel.EnableServer(s => s.Bind(...))` | `.server('...')` |
+| `channel.EnableClient()` | `.client()` |
+| `channel.EnableClient(c => c.UseManualConnections(...))` | `.client('...')` 또는 `.client([...])` |
+| `channel.EnablePublisher(p => p.Bind(...))` | `.publisher('...')` |
+| `channel.EnableSubscriber()` | `.subscriber()` |
+| `channel.EnableSubscriber(s => s.UseManualConnections(...))` | `.subscriber('...')` 또는 `.subscriber([...])` |
+| `channel.AddHandlerGroup("api")` | `.handlerGroup('api')` |
+| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkHandlers(...).request(H, 'Packet').providers()` + `handlerGroups` |
+| `channel.AddSendHandler<H, TMsg>()` | `zlinkHandlers(...).send(H, 'Packet').providers()` + `handlerGroups` |
+| `channel.AddPublishHandler<H, TMsg>()` | `zlinkHandlers(...).publish(H, 'Packet').providers()` + `handlerGroups` |
 | `options.UseDiscovery(...AddRegistryEndpoint...)` | `discovery: { registries: [...] }` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
 | `options.Codecs.AddProtobuf()` | `codecs: [...]` |
-| `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + `zlinkHandlerGroup(...)` |
+| `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + `zlinkHandlers(...)` |
 
 ### 3.1 channel 등록
 
@@ -122,23 +122,20 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 ```ts
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      clientServerChannels: {
-        api: {
-          server: { bind: 'tcp://0.0.0.0:7101' },
-          handlerGroups: ['api'],
-        },
-        profile: {
-          client: {},
-        },
-        account: {
-          client: {},
-        },
-      },
-      discovery: {
-        registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .options({
+          discovery: {
+            registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
+          },
+        })
+        .clientServerChannel('api', (channel) => channel
+          .server('tcp://0.0.0.0:7101')
+          .handlerGroup('api'))
+        .clientServerChannel('profile', (channel) => channel.client())
+        .clientServerChannel('account', (channel) => channel.client())
+        .build()
+    ),
   ],
 })
 export class AppModule {}
@@ -173,18 +170,14 @@ export class AppModule {}
 #### 수동 연결 예시
 
 ```ts
-ZLinkModule.forRoot({
-  clientServerChannels: {
-    api: {
-      server: { bind: 'tcp://0.0.0.0:7101' },
-    },
-    profile: {
-      client: {
-        manualConnections: ['tcp://10.0.10.15:7101'],
-      },
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .clientServerChannel('api', (channel) => channel
+      .server('tcp://0.0.0.0:7101'))
+    .clientServerChannel('profile', (channel) => channel
+      .client('tcp://10.0.10.15:7101'))
+    .build()
+);
 ```
 
 이 경우 framework 는 해당 channel 에 Discovery 를 강제하지 않는다. 그 channel 의
@@ -280,29 +273,33 @@ local handler 없이 `ZLinkChannelClient` 만 쓰는 앱도 똑같이 가능하�
 - client 역할을 선언한 remote channel 에 대해서만, outbound DEALER 를 만든다.
 
 ```ts
-ZLinkModule.forRoot({
-  // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
-  defaultTimeoutMs: 1000,
-  codecs: [ProtobufCodec],
-  clientServerChannels: {
-    profile: {
-      client: {},
-    },
-  },
-  discovery: {
-    registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({
+      // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
+      defaultTimeoutMs: 1000,
+      codecs: [ProtobufCodec],
+      discovery: {
+        registries: ['tcp://registry1:5551', 'tcp://registry2:5551'],
+      },
+    })
+    .clientServerChannel('profile', (channel) => channel.client())
+    .build()
+);
 ```
 
 ### 3.2 outbound client 등록
 
 ```ts
-ZLinkModule.forRoot({
-  // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
-  defaultTimeoutMs: 1000,
-  codecs: [ProtobufCodec],
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({
+      // 예제용 짧은 값. defaultTimeoutMs의 실제 기본은 30000(30초)다.
+      defaultTimeoutMs: 1000,
+      codecs: [ProtobufCodec],
+    })
+    .build()
+);
 ```
 
 핵심은 네 가지로 정리된다.
@@ -328,18 +325,17 @@ handler 를 **찾고**, 실제 노출은 명시적 등록이 정한다. node 는
 로 provider 를 훑어 후보를 모은다.
 
 ```ts
-ZLinkModule.forRoot({
-  clientServerChannels: {
-    api: {
-      server: { bind: 'tcp://0.0.0.0:7101' },
-      handlerGroups: ['api'],
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .clientServerChannel('api', (channel) => channel
+      .server('tcp://0.0.0.0:7101')
+      .handlerGroup('api'))
+    .build()
+);
 ```
 
 이 호출은 channel 이 어떤 handler group 을 받을지만 정한다. handler class 자체는
-NestJS `providers` 에서 등록하고, ZLink group 소속은 `zlinkHandlerGroup(...)` helper 로
+NestJS `providers` 에서 등록하고, ZLink group 소속은 `zlinkHandlers(...)` helper 로
 provider 등록 위치에서 함께 지정한다. handler class 에 ZLink decorator 를 붙이지 않는다.
 
 현재 handler 노출은 `clientServerChannels[name].handlerGroups`,
@@ -379,12 +375,12 @@ export class AdminCommandHandler {
 
 @Module({
   providers: [
-    ...zlinkHandlerGroup('api', [
-      [AuthenticatePlayerHandler, 'AuthenticatePlayerReq'],
-    ]),
-    ...zlinkHandlerGroup('admin.route', [
-      [AdminCommandHandler, 'AdminCommand'],
-    ], { kind: 'send' }),
+    ...zlinkHandlers('api')
+      .request(AuthenticatePlayerHandler, 'AuthenticatePlayerReq')
+      .providers(),
+    ...zlinkHandlers('admin.route')
+      .send(AdminCommandHandler, 'AdminCommand')
+      .providers(),
   ],
 })
 export class HandlerModule {}
@@ -397,26 +393,22 @@ export class HandlerModule {}
 - 그룹 이름은 `api` 처럼 코드 안의 논리 묶음 이름이다.
 
 ```ts
-ZLinkModule.forRoot({
-  clientServerChannels: {
-    'tictactoe.api': {
-      server: { bind: 'tcp://0.0.0.0:7101' },
-      handlerGroups: ['api'],
-    },
-  },
-  routerMeshes: {
-    'tictactoe.admin': {
-      bind: 'tcp://0.0.0.0:7102',
-      routingId: 'admin-node',
-      handlerGroups: ['admin.route'],
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .clientServerChannel('tictactoe.api', (channel) => channel
+      .server('tcp://0.0.0.0:7101')
+      .handlerGroup('api'))
+    .routerMesh('tictactoe.admin', (mesh) => mesh
+      .bind('tcp://0.0.0.0:7102')
+      .routingId('admin-node')
+      .handlerGroup('admin.route'))
+    .build()
+);
 ```
 
 `handlerGroups: ['api']` 를 풀어 읽으면 다음과 같다.
 
-> "이 channel 로 들어온 메시지는, `zlinkHandlerGroup('api', ...)` 로 묶은 NestJS
+> "이 channel 로 들어온 메시지는, `zlinkHandlers('api', ...)` 로 묶은 NestJS
 > provider 중에서 packet kind /
 > packet name 이 맞는 handler 를 호출한다."
 
@@ -431,14 +423,13 @@ ZLinkModule.forRoot({
   등록 위치와 channel group 선택만 바꾸면 된다.
 
 ```ts
-ZLinkModule.forRoot({
-  fanoutChannels: {
-    'profile.events': {
-      subscriber: { manualConnections: ['tcp://127.0.0.1:7201'] },
-      handlerGroups: ['profile.events'],
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .fanoutChannel('profile.events', (channel) => channel
+      .subscriber('tcp://127.0.0.1:7201')
+      .handlerGroup('profile.events'))
+    .build()
+);
 ```
 
 같은 channel 안에서 같은 `kind + packet name`[^packetname] 조합이 둘 이상으로 매핑되면,
@@ -447,7 +438,7 @@ ZLinkModule.forRoot({
 - 같은 그룹 안에서의 충돌
 - 서로 다른 그룹의 충돌이 한 channel 에 같이 붙은 경우
 
-> `zlinkHandlerGroup(...)` 에 넣지 않은 provider 는 channel handler 로 자동 노출되지
+> `zlinkHandlers(...)` 에 넣지 않은 provider 는 channel handler 로 자동 노출되지
 > 않는다. NestJS 의 일반 provider 로는 남지만, ZLink dispatch 대상은 아니다.
 
 SPOT/Actor handler 는 이 channel handler group 에 넣지 않는다. SPOT 으로 들어오는
@@ -455,10 +446,11 @@ SPOT/Actor handler 는 이 channel handler group 에 넣지 않는다. SPOT 으�
 해당 `Spot` 또는 `EntrySpot` 의 `configure()` 안에서 `this.context.handlers.add...()` 나
 `this.context.addTimer(...)` 로 등록한다.
 
-`zlinkHandlerGroup(groupName, handlers, defaults?)` 의 handler 항목은 보통
-`[HandlerType, 'PacketName']` 튜플로 적는다. packet name 을 생략하면 class 이름에서
-`Handler` 접미사를 뺀 값을 기본값으로 쓴다. handler method 이름은 기본 `handle` 이며,
-예외가 필요할 때만 `{ provider, packetName, methodName }` 형태를 사용한다.
+`zlinkHandlers(groupName)` 은 `request(...)`, `send(...)`, `publish(...)` 를 가진 작은
+builder 를 반환한다. 각 메서드는 handler provider 와 packet name 을 함께 받는다.
+packet name 을 생략하면 class 이름에서 `Handler` 접미사를 뺀 값을 기본값으로 쓴다.
+handler method 이름은 기본 `handle` 이며, 예외가 필요할 때만 세 번째 인자의
+`{ methodName }` 을 사용한다.
 
 handler 인스턴스 생성도 framework 가 직접 `new` 하지 않는다. 대신 NestJS DI 에 맡긴다.
 구체적으로는 다음과 같이 동작한다.
@@ -567,7 +559,7 @@ export class GetUserHandler {
 - `ZLinkRequestContext` 에서 packet 이름, content type, 연결 취소 신호를 읽는다.
 - `signal?: AbortSignal` 로 timeout / cancel 을 그대로 이어 준다.
 - handler 클래스는 packet 하나당 하나로 두는 것을 기본으로 한다. group 은 class
-  decorator 가 아니라 `zlinkHandlerGroup(...)` provider 등록 위치에서 지정한다.
+  decorator 가 아니라 `zlinkHandlers(...)` provider 등록 위치에서 지정한다.
 - 기본 dispatch key 는 request payload 타입(클래스 생성자) 이름이다. 예를 들어
   `UserRequest` 클래스는 기본적으로 `UserRequest` packet 으로 매핑된다.
 - 이름 충돌이 있거나, 외부 계약 때문에 다른 키가 필요한 경우에만 packet name 을
@@ -590,9 +582,9 @@ export class GetUserHandler implements ZLinkRequestHandler<UserRequest, UserRepl
 
 ```ts
 providers: [
-  ...zlinkHandlerGroup('user', [
-    [GetUserHandler, 'UserRequest'],
-  ]),
+  ...zlinkHandlers('user')
+    .request(GetUserHandler, 'UserRequest')
+    .providers(),
 ]
 ```
 
@@ -612,8 +604,8 @@ export class CacheInvalidateHandler {
 
 request-response 와 event 는, 서로 별도 표면으로 보이는 편이 자연스럽다.
 fanout subscriber channel 에 `handlerGroups` 로 group 을 노출하고, provider 등록 쪽에서
-`zlinkHandlerGroup('cache.events', [[CacheInvalidateHandler, 'cache.invalidate']], {
-kind: 'publish' })` 로 이 handler 를 묶으면 runtime 은 publish envelope 의 packet name
+`zlinkHandlers('cache.events').publish(CacheInvalidateHandler, 'cache.invalidate').providers()`
+로 이 handler 를 묶으면 runtime 은 publish envelope 의 packet name
 으로 handler 를 선택하고 topic 은 `ZLinkPublishContext` 로 전달한다.
 
 ### 4.3 inbound dispatch 시퀀스
@@ -844,24 +836,21 @@ session actor dispatch[^session-actor-dispatch] 같은 framework 기능이 trans
 변환을 내부에서 처리하므로 사용자는 binding 객체를 만들 필요가 없다.
 
 ```ts
-ZLinkModule.forRoot({
-  routerMeshes: {
-    'play.route': {
-      bind: 'tcp://0.0.0.0:7105',
-      routingId: 'play-node-a',
-      manualConnections: ['tcp://127.0.0.1:7106'],
-      handlerGroups: ['play.route'],
-    },
-  },
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .routerMesh('play.route', (mesh) => mesh
+      .bind('tcp://0.0.0.0:7105')
+      .routingId('play-node-a')
+      .connect('tcp://127.0.0.1:7106')
+      .handlerGroup('play.route'))
+    .build()
+);
 
 providers: [
-  ...zlinkHandlerGroup('play.route', [
-    [RoutePingHandler, 'RoutePing'],
-  ]),
-  ...zlinkHandlerGroup('play.route', [
-    [RouteNoticeHandler, 'RouteNotice'],
-  ], { kind: 'send' }),
+  ...zlinkHandlers('play.route')
+    .request(RoutePingHandler, 'RoutePing')
+    .send(RouteNoticeHandler, 'RouteNotice')
+    .providers(),
 ]
 ```
 
@@ -1061,9 +1050,11 @@ node 표면에서는 codec 등록과 serializer 선택을 다음과 같이 노�
 registry 에 등록하는 흐름이라는 점에 유의한다.
 
 ```ts
-ZLinkModule.forRoot({
-  codecs: [ProtobufCodec, JsonCodec, MessagePackCodec],
-});
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .options({ codecs: [ProtobufCodec, JsonCodec, MessagePackCodec] })
+    .build()
+);
 ```
 
 ## 9. lifecycle 초안
@@ -1177,11 +1168,10 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
     있으면 즉시 실패시키는 단계다. 런타임에서 늦게 드러나는 실패를 막는다.
 
 [^packetname]: **packet name** 은 메시지 종류를 가리키는 문자열 키다. 기본값은 payload
-    타입(클래스 생성자) 이름이고, `zlinkHandlerGroup(...)` 의 tuple packet name 이나
-    `options.packetName` 으로
-    override 할 수 있다.
+    타입(클래스 생성자) 이름이고, `zlinkHandlers(...)` builder 의 packet name 이나
+    handler options 로 override 할 수 있다.
 
-[^handlergroup]: **handler group** 은 `zlinkHandlerGroup("...", [...])` 로 NestJS
+[^handlergroup]: **handler group** 은 `zlinkHandlers("...").request(...).providers()` 처럼 NestJS
     provider 등록 위치에서 붙이는 논리적 묶음 이름이다. 실제 channel 이름과는 분리된
     별도 namespace 이며, channel 등록 쪽에서 `handlerGroups: ['...']` 로 끌어다 붙여
     어느 channel 에 노출할지 결정한다.

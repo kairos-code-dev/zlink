@@ -2,76 +2,123 @@ require('reflect-metadata');
 
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, ZLINK_CHANNEL_CLIENT } = require('../../../../../../packages/nestjs/dist');
-const { PacketNames, SampleNames, SampleTimings } = require('../../../Shared/Contracts/messages');
+const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkFramework } = require('../../../../../../packages/nestjs/dist');
+const {
+  PacketNames,
+  SampleNames,
+  SampleTimings,
+  authenticateReq,
+  authenticateRes,
+  joinGameInternalReq,
+  placeMarkReq
+} = require('../../../Shared/Contracts/messages');
+import type {
+  AuthenticatePlayerRes,
+  AuthenticateReq,
+  JoinGameReq,
+  PlaceMarkStreamReq,
+  TicTacToeActor
+} from '../../../Shared/Contracts/messages';
+
+type PlaySessionHeader = {
+  name: string;
+};
+
+type PlaySessionTransport = {
+  reply(header: PlaySessionHeader, payload: unknown): void;
+  send(packetName: string, payload: unknown, metadata: Record<string, string>): void;
+};
+
+type PlaySessionDependencies = {
+  apiEndpoint: string;
+  actorFactory: {
+    ensure(actorId: string): TicTacToeActor & { session: PlaySession | null; notifications: any[] };
+    actors: Map<string, TicTacToeActor & { session: PlaySession | null; notifications: any[] }>;
+  };
+  entrySpot: {
+    join(actor: TicTacToeActor, gameId: string): unknown;
+  };
+  placeMarkHandler: {
+    handle(request: ReturnType<typeof placeMarkReq>): unknown;
+  };
+};
+
+type RetryOptions = {
+  maxAttempts?: number;
+  shouldRetry?: (error: unknown) => boolean;
+};
+
+type RetryableCall = {
+  packetName(packetName: string): RetryableCall;
+  timeout(value: number): RetryableCall;
+  submit(signal?: unknown): Promise<unknown>;
+};
+
+type ChannelClient = {
+  requestToChannel(targetChannelName: string, payload: unknown): RetryableCall;
+  stop(): Promise<void>;
+};
 
 class PlaySession {
   [key: string]: any;
-  constructor(dependencies, transport) {
+  constructor(dependencies: PlaySessionDependencies, transport: PlaySessionTransport) {
     this.dependencies = dependencies;
     this.transport = transport;
     this.actor = null;
   }
 
-  async dispatch(header, payload) {
+  async dispatch(header: PlaySessionHeader, payload: unknown): Promise<void> {
     if (header.name === PacketNames.authenticateReq) {
-      await this.authenticate(header, payload);
+      await this.authenticate(header, payload as AuthenticateReq);
       return;
     }
     if (this.actor === null) {
       throw new Error('AuthenticateReq is required before play packets.');
     }
     if (header.name === PacketNames.joinGameReq) {
-      await this.joinGame(header, payload);
+      await this.joinGame(header, payload as JoinGameReq);
       return;
     }
     if (header.name === PacketNames.placeMarkReq) {
-      await this.placeMark(header, payload);
+      await this.placeMark(header, payload as PlaceMarkStreamReq);
       return;
     }
     throw new Error(`Unsupported play stream packet '${header.name}'.`);
   }
 
-  async authenticate(header, request) {
+  async authenticate(header: PlaySessionHeader, request: AuthenticateReq): Promise<void> {
     const apiClient = await createChannelClient({
       channelName: SampleNames.apiChannel,
       peers: [this.dependencies.apiEndpoint]
     });
     try {
       const authenticated = await apiClient
-        .requestToChannel(SampleNames.apiChannel, { accessToken: request.accessToken })
+        .requestToChannel(SampleNames.apiChannel, authenticateReq(request.accessToken))
         .packetName(PacketNames.authenticatePlayerReq)
         .timeout(SampleTimings.requestTimeout)
-        .submit();
+        .submit() as AuthenticatePlayerRes;
       this.actor = this.dependencies.actorFactory.ensure(authenticated.actorId);
       this.actor.displayName = authenticated.displayName;
       this.actor.session = this;
-      this.transport.reply(header, {
-        actorId: authenticated.actorId,
-        displayName: authenticated.displayName
-      });
+      this.transport.reply(header, authenticateRes(authenticated.actorId, authenticated.displayName));
     } finally {
       await apiClient.stop();
     }
   }
 
-  async joinGame(header, request) {
+  async joinGame(header: PlaySessionHeader, request: JoinGameReq): Promise<void> {
     const result = this.dependencies.entrySpot.join(this.actor, request.gameId);
     this.transport.reply(header, result);
     await this.flushAllNotifications();
   }
 
-  async placeMark(header, request) {
-    const result = this.dependencies.placeMarkHandler.handle({
-      actor: this.actor,
-      gameId: request.gameId,
-      cell: request.cell
-    });
+  async placeMark(header: PlaySessionHeader, request: PlaceMarkStreamReq): Promise<void> {
+    const result = this.dependencies.placeMarkHandler.handle(placeMarkReq(this.actor, request.gameId, request.cell));
     this.transport.reply(header, result);
     await this.flushAllNotifications();
   }
 
-  async flushAllNotifications() {
+  async flushAllNotifications(): Promise<void> {
     for (const actor of this.dependencies.actorFactory.actors.values()) {
       if (actor.session !== null) {
         actor.session.flushNotifications(actor);
@@ -79,7 +126,7 @@ class PlaySession {
     }
   }
 
-  flushNotifications(actor) {
+  flushNotifications(actor: TicTacToeActor & { notifications: any[] }): void {
     while (actor.notifications.length > 0) {
       const notification = actor.notifications.shift();
       this.transport.send(notification.packetName, notification.payload, { seq: String(notification.seq) });
@@ -89,16 +136,16 @@ class PlaySession {
 
 export { PlaySession };
 
-async function createChannelClient({ channelName, peers }) {
+async function createChannelClient({ channelName, peers }: { channelName: string; peers: string[] }): Promise<ChannelClient> {
   class PlaySessionChannelClientModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot({
-        clientServerChannels: {
-          [channelName]: { client: { manualConnections: peers } }
-        }
-      })
+      ZLinkModule.forRoot(
+        zlinkFramework()
+          .clientServerChannel(channelName, (channel) => channel.client(peers))
+          .build()
+      )
     ]
   })(PlaySessionChannelClientModule);
 
@@ -109,28 +156,28 @@ async function createChannelClient({ channelName, peers }) {
   const client = app.get(ZLINK_CHANNEL_CLIENT, { strict: false });
 
   return {
-    requestToChannel(targetChannelName, payload) {
+    requestToChannel(targetChannelName: string, payload: unknown): RetryableCall {
       return retryableRequestCall(() => client.requestToChannel(targetChannelName, payload));
     },
-    async stop() {
+    async stop(): Promise<void> {
       await closeNestRuntime(app);
     }
   };
 }
 
-function retryableRequestCall(createCall) {
+function retryableRequestCall(createCall: () => any): RetryableCall {
   let packetNameValue;
   let timeoutMs;
   return {
-    packetName(packetName) {
+    packetName(packetName: string): RetryableCall {
       packetNameValue = packetName;
       return this;
     },
-    timeout(value) {
+    timeout(value: number): RetryableCall {
       timeoutMs = value;
       return this;
     },
-    async submit(signal) {
+    async submit(signal?: unknown): Promise<unknown> {
       return await retry(() => {
         const call = createCall();
         if (packetNameValue !== undefined) {
@@ -145,10 +192,10 @@ function retryableRequestCall(createCall) {
   };
 }
 
-async function retry(action, options: any = {}) {
+async function retry<TValue>(action: () => Promise<TValue>, options: RetryOptions = {}): Promise<TValue> {
   const maxAttempts = options.maxAttempts ?? 5;
   const shouldRetry = options.shouldRetry ?? (() => true);
-  let lastError;
+  let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       return await action();
@@ -163,7 +210,7 @@ async function retry(action, options: any = {}) {
   throw lastError;
 }
 
-function isTransientConnectError(error) {
+function isTransientConnectError(error: unknown): boolean {
   const candidate: any = error;
   return error instanceof Error && (
     (candidate.code === 2 && /Host unreachable/.test(error.message)) ||
@@ -171,11 +218,12 @@ function isTransientConnectError(error) {
   );
 }
 
-async function closeNestRuntime(container) {
+async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
     await container.close();
   } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
+    const candidate = error as { name?: string; code?: number };
+    if (candidate.name === 'CloseError' && (candidate.code === 0 || candidate.code === 401)) {
       return;
     }
     throw error;

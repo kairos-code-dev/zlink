@@ -3,9 +3,28 @@ const net = require('node:net');
 const path = require('node:path');
 const readline = require('node:readline');
 
-async function reservePort() {
+type SampleServerConfig = {
+  entry: string;
+  env?: Record<string, string>;
+};
+
+type ReadyEvent = Record<string, any>;
+
+type StartedServer = {
+  ready: ReadyEvent;
+  entryFile: string;
+  exitedUnexpectedly(): Promise<Error | undefined>;
+  stop(): Promise<void>;
+};
+
+type ExitResult = {
+  code: number | null;
+  signal: string | null;
+};
+
+async function reservePort(): Promise<number> {
   const server = net.createServer();
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
@@ -14,40 +33,40 @@ async function reservePort() {
   return port;
 }
 
-async function reserveTcpEndpoint() {
+async function reserveTcpEndpoint(): Promise<string> {
   return `tcp://127.0.0.1:${await reservePort()}`;
 }
 
-async function startServer(entryFile, env = {}) {
-  const stdoutLines = [];
-  const stderrLines = [];
+async function startServer(entryFile: string, env: Record<string, string> = {}): Promise<StartedServer> {
+  const stdoutLines: string[] = [];
+  const stderrLines: string[] = [];
   let stopping = false;
   const child = childProcess.spawn(process.execPath, [path.resolve(entryFile)], {
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe']
   });
-  child.stderr.on('data', (chunk) => {
+  child.stderr.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     stderrLines.push(text);
     process.stderr.write(text);
   });
   const output = readline.createInterface({ input: child.stdout, crlfDelay: Infinity });
-  output.on('line', (line) => stdoutLines.push(line));
-  const exit = new Promise<any>((resolve) => {
+  output.on('line', (line: string) => stdoutLines.push(line));
+  const exit = new Promise<ExitResult>((resolve) => {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
   const ready = await readReady(output, child, entryFile, stdoutLines, stderrLines);
   return {
     ready,
     entryFile,
-    async exitedUnexpectedly() {
+    async exitedUnexpectedly(): Promise<Error | undefined> {
       const result = await exit;
       if (stopping) {
         return undefined;
       }
       return new Error(`${entryFile} exited while sample was running: code=${result.code} signal=${result.signal}\nstdout:\n${stdoutLines.join('\n')}\nstderr:\n${stderrLines.join('')}`);
     },
-    async stop() {
+    async stop(): Promise<void> {
       stopping = true;
       if (child.exitCode !== null) {
         output.close();
@@ -64,8 +83,11 @@ async function startServer(entryFile, env = {}) {
   };
 }
 
-async function withServers(servers, action) {
-  const started = [];
+async function withServers<TValue>(
+  servers: SampleServerConfig[],
+  action: (ready: ReadyEvent[]) => Promise<TValue>
+): Promise<TValue> {
+  const started: StartedServer[] = [];
   try {
     for (const server of servers) {
       started.push(await startServer(server.entry, server.env));
@@ -77,12 +99,12 @@ async function withServers(servers, action) {
       if (error) {
         throw error;
       }
-      return new Promise(() => {});
+      return new Promise<never>(() => {});
     });
     return await Promise.race([
       actionResult,
       unexpectedExit,
-      rejectAfterDeadline(15000, () => false)
+      rejectAfterDeadline(15000, () => false) as Promise<never>
     ]);
   } finally {
     for (const server of started.reverse()) {
@@ -91,8 +113,8 @@ async function withServers(servers, action) {
   }
 }
 
-function readReady(output, child, entryFile, stdoutLines, stderrLines) {
-  return new Promise((resolve, reject) => {
+function readReady(output: any, child: any, entryFile: string, stdoutLines: string[], stderrLines: string[]): Promise<ReadyEvent> {
+  return new Promise<ReadyEvent>((resolve, reject) => {
     let settled = false;
     void rejectAfterDeadline(5000, () => settled).then(() => {
       if (!settled) {
@@ -100,14 +122,14 @@ function readReady(output, child, entryFile, stdoutLines, stderrLines) {
         reject(new Error(`Timed out waiting for ${entryFile} ready event.\nstdout:\n${stdoutLines.join('\n')}\nstderr:\n${stderrLines.join('')}`));
       }
     });
-    child.once('exit', (code, signal) => {
+    child.once('exit', (code: number | null, signal: string | null) => {
       if (settled) {
         return;
       }
       settled = true;
       reject(new Error(`${entryFile} exited before ready: code=${code} signal=${signal}\nstdout:\n${stdoutLines.join('\n')}\nstderr:\n${stderrLines.join('')}`));
     });
-    output.once('line', (line) => {
+    output.once('line', (line: string) => {
       try {
         const message = JSON.parse(line);
         if (message.event === 'ready') {
@@ -125,7 +147,7 @@ function readReady(output, child, entryFile, stdoutLines, stderrLines) {
   });
 }
 
-async function waitForClose(child, timeoutMs) {
+async function waitForClose(child: any, timeoutMs: number): Promise<boolean> {
   let closed = false;
   child.once('close', () => {
     closed = true;
@@ -134,7 +156,7 @@ async function waitForClose(child, timeoutMs) {
   return closed;
 }
 
-async function rejectAfterDeadline(timeoutMs, done) {
+async function rejectAfterDeadline(timeoutMs: number, done: () => boolean): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!done() && Date.now() < deadline) {
     await new Promise((resolve) => setImmediate(resolve));

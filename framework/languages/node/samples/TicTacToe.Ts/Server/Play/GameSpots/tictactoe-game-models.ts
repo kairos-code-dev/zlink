@@ -1,8 +1,30 @@
 const { createJsonMessage, readJsonMessage } = require('../../../Shared/Contracts/messages');
+import type {
+  JoinGameReq,
+  TicTacToeActor
+} from '../../../Shared/Contracts/messages';
+
+type JoinedPlayer = {
+  actorId: string;
+  mark: string;
+  actor: TicTacToeActor;
+};
+
+type TicTacToeState = {
+  gameId: string;
+  board: string;
+  status: string;
+  winner: string | null;
+};
+
+type ActorJoinResult = {
+  accepted: boolean;
+  reply?: any;
+};
 
 class TicTacToeMatchRoom {
   [key: string]: any;
-  constructor(gameId, gameName, playEndpoint) {
+  constructor(gameId: string, gameName: string, playEndpoint: string) {
     this.gameId = gameId;
     this.gameName = gameName;
     this.playEndpoint = playEndpoint;
@@ -13,7 +35,7 @@ class TicTacToeMatchRoom {
     this.timerRegistered = false;
   }
 
-  addPlayer(actor) {
+  addPlayer(actor: TicTacToeActor): JoinedPlayer {
     if (!this.players.has(actor.actorId)) {
       const mark = this.players.size === 0 ? 'X' : 'O';
       this.players.set(actor.actorId, { actorId: actor.actorId, mark, actor });
@@ -24,13 +46,13 @@ class TicTacToeMatchRoom {
     return this.players.get(actor.actorId);
   }
 
-  onCreate(_request) {
+  onCreate(_request: any): { accepted: boolean } {
     this.created = true;
     return { accepted: true };
   }
 
-  onActorJoin(actor, request) {
-    const admission = readJsonMessage(request);
+  onActorJoin(actor: TicTacToeActor, request: any): ActorJoinResult {
+    const admission = readJsonMessage(request) as JoinGameReq;
     if (admission.gameId !== this.gameId) {
       return {
         accepted: false,
@@ -41,7 +63,7 @@ class TicTacToeMatchRoom {
     return { accepted: true, reply: createJsonMessage({ actorId: joined.actorId, mark: joined.mark }) };
   }
 
-  place(actorId, cell) {
+  place(actorId: string, cell: number): TicTacToeState {
     const player = this.players.get(actorId);
     if (player === undefined) {
       throw new Error(`Actor '${actorId}' has not joined game '${this.gameId}'.`);
@@ -64,7 +86,7 @@ class TicTacToeMatchRoom {
     return this.state();
   }
 
-  state() {
+  state(): TicTacToeState {
     return {
       gameId: this.gameId,
       board: this.cells.join(''),
@@ -73,7 +95,7 @@ class TicTacToeMatchRoom {
     };
   }
 
-  winnerMark() {
+  winnerMark(): string | undefined {
     for (const [a, b, c] of winningLines()) {
       if (this.cells[a] !== '.' && this.cells[a] === this.cells[b] && this.cells[a] === this.cells[c]) {
         return this.cells[a];
@@ -83,7 +105,7 @@ class TicTacToeMatchRoom {
   }
 }
 
-function winningLines() {
+function winningLines(): number[][] {
   return [
     [0, 1, 2],
     [3, 4, 5],

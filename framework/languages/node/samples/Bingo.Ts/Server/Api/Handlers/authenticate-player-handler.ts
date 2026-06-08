@@ -1,22 +1,21 @@
+const {
+  authenticatePlayerAccepted,
+  authenticatePlayerRejected
+} = require('../../../Shared/Contracts/messages');
+import type {
+  AuthenticatePlayerRes,
+  AuthenticateReq
+} from '../../../Shared/Contracts/messages';
+
 class AuthenticatePlayerHandler {
   [key: string]: any;
 
-  handle(request) {
+  handle(request: AuthenticateReq): AuthenticatePlayerRes {
     if (!request.accessToken?.startsWith('player-')) {
-      return {
-        accepted: false,
-        actorId: null,
-        displayName: null,
-        reason: 'Access token must be a sample player id.'
-      };
+      return authenticatePlayerRejected('Access token must be a sample player id.');
     }
 
-    return {
-      accepted: true,
-      actorId: request.accessToken,
-      displayName: request.accessToken.replace('player-', 'Player '),
-      reason: null
-    };
+    return authenticatePlayerAccepted(request.accessToken);
   }
 }
 

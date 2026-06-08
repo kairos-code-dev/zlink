@@ -1,6 +1,12 @@
+type ActorNotification = {
+  seq: number;
+  packetName: string;
+  payload: unknown;
+};
+
 class PlayActor {
   [key: string]: any;
-  constructor(actorId, displayName) {
+  constructor(actorId: string, displayName: string) {
     this.actorId = actorId;
     this.displayName = displayName;
     this.notifications = [];
@@ -8,7 +14,7 @@ class PlayActor {
     this.session = null;
   }
 
-  push(packetName, payload) {
+  push(packetName: string, payload: unknown): void {
     this.nextSeq += 1;
     this.notifications.push({ seq: this.nextSeq, packetName, payload });
   }

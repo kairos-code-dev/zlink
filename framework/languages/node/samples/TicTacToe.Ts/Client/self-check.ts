@@ -4,22 +4,50 @@ const connector = require('../../../../packages/stream-connector/dist');
 const json = require('../../../../packages/stream-connector-json/dist');
 const nestjs = require('../../../../packages/nestjs/dist');
 const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
-const { PacketNames, SampleNames, SampleTimings } = require('../Shared/Contracts/messages');
+const {
+  PacketNames,
+  SampleNames,
+  SampleTimings,
+  authenticateReq,
+  createGameReq,
+  joinGameReq,
+  placeMarkStreamReq
+} = require('../Shared/Contracts/messages');
+import type {
+  CreateGameHttpRes
+} from '../Shared/Contracts/messages';
 
-async function main() {
+type NestjsPackage = typeof nestjs;
+
+type StreamNotification = {
+  packetName: string;
+  payload: any;
+};
+
+type StreamClient = {
+  notifications: StreamNotification[];
+  connect(): Promise<void>;
+  close(): Promise<void>;
+};
+
+async function main(): Promise<void> {
   const playEndpoint = await reserveTcpEndpoint();
   const playStreamEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
   const apiHttpEndpoint = toHttpEndpoint(await reserveTcpEndpoint());
-  assertNestModule({
-    clientServerChannels: {
-      [SampleNames.apiChannel]: { client: { manualConnections: [apiEndpoint] }, server: { bind: apiEndpoint } },
-      [SampleNames.playChannel]: { client: { manualConnections: [playEndpoint] }, server: { bind: playEndpoint } }
-    },
-    streams: {
-      [SampleNames.clientStreamNode]: { bind: playStreamEndpoint, session: class SmokeSession {} }
-    }
-  }, nestjs);
+  assertNestModule(nestjs.zlinkFramework()
+    .options({
+      streams: {
+        [SampleNames.clientStreamNode]: { bind: playStreamEndpoint, session: class SmokeSession {} }
+      }
+    })
+    .clientServerChannel(SampleNames.apiChannel, (channel) => channel
+      .client(apiEndpoint)
+      .server(apiEndpoint))
+    .clientServerChannel(SampleNames.playChannel, (channel) => channel
+      .client(playEndpoint)
+      .server(playEndpoint))
+    .build(), nestjs);
 
   await withServers([
     {
@@ -38,23 +66,23 @@ async function main() {
         TICTACTOE_PLAY_ENDPOINT: playEndpoint
       }
     }
-  ], async () => {
+  ], async (): Promise<void> => {
     const game = await createGame(apiHttpEndpoint, 'match-ready');
     const x = createPlayerClient(playStreamEndpoint);
     const o = createPlayerClient(playStreamEndpoint);
     try {
       await x.connect();
       await o.connect();
-      const xAuth = await requestJson(x, PacketNames.authenticateReq, { accessToken: 'p1' });
-      const oAuth = await requestJson(o, PacketNames.authenticateReq, { accessToken: 'p2' });
-      const xJoin = await requestJson(x, PacketNames.joinGameReq, { gameId: game.gameId });
-      const oJoin = await requestJson(o, PacketNames.joinGameReq, { gameId: game.gameId });
+      const xAuth = await requestJson(x, PacketNames.authenticateReq, authenticateReq('p1'));
+      const oAuth = await requestJson(o, PacketNames.authenticateReq, authenticateReq('p2'));
+      const xJoin = await requestJson(x, PacketNames.joinGameReq, joinGameReq(game.gameId));
+      const oJoin = await requestJson(o, PacketNames.joinGameReq, joinGameReq(game.gameId));
       const moves = [
-        await requestJson(x, PacketNames.placeMarkReq, { gameId: game.gameId, cell: 0 }),
-        await requestJson(o, PacketNames.placeMarkReq, { gameId: game.gameId, cell: 3 }),
-        await requestJson(x, PacketNames.placeMarkReq, { gameId: game.gameId, cell: 1 }),
-        await requestJson(o, PacketNames.placeMarkReq, { gameId: game.gameId, cell: 4 }),
-        await requestJson(x, PacketNames.placeMarkReq, { gameId: game.gameId, cell: 2 })
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 0)),
+        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 3)),
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 1)),
+        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 4)),
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 2))
       ];
 
       assert.equal(game.gameName, 'match-ready');
@@ -78,7 +106,7 @@ async function main() {
   console.log('PASS TicTacToe.Ts');
 }
 
-function assertNestModule(options, zlinkNestjs = nestjs) {
+function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): any {
   const module = zlinkNestjs.ZLinkModule.forRoot(options);
   const tokens = new Set(module.providers.map((provider) => provider.provide));
   for (const token of [
@@ -94,7 +122,7 @@ function assertNestModule(options, zlinkNestjs = nestjs) {
   return module;
 }
 
-function createPlayerClient(endpoint) {
+function createPlayerClient(endpoint: string): StreamClient {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
@@ -103,14 +131,14 @@ function createPlayerClient(endpoint) {
   });
   client.notifications = [];
   for (const packetName of [PacketNames.playerJoinedNotify, PacketNames.gameStateNotify]) {
-    json.onJson(client, packetName, (message) => {
+    json.onJson(client, packetName, (message: { payload: unknown }) => {
       client.notifications.push({ packetName, payload: message.payload });
     });
   }
   return client;
 }
 
-async function requestJson(client, packetName, payload) {
+async function requestJson<TResponse = any>(client: StreamClient, packetName: string, payload: unknown): Promise<TResponse> {
   return await json
     .requestJson(client, payload)
     .packetName(packetName)
@@ -118,11 +146,11 @@ async function requestJson(client, packetName, payload) {
     .submit();
 }
 
-async function createGame(apiHttpEndpoint, gameName) {
+async function createGame(apiHttpEndpoint: string, gameName: string): Promise<CreateGameHttpRes> {
   const response = await fetch(`${apiHttpEndpoint}/games`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ gameName })
+    body: JSON.stringify(createGameReq(gameName))
   });
   if (!response.ok) {
     throw new Error(`Create game failed: ${response.status} ${await response.text()}`);
@@ -130,11 +158,11 @@ async function createGame(apiHttpEndpoint, gameName) {
   return await response.json();
 }
 
-function toHttpEndpoint(tcpEndpoint) {
+function toHttpEndpoint(tcpEndpoint: string): string {
   return tcpEndpoint.replace('tcp://', 'http://');
 }
 
-async function waitFor(predicate) {
+async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 2000;
   while (Date.now() < deadline) {
     if (predicate()) {
@@ -145,7 +173,7 @@ async function waitFor(predicate) {
   throw new Error('Timed out waiting for stream notification.');
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

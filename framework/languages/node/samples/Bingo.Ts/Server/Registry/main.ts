@@ -2,33 +2,32 @@ require('reflect-metadata');
 
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
+const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
+const { PacketNames } = require('../../Shared/Contracts/messages');
 
 class BingoRegistryModule {}
 
 Module({
   imports: [
-    ZLinkModule.forRoot({
-      routerMeshes: {
-        'sample-route': {
-          bind: process.env.BINGO_REGISTRY_ENDPOINT,
-          routingId: 'registry-server',
-          manualConnections: [],
-          handlerGroups: ['registry']
-        }
-      }
-    })
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .routerMesh('sample-route', (mesh) => mesh
+          .bind(process.env.BINGO_REGISTRY_ENDPOINT)
+          .routingId('registry-server')
+          .connect([])
+          .handlerGroup('registry'))
+        .build()
+    )
   ],
   providers: [
-    ...zlinkHandlerGroup('registry', [{
-      provider: { provide: Symbol('registry.ping'), useValue: { handle: () => ({ role: 'registry-server' }) } },
-      packetName: 'Ping'
-    }])
+    ...zlinkHandlers('registry')
+      .request({ provider: { provide: Symbol('registry.ping'), useValue: { handle: () => ({ role: 'registry-server' }) } } }, PacketNames.ping)
+      .providers()
   ]
 })(BingoRegistryModule);
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(BingoRegistryModule, {
     logger: false,
     abortOnError: false
@@ -47,7 +46,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap().catch((error) => {
+bootstrap().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

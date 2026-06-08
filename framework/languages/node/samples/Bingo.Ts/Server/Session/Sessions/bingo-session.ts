@@ -1,11 +1,29 @@
+type BingoRouteHeader = {
+  name: string;
+};
+
+type BingoSessionActor = {
+  relay(header: BingoRouteHeader, payload: unknown): Promise<unknown>;
+};
+
+type BingoSessionContext = {
+  actors: {
+    bound: BingoSessionActor[];
+  };
+};
+
+type BingoSessionHandlers = {
+  tryHandle(context: BingoSessionContext, header: BingoRouteHeader, payload: unknown): Promise<boolean>;
+};
+
 class BingoSession {
   [key: string]: any;
-  constructor(context, handlers) {
+  constructor(context: BingoSessionContext, handlers: BingoSessionHandlers) {
     this.context = context;
     this.handlers = handlers;
   }
 
-  async dispatch(header, payload) {
+  async dispatch(header: BingoRouteHeader, payload: unknown): Promise<unknown> {
     if (await this.handlers.tryHandle(this.context, header, payload)) {
       return;
     }
@@ -14,7 +32,7 @@ class BingoSession {
     return await actor.relay(header, payload);
   }
 
-  requireSingleBoundActor(action) {
+  requireSingleBoundActor(action: string): BingoSessionActor {
     const actors = this.context.actors.bound;
     if (actors.length === 1) {
       return actors[0];

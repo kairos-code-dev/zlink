@@ -1,18 +1,35 @@
 const { Inject } = require('@nestjs/common');
-const { createJsonMessage, PacketNames, readJsonMessage } = require('../../../../Shared/Contracts/messages');
+const {
+  PacketNames,
+  createJsonMessage,
+  joinGameReq,
+  joinGameRes,
+  playerJoinedNotify,
+  readJsonMessage
+} = require('../../../../Shared/Contracts/messages');
 const { TicTacToeGameDirectory } = require('../../GameSpots/tictactoe-game');
+import type {
+  JoinGameInternalReq,
+  JoinGameRes
+} from '../../../../Shared/Contracts/messages';
+
+type JoinReply = {
+  error?: string;
+  actorId: string;
+  mark: string;
+};
 
 class PlayActorJoinGameHandler {
   [key: string]: any;
-  constructor(games) {
+  constructor(games: any) {
     this.games = games;
   }
 
-  handle(request) {
+  handle(request: JoinGameInternalReq): JoinGameRes {
     const room = this.games.require(request.gameId);
-    const joinRequest = createJsonMessage({ gameId: request.gameId });
+    const joinRequest = createJsonMessage(joinGameReq(request.gameId));
     const result = room.onActorJoin(request.actor, joinRequest);
-    const reply = result.reply === undefined ? {} : readJsonMessage(result.reply);
+    const reply: Partial<JoinReply> = result.reply === undefined ? {} : readJsonMessage(result.reply) as JoinReply;
     joinRequest.close();
     result.reply?.close();
     if (!result.accepted) {
@@ -20,18 +37,12 @@ class PlayActorJoinGameHandler {
     }
     const joined = reply;
     for (const player of room.players.values()) {
-      player.actor.push(PacketNames.playerJoinedNotify, {
-        gameId: room.gameId,
-        actorId: joined.actorId,
-        players: [...room.players.values()].map((value) => value.actorId)
-      });
+      player.actor.push(
+        PacketNames.playerJoinedNotify,
+        playerJoinedNotify(room.gameId, joined.actorId, [...room.players.values()].map((value) => value.actorId))
+      );
     }
-    return {
-      gameId: room.gameId,
-      actorId: joined.actorId,
-      mark: joined.mark,
-      state: room.state()
-    };
+    return joinGameRes(room.gameId, joined.actorId, joined.mark, room.state());
   }
 }
 

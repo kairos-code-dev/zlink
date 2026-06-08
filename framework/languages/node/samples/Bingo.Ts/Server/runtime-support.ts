@@ -1,9 +1,13 @@
-function waitForShutdown(options: any = {}) {
+type ShutdownOptions = {
+  keepAlive?: boolean;
+};
+
+function waitForShutdown(options: ShutdownOptions = {}): Promise<void> {
   return new Promise((resolve) => {
     const keepAlive = options.keepAlive === true
       ? setInterval(() => {}, 60000)
       : undefined;
-    const stop = () => {
+    const stop = (): void => {
       if (keepAlive !== undefined) {
         clearInterval(keepAlive);
       }
@@ -14,11 +18,12 @@ function waitForShutdown(options: any = {}) {
   });
 }
 
-async function closeNestRuntime(container) {
+async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
     await container.close();
   } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
+    const candidate = error as { name?: string; code?: number };
+    if (candidate.name === 'CloseError' && (candidate.code === 0 || candidate.code === 401)) {
       return;
     }
     throw error;

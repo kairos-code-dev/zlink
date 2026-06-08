@@ -1,13 +1,17 @@
 const { Inject } = require('@nestjs/common');
 const { PlayActorJoinGameHandler } = require('./Handlers/play-actor-join-game-handler');
+import type {
+  JoinGameRes,
+  TicTacToeActor
+} from '../../../Shared/Contracts/messages';
 
 class PlayEntrySpot {
   [key: string]: any;
-  constructor(joinHandler) {
+  constructor(joinHandler: any) {
     this.joinHandler = joinHandler;
   }
 
-  join(actor, gameId) {
+  join(actor: TicTacToeActor, gameId: string): JoinGameRes {
     return this.joinHandler.handle({ actor, gameId });
   }
 }

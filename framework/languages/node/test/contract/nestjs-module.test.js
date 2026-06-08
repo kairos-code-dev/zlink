@@ -112,6 +112,35 @@ test('ZLinkModule.forRoot public DI clients expose callable framework contracts'
   );
 });
 
+test('zlinkFramework builder maps channel and route mesh options', () => {
+  const options = nestjs.zlinkFramework()
+    .clientServerChannel('api', (channel) => channel
+      .server('tcp://127.0.0.1:7101')
+      .handlerGroup('api'))
+    .clientServerChannel('play', (channel) => channel
+      .client('tcp://127.0.0.1:7102'))
+    .routerMesh('route', (mesh) => mesh
+      .bind('tcp://127.0.0.1:7201')
+      .routingId('node-a')
+      .connect(['tcp://127.0.0.1:7202'])
+      .handlerGroup('route-api'))
+    .build();
+
+  assert.deepEqual(options.clientServerChannels.api, {
+    server: { bind: 'tcp://127.0.0.1:7101' },
+    handlerGroups: ['api']
+  });
+  assert.deepEqual(options.clientServerChannels.play, {
+    client: { manualConnections: ['tcp://127.0.0.1:7102'] }
+  });
+  assert.deepEqual(options.routerMeshes.route, {
+    bind: 'tcp://127.0.0.1:7201',
+    routingId: 'node-a',
+    manualConnections: ['tcp://127.0.0.1:7202'],
+    handlerGroups: ['route-api']
+  });
+});
+
 test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecycle', async () => {
   const moduleDefinition = nestjs.ZLinkModule.forRoot();
   class ConsumerModule {}
@@ -139,7 +168,7 @@ test('ZLinkModule.forRoot boots through the real NestJS DI container and lifecyc
   assert.equal(runtime.isStarted, false);
 });
 
-test('ZLinkModule.forRoot maps zlinkHandlerGroup request providers from NestJS DI', async () => {
+test('ZLinkModule.forRoot maps zlinkHandlers request providers from NestJS DI', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
   class ProfileHandler {
     async handle(request) {
@@ -157,7 +186,7 @@ test('ZLinkModule.forRoot maps zlinkHandlerGroup request providers from NestJS D
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [[ProfileHandler, 'GetProfile']])]
+    providers: [...nestjs.zlinkHandlers('api').request(ProfileHandler, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -193,11 +222,10 @@ test('ZLinkModule.forRoot maps grouped custom NestJS provider objects', async ()
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [{
+    providers: [...nestjs.zlinkHandlers('api').request({
       provider: { provide: PROFILE_HANDLER, useClass: ProfileHandler },
-      handlerType: ProfileHandler,
-      packetName: 'GetProfile'
-    }])]
+      handlerType: ProfileHandler
+    }, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -226,7 +254,7 @@ test('ZLinkModule.forRoot maps grouped value providers by provider token', async
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [{
+    providers: [...nestjs.zlinkHandlers('api').request({
       provider: {
         provide: PROFILE_HANDLER,
         useValue: {
@@ -235,8 +263,7 @@ test('ZLinkModule.forRoot maps grouped value providers by provider token', async
           }
         }
       },
-      packetName: 'GetProfile'
-    }])]
+    }, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -251,7 +278,7 @@ test('ZLinkModule.forRoot maps grouped value providers by provider token', async
   await app.close();
 });
 
-test('ZLinkModule.forRootAsync maps zlinkHandlerGroup request providers from NestJS DI', async () => {
+test('ZLinkModule.forRootAsync maps zlinkHandlers request providers from NestJS DI', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
   class ProfileHandler {
     async handle(request) {
@@ -271,7 +298,7 @@ test('ZLinkModule.forRootAsync maps zlinkHandlerGroup request providers from Nes
         }
       })
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [[ProfileHandler, 'GetProfile']])]
+    providers: [...nestjs.zlinkHandlers('api').request(ProfileHandler, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -306,7 +333,7 @@ test('ZLinkModule.forRoot deduplicates grouped useExisting handler aliases', asy
       }
     })],
     providers: [
-      ...nestjs.zlinkHandlerGroup('api', [[ProfileHandler, 'GetProfile']]),
+      ...nestjs.zlinkHandlers('api').request(ProfileHandler, 'GetProfile').providers(),
       { provide: PROFILE_HANDLER, useExisting: ProfileHandler }
     ]
   })(HandlerModule);
@@ -342,10 +369,12 @@ test('ZLinkModule.forRoot rejects duplicate grouped packet handlers for one chan
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [
-      [FirstProfileHandler, 'GetProfile'],
-      [SecondProfileHandler, 'GetProfile']
-    ])]
+    providers: [
+      ...nestjs.zlinkHandlers('api')
+        .request(FirstProfileHandler, 'GetProfile')
+        .request(SecondProfileHandler, 'GetProfile')
+        .providers()
+    ]
   })(HandlerModule);
 
   await assert.rejects(
@@ -377,7 +406,7 @@ test('ZLinkModule.forRoot maps grouped routeMesh send handlers from NestJS DI', 
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('route-api', [[NoticeHandler, 'RouteNotice']], { kind: 'send' })]
+    providers: [...nestjs.zlinkHandlers('route-api').send(NoticeHandler, 'RouteNotice').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -418,11 +447,10 @@ test('ZLinkModule.forRoot maps grouped fanout publish handlers from NestJS DI', 
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('events', [{
+    providers: [...nestjs.zlinkHandlers('events').publish({
       provider: { provide: PROFILE_EVENTS, useClass: ProfileEventHandler },
-      handlerType: ProfileEventHandler,
-      packetName: 'ProfileChanged'
-    }], { kind: 'publish' })]
+      handlerType: ProfileEventHandler
+    }, 'ProfileChanged').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -464,10 +492,12 @@ test('ZLinkModule.forRoot rejects duplicate grouped publish handlers for one cha
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('events', [
-      [FirstEventHandler, 'ProfileChanged'],
-      [SecondEventHandler, 'ProfileChanged']
-    ], { kind: 'publish' })]
+    providers: [
+      ...nestjs.zlinkHandlers('events')
+        .publish(FirstEventHandler, 'ProfileChanged')
+        .publish(SecondEventHandler, 'ProfileChanged')
+        .providers()
+    ]
   })(HandlerModule);
 
   await assert.rejects(
@@ -508,7 +538,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [[ProfileHandler, 'GetProfile']])]
+    providers: [...nestjs.zlinkHandlers('api').request(ProfileHandler, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
@@ -542,7 +572,7 @@ test('ZLinkModule.forRoot with grouped handlers returns null for absent optional
         }
       }
     })],
-    providers: [...nestjs.zlinkHandlerGroup('api', [[ProfileHandler, 'GetProfile']])]
+    providers: [...nestjs.zlinkHandlers('api').request(ProfileHandler, 'GetProfile').providers()]
   })(HandlerModule);
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });

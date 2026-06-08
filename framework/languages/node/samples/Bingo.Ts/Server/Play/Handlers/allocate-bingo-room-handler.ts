@@ -1,14 +1,19 @@
 const { Inject } = require('@nestjs/common');
 const { BingoRoomDirectory } = require('./bingo-room-directory');
+const { allocateBingoRoomRes } = require('../../../Shared/Contracts/messages');
+import type {
+  AllocateBingoRoomReq,
+  AllocateBingoRoomRes
+} from '../../../Shared/Contracts/messages';
 
 class AllocateBingoRoomHandler {
   [key: string]: any;
-  constructor(rooms) {
+  constructor(rooms: any) {
     this.rooms = rooms;
   }
-  async handle(request) {
+  async handle(request: AllocateBingoRoomReq): Promise<AllocateBingoRoomRes> {
     const allocated = await this.rooms.allocate(request.mode ?? 'four-player');
-    return { roomId: allocated.roomId };
+    return allocateBingoRoomRes(allocated.roomId);
   }
 }
 

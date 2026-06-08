@@ -1,6 +1,12 @@
+type DeliveredNotification = {
+  actorId: string;
+  packetName: string;
+  payload: any;
+};
+
 class BingoNotificationInbox {
   [key: string]: any;
-  constructor(actorId) {
+  constructor(actorId: string) {
     this.actorId = actorId;
     this.playerJoined = [];
     this.started = [];
@@ -8,7 +14,7 @@ class BingoNotificationInbox {
     this.ended = [];
   }
 
-  apply(delivered) {
+  apply(delivered: DeliveredNotification[]): void {
     for (const entry of delivered.filter((item) => item.actorId === this.actorId)) {
       if (entry.packetName === 'PlayerJoinedNotify') {
         this.playerJoined.push(entry.payload);

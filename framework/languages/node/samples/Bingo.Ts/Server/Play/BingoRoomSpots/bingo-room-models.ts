@@ -4,7 +4,18 @@ const BingoRoomStatus = {
   finished: 'Finished'
 };
 
-function createRoomSettings(mode, roomSeq) {
+import type {
+  BingoMode
+} from '../../../Shared/Contracts/messages';
+
+type BingoRoomSettings = {
+  mode: BingoMode | undefined;
+  roomName: string;
+  requiredPlayers: number;
+  drawDeck: number[];
+};
+
+function createRoomSettings(mode: BingoMode | undefined, roomSeq: number): BingoRoomSettings {
   return {
     mode,
     roomName: `Bingo Room ${String(roomSeq).padStart(3, '0')}`,

@@ -1,15 +1,16 @@
-const { actorDisplayName } = require('../../../Shared/Contracts/messages');
+const { authenticatePlayerRes } = require('../../../Shared/Contracts/messages');
+import type {
+  AuthenticatePlayerRes,
+  AuthenticateReq
+} from '../../../Shared/Contracts/messages';
 
 class AuthenticatePlayerHandler {
   [key: string]: any;
-  handle(request) {
+  handle(request: AuthenticateReq): AuthenticatePlayerRes {
     if (typeof request.accessToken !== 'string' || request.accessToken.length === 0) {
       throw new Error('accessToken is required.');
     }
-    return {
-      actorId: request.accessToken,
-      displayName: actorDisplayName(request.accessToken)
-    };
+    return authenticatePlayerRes(request.accessToken);
   }
 }
 

@@ -62,27 +62,25 @@ framework runtime 과 client 는 NestJS DI 컨테이너가 resolve 하며, runti
 ```ts
 // node (NestJS) — 동기 등록
 import { Module } from '@nestjs/common';
-import { ZLinkModule, zlinkHandlerGroup } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkHandlers } from '@zlink-systems/nestjs';
 
 @Module({
   imports: [
-    ZLinkModule.forRoot({
-      defaultTimeoutMs: 30_000,
-      clientServerChannels: {
-        'pricing.quote': {
-          server: { bind: 'tcp://0.0.0.0:7301' },
-          handlerGroups: ['pricing'],
-        },
-      },
-      fanoutChannels: {
-        'pricing.events': {
-          publisher: { bind: 'tcp://0.0.0.0:7302' },
-        },
-      },
-    }),
+    ZLinkModule.forRoot(
+      zlinkFramework()
+        .options({ defaultTimeoutMs: 30_000 })
+        .clientServerChannel('pricing.quote', (channel) => channel
+          .server('tcp://0.0.0.0:7301')
+          .handlerGroup('pricing'))
+        .fanoutChannel('pricing.events', (channel) => channel
+          .publisher('tcp://0.0.0.0:7302'))
+        .build()
+    ),
   ],
   providers: [
-    ...zlinkHandlerGroup('pricing', [[GetQuoteHandler, 'GetQuote']]),
+    ...zlinkHandlers('pricing')
+      .request(GetQuoteHandler, 'GetQuote')
+      .providers(),
   ],
 })
 export class PricingModule {}
@@ -117,18 +115,17 @@ builder.Services.AddZLinkFramework(options =>
     ZLinkModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        clientServerChannels: {
-          'pricing.quote': {
-            server: { bind: config.getOrThrow<string>('PRICING_BIND') },
-            handlerGroups: ['pricing'],
-          },
-        },
-      }),
+      useFactory: (config: ConfigService) => zlinkFramework()
+        .clientServerChannel('pricing.quote', (channel) => channel
+          .server(config.getOrThrow<string>('PRICING_BIND'))
+          .handlerGroup('pricing'))
+        .build(),
     }),
   ],
   providers: [
-    ...zlinkHandlerGroup('pricing', [[GetQuoteHandler, 'GetQuote']]),
+    ...zlinkHandlers('pricing')
+      .request(GetQuoteHandler, 'GetQuote')
+      .providers(),
   ],
 })
 export class PricingModule {}
@@ -209,7 +206,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 
 | 객체 종류 | 등록 위치 | framework 가 resolve 하는 시점 |
 |------|------|------|
-| channel / fanout / route handler | `providers` + `zlinkHandlerGroup(...)` | channel 이 해당 handler group 을 dispatch 할 때 |
+| channel / fanout / route handler | `providers` + `zlinkHandlers(...).request/send/publish(...).providers()` | channel 이 해당 handler group 을 dispatch 할 때 |
 | Entry Spot, user Spot | `providers` + `spotNodes` 의 spot type 설정 | SpotNode 또는 SpotManager 가 spot 을 활성화할 때 |
 | Spot packet / subscribe / actor / timer handler | `providers` + Spot/Entry Spot 의 registry 등록 | 해당 Spot 실행 문맥에서 packet, actor event, timer 를 처리할 때 |
 | actor factory | `providers` + `actorFactories` 설정 | ActorManager 가 actor 를 생성할 때 |
@@ -218,7 +215,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 
 `ZLinkModule.forRoot(...)` 는 transport, node, capability, handler group 선택을
 선언하는 자리다. application 객체 그래프를 조립하는 자리가 아니다. node/channel
-handler 는 `zlinkHandlerGroup(...)` 으로 group 이름을 붙이고 channel 이
+handler 는 `zlinkHandlers(...)` builder 로 group 이름을 붙이고 channel 이
 `handlerGroups` 로 선택한다. 반면 Spot, Entry Spot, session 내부 handler 는
 해당 객체의 registry 에 등록한다. 이렇게 나누면 channel 이 어떤 node handler
 묶음을 받을지와, Spot 또는 session 이 자기 내부 메시지를 어떻게 처리할지가 서로

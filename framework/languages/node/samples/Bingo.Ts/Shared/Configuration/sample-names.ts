@@ -1,14 +1,16 @@
+const { PacketNames } = require('../Contracts/messages');
+
 const SampleNames = {
   apiChannel: 'bingo.api',
   playChannel: 'bingo.play',
   playerActorType: 'bingo.player',
   roomSpotType: 'bingo.room',
   actorIds: ['player-1', 'player-2', 'player-3', 'player-4'],
-  playerJoinedPacket: 'PlayerJoinedNotify',
-  gameStartedPacket: 'BingoGameStartedNotify',
-  numberDrawnPacket: 'BingoNumberDrawnNotify',
-  statePacket: 'BingoStateNotify',
-  gameEndedPacket: 'BingoGameEndedNotify'
+  playerJoinedPacket: PacketNames.playerJoinedNotify,
+  gameStartedPacket: PacketNames.gameStartedNotify,
+  numberDrawnPacket: PacketNames.numberDrawnNotify,
+  statePacket: PacketNames.stateNotify,
+  gameEndedPacket: PacketNames.gameEndedNotify
 };
 
 const SampleTimings = {

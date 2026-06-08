@@ -2,6 +2,26 @@ const connector = require('../../../../../packages/stream-connector/dist');
 const framework = require('../../../../../packages/framework/dist');
 const { Message } = require('@zlink-systems/zlink');
 
+type BoundActorRef = {
+  actorId: string;
+};
+
+type DeliveredFrame = {
+  seq: number;
+  actorId: string;
+  token: string;
+  packetName: string;
+  payload: unknown;
+};
+
+type BindingRecord = {
+  actor: {
+    actorId: string;
+    bindingToken: string;
+  };
+  context: unknown;
+};
+
 class SampleBoundSessionRuntime {
   [key: string]: any;
 
@@ -11,15 +31,15 @@ class SampleBoundSessionRuntime {
     this.disconnected = [];
     this.runtime = new framework.ZLinkStreamBindingRuntime({
       messageFactory: {
-        createTextMessage(payload) {
+        createTextMessage(payload: string): any {
           return Message.from(payload);
         },
-        createBinaryMessage(payload) {
+        createBinaryMessage(payload: Buffer): any {
           return Message.from(payload);
         }
       },
       transport: {
-        send: async (actorId, message, options) => {
+        send: async (actorId: string, message: any, options: { bindingToken: string; packetName: string }) => {
           const decoded = decodeJsonFrame(message);
           this.delivered.push({
             seq: ++this.deliveredSeq,
@@ -29,7 +49,7 @@ class SampleBoundSessionRuntime {
             payload: decoded.payload
           });
         },
-        disconnect: async (actorId, options) => {
+        disconnect: async (actorId: string, options: { bindingToken: string }) => {
           this.disconnected.push({
             actorId,
             token: options.bindingToken
@@ -39,21 +59,21 @@ class SampleBoundSessionRuntime {
     });
   }
 
-  createBoundSession(actorId) {
+  createBoundSession(actorId: string): any {
     return this.runtime.createBoundSession(actorId);
   }
 
-  async bind(actorRef, sessionId) {
+  async bind(actorRef: BoundActorRef, sessionId: string): Promise<{ actor: unknown; context: unknown; sessionId: string }> {
     const context = this.runtime.createSessionContext(fakeStream(sessionId));
     const actor = await context.actors.bind(actorRef);
     return { actor, context, sessionId };
   }
 
-  unbind(binding) {
+  unbind(binding: BindingRecord): void {
     this.runtime.unbind(binding.actor.actorId, binding.context, binding.actor.bindingToken);
   }
 
-  deliveredFor(actorId, afterSeq = 0) {
+  deliveredFor(actorId: string, afterSeq: number = 0): { delivered: DeliveredFrame[]; nextSeq: number } {
     const delivered = this.delivered.filter((entry) => entry.actorId === actorId && entry.seq > afterSeq);
     return {
       delivered,
@@ -62,18 +82,18 @@ class SampleBoundSessionRuntime {
   }
 }
 
-function fakeStream(sessionId) {
+function fakeStream(sessionId: string): any {
   return {
     sessionId,
     routingId: `rid-${sessionId}`,
-    async close() {},
-    write() {
+    async close(): Promise<void> {},
+    write(): boolean {
       return true;
     }
   };
 }
 
-function decodeJsonFrame(message) {
+function decodeJsonFrame(message: any): { header: unknown; payload: unknown } {
   const frame = connector.ZlinkStreamFrameCodec.decode(message.toBytes());
   const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
   return {

@@ -1,16 +1,17 @@
-async function closeNestRuntime(container) {
+async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
     await container.close();
   } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
+    const candidate = error as { name?: string; code?: number };
+    if (candidate.name === 'CloseError' && (candidate.code === 0 || candidate.code === 401)) {
       return;
     }
     throw error;
   }
 }
 
-function waitForShutdown() {
-  return new Promise((resolve) => {
+function waitForShutdown(): Promise<void> {
+  return new Promise<void>((resolve) => {
     process.once('SIGINT', resolve);
     process.once('SIGTERM', resolve);
   });

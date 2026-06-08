@@ -1181,7 +1181,7 @@ export interface ZLinkModuleOptions {
 ## 13. 결정된 기준
 
 - actor 의 packet handler 와 lifecycle callback handler 는 Entry Spot 또는
-  user Spot registry 에서 등록한다. `zlinkHandlerGroup(...)` provider group 매핑은
+  user Spot registry 에서 등록한다. `zlinkHandlers(...)` provider group 매핑은
   일반 channel handler 전용이며, SPOT 으로 들어오는 actor packet 에는 사용하지 않는다.
 - actor 의 위치는 application 의 resolver 가 결정한다. framework 는 그
   정보의 저장소를 소유하지 않는다.

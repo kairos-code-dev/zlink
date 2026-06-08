@@ -4,7 +4,7 @@ const net = require('node:net');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const connector = require('../../../../../packages/stream-connector/dist');
-const { ZLinkModule, zlinkHandlerGroup } = require('../../../../../packages/nestjs/dist');
+const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { PacketNames, SampleNames } = require('../../Shared/Contracts/messages');
 const { PlayActorFactory } = require('./Actors/play-actor-factory');
@@ -20,19 +20,37 @@ const { PLAY_STREAM_ENDPOINT } = require('./play-tokens');
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-async function main() {
+type TcpEndpoint = {
+  host: string;
+  port: number;
+};
+
+type ReadFrameResult = {
+  length: number;
+  bytes: Buffer;
+};
+
+type StreamHeader = {
+  requestSeq?: number;
+  name: string;
+};
+
+type DispatchSession = {
+  dispatch(header: unknown, payload: unknown): Promise<void>;
+};
+
+async function main(): Promise<void> {
   class TicTacToePlayModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot({
-        clientServerChannels: {
-          [SampleNames.playChannel]: {
-            server: { bind: process.env.TICTACTOE_PLAY_ENDPOINT },
-            handlerGroups: ['play']
-          }
-        }
-      })
+      ZLinkModule.forRoot(
+        zlinkFramework()
+          .clientServerChannel(SampleNames.playChannel, (channel) => channel
+            .server(process.env.TICTACTOE_PLAY_ENDPOINT)
+            .handlerGroup('play'))
+          .build()
+      )
     ],
     providers: [
       { provide: PLAY_STREAM_ENDPOINT, useValue: process.env.TICTACTOE_PLAY_STREAM_ENDPOINT },
@@ -43,7 +61,9 @@ async function main() {
       PlayActorPlaceMarkHandler,
       TicTacToeGameTimerHandler,
       PlaySessionFactory,
-      ...zlinkHandlerGroup('play', [[CreateGameHandler, PacketNames.createGame]])
+      ...zlinkHandlers('play')
+        .request(CreateGameHandler, PacketNames.createGame)
+        .providers()
     ]
   })(TicTacToePlayModule);
 
@@ -53,12 +73,12 @@ async function main() {
   });
   const sessionFactory = channelApp.get(PlaySessionFactory, { strict: false });
 
-  const streamServer = net.createServer((socket) => {
+  const streamServer = net.createServer((socket: any) => {
     const transport = new StreamTransport(socket);
     const session = sessionFactory.create(transport);
     let buffer = Buffer.alloc(0);
     socket.on('error', () => {});
-    socket.on('data', (chunk) => {
+    socket.on('data', (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
       while (true) {
         const packet = tryReadFrame(buffer);
@@ -83,11 +103,11 @@ async function main() {
 
 class StreamTransport {
   [key: string]: any;
-  constructor(socket) {
+  constructor(socket: any) {
     this.socket = socket;
   }
 
-  reply(requestHeader, payload) {
+  reply(requestHeader: StreamHeader, payload: unknown): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Json,
@@ -98,7 +118,7 @@ class StreamTransport {
     }, payload);
   }
 
-  send(packetName, payload, metadata = {}) {
+  send(packetName: string, payload: unknown, metadata: Record<string, string> = {}): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Send,
       codec: connector.ZlinkStreamCodec.Json,
@@ -110,7 +130,7 @@ class StreamTransport {
     }, payload);
   }
 
-  write(header, payload) {
+  write(header: unknown, payload: unknown): void {
     this.socket.write(connector.ZlinkStreamFrameCodec.encode(
       connector.ZlinkStreamHeaderCodec.encode(header),
       encoder.encode(JSON.stringify(payload))
@@ -118,7 +138,7 @@ class StreamTransport {
   }
 }
 
-async function dispatchPacket(session, bytes, transport) {
+async function dispatchPacket(session: DispatchSession, bytes: Buffer, transport: StreamTransport): Promise<void> {
   try {
     const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
     const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
@@ -128,21 +148,21 @@ async function dispatchPacket(session, bytes, transport) {
   }
 }
 
-function listen(server, endpoint) {
+function listen(server: any, endpoint: string): Promise<void> {
   const { host, port } = parseTcpEndpoint(endpoint);
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, resolve);
   });
 }
 
-function parseTcpEndpoint(endpoint) {
+function parseTcpEndpoint(endpoint: string): TcpEndpoint {
   const value = endpoint.replace('tcp://', '');
   const [host, port] = value.split(':');
   return { host, port: Number(port) };
 }
 
-function tryReadFrame(buffer) {
+function tryReadFrame(buffer: Buffer): ReadFrameResult | undefined {
   if (buffer.length < 6) {
     return undefined;
   }
@@ -155,7 +175,7 @@ function tryReadFrame(buffer) {
   return { length, bytes: buffer.subarray(0, length) };
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

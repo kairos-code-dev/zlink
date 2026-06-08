@@ -89,6 +89,10 @@ export interface ZLinkNestHandlerGroupOptions {
   readonly methodName?: string;
 }
 
+export interface ZLinkNestHandlerOptions {
+  readonly methodName?: string;
+}
+
 export interface ZLinkNestHandlerGroupProvider extends ZLinkNestHandlerGroupOptions {
   readonly provider: Provider;
   readonly handlerType?: Type;
@@ -97,8 +101,19 @@ export interface ZLinkNestHandlerGroupProvider extends ZLinkNestHandlerGroupOpti
 
 export type ZLinkNestHandlerGroupEntry =
   | Type
-  | readonly [Type, string]
   | ZLinkNestHandlerGroupProvider;
+
+export type ZLinkNestHandlerProvider =
+  | Type
+  | Provider
+  | ZLinkNestHandlerGroupProvider;
+
+export interface ZLinkNestHandlerGroupBuilder {
+  request(handler: ZLinkNestHandlerProvider, packetName?: string, options?: ZLinkNestHandlerOptions): this;
+  send(handler: ZLinkNestHandlerProvider, packetName?: string, options?: ZLinkNestHandlerOptions): this;
+  publish(handler: ZLinkNestHandlerProvider, packetName?: string, options?: ZLinkNestHandlerOptions): this;
+  providers(): Provider[];
+}
 
 export interface ZLinkModuleOptions extends Omit<
   ZLinkFrameworkRegistrationOptions,
@@ -111,6 +126,38 @@ export interface ZLinkModuleOptions extends Omit<
   readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
   readonly streams?: Readonly<Record<string, ZLinkStreamNodeOptions>>;
+}
+
+export interface ZLinkNestFrameworkOptionsBuilder {
+  options(options: ZLinkNestFrameworkAdditionalOptions): this;
+  clientServerChannel(name: string, configure: (channel: ZLinkNestClientServerChannelBuilder) => void): this;
+  fanoutChannel(name: string, configure: (channel: ZLinkNestFanoutChannelBuilder) => void): this;
+  routerMesh(name: string, configure: (mesh: ZLinkNestRouterMeshBuilder) => void): this;
+  build(): ZLinkModuleOptions;
+}
+
+export type ZLinkNestFrameworkAdditionalOptions = Omit<
+  ZLinkModuleOptions,
+  'clientServerChannels' | 'fanoutChannels' | 'routerMeshes'
+>;
+
+export interface ZLinkNestClientServerChannelBuilder {
+  server(bind: string | undefined): this;
+  client(endpoint?: string | readonly string[]): this;
+  handlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestFanoutChannelBuilder {
+  publisher(bind: string | undefined): this;
+  subscriber(endpoint?: string | readonly string[]): this;
+  handlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestRouterMeshBuilder {
+  bind(endpoint: string | undefined): this;
+  routingId(routingId: string | undefined): this;
+  connect(endpoint: string | readonly string[] | undefined): this;
+  handlerGroup(groupName: string): this;
 }
 
 export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handler-group');
@@ -132,15 +179,186 @@ export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:
 
 const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
 
-export function zlinkHandlerGroup(
-  groupName: string,
-  handlers: readonly ZLinkNestHandlerGroupEntry[],
-  defaults: ZLinkNestHandlerGroupOptions = {}
-): Provider[] {
+export function zlinkFramework(): ZLinkNestFrameworkOptionsBuilder {
+  return new DefaultZLinkNestFrameworkOptionsBuilder();
+}
+
+export function zlinkHandlers(groupName: string): ZLinkNestHandlerGroupBuilder {
+  return new DefaultZLinkNestHandlerGroupBuilder(groupName);
+}
+
+class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
+  private additionalOptions: ZLinkNestFrameworkAdditionalOptions = {};
+  private readonly clientServerChannels: Record<string, ZLinkNestClientServerChannelOptions> = {};
+  private readonly fanoutChannels: Record<string, ZLinkNestFanoutChannelOptions> = {};
+  private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
+
+  options(options: ZLinkNestFrameworkAdditionalOptions): this {
+    this.additionalOptions = { ...this.additionalOptions, ...options };
+    return this;
+  }
+
+  clientServerChannel(name: string, configure: (channel: ZLinkNestClientServerChannelBuilder) => void): this {
+    const channel = new DefaultZLinkNestClientServerChannelBuilder();
+    configure(channel);
+    this.clientServerChannels[name] = channel.build();
+    return this;
+  }
+
+  fanoutChannel(name: string, configure: (channel: ZLinkNestFanoutChannelBuilder) => void): this {
+    const channel = new DefaultZLinkNestFanoutChannelBuilder();
+    configure(channel);
+    this.fanoutChannels[name] = channel.build();
+    return this;
+  }
+
+  routerMesh(name: string, configure: (mesh: ZLinkNestRouterMeshBuilder) => void): this {
+    const mesh = new DefaultZLinkNestRouterMeshBuilder();
+    configure(mesh);
+    this.routerMeshes[name] = mesh.build();
+    return this;
+  }
+
+  build(): ZLinkModuleOptions {
+    return {
+      ...this.additionalOptions,
+      clientServerChannels: { ...this.clientServerChannels },
+      fanoutChannels: { ...this.fanoutChannels },
+      routerMeshes: { ...this.routerMeshes }
+    };
+  }
+}
+
+class DefaultZLinkNestClientServerChannelBuilder implements ZLinkNestClientServerChannelBuilder {
+  private options: ZLinkNestClientServerChannelOptions = {};
+
+  server(bind: string | undefined): this {
+    this.options = { ...this.options, server: { bind } };
+    return this;
+  }
+
+  client(endpoint?: string | readonly string[]): this {
+    this.options = { ...this.options, client: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) } };
+    return this;
+  }
+
+  handlerGroup(groupName: string): this {
+    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+    return this;
+  }
+
+  build(): ZLinkNestClientServerChannelOptions {
+    return this.options;
+  }
+}
+
+class DefaultZLinkNestFanoutChannelBuilder implements ZLinkNestFanoutChannelBuilder {
+  private options: ZLinkNestFanoutChannelOptions = {};
+
+  publisher(bind: string | undefined): this {
+    this.options = { ...this.options, publisher: { bind } };
+    return this;
+  }
+
+  subscriber(endpoint?: string | readonly string[]): this {
+    this.options = { ...this.options, subscriber: endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) } };
+    return this;
+  }
+
+  handlerGroup(groupName: string): this {
+    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+    return this;
+  }
+
+  build(): ZLinkNestFanoutChannelOptions {
+    return this.options;
+  }
+}
+
+class DefaultZLinkNestRouterMeshBuilder implements ZLinkNestRouterMeshBuilder {
+  private options: ZLinkNestRouterMeshOptions = {};
+
+  bind(endpoint: string | undefined): this {
+    this.options = { ...this.options, bind: endpoint };
+    return this;
+  }
+
+  routingId(routingId: string | undefined): this {
+    this.options = { ...this.options, routingId };
+    return this;
+  }
+
+  connect(endpoint: string | readonly string[] | undefined): this {
+    this.options = { ...this.options, manualConnections: endpoint === undefined ? [] : endpointList(endpoint) };
+    return this;
+  }
+
+  handlerGroup(groupName: string): this {
+    this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+    return this;
+  }
+
+  build(): ZLinkNestRouterMeshOptions {
+    return this.options;
+  }
+}
+
+function endpointList(endpoint: string | readonly string[]): string[] {
+  return typeof endpoint === 'string' ? [endpoint] : [...endpoint];
+}
+
+class DefaultZLinkNestHandlerGroupBuilder implements ZLinkNestHandlerGroupBuilder {
+  private readonly registeredProviders: Provider[] = [];
+
+  constructor(private readonly groupName: string) {
+    validateHandlerGroupName(groupName);
+  }
+
+  request(handler: ZLinkNestHandlerProvider, packetName?: string, options: ZLinkNestHandlerOptions = {}): this {
+    return this.add('request', handler, packetName, options);
+  }
+
+  send(handler: ZLinkNestHandlerProvider, packetName?: string, options: ZLinkNestHandlerOptions = {}): this {
+    return this.add('send', handler, packetName, options);
+  }
+
+  publish(handler: ZLinkNestHandlerProvider, packetName?: string, options: ZLinkNestHandlerOptions = {}): this {
+    return this.add('publish', handler, packetName, options);
+  }
+
+  providers(): Provider[] {
+    return [...this.registeredProviders];
+  }
+
+  private add(
+    kind: ZLinkNestHandlerKind,
+    handler: ZLinkNestHandlerProvider,
+    packetName: string | undefined,
+    options: ZLinkNestHandlerOptions
+  ): this {
+    this.registeredProviders.push(createHandlerGroupProvider(this.groupName, normalizeHandlerProvider(handler), {
+      kind,
+      methodName: options.methodName,
+      packetName
+    }));
+    return this;
+  }
+}
+
+function validateHandlerGroupName(groupName: string): void {
   if (groupName.trim() === '') {
     throw new framework.ZLinkConfigurationException('ZLink handler group name must not be empty.');
   }
-  return handlers.map((entry) => createHandlerGroupProvider(groupName, entry, defaults));
+}
+
+function normalizeHandlerProvider(handler: ZLinkNestHandlerProvider): ZLinkNestHandlerGroupEntry {
+  if (typeof handler === 'function') {
+    return handler;
+  }
+  if (typeof handler === 'object' && handler !== null && 'provider' in handler) {
+    return handler as ZLinkNestHandlerGroupProvider;
+  }
+  return { provider: handler as Provider };
 }
 
 interface ZLinkNestHandlerMetadata {
@@ -175,10 +393,6 @@ function createHandlerGroupProvider(
 function normalizeHandlerGroupEntry(entry: ZLinkNestHandlerGroupEntry): ZLinkNestHandlerGroupProvider {
   if (typeof entry === 'function') {
     return { provider: entry, handlerType: entry };
-  }
-  if (Array.isArray(entry)) {
-    const typedEntry = entry as readonly [Type, string];
-    return { provider: typedEntry[0], handlerType: typedEntry[0], packetName: typedEntry[1] };
   }
   return entry as ZLinkNestHandlerGroupProvider;
 }

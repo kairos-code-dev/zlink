@@ -2,18 +2,61 @@ require('reflect-metadata');
 
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, ZLINK_ROUTE_CLIENT } = require('../../../../packages/nestjs/dist');
+const { ZLinkModule, ZLINK_ROUTE_CLIENT, zlinkFramework } = require('../../../../packages/nestjs/dist');
 const { reserveTcpEndpoint } = require('./sample-process-host');
 const { BingoPlayerClient } = require('./bingo-player-client');
 const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-names');
+import type {
+  AuthenticateSessionRes,
+  MatchBingoRes,
+  StateEnvelope
+} from '../Shared/Contracts/messages';
+
+type BingoClientOptions = {
+  sessionEndpoint: string;
+  playEndpoint?: string;
+};
+
+type BingoRoomState = {
+  status: string;
+  hostActorId: string | null;
+  winners: string[];
+  players: Array<{
+    actorId: string;
+    card: number[];
+    marks: boolean[];
+  }>;
+};
+
+type BingoRouteClient = {
+  request(targetNodeRid: string, packetName: string, payload: unknown, timeoutMs?: number): Promise<any>;
+  stop(): Promise<void>;
+};
+
+type BingoSampleResult = {
+  authentications: AuthenticateSessionRes[];
+  matches: MatchBingoRes[];
+  started: StateEnvelope;
+  ended: BingoRoomState;
+  playerJoinedPushCounts: number[];
+  startedPushCounts: number[];
+  drawnPushCounts: number[];
+  endedPushCounts: number[];
+  earlyHostStartRejected: boolean;
+  nonHostStartRejected: boolean;
+};
+
+type RetryOptions = {
+  maxAttempts?: number;
+};
 
 class BingoClientApp {
   [key: string]: any;
-  async run(options) {
-    const routeClients = [];
+  async run(options: BingoClientOptions): Promise<BingoSampleResult> {
+    const routeClients: BingoRouteClient[] = [];
 
     try {
-      const clients = [];
+      const clients: any[] = [];
       for (const actorId of SampleNames.actorIds) {
         const routeClient = await createRouteClient({
           endpoint: await reserveTcpEndpoint(),
@@ -23,7 +66,7 @@ class BingoClientApp {
         routeClients.push(routeClient);
         clients.push(new BingoPlayerClient(actorId, routeClient));
       }
-      const authentications = [];
+      const authentications: AuthenticateSessionRes[] = [];
       for (const client of clients) {
         authentications.push(await client.authenticate());
       }
@@ -61,7 +104,7 @@ class BingoClientApp {
   }
 }
 
-async function isRejected(action) {
+async function isRejected(action: () => Promise<unknown>): Promise<boolean> {
   try {
     await action();
     return false;
@@ -70,7 +113,7 @@ async function isRejected(action) {
   }
 }
 
-async function waitForEnded(clients) {
+async function waitForEnded(clients: any[]): Promise<BingoRoomState> {
   const deadline = Date.now() + SampleTimings.requestTimeout;
   while (Date.now() < deadline) {
     for (const client of clients) {
@@ -87,13 +130,15 @@ async function waitForEnded(clients) {
   throw new Error('Timed out waiting for BingoGameEndedNotify.');
 }
 
-function validate(result) {
+function validate(result: BingoSampleResult): void {
   requireCondition(new Set(result.authentications.map((auth) => auth.actorId)).size === 4, 'Four clients must authenticate as distinct actors.');
   requireCondition(new Set(result.matches.map((match) => match.roomId)).size === 1, 'All match requests must return the same room.');
-  requireCondition(result.matches[0].state.hostActorId === result.authentications[0].actorId, 'First joined actor must become host.');
+  const firstMatchState = result.matches[0].state as BingoRoomState;
+  const startedState = result.started.state as BingoRoomState;
+  requireCondition(firstMatchState.hostActorId === result.authentications[0].actorId, 'First joined actor must become host.');
   requireCondition(result.earlyHostStartRejected, 'Host start must be rejected before four players join.');
   requireCondition(result.nonHostStartRejected, 'Non-host start must be rejected.');
-  requireCondition(result.started.state.status === 'Running', 'Host start must put room into Running status.');
+  requireCondition(startedState.status === 'Running', 'Host start must put room into Running status.');
   requireCondition(result.ended.status === 'Finished', 'Room must finish through timer draws.');
   requireCondition(result.ended.winners.length > 1, 'The deterministic sample must include same-sequence winners.');
   requireCondition(result.ended.players.every((player) => player.card.length === 25), 'Each player card must contain 25 cells.');
@@ -103,7 +148,7 @@ function validate(result) {
   requireCondition(result.endedPushCounts.every((count) => count > 0), 'Each client must receive game-ended push.');
 }
 
-function requireCondition(condition, message) {
+function requireCondition(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
@@ -111,20 +156,21 @@ function requireCondition(condition, message) {
 
 export { BingoClientApp };
 
-async function createRouteClient({ endpoint, routingId, peers }) {
+async function createRouteClient(
+  { endpoint, routingId, peers }: { endpoint: string; routingId: string; peers: string[] }
+): Promise<BingoRouteClient> {
   class BingoClientRouteModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot({
-        routerMeshes: {
-          'sample-route': {
-            bind: endpoint,
-            routingId,
-            manualConnections: peers
-          }
-        }
-      })
+      ZLinkModule.forRoot(
+        zlinkFramework()
+          .routerMesh('sample-route', (mesh) => mesh
+            .bind(endpoint)
+            .routingId(routingId)
+            .connect(peers))
+          .build()
+      )
     ]
   })(BingoClientRouteModule);
 
@@ -135,22 +181,22 @@ async function createRouteClient({ endpoint, routingId, peers }) {
   const routeClient = app.get(ZLINK_ROUTE_CLIENT, { strict: false });
 
   return {
-    async request(targetNodeRid, packetName, payload, timeoutMs = 1000) {
+    async request(targetNodeRid: string, packetName: string, payload: unknown, timeoutMs: number = 1000): Promise<any> {
       return await retry(() => routeClient
         .request('sample-route', targetNodeRid, payload)
         .packetName(packetName)
         .timeout(timeoutMs)
         .submit(), { maxAttempts: 100 });
     },
-    async stop() {
+    async stop(): Promise<void> {
       await closeNestRuntime(app);
     }
   };
 }
 
-async function retry(action, options: any = {}) {
+async function retry<TValue>(action: () => Promise<TValue>, options: RetryOptions = {}): Promise<TValue> {
   const maxAttempts = options.maxAttempts ?? 5;
-  let lastError;
+  let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       return await action();
@@ -162,11 +208,12 @@ async function retry(action, options: any = {}) {
   throw lastError;
 }
 
-async function closeNestRuntime(container) {
+async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
     await container.close();
   } catch (error) {
-    if (error?.name === 'CloseError' && (error?.code === 0 || error?.code === 401)) {
+    const candidate = error as { name?: string; code?: number };
+    if (candidate.name === 'CloseError' && (candidate.code === 0 || candidate.code === 401)) {
       return;
     }
     throw error;

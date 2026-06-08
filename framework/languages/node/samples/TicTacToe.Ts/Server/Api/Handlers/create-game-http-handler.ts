@@ -1,26 +1,31 @@
 const { Inject } = require('@nestjs/common');
 const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../packages/nestjs/dist');
-const { PacketNames, SampleNames, SampleTimings } = require('../../../Shared/Contracts/messages');
+const {
+  PacketNames,
+  SampleNames,
+  SampleTimings,
+  createGameHttpRes,
+  createGameReq
+} = require('../../../Shared/Contracts/messages');
+import type {
+  CreateGameHttpRes,
+  CreateGameReq,
+  CreateGameRes
+} from '../../../Shared/Contracts/messages';
 
 class CreateGameHttpHandler {
   [key: string]: any;
-  constructor(playClient) {
+  constructor(playClient: any) {
     this.playClient = playClient;
   }
 
-  async handle(request) {
-    const response = await this.playClient
-      .requestToChannel(SampleNames.playChannel, {
-        gameName: request.gameName
-      })
+  async handle(request: CreateGameReq): Promise<CreateGameHttpRes> {
+    const response: CreateGameRes = await this.playClient
+      .requestToChannel(SampleNames.playChannel, createGameReq(request.gameName))
       .packetName(PacketNames.createGame)
       .timeout(SampleTimings.requestTimeout)
       .submit();
-    return {
-      gameId: response.gameId,
-      gameName: response.gameName,
-      playEndpoint: response.playEndpoint
-    };
+    return createGameHttpRes(response);
   }
 }
 

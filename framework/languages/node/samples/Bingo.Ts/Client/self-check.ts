@@ -4,17 +4,20 @@ const nestjs = require('../../../../packages/nestjs/dist');
 const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
 import { BingoClientApp } from './bingo-client-app';
 
-async function main() {
+type NestjsPackage = typeof nestjs;
+
+async function main(): Promise<void> {
   const registryEndpoint = await reserveTcpEndpoint();
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
-  assertNestModule({
-    clientServerChannels: {
-      'bingo.api': { client: { manualConnections: [apiEndpoint] } },
-      'bingo.play': { client: { manualConnections: [playEndpoint] }, server: { bind: playEndpoint } }
-    }
-  }, nestjs);
+  assertNestModule(nestjs.zlinkFramework()
+    .clientServerChannel('bingo.api', (channel) => channel
+      .client(apiEndpoint))
+    .clientServerChannel('bingo.play', (channel) => channel
+      .client(playEndpoint)
+      .server(playEndpoint))
+    .build(), nestjs);
 
   await withServers([
     { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
@@ -34,7 +37,7 @@ async function main() {
         BINGO_PLAY_ENDPOINT: playEndpoint
       }
     }
-  ], async () => {
+  ], async (): Promise<void> => {
     const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint });
     assert.equal(result.ended.status, 'Finished');
     assert.equal(result.ended.hostActorId, 'player-1');
@@ -50,7 +53,7 @@ async function main() {
   console.log('PASS Bingo.Ts');
 }
 
-function assertNestModule(options, zlinkNestjs = nestjs) {
+function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): any {
   const module = zlinkNestjs.ZLinkModule.forRoot(options);
   const tokens = new Set(module.providers.map((provider) => provider.provide));
   for (const token of [
@@ -66,7 +69,7 @@ function assertNestModule(options, zlinkNestjs = nestjs) {
   return module;
 }
 
-main().catch((error) => {
+main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -6,13 +6,13 @@ const { PlaySession } = require('./play-session');
 
 class PlaySessionFactory {
   [key: string]: any;
-  constructor(actorFactory, entrySpot, placeMarkHandler) {
+  constructor(actorFactory: any, entrySpot: any, placeMarkHandler: any) {
     this.actorFactory = actorFactory;
     this.entrySpot = entrySpot;
     this.placeMarkHandler = placeMarkHandler;
   }
 
-  create(transport) {
+  create(transport: any): any {
     return new PlaySession({
       apiEndpoint: process.env.TICTACTOE_API_ENDPOINT,
       actorFactory: this.actorFactory,

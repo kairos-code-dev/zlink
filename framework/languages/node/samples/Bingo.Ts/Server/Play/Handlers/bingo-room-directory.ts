@@ -2,10 +2,18 @@ const { Inject } = require('@nestjs/common');
 const { BingoNotificationPublisher } = require('../BingoRoomSpots/bingo-notification-publisher');
 const { createRoomSettings } = require('../BingoRoomSpots/bingo-room-models');
 const { BingoRoomSpot } = require('../BingoRoomSpots/bingo-room-spot');
+import type {
+  BingoMode
+} from '../../../Shared/Contracts/messages';
+
+type BingoRoomAllocation = {
+  roomId: string;
+  room: any;
+};
 
 class BingoRoomDirectory {
   [key: string]: any;
-  constructor(notifications) {
+  constructor(notifications: any) {
     this.notifications = notifications;
     this.currentRoomId = null;
     this.currentRoomSettings = null;
@@ -14,7 +22,7 @@ class BingoRoomDirectory {
     this.rooms = new Map();
   }
 
-  async allocate(mode) {
+  async allocate(mode: BingoMode | undefined): Promise<BingoRoomAllocation> {
     let settings = createRoomSettings(mode, this.roomSeq + 1);
     if (
       this.currentRoomId === null ||
@@ -37,7 +45,7 @@ class BingoRoomDirectory {
     };
   }
 
-  require(roomId) {
+  require(roomId: string): any {
     const room = this.rooms.get(roomId);
     if (room === undefined) {
       throw new Error(`Bingo room ${roomId} does not exist.`);

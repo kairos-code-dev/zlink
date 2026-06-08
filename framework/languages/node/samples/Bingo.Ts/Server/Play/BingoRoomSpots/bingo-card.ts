@@ -1,11 +1,11 @@
 class BingoCard {
   [key: string]: any;
-  constructor(numbers) {
+  constructor(numbers: number[]) {
     this.numbers = numbers;
     this.marks = numbers.map((number) => number === 0);
   }
 
-  mark(number) {
+  mark(number: number): number {
     this.numbers.forEach((value, index) => {
       if (value === number) {
         this.marks[index] = true;
@@ -14,7 +14,7 @@ class BingoCard {
     return this.completedLines();
   }
 
-  completedLines() {
+  completedLines(): number {
     const lines = [
       [0, 1, 2, 3, 4],
       [5, 6, 7, 8, 9],

@@ -29,6 +29,7 @@ class SampleBoundSessionRuntime {
     this.delivered = [];
     this.deliveredSeq = 0;
     this.disconnected = [];
+    this.waiters = [];
     this.runtime = new framework.ZLinkStreamBindingRuntime({
       messageFactory: {
         createTextMessage(payload: string): any {
@@ -48,6 +49,7 @@ class SampleBoundSessionRuntime {
             packetName: options.packetName,
             payload: decoded.payload
           });
+          this.notifyWaiters();
         },
         disconnect: async (actorId: string, options: { bindingToken: string }) => {
           this.disconnected.push({
@@ -79,6 +81,29 @@ class SampleBoundSessionRuntime {
       delivered,
       nextSeq: delivered.at(-1)?.seq ?? afterSeq
     };
+  }
+
+  async waitForDelivered(actorId: string, afterSeq: number = 0): Promise<{ delivered: DeliveredFrame[]; nextSeq: number }> {
+    const ready = this.deliveredFor(actorId, afterSeq);
+    if (ready.delivered.length > 0) {
+      return ready;
+    }
+    return await new Promise((resolve) => {
+      this.waiters.push({ actorId, afterSeq, resolve });
+    });
+  }
+
+  notifyWaiters(): void {
+    const pending = [];
+    for (const waiter of this.waiters) {
+      const ready = this.deliveredFor(waiter.actorId, waiter.afterSeq);
+      if (ready.delivered.length === 0) {
+        pending.push(waiter);
+        continue;
+      }
+      waiter.resolve(ready);
+    }
+    this.waiters = pending;
   }
 }
 

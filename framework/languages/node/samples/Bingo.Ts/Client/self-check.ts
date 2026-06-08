@@ -10,31 +10,35 @@ async function main(): Promise<void> {
   const registryEndpoint = await reserveTcpEndpoint();
   const sessionEndpoint = await reserveTcpEndpoint();
   const playEndpoint = await reserveTcpEndpoint();
+  const notificationEndpoint = await reserveTcpEndpoint();
   const apiEndpoint = await reserveTcpEndpoint();
   assertNestModule(nestjs.zlinkFramework()
-    .clientServerChannel('bingo.api', (channel) => channel
-      .client(apiEndpoint))
-    .clientServerChannel('bingo.play', (channel) => channel
-      .client(playEndpoint)
-      .server(playEndpoint))
+    .clientServerChannel('bingo.registry', (channel) => channel
+      .client(registryEndpoint))
     .build(), nestjs);
 
   await withServers([
     { entry: path.resolve(__dirname, '../Server/Registry/main.js'), env: { BINGO_REGISTRY_ENDPOINT: registryEndpoint } },
     {
-      entry: path.resolve(__dirname, '../Server/Session/main.js'),
+      entry: path.resolve(__dirname, '../Server/Play/main.js'),
       env: {
-        BINGO_SESSION_ENDPOINT: sessionEndpoint,
-        BINGO_API_ENDPOINT: apiEndpoint,
-        BINGO_PLAY_ENDPOINT: playEndpoint
+        BINGO_REGISTRY_ENDPOINT: registryEndpoint,
+        BINGO_PLAY_ENDPOINT: playEndpoint,
+        BINGO_NOTIFICATION_ENDPOINT: notificationEndpoint
       }
     },
-    { entry: path.resolve(__dirname, '../Server/Play/main.js'), env: { BINGO_PLAY_ENDPOINT: playEndpoint } },
     {
       entry: path.resolve(__dirname, '../Server/Api/main.js'),
       env: {
-        BINGO_API_ENDPOINT: apiEndpoint,
-        BINGO_PLAY_ENDPOINT: playEndpoint
+        BINGO_REGISTRY_ENDPOINT: registryEndpoint,
+        BINGO_API_ENDPOINT: apiEndpoint
+      }
+    },
+    {
+      entry: path.resolve(__dirname, '../Server/Session/main.js'),
+      env: {
+        BINGO_REGISTRY_ENDPOINT: registryEndpoint,
+        BINGO_SESSION_ENDPOINT: sessionEndpoint
       }
     }
   ], async (): Promise<void> => {

@@ -63,11 +63,15 @@ class BingoPlayerClient {
   }
 
   async request(packetName: string, payload: unknown): Promise<any> {
-    return await json
-      .requestJson(this.stream, payload)
-      .packetName(packetName)
-      .timeout(SampleTimings.requestTimeout)
-      .submit();
+    try {
+      return await json
+        .requestJson(this.stream, payload)
+        .packetName(packetName)
+        .timeout(SampleTimings.requestTimeout)
+        .submit();
+    } catch (error) {
+      throw new Error(`${this.actorId} ${packetName} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
 

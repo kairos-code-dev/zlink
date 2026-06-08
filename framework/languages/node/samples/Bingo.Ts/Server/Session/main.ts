@@ -6,6 +6,7 @@ const { NestFactory } = require('@nestjs/core');
 const connector = require('../../../../../packages/stream-connector/dist');
 const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkFramework } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
+const { createChannelClient, createRegistryClient } = require('../discovery-support');
 const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate-session-handler');
 const { BingoSession } = require('./Sessions/bingo-session');
 const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
@@ -41,6 +42,12 @@ type SessionContext = {
 };
 
 async function bootstrap(): Promise<void> {
+  const registry = await createRegistryClient(process.env.BINGO_REGISTRY_ENDPOINT);
+  const api = await registry.resolve(SampleNames.apiService);
+  const play = await registry.resolve(SampleNames.playService);
+  const notifications = await registry.resolve(SampleNames.notificationService);
+  const notificationClient = await createChannelClient(SampleNames.notificationChannel, notifications.endpoint);
+
   class BingoSessionModule {}
 
   Module({
@@ -48,9 +55,9 @@ async function bootstrap(): Promise<void> {
       ZLinkModule.forRoot(
         zlinkFramework()
           .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .client(process.env.BINGO_API_ENDPOINT))
+            .client(api.endpoint))
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(process.env.BINGO_PLAY_ENDPOINT))
+            .client(play.endpoint))
           .build()
       )
     ],
@@ -76,7 +83,7 @@ async function bootstrap(): Promise<void> {
         }
         const response = await authenticate.handle(payload, context);
         transport.reply(header, response);
-        void pumpNotifications(channelClient, context, transport);
+        void pumpNotifications(notificationClient, context, transport);
         return true;
       }
     });
@@ -109,6 +116,8 @@ async function bootstrap(): Promise<void> {
     await waitForShutdown({ keepAlive: true });
   } finally {
     await new Promise<void>((resolve, reject) => streamServer.close((error) => error ? reject(error) : resolve()));
+    await notificationClient.stop();
+    await registry.stop();
     await closeNestRuntime(app);
   }
 }
@@ -130,12 +139,22 @@ async function dispatchPacket(session: any, bytes: Buffer, transport: any, chann
 }
 
 async function relayToPlay(channelClient: any, context: SessionContext, packetName: string, request: object): Promise<unknown> {
+  return await relayToChannel(channelClient, SampleNames.playChannel, context, packetName, request);
+}
+
+async function relayToChannel(
+  channelClient: any,
+  channelName: string,
+  context: SessionContext,
+  packetName: string,
+  request: object
+): Promise<unknown> {
   if (context.actorId === null || context.displayName === null) {
     throw new Error(`Client must authenticate before relaying packet '${packetName}'.`);
   }
   const payload = withPlayerIdentity(request, context.actorId, context.displayName);
   return await channelClient
-    .requestToChannel(SampleNames.playChannel, payload)
+    .requestToChannel(channelName, payload)
     .packetName(packetName)
     .timeout(SampleTimings.requestTimeout)
     .submit();
@@ -144,15 +163,22 @@ async function relayToPlay(channelClient: any, context: SessionContext, packetNa
 async function pumpNotifications(channelClient: any, context: SessionContext, transport: any): Promise<void> {
   while (!context.closed) {
     if (context.actorId !== null && context.displayName !== null) {
-      const response = await relayToPlay(
-        channelClient,
-        context,
-        PacketNames.bingoNotificationsReq,
-        bingoNotificationsReq(context.notificationCursor)
-      ) as { nextSeq: number; delivered: Array<{ seq: number; packetName: string; payload: unknown }> };
-      context.notificationCursor = response.nextSeq;
-      for (const delivered of response.delivered) {
-        transport.send(delivered.packetName, delivered.payload, { seq: String(delivered.seq) });
+      try {
+        const response = await relayToChannel(
+          channelClient,
+          SampleNames.notificationChannel,
+          context,
+          PacketNames.bingoNotificationsReq,
+          bingoNotificationsReq(context.notificationCursor)
+        ) as { nextSeq: number; delivered: Array<{ seq: number; packetName: string; payload: unknown }> };
+        context.notificationCursor = response.nextSeq;
+        for (const delivered of response.delivered) {
+          transport.send(delivered.packetName, delivered.payload, { seq: String(delivered.seq) });
+        }
+      } catch (error) {
+        if (context.closed) {
+          return;
+        }
       }
     }
     await new Promise((resolve) => setImmediate(resolve));

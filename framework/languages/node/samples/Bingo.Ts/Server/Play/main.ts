@@ -4,6 +4,7 @@ const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
+const { createRegistryClient } = require('../discovery-support');
 const { SampleBoundSessionRuntime } = require('./bound-session-runtime');
 const { PlayerActorFactory } = require('./Adapters/ZLink/Actors/player-actor-factory');
 const { BingoNotificationPublisher } = require('./Adapters/ZLink/Notifications/bingo-notification-publisher');
@@ -17,6 +18,7 @@ const { EnsurePlayerActorHandler } = require('./Adapters/ZLink/Handlers/ensure-p
 const { MatchBingoChannelHandler } = require('./Adapters/ZLink/Handlers/match-bingo-channel-handler');
 const { SubmitBingoCardHandler } = require('./Adapters/ZLink/Spots/Handlers/submit-bingo-card-handler');
 const { SubmitBingoCardChannelHandler } = require('./Adapters/ZLink/Handlers/submit-bingo-card-channel-handler');
+const { SampleNames } = require('../../Shared/Configuration/sample-names');
 const { PacketNames } = require('../../Shared/Contracts/messages');
 
 class BingoPlayModule {}
@@ -25,9 +27,12 @@ Module({
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .clientServerChannel('bingo.play', (channel) => channel
+        .clientServerChannel(SampleNames.playChannel, (channel) => channel
           .server(process.env.BINGO_PLAY_ENDPOINT)
           .handlerGroup('play'))
+        .clientServerChannel(SampleNames.notificationChannel, (channel) => channel
+          .server(process.env.BINGO_NOTIFICATION_ENDPOINT)
+          .handlerGroup('notifications'))
         .build()
     )
   ],
@@ -41,11 +46,13 @@ Module({
     BingoEntrySpot,
     MatchBingoActorHandler,
     ...zlinkHandlers('play')
-      .request(BingoNotificationsHandler, PacketNames.bingoNotificationsReq)
       .request(AllocateBingoRoomHandler, PacketNames.allocateBingoRoom)
       .request(EnsurePlayerActorHandler, PacketNames.ensurePlayerActorReq)
       .request(MatchBingoChannelHandler, PacketNames.matchBingoReq)
       .request(SubmitBingoCardChannelHandler, PacketNames.submitBingoCardReq)
+      .providers(),
+    ...zlinkHandlers('notifications')
+      .request(BingoNotificationsHandler, PacketNames.bingoNotificationsReq)
       .providers()
   ]
 })(BingoPlayModule);
@@ -55,16 +62,20 @@ async function bootstrap(): Promise<void> {
     logger: false,
     abortOnError: false
   });
+  const registry = await createRegistryClient(process.env.BINGO_REGISTRY_ENDPOINT);
+  await registry.register(SampleNames.playService, process.env.BINGO_PLAY_ENDPOINT);
+  await registry.register(SampleNames.notificationService, process.env.BINGO_NOTIFICATION_ENDPOINT);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: process.env.BINGO_PLAY_ENDPOINT,
-    channelName: 'bingo.play'
+    channelName: SampleNames.playChannel
   })}\n`);
 
   try {
     await waitForShutdown({ keepAlive: true });
   } finally {
+    await registry.stop();
     await closeNestRuntime(app);
   }
 }

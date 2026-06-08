@@ -9,6 +9,8 @@ const PacketNames = Object.freeze({
   allocateBingoRoom: 'AllocateBingoRoom',
   submitBingoCardReq: 'SubmitBingoCardReq',
   bingoNotificationsReq: 'BingoNotificationsReq',
+  registerServiceReq: 'RegisterServiceReq',
+  resolveServiceReq: 'ResolveServiceReq',
   ping: 'Ping',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStartedNotify: 'BingoGameStartedNotify',
@@ -90,6 +92,25 @@ export interface SubmitBingoCardReq {
 
 export interface SubmitBingoCardRes {
   state: unknown;
+}
+
+export interface RegisterServiceReq {
+  serviceName: string;
+  endpoint: string;
+}
+
+export interface RegisterServiceRes {
+  serviceName: string;
+  endpoint: string;
+}
+
+export interface ResolveServiceReq {
+  serviceName: string;
+}
+
+export interface ResolveServiceRes {
+  serviceName: string;
+  endpoint: string;
 }
 
 export interface BingoNotificationsReq {
@@ -228,6 +249,22 @@ function submitBingoCardRes(state: unknown): SubmitBingoCardRes {
   return { state };
 }
 
+function registerServiceReq(serviceName: string, endpoint: string): RegisterServiceReq {
+  return { serviceName, endpoint };
+}
+
+function registerServiceRes(serviceName: string, endpoint: string): RegisterServiceRes {
+  return { serviceName, endpoint };
+}
+
+function resolveServiceReq(serviceName: string): ResolveServiceReq {
+  return { serviceName };
+}
+
+function resolveServiceRes(serviceName: string, endpoint: string): ResolveServiceRes {
+  return { serviceName, endpoint };
+}
+
 function bingoNotificationsReq(afterSeq: number): BingoNotificationsReq {
   return { afterSeq };
 }
@@ -300,6 +337,10 @@ export {
   playerJoinedNotify,
   readJsonMessage,
   rejectedCommandRes,
+  registerServiceReq,
+  registerServiceRes,
+  resolveServiceReq,
+  resolveServiceRes,
   roomJoinError,
   stateEnvelope,
   submitBingoCardReq,

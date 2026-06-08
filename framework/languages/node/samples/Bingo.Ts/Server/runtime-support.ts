@@ -2,6 +2,10 @@ type ShutdownOptions = {
   keepAlive?: boolean;
 };
 
+type RetryOptions = {
+  maxAttempts?: number;
+};
+
 function waitForShutdown(options: ShutdownOptions = {}): Promise<void> {
   return new Promise((resolve) => {
     const keepAlive = options.keepAlive === true
@@ -18,6 +22,20 @@ function waitForShutdown(options: ShutdownOptions = {}): Promise<void> {
   });
 }
 
+async function retry<TValue>(action: () => Promise<TValue>, options: RetryOptions = {}): Promise<TValue> {
+  const maxAttempts = options.maxAttempts ?? 100;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
+  throw lastError;
+}
+
 async function closeNestRuntime(container: { close(): Promise<void> }): Promise<void> {
   try {
     await container.close();
@@ -30,4 +48,4 @@ async function closeNestRuntime(container: { close(): Promise<void> }): Promise<
   }
 }
 
-export { closeNestRuntime, waitForShutdown };
+export { closeNestRuntime, retry, waitForShutdown };

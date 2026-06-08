@@ -12,7 +12,7 @@ class BingoNotificationsHandler {
     this.boundSessions = boundSessions;
   }
   async handle(request: BingoNotificationsReq & PlayerIdentity): Promise<unknown> {
-    return await this.boundSessions.deliveredFor(request.actorId, request.afterSeq);
+    return await this.boundSessions.waitForDelivered(request.actorId, request.afterSeq);
   }
 }
 

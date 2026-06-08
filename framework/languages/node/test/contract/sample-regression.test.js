@@ -273,12 +273,70 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
   assert.deepEqual(violations, []);
 });
 
+test('Bingo TypeScript sample uses registry discovery instead of direct server peer endpoints', () => {
+  const client = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
+  const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const session = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
+  const registry = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'main.ts'), 'utf8');
+  const discovery = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'discovery-support.ts'), 'utf8');
+  const required = [
+    [registry, 'RegisterServiceHandler'],
+    [registry, 'ResolveServiceHandler'],
+    [discovery, 'createRegistryClient'],
+    [play, 'registry.register(SampleNames.playService'],
+    [api, 'registry.resolve(SampleNames.playService'],
+    [api, 'registry.register(SampleNames.apiService'],
+    [session, 'registry.resolve(SampleNames.apiService'],
+    [session, 'registry.resolve(SampleNames.playService'],
+    [session, 'registry.resolve(SampleNames.notificationService'],
+    [play, 'registry.register(SampleNames.notificationService']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const [content, text] of [
+    [session, 'process.env.BINGO_API_ENDPOINT'],
+    [session, 'process.env.BINGO_PLAY_ENDPOINT'],
+    [api, 'process.env.BINGO_PLAY_ENDPOINT']
+  ]) {
+    if (content.includes(text)) {
+      violations.push(text);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('Bingo TypeScript sample publishes drawn number before finished notify', () => {
+  const roomSpot = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'bingo-room-spot.ts'
+  ), 'utf8');
+  const drawIndex = roomSpot.indexOf('this.notifications.numberDrawn');
+  const finishedBranchIndex = roomSpot.indexOf('if (drawn.finished)');
+  const endedIndex = roomSpot.indexOf('this.notifications.gameEnded');
+
+  assert.equal(drawIndex > 0, true);
+  assert.equal(finishedBranchIndex > drawIndex, true);
+  assert.equal(endedIndex > finishedBranchIndex, true);
+});
+
 test('node topology samples run server roles as separate processes over TCP route endpoints', () => {
   const cases = [
     ['TicTacToe.Ts', 'Server/Api/main.ts', 'TICTACTOE_API_ENDPOINT'],
     ['TicTacToe.Ts', 'Server/Play/main.ts', 'TICTACTOE_PLAY_ENDPOINT'],
     ['Bingo.Ts', 'Server/Api/main.ts', 'BINGO_API_ENDPOINT'],
     ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_PLAY_ENDPOINT'],
+    ['Bingo.Ts', 'Server/Play/main.ts', 'BINGO_NOTIFICATION_ENDPOINT'],
     ['Bingo.Ts', 'Server/Session/main.ts', 'BINGO_SESSION_ENDPOINT'],
     ['Bingo.Ts', 'Server/Registry/main.ts', 'BINGO_REGISTRY_ENDPOINT']
   ];

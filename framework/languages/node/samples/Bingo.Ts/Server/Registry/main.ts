@@ -1,10 +1,70 @@
 require('reflect-metadata');
 
-const { Module } = require('@nestjs/common');
+const { Inject, Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { PacketNames } = require('../../Shared/Contracts/messages');
+const { SampleNames } = require('../../Shared/Configuration/sample-names');
+const {
+  PacketNames,
+  registerServiceRes,
+  resolveServiceRes
+} = require('../../Shared/Contracts/messages');
+import type {
+  RegisterServiceReq,
+  RegisterServiceRes,
+  ResolveServiceReq,
+  ResolveServiceRes
+} from '../../Shared/Contracts/messages';
+
+class BingoServiceRegistry {
+  [key: string]: any;
+  constructor() {
+    this.services = new Map();
+  }
+
+  register(request: RegisterServiceReq): RegisterServiceRes {
+    if (typeof request.serviceName !== 'string' || request.serviceName.length === 0) {
+      throw new Error('serviceName is required.');
+    }
+    if (typeof request.endpoint !== 'string' || request.endpoint.length === 0) {
+      throw new Error('endpoint is required.');
+    }
+    this.services.set(request.serviceName, request.endpoint);
+    return registerServiceRes(request.serviceName, request.endpoint);
+  }
+
+  resolve(request: ResolveServiceReq): ResolveServiceRes {
+    const endpoint = this.services.get(request.serviceName);
+    if (endpoint === undefined) {
+      throw new Error(`Service '${request.serviceName}' is not registered.`);
+    }
+    return resolveServiceRes(request.serviceName, endpoint);
+  }
+}
+
+class RegisterServiceHandler {
+  [key: string]: any;
+  constructor(registry: any) {
+    this.registry = registry;
+  }
+  handle(request: RegisterServiceReq): RegisterServiceRes {
+    return this.registry.register(request);
+  }
+}
+
+class ResolveServiceHandler {
+  [key: string]: any;
+  constructor(registry: any) {
+    this.registry = registry;
+  }
+  handle(request: ResolveServiceReq): ResolveServiceRes {
+    return this.registry.resolve(request);
+  }
+}
+
+Inject(BingoServiceRegistry)(RegisterServiceHandler, undefined, 0);
+Inject(BingoServiceRegistry)(ResolveServiceHandler, undefined, 0);
 
 class BingoRegistryModule {}
 
@@ -12,17 +72,17 @@ Module({
   imports: [
     ZLinkModule.forRoot(
       zlinkFramework()
-        .routerMesh('sample-route', (mesh) => mesh
-          .bind(process.env.BINGO_REGISTRY_ENDPOINT)
-          .routingId('registry-server')
-          .connect([])
+        .clientServerChannel(SampleNames.registryChannel, (channel) => channel
+          .server(process.env.BINGO_REGISTRY_ENDPOINT)
           .handlerGroup('registry'))
         .build()
     )
   ],
   providers: [
+    BingoServiceRegistry,
     ...zlinkHandlers('registry')
-      .request({ provider: { provide: Symbol('registry.ping'), useValue: { handle: () => ({ role: 'registry-server' }) } } }, PacketNames.ping)
+      .request(RegisterServiceHandler, PacketNames.registerServiceReq)
+      .request(ResolveServiceHandler, PacketNames.resolveServiceReq)
       .providers()
   ]
 })(BingoRegistryModule);
@@ -36,7 +96,7 @@ async function bootstrap(): Promise<void> {
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: process.env.BINGO_REGISTRY_ENDPOINT,
-    routingId: 'registry-server'
+    channelName: SampleNames.registryChannel
   })}\n`);
 
   try {

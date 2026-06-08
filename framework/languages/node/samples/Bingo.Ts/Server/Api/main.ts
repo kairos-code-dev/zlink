@@ -4,37 +4,43 @@ const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
+const { createRegistryClient } = require('../discovery-support');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { MatchBingoHandler } = require('./Handlers/match-bingo-handler');
+const { SampleNames } = require('../../Shared/Configuration/sample-names');
 const { PacketNames } = require('../../Shared/Contracts/messages');
 
-class BingoApiModule {}
-
-Module({
-  imports: [
-    ZLinkModule.forRoot(
-      zlinkFramework()
-        .clientServerChannel('bingo.api', (channel) => channel
-          .server(process.env.BINGO_API_ENDPOINT)
-          .handlerGroup('api'))
-        .clientServerChannel('bingo.play', (channel) => channel
-          .client(process.env.BINGO_PLAY_ENDPOINT))
-        .build()
-    )
-  ],
-  providers: [
-    ...zlinkHandlers('api')
-      .request(AuthenticatePlayerHandler, PacketNames.authenticatePlayerReq)
-      .request(MatchBingoHandler, PacketNames.matchBingoApiReq)
-      .providers()
-  ]
-})(BingoApiModule);
-
 async function bootstrap(): Promise<void> {
+  const registry = await createRegistryClient(process.env.BINGO_REGISTRY_ENDPOINT);
+  const play = await registry.resolve(SampleNames.playService);
+
+  class BingoApiModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRoot(
+        zlinkFramework()
+          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
+            .server(process.env.BINGO_API_ENDPOINT)
+            .handlerGroup('api'))
+          .clientServerChannel(SampleNames.playChannel, (channel) => channel
+            .client(play.endpoint))
+          .build()
+      )
+    ],
+    providers: [
+      ...zlinkHandlers('api')
+        .request(AuthenticatePlayerHandler, PacketNames.authenticatePlayerReq)
+        .request(MatchBingoHandler, PacketNames.matchBingoApiReq)
+        .providers()
+    ]
+  })(BingoApiModule);
+
   const app = await NestFactory.createApplicationContext(BingoApiModule, {
     logger: false,
     abortOnError: false
   });
+  await registry.register(SampleNames.apiService, process.env.BINGO_API_ENDPOINT);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
@@ -45,6 +51,7 @@ async function bootstrap(): Promise<void> {
   try {
     await waitForShutdown({ keepAlive: true });
   } finally {
+    await registry.stop();
     await closeNestRuntime(app);
   }
 }

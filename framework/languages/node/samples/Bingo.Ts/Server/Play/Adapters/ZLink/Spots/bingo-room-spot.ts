@@ -70,15 +70,15 @@ class BingoRoomSpot {
         return this.snapshot();
       }
       const state = this.snapshot();
+      await this.notifications.publish(this.game.players.map((player) =>
+        this.notifications.numberDrawn(player.actor, numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state))
+      ));
       if (drawn.finished) {
         await this.notifications.publish(this.game.players.map((player) =>
           this.notifications.gameEnded(player.actor, stateEnvelope(state))
         ));
         return state;
       }
-      await this.notifications.publish(this.game.players.map((player) =>
-        this.notifications.numberDrawn(player.actor, numberDrawnNotify(this.roomId, drawn.drawSeq, drawn.number, state))
-      ));
     }
     return this.snapshot();
   }

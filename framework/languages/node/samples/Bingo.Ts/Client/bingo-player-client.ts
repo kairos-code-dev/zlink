@@ -1,90 +1,73 @@
-const { BingoNotificationInbox } = require('./bingo-notification-inbox');
+const connector = require('../../../../packages/stream-connector/dist');
+const json = require('../../../../packages/stream-connector-json/dist');
 const {
   PacketNames,
   actorDisplayName,
   authenticateReq,
-  bingoNotificationsReq,
+  deterministicCard,
   matchBingoReq,
-  startBingoGameReq
+  submitBingoCardReq
 } = require('../Shared/Contracts/messages');
 const { SampleTimings } = require('../Shared/Configuration/sample-names');
+const { BingoNotificationInbox } = require('./bingo-notification-inbox');
 import type {
   AuthenticateSessionRes,
   MatchBingoRes,
-  RejectedCommandRes,
-  StateEnvelope
+  SubmitBingoCardRes
 } from '../Shared/Contracts/messages';
-
-type BingoSessionRouteClient = {
-  request(targetNodeRid: string, packetName: string, payload: unknown, timeoutMs: number): Promise<any>;
-};
-
-type DeliveredNotification = {
-  actorId: string;
-  packetName: string;
-  payload: any;
-};
-
-function isRejectedCommand(result: StateEnvelope | RejectedCommandRes): result is RejectedCommandRes {
-  return (result as RejectedCommandRes).rejected === true;
-}
 
 class BingoPlayerClient {
   [key: string]: any;
-  constructor(actorId: string, sessionClient: BingoSessionRouteClient) {
+  constructor(actorId: string, sessionEndpoint: string) {
     this.actorId = actorId;
     this.displayName = actorDisplayName(actorId);
-    this.sessionClient = sessionClient;
     this.notifications = new BingoNotificationInbox(actorId);
-    this.notificationCursor = 0;
+    this.stream = connector.zlinkStreamConnectorFactory.create({
+      endpoint: sessionEndpoint,
+      dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
+      requestTimeoutMs: SampleTimings.requestTimeout,
+      heartbeat: { enabled: false }
+    });
+    for (const packetName of [
+      PacketNames.playerJoinedNotify,
+      PacketNames.gameStartedNotify,
+      PacketNames.numberDrawnNotify,
+      PacketNames.gameEndedNotify
+    ]) {
+      json.onJson(this.stream, packetName, (message: { payload: unknown }) => {
+        this.notifications.apply([{ actorId: this.actorId, packetName, payload: message.payload }]);
+      });
+    }
+  }
+
+  async connect(): Promise<void> {
+    await this.stream.connect();
+  }
+
+  async close(): Promise<void> {
+    await this.stream.close();
   }
 
   async authenticate(): Promise<AuthenticateSessionRes> {
-    const authenticated: AuthenticateSessionRes = await this.sessionClient.request(
-      'session-server',
-      PacketNames.authenticateReq,
-      authenticateReq(this.actorId),
-      SampleTimings.requestTimeout
-    );
+    const authenticated = await this.request(PacketNames.authenticateReq, authenticateReq(this.actorId));
     this.displayName = authenticated.displayName;
-    return {
-      actorId: authenticated.actorId,
-      displayName: authenticated.displayName
-    };
+    return authenticated;
   }
 
   async match(): Promise<MatchBingoRes> {
-    return await this.sessionClient.request(
-      'session-server',
-      PacketNames.matchBingoReq,
-      matchBingoReq(),
-      SampleTimings.requestTimeout
-    );
+    return await this.request(PacketNames.matchBingoReq, matchBingoReq());
   }
 
-  async start(roomId: string): Promise<StateEnvelope> {
-    const result: StateEnvelope | RejectedCommandRes = await this.sessionClient.request(
-      'session-server',
-      PacketNames.startBingoGameReq,
-      startBingoGameReq(roomId),
-      SampleTimings.requestTimeout
-    );
-    if (isRejectedCommand(result)) {
-      throw new Error(result.reason);
-    }
-    return result;
+  async submitCard(roomId: string): Promise<SubmitBingoCardRes> {
+    return await this.request(PacketNames.submitBingoCardReq, submitBingoCardReq(roomId, deterministicCard(this.actorId)));
   }
 
-  async syncNotifications(): Promise<DeliveredNotification[]> {
-    const response = await this.sessionClient.request(
-      'session-server',
-      PacketNames.bingoNotificationsReq,
-      bingoNotificationsReq(this.notificationCursor),
-      SampleTimings.requestTimeout
-    );
-    this.notificationCursor = response.nextSeq;
-    this.notifications.apply(response.delivered);
-    return response.delivered;
+  async request(packetName: string, payload: unknown): Promise<any> {
+    return await json
+      .requestJson(this.stream, payload)
+      .packetName(packetName)
+      .timeout(SampleTimings.requestTimeout)
+      .submit();
   }
 }
 

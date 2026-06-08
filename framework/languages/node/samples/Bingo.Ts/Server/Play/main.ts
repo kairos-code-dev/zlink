@@ -5,18 +5,18 @@ const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { SampleBoundSessionRuntime } = require('./bound-session-runtime');
-const { PlayerActorFactory } = require('./Actors/player-actor-factory');
-const { BingoNotificationPublisher } = require('./BingoRoomSpots/bingo-notification-publisher');
-const { StartBingoGameHandler } = require('./BingoRoomSpots/Handlers/start-bingo-game-handler');
-const { BingoRoomTimerHandler } = require('./BingoRoomSpots/Handlers/bingo-room-timer-handler');
-const { BingoEntrySpot } = require('./EntrySpot/bingo-entry-spot');
-const { MatchBingoActorHandler } = require('./EntrySpot/Handlers/match-bingo-actor-handler');
-const { AllocateBingoRoomHandler } = require('./Handlers/allocate-bingo-room-handler');
-const { BingoRoomDirectory } = require('./Handlers/bingo-room-directory');
-const { BingoNotificationsHandler } = require('./Handlers/bingo-notifications-handler');
-const { EnsurePlayerActorHandler } = require('./Handlers/ensure-player-actor-handler');
-const { MatchBingoChannelHandler } = require('./Handlers/match-bingo-channel-handler');
-const { StartBingoGameChannelHandler } = require('./Handlers/start-bingo-game-channel-handler');
+const { PlayerActorFactory } = require('./Adapters/ZLink/Actors/player-actor-factory');
+const { BingoNotificationPublisher } = require('./Adapters/ZLink/Notifications/bingo-notification-publisher');
+const { BingoRoomTimerHandler } = require('./Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler');
+const { BingoEntrySpot } = require('./Adapters/ZLink/Spots/bingo-entry-spot');
+const { MatchBingoActorHandler } = require('./Adapters/ZLink/Spots/Handlers/match-bingo-actor-handler');
+const { AllocateBingoRoomHandler } = require('./Adapters/ZLink/Handlers/allocate-bingo-room-handler');
+const { BingoRoomDirectory } = require('./Application/RoomAllocation/bingo-room-directory');
+const { BingoNotificationsHandler } = require('./Adapters/ZLink/Handlers/bingo-notifications-handler');
+const { EnsurePlayerActorHandler } = require('./Adapters/ZLink/Handlers/ensure-player-actor-handler');
+const { MatchBingoChannelHandler } = require('./Adapters/ZLink/Handlers/match-bingo-channel-handler');
+const { SubmitBingoCardHandler } = require('./Adapters/ZLink/Spots/Handlers/submit-bingo-card-handler');
+const { SubmitBingoCardChannelHandler } = require('./Adapters/ZLink/Handlers/submit-bingo-card-channel-handler');
 const { PacketNames } = require('../../Shared/Contracts/messages');
 
 class BingoPlayModule {}
@@ -36,8 +36,8 @@ Module({
     PlayerActorFactory,
     BingoNotificationPublisher,
     BingoRoomDirectory,
-    StartBingoGameHandler,
     BingoRoomTimerHandler,
+    SubmitBingoCardHandler,
     BingoEntrySpot,
     MatchBingoActorHandler,
     ...zlinkHandlers('play')
@@ -45,7 +45,7 @@ Module({
       .request(AllocateBingoRoomHandler, PacketNames.allocateBingoRoom)
       .request(EnsurePlayerActorHandler, PacketNames.ensurePlayerActorReq)
       .request(MatchBingoChannelHandler, PacketNames.matchBingoReq)
-      .request(StartBingoGameChannelHandler, PacketNames.startBingoGameReq)
+      .request(SubmitBingoCardChannelHandler, PacketNames.submitBingoCardReq)
       .providers()
   ]
 })(BingoPlayModule);

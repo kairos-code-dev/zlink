@@ -42,13 +42,13 @@ export interface CreateGameReq {
 }
 
 export interface CreateGameRes {
-  gameId: string;
+  roomId: string;
   gameName: string;
   playEndpoint: string;
 }
 
 export interface CreateGameHttpRes {
-  gameId: string;
+  roomId: string;
   gameName: string;
   playEndpoint: string;
 }
@@ -59,43 +59,54 @@ export interface AuthenticateRes {
 }
 
 export interface JoinGameReq {
-  gameId: string;
+  roomId: string;
 }
 
 export interface JoinGameInternalReq {
   actor: TicTacToeActor;
-  gameId: string;
+  roomId: string;
 }
 
 export interface JoinGameRes {
-  gameId: string;
+  roomId: string;
   actorId: string;
   mark: string;
   state: unknown;
 }
 
 export interface PlaceMarkStreamReq {
-  gameId: string;
   cell: number;
 }
 
 export interface PlaceMarkReq {
   actor: TicTacToeActor;
-  gameId: string;
   cell: number;
 }
 
 export interface PlaceMarkRes {
-  gameId: string;
+  roomId: string;
   actorId: string;
   cell: number;
   state: unknown;
 }
 
 export interface PlayerJoinedNotify {
-  gameId: string;
+  roomId: string;
   actorId: string;
-  players: string[];
+  mark: string;
+  state: unknown;
+}
+
+export interface GameState {
+  roomId: string;
+  board: string;
+  status: string;
+  winner: string | null;
+  nextTurn: string | null;
+  xActorId: string | null;
+  oActorId: string | null;
+  lastMoveActorId: string | null;
+  lastMoveCell: number | null;
 }
 
 export interface TicTacToeActor {
@@ -135,13 +146,13 @@ function createGameReq(gameName: string | undefined): CreateGameReq {
   return { gameName };
 }
 
-function createGameRes(gameId: string, gameName: string, playEndpoint: string): CreateGameRes {
-  return { gameId, gameName, playEndpoint };
+function createGameRes(roomId: string, gameName: string, playEndpoint: string): CreateGameRes {
+  return { roomId, gameName, playEndpoint };
 }
 
 function createGameHttpRes(response: CreateGameRes): CreateGameHttpRes {
   return {
-    gameId: response.gameId,
+    roomId: response.roomId,
     gameName: response.gameName,
     playEndpoint: response.playEndpoint
   };
@@ -151,32 +162,32 @@ function authenticateRes(actorId: string, displayName: string): AuthenticateRes 
   return { actorId, displayName };
 }
 
-function joinGameReq(gameId: string): JoinGameReq {
-  return { gameId };
+function joinGameReq(roomId: string): JoinGameReq {
+  return { roomId };
 }
 
-function joinGameInternalReq(actor: TicTacToeActor, gameId: string): JoinGameInternalReq {
-  return { actor, gameId };
+function joinGameInternalReq(actor: TicTacToeActor, roomId: string): JoinGameInternalReq {
+  return { actor, roomId };
 }
 
-function joinGameRes(gameId: string, actorId: string, mark: string, state: unknown): JoinGameRes {
-  return { gameId, actorId, mark, state };
+function joinGameRes(roomId: string, actorId: string, mark: string, state: unknown): JoinGameRes {
+  return { roomId, actorId, mark, state };
 }
 
-function placeMarkStreamReq(gameId: string, cell: number): PlaceMarkStreamReq {
-  return { gameId, cell };
+function placeMarkStreamReq(cell: number): PlaceMarkStreamReq {
+  return { cell };
 }
 
-function placeMarkReq(actor: TicTacToeActor, gameId: string, cell: number): PlaceMarkReq {
-  return { actor, gameId, cell };
+function placeMarkReq(actor: TicTacToeActor, cell: number): PlaceMarkReq {
+  return { actor, cell };
 }
 
-function placeMarkRes(gameId: string, actorId: string, cell: number, state: unknown): PlaceMarkRes {
-  return { gameId, actorId, cell, state };
+function placeMarkRes(roomId: string, actorId: string, cell: number, state: unknown): PlaceMarkRes {
+  return { roomId, actorId, cell, state };
 }
 
-function playerJoinedNotify(gameId: string, actorId: string, players: string[]): PlayerJoinedNotify {
-  return { gameId, actorId, players };
+function playerJoinedNotify(roomId: string, actorId: string, mark: string, state: unknown): PlayerJoinedNotify {
+  return { roomId, actorId, mark, state };
 }
 
 export {

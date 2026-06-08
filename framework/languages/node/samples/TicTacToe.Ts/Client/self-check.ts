@@ -75,27 +75,34 @@ async function main(): Promise<void> {
       await o.connect();
       const xAuth = await requestJson(x, PacketNames.authenticateReq, authenticateReq('p1'));
       const oAuth = await requestJson(o, PacketNames.authenticateReq, authenticateReq('p2'));
-      const xJoin = await requestJson(x, PacketNames.joinGameReq, joinGameReq(game.gameId));
-      const oJoin = await requestJson(o, PacketNames.joinGameReq, joinGameReq(game.gameId));
+      const xSelfJoined = waitForNoNotify(x, PacketNames.playerJoinedNotify);
+      const xOpponentJoined = waitForNotify(x, PacketNames.playerJoinedNotify, (payload) => payload.actorId === 'p2');
+      const xRunningState = waitForNotify(x, PacketNames.gameStateNotify, (payload) => payload.status === 'Running');
+      const xJoin = await requestJson(x, PacketNames.joinGameReq, joinGameReq(game.roomId));
+      await xSelfJoined;
+      const oJoin = await requestJson(o, PacketNames.joinGameReq, joinGameReq(game.roomId));
+      await Promise.all([xOpponentJoined, xRunningState]);
+      const oFinalState = waitForNotify(o, PacketNames.gameStateNotify, (payload) => payload.winner === 'p1');
       const moves = [
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 0)),
-        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 3)),
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 1)),
-        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 4)),
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(game.gameId, 2))
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(0)),
+        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(3)),
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(1)),
+        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(4)),
+        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(2))
       ];
+      await oFinalState;
 
       assert.equal(game.gameName, 'match-ready');
       assert.equal(game.playEndpoint, playStreamEndpoint);
       assert.deepEqual([xAuth.actorId, oAuth.actorId], ['p1', 'p2']);
       assert.deepEqual([xJoin.mark, oJoin.mark], ['X', 'O']);
       assert.equal(moves.at(-1).state.board, 'XXXOO....');
-      assert.equal(moves.at(-1).state.status, 'Won');
+      assert.equal(moves.at(-1).state.status, 'Finished');
       assert.equal(moves.at(-1).state.winner, 'p1');
-      await waitFor(() => o.notifications.some((item) =>
-        item.packetName === PacketNames.gameStateNotify && item.payload.winner === 'p1'));
-      assert.equal(x.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), true);
-      assert.equal(o.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), true);
+      assert.equal(xJoin.state.status, 'WaitingForPlayers');
+      assert.equal(oJoin.state.status, 'Running');
+      assert.equal(x.notifications.filter((item) => item.packetName === PacketNames.playerJoinedNotify).length, 1);
+      assert.equal(o.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), false);
       assert.equal(x.notifications.at(-1).packetName, PacketNames.gameStateNotify);
       assert.equal(o.notifications.at(-1).payload.winner, 'p1');
     } finally {
@@ -160,6 +167,15 @@ async function createGame(apiHttpEndpoint: string, gameName: string): Promise<Cr
 
 function toHttpEndpoint(tcpEndpoint: string): string {
   return tcpEndpoint.replace('tcp://', 'http://');
+}
+
+async function waitForNotify(client: StreamClient, packetName: string, predicate: (payload: any) => boolean): Promise<void> {
+  await waitFor(() => client.notifications.some((item) => item.packetName === packetName && predicate(item.payload)));
+}
+
+async function waitForNoNotify(client: StreamClient, packetName: string): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(client.notifications.some((item) => item.packetName === packetName), false);
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

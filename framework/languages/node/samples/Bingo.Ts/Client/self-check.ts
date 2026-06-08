@@ -38,16 +38,14 @@ async function main(): Promise<void> {
       }
     }
   ], async (): Promise<void> => {
-    const result = await new BingoClientApp().run({ sessionEndpoint, playEndpoint });
+    const result = await new BingoClientApp().run({ sessionEndpoint });
     assert.equal(result.ended.status, 'Finished');
     assert.equal(result.ended.hostActorId, 'player-1');
-    assert.deepEqual(result.ended.winners, ['player-1', 'player-3']);
-    assert.equal(result.earlyHostStartRejected, true);
-    assert.equal(result.nonHostStartRejected, true);
-    assert.deepEqual(result.ended.players.map((player) => player.actorId), ['player-1', 'player-2', 'player-3', 'player-4']);
-    assert.equal(result.startedPushCounts.length, 4);
-    assert.equal(result.drawnPushCounts.length, 4);
-    assert.equal(result.endedPushCounts.length, 4);
+    assert.deepEqual(result.ended.winners, ['player-1']);
+    assert.deepEqual(result.ended.players.map((player) => player.actorId), ['player-1', 'player-2']);
+    assert.equal(result.startedPushCounts.length, 2);
+    assert.equal(result.drawnPushCounts.length, 2);
+    assert.equal(result.endedPushCounts.length, 2);
   });
 
   console.log('PASS Bingo.Ts');

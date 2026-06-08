@@ -38,17 +38,17 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/create-game-http-handler.ts',
       'Server/Api/main.ts',
-      'Server/Play/Actors/play-actor.ts',
-      'Server/Play/Actors/play-actor-factory.ts',
-      'Server/Play/EntrySpot/Handlers/play-actor-join-game-handler.ts',
-      'Server/Play/EntrySpot/play-entry-spot.ts',
-      'Server/Play/GameSpots/Handlers/play-actor-place-mark-handler.ts',
-      'Server/Play/GameSpots/Handlers/tictactoe-game-timer-handler.ts',
-      'Server/Play/GameSpots/tictactoe-game-models.ts',
-      'Server/Play/GameSpots/tictactoe-game.ts',
-      'Server/Play/Handlers/create-game-handler.ts',
-      'Server/Play/Sessions/play-session.ts',
-      'Server/Play/Sessions/play-session-factory.ts',
+      'Server/Play/Domain/TicTacToe/tictactoe-game-models.ts',
+      'Server/Play/Application/GameCreation/tictactoe-game.ts',
+      'Server/Play/Adapters/ZLink/Actors/play-actor.ts',
+      'Server/Play/Adapters/ZLink/Actors/play-actor-factory.ts',
+      'Server/Play/Adapters/ZLink/Handlers/create-game-handler.ts',
+      'Server/Play/Adapters/ZLink/Sessions/play-session.ts',
+      'Server/Play/Adapters/ZLink/Sessions/play-session-factory.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/play-entry-spot.ts',
       'Server/Play/main.ts',
       'Shared/Contracts/messages.ts'
     ],
@@ -60,22 +60,23 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/match-bingo-handler.ts',
       'Server/Api/main.ts',
-      'Server/Play/Actors/player-actor.ts',
-      'Server/Play/Actors/player-actor-factory.ts',
-      'Server/Play/BingoRoomSpots/Handlers/bingo-room-timer-handler.ts',
-      'Server/Play/BingoRoomSpots/Handlers/start-bingo-game-handler.ts',
-      'Server/Play/BingoRoomSpots/bingo-card.ts',
-      'Server/Play/BingoRoomSpots/bingo-notification-publisher.ts',
-      'Server/Play/BingoRoomSpots/bingo-room-models.ts',
-      'Server/Play/BingoRoomSpots/bingo-room-spot.ts',
-      'Server/Play/EntrySpot/Handlers/match-bingo-actor-handler.ts',
-      'Server/Play/EntrySpot/bingo-entry-spot.ts',
-      'Server/Play/Handlers/allocate-bingo-room-handler.ts',
-      'Server/Play/Handlers/bingo-room-directory.ts',
-      'Server/Play/Handlers/bingo-notifications-handler.ts',
-      'Server/Play/Handlers/ensure-player-actor-handler.ts',
-      'Server/Play/Handlers/match-bingo-channel-handler.ts',
-      'Server/Play/Handlers/start-bingo-game-channel-handler.ts',
+      'Server/Play/Domain/Bingo/bingo-card.ts',
+      'Server/Play/Domain/Bingo/bingo-room-game.ts',
+      'Server/Play/Domain/Bingo/bingo-room-models.ts',
+      'Server/Play/Application/RoomAllocation/bingo-room-directory.ts',
+      'Server/Play/Adapters/ZLink/Actors/player-actor.ts',
+      'Server/Play/Adapters/ZLink/Actors/player-actor-factory.ts',
+      'Server/Play/Adapters/ZLink/Handlers/allocate-bingo-room-handler.ts',
+      'Server/Play/Adapters/ZLink/Handlers/bingo-notifications-handler.ts',
+      'Server/Play/Adapters/ZLink/Handlers/ensure-player-actor-handler.ts',
+      'Server/Play/Adapters/ZLink/Handlers/match-bingo-channel-handler.ts',
+      'Server/Play/Adapters/ZLink/Handlers/submit-bingo-card-channel-handler.ts',
+      'Server/Play/Adapters/ZLink/Notifications/bingo-notification-publisher.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/match-bingo-actor-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/Handlers/submit-bingo-card-handler.ts',
+      'Server/Play/Adapters/ZLink/Spots/bingo-entry-spot.ts',
+      'Server/Play/Adapters/ZLink/Spots/bingo-room-spot.ts',
       'Server/Play/main.ts',
       'Server/Registry/main.ts',
       'Server/Session/Sessions/Handlers/authenticate-session-handler.ts',
@@ -95,6 +96,16 @@ test('node topology samples mirror dotnet role layout', () => {
   }
 
   assert.deepEqual(missing, []);
+});
+
+test('node samples keep only the common TicTacToe and Bingo variants', () => {
+  const entries = fs.readdirSync(samplesRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  assert.deepEqual(entries, ['Bingo.Ts', 'TicTacToe.Ts']);
+  assert.equal(entries.some((entry) => /SessionGateway|Gateway|StreamingClient/.test(entry)), false);
 });
 
 test('node sample READMEs describe execution topology success condition and regression', () => {
@@ -204,7 +215,7 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
       continue;
     }
     const content = fs.readFileSync(file, 'utf8');
-    if (/require\(['"][^'"]*\/TicTacToe\/|from ['"][^'"]*\/TicTacToe\//.test(content)) {
+    if (/require\(['"][^'"]*samples\/TicTacToe\/|from ['"][^'"]*samples\/TicTacToe\//.test(content)) {
       violations.push(`${path.relative(samplesRoot, file)} references the JavaScript TicTacToe sample`);
     }
     if (content.includes('@ts-nocheck')) {
@@ -250,7 +261,7 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
       continue;
     }
     const content = fs.readFileSync(file, 'utf8');
-    if (/require\(['"][^'"]*\/Bingo\/|from ['"][^'"]*\/Bingo\//.test(content)) {
+    if (/require\(['"][^'"]*samples\/Bingo\/|from ['"][^'"]*samples\/Bingo\//.test(content)) {
       violations.push(`${path.relative(samplesRoot, file)} references the JavaScript Bingo sample`);
     }
     if (content.includes('@ts-nocheck')) {

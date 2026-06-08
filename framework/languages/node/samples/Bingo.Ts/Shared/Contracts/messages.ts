@@ -7,7 +7,7 @@ const PacketNames = Object.freeze({
   matchBingoReq: 'MatchBingoReq',
   matchBingoApiReq: 'MatchBingoApiReq',
   allocateBingoRoom: 'AllocateBingoRoom',
-  startBingoGameReq: 'StartBingoGameReq',
+  submitBingoCardReq: 'SubmitBingoCardReq',
   bingoNotificationsReq: 'BingoNotificationsReq',
   ping: 'Ping',
   playerJoinedNotify: 'PlayerJoinedNotify',
@@ -18,10 +18,10 @@ const PacketNames = Object.freeze({
 });
 
 const BingoModes = Object.freeze({
-  fourPlayer: 'four-player'
+  twoPlayer: 'two-player'
 });
 
-export type BingoMode = typeof BingoModes.fourPlayer;
+export type BingoMode = typeof BingoModes.twoPlayer;
 
 export interface AuthenticateReq {
   accessToken: string;
@@ -72,10 +72,6 @@ export interface EnsurePlayerActorRes {
   actor: BingoActorRef;
 }
 
-export interface StartBingoGameReq {
-  roomId: string;
-}
-
 export interface BingoRoomJoinReq {
   roomId: string;
   actorId: string;
@@ -84,6 +80,15 @@ export interface BingoRoomJoinReq {
 
 export interface MatchBingoRes {
   roomId: string;
+  state: unknown;
+}
+
+export interface SubmitBingoCardReq {
+  roomId: string;
+  card: number[];
+}
+
+export interface SubmitBingoCardRes {
   state: unknown;
 }
 
@@ -135,19 +140,10 @@ function actorDisplayName(actorId: string): string {
 }
 
 function deterministicCard(actorId: string): number[] {
-  const base = {
-    'player-1': [1, 2, 3, 4, 5],
-    'player-2': [6, 7, 8, 9, 10],
-    'player-3': [1, 2, 3, 4, 5],
-    'player-4': [11, 12, 13, 14, 15]
-  }[actorId] ?? [16, 17, 18, 19, 20];
-  const card = [];
-  for (let row = 0; row < 5; row += 1) {
-    for (let col = 0; col < 5; col += 1) {
-      card.push(row === 2 && col === 2 ? 0 : base[col] + row * 20);
-    }
-  }
-  return card;
+  return {
+    'player-1': [1, 2, 3, 4, 0, 6, 7, 8, 9],
+    'player-2': [10, 11, 12, 13, 0, 14, 15, 1, 2]
+  }[actorId] ?? [1, 3, 5, 7, 0, 9, 11, 13, 15];
 }
 
 function createJsonMessage(value: unknown): ZLinkMessage {
@@ -184,7 +180,7 @@ function authenticateSessionRes(actorId: string, displayName: string): Authentic
   return { actorId, displayName };
 }
 
-function matchBingoReq(mode: BingoMode | undefined = BingoModes.fourPlayer): MatchBingoReq {
+function matchBingoReq(mode: BingoMode | undefined = BingoModes.twoPlayer): MatchBingoReq {
   return { mode };
 }
 
@@ -192,7 +188,7 @@ function matchBingoApiRes(roomId: string): MatchBingoApiRes {
   return { roomId };
 }
 
-function allocateBingoRoomReq(mode: BingoMode | undefined = BingoModes.fourPlayer): AllocateBingoRoomReq {
+function allocateBingoRoomReq(mode: BingoMode | undefined = BingoModes.twoPlayer): AllocateBingoRoomReq {
   return { mode };
 }
 
@@ -216,16 +212,20 @@ function ensurePlayerActorRes(actor: { actorId: string }): EnsurePlayerActorRes 
   };
 }
 
-function startBingoGameReq(roomId: string): StartBingoGameReq {
-  return { roomId };
-}
-
 function bingoRoomJoinReq(roomId: string, actorId: string, displayName: string): BingoRoomJoinReq {
   return { roomId, actorId, displayName };
 }
 
 function matchBingoRes(roomId: string, state: unknown): MatchBingoRes {
   return { roomId, state };
+}
+
+function submitBingoCardReq(roomId: string, card: number[]): SubmitBingoCardReq {
+  return { roomId, card };
+}
+
+function submitBingoCardRes(state: unknown): SubmitBingoCardRes {
+  return { state };
 }
 
 function bingoNotificationsReq(afterSeq: number): BingoNotificationsReq {
@@ -301,7 +301,8 @@ export {
   readJsonMessage,
   rejectedCommandRes,
   roomJoinError,
-  startBingoGameReq,
   stateEnvelope,
+  submitBingoCardReq,
+  submitBingoCardRes,
   withPlayerIdentity
 };

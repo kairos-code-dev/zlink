@@ -5,7 +5,7 @@ const SampleNames = {
   playChannel: 'bingo.play',
   playerActorType: 'bingo.player',
   roomSpotType: 'bingo.room',
-  actorIds: ['player-1', 'player-2', 'player-3', 'player-4'],
+  actorIds: ['player-1', 'player-2'],
   playerJoinedPacket: PacketNames.playerJoinedNotify,
   gameStartedPacket: PacketNames.gameStartedNotify,
   numberDrawnPacket: PacketNames.numberDrawnNotify,

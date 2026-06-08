@@ -19,8 +19,10 @@ API 서버는 인증과 매칭 요청을 처리하며, Registry는 서버 간 en
 - client packet은 bound actor로 relay된다.
 - API 서버는 매칭 요청을 받고 Play 서버에 room 배정을 요청한다.
 - Play 서버는 Entry Spot에서 room Spot으로 actor를 join시킨다.
-- room Spot은 참가자, 카드, 번호 추첨, mark, 승리 판정을 소유한다.
-- room timer가 번호를 뽑고, Play 서버는 bound session으로 Notify를 push한다.
+- client는 자기 bingo card를 입력해 room Spot에 제출한다.
+- room Spot은 제출된 카드, 번호 추첨, mark, 승리 판정을 소유한다.
+- client가 draw 요청을 보내면 room Spot이 다음 번호를 뽑고, Play 서버는
+  번호와 state를 bound session으로 Notify한다.
 - Registry/Discovery를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
 - handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
 
@@ -78,7 +80,7 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 | `Bingo.Session` | session Spot node | ActorGateway attach와 bound session push 수신을 담당한다. |
 | `Bingo.Play` | actor runtime | player actor를 만들고 Entry Spot에 join시킨다. |
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
-| `Bingo.Play` | `BingoRoomSpot` | room 참가자, 카드, timer, 승리 판정, Notify 생성을 소유한다. |
+| `Bingo.Play` | `BingoRoomSpot` | room 참가자, 제출된 카드, draw deck, 승리 판정, Notify 생성을 소유한다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
 
 ## 5. Handler 등록 방식
@@ -109,9 +111,10 @@ Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙�
 | 보드 | 3 x 3 |
 | 번호 범위 | 1부터 15까지 |
 | 가운데 칸 | free cell로 시작부터 mark 처리 |
+| 카드 입력 | 각 client가 3 x 3 bingo card를 제출한다. |
 | 시작 조건 | 두 번째 player가 join하면 room이 자동으로 시작한다. |
-| 번호 추첨 | room timer가 일정 주기로 하나씩 뽑는다. |
-| mark 방식 | 서버 자동 mark. client는 mark나 bingo claim을 보내지 않는다. |
+| 번호 추첨 | client가 draw 요청을 보내면 room Spot이 다음 번호를 하나 뽑는다. |
+| mark 방식 | 서버 자동 mark. client는 card만 제출하고 mark나 bingo claim은 보내지 않는다. |
 | 승리 조건 | complete line이 1개 이상 생기면 승리 |
 | 종료 조건 | 첫 승리 draw sequence가 나오면 종료 |
 
@@ -192,6 +195,7 @@ MatchBingoApiRes {
 
 AllocateBingoRoomReq {
   Mode: string
+  ActorId: string
 }
 
 AllocateBingoRoomRes {
@@ -205,6 +209,15 @@ BingoRoomJoinReq {
 }
 
 BingoRoomJoinRes {
+  State: BingoRoomState
+}
+
+SubmitBingoCardReq {
+  RoomId: string
+  Card: int[]
+}
+
+SubmitBingoCardRes {
   State: BingoRoomState
 }
 ```
@@ -289,7 +302,7 @@ Session 서버는 인증 성공 후 actor reference를 얻고 현재 stream sess
 bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하지 않고 bound actor로
 relay한다.
 
-## 9. Matching과 자동 시작 흐름
+## 9. Matching과 카드 제출 흐름
 
 ```mermaid
 sequenceDiagram
@@ -321,26 +334,40 @@ sequenceDiagram
     A2->>E: Join room request
     E->>R: Join actor
     R->>R: Start automatically
+    R-->>A1: BingoGameStartedNotify
+    R-->>A2: BingoGameStartedNotify
     R-->>A2: BingoRoomJoinRes(running)
     A2-->>S: MatchBingoRes
     S-->>C2: MatchBingoRes
+    C1->>S: SubmitBingoCardReq
+    S->>A1: Relay to bound actor
+    A1->>R: Submit card
+    R-->>A1: SubmitBingoCardRes(running)
+    C2->>S: SubmitBingoCardReq
+    S->>A2: Relay to bound actor
+    A2->>R: Submit card
+    R->>R: Start game
+    R-->>A2: SubmitBingoCardRes(running)
 ```
 
 첫 player가 들어오면 room은 대기 상태가 된다. 두 번째 player가 같은 room에 들어오면
-room은 별도 `StartBingoGameReq` 없이 자동으로 `Running` 상태가 되고 timer를 시작한다.
+room은 별도 `StartBingoGameReq` 없이 자동으로 `Running` 상태가 되고 양쪽 client에
+`BingoGameStartedNotify`를 보낸다. client는 game start를 확인한 뒤 3 x 3 card를
+제출한다. 두 client의 card가 모두 제출되면 room Spot이 draw timer를 시작하고,
+일정 간격으로 번호를 뽑아 양쪽 client에 `BingoNumberDrawnNotify`를 보낸다.
 
-## 10. Timer와 Bound Push 흐름
+## 10. Server Draw Timer와 Bound Push 흐름
 
 ```mermaid
 sequenceDiagram
-    participant R as Bingo Room Spot
-    participant A1 as Player Actor 1
-    participant A2 as Player Actor 2
-    participant S as Session Server
     participant C1 as Client 1
     participant C2 as Client 2
+    participant S as Session Server
+    participant A1 as Player Actor 1
+    participant A2 as Player Actor 2
+    participant R as Bingo Room Spot
 
-    R->>R: Timer tick
+    R->>R: Draw timer tick
     R->>R: Draw number and mark cards
     R-->>A1: BingoNumberDrawnNotify
     R-->>A2: BingoNumberDrawnNotify
@@ -355,8 +382,10 @@ sequenceDiagram
     S-->>C2: Stream BingoGameEndedNotify
 ```
 
-room Spot은 draw deck, mark, winner 판정을 한 모듈 안에 숨긴다. client는 서버가
-보내는 state를 받아 표시만 한다.
+room Spot은 제출된 card, draw deck, mark, winner 판정을 한 모듈 안에 숨긴다.
+client는 자기 card를 제출한 뒤 번호 추첨을 요청하지 않는다. 어떤 번호가 나오는지,
+card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보낸 Notify와 state로
+확인한다.
 
 ## 11. 완료 기준
 
@@ -366,7 +395,9 @@ room Spot은 draw deck, mark, winner 판정을 한 모듈 안에 숨긴다. clie
 - Session 서버가 인증된 stream session을 Play 서버 actor에 bind한다.
 - 첫 `MatchBingoReq`는 room을 만들고 waiting state를 반환한다.
 - 두 번째 `MatchBingoReq`는 같은 room에 join하고 room을 자동 시작시킨다.
-- room timer가 번호를 뽑고 각 player card mark를 서버에서 갱신한다.
+- 두 client는 game start를 확인한 뒤 `SubmitBingoCardReq`로 card를 제출한다.
+- 두 card가 모두 제출되면 room Spot timer가 번호를 뽑고 각 player card mark를
+  서버에서 갱신한다.
 - 승자가 나오면 room state가 `Finished`가 되고 `Winners`가 채워진다.
 - `BingoNumberDrawnNotify`와 `BingoGameEndedNotify`가 bound session을 통해 두 client에 전달된다.
 - client는 API 서버나 Play 서버 endpoint를 직접 사용하지 않는다.

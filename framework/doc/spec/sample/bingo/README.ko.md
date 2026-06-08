@@ -21,8 +21,8 @@ API 서버는 인증과 매칭 요청을 처리하며, Registry는 서버 간 en
 - Play 서버는 Entry Spot에서 room Spot으로 actor를 join시킨다.
 - client는 자기 bingo card를 입력해 room Spot에 제출한다.
 - room Spot은 제출된 카드, 번호 추첨, mark, 승리 판정을 소유한다.
-- client가 draw 요청을 보내면 room Spot이 다음 번호를 뽑고, Play 서버는
-  번호와 state를 bound session으로 Notify한다.
+- 두 client의 card가 모두 제출되면 room Spot이 server timer로 번호를 뽑고,
+  Play 서버는 번호와 state를 bound session으로 Notify한다.
 - Registry/Discovery를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
 - handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
 
@@ -80,10 +80,64 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 | `Bingo.Session` | session Spot node | ActorGateway attach와 bound session push 수신을 담당한다. |
 | `Bingo.Play` | actor runtime | player actor를 만들고 Entry Spot에 join시킨다. |
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
-| `Bingo.Play` | `BingoRoomSpot` | room 참가자, 제출된 카드, draw deck, 승리 판정, Notify 생성을 소유한다. |
+| `Bingo.Play` | `BingoRoom` room Spot | room 참가자, 제출된 카드, draw deck, 승리 판정, Notify 생성을 소유한다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
 
-## 5. Handler 등록 방식
+## 5. Play 서버 디렉토리 구조
+
+Bingo Play 서버는 domain logic과 framework adapter를 분리해야 한다. 다른 언어
+framework로 구현할 때도 아래 책임 분리를 유지한다.
+
+```text
+Server/Play/
+  Domain/
+    Bingo/
+      BingoCard
+      BingoGame
+      BingoRoomGame
+      BingoRoomModels
+  Application/
+    RoomAllocation/
+      BingoRoomAllocator
+  Adapters/
+    ZLink/
+      Actors/
+        PlayerActor
+        PlayerActorFactory
+      Handlers/
+        AllocateBingoRoomHandler
+        EnsurePlayerActorHandler
+      Notifications/
+        BingoNotificationPublisher
+        BingoRoomEvent
+        BingoRoomEventMapper
+      Spots/
+        BingoEntrySpot
+        BingoRoom
+        Handlers/
+          MatchBingoActorHandler
+          SubmitBingoCardHandler
+          BingoRoomDrawTimerHandler
+```
+
+역할은 아래처럼 나눈다.
+
+| 위치 | 책임 |
+|------|------|
+| `Domain/Bingo/BingoCard` | 3 x 3 card 검증, free cell, mark, complete line 계산을 소유한다. |
+| `Domain/Bingo/BingoGame` | 제출된 card, draw deck, drawn numbers, winners, draw 종료 조건을 소유한다. |
+| `Domain/Bingo/BingoRoomGame` | player join, room status, card 제출 가능 여부, draw timer 시작/종료 신호, room event 생성을 소유한다. |
+| `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 room을 새로 만들거나 기존 waiting room을 재사용한다. |
+| `Adapters/ZLink/Spots/BingoRoom` | ZLink Spot lifecycle, actor join callback, timer 등록, domain 호출, notification publish 연결을 맡는다. |
+| `Adapters/ZLink/Notifications/*` | domain event를 bound session push message로 바꾸고 전송한다. |
+| `Adapters/ZLink/Handlers/*` | channel request와 Spot actor request를 받아 application/domain adapter로 연결한다. |
+
+Domain 객체는 ZLink framework 타입을 직접 참조하지 않는다. `BingoRoom` Spot은 framework
+callback을 받아 domain method를 호출하고, domain이 반환한 change와 event를 adapter가
+message로 바꾼다. card validation, draw order, winner 판정이 handler나 Spot handler에
+흩어지면 안 된다.
+
+## 6. Handler 등록 방식
 
 Bingo 샘플은 typed handler 계약을 명시 등록하는 방식을 사용한다. 각 handler는
 framework가 정의한 handler 계약을 구현하고, 서버 구성 코드에서 scan 또는 명시
@@ -101,7 +155,7 @@ framework가 정의한 handler 계약을 구현하고, 서버 구성 코드에�
 사라지는 언어는 handler class와 명시 등록으로 같은 의미를 표현한다. 선언형 등록
 방식은 TicTacToe 샘플이 맡는다.
 
-## 6. 게임 규칙
+## 7. 게임 규칙
 
 Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙을 사용한다.
 
@@ -113,7 +167,7 @@ Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙�
 | 가운데 칸 | free cell로 시작부터 mark 처리 |
 | 카드 입력 | 각 client가 3 x 3 bingo card를 제출한다. |
 | 시작 조건 | 두 번째 player가 join하면 room이 자동으로 시작한다. |
-| 번호 추첨 | client가 draw 요청을 보내면 room Spot이 다음 번호를 하나 뽑는다. |
+| 번호 추첨 | 두 client의 card가 모두 제출되면 room Spot timer가 일정 간격으로 번호를 하나씩 뽑는다. |
 | mark 방식 | 서버 자동 mark. client는 card만 제출하고 mark나 bingo claim은 보내지 않는다. |
 | 승리 조건 | complete line이 1개 이상 생기면 승리 |
 | 종료 조건 | 첫 승리 draw sequence가 나오면 종료 |
@@ -121,7 +175,7 @@ Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙�
 방장, ready 버튼, 수동 mark, 여러 라운드, 랭킹은 공통 샘플 범위에서 제외한다.
 이 기능들은 게임 샘플을 크게 만들지만 framework 흐름을 이해하는 데 꼭 필요하지 않다.
 
-## 7. 메시지 계약
+## 8. 메시지 계약
 
 아래 계약은 언어 중립 schema다. 언어별 샘플은 같은 이름과 필드를 자기 언어의
 record, class, struct, type alias 등으로 구현한다.
@@ -280,7 +334,7 @@ BingoPlayerState {
 있다. 2인 자동 시작 공통 시나리오에서는 별도 시작 요청을 보내지 않으므로 client
 검증 기준으로 사용하지 않는다.
 
-## 8. 인증과 Actor Binding 흐름
+## 9. 인증과 Actor Binding 흐름
 
 ```mermaid
 sequenceDiagram
@@ -302,7 +356,7 @@ Session 서버는 인증 성공 후 actor reference를 얻고 현재 stream sess
 bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하지 않고 bound actor로
 relay한다.
 
-## 9. Matching과 카드 제출 흐름
+## 10. Matching과 카드 제출 흐름
 
 ```mermaid
 sequenceDiagram
@@ -333,21 +387,22 @@ sequenceDiagram
     P-->>API: AllocateBingoRoomRes(same roomId)
     A2->>E: Join room request
     E->>R: Join actor
+    R-->>A1: PlayerJoinedNotify(client2 joined)
     R->>R: Start automatically
     R-->>A1: BingoGameStartedNotify
     R-->>A2: BingoGameStartedNotify
     R-->>A2: BingoRoomJoinRes(running)
     A2-->>S: MatchBingoRes
     S-->>C2: MatchBingoRes
-    C1->>S: SubmitBingoCardReq
-    S->>A1: Relay to bound actor
-    A1->>R: Submit card
-    R-->>A1: SubmitBingoCardRes(running)
     C2->>S: SubmitBingoCardReq
     S->>A2: Relay to bound actor
     A2->>R: Submit card
-    R->>R: Start game
     R-->>A2: SubmitBingoCardRes(running)
+    C1->>S: SubmitBingoCardReq
+    S->>A1: Relay to bound actor
+    A1->>R: Submit card
+    R->>R: Start draw timer
+    R-->>A1: SubmitBingoCardRes(running)
 ```
 
 첫 player가 들어오면 room은 대기 상태가 된다. 두 번째 player가 같은 room에 들어오면
@@ -356,7 +411,7 @@ room은 별도 `StartBingoGameReq` 없이 자동으로 `Running` 상태가 되�
 제출한다. 두 client의 card가 모두 제출되면 room Spot이 draw timer를 시작하고,
 일정 간격으로 번호를 뽑아 양쪽 client에 `BingoNumberDrawnNotify`를 보낸다.
 
-## 10. Server Draw Timer와 Bound Push 흐름
+## 11. Server Draw Timer와 Bound Push 흐름
 
 ```mermaid
 sequenceDiagram
@@ -387,7 +442,7 @@ client는 자기 card를 제출한 뒤 번호 추첨을 요청하지 않는다. 
 card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보낸 Notify와 state로
 확인한다.
 
-## 11. 완료 기준
+## 12. 완료 기준
 
 - client 두 개가 각각 Session 서버에 하나의 stream 연결만 연다.
 - Session, API, Play 서버는 Registry/Discovery로 서로를 자동 발견한다.

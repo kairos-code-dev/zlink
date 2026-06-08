@@ -19,20 +19,19 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store()
+    public void TicTacToe_SessionGateway_Sample_Is_Removed()
     {
-        var sampleRoot = ResolveSampleRoot("TicTacToe.SessionGateway");
+        var samplesRoot = ResolveSamplesRoot();
+        var dotnetRoot = Directory.GetParent(samplesRoot)!.FullName;
+        var sampleRoot = Path.Combine(samplesRoot, "TicTacToe.SessionGateway");
+        var solution = Path.Combine(dotnetRoot, "Zlink.Framework.sln");
+        var solutionText = File.ReadAllText(solution);
 
-        AssertNoSampleRouteStore(sampleRoot);
-        AssertNoSampleMetadataStore(sampleRoot);
-        AssertSampleUsesRegistryDefaults(sampleRoot, "tictactoe");
-        AssertSessionServerUsesActorGateway(sampleRoot, allowRouteMeshChannel: true);
-        AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
-        AssertSessionAuthenticateJoinsPlayEntrySpotBeforeBinding(sampleRoot);
-        AssertNoSampleSessionRelayJson(sampleRoot);
-        AssertSessionPayloadPolicy(sampleRoot);
-        AssertUsesFrameworkSessionPacketDispatcher(sampleRoot);
-        AssertSpotRidJoinUsesRoutingId(sampleRoot);
+        Assert.False(
+            Directory.Exists(sampleRoot),
+            "TicTacToe keeps only the direct Api + Play sample. The SessionGateway variant must not be restored.");
+        Assert.DoesNotContain("TicTacToe.SessionGateway", solutionText, StringComparison.Ordinal);
+        Assert.DoesNotContain("samples\\TicTacToe.SessionGateway", solutionText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -139,31 +138,6 @@ public sealed class RegressionTests
         Assert.DoesNotContain("SessionRelayState", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSpotRidJoinUsesRoutingId(string sampleRoot)
-    {
-        var joinHandler = Directory
-            .EnumerateFiles(sampleRoot, "JoinMatchHandler.cs", SearchOption.AllDirectories)
-            .Single();
-        var text = File.ReadAllText(joinHandler);
-
-        Assert.Contains("JoinSpot(RoutingId.FromHex(request.MatchId), request.Encode())", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("JoinSpot(request.MatchId, request)", text, StringComparison.Ordinal);
-    }
-
-    private static void AssertSampleUsesRegistryDefaults(
-        string sampleRoot,
-        string namespaceName)
-    {
-        var allText = string.Join(
-            Environment.NewLine,
-            EnumerateSourceFiles(sampleRoot).Select(File.ReadAllText));
-
-        Assert.Contains($"UseRegistrySpotRemoteAddresses(\"{namespaceName}\")", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseRegistryActorRemoteAddresses", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseRegistryActorSessionBindings", allText, StringComparison.Ordinal);
-        Assert.DoesNotContain("IZLinkActorSessionClient", allText, StringComparison.Ordinal);
-    }
-
     private static void AssertSampleUsesRegistryDiscovery(string sampleRoot)
     {
         var allText = string.Join(
@@ -238,20 +212,6 @@ public sealed class RegressionTests
         }
     }
 
-    private static void AssertSessionAuthenticateJoinsPlayEntrySpotBeforeBinding(string sampleRoot)
-    {
-        var handler = Directory
-            .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "AuthenticateSessionPacketHandler.cs", SearchOption.AllDirectories)
-            .Single();
-        var text = File.ReadAllText(handler);
-        var ensureIndex = text.IndexOf("EnsurePlayerActorReq", StringComparison.Ordinal);
-        var bindIndex = text.IndexOf("Actors.BindAsync", StringComparison.Ordinal);
-
-        Assert.True(ensureIndex >= 0, "Authenticate handler must request the Play server to ensure the actor.");
-        Assert.True(bindIndex > ensureIndex, "Authenticate handler must bind the returned ActorRef after the Play actor is ensured.");
-        Assert.DoesNotContain("ResolveActorRemoteAddressAsync", text, StringComparison.Ordinal);
-    }
-
     private static IEnumerable<string> EnumerateSourceFiles(string root)
     {
         return Directory
@@ -273,9 +233,26 @@ public sealed class RegressionTests
         {
             yield return playSessionsRoot;
         }
+
+        var adapterSessionsRoot = Path.Combine(
+            sampleRoot,
+            "Server",
+            "Play",
+            "Adapters",
+            "ZLink",
+            "Sessions");
+        if (Directory.Exists(adapterSessionsRoot))
+        {
+            yield return adapterSessionsRoot;
+        }
     }
 
     private static string ResolveSampleRoot(string sampleName)
+    {
+        return Path.Combine(ResolveSamplesRoot(), sampleName);
+    }
+
+    private static string ResolveSamplesRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
 
@@ -286,8 +263,7 @@ public sealed class RegressionTests
                 "framework",
                 "languages",
                 "dotnet",
-                "samples",
-                sampleName);
+                "samples");
 
             if (Directory.Exists(candidate))
             {
@@ -298,6 +274,6 @@ public sealed class RegressionTests
         }
 
         throw new DirectoryNotFoundException(
-            $"Could not find framework/languages/dotnet/samples/{sampleName} from test runtime.");
+            "Could not find framework/languages/dotnet/samples from test runtime.");
     }
 }

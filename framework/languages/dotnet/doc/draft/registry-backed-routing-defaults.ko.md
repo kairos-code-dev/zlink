@@ -25,7 +25,7 @@ Registry actor route lookup 을 hot path 로 사용하지 않는다.
 | 샘플 | 기준 |
 |------|------|
 | Bingo | sample-only metadata store 없이 Registry Spot 기본값과 ActorGateway attach 를 사용한다 |
-| TicTacToe session gateway | Bingo 와 같은 구조를 사용한다 |
+| TicTacToe | SessionGateway 변형을 유지하지 않고 수동 endpoint 기반 Api + Play 샘플만 둔다 |
 
 ## 3. 문서 반영 기준
 
@@ -46,4 +46,4 @@ Registry actor route lookup 을 hot path 로 사용하지 않는다.
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid_And_Removes_Route` | 생성된 Spot 을 `RoutingId` 로 찾는다. |
 | `RegistryRemoteAddressesTests.RegistrySpotRemoteAddresses_Resolves_Created_Spot_By_Rid` | 생성된 Spot 을 RID 로 찾는다. |
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo sample 에 sample-only route/metadata store 가 없다. |
-| `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe sample 에도 sample-only route/metadata store 가 없다. |
+| `RegressionTests.TicTacToe_SessionGateway_Sample_Is_Removed` | TicTacToe SessionGateway 변형은 sample tree 와 solution 에 남기지 않는다. |

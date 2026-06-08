@@ -44,4 +44,4 @@
 | `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 의 bound session close 가 session disconnect callback 으로 우회하지 않는다. |
 | `ActorDisconnectNotifyTests.ClientClose_Cleans_Session_Without_Actor_Disconnect_Callback` | client close 는 actor-session binding cleanup 만 수행한다. |
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo sample 은 session route store 없이 ActorGateway attach 를 사용한다. |
-| `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway sample 도 같은 구조를 유지한다. |
+| `RegressionTests.TicTacToe_SessionGateway_Sample_Is_Removed` | TicTacToe SessionGateway 변형은 sample tree 와 solution 에 남기지 않는다. |

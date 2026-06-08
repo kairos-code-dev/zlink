@@ -126,7 +126,7 @@ reflection 으로 우회하지 않는다.
 |------|-----------|
 | Bingo session server | session relay 용 `AddRouteMeshChannel(...)` 을 제거하고 session SpotNode + `AttachActorGateway(...)` 를 사용한다 |
 | Bingo play server | actor host SpotNode 를 routed-capable 로 구성하고 application Spot route egress 는 별도 route mesh channel 로 유지한다 |
-| TicTacToe session gateway | Bingo 와 같은 session SpotNode + stream attach 구조를 사용한다 |
+| TicTacToe | SessionGateway 변형을 유지하지 않고 수동 endpoint 기반 Api + Play 샘플만 둔다 |
 | sample contracts | ensure actor 응답은 actor id/type 과 ActorGateway remote address snapshot 을 담는다 |
 
 Play 서버의 route mesh channel 은 routed Spot egress 를 위한 application channel 이다.
@@ -154,7 +154,7 @@ session actor relay 설정으로 해석하면 안 된다.
 | `ActorDisconnectNotifyTests.ClientClose_Cleans_Session_Without_Actor_Disconnect_Callback` | client stream close 는 session binding cleanup 만 수행하고 Actor disconnect callback 을 호출하지 않는다. |
 | `NodesAndServicesTests.AddZLinkFramework_Registers_BoundSession_Factory` | framework DI 는 bound session factory 를 등록한다. |
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo sample 이 application route mesh resolver 없이 ActorGateway remote locator 로 bind 하고 session host 에 route mesh relay channel 을 두지 않는다. |
-| `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | TicTacToe session gateway sample 도 같은 ActorGateway locator binding 규칙과 session ActorGateway attach 를 유지한다. |
+| `RegressionTests.TicTacToe_SessionGateway_Sample_Is_Removed` | TicTacToe SessionGateway 변형은 sample tree 와 solution 에 남기지 않는다. |
 
 ## 7. 남은 검증 기준
 

@@ -4,7 +4,7 @@
 
 # TicTacToe Game Sample
 
-[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md) | [Session Actor Dispatch](../../../../../doc/spec/session-actor-dispatch.ko.md)
+[.NET 묶음](../../README.ko.md) | [STREAM](../../spec/aspnet-core-stream.ko.md) | [SPOT](../../spec/aspnet-core-spot.ko.md)
 
 > 이 문서는 실행 가능한 game sample 설명이다. 실시간 게임 도메인에 ZLink 를 도입할지
 > 판단하려면 [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)을 먼저 보고,
@@ -12,21 +12,20 @@
 
 ## 1. 목적
 
-TicTacToe 샘플은 두 가지 구성으로 나누어 둔다.
+TicTacToe 샘플은 API 서버와 Play 서버만 사용하는 가장 작은 실시간 게임 샘플이다.
+client 는 API 서버에서 room 정보를 받은 뒤 Play 서버의 STREAM[^stream] endpoint 에
+직접 연결한다.
 
-- direct 샘플: 클라이언트가 API 서버에서 game 정보를 받은 뒤, Play 서버의
-  STREAM[^stream] endpoint 에 직접 연결한다.
-- session actor dispatch[^session-actor-dispatch] 샘플: 클라이언트는 Session
-  서버의 STREAM endpoint 하나만 알고 있다. 그 뒤 Session 서버가 클라이언트의
-  요청을 API 서버와 Play 서버로 relay 한다.
+별도 Session 서버나 TicTacToe SessionGateway 변형은 유지하지 않는다. Session 서버를
+분리한 gateway 구조는 Bingo 샘플이 담당한다.
 
-두 샘플 모두 actor[^actor] 식별 필드의 이름은 public DTO[^dto] 상에서
-`ActorId` 로 통일한다. token 은 인증 입력값으로만 쓰며, actor identity 로는
-사용하지 않는다.
+actor[^actor] 식별 필드의 이름은 public DTO[^dto] 상에서 `ActorId` 로 통일한다.
+token 은 인증 입력값으로만 쓰며, actor identity 로는 사용하지 않는다. room 식별자는
+`RoomId` 로 노출하고, core routing id 의 hex 문자열을 public DTO 로 넘기지 않는다.
 
-## 2. Direct 샘플 구성
+## 2. 샘플 구성
 
-direct 샘플의 public DTO 는 현재 코드 기준으로
+public DTO 는 현재 코드 기준으로
 `framework/languages/dotnet/samples/TicTacToe/Shared/Contracts/Messages.cs` 를
 따른다.
 
@@ -36,14 +35,14 @@ HTTP 와 server channel 쪽 DTO 는 다음과 같다.
 public sealed record CreateGameHttpReq(string? GameName);
 
 public sealed record CreateGameHttpRes(
-    string GameId,
+    string RoomId,
     string PlayEndpoint,
     string GameName);
 
 public sealed record CreateGameReq(string GameName);
 
 public sealed record CreateGameRes(
-    string GameId,
+    string RoomId,
     string PlayEndpoint,
     string GameName);
 
@@ -59,7 +58,7 @@ public sealed record AuthenticateReq(string AccessToken);
 
 public sealed record AuthenticateRes(string ActorId);
 
-public sealed record JoinGameReq(string GameId);
+public sealed record JoinGameReq(string RoomId);
 
 public sealed record JoinGameRes(GameState State);
 
@@ -68,31 +67,22 @@ public sealed record PlaceMarkReq(int Cell);
 public sealed record PlaceMarkRes(GameState State);
 ```
 
-Play actor 가 game room SPOT[^spot] 에 join 할 때 쓰는 내부 request / response
-는 다음과 같다.
+Play actor 가 game room SPOT[^spot] 에 join 할 때 쓰는 내부 request / response 는
+다음과 같다.
 
 ```csharp
 public sealed record TicTacToeGameJoinReq(
-    string GameId,
+    string RoomId,
     string ActorId);
 
 public sealed record TicTacToeGameJoinRes(GameState State);
 ```
 
-현재 샘플에서 Session/API 쪽 matching 흐름은 Play 서버의 server channel 로 일반 request 를
-보낸다. Play 서버 handler 가 room Spot 을 만들거나 찾아 actor 를 join 시키므로, 이 단계는
-`IZLinkChannelClient.RequestToChannel(...)` 기반 channel-to-channel 호출이다. `IZLinkChannelClient`는 등록된
-channel 이름을 보고 client-server 또는 dealer mesh outbound socket 을 선택한다.
-
-Session/API handler 가 actor 를 만든 뒤 Play 서버의 Entry Spot 으로 join 하면
-join 결과의 `ActorRef` 로 session actor handle 을 bind 한다. current Spot 이 없는
-handler 에서 target Spot 으로 직접 request 하는 별도 public client 는 사용하지 않는다.
-
 server push 와 state DTO 는 다음과 같다.
 
 ```csharp
 public sealed record PlayerJoinedNotify(
-    string GameId,
+    string RoomId,
     string ActorId,
     string Mark,
     GameState State);
@@ -100,7 +90,7 @@ public sealed record PlayerJoinedNotify(
 public sealed record GameStateNotify(GameState State);
 
 public sealed record GameState(
-    string GameId,
+    string RoomId,
     string Board,
     string Status,
     string? Winner,
@@ -111,7 +101,7 @@ public sealed record GameState(
     int? LastMoveCell);
 ```
 
-direct 샘플은 다음 세 가지를 함께 사용한다.
+샘플은 다음 세 가지를 함께 사용한다.
 
 - 일반 channel client / server
 - STREAM header session
@@ -119,75 +109,49 @@ direct 샘플은 다음 세 가지를 함께 사용한다.
 
 `Api` channel client 와 `Play` channel client 는 현재 샘플 코드에서
 `UseManualConnections(...)` 로 endpoint 를 직접 지정해 연결한다. 이 점은
-session actor dispatch 샘플의 자동 discovery 정책과 혼동하지 않도록 주의한다.
+Registry/Discovery 를 사용하는 Bingo 샘플과 다르다.
 
-## 3. Session Actor Dispatch 샘플 구성
+## 3. Play 서버 구조
 
-session actor dispatch 샘플의 DTO 는
-`framework/languages/dotnet/samples/TicTacToe.SessionGateway/Shared/Contracts/Messages.cs`
-를 따른다.
+Play 서버는 domain logic 과 framework adapter 를 분리한다.
 
-이 샘플은 service channel 과 routed channel 모두 전역 `UseDiscovery(...AddRegistryEndpoint...)`
-기반의 자동 연결을 사용한다. game room SPOT node 는 `AddSpotMesh(...)` 안에서
-`mesh.UseDiscovery(...AddRegistryEndpoint...)` 를 호출해 같은 registry 에 붙는다. 샘플 코드에는
-`UseManualConnections(...)` 를 두지 않는다.
+```text
+Server/Play/
+  Domain/
+    TicTacToe/
+  Application/
+    GameCreation/
+  Adapters/
+    ZLink/
+      Actors/
+      Handlers/
+      Sessions/
+      Spots/
+        Handlers/
+```
 
-Registry 기반 Spot route 도 framework 기본 구현을 사용한다. Play 서버와 Session 서버는
-`UseRegistrySpotRemoteAddresses("tictactoe")` 만 켠다. Play 서버의 actor 준비 응답은
-actor id/type 과 ActorGateway remote address snapshot 을 돌려주고, Session 서버는 현재 STREAM session 을 그 actor handle 에
-bind 한다. actor-session binding 은 framework / core runtime 내부 상태로 관리된다.
-샘플은 별도 파일 metadata store 나 route publisher 를 구현하지 않는다.
-
-핵심 계약은 다음과 같다.
-
-- `AuthenticateReq.ActorId` 가 인증 요청의 actor identity 역할을 한다.
-- 인증이 성공하면, Session 서버는 Play 서버에 actor 준비를 요청하고 actor id/type 과
-  remote address 를 받는다. 그 뒤 `BindAsync(...)` 로 현재 stream session binding 을
-  framework / core 내부 상태에 기록한다. session handler 는 actor remote address resolver 를
-  직접 호출하지 않고, Play 서버 runtime 이 발급한 ActorGateway locator 만 사용한다.
-- `CreateMatchReq` 는 Session 서버에서 API 서버로 channel request 로 relay
-  된다. 클라이언트는 match id 나 room 이름을 따로 지정하지 않는다.
-- API 서버는 Play 서버에 room 생성을 요청한다. Play 서버는
-  `IZLinkSpotManager` 로 game room SPOT 을 만든다. `CreateMatchRes.MatchId` 는
-  생성된 room 의 `SpotId` 를 hex 로 표현한 값이다.
-- `JoinMatchReq` 와 `PlaceMarkReq` 는 Session 서버에서 Play 서버의 actor 로
-  dispatch 된다.
-- Play actor 는 `JoinMatchReq` 를 처리하는 중에 해당 game room SPOT 에 join
-  한다. 이후 들어오는 `PlaceMarkReq` 는 actor 가 join 한 room SPOT 의 상태를
-  변경한다.
-- Play 서버의 SPOT 코드는 `EntrySpot/Handlers` 와 `GameSpots/Handlers` 로
-  나누어 둔다. Entry Spot 은 actor 가 room 으로 들어가기 전 요청과
-  joined/left callback 을 보여 주고, game room Spot 은 actor join, gameplay
-  request, create, joined, left callback 을 함께 보여 준다.
-- Play actor 가 자기 client 로 push 할 때는 actor context 의
-  `IZLinkBoundSession` 를 사용한다. 특정 actor id 의 client 로 보내는
-  application service 는 `IZLinkBoundSession` 를 사용한다.
-- `OpponentJoinedNotify`, `TurnChangedNotify`, `GameEndedNotify` 는 actor id 를
-  기준으로 현재 binding 되어 있는 Session 서버를 찾는다. 그 뒤 해당 서버의
-  client stream 을 통해 전달된다.
+`Domain/TicTacToe` 는 board 검증, turn 검증, winner/draw 판정을 맡는다. ZLink
+framework 타입, stream session, actor context, logger 를 알면 안 된다.
+`Application/GameCreation` 은 명시적인 `RoomId` 를 만들고 room Spot 생성을 요청한다.
+`Adapters/ZLink` 는 channel handler, stream session, actor, Spot lifecycle, Spot
+handler 를 맡는다.
 
 ## 4. 완료 기준
 
-- direct 샘플 문서와 실제 코드의 DTO 이름이 일치한다.
-- session actor dispatch 샘플 문서와 실제 코드의 DTO 이름이 일치한다.
+- 샘플 문서와 실제 코드의 DTO 이름이 일치한다.
 - 샘플 spec과 코드 모두에서 actor 식별용 public field는 `ActorId`만 사용한다.
-- session actor dispatch 샘플은 수동 연결을 사용하지 않고, discovery 기반 자동
-  연결만 사용한다.
-- session actor dispatch 샘플은 Registry 기반 Spot route 기본 구현을 사용하고,
-  자체 metadata store 를 두지 않는다.
-- session actor dispatch 샘플은 Play 서버에 game room SPOT을 만들고, scenario
-  단계에서 생성된 `MatchId`가 실제 SPOT room으로 존재하는지 확인한다.
-- direct 샘플과 session actor dispatch 샘플은 Entry Spot 과 game room Spot 의
-  actor packet handler 는 `Context.AddHandler<THandler>()` 로 등록하고, game
-  room Spot 의 join admission 은 `OnActorJoinAsync(...)` 로 선언하는 예시를
-  제공한다.
-- direct 샘플의 수동 연결 설명은 direct 샘플 범위 안으로만 한정한다.
+- room 식별용 public field는 `RoomId`만 사용하고, core routing id hex 문자열을
+  public DTO 로 노출하지 않는다.
+- TicTacToe는 수동 endpoint 연결만 사용하고 Registry/Discovery 자동 연결을 쓰지 않는다.
+- TicTacToe SessionGateway 변형 샘플은 solution, runner, 문서, 테스트에 남아 있으면 안 된다.
+- Play 서버는 Domain / Application / Adapters 구조를 유지한다.
+- Entry Spot 과 game room Spot 의 actor packet handler 는 `Context.AddHandler<THandler>()`
+  로 등록하고, game room Spot 의 join admission 은 `OnActorJoinAsync(...)` 로 선언한다.
 
 ## 5. 회귀 테스트
 
-틱택토 샘플은 Direct 경로와 Session Actor Dispatch 경로가 모두 public
-framework 표면만 사용하는지 확인한다. 샘플을 수정할 때는 다음 흐름을 아래
-테스트와 함께 맞춘다.
+틱택토 샘플은 기본 Api + Play 직접 연결 경로가 public framework 표면만 사용하는지
+확인한다. 샘플을 수정할 때는 다음 흐름을 아래 테스트와 함께 맞춘다.
 
 - API 서버
 - Play 서버
@@ -196,16 +160,13 @@ framework 표면만 사용하는지 확인한다. 샘플을 수정할 때는 다
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | session gateway 경로에서 request/reply sequence가 actor dispatch와 맞물려 동작한다. |
 | `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot[^entry-spot]과 room Spot actor handler가 각각 정상 동작한다. |
-| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | match room으로 이동한 뒤에는 이전 room으로 stale dispatch가 발생하지 않는다. |
+| `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | room으로 이동한 뒤에는 이전 room으로 stale dispatch가 발생하지 않는다. |
 | `StreamConnectorTests.TcpTypedRequestCorrelatesResponse` | 게임 클라이언트 역할의 connector request/reply 계약이 그대로 유지된다. |
-| `RegressionTests.TicTacToe_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | session gateway 샘플이 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
+| `RegressionTests.TicTacToe_SessionGateway_Sample_Is_Removed` | TicTacToe SessionGateway 변형이 sample tree 와 solution 에 남아 있지 않다. |
 
-[^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^stream]: `STREAM` 은 클라이언트와 서버 사이에 지속 연결을 유지하면서 framework Header 기반 packet 을 주고받는 세션형 통신 추상이다.
-[^session-actor-dispatch]: session actor dispatch 는 클라이언트 세션에서 들어온 요청을, 그 세션과 묶인 actor 로 자동 전달하는 패턴이다.
 [^actor]: actor 는 자신만의 메일박스와 상태를 가지고 메시지를 순서대로 처리하는 동시성 단위다. framework 에서는 클라이언트 세션과 묶여 사용자별 게임 상태를 다루는 데 쓰인다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
-[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
+[^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.

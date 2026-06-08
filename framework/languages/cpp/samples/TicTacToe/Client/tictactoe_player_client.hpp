@@ -39,19 +39,14 @@ class tictactoe_player_client_t
         return request<authenticate_res_t> (authenticate_req_t{_actor_id});
     }
 
-    tictactoe_client_call_result_t join_game (std::string match_id)
+    tictactoe_client_call_result_t join_game (std::string room_id)
     {
-        return request<join_match_res_t> (join_match_req_t{std::move (match_id), _actor_id});
+        return request<join_game_res_t> (join_game_req_t{std::move (room_id), _actor_id});
     }
 
-    tictactoe_client_call_result_t create_match ()
+    tictactoe_client_call_result_t place_mark (std::string room_id, int cell)
     {
-        return request<create_match_res_t> (create_match_req_t{_actor_id});
-    }
-
-    tictactoe_client_call_result_t place_mark (std::string match_id, int cell)
-    {
-        return request<place_mark_res_t> (place_mark_req_t{std::move (match_id), _actor_id, cell});
+        return request<place_mark_res_t> (place_mark_req_t{std::move (room_id), _actor_id, cell});
     }
 
     void close () { zlink::samples::close_client_connector (_connector); }
@@ -66,13 +61,13 @@ class tictactoe_player_client_t
 
     void register_notifications ()
     {
-        zlink::stream_connector::codecs::on<opponent_joined_notify_t> (
-          _connector, [this] (const opponent_joined_notify_t &message) {
-              _notifications.opponent_joined (message);
+        zlink::stream_connector::codecs::on<player_joined_notify_t> (
+          _connector, [this] (const player_joined_notify_t &message) {
+              _notifications.player_joined (message);
           });
-        zlink::stream_connector::codecs::on<turn_changed_notify_t> (
+        zlink::stream_connector::codecs::on<game_state_notify_t> (
           _connector,
-          [this] (const turn_changed_notify_t &message) { _notifications.turn_changed (message); });
+          [this] (const game_state_notify_t &message) { _notifications.game_state (message); });
         zlink::stream_connector::codecs::on<game_ended_notify_t> (
           _connector,
           [this] (const game_ended_notify_t &message) { _notifications.game_ended (message); });

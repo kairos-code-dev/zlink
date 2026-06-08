@@ -22,15 +22,15 @@ struct authenticate_res_t
     std::string actor_id;
 };
 
-struct authenticate_actor_req_t
+struct authenticate_player_req_t
 {
-    static constexpr const char *packet_name = "AuthenticateActorReq";
+    static constexpr const char *packet_name = "AuthenticatePlayerReq";
     std::string actor_id;
 };
 
-struct authenticate_actor_res_t
+struct authenticate_player_res_t
 {
-    static constexpr const char *packet_name = "AuthenticateActorRes";
+    static constexpr const char *packet_name = "AuthenticatePlayerRes";
     bool accepted = false;
     std::string actor_id;
     std::string reason;
@@ -57,45 +57,45 @@ struct ensure_player_actor_res_t
     actor_ref_snapshot_t actor;
 };
 
-struct create_match_req_t
+struct create_game_req_t
 {
-    static constexpr const char *packet_name = "CreateMatchReq";
+    static constexpr const char *packet_name = "CreateGameReq";
     std::string owner_actor_id;
 };
 
-struct create_match_res_t
+struct create_game_res_t
 {
-    static constexpr const char *packet_name = "CreateMatchRes";
-    std::string match_id;
+    static constexpr const char *packet_name = "CreateGameRes";
+    std::string room_id;
     std::string owner_actor_id;
     std::string play_endpoint;
 };
 
-struct create_match_room_req_t
+struct create_game_room_req_t
 {
-    static constexpr const char *packet_name = "CreateMatchRoomReq";
+    static constexpr const char *packet_name = "CreateGameRoomReq";
 };
 
-struct create_match_room_res_t
+struct create_game_room_res_t
 {
-    static constexpr const char *packet_name = "CreateMatchRoomRes";
-    std::string match_id;
+    static constexpr const char *packet_name = "CreateGameRoomRes";
+    std::string room_id;
 };
 
-struct join_match_req_t
+struct join_game_req_t
 {
-    static constexpr const char *packet_name = "JoinMatchReq";
-    std::string match_id;
+    static constexpr const char *packet_name = "JoinGameReq";
+    std::string room_id;
     std::string actor_id;
 };
 
 struct tictactoe_state_t
 {
-    std::string match_id;
+    std::string room_id;
     std::string board = ".........";
     std::string status = "waiting";
-    std::string turn_actor_id;
-    std::string winner_actor_id;
+    std::string next_turn;
+    std::string winner;
     bool draw = false;
     std::string x_actor_id;
     std::string o_actor_id;
@@ -103,10 +103,10 @@ struct tictactoe_state_t
     int last_move_cell = -1;
 };
 
-struct join_match_res_t
+struct join_game_res_t
 {
-    static constexpr const char *packet_name = "JoinMatchRes";
-    std::string match_id;
+    static constexpr const char *packet_name = "JoinGameRes";
+    std::string room_id;
     std::string actor_id;
     std::string mark;
     tictactoe_state_t state;
@@ -115,7 +115,7 @@ struct join_match_res_t
 struct place_mark_req_t
 {
     static constexpr const char *packet_name = "PlaceMarkReq";
-    std::string match_id;
+    std::string room_id;
     std::string actor_id;
     int cell = 0;
 };
@@ -126,28 +126,28 @@ struct place_mark_res_t
     tictactoe_state_t state;
 };
 
-struct opponent_joined_notify_t
+struct player_joined_notify_t
 {
-    static constexpr const char *packet_name = "OpponentJoinedNotify";
-    std::string match_id;
-    std::string opponent_actor_id;
+    static constexpr const char *packet_name = "PlayerJoinedNotify";
+    std::string room_id;
+    std::string actor_id;
     std::string mark;
     tictactoe_state_t state;
 };
 
-struct turn_changed_notify_t
+struct game_state_notify_t
 {
-    static constexpr const char *packet_name = "TurnChangedNotify";
-    std::string match_id;
-    std::string turn_actor_id;
+    static constexpr const char *packet_name = "GameStateNotify";
+    std::string room_id;
+    std::string next_turn;
     tictactoe_state_t state;
 };
 
 struct game_ended_notify_t
 {
     static constexpr const char *packet_name = "GameEndedNotify";
-    std::string match_id;
-    std::string winner_actor_id;
+    std::string room_id;
+    std::string winner;
     bool draw = false;
     tictactoe_state_t state;
 };
@@ -162,22 +162,22 @@ inline void from_json (const nlohmann::json &json, authenticate_req_t &value)
     value.actor_id = json.value ("actorId", "");
 }
 
-inline void to_json (nlohmann::json &json, const authenticate_actor_req_t &value)
+inline void to_json (nlohmann::json &json, const authenticate_player_req_t &value)
 {
     json = {{"actorId", value.actor_id}};
 }
 
-inline void from_json (const nlohmann::json &json, authenticate_actor_req_t &value)
+inline void from_json (const nlohmann::json &json, authenticate_player_req_t &value)
 {
     value.actor_id = json.value ("actorId", "");
 }
 
-inline void to_json (nlohmann::json &json, const authenticate_actor_res_t &value)
+inline void to_json (nlohmann::json &json, const authenticate_player_res_t &value)
 {
     json = {{"accepted", value.accepted}, {"actorId", value.actor_id}, {"reason", value.reason}};
 }
 
-inline void from_json (const nlohmann::json &json, authenticate_actor_res_t &value)
+inline void from_json (const nlohmann::json &json, authenticate_player_res_t &value)
 {
     value.accepted = json.value ("accepted", false);
     value.actor_id = json.value ("actorId", "");
@@ -219,65 +219,65 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_res_t &va
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
 }
 
-inline void to_json (nlohmann::json &json, const create_match_req_t &value)
+inline void to_json (nlohmann::json &json, const create_game_req_t &value)
 {
     json = {{"ownerActorId", value.owner_actor_id}};
 }
 
-inline void from_json (const nlohmann::json &json, create_match_req_t &value)
+inline void from_json (const nlohmann::json &json, create_game_req_t &value)
 {
     value.owner_actor_id = json.value ("ownerActorId", "");
 }
 
-inline void to_json (nlohmann::json &json, const create_match_room_req_t &)
+inline void to_json (nlohmann::json &json, const create_game_room_req_t &)
 {
     json = nlohmann::json::object ();
 }
 
-inline void from_json (const nlohmann::json &, create_match_room_req_t &)
+inline void from_json (const nlohmann::json &, create_game_room_req_t &)
 {
 }
 
-inline void to_json (nlohmann::json &json, const create_match_room_res_t &value)
+inline void to_json (nlohmann::json &json, const create_game_room_res_t &value)
 {
-    json = {{"matchId", value.match_id}};
+    json = {{"roomId", value.room_id}};
 }
 
-inline void from_json (const nlohmann::json &json, create_match_room_res_t &value)
+inline void from_json (const nlohmann::json &json, create_game_room_res_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
 }
 
-inline void to_json (nlohmann::json &json, const join_match_req_t &value)
+inline void to_json (nlohmann::json &json, const join_game_req_t &value)
 {
-    json = {{"matchId", value.match_id}, {"actorId", value.actor_id}};
+    json = {{"roomId", value.room_id}, {"actorId", value.actor_id}};
 }
 
-inline void from_json (const nlohmann::json &json, join_match_req_t &value)
+inline void from_json (const nlohmann::json &json, join_game_req_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
 }
 
 inline void to_json (nlohmann::json &json, const place_mark_req_t &value)
 {
-    json = {{"matchId", value.match_id}, {"actorId", value.actor_id}, {"cell", value.cell}};
+    json = {{"roomId", value.room_id}, {"actorId", value.actor_id}, {"cell", value.cell}};
 }
 
 inline void from_json (const nlohmann::json &json, place_mark_req_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
     value.cell = json.value ("cell", 0);
 }
 
 inline void to_json (nlohmann::json &json, const tictactoe_state_t &value)
 {
-    json = {{"matchId", value.match_id},
+    json = {{"roomId", value.room_id},
             {"board", value.board},
             {"status", value.status},
-            {"turnActorId", value.turn_actor_id},
-            {"winnerActorId", value.winner_actor_id},
+            {"nextTurn", value.next_turn},
+            {"winner", value.winner},
             {"draw", value.draw},
             {"xActorId", value.x_actor_id},
             {"oActorId", value.o_actor_id},
@@ -287,11 +287,11 @@ inline void to_json (nlohmann::json &json, const tictactoe_state_t &value)
 
 inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
     value.board = json.value ("board", ".........");
     value.status = json.value ("status", "");
-    value.turn_actor_id = json.value ("turnActorId", "");
-    value.winner_actor_id = json.value ("winnerActorId", "");
+    value.next_turn = json.value ("nextTurn", "");
+    value.winner = json.value ("winner", "");
     value.draw = json.value ("draw", false);
     value.x_actor_id = json.value ("xActorId", "");
     value.o_actor_id = json.value ("oActorId", "");
@@ -309,31 +309,31 @@ inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
     value.actor_id = json.value ("actorId", "");
 }
 
-inline void to_json (nlohmann::json &json, const create_match_res_t &value)
+inline void to_json (nlohmann::json &json, const create_game_res_t &value)
 {
-    json = {{"matchId", value.match_id},
+    json = {{"roomId", value.room_id},
             {"ownerActorId", value.owner_actor_id},
             {"playEndpoint", value.play_endpoint}};
 }
 
-inline void from_json (const nlohmann::json &json, create_match_res_t &value)
+inline void from_json (const nlohmann::json &json, create_game_res_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
     value.owner_actor_id = json.value ("ownerActorId", "");
     value.play_endpoint = json.value ("playEndpoint", "");
 }
 
-inline void to_json (nlohmann::json &json, const join_match_res_t &value)
+inline void to_json (nlohmann::json &json, const join_game_res_t &value)
 {
-    json = {{"matchId", value.match_id},
+    json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
             {"mark", value.mark},
             {"state", value.state}};
 }
 
-inline void from_json (const nlohmann::json &json, join_match_res_t &value)
+inline void from_json (const nlohmann::json &json, join_game_res_t &value)
 {
-    value.match_id = json.value ("matchId", "");
+    value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
     value.mark = json.value ("mark", "");
     value.state = json.value ("state", tictactoe_state_t{});
@@ -349,47 +349,46 @@ inline void from_json (const nlohmann::json &json, place_mark_res_t &value)
     value.state = json.value ("state", tictactoe_state_t{});
 }
 
-inline void to_json (nlohmann::json &json, const opponent_joined_notify_t &value)
+inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
 {
-    json = {{"matchId", value.match_id},
-            {"opponentActorId", value.opponent_actor_id},
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
             {"mark", value.mark},
             {"state", value.state}};
 }
 
-inline void from_json (const nlohmann::json &json, opponent_joined_notify_t &value)
+inline void from_json (const nlohmann::json &json, player_joined_notify_t &value)
 {
-    value.match_id = json.value ("matchId", "");
-    value.opponent_actor_id = json.value ("opponentActorId", "");
+    value.room_id = json.value ("roomId", "");
+    value.actor_id = json.value ("actorId", "");
     value.mark = json.value ("mark", "");
     value.state = json.value ("state", tictactoe_state_t{});
 }
 
-inline void to_json (nlohmann::json &json, const turn_changed_notify_t &value)
+inline void to_json (nlohmann::json &json, const game_state_notify_t &value)
 {
-    json = {
-      {"matchId", value.match_id}, {"turnActorId", value.turn_actor_id}, {"state", value.state}};
+    json = {{"roomId", value.room_id}, {"nextTurn", value.next_turn}, {"state", value.state}};
 }
 
-inline void from_json (const nlohmann::json &json, turn_changed_notify_t &value)
+inline void from_json (const nlohmann::json &json, game_state_notify_t &value)
 {
-    value.match_id = json.value ("matchId", "");
-    value.turn_actor_id = json.value ("turnActorId", "");
+    value.room_id = json.value ("roomId", "");
+    value.next_turn = json.value ("nextTurn", "");
     value.state = json.value ("state", tictactoe_state_t{});
 }
 
 inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
 {
-    json = {{"matchId", value.match_id},
-            {"winnerActorId", value.winner_actor_id},
+    json = {{"roomId", value.room_id},
+            {"winner", value.winner},
             {"draw", value.draw},
             {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
 {
-    value.match_id = json.value ("matchId", "");
-    value.winner_actor_id = json.value ("winnerActorId", "");
+    value.room_id = json.value ("roomId", "");
+    value.winner = json.value ("winner", "");
     value.draw = json.value ("draw", false);
     value.state = json.value ("state", tictactoe_state_t{});
 }

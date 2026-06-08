@@ -1,12 +1,9 @@
 # Bingo
 
-이 샘플은 `.NET` Bingo 샘플과 같은 역할 구분을 C++ public API 위에서 검토하기 위한
-리뷰 샘플이다. C++ 샘플도 `.NET` 샘플처럼 `Shared`, `Client`, `Server/Registry`,
-`Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry`,
-`Server/Api/Handlers`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`,
-`Server/Play/EntrySpot`, `Server/Session` 파일 단위로 나누어 둔다. 그래서 사용자는 각
-프로세스 역할과 handler 구현이 framework API 위에서 어떻게 보이는지 그대로 비교할 수
-있다.
+이 샘플은 공통 Bingo 시나리오의 Session, Api, Play, Registry 역할 구분을 C++ public
+API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Play 서버는
+`Domain`, `Application`, `Adapters/ZLink` 구조로 게임 규칙과 framework 연결 코드를
+나누어 둔다.
 
 포함 범위는 아래와 같다.
 
@@ -18,8 +15,8 @@
 - authenticate player/session handler
 - ensure player actor handler
 - match API handler와 actor match handler
-- allocate room, join room, start game, leave room handler
-- bingo room state, card, marks, join, start, draw, leave
+- allocate room, join room, card submit handler
+- bingo room state, 3 x 3 card, server draw, winner 판단
 - client notification inbox
 - channel request/reply handler
 - handler logger와 callback log sink
@@ -32,8 +29,8 @@
 - monitoring source 등록
 - offload handler option
 
-이 샘플은 `.NET` Bingo와 같은 session stream 역할을 포함한다. 다만 TicTacToe가
-STREAM과 ActorGateway 기반 actor/session relay의 기준 샘플이다.
+이 샘플은 Registry/Discovery 자동 연결과 session gateway 흐름을 맡는다. 수동 endpoint로
+Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 
 실행 파일은 아래 역할로 나뉜다.
 

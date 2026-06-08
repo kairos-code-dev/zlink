@@ -2,7 +2,7 @@
 #pragma once
 
 #include "../../../Api/Handlers/authenticate_player_handler.hpp"
-#include "../../../Play/Handlers/ensure_player_actor_handler.hpp"
+#include "../../../Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
 
 #include <zlink/codec/json.hpp>
 #include <zlink/framework.hpp>

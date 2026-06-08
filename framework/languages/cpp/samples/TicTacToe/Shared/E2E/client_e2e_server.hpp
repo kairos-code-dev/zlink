@@ -18,8 +18,8 @@ namespace zlink::samples::tictactoe
 class tictactoe_client_e2e_create_game_handler_t
 {
   public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_req_t;
+    using reply_type = create_game_res_t;
     using dependency_types = zlink::framework::dependency_list_t<
       sample_topology_t,
       zlink::framework::logger_t<tictactoe_client_e2e_create_game_handler_t>>;
@@ -31,15 +31,15 @@ class tictactoe_client_e2e_create_game_handler_t
     {
     }
 
-    create_match_res_t handle (const create_match_req_t &request)
+    create_game_res_t handle (const create_game_req_t &request)
     {
         _logger.info ("http POST /games");
-        _logger.info (std::string ("recv ") + create_match_req_t::packet_name);
-        _logger.info (std::string ("reply ") + create_match_req_t::packet_name);
+        _logger.info (std::string ("recv ") + create_game_req_t::packet_name);
+        _logger.info (std::string ("reply ") + create_game_req_t::packet_name);
         const auto owner = request.owner_actor_id.empty ()
                              ? std::string (sample_names_t::x_actor_id)
                              : request.owner_actor_id;
-        return {"match-1", owner, _topology.stream_endpoint};
+        return {"room-1", owner, _topology.stream_endpoint};
     }
 
   private:
@@ -71,7 +71,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
     log << "monitor event stream_ready\n";
     log.flush ();
     int handled = 0;
-    std::string current_match_id = "tictactoe-game";
+    std::string current_room_id = "tictactoe-game";
     std::string buffer;
     while (handled < 9) {
         zlink::received_t inbound;
@@ -83,7 +83,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
         while (auto frame = zlink::samples::try_read_stream_frame (buffer)) {
             log << "recv " << frame->name << '\n';
             tictactoe_state_t state;
-            state.match_id = current_match_id;
+            state.room_id = current_room_id;
             state.status = "playing";
             log << "actor relay " << x_actor_id << '\n';
             if (frame->name == authenticate_req_t::packet_name) {
@@ -91,35 +91,35 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
                   zlink::message_t::from (frame->payload).parse_json<authenticate_req_t> ();
                 zlink::samples::send_stream_reply_and_push (
                   inbound, *frame, authenticate_res_t{request.actor_id},
-                  turn_changed_notify_t::packet_name,
-                  turn_changed_notify_t{state.match_id, x_actor_id, state});
-            } else if (frame->name == join_match_req_t::packet_name) {
+                  game_state_notify_t::packet_name,
+                  game_state_notify_t{state.room_id, x_actor_id, state});
+            } else if (frame->name == join_game_req_t::packet_name) {
                 const auto request =
-                  zlink::message_t::from (frame->payload).parse_json<join_match_req_t> ();
-                current_match_id = request.match_id;
-                state.match_id = current_match_id;
+                  zlink::message_t::from (frame->payload).parse_json<join_game_req_t> ();
+                current_room_id = request.room_id;
+                state.room_id = current_room_id;
                 state.x_actor_id = x_actor_id;
                 state.o_actor_id =
                   request.actor_id == x_actor_id ? sample_names_t::o_actor_id : request.actor_id;
                 zlink::samples::send_stream_reply_and_push (
                   inbound, *frame,
-                  join_match_res_t{current_match_id, request.actor_id,
-                                   request.actor_id == x_actor_id ? "X" : "O", state},
-                  turn_changed_notify_t::packet_name,
-                  turn_changed_notify_t{current_match_id, x_actor_id, state});
+                  join_game_res_t{current_room_id, request.actor_id,
+                                  request.actor_id == x_actor_id ? "X" : "O", state},
+                  game_state_notify_t::packet_name,
+                  game_state_notify_t{current_room_id, x_actor_id, state});
             } else {
                 const auto request =
                   zlink::message_t::from (frame->payload).parse_json<place_mark_req_t> ();
-                current_match_id = request.match_id;
-                state.match_id = current_match_id;
+                current_room_id = request.room_id;
+                state.room_id = current_room_id;
                 state.last_move_actor_id = request.actor_id;
                 state.last_move_cell = request.cell;
                 zlink::samples::send_stream_reply_and_push (
-                  inbound, *frame, place_mark_res_t{state}, turn_changed_notify_t::packet_name,
-                  turn_changed_notify_t{current_match_id, x_actor_id, state});
+                  inbound, *frame, place_mark_res_t{state}, game_state_notify_t::packet_name,
+                  game_state_notify_t{current_room_id, x_actor_id, state});
             }
             log << "reply " << frame->name << '\n';
-            log << "push " << turn_changed_notify_t::packet_name << '\n';
+            log << "push " << game_state_notify_t::packet_name << '\n';
             ++handled;
         }
         inbound.close ();

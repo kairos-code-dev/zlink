@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "Actors/player_actor.hpp"
 #include "Configuration/sample_names.hpp"
 #include "Configuration/sample_topology.hpp"
 #include "Contracts/messages.hpp"

@@ -18,8 +18,8 @@ struct sample_names_t
     static constexpr const char *entry_spot_routing_id = "3301";
     static constexpr const char *x_actor_id = "player-x";
     static constexpr const char *o_actor_id = "player-o";
-    static constexpr const char *turn_changed_packet = "TurnChangedNotify";
-    static constexpr const char *opponent_joined_packet = "OpponentJoinedNotify";
+    static constexpr const char *game_state_packet = "GameStateNotify";
+    static constexpr const char *player_joined_packet = "PlayerJoinedNotify";
     static constexpr const char *game_ended_packet = "GameEndedNotify";
 };
 

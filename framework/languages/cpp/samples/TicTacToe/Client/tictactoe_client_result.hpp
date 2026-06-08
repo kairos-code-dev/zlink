@@ -22,8 +22,8 @@ struct tictactoe_client_run_result_t
     std::string play_endpoint;
     bool http_game_created = false;
     std::vector<tictactoe_client_call_result_t> requests;
-    std::size_t opponent_joined_notifications = 0;
-    std::size_t turn_changed_notifications = 0;
+    std::size_t player_joined_notifications = 0;
+    std::size_t game_state_notifications = 0;
     std::size_t game_ended_notifications = 0;
 };
 

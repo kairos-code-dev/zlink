@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include <array>
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
+#include <array>
 
 namespace zlink::samples::bingo
 {
@@ -98,8 +98,8 @@ struct bingo_player_state_t
     std::string display_name;
     int seat = 0;
     bool host = false;
-    std::array<int, 25> card{};
-    std::array<bool, 25> marks{};
+    std::vector<int> card;
+    std::vector<bool> marks;
     int completed_lines = 0;
 };
 
@@ -137,27 +137,16 @@ struct bingo_room_join_res_t
     bingo_room_state_t state;
 };
 
-struct start_bingo_game_req_t
+struct submit_bingo_card_req_t
 {
-    static constexpr const char *packet_name = "StartBingoGameReq";
+    static constexpr const char *packet_name = "SubmitBingoCardReq";
     std::string room_id;
+    std::vector<int> card;
 };
 
-struct start_bingo_game_res_t
+struct submit_bingo_card_res_t
 {
-    static constexpr const char *packet_name = "StartBingoGameRes";
-    bingo_room_state_t state;
-};
-
-struct leave_room_req_t
-{
-    static constexpr const char *packet_name = "LeaveRoomReq";
-    std::string room_id;
-};
-
-struct leave_room_res_t
-{
-    static constexpr const char *packet_name = "LeaveRoomRes";
+    static constexpr const char *packet_name = "SubmitBingoCardRes";
     bingo_room_state_t state;
 };
 
@@ -336,24 +325,15 @@ inline void from_json (const nlohmann::json &json, bingo_room_join_req_t &value)
     value.display_name = json.value ("displayName", "");
 }
 
-inline void to_json (nlohmann::json &json, const start_bingo_game_req_t &value)
+inline void to_json (nlohmann::json &json, const submit_bingo_card_req_t &value)
 {
-    json = {{"roomId", value.room_id}};
+    json = {{"roomId", value.room_id}, {"card", value.card}};
 }
 
-inline void from_json (const nlohmann::json &json, start_bingo_game_req_t &value)
+inline void from_json (const nlohmann::json &json, submit_bingo_card_req_t &value)
 {
     value.room_id = json.value ("roomId", "");
-}
-
-inline void to_json (nlohmann::json &json, const leave_room_req_t &value)
-{
-    json = {{"roomId", value.room_id}};
-}
-
-inline void from_json (const nlohmann::json &json, leave_room_req_t &value)
-{
-    value.room_id = json.value ("roomId", "");
+    value.card = json.value ("card", std::vector<int>{});
 }
 
 inline void to_json (nlohmann::json &json, const bingo_player_state_t &value)
@@ -373,8 +353,8 @@ inline void from_json (const nlohmann::json &json, bingo_player_state_t &value)
     value.display_name = json.value ("displayName", "");
     value.seat = json.value ("seat", 0);
     value.host = json.value ("host", false);
-    value.card = json.value ("card", std::array<int, 25>{});
-    value.marks = json.value ("marks", std::array<bool, 25>{});
+    value.card = json.value ("card", std::vector<int>{});
+    value.marks = json.value ("marks", std::vector<bool>{});
     value.completed_lines = json.value ("completedLines", 0);
 }
 
@@ -436,22 +416,12 @@ inline void from_json (const nlohmann::json &json, bingo_room_join_res_t &value)
     value.state = json.value ("state", bingo_room_state_t{});
 }
 
-inline void to_json (nlohmann::json &json, const start_bingo_game_res_t &value)
+inline void to_json (nlohmann::json &json, const submit_bingo_card_res_t &value)
 {
     json = {{"state", value.state}};
 }
 
-inline void from_json (const nlohmann::json &json, start_bingo_game_res_t &value)
-{
-    value.state = json.value ("state", bingo_room_state_t{});
-}
-
-inline void to_json (nlohmann::json &json, const leave_room_res_t &value)
-{
-    json = {{"state", value.state}};
-}
-
-inline void from_json (const nlohmann::json &json, leave_room_res_t &value)
+inline void from_json (const nlohmann::json &json, submit_bingo_card_res_t &value)
 {
     value.state = json.value ("state", bingo_room_state_t{});
 }

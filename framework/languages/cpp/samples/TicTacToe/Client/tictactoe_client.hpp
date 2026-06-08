@@ -28,15 +28,14 @@ class tictactoe_client_t
         bool http_ready = false;
         for (int attempt = 0; attempt < 100 && !http_ready; ++attempt) {
             auto ready = http_client.post ("/games")
-                           .body (create_match_req_t{run_options.x_actor_id})
-                           .submit<create_match_res_t> ()
+                           .body (create_game_req_t{run_options.x_actor_id})
+                           .submit<create_game_res_t> ()
                            .result ();
             http_ready = ready.has_value () && !ready.value ().body.play_endpoint.empty ();
             if (http_ready) {
-                run_options.game_name = ready.value ().body.match_id;
+                run_options.game_name = ready.value ().body.room_id;
                 run_options.play_endpoint = ready.value ().body.play_endpoint;
-                log << "client http POST /games completed=1 match=" << run_options.game_name
-                    << '\n';
+                log << "client http POST /games completed=1 room=" << run_options.game_name << '\n';
             } else {
                 std::this_thread::sleep_for (std::chrono::milliseconds (10));
             }
@@ -85,16 +84,16 @@ class tictactoe_client_t
 
         x.dispatch ();
         o.dispatch ();
-        result.opponent_joined_notifications =
-          x.notifications ().opponents.size () + o.notifications ().opponents.size ();
-        result.turn_changed_notifications =
-          x.notifications ().turns.size () + o.notifications ().turns.size ();
+        result.player_joined_notifications =
+          x.notifications ().players.size () + o.notifications ().players.size ();
+        result.game_state_notifications =
+          x.notifications ().states.size () + o.notifications ().states.size ();
         result.game_ended_notifications =
           x.notifications ().ended.size () + o.notifications ().ended.size ();
-        log << "client push " << opponent_joined_notify_t::packet_name
-            << " count=" << result.opponent_joined_notifications << '\n';
-        log << "client push " << turn_changed_notify_t::packet_name
-            << " count=" << result.turn_changed_notifications << '\n';
+        log << "client push " << player_joined_notify_t::packet_name
+            << " count=" << result.player_joined_notifications << '\n';
+        log << "client push " << game_state_notify_t::packet_name
+            << " count=" << result.game_state_notifications << '\n';
         log << "client push " << game_ended_notify_t::packet_name
             << " count=" << result.game_ended_notifications << '\n';
         log << "client game completed\n";

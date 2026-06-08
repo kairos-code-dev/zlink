@@ -8,9 +8,9 @@ int main ()
 
     bingo_client_options_t options;
     const auto result = bingo_client_app_t{}.run (options);
-    if (!result.connected || result.requests.size () != 9 || result.sends.size () != 1
+    if (!result.connected || result.requests.size () != 6 || !result.sends.empty ()
         || result.requests.front ().packet_name != "AuthenticateReq"
-        || result.sends.front ().packet_name != "LeaveRoomReq") {
+        || result.requests.back ().packet_name != "SubmitBingoCardReq") {
         return 1;
     }
     for (const auto &request : result.requests) {
@@ -22,5 +22,5 @@ int main ()
         || result.drawn_notifications == 0 || result.ended_notifications == 0) {
         return 4;
     }
-    return result.sends.front ().completed ? 0 : 3;
+    return 0;
 }

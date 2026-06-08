@@ -845,12 +845,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     zlink::stream_connector_codecs)
 
   add_zlink_framework_sample(
-    sample_cpp_framework_tictactoe_registry
-    samples/TicTacToe/Server/Registry/main.cpp
-    "framework-sample-tictactoe;framework-sample-registry"
-    zlink::framework
-    zlink::stream_connector)
-  add_zlink_framework_sample(
     sample_cpp_framework_tictactoe_api
     samples/TicTacToe/Server/Api/main.cpp
     "framework-sample-tictactoe;framework-sample-api"
@@ -860,12 +854,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     sample_cpp_framework_tictactoe_play
     samples/TicTacToe/Server/Play/main.cpp
     "framework-sample-tictactoe;framework-sample-play"
-    zlink::framework
-    zlink::stream_connector)
-  add_zlink_framework_sample(
-    sample_cpp_framework_tictactoe_session
-    samples/TicTacToe/Server/Session/main.cpp
-    "framework-sample-tictactoe;framework-sample-session"
     zlink::framework
     zlink::stream_connector)
   add_executable(sample_cpp_framework_tictactoe_client
@@ -893,12 +881,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       $<TARGET_FILE:sample_cpp_framework_bingo_client>
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo/bingo-server.log
-      "bind |monitor stream ready|monitor event stream_ready|recv AuthenticateReq|recv MatchBingoReq|recv StartBingoGameReq|recv LeaveRoomReq|reply AuthenticateReq|reply MatchBingoReq|push PlayerJoinedNotify|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
-      10
-      9
-      7
+      "bind |monitor stream ready|monitor event stream_ready|recv AuthenticateReq|recv MatchBingoReq|recv SubmitBingoCardReq|reply AuthenticateReq|reply MatchBingoReq|reply SubmitBingoCardReq|push BingoGameStartedNotify|push BingoNumberDrawnNotify|push BingoGameEndedNotify|actor relay player-1|disconnect client|shutdown server"
+      6
+      6
+      4
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/bingo/bingo-client.log
-      "client connected player-1|client request AuthenticateReq completed=1|client request MatchBingoReq completed=1|client request StartBingoGameReq completed=1|client send LeaveRoomReq completed=1|client push PlayerJoinedNotify count=|client push BingoGameStartedNotify count=|client push BingoNumberDrawnNotify count=|client push BingoGameEndedNotify count=|client game completed")
+      "client connected player-1|client request AuthenticateReq completed=1|client request MatchBingoReq completed=1|client request SubmitBingoCardReq completed=1|client push PlayerJoinedNotify count=|client push BingoGameStartedNotify count=|client push BingoNumberDrawnNotify count=|client push BingoGameEndedNotify count=|client game completed")
   set_tests_properties(
     sample_process_e2e_sample_cpp_framework_bingo_client
     PROPERTIES
@@ -907,20 +895,17 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
 
   add_test(
     NAME sample_process_e2e_sample_cpp_framework_tictactoe_client
-    COMMAND ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/run_sample_multi_process_e2e.sh
-      $<TARGET_FILE:sample_cpp_framework_tictactoe_registry>
-      $<TARGET_FILE:sample_cpp_framework_tictactoe_api>
-      $<TARGET_FILE:sample_cpp_framework_tictactoe_play>
-      $<TARGET_FILE:sample_cpp_framework_tictactoe_session>
+    COMMAND ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.E2ETests/Samples/run_sample_process_e2e.sh
+      $<TARGET_FILE:sample_cpp_framework_tictactoe_e2e_server>
       $<TARGET_FILE:sample_cpp_framework_tictactoe_client>
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe/tictactoe-server.log
-      "bind |monitor stream ready|monitor event stream_ready|http POST /games|recv CreateMatchReq|recv AuthenticateReq|recv JoinMatchReq|recv PlaceMarkReq|reply CreateMatchReq|reply AuthenticateReq|reply JoinMatchReq|reply PlaceMarkReq|push TurnChangedNotify|actor relay player-x|disconnect client|shutdown server"
-      10
-      10
+      "bind |monitor stream ready|monitor event stream_ready|http POST /games|recv AuthenticateReq|recv JoinGameReq|recv PlaceMarkReq|reply AuthenticateReq|reply JoinGameReq|reply PlaceMarkReq|push GameStateNotify|actor relay player-x|disconnect client|shutdown server"
+      9
+      9
       9
       ${CMAKE_CURRENT_BINARY_DIR}/sample-process-e2e-logs/tictactoe/tictactoe-client.log
-      "client http POST /games completed=1|client connected player-x completed=1|client connected player-o completed=1|client request AuthenticateReq completed=1|client request JoinMatchReq completed=1|client request PlaceMarkReq completed=1|client push TurnChangedNotify count=|client game completed")
+      "client http POST /games completed=1|client connected player-x completed=1|client connected player-o completed=1|client request AuthenticateReq completed=1|client request JoinGameReq completed=1|client request PlaceMarkReq completed=1|client push GameStateNotify count=|client game completed")
   set_tests_properties(
     sample_process_e2e_sample_cpp_framework_tictactoe_client
     PROPERTIES

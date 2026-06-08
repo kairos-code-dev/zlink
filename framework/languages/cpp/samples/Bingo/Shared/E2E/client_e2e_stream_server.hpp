@@ -22,7 +22,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
     log.flush ();
     int handled = 0;
     std::string buffer;
-    while (handled < 10) {
+    while (handled < 6) {
         zlink::received_t inbound;
         if (server.recv (inbound) != 0) {
             log << "recv failed index=" << handled << '\n';
@@ -33,7 +33,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
             log << "recv " << frame->name << '\n';
             if (frame->kind == zlink::stream_connector::message_kind_t::request) {
                 bingo_room_state_t state;
-                state.room_id = "room-1";
+                state.room_id = "two-player-room-1";
                 if (frame->name == authenticate_req_t::packet_name) {
                     zlink::samples::send_stream_reply (inbound, *frame,
                                                        authenticate_res_t{"player", "Player"});
@@ -42,20 +42,22 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
                     state.host_actor_id = "player-1";
                     state.can_start = true;
                     log << "actor relay " << state.host_actor_id << '\n';
-                    zlink::samples::send_stream_reply_and_push (
-                      inbound, *frame, match_bingo_res_t{state.room_id, state},
-                      player_joined_notify_t::packet_name,
-                      player_joined_notify_t{state.room_id, "player-1", "Player 1", 1, true,
-                                             state});
-                    log << "push " << player_joined_notify_t::packet_name << '\n';
-                } else if (frame->name == start_bingo_game_req_t::packet_name) {
-                    state.status = "playing";
-                    state.draw_seq = 2;
-                    state.last_drawn_number = 11;
+                    zlink::samples::send_stream_reply (inbound, *frame,
+                                                       match_bingo_res_t{state.room_id, state});
+                } else if (frame->name == submit_bingo_card_req_t::packet_name) {
+                    state.status = "running";
+                    state.draw_seq = 1;
+                    state.last_drawn_number = 1;
+                    state.drawn_numbers = {1};
+                    state.winners = {"player-1"};
                     zlink::samples::send_stream_frames (
                       inbound,
                       {zlink::samples::make_stream_reply_frame (
-                         *frame, zlink::message_t::from_json (start_bingo_game_res_t{state})),
+                         *frame, zlink::message_t::from_json (submit_bingo_card_res_t{state})),
+                       zlink::samples::make_stream_push_frame (
+                         player_joined_notify_t::packet_name,
+                         zlink::message_t::from_json (player_joined_notify_t{
+                           state.room_id, "player-2", "Player 2", 2, false, state})),
                        zlink::samples::make_stream_push_frame (
                          game_started_notify_t::packet_name,
                          zlink::message_t::from_json (game_started_notify_t{state})),
@@ -67,6 +69,7 @@ inline void run_client_e2e_stream_server (zlink::stream_socket_t &server,
                          game_ended_notify_t::packet_name,
                          zlink::message_t::from_json (game_ended_notify_t{state}))});
                     log << "push " << game_started_notify_t::packet_name << '\n';
+                    log << "push " << player_joined_notify_t::packet_name << '\n';
                     log << "push " << number_drawn_notify_t::packet_name << '\n';
                     log << "push " << game_ended_notify_t::packet_name << '\n';
                 } else {

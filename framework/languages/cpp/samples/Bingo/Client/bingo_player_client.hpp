@@ -11,6 +11,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace zlink::samples::bingo
 {
@@ -43,18 +44,13 @@ class bingo_player_client_t
 
     bingo_client_call_result_t match ()
     {
-        return request<match_bingo_res_t> (match_bingo_req_t{"four-player"});
+        return request<match_bingo_res_t> (match_bingo_req_t{"two-player"});
     }
 
-    bingo_client_call_result_t start (std::string room_id)
+    bingo_client_call_result_t submit_card (std::string room_id, std::vector<int> card)
     {
-        return request<start_bingo_game_res_t> (start_bingo_game_req_t{std::move (room_id)});
-    }
-
-    bingo_client_call_result_t leave (std::string room_id)
-    {
-        return zlink::samples::send_client_packet<bingo_client_call_result_t> (
-          _connector, leave_room_req_t{std::move (room_id)});
+        return request<submit_bingo_card_res_t> (
+          submit_bingo_card_req_t{std::move (room_id), std::move (card)});
     }
 
     void close () { zlink::samples::close_client_connector (_connector); }

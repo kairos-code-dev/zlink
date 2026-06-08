@@ -1,0 +1,83 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#pragma once
+
+#include "bingo_game.hpp"
+
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+#include <utility>
+
+namespace zlink::samples::bingo
+{
+
+class bingo_room_game_t
+{
+  public:
+    explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)}
+    {
+        _game.attach_players (&_state.players);
+    }
+
+    player_joined_notify_t join (std::string actor_id, std::string display_name)
+    {
+        if (_state.players.size () >= 2) {
+            throw std::runtime_error ("bingo room is full");
+        }
+        if (find_player (actor_id) != _state.players.end ()) {
+            return {_state.room_id, actor_id, display_name, 0, false, _state};
+        }
+
+        const bool host = _state.players.empty ();
+        const int seat = static_cast<int> (_state.players.size ()) + 1;
+        if (host) {
+            _state.host_actor_id = actor_id;
+        }
+        _state.players.push_back ({actor_id, display_name, seat, host, {}, {}, 0});
+        _state.can_start = _state.players.size () == 2;
+        if (_state.can_start) {
+            _state.status = "running";
+        }
+        return {_state.room_id, std::move (actor_id), std::move (display_name), seat, host, _state};
+    }
+
+    submit_bingo_card_res_t submit_card (const std::string &actor_id,
+                                         const std::vector<int> &numbers)
+    {
+        if (_state.status != "running") {
+            throw std::runtime_error ("bingo room is not running");
+        }
+        _game.submit_card (actor_id, numbers);
+        return {_state};
+    }
+
+    bool should_draw () const noexcept { return _game.all_cards_submitted (_state.players); }
+
+    std::optional<number_drawn_notify_t> draw_next () { return _game.draw_next (_state); }
+
+    bingo_room_state_t leave (const std::string &actor_id)
+    {
+        _state.players.erase (std::remove_if (_state.players.begin (), _state.players.end (),
+                                              [&] (const auto &player) {
+                                                  return player.actor_id == actor_id;
+                                              }),
+                              _state.players.end ());
+        _state.can_start = _state.players.size () == 2;
+        return _state;
+    }
+
+    const bingo_room_state_t &snapshot () const noexcept { return _state; }
+
+  private:
+    std::vector<bingo_player_state_t>::iterator find_player (const std::string &actor_id)
+    {
+        return std::find_if (_state.players.begin (), _state.players.end (), [&] (const auto &p) {
+            return p.actor_id == actor_id;
+        });
+    }
+
+    bingo_room_state_t _state;
+    bingo_game_t _game;
+};
+
+} // namespace zlink::samples::bingo

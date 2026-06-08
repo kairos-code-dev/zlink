@@ -1,4 +1,4 @@
-const { TicTacToeMatch } = require('../../Domain/TicTacToe/tictactoe-game-models');
+const { TicTacToeMatch } = require('../../Domain/TicTacToe/tictactoe-match');
 
 class TicTacToeGameDirectory {
   [key: string]: any;
@@ -10,7 +10,13 @@ class TicTacToeGameDirectory {
   create(gameName: string, playEndpoint: string): any {
     this.nextId += 1;
     const roomId = `${gameName}-${this.nextId}`;
-    const room = new TicTacToeMatch(roomId, gameName, playEndpoint);
+    const room = {
+      roomId,
+      gameName,
+      playEndpoint,
+      match: new TicTacToeMatch(roomId),
+      timerRegistered: false
+    };
     this.games.set(roomId, room);
     return room;
   }

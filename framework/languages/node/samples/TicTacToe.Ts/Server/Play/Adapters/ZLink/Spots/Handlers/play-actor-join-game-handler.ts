@@ -1,6 +1,7 @@
 const { Inject } = require('@nestjs/common');
 const {
   PacketNames,
+  gameStateNotify,
   joinGameRes,
   playerJoinedNotify
 } = require('../../../../../../Shared/Contracts/messages');
@@ -18,11 +19,11 @@ class PlayActorJoinGameHandler {
 
   handle(request: JoinGameInternalReq): JoinGameRes {
     const room = this.games.require(request.roomId);
-    const result = room.addPlayer(request.actor);
+    const result = room.match.joinPlayer(request.actor);
     (request.actor as any).roomId = room.roomId;
-    const state = room.state();
-    if (result.newlyJoined && room.players.size === 2) {
-      for (const player of room.players.values()) {
+    const state = result.state;
+    if (result.newlyJoined && room.match.players.size === 2) {
+      for (const player of room.match.players.values()) {
         if (player.actorId === result.joined.actorId) {
           continue;
         }
@@ -30,7 +31,7 @@ class PlayActorJoinGameHandler {
           PacketNames.playerJoinedNotify,
           playerJoinedNotify(room.roomId, result.joined.actorId, result.joined.mark, state)
         );
-        player.actor.push(PacketNames.gameStateNotify, state);
+        player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
       }
     }
     return joinGameRes(room.roomId, result.joined.actorId, result.joined.mark, state);

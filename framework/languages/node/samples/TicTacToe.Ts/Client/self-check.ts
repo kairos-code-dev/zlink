@@ -77,12 +77,12 @@ async function main(): Promise<void> {
       const oAuth = await requestJson(o, PacketNames.authenticateReq, authenticateReq('p2'));
       const xSelfJoined = waitForNoNotify(x, PacketNames.playerJoinedNotify);
       const xOpponentJoined = waitForNotify(x, PacketNames.playerJoinedNotify, (payload) => payload.actorId === 'p2');
-      const xRunningState = waitForNotify(x, PacketNames.gameStateNotify, (payload) => payload.status === 'Running');
+      const xRunningState = waitForNotify(x, PacketNames.gameStateNotify, (payload) => payload.state.status === 'InProgress');
       const xJoin = await requestJson(x, PacketNames.joinGameReq, joinGameReq(game.roomId));
       await xSelfJoined;
       const oJoin = await requestJson(o, PacketNames.joinGameReq, joinGameReq(game.roomId));
       await Promise.all([xOpponentJoined, xRunningState]);
-      const oFinalState = waitForNotify(o, PacketNames.gameStateNotify, (payload) => payload.winner === 'p1');
+      const oFinalState = waitForNotify(o, PacketNames.gameStateNotify, (payload) => payload.state.winner === 'p1');
       const moves = [
         await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(0)),
         await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(3)),
@@ -97,14 +97,14 @@ async function main(): Promise<void> {
       assert.deepEqual([xAuth.actorId, oAuth.actorId], ['p1', 'p2']);
       assert.deepEqual([xJoin.mark, oJoin.mark], ['X', 'O']);
       assert.equal(moves.at(-1).state.board, 'XXXOO....');
-      assert.equal(moves.at(-1).state.status, 'Finished');
+      assert.equal(moves.at(-1).state.status, 'Won');
       assert.equal(moves.at(-1).state.winner, 'p1');
       assert.equal(xJoin.state.status, 'WaitingForPlayers');
-      assert.equal(oJoin.state.status, 'Running');
+      assert.equal(oJoin.state.status, 'InProgress');
       assert.equal(x.notifications.filter((item) => item.packetName === PacketNames.playerJoinedNotify).length, 1);
       assert.equal(o.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), false);
       assert.equal(x.notifications.at(-1).packetName, PacketNames.gameStateNotify);
-      assert.equal(o.notifications.at(-1).payload.winner, 'p1');
+      assert.equal(o.notifications.at(-1).payload.state.winner, 'p1');
     } finally {
       await Promise.allSettled([x.close(), o.close()]);
     }

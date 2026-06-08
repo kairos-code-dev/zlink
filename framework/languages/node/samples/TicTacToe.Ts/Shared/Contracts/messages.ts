@@ -109,6 +109,10 @@ export interface GameState {
   lastMoveCell: number | null;
 }
 
+export interface GameStateNotify {
+  state: GameState;
+}
+
 export interface TicTacToeActor {
   actorId: string;
   displayName: string;
@@ -190,6 +194,10 @@ function playerJoinedNotify(roomId: string, actorId: string, mark: string, state
   return { roomId, actorId, mark, state };
 }
 
+function gameStateNotify(state: GameState): GameStateNotify {
+  return { state };
+}
+
 export {
   PacketNames,
   SampleNames,
@@ -202,6 +210,7 @@ export {
   createGameHttpRes,
   createGameReq,
   createJsonMessage,
+  gameStateNotify,
   joinGameInternalReq,
   joinGameReq,
   joinGameRes,

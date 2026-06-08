@@ -38,7 +38,8 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/create-game-http-handler.ts',
       'Server/Api/main.ts',
-      'Server/Play/Domain/TicTacToe/tictactoe-game-models.ts',
+      'Server/Play/Domain/TicTacToe/tictactoe-board.ts',
+      'Server/Play/Domain/TicTacToe/tictactoe-match.ts',
       'Server/Play/Application/GameCreation/tictactoe-game.ts',
       'Server/Play/Adapters/ZLink/Actors/play-actor.ts',
       'Server/Play/Adapters/ZLink/Actors/play-actor-factory.ts',
@@ -220,6 +221,44 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
     }
     if (content.includes('@ts-nocheck')) {
       violations.push(`${path.relative(samplesRoot, file)} disables TypeScript checking`);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
+  const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'README.ko.md'), 'utf8');
+  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const board = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-board.ts'), 'utf8');
+  const match = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-match.ts'), 'utf8');
+  const joinHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-join-game-handler.ts'), 'utf8');
+  const moveHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-place-mark-handler.ts'), 'utf8');
+  const required = [
+    [board, 'class TicTacToeBoard'],
+    [match, 'class TicTacToeMatch'],
+    [match, "this.status = 'InProgress'"],
+    [match, "this.status = 'Won'"],
+    [match, "this.status = 'TurnTimedOut'"],
+    [joinHandler, 'gameStateNotify(state)'],
+    [moveHandler, 'gameStateNotify(state)'],
+    [client, "payload.state.status === 'InProgress'"],
+    [client, "moves.at(-1).state.status, 'Won'"],
+    [readme, '`Won`']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const [content, text] of [
+    [match, "this.status = 'Running'"],
+    [match, "this.status = 'Finished'"],
+    [client, "status === 'Running'"],
+    [client, "status, 'Finished'"]
+  ]) {
+    if (content.includes(text)) {
+      violations.push(text);
     }
   }
 

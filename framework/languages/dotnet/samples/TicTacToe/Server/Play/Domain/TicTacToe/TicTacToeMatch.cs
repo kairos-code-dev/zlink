@@ -2,12 +2,20 @@ using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Server.Play.Domain.TicTacToe;
 
-internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
+internal sealed class TicTacToeMatch(string roomId, TimeSpan turnTimeout)
 {
+    private const string MarkX = "X";
+    private const string MarkO = "O";
+    private const string WaitingForPlayers = "WaitingForPlayers";
+    private const string InProgress = "InProgress";
+    private const string Won = "Won";
+    private const string Draw = "Draw";
+    private const string TurnTimedOut = "TurnTimedOut";
+
     private readonly Dictionary<string, string> _players = new(StringComparer.Ordinal);
-    private readonly char[] _board = Enumerable.Repeat('.', 9).ToArray();
-    private string _nextTurn = "X";
-    private string _status = "WaitingForPlayers";
+    private readonly TicTacToeBoard _board = new();
+    private string _nextTurn = MarkX;
+    private string _status = WaitingForPlayers;
     private string? _winner;
     private string? _lastMoveActorId;
     private int? _lastMoveCell;
@@ -22,15 +30,15 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
 
         var mark = _players.Count switch
         {
-            0 => "X",
-            1 => "O",
+            0 => MarkX,
+            1 => MarkO,
             _ => throw new InvalidOperationException("Tic-tac-toe game already has two players.")
         };
 
         _players.Add(actorId, mark);
-        if (_status == "WaitingForPlayers" && _players.Count == 2)
+        if (_status == WaitingForPlayers && _players.Count == 2)
         {
-            _status = "InProgress";
+            _status = InProgress;
             ResetTurnDeadline(now);
         }
 
@@ -44,7 +52,7 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
             throw new InvalidOperationException("Player has not joined this game.");
         }
 
-        if (_status != "InProgress")
+        if (_status != InProgress)
         {
             throw new InvalidOperationException($"Game is not in progress. status={_status}");
         }
@@ -54,17 +62,7 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
             throw new InvalidOperationException($"It is {_nextTurn}'s turn.");
         }
 
-        if ((uint)cell >= _board.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(cell), "Cell must be between 0 and 8.");
-        }
-
-        if (_board[cell] != '.')
-        {
-            throw new InvalidOperationException($"Cell {cell} is already occupied.");
-        }
-
-        _board[cell] = mark[0];
+        _board.Place(mark, cell);
         _lastMoveActorId = actorId;
         _lastMoveCell = cell;
         AdvanceAfterMove(actorId, mark, now);
@@ -73,7 +71,7 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
 
     public TicTacToeTickChange Tick(DateTimeOffset now)
     {
-        if (_status != "InProgress"
+        if (_status != InProgress
             || _turnDeadline is not { } deadline
             || now < deadline)
         {
@@ -83,7 +81,7 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
         var timedOut = _players.FirstOrDefault(player => player.Value == _nextTurn).Key;
         var winner = _players.FirstOrDefault(player => player.Value != _nextTurn).Key;
 
-        _status = "TurnTimedOut";
+        _status = TurnTimedOut;
         _winner = string.IsNullOrEmpty(winner) ? null : winner;
         _nextTurn = string.Empty;
         _lastMoveActorId = string.IsNullOrEmpty(timedOut) ? null : timedOut;
@@ -94,11 +92,11 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
 
     public GameState Snapshot()
     {
-        var x = _players.FirstOrDefault(static player => player.Value == "X").Key;
-        var o = _players.FirstOrDefault(static player => player.Value == "O").Key;
+        var x = _players.FirstOrDefault(static player => player.Value == MarkX).Key;
+        var o = _players.FirstOrDefault(static player => player.Value == MarkO).Key;
         return new GameState(
-            gameId,
-            new string(_board),
+            roomId,
+            _board.Snapshot(),
             _status,
             _winner,
             _nextTurn,
@@ -110,25 +108,25 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
 
     private void AdvanceAfterMove(string actorId, string mark, DateTimeOffset now)
     {
-        if (HasWon(mark[0]))
+        if (_board.HasWon(mark))
         {
-            _status = "Won";
+            _status = Won;
             _winner = actorId;
             _nextTurn = string.Empty;
             _turnDeadline = null;
             return;
         }
 
-        if (_board.All(static cell => cell != '.'))
+        if (_board.IsFull)
         {
-            _status = "Draw";
+            _status = Draw;
             _winner = null;
             _nextTurn = string.Empty;
             _turnDeadline = null;
             return;
         }
 
-        _nextTurn = mark == "X" ? "O" : "X";
+        _nextTurn = mark == MarkX ? MarkO : MarkX;
         ResetTurnDeadline(now);
     }
 
@@ -137,32 +135,6 @@ internal sealed class TicTacToeMatch(string gameId, TimeSpan turnTimeout)
         _turnDeadline = now.Add(turnTimeout);
     }
 
-    private bool HasWon(char mark)
-    {
-        ReadOnlySpan<int> lines =
-        [
-            0, 1, 2,
-            3, 4, 5,
-            6, 7, 8,
-            0, 3, 6,
-            1, 4, 7,
-            2, 5, 8,
-            0, 4, 8,
-            2, 4, 6
-        ];
-
-        for (var i = 0; i < lines.Length; i += 3)
-        {
-            if (_board[lines[i]] == mark
-                && _board[lines[i + 1]] == mark
-                && _board[lines[i + 2]] == mark)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
 
 internal sealed record TicTacToeJoinChange(

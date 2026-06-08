@@ -17,19 +17,19 @@ internal sealed class PlayActorPlaceMarkHandler(ILogger<PlayActorPlaceMarkHandle
         CancellationToken cancellationToken)
     {
         _ = context;
-        var gameId = actor.RequireJoinedGame();
+        var roomId = actor.RequireJoinedRoom();
         logger.LogInformation(
-            "actor: PlaceMarkReq received. actor={ActorId}, gameId={GameId}, cell={Cell}",
+            "actor: PlaceMarkReq received. actor={ActorId}, roomId={RoomId}, cell={Cell}",
             actor.ActorId,
-            gameId,
+            roomId,
             message.Cell);
 
         var reply = await spot.PlaceMarkAsync(actor, message.Cell, cancellationToken);
 
         logger.LogInformation(
-            "actor -> client: PlaceMarkRes returned. actor={ActorId}, gameId={GameId}, board={Board}, status={Status}",
+            "actor -> client: PlaceMarkRes returned. actor={ActorId}, roomId={RoomId}, board={Board}, status={Status}",
             actor.ActorId,
-            reply.State.GameId,
+            reply.State.RoomId,
             reply.State.Board,
             reply.State.Status);
         return reply;

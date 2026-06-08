@@ -1,5 +1,6 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
@@ -18,7 +19,8 @@ sealed class TicTacToeGame(
     private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(15);
 
     private readonly Dictionary<string, PlayActor> _actors = new(StringComparer.Ordinal);
-    private readonly TicTacToeMatch _match = new(context.SpotRid.ToHex(), TurnTimeout);
+    private readonly string _roomId = DecodeRoomId(context.SpotRid);
+    private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
     private IZLinkTimer? _gameTick;
 
     public IZLinkSpotContext Context { get; } = context;
@@ -34,9 +36,9 @@ sealed class TicTacToeGame(
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "game spot: actor joined. actor={ActorId}, gameId={GameId}",
+            "game spot: actor joined. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
-            Context.SpotRid.ToHex());
+            _roomId);
         return ValueTask.CompletedTask;
     }
 
@@ -46,9 +48,9 @@ sealed class TicTacToeGame(
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "game spot: actor left. actor={ActorId}, gameId={GameId}",
+            "game spot: actor left. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
-            Context.SpotRid.ToHex());
+            _roomId);
         return ValueTask.CompletedTask;
     }
 
@@ -58,11 +60,11 @@ sealed class TicTacToeGame(
         CancellationToken cancellationToken)
     {
         var joinRequest = request.Decode<TicTacToeGameJoinReq>();
-        var reply = await JoinPlayerAsync(player, joinRequest.GameId, cancellationToken);
+        var reply = await JoinPlayerAsync(player, joinRequest.RoomId, cancellationToken);
         logger.LogInformation(
-            "TicTacToeGame: actor join accepted. actor={ActorId}, gameId={GameId}, mark={Mark}",
+            "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
             player.ActorId,
-            joinRequest.GameId,
+            joinRequest.RoomId,
             reply.State.XActorId == player.ActorId ? "X" : "O");
 
         return ZLinkSpotActorJoinResult.Accept(reply.Encode());
@@ -74,8 +76,8 @@ sealed class TicTacToeGame(
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "game spot: created. gameId={GameId}, createPayloadBytes={CreatePayloadBytes}",
-            Context.SpotRid.ToHex(),
+            "game spot: created. roomId={RoomId}, createPayloadBytes={CreatePayloadBytes}",
+            _roomId,
             request.Size);
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
@@ -99,10 +101,10 @@ sealed class TicTacToeGame(
 
     public async ValueTask<TicTacToeGameJoinRes> JoinPlayerAsync(
         PlayActor actor,
-        string gameId,
+        string roomId,
         CancellationToken cancellationToken)
     {
-        actor.JoinGame(gameId);
+        actor.JoinRoom(roomId);
         _actors[actor.ActorId] = actor;
 
         var change = _match.JoinPlayer(actor.ActorId, DateTimeOffset.UtcNow);
@@ -159,7 +161,7 @@ sealed class TicTacToeGame(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var message = new PlayerJoinedNotify(
-            state.GameId,
+            state.RoomId,
             joinedActor.ActorId,
             mark,
             state);
@@ -180,5 +182,10 @@ sealed class TicTacToeGame(
         {
             await sendAsync(recipient);
         }
+    }
+
+    private static string DecodeRoomId(RoutingId spotRid)
+    {
+        return Encoding.UTF8.GetString(spotRid.ToBytes());
     }
 }

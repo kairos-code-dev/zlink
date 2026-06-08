@@ -26,6 +26,7 @@ public static class PlayServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddSingleton(topology);
         builder.Services.AddSingleton<BingoRoomAllocator>();
+        builder.Services.AddSingleton<BingoRoomEventMapper>();
         builder.Services.AddSingleton<BingoNotificationPublisher>();
 
         builder.Services.AddZLinkFramework(options =>

@@ -51,6 +51,7 @@ internal sealed class BingoClientApp
 
         // Joining another player is delivered as a push to existing room members.
         var client1SawClient2Join = await client1.WaitForAsync<PlayerJoinedNotify>(
+            message => message.Payload.ActorId == client2Auth.ActorId,
             SampleTimings.RequestTimeout,
             cancellationToken);
 
@@ -130,6 +131,16 @@ internal sealed class BingoClientApp
         Require(client1Result.Payload.State.Status == "Finished", "Client 1 must receive game result.");
         var client2Result = await client2ResultTask;
         Require(client2Result.Payload.State.Status == "Finished", "Client 2 must receive game result.");
+        Require(
+            client2Result.Payload.State.DrawnNumbers.SequenceEqual(client1Result.Payload.State.DrawnNumbers),
+            "Both clients must receive the same final drawn number sequence.");
+        Require(
+            client2Result.Payload.State.Winners.SequenceEqual(client1Result.Payload.State.Winners),
+            "Both clients must receive the same winners.");
+        Require(
+            client2Result.Payload.State.Players.Select(static player => player.ActorId)
+                .SequenceEqual(client1Result.Payload.State.Players.Select(static player => player.ActorId)),
+            "Both clients must receive the same player list.");
 
         Require(
             client1Result.Payload.State.DrawnNumbers.SequenceEqual(drawnNumbers.Select(static draw => draw.Number)),

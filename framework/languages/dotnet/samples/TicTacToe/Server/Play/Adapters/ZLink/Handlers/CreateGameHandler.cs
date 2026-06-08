@@ -22,8 +22,8 @@ sealed class CreateGameHandler(
 
         var created = await games.CreateAsync(request.GameName, cancellationToken);
         logger.LogInformation(
-            "play: TicTacToeGame spot created. gameId={GameId}, endpoint={Endpoint}",
-            created.GameId,
+            "play: TicTacToeGame spot created. roomId={RoomId}, endpoint={Endpoint}",
+            created.RoomId,
             created.PlayEndpoint);
         return created;
     }

@@ -11,26 +11,26 @@ internal sealed class PlayActor(
 
     public IZLinkActorContext Context { get; } = context;
 
-    public string GameId { get; private set; } = string.Empty;
+    public string RoomId { get; private set; } = string.Empty;
 
-    public void JoinGame(string gameId)
+    public void JoinRoom(string roomId)
     {
-        if (string.IsNullOrWhiteSpace(gameId))
+        if (string.IsNullOrWhiteSpace(roomId))
         {
-            throw new ArgumentException("Game id must not be empty.", nameof(gameId));
+            throw new ArgumentException("Room id must not be empty.", nameof(roomId));
         }
 
-        GameId = gameId;
+        RoomId = roomId;
     }
 
-    public string RequireJoinedGame()
+    public string RequireJoinedRoom()
     {
-        if (!Context.IsJoined || string.IsNullOrEmpty(GameId))
+        if (!Context.IsJoined || string.IsNullOrEmpty(RoomId))
         {
-            throw new InvalidOperationException("Actor has not joined a game.");
+            throw new InvalidOperationException("Actor has not joined a room.");
         }
 
-        return GameId;
+        return RoomId;
     }
 
 }

@@ -24,17 +24,17 @@ internal static class CreateGameHttpHandler
             .SubmitAsync<CreateGameRes>(cancellationToken);
 
         logger.LogInformation(
-            "play -> api: game created. gameId={GameId}, endpoint={Endpoint}, game={GameName}",
-            reply.GameId,
+            "play -> api: game created. roomId={RoomId}, endpoint={Endpoint}, game={GameName}",
+            reply.RoomId,
             reply.PlayEndpoint,
             reply.GameName);
         logger.LogInformation(
-            "api -> client: returning game info. gameId={GameId}, endpoint={Endpoint}",
-            reply.GameId,
+            "api -> client: returning game info. roomId={RoomId}, endpoint={Endpoint}",
+            reply.RoomId,
             reply.PlayEndpoint);
 
         return Results.Ok(new CreateGameHttpRes(
-            reply.GameId,
+            reply.RoomId,
             reply.PlayEndpoint,
             reply.GameName));
     }

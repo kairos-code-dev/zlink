@@ -13,6 +13,7 @@ namespace Bingo.Server.Play.Adapters.ZLink.Spots;
 
 internal sealed class BingoRoom(
     IZLinkSpotContext context,
+    BingoRoomEventMapper eventMapper,
     BingoNotificationPublisher notifications,
     ILogger<BingoRoom> logger) : IZLinkSpot<PlayerActor>
 {
@@ -165,7 +166,7 @@ internal sealed class BingoRoom(
             return;
         }
 
-        await notifications.PublishAsync(ToRoomEvents(change.Events), cancellationToken);
+        await notifications.PublishAsync(eventMapper.Map(change.Events, _actors), cancellationToken);
     }
 
     public void ApplySettings(BingoRoomSettings settings)
@@ -181,27 +182,4 @@ internal sealed class BingoRoom(
         }
     }
 
-    private IReadOnlyList<BingoRoomEvent> ToRoomEvents(
-        IReadOnlyList<BingoGameEvent> events)
-    {
-        return events.Select(ToRoomEvent).ToArray();
-    }
-
-    private BingoRoomEvent ToRoomEvent(BingoGameEvent gameEvent)
-    {
-        if (!_actors.TryGetValue(gameEvent.RecipientActorId, out var recipient))
-        {
-            throw new InvalidOperationException($"Recipient actor '{gameEvent.RecipientActorId}' is not joined.");
-        }
-
-        return new BingoRoomEvent(
-            gameEvent.Kind,
-            recipient,
-            gameEvent.State,
-            gameEvent.JoinedActorId,
-            gameEvent.JoinedDisplayName,
-            gameEvent.Seat,
-            gameEvent.IsHost,
-            gameEvent.DrawnNumber);
-    }
 }

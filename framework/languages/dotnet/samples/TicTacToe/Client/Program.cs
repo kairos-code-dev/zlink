@@ -1,5 +1,6 @@
-
 using System.Net.Http.Json;
+using Systems.Zlink.Stream.Connector;
+using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Client;
@@ -20,14 +21,14 @@ internal static class Program
             new CreateGameHttpReq(options.GameName));
         createGameResponse.EnsureSuccessStatusCode();
 
-        var game = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>()
-                   ?? throw new InvalidOperationException("API returned an empty game response.");
+        var room = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>()
+                   ?? throw new InvalidOperationException("API returned an empty room response.");
         
-        await using var client1 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
-        await using var client2 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
+        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
+        await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
 
         await new TicTacToeClientApp().RunAsync(
-            game,
+            room,
             client1,
             client2,
             options);
@@ -68,5 +69,39 @@ internal static class TicTacToeClientArguments
         }
 
         return args[index + 1];
+    }
+}
+
+public sealed record TicTacToeClientOptions(
+    Uri ApiUrl,
+    string GameName,
+    string XActorId,
+    string OActorId,
+    TimeSpan HttpTimeout,
+    TimeSpan StreamTimeout)
+{
+    public static TicTacToeClientOptions CreateDefault()
+        => new(
+            new Uri("http://127.0.0.1:18080"),
+            "tictactoe-game",
+            "player-x",
+            "player-o",
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(5));
+}
+
+public static class TicTacToeClientConnections
+{
+    public static IZlinkStreamConnector CreateStreamClient(
+        string streamEndpoint,
+        TicTacToeClientOptions options)
+    {
+        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(streamEndpoint),
+            ConnectTimeout = options.StreamTimeout,
+            RequestTimeout = options.StreamTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        });
     }
 }

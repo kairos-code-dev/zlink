@@ -1,6 +1,7 @@
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 using TicTacToe.Shared.Contracts;
+using Systems.Zlink;
 using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Application.GameCreation;
@@ -13,14 +14,17 @@ internal sealed class TicTacToeGameCreator(
         string gameName,
         CancellationToken cancellationToken)
     {
-        var created = await spots.CreateAsync<TicTacToeGame>(cancellationToken);
+        var roomId = $"room-{Guid.NewGuid():N}";
+        var created = await spots.GetOrCreateAsync<TicTacToeGame>(
+            RoutingId.From(roomId),
+            cancellationToken);
         if (created.State != ZLinkSpotCreateState.Created)
         {
             throw new InvalidOperationException("TicTacToe game spot creation was rejected.");
         }
 
         return new CreateGameRes(
-            created.SpotRid.ToHex(),
+            roomId,
             settings.PlayEndpoint,
             gameName);
     }

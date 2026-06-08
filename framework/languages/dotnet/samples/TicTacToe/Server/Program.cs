@@ -1,25 +1,9 @@
-using Systems.Zlink.Codecs.Json;
 using System.Net.Http.Json;
-using Microsoft.Extensions.Logging;
+using TicTacToe.Client;
 using TicTacToe.Server.Api;
-using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play;
 using TicTacToe.Shared.Contracts;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
-using Zlink.Framework.Runtime.Actors;
-using Zlink.Framework.Runtime.Diagnostics;
-using Zlink.Framework.Runtime.Execution;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Messaging;
-using Zlink.Framework.Runtime.Registry;
-using TicTacToe.Client;
 
 namespace TicTacToe.Server;
 
@@ -96,13 +80,13 @@ internal static class Program
             cancellationToken);
         createGameResponse.EnsureSuccessStatusCode();
 
-        var game = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>(cancellationToken)
-                   ?? throw new InvalidOperationException("API returned an empty game response.");
-        await using var client1 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
-        await using var client2 = TicTacToeClientConnections.CreateStreamClient(game.PlayEndpoint, options);
+        var room = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>(cancellationToken)
+                   ?? throw new InvalidOperationException("API returned an empty room response.");
+        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
+        await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
 
         await new TicTacToeClientApp().RunAsync(
-            game,
+            room,
             client1,
             client2,
             options,

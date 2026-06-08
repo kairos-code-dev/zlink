@@ -1,4 +1,3 @@
-using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
 using TicTacToe.Shared.Contracts;
@@ -8,17 +7,17 @@ namespace TicTacToe.Client;
 public sealed class TicTacToeClientApp
 {
     public async ValueTask RunAsync(
-        CreateGameHttpRes game,
+        CreateGameHttpRes room,
         IZlinkStreamConnector client1,
         IZlinkStreamConnector client2,
         TicTacToeClientOptions options,
         CancellationToken cancellationToken = default)
     {
-        Require(!string.IsNullOrWhiteSpace(game.GameId), "API must return a game id.");
-        Require(!string.IsNullOrWhiteSpace(game.PlayEndpoint), "API must return the Play stream endpoint.");
-        Require(game.GameName == options.GameName, "API must echo the requested game name.");
+        Require(!string.IsNullOrWhiteSpace(room.RoomId), "API must return a room id.");
+        Require(!string.IsNullOrWhiteSpace(room.PlayEndpoint), "API must return the Play stream endpoint.");
+        Require(room.GameName == options.GameName, "API must echo the requested game name.");
 
-        // Client 1 connects, authenticates as player X, and joins the empty game.
+        // Client 1 connects, authenticates as player X, and joins the empty room.
         await client1.ConnectAsync(cancellationToken);
 
         var client1Authentication = await client1
@@ -28,17 +27,17 @@ public sealed class TicTacToeClientApp
         Require(client1Authentication.ActorId == options.XActorId, "Client 1 must authenticate as player X.");
 
         var client1Join = await client1
-            .Request(new JoinGameReq(game.GameId))
+            .Request(new JoinGameReq(room.RoomId))
             .Timeout(options.StreamTimeout)
             .SubmitAsync<JoinGameRes>(cancellationToken);
-        Require(client1Join.State.GameId == game.GameId, "Client 1 must join the created game.");
+        Require(client1Join.State.RoomId == room.RoomId, "Client 1 must join the created room.");
         Require(client1Join.State.Status == "WaitingForPlayers", "Client 1 must wait for the second player.");
         Require(client1Join.State.XActorId == options.XActorId, "Client 1 must receive mark X.");
         Require(
             client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0,
             "Client 1 must not receive a self-join notification.");
 
-        // Client 2 connects, authenticates as player O, and joins the same game.
+        // Client 2 connects, authenticates as player O, and joins the same room.
         await client2.ConnectAsync(cancellationToken);
 
         var client2Authentication = await client2
@@ -51,10 +50,10 @@ public sealed class TicTacToeClientApp
             "Clients must authenticate as distinct actors.");
 
         var client2Join = await client2
-            .Request(new JoinGameReq(game.GameId))
+            .Request(new JoinGameReq(room.RoomId))
             .Timeout(options.StreamTimeout)
             .SubmitAsync<JoinGameRes>(cancellationToken);
-        Require(client2Join.State.GameId == game.GameId, "Client 2 must join the same game.");
+        Require(client2Join.State.RoomId == room.RoomId, "Client 2 must join the same room.");
         Require(client2Join.State.Status == "InProgress", "Joining client 2 must start the game.");
         Require(client2Join.State.OActorId == options.OActorId, "Client 2 must receive mark O.");
 
@@ -168,39 +167,5 @@ public sealed class TicTacToeClientApp
         {
             throw new InvalidOperationException(message);
         }
-    }
-}
-
-public sealed record TicTacToeClientOptions(
-    Uri ApiUrl,
-    string GameName,
-    string XActorId,
-    string OActorId,
-    TimeSpan HttpTimeout,
-    TimeSpan StreamTimeout)
-{
-    public static TicTacToeClientOptions CreateDefault()
-        => new(
-            new Uri("http://127.0.0.1:18080"),
-            "tictactoe-game",
-            "player-x",
-            "player-o",
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(5));
-}
-
-public static class TicTacToeClientConnections
-{
-    public static IZlinkStreamConnector CreateStreamClient(
-        string streamEndpoint,
-        TicTacToeClientOptions options)
-    {
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(streamEndpoint),
-            ConnectTimeout = options.StreamTimeout,
-            RequestTimeout = options.StreamTimeout,
-            DispatchMode = ZlinkStreamDispatchMode.Immediate,
-        });
     }
 }

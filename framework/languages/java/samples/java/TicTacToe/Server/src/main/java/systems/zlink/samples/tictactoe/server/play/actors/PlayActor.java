@@ -6,7 +6,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 public final class PlayActor implements ZLinkActor {
     private final String actorId;
     private final ZLinkActorContext context;
-    private String joinedGameId;
+    private String joinedRoomId;
 
     public PlayActor(String actorId, ZLinkActorContext context) {
         this.actorId = actorId;
@@ -23,14 +23,14 @@ public final class PlayActor implements ZLinkActor {
         return context;
     }
 
-    public void joinGame(String gameId) {
-        this.joinedGameId = gameId;
+    public void joinGame(String roomId) {
+        this.joinedRoomId = roomId;
     }
 
     public String requireJoinedGame() {
-        if (joinedGameId == null || joinedGameId.isEmpty()) {
-            throw new IllegalStateException("actor has not joined a game");
+        if (joinedRoomId == null || joinedRoomId.isEmpty()) {
+            throw new IllegalStateException("actor has not joined a room");
         }
-        return joinedGameId;
+        return joinedRoomId;
     }
 }

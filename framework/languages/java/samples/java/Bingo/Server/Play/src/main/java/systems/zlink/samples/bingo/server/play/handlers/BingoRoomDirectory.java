@@ -8,8 +8,8 @@ import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomModels;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 
 public final class BingoRoomDirectory {
     private final ZLinkSpotManager spots;
@@ -33,7 +33,7 @@ public final class BingoRoomDirectory {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new IllegalStateException("actorId is required"));
         }
-        if (!"four-player".equals(mode)) {
+        if (!"standard".equals(mode)) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new IllegalStateException("Unsupported bingo mode. mode=" + mode));
         }
@@ -52,7 +52,7 @@ public final class BingoRoomDirectory {
                     || !currentRoomSettings.mode().equals(settings.mode())
                     || reservedSeats >= currentRoomSettings.requiredPlayers()) {
                     settings = BingoRoomModels.BingoRoomSettings.create(mode, ++roomSeq);
-                    currentRoomId = RoutingId.from("bingo-room-%03d".formatted(roomSeq)).toHex();
+                    currentRoomId = "bingo-room-%03d".formatted(roomSeq);
                     currentRoomSettings = settings;
                     reservedSeats = 0;
                 }
@@ -63,7 +63,7 @@ public final class BingoRoomDirectory {
         }
 
         Message settingsPart = serialize(settings);
-        return spots.getOrCreateAsync(BingoRoomSpot.class, RoutingId.fromHex(roomId), settingsPart)
+        return spots.getOrCreateAsync(BingoRoomSpot.class, RoutingId.from(roomId), settingsPart)
             .thenApply(ignored -> roomId)
             .whenComplete((ignored, error) -> settingsPart.close());
     }

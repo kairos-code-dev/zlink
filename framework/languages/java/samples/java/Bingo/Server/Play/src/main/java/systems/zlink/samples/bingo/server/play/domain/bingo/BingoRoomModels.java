@@ -1,6 +1,6 @@
-package systems.zlink.samples.bingo.server.play.bingoroomspots;
+package systems.zlink.samples.bingo.server.play.domain.bingo;
 
-import systems.zlink.samples.bingo.server.play.actors.PlayerActor;
+import java.util.List;
 import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
@@ -18,7 +18,7 @@ public final class BingoRoomModels {
 
     public record RoomEvent(
         EventKind kind,
-        PlayerActor recipient,
+        String recipientActorId,
         Messages.BingoRoomState state,
         String joinedActorId,
         String joinedDisplayName,
@@ -27,16 +27,20 @@ public final class BingoRoomModels {
         int drawnNumber) {
     }
 
-    public record RoomPlayer(PlayerActor actor, int seat, BingoCard card) {
+    public record RoomPlayer(
+        String actorId,
+        String displayName,
+        int seat,
+        BingoCard card) {
         public Messages.BingoPlayerState toState(String hostActorId) {
             return new Messages.BingoPlayerState(
-                actor.actorId(),
-                actor.displayName(),
+                actorId,
+                displayName,
                 seat,
-                actor.actorId().equals(hostActorId),
-                card.numbersSnapshot(),
-                card.marksSnapshot(),
-                card.completedLines());
+                actorId.equals(hostActorId),
+                card == null ? List.of() : card.numbersSnapshot(),
+                card == null ? List.of() : card.marksSnapshot(),
+                card == null ? 0 : card.completedLines());
         }
     }
 
@@ -47,14 +51,14 @@ public final class BingoRoomModels {
         int maxDrawNumber,
         long drawPeriodMillis) {
         public static BingoRoomSettings create(String mode, int roomSeq) {
-            if (!"four-player".equals(mode)) {
+            if (!"standard".equals(mode)) {
                 throw new IllegalStateException("Unsupported bingo mode. mode=" + mode);
             }
             return new BingoRoomSettings(
                 "Bingo Room %03d".formatted(roomSeq),
                 mode,
-                4,
-                75,
+                2,
+                15,
                 SampleTimings.DrawPeriod.toMillis());
         }
     }

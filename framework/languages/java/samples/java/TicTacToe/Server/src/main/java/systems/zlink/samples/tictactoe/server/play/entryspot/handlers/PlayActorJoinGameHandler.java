@@ -24,11 +24,11 @@ public final class PlayActorJoinGameHandler {
         JoinGameReq request,
         CancellationToken cancellationToken) {
         return actor.context()
-            .joinSpot(RoutingId.fromHex(request.gameId()),
-                new TicTacToeGameJoinReq(request.gameId(), actor.actorId()))
+            .joinSpot(RoutingId.from(request.roomId()),
+                new TicTacToeGameJoinReq(request.roomId(), actor.actorId()))
             .submitAsync(TicTacToeGameJoinRes.class)
             .thenApply(result -> {
-                actor.joinGame(request.gameId());
+                actor.joinGame(request.roomId());
                 return new JoinGameRes(result.reply().state());
             });
     }

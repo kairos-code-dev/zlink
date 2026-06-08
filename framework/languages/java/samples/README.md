@@ -38,15 +38,19 @@ TicTacToe/
   client/
   server/api/handlers/
   server/configuration/
+  server/play/application/gamecreation/
   server/play/actors/
+  server/play/domain/tictactoe/
   server/play/entryspot/handlers/
   server/play/gamespots/handlers/
   server/play/sessions/
+  server/play/sessions/handlers/
   shared/contracts/
 
 Bingo/
   client/
   server/api/handlers/
+  server/play/domain/bingo/
   server/play/actors/
   server/play/bingoroomspots/handlers/
   server/play/entryspot/handlers/
@@ -56,6 +60,9 @@ Bingo/
   shared/configuration/
   shared/contracts/
 ```
+
+Java TicTacToe keeps only the common direct API/Play sample. Session gateway and
+reconnect variants are not maintained as separate Java TicTacToe samples.
 
 Run all required samples:
 

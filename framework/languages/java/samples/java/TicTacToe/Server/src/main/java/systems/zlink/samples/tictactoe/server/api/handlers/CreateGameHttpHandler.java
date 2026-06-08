@@ -25,9 +25,9 @@ public final class CreateGameHttpHandler {
                     SampleNames.PlayChannel,
                     new CreateGameReq(gameName(request)))
                 .timeout(SampleNames.RequestTimeout)
-                .submitAsync(CreateGameRes.class)
-                .thenApply(game -> new CreateGameHttpRes(
-                game.gameId(),
+            .submitAsync(CreateGameRes.class)
+            .thenApply(game -> new CreateGameHttpRes(
+                game.roomId(),
                 game.playEndpoint(),
                 game.gameName()));
     }

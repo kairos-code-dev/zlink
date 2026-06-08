@@ -385,8 +385,12 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains(".resolve(\"/games\")")
                 && !clientSource.contains(".requestToChannel("),
             "TicTacToe direct client must create games through the HTTP API path");
-        assertTrue(playSessionSource.contains("new AuthenticatePlayerReq(request.accessToken())")
-                && playSessionSource.contains(".submitAsync(AuthenticatePlayerRes.class)")
+        String playAuthHandlerSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/sessions/handlers/AuthenticatePlaySessionHandler.java");
+        assertTrue(playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
+                && playAuthHandlerSource.contains(".submitAsync(AuthenticatePlayerRes.class)")
                 && authHandlerSource.contains("CompletionStage<AuthenticatePlayerRes>")
                 && authHandlerSource.contains("AuthenticatePlayerReq request"),
             "TicTacToe direct Play session AuthenticatePlayer path must use typed request and response contracts");
@@ -407,7 +411,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe Client role must use the public stream connector for play requests");
         assertTrue(clientSource.contains("ZLinkStreamJson.request")
                 && clientSource.contains("new AuthenticateReq(options.xActorId())")
-                && clientSource.contains("new JoinGameReq(game.gameId())")
+                && clientSource.contains("new JoinGameReq(game.roomId())")
                 && clientSource.contains("new PlaceMarkReq(3)")
                 && clientSource.contains("new PlaceMarkReq(4)")
                 && clientSource.contains("new PlaceMarkReq(2)")
@@ -422,7 +426,8 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("ZLinkStreamJson.on(host, PlayerJoinedNotify.class")
                 && clientSource.contains("ZLinkStreamJson.on(guest, PlayerJoinedNotify.class")
                 && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
-                && clientSource.contains("CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)")
+                && clientSource.contains("hostSawGuestJoin.orTimeout")
+                && clientSource.contains("guestSawHostMove.orTimeout")
                 && clientResultSource.contains("List<GameStateNotify>")
                 && clientResultSource.contains("List<PlayerJoinedNotify>")
                 && clientResultSource.contains("finalState()")
@@ -442,7 +447,7 @@ final class SampleReleaseGateContractTest {
                 && !apiSource.contains("addRequestHandler"),
             "TicTacToe direct sample must expose the Api server role through annotation-discovered handlers");
         assertTrue(authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
-                && authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayer\")")
+                && authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
                 && createGameHandlerSource.contains("@RequestBody")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),
@@ -465,7 +470,8 @@ final class SampleReleaseGateContractTest {
                 && playCreateGameHandlerSource.contains("SampleSettings settings")
                 && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayChannel)")
                 && playCreateGameHandlerSource.contains("CreateGameReq request")
-                && playCreateGameHandlerSource.contains("spots.getObject().createAsync(TicTacToeGame.class)")
+                && playCreateGameHandlerSource.contains("gameCreator.nextRoom(request.gameName())")
+                && playCreateGameHandlerSource.contains("RoutingId.from(room.roomId())")
                 && playCreateGameHandlerSource.contains("new CreateGameRes(")
                 && !playCreateGameHandlerSource.contains("SampleSettings.current()"),
             "TicTacToe Play CreateGame handler must be created by Spring DI, create a Spot, and reply with typed contracts");
@@ -493,16 +499,20 @@ final class SampleReleaseGateContractTest {
             "TicTacToe",
             "Server/src/main/java",
             "systems/zlink/samples/tictactoe/server/play/gamespots/handlers/TicTacToeGameTimerHandler.java");
-        assertTrue(playSessionSource.contains("ZLinkStreamJson.decode")
-                && playSessionSource.contains("new AuthenticatePlayerReq(request.accessToken())")
-                && playSessionSource.contains("actorId = authenticated.actorId()")
-                && playSessionSource.contains("context.actors()::bindAsync")
-                && playSessionSource.contains("requireActor().relayAsync(header, payload)")
+        String matchDomainSource = sampleJavaSource(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/domain/tictactoe/TicTacToeMatch.java");
+        assertTrue(playAuthHandlerSource.contains("ZLinkStreamJson.decode")
+                && playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
+                && playAuthHandlerSource.contains("context.actors()::bindAsync")
+                && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
+                && playSessionSource.contains("requireActor(header.packetName()).relayAsync(header, payload)")
                 && !playSessionSource.contains("joinEntrySpot(")
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"\\\\|\")"),
             "TicTacToe Play stream session must authenticate through the Api role and relay actor packets");
-        assertTrue(gameJoinReqSource.contains("String gameId")
+        assertTrue(gameJoinReqSource.contains("String roomId")
                 && gameJoinReqSource.contains("String actorId")
                 && gameJoinResSource.contains("GameState state"),
             "TicTacToe direct sample must split client JoinGame contracts from Spot join contracts");
@@ -531,8 +541,8 @@ final class SampleReleaseGateContractTest {
                 && gameSpotSource.contains("TicTacToeGameTimerHandler.class")
                 && gameSpotSource.contains("onClosingAsync()")
                 && gameSpotSource.contains("gameTick.cancelAsync()")
-                && gameSpotSource.contains("TurnTimedOut")
-                && gameSpotSource.contains("resetTurnDeadline()")
+                && matchDomainSource.contains("TurnTimedOut")
+                && matchDomainSource.contains("resetTurnDeadline(")
                 && gameSpotSource.contains("tickAsync()")
                 && gameSpotSource.contains("onCreateAsync(Message request)")
                 && gameSpotSource.contains("markCreated(Message request)")
@@ -549,12 +559,12 @@ final class SampleReleaseGateContractTest {
                 && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
                 && !entrySpotSource.contains("onActorJoinAsync"),
             "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
-        assertTrue(playActorJoinHandlerSource.contains("request.gameId()"),
-            "TicTacToe join handler must store the requested game id");
+        assertTrue(playActorJoinHandlerSource.contains("request.roomId()"),
+            "TicTacToe join handler must store the requested room id");
         assertTrue(playPlaceMarkHandlerSource.contains("actor.requireJoinedGame()"),
             "TicTacToe place handler must require actor join state");
-        assertTrue(playActorSource.contains("joinedGameId"),
-            "TicTacToe PlayActor must own joined game state");
+        assertTrue(playActorSource.contains("joinedRoomId"),
+            "TicTacToe PlayActor must own joined room state");
         assertTrue(playActorSource.contains("joinGame"),
             "TicTacToe PlayActor must expose joinGame state transition");
         assertTrue(playActorSource.contains("requireJoinedGame"),
@@ -928,13 +938,15 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/play/PlayServerApplication.java",
             "systems/zlink/samples/bingo/server/play/actors/PlayerActor.java",
             "systems/zlink/samples/bingo/server/play/actors/PlayerActorFactory.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoCard.java",
+            "systems/zlink/samples/bingo/server/play/domain/bingo/BingoCard.java",
+            "systems/zlink/samples/bingo/server/play/domain/bingo/BingoGame.java",
+            "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomGame.java",
+            "systems/zlink/samples/bingo/server/play/domain/bingo/BingoRoomModels.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoNotificationPublisher.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomModels.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/BingoRoomSpot.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomSpotCreatedHandler.java",
             "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/BingoRoomTimerHandler.java",
-            "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/StartBingoGameHandler.java",
+            "systems/zlink/samples/bingo/server/play/bingoroomspots/handlers/SubmitBingoCardHandler.java",
             "systems/zlink/samples/bingo/server/play/entryspot/BingoEntrySpot.java",
             "systems/zlink/samples/bingo/server/play/entryspot/handlers/MatchBingoActorHandler.java",
             "systems/zlink/samples/bingo/server/play/handlers/AllocateBingoRoomHandler.java",
@@ -1018,16 +1030,16 @@ final class SampleReleaseGateContractTest {
         assertTrue(rootBuildSource.contains("plugins {\n    base\n}")
                 && !rootBuildSource.contains("application"),
             "Bingo root project must not expose an aggregate in-process runner");
-        assertTrue(clientProgramSource.contains("new BingoClientOptions(4)"),
-            "Bingo sample must create four connector clients");
+        assertTrue(clientProgramSource.contains("new BingoClientOptions(2)"),
+            "Bingo sample must create two connector clients");
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "Bingo sample must use connector public factory");
         assertTrue(clientSource.contains("ZLinkStreamDispatchMode.MANUAL"),
             "Bingo sample must verify manual dispatch connector path");
-        assertTrue(clientProgramSource.contains("List.of(7, 11, 42, 42)"),
-            "Bingo sample must use deterministic draw sequence");
-        assertTrue(roomSource.contains("\"player-2\", \"player-3\""),
-            "Bingo sample must verify same-sequence winners");
+        assertTrue(clientSource.contains("SubmitBingoCardReq")
+                && roomSource.contains("submitCardAsync")
+                && roomSource.contains("game.drawNext()"),
+            "Bingo sample must submit cards and let the server timer draw numbers");
         assertTrue(clientSource.contains("BingoWinner")
                 && !clientSource.contains("server.play")
                 && !publisherSource.contains("BingoWinnerSink"),

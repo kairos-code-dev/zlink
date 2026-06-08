@@ -5,7 +5,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
@@ -78,17 +77,32 @@ public final class TicTacToeClient {
         ZLinkStreamConnector guest = playerConnector(game.playEndpoint());
         Queue<GameStateNotify> stateNotifications = new ConcurrentLinkedQueue<>();
         Queue<PlayerJoinedNotify> playerJoinedNotifications = new ConcurrentLinkedQueue<>();
+        CompletableFuture<PlayerJoinedNotify> hostSawGuestJoin = new CompletableFuture<>();
+        CompletableFuture<GameStateNotify> guestSawHostMove = new CompletableFuture<>();
+        CompletableFuture<GameStateNotify> hostSawGuestMove = new CompletableFuture<>();
         List<AutoCloseable> handlers = new ArrayList<>();
         handlers.add(ZLinkStreamJson.on(host, GameStateNotify.class, message -> {
-            stateNotifications.add(message.payload());
+            GameStateNotify notify = message.payload();
+            stateNotifications.add(notify);
+            if (options.oActorId().equals(notify.state().lastMoveActorId())) {
+                hostSawGuestMove.complete(notify);
+            }
             return CompletableFuture.completedFuture(null);
         }));
         handlers.add(ZLinkStreamJson.on(guest, GameStateNotify.class, message -> {
-            stateNotifications.add(message.payload());
+            GameStateNotify notify = message.payload();
+            stateNotifications.add(notify);
+            if (options.xActorId().equals(notify.state().lastMoveActorId())) {
+                guestSawHostMove.complete(notify);
+            }
             return CompletableFuture.completedFuture(null);
         }));
         handlers.add(ZLinkStreamJson.on(host, PlayerJoinedNotify.class, message -> {
-            playerJoinedNotifications.add(message.payload());
+            PlayerJoinedNotify notify = message.payload();
+            playerJoinedNotifications.add(notify);
+            if (options.oActorId().equals(notify.actorId())) {
+                hostSawGuestJoin.complete(notify);
+            }
             return CompletableFuture.completedFuture(null);
         }));
         handlers.add(ZLinkStreamJson.on(guest, PlayerJoinedNotify.class, message -> {
@@ -124,26 +138,47 @@ public final class TicTacToeClient {
                 }))
             .thenCompose(ignored -> requestStep(
                 "host JoinGameReq",
-                request(host, new JoinGameReq(game.gameId()), JoinGameRes.class))
+                request(host, new JoinGameReq(game.roomId()), JoinGameRes.class))
                 .thenApply(reply -> {
+                    require(reply.state().roomId().equals(game.roomId()), "host joined unexpected room");
+                    require("WaitingForPlayers".equals(reply.state().status()), "first join must wait");
                     hostJoin.set(reply);
                     return reply;
                 }))
             .thenCompose(ignored -> requestStep(
                 "guest JoinGameReq",
-                request(guest, new JoinGameReq(game.gameId()), JoinGameRes.class))
+                request(guest, new JoinGameReq(game.roomId()), JoinGameRes.class))
                 .thenApply(reply -> {
+                    require(reply.state().roomId().equals(game.roomId()), "guest joined unexpected room");
+                    require("InProgress".equals(reply.state().status()), "second join must start game");
                     guestJoin.set(reply);
                     return reply;
                 }))
             .thenCompose(ignored -> requestStep(
+                "host PlayerJoinedNotify",
+                hostSawGuestJoin.orTimeout(3, TimeUnit.SECONDS)))
+            .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(0)",
                 request(host, new PlaceMarkReq(0), PlaceMarkRes.class))
-                .thenApply(reply -> addMove(moves, reply)))
+                .thenApply(reply -> {
+                    require(options.xActorId().equals(reply.state().lastMoveActorId()),
+                        "host move response must include host move");
+                    return addMove(moves, reply);
+                }))
+            .thenCompose(ignored -> requestStep(
+                "guest GameStateNotify(host move)",
+                guestSawHostMove.orTimeout(3, TimeUnit.SECONDS)))
             .thenCompose(ignored -> requestStep(
                 "guest PlaceMarkReq(3)",
                 request(guest, new PlaceMarkReq(3), PlaceMarkRes.class))
-                .thenApply(reply -> addMove(moves, reply)))
+                .thenApply(reply -> {
+                    require(options.oActorId().equals(reply.state().lastMoveActorId()),
+                        "guest move response must include guest move");
+                    return addMove(moves, reply);
+                }))
+            .thenCompose(ignored -> requestStep(
+                "host GameStateNotify(guest move)",
+                hostSawGuestMove.orTimeout(3, TimeUnit.SECONDS)))
             .thenCompose(ignored -> requestStep(
                 "host PlaceMarkReq(1)",
                 request(host, new PlaceMarkReq(1), PlaceMarkRes.class))
@@ -156,20 +191,18 @@ public final class TicTacToeClient {
                 "host PlaceMarkReq(2)",
                 request(host, new PlaceMarkReq(2), PlaceMarkRes.class))
                 .thenApply(reply -> addMove(moves, reply)))
-            .thenCompose(finalMove -> CompletableFuture.supplyAsync(
-                () -> {
-                    validateFinalState(options, moves);
-                    return new TicTacToeClientResult(
-                        game,
-                        hostAuth.get(),
-                        guestAuth.get(),
-                        hostJoin.get(),
-                        guestJoin.get(),
-                        List.copyOf(moves),
-                        List.copyOf(stateNotifications),
-                        List.copyOf(playerJoinedNotifications));
-                },
-                CompletableFuture.delayedExecutor(250, TimeUnit.MILLISECONDS)))
+            .thenApply(finalMove -> {
+                validateFinalState(options, moves);
+                return new TicTacToeClientResult(
+                    game,
+                    hostAuth.get(),
+                    guestAuth.get(),
+                    hostJoin.get(),
+                    guestJoin.get(),
+                    List.copyOf(moves),
+                    List.copyOf(stateNotifications),
+                    List.copyOf(playerJoinedNotifications));
+            })
             .whenComplete((ignored, error) -> {
                 closeHandlers(handlers);
                 host.close();
@@ -181,8 +214,17 @@ public final class TicTacToeClient {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
             ZLinkStreamDispatchMode.AUTO,
-            Duration.ofSeconds(3),
-            2));
+            TicTacToeSampleDefaults.RequestTimeout,
+            2,
+            java.time.Duration.ofSeconds(5),
+            64 * 1024,
+            false,
+            java.time.Duration.ofSeconds(1),
+            TicTacToeSampleDefaults.RequestTimeout.plusSeconds(5),
+            true,
+            java.time.Duration.ofMillis(250),
+            java.time.Duration.ofSeconds(5),
+            2.0));
     }
 
     private static <TReply> CompletionStage<TReply> request(
@@ -206,6 +248,12 @@ public final class TicTacToeClient {
     private static PlaceMarkRes addMove(List<PlaceMarkRes> moves, PlaceMarkRes reply) {
         moves.add(reply);
         return reply;
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
     }
 
     private static void validateFinalState(

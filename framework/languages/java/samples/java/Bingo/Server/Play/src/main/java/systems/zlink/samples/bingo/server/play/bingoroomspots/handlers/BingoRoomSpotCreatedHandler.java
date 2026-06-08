@@ -6,8 +6,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
-import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomModels;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
+import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 
 public final class BingoRoomSpotCreatedHandler {
     private final ObjectMapper json;
@@ -25,7 +25,7 @@ public final class BingoRoomSpotCreatedHandler {
 
     private BingoRoomModels.BingoRoomSettings decodeSettings(Message request) {
         if (request.isEmpty()) {
-            return BingoRoomModels.BingoRoomSettings.create("four-player", 0);
+            return BingoRoomModels.BingoRoomSettings.create("standard", 0);
         }
         try {
             return json.readValue(

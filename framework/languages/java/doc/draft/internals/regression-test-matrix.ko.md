@@ -94,7 +94,7 @@ backend, integration-single-process, sample regression 증거를 분리해 기�
 | actor Entry Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinEntrySpotUsesBackendSpotNodeJoinOperation` | `ZLinkActorContext.joinEntrySpot(...).submitAsync()`가 framework backend port를 통해 binding public `SpotNode.joinActorEntrySpot(...)` 의미로 이어지고, 결과 `ZLinkActorRef`를 actor context에 반영 |
 | actor user Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinSpotUsesBackendSpotNodeJoinOperationAndUpdatesContext` | `ZLinkActorContext.joinSpot(...).submitAsync(replyType)`가 framework backend port를 통해 binding public `SpotNode.joinActor(...)` 의미로 이어지고, join 성공 즉시 actor context의 joined 상태, `spotRid()`, `getSpot(Class)`를 user Spot 인스턴스로 갱신한 뒤 reply payload를 deserialize한다. 이후 Entry Spot join은 이전 user Spot 참조를 비운다 |
 | actor Entry Spot route join handler | fake backend | `ActorRuntimeFakeBackendTest.actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply` | reserved route packet `__zlink.actor.joinEntrySpot` 처리 경로가 actor runtime에서 local actor를 생성하고 target node rid와 actor generation을 reply로 반환 |
-| framework-owned session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `SampleReleaseGateContractTest.ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework-owned `ZLinkSessionContext` constructor를 받을 수 있고, context의 `client()`와 `actors()`는 backend stream send와 ActorGateway bind로 이어진다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public `ZLinkFramework.sessionActors(...)`와 session context를 사용한다 |
+| framework-owned session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `SampleReleaseGateContractTest.ticTacToeDirectSampleUsesApiAndPlayRoles` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework-owned `ZLinkSessionContext` constructor를 받을 수 있고, direct TicTacToe sample은 별도 SessionGateway 없이 Play session에서 local actor를 bind한다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public session context를 사용한다 |
 | session packet dispatcher | fake backend / sample regression | `StreamSessionTest.sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework-owned `ZLinkSessionPacketDispatcher<ZLinkSessionContext>` constructor를 받을 수 있다. 등록된 `ZLinkSessionPacketHandler`는 packet 이름으로 찾아 실행되고, 미등록 packet은 session이 actor relay, reject, ignore 같은 결정을 직접 내리도록 `false`를 반환한다 |
 | session actor bind | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamActorGatewayBindingPath` | native backend 위에서 `bindAsync`와 ActorGateway binding path가 동작 |
 | session actor relay | fake backend / integration-single-process | `RemoteActorGatewayTest.sessionAndPlayServers_relaySucceeds` / `SessionActorsRuntimeIntegrationTest.sessionAndPlayServers_relaySucceeds` | fake backend는 bound-actor relay backend operation을 관찰하고, native integration은 gateway-attached stream binding을 단일 JVM에서 검증 |
@@ -181,14 +181,14 @@ transport error callback public API가 추가되어야 한다.
 | Sample | 확인 기준 |
 |--------|-----------|
 | `TicTacToe` | direct STREAM + Spot + channel 흐름 성공 |
-| `Bingo` | 4 connector client, matching, timer, bound push 성공 |
+| `Bingo` | 2 connector client, matching, card submit, timer draw, bound push 성공 |
 
 위 sample은 `samples/java/*`와 `samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
 `SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
 `sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
-`ticTacToeSessionGatewayUsesActorGatewayAndFrameworkActorLocator`,
-`ticTacToeSessionGatewayKotlinSampleMirrorsJavaRoleLayout`,
-`bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
+`ticTacToeDirectSampleUsesApiAndPlayRoles`,
+`ticTacToeDirectKotlinSampleMirrorsJavaRoleLayout`,
+`bingoMirrorsTwoClientMatchingTimerAndBoundPushGate`,
 `bingoKotlinSampleMirrorsJavaRoleLayout`,
 `streamingClientMirrorsConnectorSmokeGate`,
 `streamingClientKotlinMirrorsConnectorSmokeGate`가 고정한다. Kotlin mirror gate도

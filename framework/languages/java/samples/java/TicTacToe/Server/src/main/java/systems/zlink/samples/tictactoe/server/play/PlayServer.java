@@ -9,6 +9,7 @@ import systems.zlink.samples.tictactoe.server.play.actors.PlayActorFactory;
 import systems.zlink.samples.tictactoe.server.play.entryspot.PlayEntrySpot;
 import systems.zlink.samples.tictactoe.server.play.gamespots.TicTacToeGame;
 import systems.zlink.samples.tictactoe.server.play.sessions.PlaySession;
+import systems.zlink.samples.tictactoe.server.play.sessions.handlers.AuthenticatePlaySessionHandler;
 
 public final class PlayServer {
     private PlayServer() {
@@ -48,6 +49,7 @@ public final class PlayServer {
             options.addStreamNode(SampleNames.PlayStream, stream -> {
                 stream.bind(settings.playEndpoint());
                 stream.registerSession(PlaySession.class);
+                stream.addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
             });
         };
     }

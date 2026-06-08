@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
 import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler;
 
 
@@ -40,6 +41,11 @@ public final class PlayServerApplication {
     @Bean
     TicTacToeGameCreatedHandler ticTacToeGameCreatedHandler() {
         return new TicTacToeGameCreatedHandler();
+    }
+
+    @Bean
+    TicTacToeGameCreator ticTacToeGameCreator() {
+        return new TicTacToeGameCreator();
     }
 
     @Bean

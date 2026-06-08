@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -18,6 +17,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.server.play.actors.PlayActor;
+import systems.zlink.samples.tictactoe.server.play.domain.tictactoe.TicTacToeMatch;
 import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler;
 import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameTimerHandler;
 import systems.zlink.samples.tictactoe.shared.contracts.GameState;
@@ -32,15 +32,8 @@ public final class TicTacToeGame implements ZLinkSpot {
     private static final Duration TURN_TIMEOUT = Duration.ofSeconds(15);
 
     private final ZLinkSpotContext context;
-    private final String gameId;
-    private final char[] board = ".........".toCharArray();
-    private final List<PlayerSlot> players = new ArrayList<>();
-    private String status = "WaitingForPlayers";
-    private String nextTurn = "X";
-    private String winner = "";
-    private String lastMoveActorId = "";
-    private int lastMoveCell = -1;
-    private Instant turnDeadline;
+    private final String roomId;
+    private final TicTacToeMatch match;
     private ZLinkTimer gameTick;
     private boolean created;
     private final TicTacToeGameCreatedHandler createdHandler;
@@ -51,13 +44,14 @@ public final class TicTacToeGame implements ZLinkSpot {
         TicTacToeGameCreatedHandler createdHandler,
         ObjectMapper json) {
         this.context = context;
-        this.gameId = context.spotRid().toHex();
+        this.roomId = context.spotRid().toString();
+        this.match = new TicTacToeMatch(roomId);
         this.createdHandler = createdHandler;
         this.json = json;
     }
 
-    public String gameId() {
-        return gameId;
+    public String roomId() {
+        return roomId;
     }
 
     @Override
@@ -80,7 +74,7 @@ public final class TicTacToeGame implements ZLinkSpot {
                 new IllegalArgumentException("tic-tac-toe game only accepts PlayActor."));
         }
         TicTacToeGameJoinReq joinRequest = decode(request, TicTacToeGameJoinReq.class);
-        return join(player, joinRequest.gameId())
+        return join(player, joinRequest.roomId())
             .thenApply(reply -> ZLinkSpotActorJoinResponse.accept(encode(reply)));
     }
 
@@ -122,130 +116,56 @@ public final class TicTacToeGame implements ZLinkSpot {
         created = true;
     }
 
-    public CompletionStage<TicTacToeGameJoinRes> join(PlayActor actor, String gameId) {
+    public CompletionStage<TicTacToeGameJoinRes> join(PlayActor actor, String roomId) {
         ensureCreated();
-        PlayerSlot slot = players.stream()
-            .filter(player -> player.actor().actorId().equals(actor.actorId()))
-            .findFirst()
-            .orElse(null);
-        boolean isNewPlayer = slot == null;
-        if (slot == null) {
-            if (players.size() >= 2) {
-                throw new IllegalStateException("tic-tac-toe game already has two players");
-            }
-            String mark = players.size() == 0 ? "X" : "O";
-            slot = new PlayerSlot(actor, mark);
-            players.add(slot);
-        } else {
-            slot.actor(actor);
+        if (!this.roomId.equals(roomId)) {
+            throw new IllegalStateException("join request room id does not match game room");
         }
-        if (players.size() == 2 && status.equals("WaitingForPlayers")) {
-            status = "InProgress";
-            resetTurnDeadline();
-        }
-        actor.joinGame(gameId);
-        GameState state = snapshot();
-        CompletionStage<Void> notify = isNewPlayer
-            ? notifyPlayerJoined(actor, slot, state)
+        TicTacToeMatch.JoinResult joined = match.join(
+            actor.actorId(),
+            Instant.now(),
+            TURN_TIMEOUT);
+        actor.joinGame(roomId);
+        rememberActor(actor);
+        CompletionStage<Void> notify = joined.newlyJoined()
+            ? notifyPlayerJoined(actor, joined.mark(), joined.state())
             : CompletableFuture.completedFuture(null);
         return notify
-            .thenCompose(ignored -> broadcast(state, actor.actorId()))
-            .thenApply(ignored -> new TicTacToeGameJoinRes(state));
+            .thenCompose(ignored -> broadcast(joined.state(), actor.actorId()))
+            .thenApply(ignored -> new TicTacToeGameJoinRes(joined.state()));
     }
 
     public CompletionStage<PlaceMarkRes> placeMark(PlayActor actor, int cell) {
         ensureCreated();
-        PlayerSlot slot = players.stream()
-            .filter(player -> player.actor().actorId().equals(actor.actorId()))
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("player has not joined"));
-        if (!status.equals("InProgress")) {
-            throw new IllegalStateException("game is not in progress");
-        }
-        if (!slot.mark().equals(nextTurn)) {
-            throw new IllegalStateException("unexpected turn");
-        }
-        if ((uint(cell)) >= board.length || board[cell] != '.') {
-            throw new IllegalArgumentException("invalid cell");
-        }
-
-        board[cell] = slot.mark().charAt(0);
-        lastMoveActorId = actor.actorId();
-        lastMoveCell = cell;
-        advance(slot);
-        GameState state = snapshot();
+        GameState state = match.placeMark(
+            actor.actorId(),
+            cell,
+            Instant.now(),
+            TURN_TIMEOUT);
         return broadcast(state, actor.actorId())
             .thenApply(ignored -> new PlaceMarkRes(state));
     }
 
     public String winner() {
-        return winner;
+        return snapshot().winner();
     }
 
     public boolean hasPlayer(String actorId) {
-        return players.stream().anyMatch(player -> player.actor().actorId().equals(actorId));
+        return actors.stream().anyMatch(actor -> actor.actorId().equals(actorId));
     }
 
     public GameState snapshot() {
         ensureCreated();
-        return new GameState(
-            gameId,
-            new String(board),
-            status,
-            winner.isEmpty() ? null : winner,
-            nextTurn,
-            actorIdForMark("X"),
-            actorIdForMark("O"),
-            lastMoveActorId.isEmpty() ? null : lastMoveActorId,
-            lastMoveCell < 0 ? null : lastMoveCell);
-    }
-
-    private void advance(PlayerSlot slot) {
-        if (hasWon(slot.mark().charAt(0))) {
-            status = "Won";
-            winner = slot.actor().actorId();
-            nextTurn = "";
-            turnDeadline = null;
-        } else if (new String(board).indexOf('.') < 0) {
-            status = "Draw";
-            winner = "";
-            nextTurn = "";
-            turnDeadline = null;
-        } else {
-            nextTurn = slot.mark().equals("X") ? "O" : "X";
-            resetTurnDeadline();
-        }
+        return match.snapshot();
     }
 
     public CompletionStage<Void> tickAsync() {
         ensureCreated();
-        if (!status.equals("InProgress")
-            || turnDeadline == null
-            || Instant.now().isBefore(turnDeadline)) {
+        GameState timedOut = match.timeOutCurrentTurn(Instant.now());
+        if (timedOut == null) {
             return CompletableFuture.completedFuture(null);
         }
-
-        PlayerSlot timedOut = players.stream()
-            .filter(player -> player.mark().equals(nextTurn))
-            .findFirst()
-            .orElse(null);
-        PlayerSlot winningSlot = players.stream()
-            .filter(player -> !player.mark().equals(nextTurn))
-            .findFirst()
-            .orElse(null);
-
-        status = "TurnTimedOut";
-        winner = winningSlot == null ? "" : winningSlot.actor().actorId();
-        nextTurn = "";
-        lastMoveActorId = timedOut == null ? "" : timedOut.actor().actorId();
-        lastMoveCell = -1;
-        turnDeadline = null;
-
-        return broadcast(snapshot(), null);
-    }
-
-    private void resetTurnDeadline() {
-        turnDeadline = Instant.now().plus(TURN_TIMEOUT);
+        return broadcast(timedOut, null);
     }
 
     private void ensureCreated() {
@@ -270,17 +190,10 @@ public final class TicTacToeGame implements ZLinkSpot {
         }
     }
 
-    private String actorIdForMark(String mark) {
-        return players.stream()
-            .filter(player -> player.mark().equals(mark))
-            .map(player -> player.actor().actorId())
-            .findFirst()
-            .orElse(null);
-    }
+    private final List<PlayActor> actors = new java.util.ArrayList<>();
 
     private CompletionStage<Void> broadcast(GameState state, String excludedActorId) {
-        List<CompletionStage<Void>> sends = players.stream()
-            .map(PlayerSlot::actor)
+        List<CompletionStage<Void>> sends = actors.stream()
             .filter(actor -> excludedActorId == null || !actor.actorId().equals(excludedActorId))
             .map(actor -> actor.context().boundSession()
                 .send(new GameStateNotify(state))
@@ -291,15 +204,14 @@ public final class TicTacToeGame implements ZLinkSpot {
 
     private CompletionStage<Void> notifyPlayerJoined(
         PlayActor joinedActor,
-        PlayerSlot joinedSlot,
+        String mark,
         GameState state) {
         PlayerJoinedNotify message = new PlayerJoinedNotify(
-            state.gameId(),
+            state.roomId(),
             joinedActor.actorId(),
-            joinedSlot.mark(),
+            mark,
             state);
-        List<CompletionStage<Void>> sends = players.stream()
-            .map(PlayerSlot::actor)
+        List<CompletionStage<Void>> sends = actors.stream()
             .filter(actor -> !actor.actorId().equals(joinedActor.actorId()))
             .map(actor -> actor.context().boundSession()
                 .send(message)
@@ -316,43 +228,13 @@ public final class TicTacToeGame implements ZLinkSpot {
         return combined;
     }
 
-    private boolean hasWon(char mark) {
-        int[][] lines = {
-            {0, 1, 2}, {3, 4, 5}, {6, 7, 8},
-            {0, 3, 6}, {1, 4, 7}, {2, 5, 8},
-            {0, 4, 8}, {2, 4, 6}
-        };
-        for (int[] line : lines) {
-            if (board[line[0]] == mark && board[line[1]] == mark && board[line[2]] == mark) {
-                return true;
+    private void rememberActor(PlayActor actor) {
+        for (int i = 0; i < actors.size(); i++) {
+            if (actors.get(i).actorId().equals(actor.actorId())) {
+                actors.set(i, actor);
+                return;
             }
         }
-        return false;
-    }
-
-    private static int uint(int value) {
-        return value < 0 ? Integer.MAX_VALUE : value;
-    }
-
-    private static final class PlayerSlot {
-        private PlayActor actor;
-        private final String mark;
-
-        private PlayerSlot(PlayActor actor, String mark) {
-            this.actor = actor;
-            this.mark = mark;
-        }
-
-        private PlayActor actor() {
-            return actor;
-        }
-
-        private void actor(PlayActor actor) {
-            this.actor = actor;
-        }
-
-        private String mark() {
-            return mark;
-        }
+        actors.add(actor);
     }
 }

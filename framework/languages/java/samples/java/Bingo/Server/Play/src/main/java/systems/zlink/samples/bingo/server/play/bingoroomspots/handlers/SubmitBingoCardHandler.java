@@ -8,19 +8,19 @@ import systems.zlink.samples.bingo.server.play.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.bingoroomspots.BingoRoomSpot;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-public final class StartBingoGameHandler
+public final class SubmitBingoCardHandler
     implements ZLinkSpotActorRequestHandler<
         BingoRoomSpot,
         PlayerActor,
-        Messages.StartBingoGameReq,
-        Messages.StartBingoGameRes> {
+        Messages.SubmitBingoCardReq,
+        Messages.SubmitBingoCardRes> {
     @Override
-    public CompletionStage<Messages.StartBingoGameRes> handleAsync(
+    public CompletionStage<Messages.SubmitBingoCardRes> handleAsync(
         BingoRoomSpot spot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
-        Messages.StartBingoGameReq request,
+        Messages.SubmitBingoCardReq request,
         CancellationToken cancellationToken) {
-        return spot.startAsync(actor, request);
+        return spot.submitCardAsync(actor, request);
     }
 }

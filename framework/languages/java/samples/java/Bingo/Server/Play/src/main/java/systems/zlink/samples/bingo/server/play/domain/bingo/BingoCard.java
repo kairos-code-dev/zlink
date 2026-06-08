@@ -1,13 +1,13 @@
-package systems.zlink.samples.bingo.server.play.bingoroomspots;
+package systems.zlink.samples.bingo.server.play.domain.bingo;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.stream.IntStream;
 
 public final class BingoCard {
-    private static final int Size = 5;
-    private static final int CellCount = Size * Size;
-    private static final int FreeCellIndex = 12;
+    public static final int Size = 3;
+    public static final int CellCount = Size * Size;
+    public static final int FreeCellIndex = 4;
 
     private final List<Integer> numbers;
     private final List<Boolean> marks;
@@ -17,11 +17,25 @@ public final class BingoCard {
         this.marks = marks;
     }
 
-    public static BingoCard create() {
-        List<Integer> numbers = new ArrayList<>(
-            IntStream.rangeClosed(1, CellCount).boxed().toList());
-        numbers.set(FreeCellIndex, 0);
-        List<Boolean> marks = new ArrayList<>();
+    public static BingoCard from(List<Integer> submitted) {
+        if (submitted == null || submitted.size() != CellCount) {
+            throw new IllegalArgumentException("bingo card must contain 9 cells");
+        }
+        HashSet<Integer> seen = new HashSet<>();
+        ArrayList<Integer> numbers = new ArrayList<>(submitted);
+        for (int i = 0; i < numbers.size(); i++) {
+            int number = numbers.get(i);
+            if (i == FreeCellIndex) {
+                if (number != 0) {
+                    throw new IllegalArgumentException("bingo card center cell must be 0");
+                }
+                continue;
+            }
+            if (number < 1 || number > 15 || !seen.add(number)) {
+                throw new IllegalArgumentException("bingo card numbers must be unique values from 1 to 15");
+            }
+        }
+        ArrayList<Boolean> marks = new ArrayList<>();
         for (int i = 0; i < CellCount; i++) {
             marks.add(i == FreeCellIndex);
         }

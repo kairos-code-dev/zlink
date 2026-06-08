@@ -39,7 +39,7 @@ public final class MatchBingoActorHandler
                 }
                 return actor.context()
                     .<Messages.BingoRoomJoinRes>joinSpot(
-                        RoutingId.fromHex(matched.roomId()),
+                        RoutingId.from(matched.roomId()),
                         new Messages.BingoRoomJoinReq(
                             matched.roomId(),
                             actor.actorId(),

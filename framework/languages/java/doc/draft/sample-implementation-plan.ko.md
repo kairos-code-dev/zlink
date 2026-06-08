@@ -158,12 +158,10 @@ sample process에서 시작한다. API role은 client의 HTTP `/games` 요청을
 | `TicTacToe` | `Client/src/.../client`, `Server/src/.../server/api/handlers`, `Server/src/.../server/configuration`, `Server/src/.../server/play/actors`, `Server/src/.../server/play/entryspot/handlers`, `Server/src/.../server/play/gamespots/handlers`, `Server/src/.../server/play/sessions`, `Shared/src/.../shared/contracts` |
 | `Bingo` | `client`, `server/api/handlers`, `server/play/actors`, `server/play/bingoroomspots/handlers`, `server/play/entryspot/handlers`, `server/play/handlers`, `server/registry`, `server/session/sessions/handlers`, `shared/configuration`, `shared/contracts` |
 
-SessionGateway 계열 sample은 `.NET`의 `SessionActorDispatchPlayerClient`,
-`TicTacToeGameContractMapper`, `TicTacToeGameModels`, actor joined/left, Spot created
-handler 역할을 Java/Kotlin 파일로 나누어 둔다. Bingo sample도 `BingoRoomActorJoined`,
-`BingoRoomActorLeft`, `BingoRoomSpotCreated`, Entry Spot actor joined/left handler 역할을
-분리한다. 이 파일들은 단순히 파일 수를 맞추기 위한 장식이 아니라, reconnect, room
-lifecycle, bound push 흐름에서 각 서버 역할이 어디에 놓이는지 보여 주는 기준이다.
+TicTacToe는 공통 sample spec의 직접 Play 연결 구조만 Java sample로 유지한다.
+별도 SessionGateway 또는 reconnect 변형은 Java TicTacToe sample 범위에서 제외한다.
+Bingo sample은 Session, Api, Play, Registry 역할을 나누어 gateway 구조와 bound push
+흐름을 보여 준다.
 
 ## 4. TicTacToe Direct
 
@@ -184,24 +182,12 @@ direct sample은 아래를 보여 준다.
 direct sample은 수동 연결을 사용할 수 있다. 이 범위의 수동 연결 설명은 direct
 sample 안으로만 한정한다.
 
-## 5. TicTacToe SessionGateway
+## 5. TicTacToe 직접 Play sample
 
-SessionGateway sample은 아래를 반드시 보여 준다.
-
-- Registry, Api, Play, primary Session, reconnect Session을 별도 process로 실행
-- service channel은 registry discovery 기반으로 연결
-- actor/session relay는 application route channel을 새로 만들지 않고 ActorGateway 경로 사용
-- standalone sample self-check는 `ZLinkFramework.start(...)` public facade로 Play/Session
-  runtime 설정을 시작하고, stream node의 ActorGateway attach 설정을 실제 runtime
-  startup 경로에서 검증
-- Play server는 `useRegistrySpotRemoteAddresses("tictactoe")`에 대응하는 Java API 사용
-- Session server는 relay ingress용 local SpotNode를 만들고 stream node는 그 SpotNode에
-  `attachActorGateway(...)`
-- session handler는 actor remote address resolver를 직접 호출하지 않음
-- actor id/type과 ActorGateway locator로 `context.actors().bindAsync(...)`
-- client reconnect 후 같은 actor id가 새 Session server에 다시 bind
-- request/reply sequence가 session relay와 actor reply에 맞게 correlation
-- Play actor는 `boundSession().send(...).submitAsync()`로 client push
+TicTacToe sample은 API 역할과 Play 역할만 유지한다. client는 API 응답으로 받은
+Play stream endpoint에 직접 연결하고, Play session이 인증 뒤 local actor를 만들고
+현재 session에 bind한다. 별도 Session 서버, ActorGateway attach, reconnect 변형은
+이 sample의 유지 대상이 아니다.
 
 금지 사항:
 
@@ -252,17 +238,16 @@ sample gate는 최소한 아래를 자동 확인한다.
   handler/model/player-client 파일을 가진다.
 - direct sample이 handler를 직접 생성하지 않고 framework channel request와 Spot
   manager 경로를 사용한다.
-- session sample에 route/metadata store가 없다.
-- Session server가 ActorGateway attach를 사용한다.
-- session handler가 actor remote address resolver를 직접 호출하지 않는다.
+- direct TicTacToe sample에 route/metadata store가 없다.
+- Play session이 `AuthenticateReq`를 처리한 뒤 local actor를 session에 bind한다.
+- `JoinGameReq`는 명시적인 `RoomId`를 사용하고, routing id hex 문자열을 client에 노출하지 않는다.
 - connector client가 `MANUAL` dispatch mode에서도 request/reply와 notification을 처리한다.
 - Kotlin `Async` 또는 다른 Kotlin sample이 Spring DI 안의 `suspend fun` annotation
   handler를 실제 framework dispatch 경로로 실행한다. 수동 `ZLinkCoroutineRuntime`
   wrapper만 사용한 smoke는 이 항목을 만족하지 않는다. 현재 gate 증거는
   `samples/kotlin/Async`의 Spring bean `suspend fun` `@ZLinkSend`/`@ZLinkRequest`
   handler self-check와 `timeout 900 ./run_samples.sh` 실행 결과다.
-- Bingo deterministic scenario가 같은 sequence winner를 만든다.
-- TicTacToe SessionGateway reconnect scenario가 같은 actor id로 새 session binding을 만든다.
+- Bingo deterministic scenario가 server timer draw로 winner를 만든다.
 - [regression-test-matrix](./internals/regression-test-matrix.ko.md) §6의 모든 sample
   release gate 행을 미러한다.
 

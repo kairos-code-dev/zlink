@@ -24,11 +24,11 @@ public record TicTacToeClientResult(
     }
 
     public void writeTo(PrintStream output) {
-        output.println("api: created game " + game.gameId() + " at " + game.playEndpoint());
+        output.println("api: created room " + game.roomId() + " at " + game.playEndpoint());
         output.println("client-x: AuthenticateRes|" + xAuthentication.actorId());
         output.println("client-o: AuthenticateRes|" + oAuthentication.actorId());
-        output.println("client-x: JoinGameRes|" + xJoin.state().gameId() + "|X");
-        output.println("client-o: JoinGameRes|" + oJoin.state().gameId() + "|O");
+        output.println("client-x: JoinGameRes|" + xJoin.state().roomId() + "|X");
+        output.println("client-o: JoinGameRes|" + oJoin.state().roomId() + "|O");
         for (PlaceMarkRes move : moves) {
             output.println("move: PlaceMarkRes|board=" + move.state().board()
                 + "|status=" + move.state().status()
@@ -38,7 +38,7 @@ public record TicTacToeClientResult(
         for (PlayerJoinedNotify notify : playerJoinedNotifications) {
             output.println("notify: PlayerJoinedNotify|player=" + notify.actorId()
                 + "|mark=" + notify.mark()
-                + "|game=" + notify.gameId());
+                + "|room=" + notify.roomId());
         }
         output.println("notifications: " + stateNotifications.size()
             + " GameStateNotify packets received");

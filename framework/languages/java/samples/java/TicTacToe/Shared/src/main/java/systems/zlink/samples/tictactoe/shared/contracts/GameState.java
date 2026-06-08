@@ -1,7 +1,7 @@
 package systems.zlink.samples.tictactoe.shared.contracts;
 
 public record GameState(
-    String gameId,
+    String roomId,
     String board,
     String status,
     String winner,

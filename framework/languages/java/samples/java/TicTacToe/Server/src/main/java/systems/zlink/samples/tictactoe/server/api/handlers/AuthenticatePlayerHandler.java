@@ -9,7 +9,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler {
-    @ZLinkRequest(packetName = "AuthenticatePlayer")
+    @ZLinkRequest(packetName = "AuthenticatePlayerReq")
     public CompletionStage<AuthenticatePlayerRes> handleAsync(AuthenticatePlayerReq request) {
         String actorId = request.accessToken().trim();
         if (actorId.isBlank()) {

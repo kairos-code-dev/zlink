@@ -3,36 +3,22 @@ package systems.zlink.samples.tictactoe.server.play.sessions;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
+import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
-import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateReq;
-import systems.zlink.samples.tictactoe.shared.contracts.AuthenticateRes;
-import systems.zlink.stream.connector.ZLinkStreamCodec;
-import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.json.ZLinkStreamJson;
 
 public final class PlaySession implements ZLinkSession {
     private final ZLinkSessionContext context;
-    private final ZLinkActorManager actors;
-    private final ZLinkClient channels;
-    private String actorId;
-    private ZLinkSessionActor actor;
+    private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
 
     public PlaySession(
         ZLinkSessionContext context,
-        ZLinkActorManager actors,
-        ZLinkClient channels) {
+        ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers) {
         this.context = context;
-        this.actors = actors;
-        this.channels = channels;
+        this.handlers = handlers;
     }
 
     @Override
@@ -47,8 +33,6 @@ public final class PlaySession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDisconnectedAsync() {
-        actorId = null;
-        actor = null;
         return CompletableFuture.completedFuture(null);
     }
 
@@ -59,55 +43,19 @@ public final class PlaySession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDispatchAsync(ZLinkStreamHeader header, Message payload) {
-        try {
-            if (header.packetName().equals("AuthenticateReq")) {
-                AuthenticateReq request = decode(header, payload, AuthenticateReq.class);
-                return channels
-                    .requestToChannel(
-                        SampleNames.ApiChannel,
-                        new AuthenticatePlayerReq(request.accessToken()))
-                    .submitAsync(AuthenticatePlayerRes.class)
-                    .thenCompose(authenticated -> {
-                        actorId = authenticated.actorId();
-                        return actors.getOrCreateAsync(actorId, SampleNames.PlayActor);
-                    })
-                    .thenCompose(context.actors()::bindAsync)
-                    .thenCompose(bound -> {
-                        actor = bound;
-                        return context.client()
-                            .reply(new AuthenticateRes(actorId))
-                            .submitAsync();
-                    });
-            }
-            return requireActor().relayAsync(header, payload);
-        } catch (RuntimeException ex) {
-            return CompletableFuture.failedFuture(ex);
-        }
+        return handlers.tryHandleAsync(context, header, payload)
+            .thenCompose(handled -> handled
+                ? CompletableFuture.completedFuture(null)
+                : requireActor(header.packetName()).relayAsync(header, payload));
     }
 
-    private ZLinkSessionActor requireActor() {
-        if (actorId == null || actorId.isBlank() || actor == null) {
-            throw new IllegalStateException("AuthenticateReq is required before play packets.");
-        }
-        return actor;
-    }
-
-    private static <T> T decode(ZLinkStreamHeader header, Message payload, Class<T> type) {
-        return ZLinkStreamJson.decode(
-            new ZLinkStreamEncodedPayload(
-                header.packetName(),
-                payload,
-                header.metadata(),
-                connectorCodec(header)),
-            type);
-    }
-
-    private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {
-        return switch (header.codec()) {
-            case RAW -> ZLinkStreamCodec.RAW;
-            case JSON -> ZLinkStreamCodec.JSON;
-            case MESSAGE_PACK -> ZLinkStreamCodec.MESSAGE_PACK;
-            case PROTOBUF -> ZLinkStreamCodec.PROTOBUF;
+    private ZLinkSessionActor requireActor(String packetName) {
+        return switch (context.actors().bound().size()) {
+            case 1 -> context.actors().bound().get(0);
+            case 0 -> throw new IllegalStateException(
+                "AuthenticateReq is required before play packet '" + packetName + "'");
+            default -> throw new IllegalStateException(
+                "Exactly one actor must be bound before play packet '" + packetName + "'");
         };
     }
 }

@@ -78,7 +78,7 @@ public final class BingoPlayerClient implements AutoCloseable {
     }
 
     private CompletionStage<Messages.MatchBingoRes> matchAsync(int attempt) {
-        return submitWithDispatch(ZLinkStreamJson.request(connector, new Messages.MatchBingoReq("four-player"))
+        return submitWithDispatch(ZLinkStreamJson.request(connector, new Messages.MatchBingoReq("standard"))
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync())
             .thenApply(reply -> ZLinkStreamJson.decode(
@@ -97,13 +97,15 @@ public final class BingoPlayerClient implements AutoCloseable {
             .thenCompose(Function.identity());
     }
 
-    public CompletionStage<Messages.StartBingoGameRes> startAsync(String roomId) {
-        return submitWithDispatch(ZLinkStreamJson.request(connector, new Messages.StartBingoGameReq(roomId))
+    public CompletionStage<Messages.SubmitBingoCardRes> submitCardAsync(
+        String roomId,
+        List<Integer> card) {
+        return submitWithDispatch(ZLinkStreamJson.request(connector, new Messages.SubmitBingoCardReq(roomId, card))
             .timeout(SampleTimings.RequestTimeout)
             .submitAsync())
             .thenApply(reply -> ZLinkStreamJson.decode(
                 reply,
-                Messages.StartBingoGameRes.class));
+                Messages.SubmitBingoCardRes.class));
     }
 
     public CompletionStage<Void> dispatchAsync() {

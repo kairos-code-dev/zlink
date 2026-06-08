@@ -58,11 +58,11 @@ public final class Messages {
     public record BingoRoomJoinRes(BingoRoomState state) {
     }
 
-    @ZLinkPacket("StartBingoGameReq")
-    public record StartBingoGameReq(String roomId) {
+    @ZLinkPacket("SubmitBingoCardReq")
+    public record SubmitBingoCardReq(String roomId, List<Integer> card) {
     }
 
-    public record StartBingoGameRes(BingoRoomState state) {
+    public record SubmitBingoCardRes(BingoRoomState state) {
     }
 
     public record PlayerJoinedNotify(

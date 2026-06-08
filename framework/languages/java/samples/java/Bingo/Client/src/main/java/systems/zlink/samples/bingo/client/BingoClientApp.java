@@ -2,7 +2,6 @@ package systems.zlink.samples.bingo.client;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionException;
 import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
@@ -13,7 +12,7 @@ public final class BingoClientApp {
         this.options = options;
     }
 
-    public void run(List<Integer> drawSequence) throws Exception {
+    public void run() throws Exception {
         List<BingoPlayerClient> clients = new ArrayList<>();
         for (int i = 1; i <= options.playerCount(); i++) {
             BingoPlayerClient client = new BingoPlayerClient("player-" + i);
@@ -26,10 +25,8 @@ public final class BingoClientApp {
 
         Messages.MatchBingoRes firstMatch =
             await("match " + clients.getFirst().playerId(), clients.getFirst().matchAsync());
-        requireRejected(() -> await(
-                "premature start " + clients.getFirst().playerId(),
-                clients.getFirst().startAsync(firstMatch.roomId())),
-            "host start must be rejected before four players join");
+        require(firstMatch.state().status().equals("WaitingForPlayers"),
+            "first match must wait for another player");
 
         List<Messages.MatchBingoRes> matches = new ArrayList<>();
         matches.add(firstMatch);
@@ -40,24 +37,27 @@ public final class BingoClientApp {
             "all match requests must return the same room");
         require(matches.getFirst().state().hostActorId().equals(clients.getFirst().playerId()),
             "first joined actor must become host");
+        require(matches.getLast().state().status().equals("Running"),
+            "second match must start the room automatically");
 
-        requireRejected(() -> await(
-                "non-host start " + clients.get(1).playerId(),
-                clients.get(1).startAsync(firstMatch.roomId())),
-            "non-host start must be rejected");
-        Messages.StartBingoGameRes started =
-            await(
-                "host start " + clients.getFirst().playerId(),
-                clients.getFirst().startAsync(firstMatch.roomId()));
-        require(started.state().status().equals("Running"),
-            "host start must put room into Running status");
+        waitForStarted(clients);
+        Messages.SubmitBingoCardRes secondCard = await(
+            "submit card " + clients.get(1).playerId(),
+            clients.get(1).submitCardAsync(firstMatch.roomId(), List.of(1, 2, 3, 4, 0, 5, 6, 7, 8)));
+        require(secondCard.state().players().get(1).card().size() == 9,
+            "second player card must be stored immediately");
+        Messages.SubmitBingoCardRes firstCard = await(
+            "submit card " + clients.getFirst().playerId(),
+            clients.getFirst().submitCardAsync(firstMatch.roomId(), List.of(1, 9, 10, 11, 0, 12, 13, 14, 15)));
+        require(firstCard.state().players().getFirst().card().size() == 9,
+            "first player card must be stored immediately");
 
         Messages.BingoRoomState ended = waitForEnded(clients);
         require(ended.status().equals("Finished"), "room must finish through timer draws");
-        require(ended.winners().size() > 1, "deterministic sample must include same-sequence winners");
-        require(ended.players().stream().allMatch(player -> player.card().size() == 25),
-            "each player card must contain 25 cells");
-        require(ended.players().stream().allMatch(player -> Boolean.TRUE.equals(player.marks().get(12))),
+        require(!ended.winners().isEmpty(), "deterministic sample must finish with at least one winner");
+        require(ended.players().stream().allMatch(player -> player.card().size() == 9),
+            "each player card must contain 9 cells");
+        require(ended.players().stream().allMatch(player -> Boolean.TRUE.equals(player.marks().get(4))),
             "center free cell must start marked");
         require(clients.stream().allMatch(client -> !client.inbox().started().isEmpty()),
             "each connector must receive game-start push");
@@ -65,6 +65,20 @@ public final class BingoClientApp {
             "each connector must receive draw push");
         require(clients.stream().allMatch(client -> !client.inbox().ended().isEmpty()),
             "each connector must receive game-ended push");
+    }
+
+    private static void waitForStarted(List<BingoPlayerClient> clients) throws Exception {
+        long deadline = System.nanoTime() + SampleTimings.RequestTimeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            for (BingoPlayerClient client : clients) {
+                await("dispatch " + client.playerId(), client.dispatchAsync());
+            }
+            if (clients.stream().allMatch(client -> !client.inbox().started().isEmpty())) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new IllegalStateException("Timed out waiting for BingoGameStartedNotify");
     }
 
     private static Messages.BingoRoomState waitForEnded(List<BingoPlayerClient> clients) throws Exception {
@@ -85,15 +99,6 @@ public final class BingoClientApp {
         throw new IllegalStateException("Timed out waiting for BingoGameEndedNotify");
     }
 
-    private static void requireRejected(ThrowingRunnable action, String message) throws Exception {
-        try {
-            action.run();
-        } catch (CompletionException | IllegalStateException ex) {
-            return;
-        }
-        throw new IllegalStateException(message);
-    }
-
     private static <T> T await(String action, java.util.concurrent.CompletionStage<T> stage)
         throws Exception {
         try {
@@ -109,8 +114,4 @@ public final class BingoClientApp {
         }
     }
 
-    @FunctionalInterface
-    private interface ThrowingRunnable {
-        void run() throws Exception;
-    }
 }

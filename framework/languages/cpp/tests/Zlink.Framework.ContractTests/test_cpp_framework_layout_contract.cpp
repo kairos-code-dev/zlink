@@ -1934,6 +1934,11 @@ int main ()
       require_exists (root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/api_server_host_factory.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/api_server_framework.hpp");
+    ok &= file_contains (root / "samples/Bingo/Server/Api/api_server_host_factory.hpp",
+                         "app.logging ().use_console ().set_level (\"info\")");
+    ok &= file_does_not_contain (
+      root / "samples/Bingo/Server/Api/api_server_framework.hpp", "app.logging ().use_console ()",
+      "reusable framework setup must not force a host-level logging sink");
     ok &= require_exists (root / "samples/Bingo/Server/Api/Handlers/match_bingo_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/BingoRoomSpots/bingo_room.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Play/Actors/player_actor.hpp");

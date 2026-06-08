@@ -16,6 +16,7 @@ inline zlink::framework::app_t api_server_host_factory_t::build (const sample_to
                                                                  bool auto_stop)
 {
     auto app = zlink::framework::app_t::create ();
+    app.logging ().use_console ().set_level ("info");
     if (auto_stop) {
         app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
     }

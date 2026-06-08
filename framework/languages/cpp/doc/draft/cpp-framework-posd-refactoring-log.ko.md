@@ -4350,8 +4350,10 @@ git diff --check -- framework/languages/cpp
   에 해당하는 구조로 줄였다.
 - `api_server_host_factory_t::build(...)`가 `zlink_builder_t`가 아니라 완성된 `app_t`를
   반환하게 했다.
-- API channel 구성, logging, monitoring, hosted service, service factory, handler
-  registration을 `api_server_host_factory_t` 안으로 이동했다.
+- 샘플 실행용 logging 정책은 `api_server_host_factory_t`에 두고, `add_bingo_api_server(...)`는
+  API channel, discovery, codec, handler registration만 구성하게 했다. 그래야 재사용 가능한
+  framework 구성 함수가 console/file/callback 같은 host-level logging sink를 강제로 정하지
+  않는다.
 - 로그 검증용 callback sink, handler 직접 invoke, sample-local serializer smoke를
   `main.cpp`에서 제거했다.
 - `AuthenticatePlayer`와 `MatchBingo` handler registration을 factory 내부 private 함수로

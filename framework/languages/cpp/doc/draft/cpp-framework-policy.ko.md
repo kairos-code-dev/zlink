@@ -989,6 +989,12 @@ host-level 표면이다. 예를 들어 console, file, rotating file, callback si
 등록되지 않은 경우에도 logger 주입은 성공하며, 로그는 내부 captured record 외에는 외부로
 출력되지 않는 null sink 의미로 동작한다.
 
+샘플과 애플리케이션 코드에서도 같은 경계를 유지한다. `api_server_host_factory_t::build(...)`
+같은 host factory는 console/file/callback sink와 level을 정할 수 있지만,
+`add_bingo_api_server(...)`처럼 framework 기능을 추가하는 함수는 channel, codec, discovery,
+handler 등록만 담당한다. 이렇게 나누면 같은 API server 구성을 테스트, 콘솔 샘플, 파일 로그
+운영 설정에서 다시 사용할 때 logging 정책을 덮어쓰기 쉽다.
+
 지원하는 sink는 아래와 같다.
 
 | sink | API | 용도 |

@@ -11,7 +11,6 @@ namespace zlink::samples::bingo
 inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &app,
                                                       const sample_topology_t &topology)
 {
-    app.logging ().use_console ().set_level ("info");
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.handlers ()
           .add<authenticate_player_handler_t> ("api")

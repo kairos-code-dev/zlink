@@ -2,15 +2,17 @@ import {
   RequiredZlinkStreamConnectorOptions,
   ZlinkStreamEncodedPayload,
   ZlinkStreamErrorCode,
+  ZlinkStreamMessage,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadata,
   ZlinkStreamMetadataMap,
   type ZlinkStreamRequestCall,
   type ZlinkStreamResultOf,
-  type ZlinkStreamSendCall
-} from './contracts';
-import { connectorError, unwrapStreamError } from './support';
-import { validateName } from './protocol';
+  type ZlinkStreamSendCall,
+  type ZlinkStreamWaitCall
+} from '../../Contracts';
+import { connectorError, unwrapStreamError } from '../ZlinkStreamSupport';
+import { validateName } from '../Protocol/ZlinkStreamPacketNameValidator';
 
 interface ZlinkStreamConnectorSubmitter {
   readonly options: RequiredZlinkStreamConnectorOptions;
@@ -31,6 +33,12 @@ interface ZlinkStreamConnectorSubmitter {
     timeoutMs: number,
     signal?: AbortSignal
   ): Promise<ZlinkStreamEncodedPayload>;
+  waitForMessage<TPayload>(
+    name: string,
+    timeoutMs: number,
+    predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
+    signal?: AbortSignal
+  ): Promise<ZlinkStreamMessage<TPayload>>;
 }
 
 class ZlinkStreamCallBuilderState {
@@ -140,9 +148,11 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<ZlinkStreamEncodedPayload>;
+  submit<TReply = ZlinkStreamEncodedPayload>(signal?: AbortSignal): Promise<TReply>;
   submit(callback: (result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void): void;
-  submit(signalOrCallback?: AbortSignal | ((result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void)): Promise<ZlinkStreamEncodedPayload> | void {
+  submit<TReply = ZlinkStreamEncodedPayload>(
+    signalOrCallback?: AbortSignal | ((result: ZlinkStreamResultOf<ZlinkStreamEncodedPayload>) => void)
+  ): Promise<TReply> | void {
     this.state.ensureNotExecuted();
     const operation = this.connector.requestEncoded(
       this.state.resolveMessageName(),
@@ -159,7 +169,50 @@ export class ZlinkStreamRequestBuilder implements ZlinkStreamRequestCall {
       );
       return;
     }
-    return operation;
+    return operation.then((value) => this.connector.options.codec?.decode<TReply>(value) ?? (value as TReply));
   }
 }
 
+export class ZlinkStreamWaitBuilder<TPayload = ZlinkStreamEncodedPayload> implements ZlinkStreamWaitCall<TPayload> {
+  private executed = false;
+  private timeoutMs: number | undefined;
+  private predicate: (message: ZlinkStreamMessage<TPayload>) => boolean = () => true;
+
+  constructor(
+    private readonly connector: ZlinkStreamConnectorSubmitter,
+    private readonly name: string
+  ) {}
+
+  where(predicate: (message: ZlinkStreamMessage<TPayload>) => boolean): this {
+    this.ensureConfigurable();
+    this.predicate = predicate;
+    return this;
+  }
+
+  timeout(timeoutMs: number): this {
+    this.ensureConfigurable();
+    this.timeoutMs = timeoutMs;
+    return this;
+  }
+
+  submit(signal?: AbortSignal): Promise<ZlinkStreamMessage<TPayload>> {
+    this.markExecuted();
+    return this.connector.waitForMessage(
+      this.name,
+      this.timeoutMs ?? this.connector.options.requestTimeoutMs,
+      this.predicate,
+      signal
+    );
+  }
+
+  private ensureConfigurable(): void {
+    if (this.executed) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Builder instances can be executed only once.');
+    }
+  }
+
+  private markExecuted(): void {
+    this.ensureConfigurable();
+    this.executed = true;
+  }
+}

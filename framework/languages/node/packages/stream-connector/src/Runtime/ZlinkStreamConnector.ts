@@ -19,13 +19,18 @@ import {
   ZlinkStreamMetadata,
   ZlinkStreamMetadataMap,
   ZlinkStreamRequestCall,
-  ZlinkStreamSendCall
-} from './contracts';
-import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder } from './calls';
-import { buildHeader, validateName, ZlinkStreamFrameCodec, ZlinkStreamHeaderCodec } from './protocol';
-import { normalizeOptions } from './options';
-import { connectorError, delay, subscription, throwIfAborted, toStreamError, utf8Decode } from './support';
-import { compressPayload, decompressIfNeeded } from './compression';
+  ZlinkStreamSendCall,
+  ZlinkStreamWaitCall
+} from '../Contracts';
+import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder, ZlinkStreamWaitBuilder } from './Calls/ZlinkStreamCallBuilders';
+import { buildHeader, ZlinkStreamHeaderCodec } from './Protocol/ZlinkStreamHeaderCodec';
+import { ZlinkStreamFrameCodec } from './Protocol/ZlinkStreamFrameCodec';
+import { validateName } from './Protocol/ZlinkStreamPacketNameValidator';
+import { normalizeOptions } from './ZlinkStreamConnectorOptions';
+import { connectorError, delay, subscription, throwIfAborted, toStreamError, utf8Decode } from './ZlinkStreamSupport';
+import { compressPayload, decompressIfNeeded } from './Protocol/Compression/ZlinkStreamCompressionCodec';
+import { ZlinkStreamPendingRequests } from './ZlinkStreamPendingRequests';
+import { ZlinkStreamMessageHandlers } from './ZlinkStreamMessageHandlers';
 
 export const zlinkStreamConnectorFactory = {
   create(options: ZlinkStreamConnectorOptions): ZlinkStreamConnector {
@@ -37,14 +42,13 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   static readonly heartbeatPingName = '$zlink.heartbeat.ping';
   static readonly heartbeatPongName = '$zlink.heartbeat.pong';
 
-  private readonly handlers = new Map<string, Set<(message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>, signal?: AbortSignal) => Promise<void> | void>>();
+  private readonly handlers = new ZlinkStreamMessageHandlers();
   private readonly errorHandlers = new Set<(error: ZlinkStreamError, signal?: AbortSignal) => Promise<void> | void>();
   private readonly disconnectedHandlers = new Set<(signal?: AbortSignal) => Promise<void> | void>();
   private readonly stateHandlers = new Set<(change: ZlinkStreamConnectionStateChanged, signal?: AbortSignal) => Promise<void> | void>();
   private connection: ZlinkStreamConnection | undefined;
   private currentState = ZlinkStreamConnectionState.Created;
-  private nextRequestSeq = 1n;
-  private readonly pendingRequests = new Map<bigint, PendingRequest>();
+  private readonly pendingRequests = new ZlinkStreamPendingRequests();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private receiveLoopAbort: AbortController | undefined;
   private lastInboundAt = 0;
@@ -64,7 +68,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 
   get pendingDispatchCount(): number {
-    return this.pendingRequests.size;
+    return this.pendingRequests.count;
   }
 
   onErrorReceived(handler: (error: ZlinkStreamError, signal?: AbortSignal) => Promise<void> | void): Disposable {
@@ -146,23 +150,100 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     return true;
   }
 
-  send(payload: ZlinkStreamEncodedPayload): ZlinkStreamSendCall {
-    return new ZlinkStreamSendBuilder(this, this.resolveNameOrDefault(payload), payload);
+  send(payload: unknown, messageType?: Function): ZlinkStreamSendCall {
+    const encoded = this.encodePayload(payload, messageType);
+    return new ZlinkStreamSendBuilder(this, this.resolveNameOrDefault(encoded), encoded);
   }
 
-  request(payload: ZlinkStreamEncodedPayload): ZlinkStreamRequestCall {
-    return new ZlinkStreamRequestBuilder(this, this.resolveNameOrDefault(payload), payload);
+  request(payload: unknown, messageType?: Function): ZlinkStreamRequestCall {
+    const encoded = this.encodePayload(payload, messageType);
+    return new ZlinkStreamRequestBuilder(this, this.resolveNameOrDefault(encoded), encoded);
   }
 
-  on(name: string, handler: (message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>, signal?: AbortSignal) => Promise<void> | void): Disposable {
+  on<TPayload = ZlinkStreamEncodedPayload>(
+    name: string,
+    handler: (message: ZlinkStreamMessage<TPayload>, signal?: AbortSignal) => Promise<void> | void,
+    messageType?: Function
+  ): Disposable {
+    const encodedHandler = (message: ZlinkStreamMessage<ZlinkStreamEncodedPayload>, signal?: AbortSignal) => handler({
+      name: message.name,
+      metadata: message.metadata,
+      payload: this.decodePayload<TPayload>(message.payload, messageType)
+    }, signal);
+    return this.handlers.on(name, encodedHandler);
+  }
+
+  waitFor<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamWaitCall<TPayload> {
     validateName(name);
-    let set = this.handlers.get(name);
-    if (set === undefined) {
-      set = new Set();
-      this.handlers.set(name, set);
+    return new ZlinkStreamWaitBuilder<TPayload>(this, name);
+  }
+
+  waitForMessage<TPayload>(
+    name: string,
+    timeoutMs: number,
+    predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
+    signal?: AbortSignal
+  ): Promise<ZlinkStreamMessage<TPayload>> {
+    validateName(name);
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Timeout must be a non-negative finite number.');
     }
-    set.add(handler);
-    return subscription(() => set?.delete(handler));
+    throwIfAborted(signal);
+    return new Promise((resolve, reject) => {
+      let done = false;
+      let timer: NodeJS.Timeout | undefined;
+      let disposable: Disposable | undefined;
+      const onAbort = () => finish(connectorError(ZlinkStreamErrorCode.Disconnected, 'Operation canceled.'));
+      const finish = (error?: unknown, message?: ZlinkStreamMessage<TPayload>) => {
+        if (done) {
+          return;
+        }
+        done = true;
+        signal?.removeEventListener('abort', onAbort);
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+        disposable?.dispose();
+        if (error !== undefined) {
+          reject(error);
+        } else {
+          resolve(message!);
+        }
+      };
+      timer = setTimeout(() => {
+        finish(connectorError(ZlinkStreamErrorCode.RequestTimeout, 'Wait for stream message timed out.'));
+      }, timeoutMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      disposable = this.handlers.on(name, (message) => {
+        try {
+          const decoded = {
+            name: message.name,
+            metadata: message.metadata,
+            payload: this.decodePayload<TPayload>(message.payload)
+          };
+          if (predicate(decoded)) {
+            finish(undefined, decoded);
+          }
+        } catch (cause) {
+          finish(cause);
+        }
+      });
+    });
+  }
+
+  private encodePayload(payload: unknown, messageType?: Function): ZlinkStreamEncodedPayload {
+    if (isEncodedPayload(payload)) {
+      return payload;
+    }
+    const codec = this.options.codec;
+    if (codec === undefined) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Connector payload codec is required for unencoded stream payloads.');
+    }
+    return codec.encode(payload, messageType);
+  }
+
+  private decodePayload<TPayload>(payload: ZlinkStreamEncodedPayload, messageType?: Function): TPayload {
+    return this.options.codec?.decode<TPayload>(payload, messageType) ?? (payload as TPayload);
   }
 
   async sendEncoded(
@@ -188,14 +269,12 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     timeoutMs: number,
     signal?: AbortSignal
   ): Promise<ZlinkStreamEncodedPayload> {
-    const requestSeq = this.nextRequestSeq++;
-    const pending = this.trackPending(requestSeq, timeoutMs);
+    const pending = this.pendingRequests.create(timeoutMs);
     try {
-      await this.sendEncoded(ZlinkStreamMessageKind.Request, name, payload, metadata, compress, requestSeq, signal);
+      await this.sendEncoded(ZlinkStreamMessageKind.Request, name, payload, metadata, compress, pending.requestSeq, signal);
       return await pending.promise;
     } catch (error) {
-      this.pendingRequests.delete(requestSeq);
-      pending.cancel();
+      this.pendingRequests.cancel(pending.requestSeq);
       throw error;
     }
   }
@@ -219,23 +298,15 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
 
   private async dispatchFrame(header: ZlinkStreamHeader, payload: Uint8Array, signal?: AbortSignal): Promise<void> {
     if (header.kind === ZlinkStreamMessageKind.Response && header.requestSeq !== undefined) {
-      const pending = this.pendingRequests.get(header.requestSeq);
-      if (pending !== undefined) {
-        this.pendingRequests.delete(header.requestSeq);
-        try {
-          pending.resolve({ codec: header.codec, payload: this.payloadForHeader(header, payload) });
-        } catch (cause) {
-          pending.reject(toStreamError(cause, ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.'));
-        }
+      try {
+        this.pendingRequests.resolve(header.requestSeq, { codec: header.codec, payload: this.payloadForHeader(header, payload) });
+      } catch (cause) {
+        this.pendingRequests.reject(header.requestSeq, toStreamError(cause, ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.'));
       }
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Error && header.requestSeq !== undefined) {
-      const pending = this.pendingRequests.get(header.requestSeq);
-      if (pending !== undefined) {
-        this.pendingRequests.delete(header.requestSeq);
-        pending.reject({ code: ZlinkStreamErrorCode.RemoteError, message: utf8Decode(payload) });
-      }
+      this.pendingRequests.reject(header.requestSeq, { code: ZlinkStreamErrorCode.RemoteError, message: utf8Decode(payload) });
       return;
     }
     if (header.kind === ZlinkStreamMessageKind.Error) {
@@ -256,21 +327,11 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, 'Unknown control packet.');
     }
     if (header.kind === ZlinkStreamMessageKind.Send) {
-      const handlers = this.handlers.get(header.name);
-      if (handlers !== undefined) {
-        const message = { name: header.name, metadata: header.metadata, payload: { codec: header.codec, payload: this.payloadForHeader(header, payload) } };
-        for (const handler of handlers) {
-          try {
-            await handler(message, signal);
-          } catch (cause) {
-            await this.publishError({
-              code: ZlinkStreamErrorCode.UserCallbackFailed,
-              message: 'Typed message handler failed.',
-              cause
-            }, signal);
-          }
-        }
-      }
+      await this.handlers.dispatch({
+        name: header.name,
+        metadata: header.metadata,
+        payload: { codec: header.codec, payload: this.payloadForHeader(header, payload) }
+      }, signal, (error, handlerSignal) => this.publishError(error, handlerSignal));
     }
   }
 
@@ -391,47 +452,8 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
     }
   }
 
-  private trackPending(requestSeq: bigint, timeoutMs: number): PendingRequest {
-    let timeout: NodeJS.Timeout | undefined;
-    let resolvePending!: (value: ZlinkStreamEncodedPayload) => void;
-    let rejectPending!: (error: ZlinkStreamError) => void;
-    const promise = new Promise<ZlinkStreamEncodedPayload>((resolve, reject) => {
-      timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestSeq);
-        reject(connectorError(ZlinkStreamErrorCode.RequestTimeout, 'Request timed out.'));
-      }, timeoutMs);
-      resolvePending = resolve;
-      rejectPending = (error) => reject(connectorError(error.code, error.message, error.cause));
-    });
-    const pending: PendingRequest = {
-      promise,
-      resolve: (value) => {
-        if (timeout !== undefined) {
-          clearTimeout(timeout);
-        }
-        resolvePending(value);
-      },
-      reject: (error) => {
-        if (timeout !== undefined) {
-          clearTimeout(timeout);
-        }
-        rejectPending(error);
-      },
-      cancel: () => {
-        if (timeout !== undefined) {
-          clearTimeout(timeout);
-        }
-      }
-    };
-    this.pendingRequests.set(requestSeq, pending);
-    return pending;
-  }
-
   private failPending(error: ZlinkStreamError): void {
-    for (const [requestSeq, pending] of this.pendingRequests) {
-      this.pendingRequests.delete(requestSeq);
-      pending.reject(error);
-    }
+    this.pendingRequests.failAll(error);
   }
 
   private async setState(current: ZlinkStreamConnectionState, error: ZlinkStreamError | undefined, signal?: AbortSignal): Promise<void> {
@@ -452,9 +474,10 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 }
 
-interface PendingRequest {
-  readonly promise: Promise<ZlinkStreamEncodedPayload>;
-  resolve(value: ZlinkStreamEncodedPayload): void;
-  reject(error: ZlinkStreamError): void;
-  cancel(): void;
+function isEncodedPayload(value: unknown): value is ZlinkStreamEncodedPayload {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Partial<ZlinkStreamEncodedPayload>;
+  return typeof candidate.codec === 'number' && candidate.payload instanceof Uint8Array;
 }

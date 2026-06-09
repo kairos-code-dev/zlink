@@ -16,15 +16,16 @@ test('stream connector messagepack codec encodes and decodes payloads', () => {
   );
 });
 
-test('stream connector messagepack request wrapper decodes replies', async () => {
+test('stream connector messagepack codec decodes replies through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    codec: msgpack.zlinkStreamMessagePackCodec
   });
 
   await instance.connect();
-  const pending = msgpack.requestMsgPack(instance, { join: true }).packetName('Join').timeout(1000).submit();
+  const pending = instance.request(new Join()).timeout(1000).submit();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -56,16 +57,17 @@ test('stream connector protobuf codec uses supplied protobuf type', () => {
   );
 });
 
-test('stream connector protobuf on wrapper dispatches typed payloads', async () => {
+test('stream connector protobuf codec dispatches typed payloads through connector', async () => {
   const type = createLengthPrefixedJsonType();
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    codec: protobuf.createZlinkStreamProtobufCodec(type)
   });
   const received = [];
 
-  protobuf.onProto(instance, 'Notice', type, (message) => {
+  instance.on('Notice', (message) => {
     received.push(message.payload);
   });
 
@@ -92,6 +94,12 @@ class MemoryTransportFactory {
 
   async connect() {
     return this.connection;
+  }
+}
+
+class Join {
+  constructor() {
+    this.join = true;
   }
 }
 

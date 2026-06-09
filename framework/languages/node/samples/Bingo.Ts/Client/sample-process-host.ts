@@ -11,7 +11,6 @@ type SampleServerConfig = {
 type ReadyEvent = Record<string, any>;
 
 type StartedServer = {
-  ready: ReadyEvent;
   entryFile: string;
   exitedUnexpectedly(): Promise<Error | undefined>;
   stop(): Promise<void>;
@@ -55,9 +54,8 @@ async function startServer(entryFile: string, env: Record<string, string> = {}):
   const exit = new Promise<ExitResult>((resolve) => {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
-  const ready = await readReady(output, child, entryFile, stdoutLines, stderrLines);
+  await readReady(output, child, entryFile, stdoutLines, stderrLines);
   return {
-    ready,
     entryFile,
     async exitedUnexpectedly(): Promise<Error | undefined> {
       const result = await exit;
@@ -85,14 +83,14 @@ async function startServer(entryFile: string, env: Record<string, string> = {}):
 
 async function withServers<TValue>(
   servers: SampleServerConfig[],
-  action: (ready: ReadyEvent[]) => Promise<TValue>
+  action: () => Promise<TValue>
 ): Promise<TValue> {
   const started: StartedServer[] = [];
   try {
     for (const server of servers) {
       started.push(await startServer(server.entry, server.env));
     }
-    const actionResult = action(started.map((server) => server.ready));
+    const actionResult = action();
     const unexpectedExit = Promise.race(
       started.map((server) => server.exitedUnexpectedly())
     ).then((error) => {
@@ -166,4 +164,4 @@ async function rejectAfterDeadline(timeoutMs: number, done: () => boolean): Prom
   }
 }
 
-module.exports = { reserveTcpEndpoint, startServer, withServers };
+module.exports = { reserveTcpEndpoint, withServers };

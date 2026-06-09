@@ -15,15 +15,16 @@ test('stream connector json codec encodes and decodes json payloads', () => {
   );
 });
 
-test('stream connector json send wrapper writes json payload frame', async () => {
+test('stream connector json codec writes json payload frame through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();
-  await json.sendJson(instance, { ready: true }).packetName('Ready').metadata('trace', 'json-1').submit();
+  await instance.send(new Ready()).metadata('trace', 'json-1').submit();
 
   const frame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
@@ -33,15 +34,16 @@ test('stream connector json send wrapper writes json payload frame', async () =>
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ready: true });
 });
 
-test('stream connector json request wrapper decodes json reply payload', async () => {
+test('stream connector json codec decodes reply payload through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    codec: json.zlinkStreamJsonCodec
   });
 
   await instance.connect();
-  const pending = json.requestJson(instance, { join: true }).packetName('Join').timeout(1000).submit();
+  const pending = instance.request(new Join()).timeout(1000).submit();
 
   const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
@@ -61,15 +63,16 @@ test('stream connector json request wrapper decodes json reply payload', async (
   assert.deepEqual(await pending, { accepted: true });
 });
 
-test('stream connector json on wrapper dispatches typed payloads', async () => {
+test('stream connector json codec dispatches typed payloads through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'tcp://127.0.0.1:19000',
-    transportFactory
+    transportFactory,
+    codec: json.zlinkStreamJsonCodec
   });
   const received = [];
 
-  json.onJson(instance, 'Notice', (message) => {
+  instance.on('Notice', (message) => {
     received.push(message.payload);
   });
 
@@ -89,6 +92,77 @@ test('stream connector json on wrapper dispatches typed payloads', async () => {
   assert.deepEqual(received, [{ notice: 1 }]);
 });
 
+test('stream connector json codec wait resolves matching typed payload', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    codec: json.zlinkStreamJsonCodec
+  });
+
+  await instance.connect();
+  const pending = instance
+    .waitFor('Notice')
+    .timeout(1000)
+    .where((message) => message.payload.notice === 2)
+    .submit();
+  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
+    connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.None,
+      name: 'Notice',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }),
+    new TextEncoder().encode('{"notice":1}')
+  ));
+  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
+    connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.None,
+      name: 'Notice',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }),
+    new TextEncoder().encode('{"notice":2}')
+  ));
+
+  await instance.dispatch();
+  await instance.dispatch();
+
+  assert.deepEqual((await pending).payload, { notice: 2 });
+});
+
+test('stream connector json codec wait uses connector request timeout by default', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    requestTimeoutMs: 1000,
+    transportFactory,
+    codec: json.zlinkStreamJsonCodec
+  });
+
+  await instance.connect();
+  const pending = instance
+    .waitFor('Notice')
+    .where((message) => message.payload.notice === 3)
+    .submit();
+  transportFactory.connection.pushFrame(connector.ZlinkStreamFrameCodec.encode(
+    connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Json,
+      flags: connector.ZlinkStreamHeaderFlags.None,
+      name: 'Notice',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }),
+    new TextEncoder().encode('{"notice":3}')
+  ));
+
+  await instance.dispatch();
+
+  assert.deepEqual((await pending).payload, { notice: 3 });
+});
+
 class MemoryTransportFactory {
   constructor() {
     this.connection = new MemoryConnection();
@@ -96,6 +170,18 @@ class MemoryTransportFactory {
 
   async connect() {
     return this.connection;
+  }
+}
+
+class Ready {
+  constructor() {
+    this.ready = true;
+  }
+}
+
+class Join {
+  constructor() {
+    this.join = true;
   }
 }
 

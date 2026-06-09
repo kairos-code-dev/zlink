@@ -55,8 +55,6 @@ test('node topology samples mirror dotnet role layout', () => {
     ],
     'Bingo.Ts': [
       'Client/bingo-client-app.ts',
-      'Client/bingo-notification-inbox.ts',
-      'Client/bingo-player-client.ts',
       'Client/self-check.ts',
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/match-bingo-handler.ts',
@@ -244,7 +242,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [joinHandler, 'gameStateNotify(state)'],
     [moveHandler, 'gameStateNotify(state)'],
     [client, "payload.state.status === 'InProgress'"],
-    [client, "moves.at(-1).state.status, 'Won'"],
+    [client, "lastMoveState.status, 'Won'"],
     [readme, '`Won`']
   ];
   const missing = required
@@ -416,6 +414,35 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
     }
   }
 
+  assert.deepEqual(violations, []);
+});
+
+test('node client samples wait for push packets through stream connector helpers', () => {
+  const bingoApp = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'bingo-client-app.ts'), 'utf8');
+  const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const missing = [];
+  const violations = [];
+  for (const [name, content] of [
+    ['Bingo.Ts/Client/bingo-client-app.ts', bingoApp],
+    ['TicTacToe.Ts/Client/self-check.ts', ticTacToeClient]
+  ]) {
+    if (!/\.waitFor(?:<|\()/.test(content)) {
+      missing.push(`${name}:.waitFor(`);
+    }
+    if (!/\.waitFor(?:<|\()[\s\S]*?\.submit\(/.test(content)) {
+      missing.push(`${name}:.waitFor(...).submit(`);
+    }
+  }
+  for (const [name, content] of [
+    ['Bingo.Ts/Client/bingo-client-app.ts', bingoApp],
+    ['TicTacToe.Ts/Client/self-check.ts', ticTacToeClient]
+  ]) {
+    if (/waitForJson|waitForNotify|async function waitFor\s*\(|\.waitFor(?:<[^>]+>)?\([^)]*,/.test(content)) {
+      violations.push(name);
+    }
+  }
+
+  assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
 });
 

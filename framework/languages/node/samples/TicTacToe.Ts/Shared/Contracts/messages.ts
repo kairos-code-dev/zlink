@@ -32,6 +32,14 @@ export interface AuthenticateReq {
   accessToken: string;
 }
 
+export class AuthenticateReq {
+  accessToken: string;
+
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
+  }
+}
+
 export interface AuthenticatePlayerRes {
   actorId: string;
   displayName: string;
@@ -62,6 +70,14 @@ export interface JoinGameReq {
   roomId: string;
 }
 
+export class JoinGameReq {
+  roomId: string;
+
+  constructor(roomId: string) {
+    this.roomId = roomId;
+  }
+}
+
 export interface JoinGameInternalReq {
   actor: TicTacToeActor;
   roomId: string;
@@ -78,7 +94,11 @@ export interface PlaceMarkStreamReq {
   cell: number;
 }
 
-export interface PlaceMarkReq {
+export class PlaceMarkReq {
+  constructor(readonly cell: number) {}
+}
+
+export interface PlaceMarkInternalReq {
   actor: TicTacToeActor;
   cell: number;
 }
@@ -136,7 +156,7 @@ function readJsonMessage<TValue = unknown>(message: ZLinkMessage): TValue {
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
-  return { accessToken };
+  return new AuthenticateReq(accessToken);
 }
 
 function authenticatePlayerRes(accessToken: string): AuthenticatePlayerRes {
@@ -167,7 +187,7 @@ function authenticateRes(actorId: string, displayName: string): AuthenticateRes 
 }
 
 function joinGameReq(roomId: string): JoinGameReq {
-  return { roomId };
+  return new JoinGameReq(roomId);
 }
 
 function joinGameInternalReq(actor: TicTacToeActor, roomId: string): JoinGameInternalReq {
@@ -179,10 +199,10 @@ function joinGameRes(roomId: string, actorId: string, mark: string, state: unkno
 }
 
 function placeMarkStreamReq(cell: number): PlaceMarkStreamReq {
-  return { cell };
+  return new PlaceMarkReq(cell);
 }
 
-function placeMarkReq(actor: TicTacToeActor, cell: number): PlaceMarkReq {
+function placeMarkReq(actor: TicTacToeActor, cell: number): PlaceMarkInternalReq {
   return { actor, cell };
 }
 

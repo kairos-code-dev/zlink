@@ -1,14 +1,8 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import type {
-  ZlinkStreamConnector,
   ZlinkStreamEncodedPayload,
-  ZlinkStreamMessage,
-  ZlinkStreamMetadata,
-  ZlinkStreamRequestCall,
-  ZlinkStreamResult,
-  ZlinkStreamResultOf,
-  ZlinkStreamSendCall
+  ZlinkStreamPayloadCodec
 } from '@zlink-systems/stream-connector';
 
 export const zlinkStreamProtobufCodecName = 'protobuf';
@@ -26,6 +20,18 @@ export interface ProtobufType<T> {
 
 const streamConnector = loadStreamConnector();
 
+export function createZlinkStreamProtobufCodec<T>(type: ProtobufType<T>): ZlinkStreamPayloadCodec {
+  return {
+    encode(payload: unknown, messageType?: Function): ZlinkStreamEncodedPayload {
+      return toProto(payload as T, type, messageType);
+    },
+
+    decode<TPayload = unknown>(payload: ZlinkStreamEncodedPayload): TPayload {
+      return fromProto(payload, type) as unknown as TPayload;
+    }
+  };
+}
+
 export function toProto<T>(value: T, type: ProtobufType<T>, messageType?: Function): ZlinkStreamEncodedPayload {
   return {
     codec: streamConnector.ZlinkStreamCodec.Protobuf,
@@ -37,126 +43,6 @@ export function toProto<T>(value: T, type: ProtobufType<T>, messageType?: Functi
 export function fromProto<T>(payload: ZlinkStreamEncodedPayload, type: ProtobufType<T>): T {
   ensureProtobuf(payload);
   return type.decode(payload.payload);
-}
-
-export function sendProto<T>(
-  connector: ZlinkStreamConnector,
-  payload: T,
-  type: ProtobufType<T>,
-  messageType?: Function
-): ZlinkStreamProtobufSendBuilder {
-  return new ZlinkStreamProtobufSendBuilder(connector.send(toProto(payload, type, messageType)));
-}
-
-export function requestProto<T>(
-  connector: ZlinkStreamConnector,
-  payload: T,
-  type: ProtobufType<T>,
-  messageType?: Function
-): ZlinkStreamProtobufRequestBuilder {
-  return new ZlinkStreamProtobufRequestBuilder(connector.request(toProto(payload, type, messageType)));
-}
-
-export function onProto<T>(
-  connector: ZlinkStreamConnector,
-  name: string,
-  type: ProtobufType<T>,
-  handler: (message: ZlinkStreamMessage<T>, signal?: AbortSignal) => Promise<void> | void
-) {
-  return connector.on(name, (message, signal) => handler({
-    name: message.name,
-    metadata: message.metadata,
-    payload: fromProto<T>(message.payload, type)
-  }, signal));
-}
-
-export class ZlinkStreamProtobufSendBuilder {
-  constructor(private readonly inner: ZlinkStreamSendCall) {}
-
-  packetName(name: string): this {
-    this.inner.packetName(name);
-    return this;
-  }
-
-  metadata(key: string, value: string): this;
-  metadata(metadata: ZlinkStreamMetadata): this;
-  metadata(keyOrMetadata: string | ZlinkStreamMetadata, value?: string): this {
-    if (typeof keyOrMetadata === 'string') {
-      this.inner.metadata(keyOrMetadata, value ?? '');
-    } else {
-      this.inner.metadata(keyOrMetadata);
-    }
-    return this;
-  }
-
-  compress(): this {
-    this.inner.compress();
-    return this;
-  }
-
-  submit(signal?: AbortSignal): Promise<void> {
-    return this.inner.submit(signal);
-  }
-}
-
-export class ZlinkStreamProtobufRequestBuilder {
-  constructor(private readonly inner: ZlinkStreamRequestCall) {}
-
-  packetName(name: string): this {
-    this.inner.packetName(name);
-    return this;
-  }
-
-  metadata(key: string, value: string): this;
-  metadata(metadata: ZlinkStreamMetadata): this;
-  metadata(keyOrMetadata: string | ZlinkStreamMetadata, value?: string): this {
-    if (typeof keyOrMetadata === 'string') {
-      this.inner.metadata(keyOrMetadata, value ?? '');
-    } else {
-      this.inner.metadata(keyOrMetadata);
-    }
-    return this;
-  }
-
-  timeout(timeoutMs: number): this {
-    this.inner.timeout(timeoutMs);
-    return this;
-  }
-
-  compress(): this {
-    this.inner.compress();
-    return this;
-  }
-
-  async submit<TReply>(type: ProtobufType<TReply>, signal?: AbortSignal): Promise<TReply> {
-    const reply = await this.inner.submit(signal);
-    return fromProto<TReply>(reply, type);
-  }
-
-  submitCallback(callback: (result: ZlinkStreamResult) => void): void {
-    this.inner.submit(callback);
-  }
-
-  submitProtoCallback<TReply>(type: ProtobufType<TReply>, callback: (result: ZlinkStreamResultOf<TReply>) => void): void {
-    this.inner.submit((result) => {
-      if (!result.isSuccess || result.value === undefined) {
-        callback({ isSuccess: false, error: result.error });
-        return;
-      }
-      try {
-        callback({ isSuccess: true, value: fromProto<TReply>(result.value, type) });
-      } catch (cause) {
-        callback({
-          isSuccess: false,
-          error: {
-            code: 'userCallbackFailed' as NonNullable<ZlinkStreamResult['error']>['code'],
-            message: 'Protobuf reply decode failed.',
-            cause
-          }
-        });
-      }
-    });
-  }
 }
 
 export function loadProtobufJs(): unknown {

@@ -29,6 +29,14 @@ export interface AuthenticateReq {
   accessToken: string;
 }
 
+export class AuthenticateReq {
+  accessToken: string;
+
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
+  }
+}
+
 export interface AuthenticatePlayerRes {
   accepted: boolean;
   actorId: string | null;
@@ -43,6 +51,16 @@ export interface AuthenticateSessionRes {
 
 export interface MatchBingoReq {
   mode?: BingoMode;
+}
+
+export class MatchBingoReq {
+  mode?: BingoMode;
+
+  constructor(mode?: BingoMode) {
+    if (mode !== undefined) {
+      this.mode = mode;
+    }
+  }
 }
 
 export interface MatchBingoApiRes {
@@ -88,6 +106,16 @@ export interface MatchBingoRes {
 export interface SubmitBingoCardReq {
   roomId: string;
   card: number[];
+}
+
+export class SubmitBingoCardReq {
+  roomId: string;
+  card: number[];
+
+  constructor(roomId: string, card: number[]) {
+    this.roomId = roomId;
+    this.card = card;
+  }
 }
 
 export interface SubmitBingoCardRes {
@@ -176,7 +204,7 @@ function readJsonMessage<TValue = unknown>(message: ZLinkMessage): TValue {
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
-  return { accessToken };
+  return new AuthenticateReq(accessToken);
 }
 
 function authenticatePlayerAccepted(accessToken: string): AuthenticatePlayerRes {
@@ -202,7 +230,7 @@ function authenticateSessionRes(actorId: string, displayName: string): Authentic
 }
 
 function matchBingoReq(mode: BingoMode | undefined = BingoModes.twoPlayer): MatchBingoReq {
-  return { mode };
+  return new MatchBingoReq(mode);
 }
 
 function matchBingoApiRes(roomId: string): MatchBingoApiRes {
@@ -242,7 +270,7 @@ function matchBingoRes(roomId: string, state: unknown): MatchBingoRes {
 }
 
 function submitBingoCardReq(roomId: string, card: number[]): SubmitBingoCardReq {
-  return { roomId, card };
+  return new SubmitBingoCardReq(roomId, card);
 }
 
 function submitBingoCardRes(state: unknown): SubmitBingoCardRes {

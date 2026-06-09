@@ -1,8 +1,11 @@
-const assert = require('node:assert/strict');
 const path = require('node:path');
 const nestjs = require('../../../../packages/nestjs/dist');
+const connector = require('../../../../packages/stream-connector/dist');
+const json = require('../../../../packages/stream-connector-json/dist');
 const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
 import { BingoClientApp } from './bingo-client-app';
+import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
+const { SampleTimings } = require('../Shared/Configuration/sample-names');
 
 type NestjsPackage = typeof nestjs;
 
@@ -42,14 +45,16 @@ async function main(): Promise<void> {
       }
     }
   ], async (): Promise<void> => {
-    const result = await new BingoClientApp().run({ sessionEndpoint });
-    assert.equal(result.ended.status, 'Finished');
-    assert.equal(result.ended.hostActorId, 'player-1');
-    assert.deepEqual(result.ended.winners, ['player-1']);
-    assert.deepEqual(result.ended.players.map((player) => player.actorId), ['player-1', 'player-2']);
-    assert.equal(result.startedPushCounts.length, 2);
-    assert.equal(result.drawnPushCounts.length, 2);
-    assert.equal(result.endedPushCounts.length, 2);
+    const client1 = createClient(sessionEndpoint);
+    const client2 = createClient(sessionEndpoint);
+    try {
+      await new BingoClientApp().run(client1, client2);
+    } finally {
+      await Promise.allSettled([
+        client1.close(),
+        client2.close()
+      ]);
+    }
   });
 
   console.log('PASS Bingo.Ts');
@@ -69,6 +74,16 @@ function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): an
     }
   }
   return module;
+}
+
+function createClient(sessionEndpoint: string): ZlinkStreamConnector {
+  return connector.zlinkStreamConnectorFactory.create({
+    endpoint: sessionEndpoint,
+    codec: json.zlinkStreamJsonCodec,
+    dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
+    requestTimeoutMs: SampleTimings.requestTimeout,
+    heartbeat: { enabled: false }
+  });
 }
 
 main().catch((error: unknown) => {

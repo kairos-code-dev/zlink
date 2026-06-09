@@ -3,8 +3,8 @@ import {
   ZlinkStreamErrorCode,
   ZlinkStreamHeader,
   ZlinkStreamHeaderFlags
-} from './contracts';
-import { connectorError } from './support';
+} from '../../../Contracts';
+import { connectorError } from '../../ZlinkStreamSupport';
 
 export function compressPayload(payload: Uint8Array, compression: ZlinkStreamCompression): Uint8Array {
   if (compression === ZlinkStreamCompression.None) {

@@ -1,19 +1,25 @@
-const { BingoPlayerClient } = require('./bingo-player-client');
-const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-names');
+const {
+  PacketNames,
+  authenticateReq,
+  deterministicCard,
+  matchBingoReq,
+  submitBingoCardReq
+} = require('../Shared/Contracts/messages');
 import type {
   AuthenticateSessionRes,
   MatchBingoRes,
+  NumberDrawnNotify,
+  PlayerJoinedNotify,
+  StateEnvelope,
   SubmitBingoCardRes
 } from '../Shared/Contracts/messages';
-
-type BingoClientOptions = {
-  sessionEndpoint: string;
-};
+import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
 
 type BingoRoomState = {
   status: string;
   hostActorId: string | null;
   winners: string[];
+  drawnNumbers: number[];
   players: Array<{
     actorId: string;
     card: number[];
@@ -21,104 +27,162 @@ type BingoRoomState = {
   }>;
 };
 
-type BingoSampleResult = {
-  authentications: AuthenticateSessionRes[];
-  matches: MatchBingoRes[];
-  submissions: SubmitBingoCardRes[];
-  started: BingoRoomState;
-  ended: BingoRoomState;
-  playerJoinedPushCounts: number[];
-  startedPushCounts: number[];
-  drawnPushCounts: number[];
-  endedPushCounts: number[];
-};
-
 class BingoClientApp {
-  [key: string]: any;
-  async run(options: BingoClientOptions): Promise<BingoSampleResult> {
-    const clients = SampleNames.actorIds.map((actorId) => new BingoPlayerClient(actorId, options.sessionEndpoint));
-    try {
-      await Promise.all(clients.map((client) => client.connect()));
+  async run(
+    client1: ZlinkStreamConnector,
+    client2: ZlinkStreamConnector,
+    signal?: AbortSignal
+  ): Promise<void> {
+    // Client 1 connects, authenticates, and creates the waiting room.
+    await client1.connect(signal);
+    const client1Auth = await client1.request(authenticateReq('player-1')).submit<AuthenticateSessionRes>(signal);
 
-      const authentications = [
-        await clients[0].authenticate(),
-        await clients[1].authenticate()
-      ];
-      requireCondition(authentications[0].actorId === 'player-1', 'First client must authenticate as player-1.');
-      requireCondition(authentications[1].actorId === 'player-2', 'Second client must authenticate as player-2.');
+    ensure(() => client1Auth.actorId === 'player-1');
 
-      const firstMatch = await clients[0].match();
-      requireCondition(firstMatch.state.status === 'WaitingForPlayers', 'First match must create a waiting room.');
+    const client1MatchRes = await client1.request(matchBingoReq()).submit<MatchBingoRes>(signal);
 
-      const playerJoinedForFirst = waitForNotify(clients[0], () => clients[0].notifications.playerJoined.length >= 2);
-      const gameStartedForBoth = Promise.all([
-        waitForNotify(clients[0], () => clients[0].notifications.started.length >= 1),
-        waitForNotify(clients[1], () => clients[1].notifications.started.length >= 1)
-      ]);
-      const secondMatch = await clients[1].match();
-      requireCondition(secondMatch.roomId === firstMatch.roomId, 'Both players must join the same room.');
-      requireCondition(secondMatch.state.status === 'Running', 'Second match must automatically start the room.');
-      await Promise.all([playerJoinedForFirst, gameStartedForBoth]);
+    ensure(() => stateOf(client1MatchRes).status === 'WaitingForPlayers');
+    ensure(() => stateOf(client1MatchRes).hostActorId === client1Auth.actorId);
 
-      const endedForBoth = Promise.all([
-        waitForNotify(clients[0], () => clients[0].notifications.ended.length >= 1),
-        waitForNotify(clients[1], () => clients[1].notifications.ended.length >= 1)
-      ]);
-      const submissions = [
-        await clients[0].submitCard(firstMatch.roomId),
-        await clients[1].submitCard(firstMatch.roomId)
-      ];
-      requireCondition(submissions[0].state.status === 'Running', 'First card submit keeps the room running.');
-      requireCondition(submissions[1].state.players.every((player) => player.card.length === 9), 'Both submitted cards must be visible in state.');
-      await endedForBoth;
+    // Client 2 connects, authenticates, and joins the same room.
+    await client2.connect(signal);
+    const client2Auth = await client2.request(authenticateReq('player-2')).submit<AuthenticateSessionRes>(signal);
 
-      const result = {
-        authentications,
-        matches: [firstMatch, secondMatch],
-        submissions,
-        started: clients[0].notifications.started.at(-1).state,
-        ended: clients[0].notifications.ended.at(-1).state,
-        playerJoinedPushCounts: clients.map((client) => client.notifications.playerJoined.length),
-        startedPushCounts: clients.map((client) => client.notifications.started.length),
-        drawnPushCounts: clients.map((client) => client.notifications.drawn.length),
-        endedPushCounts: clients.map((client) => client.notifications.ended.length)
-      };
-      validate(result);
-      return result;
-    } finally {
-      await Promise.allSettled(clients.map((client) => client.close()));
+    ensure(() => client2Auth.actorId === 'player-2');
+    ensure(() => client2Auth.actorId !== client1Auth.actorId);
+
+    // Joining another player is delivered as a push to existing room members.
+    // The room starts automatically after both players have joined.
+    const client1SawClient2Join = client1
+      .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
+      .where((message) => message.payload.actorId === client2Auth.actorId)
+      .submit(signal);
+    const client1StartedTask = client1.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
+    const client2StartedTask = client2.waitFor<StateEnvelope>(PacketNames.gameStartedNotify).submit(signal);
+
+    const client2MatchRes = await client2.request(matchBingoReq()).submit<MatchBingoRes>(signal);
+
+    ensure(() => client2MatchRes.roomId === client1MatchRes.roomId);
+    ensure(() => stateOf(client2MatchRes).status === 'Running');
+
+    const [client1Joined, client1Started, client2Started] = await Promise.all([
+      client1SawClient2Join,
+      client1StartedTask,
+      client2StartedTask
+    ]);
+    ensure(() => client1Joined.payload.roomId === client1MatchRes.roomId);
+    ensure(() => client1Joined.payload.actorId === client2Auth.actorId);
+    ensure(() => stateOf(client1Joined.payload).status === 'Running');
+    ensure(() => stateOf(client1Started.payload).status === 'Running');
+    ensure(() => stateOf(client2Started.payload).status === 'Running');
+
+    // Each client submits its bingo card; the server starts drawing after both cards arrive.
+    const client2Card = await client2
+      .request(submitBingoCardReq(client2MatchRes.roomId, deterministicCard(client2Auth.actorId)))
+      .submit<SubmitBingoCardRes>(signal);
+
+    ensure(() => stateOf(client2Card).status === 'Running');
+
+    const drawSeq1ForClient1 = client1
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 1)
+      .submit(signal);
+    const drawSeq1ForClient2 = client2
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 1)
+      .submit(signal);
+    const drawSeq2ForClient1 = client1
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 2)
+      .submit(signal);
+    const drawSeq2ForClient2 = client2
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 2)
+      .submit(signal);
+    const drawSeq3ForClient1 = client1
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 3)
+      .submit(signal);
+    const drawSeq3ForClient2 = client2
+      .waitFor<NumberDrawnNotify>(PacketNames.numberDrawnNotify)
+      .where((message) => message.payload.drawSeq === 3)
+      .submit(signal);
+    const client1EndedTask = client1.waitFor<StateEnvelope>(PacketNames.gameEndedNotify).submit(signal);
+    const client2EndedTask = client2.waitFor<StateEnvelope>(PacketNames.gameEndedNotify).submit(signal);
+
+    const client1Card = await client1
+      .request(submitBingoCardReq(client1MatchRes.roomId, deterministicCard(client1Auth.actorId)))
+      .submit<SubmitBingoCardRes>(signal);
+
+    ensure(() => stateOf(client1Card).status === 'Running');
+    ensure(() => stateOf(client1Card).players.every((player) => player.card.length === 9));
+
+    // Number drawing is server-driven; clients only wait for draw notifications.
+    const [client1Draw1, client2Draw1] = await Promise.all([drawSeq1ForClient1, drawSeq1ForClient2]);
+    requireSameDraw(client1Draw1.payload, client2Draw1.payload, 1);
+    const drawnNumbers = [client1Draw1.payload];
+
+    if (stateOf(client1Draw1.payload).status !== 'Finished') {
+      const [client1Draw2, client2Draw2] = await Promise.all([drawSeq2ForClient1, drawSeq2ForClient2]);
+      requireSameDraw(client1Draw2.payload, client2Draw2.payload, 2);
+      drawnNumbers.push(client1Draw2.payload);
     }
-  }
-}
 
-async function waitForNotify(client: any, predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + SampleTimings.requestTimeout;
-  while (Date.now() < deadline) {
-    if (predicate()) {
-      return;
+    if (stateOf(drawnNumbers[drawnNumbers.length - 1]).status !== 'Finished') {
+      const [client1Draw3, client2Draw3] = await Promise.all([drawSeq3ForClient1, drawSeq3ForClient2]);
+      requireSameDraw(client1Draw3.payload, client2Draw3.payload, 3);
+      drawnNumbers.push(client1Draw3.payload);
     }
-    await new Promise((resolve) => setImmediate(resolve));
+
+    ensure(() => drawnNumbers.length > 0);
+    ensure(() => stateOf(drawnNumbers[drawnNumbers.length - 1]).status === 'Finished');
+
+    // The final result is pushed to both clients when the server detects bingo.
+    const [client1Ended, client2Ended] = await Promise.all([client1EndedTask, client2EndedTask]);
+    ensure(() => stateOf(client1Ended.payload).status === 'Finished');
+    ensure(() => stateOf(client2Ended.payload).status === 'Finished');
+    ensure(() => stateOf(client2Ended.payload).drawnNumbers.join(',') === stateOf(client1Ended.payload).drawnNumbers.join(','));
+    ensure(() => stateOf(client2Ended.payload).winners.join(',') === stateOf(client1Ended.payload).winners.join(','));
+    ensure(() =>
+      stateOf(client2Ended.payload).players.map((player) => player.actorId).join(',') ===
+      stateOf(client1Ended.payload).players.map((player) => player.actorId).join(','));
+
+    const started = stateOf(client1Started.payload);
+    const ended = stateOf(client1Ended.payload);
+    ensure(() => started.status === 'Running');
+    ensure(() => ended.status === 'Finished');
+    ensure(() => drawnNumbers.map((draw) => draw.number).join(',') === ended.drawnNumbers.join(','));
+    ensure(() => ended.winners.join(',') === client1Auth.actorId);
+    ensure(() => ended.players.every((player) => player.card.length === 9));
+    ensure(() => ended.players.every((player) => player.marks[4]));
   }
-  throw new Error(`Timed out waiting for Bingo notify for ${client.actorId}.`);
 }
 
-function validate(result: BingoSampleResult): void {
-  requireCondition(new Set(result.authentications.map((auth) => auth.actorId)).size === 2, 'Two clients must authenticate as distinct actors.');
-  requireCondition(new Set(result.matches.map((match) => match.roomId)).size === 1, 'Both match requests must return the same room.');
-  requireCondition(result.started.status === 'Running', 'Room must start automatically after the second join.');
-  requireCondition(result.ended.status === 'Finished', 'Room must finish through server timer draws.');
-  requireCondition(result.ended.winners.length > 0, 'The deterministic sample must produce a winner.');
-  requireCondition(result.ended.players.every((player) => player.card.length === 9), 'Each player card must contain 9 cells.');
-  requireCondition(result.ended.players.every((player) => player.marks[4]), 'Center free cell must start marked.');
-  requireCondition(result.startedPushCounts.every((count) => count > 0), 'Each client must receive game-start push.');
-  requireCondition(result.drawnPushCounts.every((count) => count > 0), 'Each client must receive draw push.');
-  requireCondition(result.endedPushCounts.every((count) => count > 0), 'Each client must receive game-ended push.');
+function stateOf(message: { state: unknown } | StateEnvelope | NumberDrawnNotify | PlayerJoinedNotify): BingoRoomState {
+  return message.state as BingoRoomState;
 }
 
-function requireCondition(condition: boolean, message: string): void {
-  if (!condition) {
-    throw new Error(message);
+function requireSameDraw(client1Draw: NumberDrawnNotify, client2Draw: NumberDrawnNotify, expectedSeq: number): void {
+  ensure(() => client1Draw.drawSeq === expectedSeq);
+  ensure(() => client2Draw.drawSeq === expectedSeq);
+  ensure(() => client2Draw.drawSeq === client1Draw.drawSeq);
+  ensure(() => client2Draw.number === client1Draw.number);
+  ensure(() => stateOf(client2Draw).drawnNumbers.join(',') === stateOf(client1Draw).drawnNumbers.join(','));
+}
+
+function ensure(condition: () => boolean): void {
+  if (!condition()) {
+    throw new Error(`Ensure failed: ${conditionExpression(condition)}`);
   }
+}
+
+function conditionExpression(condition: () => boolean): string {
+  return condition
+    .toString()
+    .replace(/^\s*\(\)\s*=>\s*/, '')
+    .replace(/^\s*function\s*\(\)\s*\{\s*return\s*/, '')
+    .replace(/;?\s*\}\s*$/, '')
+    .trim();
 }
 
 export { BingoClientApp };

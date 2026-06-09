@@ -14,8 +14,12 @@ const {
   placeMarkStreamReq
 } = require('../Shared/Contracts/messages');
 import type {
-  CreateGameHttpRes
+  AuthenticateRes,
+  CreateGameHttpRes,
+  JoinGameRes,
+  PlaceMarkRes
 } from '../Shared/Contracts/messages';
+import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
 
 type NestjsPackage = typeof nestjs;
 
@@ -24,10 +28,8 @@ type StreamNotification = {
   payload: any;
 };
 
-type StreamClient = {
+type StreamClient = ZlinkStreamConnector & {
   notifications: StreamNotification[];
-  connect(): Promise<void>;
-  close(): Promise<void>;
 };
 
 async function main(): Promise<void> {
@@ -73,38 +75,49 @@ async function main(): Promise<void> {
     try {
       await x.connect();
       await o.connect();
-      const xAuth = await requestJson(x, PacketNames.authenticateReq, authenticateReq('p1'));
-      const oAuth = await requestJson(o, PacketNames.authenticateReq, authenticateReq('p2'));
+      const xAuth = await x.request(authenticateReq('p1')).submit<AuthenticateRes>();
+      const oAuth = await o.request(authenticateReq('p2')).submit<AuthenticateRes>();
       const xSelfJoined = waitForNoNotify(x, PacketNames.playerJoinedNotify);
-      const xOpponentJoined = waitForNotify(x, PacketNames.playerJoinedNotify, (payload) => payload.actorId === 'p2');
-      const xRunningState = waitForNotify(x, PacketNames.gameStateNotify, (payload) => payload.state.status === 'InProgress');
-      const xJoin = await requestJson(x, PacketNames.joinGameReq, joinGameReq(game.roomId));
+      const xOpponentJoined = x.waitFor<any>(PacketNames.playerJoinedNotify).where((message) => message.payload.actorId === 'p2').submit();
+      const xRunningState = x.waitFor<any>(PacketNames.gameStateNotify).where((message) => message.payload.state.status === 'InProgress').submit();
+      const xJoin = await x.request(joinGameReq(game.roomId)).submit<JoinGameRes>();
       await xSelfJoined;
-      const oJoin = await requestJson(o, PacketNames.joinGameReq, joinGameReq(game.roomId));
-      await Promise.all([xOpponentJoined, xRunningState]);
-      const oFinalState = waitForNotify(o, PacketNames.gameStateNotify, (payload) => payload.state.winner === 'p1');
+      const oJoin = await o.request(joinGameReq(game.roomId)).submit<JoinGameRes>();
+      const [joinedMessage, runningMessage] = await Promise.all([xOpponentJoined, xRunningState]);
+      const joined = joinedMessage.payload;
+      const running = runningMessage.payload;
+      assert.equal(joined.actorId, 'p2');
+      assert.equal(joined.mark, 'O');
+      assert.equal(joined.roomId, game.roomId);
+      assert.equal(joined.state.status, 'InProgress');
+      assert.equal(running.state.status, 'InProgress');
+      assert.equal(running.state.nextTurn, 'p1');
+      const oFinalState = o.waitFor<any>(PacketNames.gameStateNotify).where((message) => message.payload.state.winner === 'p1').submit();
       const moves = [
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(0)),
-        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(3)),
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(1)),
-        await requestJson(o, PacketNames.placeMarkReq, placeMarkStreamReq(4)),
-        await requestJson(x, PacketNames.placeMarkReq, placeMarkStreamReq(2))
+        await x.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(),
+        await o.request(placeMarkStreamReq(3)).submit<PlaceMarkRes>(),
+        await x.request(placeMarkStreamReq(1)).submit<PlaceMarkRes>(),
+        await o.request(placeMarkStreamReq(4)).submit<PlaceMarkRes>(),
+        await x.request(placeMarkStreamReq(2)).submit<PlaceMarkRes>()
       ];
-      await oFinalState;
+      const finalState = (await oFinalState).payload;
+      const lastMoveState = moves[moves.length - 1].state as any;
+      const xJoinState = xJoin.state as any;
+      const oJoinState = oJoin.state as any;
 
       assert.equal(game.gameName, 'match-ready');
       assert.equal(game.playEndpoint, playStreamEndpoint);
       assert.deepEqual([xAuth.actorId, oAuth.actorId], ['p1', 'p2']);
       assert.deepEqual([xJoin.mark, oJoin.mark], ['X', 'O']);
-      assert.equal(moves.at(-1).state.board, 'XXXOO....');
-      assert.equal(moves.at(-1).state.status, 'Won');
-      assert.equal(moves.at(-1).state.winner, 'p1');
-      assert.equal(xJoin.state.status, 'WaitingForPlayers');
-      assert.equal(oJoin.state.status, 'InProgress');
+      assert.equal(lastMoveState.board, 'XXXOO....');
+      assert.equal(lastMoveState.status, 'Won');
+      assert.equal(lastMoveState.winner, 'p1');
+      assert.equal(xJoinState.status, 'WaitingForPlayers');
+      assert.equal(oJoinState.status, 'InProgress');
       assert.equal(x.notifications.filter((item) => item.packetName === PacketNames.playerJoinedNotify).length, 1);
       assert.equal(o.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), false);
       assert.equal(x.notifications.at(-1).packetName, PacketNames.gameStateNotify);
-      assert.equal(o.notifications.at(-1).payload.state.winner, 'p1');
+      assert.equal(finalState.state.winner, 'p1');
     } finally {
       await Promise.allSettled([x.close(), o.close()]);
     }
@@ -132,25 +145,18 @@ function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): an
 function createPlayerClient(endpoint: string): StreamClient {
   const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
+    codec: json.zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
-  });
+  }) as StreamClient;
   client.notifications = [];
   for (const packetName of [PacketNames.playerJoinedNotify, PacketNames.gameStateNotify]) {
-    json.onJson(client, packetName, (message: { payload: unknown }) => {
+    client.on(packetName, (message: { payload: unknown }) => {
       client.notifications.push({ packetName, payload: message.payload });
     });
   }
   return client;
-}
-
-async function requestJson<TResponse = any>(client: StreamClient, packetName: string, payload: unknown): Promise<TResponse> {
-  return await json
-    .requestJson(client, payload)
-    .packetName(packetName)
-    .timeout(SampleTimings.requestTimeout)
-    .submit();
 }
 
 async function createGame(apiHttpEndpoint: string, gameName: string): Promise<CreateGameHttpRes> {
@@ -169,24 +175,9 @@ function toHttpEndpoint(tcpEndpoint: string): string {
   return tcpEndpoint.replace('tcp://', 'http://');
 }
 
-async function waitForNotify(client: StreamClient, packetName: string, predicate: (payload: any) => boolean): Promise<void> {
-  await waitFor(() => client.notifications.some((item) => item.packetName === packetName && predicate(item.payload)));
-}
-
 async function waitForNoNotify(client: StreamClient, packetName: string): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(client.notifications.some((item) => item.packetName === packetName), false);
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2000;
-  while (Date.now() < deadline) {
-    if (predicate()) {
-      return;
-    }
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  throw new Error('Timed out waiting for stream notification.');
 }
 
 main().catch((error: unknown) => {

@@ -2,7 +2,7 @@ const { Inject } = require('@nestjs/common');
 const { PacketNames, gameStateNotify, placeMarkRes } = require('../../../../../../Shared/Contracts/messages');
 const { TicTacToeGameDirectory } = require('../../../../Application/GameCreation/tictactoe-game');
 import type {
-  PlaceMarkReq,
+  PlaceMarkInternalReq,
   PlaceMarkRes
 } from '../../../../../../Shared/Contracts/messages';
 
@@ -12,7 +12,7 @@ class PlayActorPlaceMarkHandler {
     this.games = games;
   }
 
-  handle(request: PlaceMarkReq): PlaceMarkRes {
+  handle(request: PlaceMarkInternalReq): PlaceMarkRes {
     const room = this.games.require((request.actor as any).roomId);
     const change = room.match.placeMark(request.actor.actorId, request.cell);
     const state = change.state;

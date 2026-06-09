@@ -6,9 +6,9 @@ import {
   ZlinkStreamErrorCode,
   ZlinkStreamHeartbeatOptions,
   ZlinkStreamReconnectOptions
-} from './contracts';
-import { connectorError } from './support';
-import { inferTransport, NodeStreamTransportFactory } from './transport';
+} from '../Contracts';
+import { connectorError } from './ZlinkStreamSupport';
+import { inferTransport, NodeStreamTransportFactory } from './Transport/ZlinkStreamTransportFactory';
 
 export function normalizeOptions(options: ZlinkStreamConnectorOptions): RequiredZlinkStreamConnectorOptions {
   const endpoint = options.endpoint;
@@ -47,7 +47,8 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     dispatchMode: options.dispatchMode ?? ZlinkStreamDispatchMode.Manual,
     compression: options.compression ?? ZlinkStreamCompression.None,
     nameResolver: options.nameResolver ?? { resolve: (type) => type.name },
-    transportFactory: options.transportFactory ?? new NodeStreamTransportFactory()
+    transportFactory: options.transportFactory ?? new NodeStreamTransportFactory(),
+    codec: options.codec
   };
 }
 
@@ -86,4 +87,3 @@ function validateReconnect(options: ZlinkStreamReconnectOptions | undefined): vo
     throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Reconnect MaxAttempts must be null or positive.');
   }
 }
-

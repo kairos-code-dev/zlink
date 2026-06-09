@@ -27,10 +27,23 @@ const connector = zlinkStreamConnectorFactory.create({
 });
 
 await connector.connect();
-await connector.send('Join', { playerId: 'p1' }).submit();
+await sendJson(connector, { playerId: 'p1' }).packetName('Join').submit();
 ```
 
 json, messagepack, protobuf helper 는 connector 전용 패키지에서 제공한다.
+server push 를 한 번 기다릴 때는 connector의 `waitFor(...)` builder를 사용한다.
+connector에 JSON codec을 설정해 두면 기다린 message의 payload도 같은 codec으로
+decode된다.
+
+```ts
+const joined = await connector
+  .waitFor<PlayerJoinedNotify>('PlayerJoinedNotify')
+  .where((message) => message.payload.actorId === 'player-2')
+  .submit();
+```
+
+샘플 client는 connector wait builder로 push를 기다리고, 받은 payload의 actor id, room id, state 같은
+값을 직접 확인한다.
 
 ## 회귀 테스트
 

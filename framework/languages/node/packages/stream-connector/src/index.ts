@@ -1,9 +1,9 @@
-export * from './contracts';
+export * from './Contracts';
+export { ZlinkStreamFrameCodec } from './Runtime/Protocol/ZlinkStreamFrameCodec';
 export {
-  ZlinkStreamFrameCodec,
   ZlinkStreamHeaderCodec
-} from './protocol';
+} from './Runtime/Protocol/ZlinkStreamHeaderCodec';
 export {
   DefaultZlinkStreamConnector,
   zlinkStreamConnectorFactory
-} from './runtime';
+} from './Runtime/ZlinkStreamConnector';

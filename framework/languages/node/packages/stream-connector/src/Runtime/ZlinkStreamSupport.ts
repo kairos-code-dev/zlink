@@ -3,7 +3,7 @@ import {
   ZlinkStreamError,
   ZlinkStreamErrorCode,
   ZlinkStreamException
-} from './contracts';
+} from '../Contracts';
 
 export function connectorError(code: ZlinkStreamErrorCode, message: string, cause?: unknown): ZlinkStreamException {
   return new ZlinkStreamException({ code, message, cause });

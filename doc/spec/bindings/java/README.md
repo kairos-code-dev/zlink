@@ -637,8 +637,11 @@ Payload, flags, timeout, callback, and async behavior are builder steps.
 Representative terminal methods:
 
 - `submit()`
-- `submitAsync()`
+- `await()`
 - `submit(callback)`
+
+`submit()` starts the async operation and returns `CompletionStage`; `await()`
+is the adapter that waits for the same operation on the current thread.
 
 Do not add separate operation-start families such as `sendNoWait`,
 `sendWithFlags`, `requestAsync`, `publishWithFlags`, or direct

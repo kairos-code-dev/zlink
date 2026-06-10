@@ -29,26 +29,30 @@ request는 두 단계로 본다.
 
 ## 2. Public API 원칙
 
-framework public API는 각 언어의 표준 비동기 표현을 사용한다. 같은 의미를 가진
-blocking 대안 terminator를 별도로 만들지 않는다.
+framework public API는 각 언어의 표준 비동기 표현을 사용하되, fluent operation은
+"operation 선택 + 실행 방식 terminator" 형태로 맞춘다. 같은 의미를 가진 blocking
+대안 terminator를 별도로 만들지 않는다.
 
-- `.NET`은 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하는 공개 메서드에
-  `Async` suffix를 붙인다. 예: `ConnectAsync`, `SubmitAsync`, `DispatchAsync`.
+- `.NET`은 fluent operation builder의 awaitable terminator를 `Async(...)`로 둔다.
+  `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하지만, `SubmitAsync`처럼
+  submit 동사를 반복하지 않는다. 예: `Connect.Async()`, `Send(...).Async()`.
 - Java는 `CompletionStage<T>`를 공식 async 결과로 사용한다. 필요한 경우 Java 전용
-  `await(...)`는 같은 async 작업의 완료를 현재 thread에서 기다리는 adapter다.
+  `submit(...)`은 같은 작업의 async 시작, `await(...)`는 같은 async 작업의 완료를
+  현재 thread에서 기다리는 adapter다.
 - Kotlin은 Java `CompletionStage` 기반 계약 위에 `suspend` / `Flow` wrapper를 얹는다.
   Kotlin wrapper는 새로운 runtime 의미를 만들지 않고 coroutine suspension으로 같은
   작업을 기다린다.
 - Node.js / TypeScript는 `Promise<T>` 반환 타입과 `await` 사용으로 비동기 계약을
   드러낸다. `Async` suffix를 C#에서 그대로 옮기지 않는다.
 - C++ framework는 C++20 coroutine과 `task_t<T>` 같은 awaitable 표면을 사용할 수 있다.
-  다만 engine adapter나 no-coroutine core connector처럼 대상 runtime이 다르면 coroutine
-  표면은 선택 adapter로 분리한다.
+  Coroutine 표면의 terminator는 `async()`로 둔다. `submit(...)`은 coroutine을 쓰지
+  않는 callback/result 기반 시작 표면이다. engine adapter나 no-coroutine core connector처럼
+  대상 runtime이 다르면 coroutine 표면은 선택 adapter로 분리한다.
 - Python, Go, Rust 같은 다른 언어도 같은 의미를 각 언어의 async 표면으로 투영한다.
 
 callback 기반 completion API는 awaitable 값을 반환하지 않으므로, 언어별 관례에 따라
-`Submit(callback)`, `onCompleted(...).start()` 같은 이름을 유지할 수 있다. 이 경우에도
-network 의미는 위의 async submit과 같아야 한다.
+`Submit(callback)`, `submit(callback)`, `onCompleted(...).start()` 같은 이름을 유지할 수
+있다. 이 경우에도 network 의미는 위의 async 실행과 같아야 한다.
 
 ## 3. 서버와 클라이언트 표면 구분
 
@@ -62,7 +66,7 @@ network 의미는 위의 async submit과 같아야 한다.
 | client connector | Stream Connector, game/UI client connector, wait/request/send helper | 서버 framework와 독립된 client 라이브러리로 둘 수 있다. manual dispatch, callback, coroutine adapter 같은 runtime별 표면을 별도 설명한다. |
 | runtime adapter | Unity, Unreal, Godot, Axmol, Kotlin coroutine wrapper 같은 환경별 adapter | core 의미를 바꾸지 않고, main thread 또는 coroutine/dispatcher 규칙에 맞게 감싼다. |
 
-서버 framework가 `SubmitAsync`, `submit`, `CompletionStage`, `task_t` 같은 awaitable
+서버 framework가 `Async`, `submit`, `CompletionStage`, `task_t` 같은 awaitable
 표면을 제공하더라도, client connector는 callback completion 표면을 함께 제공할 수 있다.
 이 경우 callback 표면은 awaitable 표면과 같은 timeout, cancellation, error 의미를 가져야
 한다.
@@ -76,34 +80,35 @@ client connector의 async 의미, terminator 이름, coroutine adapter 경계는
 
 ### 4.1 .NET
 
-`.NET` framework와 connector는 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를
-반환하는 public 메서드에 `Async` suffix를 붙인다. public 타입은 `PascalCase`를 쓰고,
-서버 framework 타입은 `ZLink` prefix를 사용한다. client Stream Connector 타입은
-서버 framework와 독립된 `Systems.Zlink.Stream.Connector` 라이브러리의 `Zlink*` 타입이다.
+`.NET` framework와 connector는 fluent operation builder의 awaitable terminator를
+`Async(...)`로 둔다. `Async`는 suffix가 아니라 실행 방식 terminator다. 앞 단계가
+이미 `Connect`, `Send`, `Request`, `WaitFor`처럼 operation을 고르므로 terminator에서
+`Submit` 동사를 반복하지 않는다. public 타입은 `PascalCase`를 쓰고, 서버 framework
+타입은 `ZLink` prefix를 사용한다. client Stream Connector 타입은 서버 framework와
+독립된 `Systems.Zlink.Stream.Connector` 라이브러리의 `Zlink*` 타입이다.
 
 서버 framework 표면:
 
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
-| channel send | `IZLinkSendCall` | `SubmitAsync(CancellationToken)` |
-| channel request | `IZLinkRequestCall` | `SubmitAsync<TReply>(CancellationToken)` |
-| fanout publish | `IZLinkPublishCall` | `SubmitAsync(CancellationToken)` |
-| session push/reply | `IZLinkSessionSendCall`, `IZLinkSessionReplyCall` | `SubmitAsync()` |
-| bound session push | `IZLinkBoundSessionSendCall` | `SubmitAsync(CancellationToken)` |
+| channel send | `IZLinkSendCall` | `Async(CancellationToken)` |
+| channel request | `IZLinkRequestCall` | `Async<TReply>(CancellationToken)` |
+| fanout publish | `IZLinkPublishCall` | `Async(CancellationToken)` |
+| session push/reply | `IZLinkSessionSendCall`, `IZLinkSessionReplyCall` | `Async()` |
+| bound session push | `IZLinkBoundSessionSendCall` | `Async(CancellationToken)` |
 | handler | `IZLinkRequestHandler<TReq,TReply>`, `IZLinkSendHandler<T>` | `ValueTask<TReply>` / `ValueTask` 반환 |
 
 client connector 표면:
 
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
-| lifecycle | `IZlinkStreamConnector` | `ConnectAsync`, `CloseAsync`, `DispatchAsync` |
-| send | `IZlinkStreamSendCall` | `SubmitAsync(CancellationToken)` |
-| request | `IZlinkStreamRequestCall` | `SubmitAsync(CancellationToken)` 또는 `Submit(callback)` |
-| wait | `IZlinkStreamWaitCall` | `Where(...)`, `Timeout(...)`, `SubmitAsync(CancellationToken)` |
+| lifecycle | `IZlinkStreamConnector` | `Connect.Async(...)`, `Close.Async(...)`, `Dispatch.Async(...)` |
+| send | `IZlinkStreamSendCall` | `Async(CancellationToken)` |
+| request | `IZlinkStreamRequestCall` | `Async(CancellationToken)` 또는 `Submit(callback)` |
+| wait | `IZlinkStreamWaitCall` | `Where(...)`, `Timeout(...)`, `Async(CancellationToken)` |
 
 `Submit(callback)`은 awaitable을 반환하지 않는 callback completion 표면이므로 이름을
-유지할 수 있다. 반대로 `ValueTask`를 반환하는 public terminator는 `SubmitAsync`로
-쓴다.
+유지할 수 있다. 반대로 `ValueTask`를 반환하는 public terminator는 `Async`로 쓴다.
 
 ### 4.2 Java / Kotlin
 
@@ -116,7 +121,7 @@ Java framework는 `CompletionStage<T>`를 공식 async 결과로 사용한다. p
 | 영역 | 인터페이스 / 메서드 | 비동기 표면 |
 |------|--------------------|-------------|
 | handler | `ZLinkRequestHandler`, `ZLinkSendHandler`, `ZLinkPublishHandler` | `CompletionStage<TReply>` / `CompletionStage<Void>` 반환 |
-| channel outbound | `ZLinkClient`, `ZLinkRouteClient`, `ZLinkFanoutClient` | call builder가 `submitAsync(...)` 또는 언어별 builder terminator로 `CompletionStage` 반환 |
+| channel outbound | `ZLinkClient`, `ZLinkRouteClient`, `ZLinkFanoutClient` | call builder가 `submit(...)`으로 `CompletionStage` 반환 |
 | Spot / actor / session | `ZLinkSpot`, `ZLinkActorContext`, `ZLinkSessionContext` | lifecycle, join, bind, relay가 `CompletionStage` 반환 |
 | manual connection | `ZLinkEndpointConnections` 계열 | `connect(endpoint)`, `disconnect(endpoint)` 같은 제어 표면. 연결 단위는 `channel + capability` 또는 `spot node + capability` |
 
@@ -143,8 +148,8 @@ interface, decorator, enum 타입은 `PascalCase`를 쓴다.
 
 | 영역 | Node 표면 | .NET 기준과의 대응 |
 |------|-----------|-------------------|
-| handler | `handle()` | `HandleAsync` 의미. 반환은 `Promise<T>` 또는 `Promise<void>` |
-| channel outbound | `sendToChannel(...).submit()`, `requestToChannel(...).submit<T>()` | `.NET` `SubmitAsync` 의미 |
+| handler | `handle()` | `.NET` `HandleAsync` 의미. 반환은 `Promise<T>` 또는 `Promise<void>` |
+| channel outbound | `sendToChannel(...).submit()`, `requestToChannel(...).submit<T>()` | `.NET` fluent `Async` 의미 |
 | lifecycle | `start()`, `stop()`, NestJS lifecycle hook | `.NET` `StartAsync`, `StopAsync` 의미 |
 | DI | `ZLINK_CHANNEL_CLIENT`, `ZLINK_FANOUT_CLIENT`, `ZLINK_SPOT_MANAGER` 같은 provider token | `.NET` DI 주입 표면 대응 |
 
@@ -170,14 +175,14 @@ coroutine handler를 사용할 수 있다. 메서드는 `snake_case`, 타입은 
 | 영역 | C++ 표면 | 의미 |
 |------|----------|------|
 | handler | `task_t<T>` 또는 `task_t<void>` 반환 handler | framework handler coroutine executor에서 실행 |
-| call object | `submit_async()` / `co_await call.submit_async()` | 같은 완료 결과와 error kind를 사용 |
+| call object | `async()` / `co_await call.async()` | 같은 완료 결과와 error kind를 사용 |
 | executor | handler coroutine executor | `.result()` blocking bridge 없이 task 완료로 coroutine을 재개 |
 
 client connector 표면:
 
 | 영역 | core connector | coroutine adapter |
 |------|----------------|-------------------|
-| core lifecycle / send / request | callback 또는 result 기반 core 표면. 예외와 coroutine에 의존하지 않음 | `connect_async()`, `close_async()`, `dispatch_async()`, `submit_async()`, `wait_for_async()` |
+| core lifecycle / send / request | callback 또는 result 기반 core 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `dispatch().async()`, `request(...).async()`, `wait_for(...).async()` |
 | callback completion | `on_completed(...).start()` | callback 기반 completion이 필요할 때 사용 |
 | coroutine completion | core에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
 
@@ -212,14 +217,14 @@ Coroutine은 core 의미가 아니라 언어 또는 runtime 표면이다. Corout
   application helper가 awaitable 작업을 frame/update 흐름에 맞춰 감싼다.
 
 Unity는 `.NET` Stream Connector를 그대로 사용하고 `MonoBehaviour.Update()`에서
-`DispatchAsync()`를 호출해 callback을 main thread에서 실행한다. `StartCoroutine(...)`
+`Dispatch.Async()`를 호출해 callback을 main thread에서 실행한다. `StartCoroutine(...)`
 중심의 프로젝트에서는 application helper가 `Task` / `ValueTask` 완료를 frame마다 확인한다.
 framework와 connector는 Unity coroutine 전용 public API나 blocking sync API를 따로
 제공하지 않는다.
 
-C++ engine adapter도 같은 원칙을 따른다. 일반 C++ connector가 coroutine adapter를
-제공하더라도, Unreal 같은 engine 표면은 Game Thread dispatch와 engine delegate 모델을
-우선하고 coroutine API를 public 표면에 강제하지 않는다.
+C++ engine adapter도 같은 원칙을 따른다. 일반 C++ connector가 `async()` coroutine
+adapter를 제공하더라도, Unreal 같은 engine 표면은 Game Thread dispatch와 engine
+delegate 모델을 우선하고 coroutine API를 public 표면에 강제하지 않는다.
 
 ## 6. 언어별 문서 규칙
 

@@ -95,7 +95,7 @@ Bingo와 TicTacToe는 `.NET` 샘플의 client 검증 흐름을 기준으로 삼�
 - deterministic sample은 마지막 winner와 최종 state를 고정값으로 확인한다.
 
 push message 대기는 sample-local polling 함수가 아니라 stream connector의 public
-interface를 사용한다. 예를 들어 `.NET` 샘플의 `WaitFor<TPayload>().Where(...).SubmitAsync(...)`
+interface를 사용한다. 예를 들어 `.NET` 샘플의 `WaitFor<TPayload>().Where(...).Async(...)`
 처럼 connector 객체가 제공하는 wait API를 직접 호출한다. codec별 JSON, MessagePack,
 Protobuf wrapper나 샘플 전용 함수 뒤에 대기 흐름을 숨기면 안 된다. sample은 connector가
 반환한 message 객체의 public interface로 payload를 읽고 바로 검증한다. notification

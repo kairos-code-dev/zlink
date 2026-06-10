@@ -403,8 +403,9 @@ and are the review ownership map for public crate items and re-exports.
   `from_hex` / `try_from_hex`.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
-  the builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `submit_async`.
+  the builder absorb the variation. Async surfaces are expressed through a
+  builder terminator or `Future`-returning surface, not by widening operation
+  start names.
 
 ## Crate Layout
 

@@ -944,8 +944,8 @@ artifact. The completed binding therefore maintains these build rules:
   because it has no API-level peer routing id.
 - Do not add operation-start overload families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
-  the builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `submit_async`.
+  the builder absorb the variation. Terminal builder methods use `submit(...)`
+  for callback/result-based start and `async()` for coroutine awaitables.
 - Do not keep canonical-name bypasses such as `on_send_ready(...)`,
   `on_packet(...)`, `on_event(...)`, or operation aliases. Call sites use the
   canonical public contract instead of layered aliases.

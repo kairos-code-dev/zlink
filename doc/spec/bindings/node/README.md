@@ -570,7 +570,8 @@ but use TypeScript spelling.
   contract should not require callers to use `new Message(...)` for payload
   construction.
 - Operation-start naming follows the Function Naming Rules above. Terminal
-  builder methods may use idiomatic names such as `submitAsync`.
+  builder methods keep `submit(...)` even for Promise-returning operations.
+  Do not add a separate `submitAsync` terminator.
 
 ## Public Entry Shape
 

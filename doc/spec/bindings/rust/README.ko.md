@@ -358,8 +358,8 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   일부가 아니다. hex 디코딩은 `from_hex` / `try_from_hex`를 유지할 수 있다.
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation-start
   메서드 패밀리를 추가하지 않는다. 하나의 operation 이름을 유지하고 변형은
-  builder가 흡수하게 한다. 종단 builder 메서드는 `submit_async` 같은 관용적
-  이름을 사용할 수 있다.
+  builder가 흡수하게 한다. async 표면도 operation 시작점 이름을 늘리지 않고
+  builder terminator 또는 `Future` 반환 표면으로 표현한다.
 
 ## Crate 레이아웃
 

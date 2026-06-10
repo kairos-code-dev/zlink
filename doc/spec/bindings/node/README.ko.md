@@ -530,7 +530,8 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`,
 - 메시지 payload 팩토리는 `Message.from(...)`을 사용한다. 공개 TypeScript 계약은
   호출자가 payload 생성을 위해 `new Message(...)`를 사용하도록 요구하지 않는다.
 - operation-start 명명은 위의 함수 이름 규칙을 따른다. 빌더의 종단 메서드는
-  `submitAsync`처럼 관용 표기 이름을 사용할 수 있다.
+  Promise 반환 표면에서도 지금처럼 `submit(...)`을 사용한다. `submitAsync` 같은
+  별도 종단 이름을 추가하지 않는다.
 
 ## 공개 엔트리 형태
 

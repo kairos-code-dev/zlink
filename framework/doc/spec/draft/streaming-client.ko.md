@@ -167,7 +167,7 @@ connector core는 사용자 callback을 network receive loop에서 직접 호출
 직접 정한 thread에서 callback을 실행해야 thread 충돌을 피할 수 있기 때문이다.
 
 기본 dispatch mode는 `Manual`이다. 이 경우 connector는 아래 callback을 내부 queue에
-넣고, 사용자가 `DispatchAsync()`를 호출한 thread에서 실행한다.
+넣고, 사용자가 `Dispatch.Async()`를 호출한 thread에서 실행한다.
 
 - `On(...)` packet handler
 - `ErrorReceived`
@@ -176,12 +176,12 @@ connector core는 사용자 callback을 network receive loop에서 직접 호출
 - request callback submit
 
 `PendingDispatchCount`는 아직 dispatch되지 않은 callback 수를 반환한다. 일반 client는
-자신의 main loop에서 `DispatchAsync()`를 반복 호출한다. 기존처럼 worker thread에서 바로
+자신의 main loop에서 `Dispatch.Async()`를 반복 호출한다. 기존처럼 worker thread에서 바로
 callback을 실행하고 싶은 서버형 프로그램이나 테스트는 `DispatchMode = Immediate`를
 선택할 수 있다.
 
 Unity 같은 runtime은 별도 connector를 만들지 않고 같은 core connector를 사용한다. Unity
-사용자는 `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출하면 사용자 callback이 Unity
+사용자는 `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출하면 사용자 callback이 Unity
 main thread에서 실행된다.
 
 ### 5.7 Codec extension
@@ -369,7 +369,7 @@ error payload schema는 connector helper 전용이다. 애플리케이션 도메
 ## 8. 연결 생명주기
 
 Connector 생성과 네트워크 연결은 분리한다. 생성 함수는 connector 객체를 만들 뿐이며,
-실제 연결은 `ConnectAsync()` 같은 명시적 연결 API에서 시작한다.
+실제 연결은 `Connect.Async()` 같은 명시적 연결 API에서 시작한다.
 
 Heartbeat와 reconnect는 기본으로 켜져 있으며, 각 옵션의 `Enabled = false`로 끌 수 있다.
 
@@ -404,7 +404,7 @@ heartbeat timeout 기준, reconnect delay 계산, pending request 실패 규칙�
 - server-to-client compressed payload를 client connector typed API가 자동으로 압축
   해제한다.
 - client-to-server compression은 명시 호출에서만 적용된다.
-- manual dispatch는 사용자 callback이 `DispatchAsync()`를 호출한 thread에서 실행되는지
+- manual dispatch는 사용자 callback이 `Dispatch.Async()`를 호출한 thread에서 실행되는지
   검증한다.
 - immediate dispatch는 기존처럼 별도 pump 호출 없이 callback이 실행되는지 검증한다.
 

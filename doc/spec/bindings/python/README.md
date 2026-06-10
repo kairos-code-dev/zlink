@@ -476,8 +476,9 @@ from `zlink`.
   `copy_from`, and `from_bytes` are not part of the public contract.
 - Do not add operation-start method families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
-  the builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `submit_async`.
+  the builder absorb the variation. Async surfaces are expressed through a
+  builder terminator or Python `async def` surface, not by widening operation
+  start names.
 
 ## Public Package Shape
 

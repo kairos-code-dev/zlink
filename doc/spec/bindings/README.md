@@ -855,9 +855,9 @@ runtime/native bridge 역할에만 존재하며 public contract 역할로 만들
   위치해야 한다.
 - `sendNoWait`, `publishWithFlags`, `requestAsync`, `requestCallback`처럼 operation
   시작점 이름을 늘리는 방식은 만들지 않는다. 같은 operation 이름을 유지하고
-  builder 단계가 변형을 흡수한다. 단, builder의 terminal method는 언어 관례에
-  맞게 `SubmitAsync`, `submit_async`, `submit(callback)` 같은 이름을 사용할 수
-  있다.
+  builder 단계가 변형을 흡수한다. builder의 terminal method는 언어 관례에
+  맞게 `.NET` `Async(...)`, Java `submit()` / `await()`, C++ `submit(...)` /
+  `async()`, Node `submit(...)`처럼 투영한다.
 - resource 생성은 public constructor를 여러 runtime class에 흩어 두지 않는다.
   binding별 root facade 또는 context factory가 생성 책임을 가진다. 예를 들어
   .NET binding은 `Zlink.CreateContext()`로 context를 만들고, socket과 service
@@ -1067,7 +1067,7 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
   `ActorBindOp`, `ActorUnbindOp` 같은 언어별 operation builder를 반환한다.
   서로 다른 시작점이라도 multipart payload 표현은 모두 `.message(...)`
   반복으로 통일한다.
-- `.messages(...)`, `.flags(...)`, `.timeout(...)`, `.submitAsync(...)`,
+- `.messages(...)`, `.flags(...)`, `.timeout(...)`, async/coroutine terminator,
   callback submit 같은 builder convenience와 terminal method도 public 이면
   builder contract의 일부다. runtime 내부 shortcut으로만 정의하지 않는다.
 - payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
@@ -1091,7 +1091,7 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
 - payload가 없는 작업(Actor `leave`, `destroy`, `bindActor`, `unbindActor`,
   `remoteActorGetRef`)은 builder가 `message(...)` 단계 없이 곧바로 submit이
   가능하다. 단 builder 형태와 옵션 단계(`flags(...)`, `timeout(...)`,
-  `callback(...)`, `await`/`submitAsync()`)는 동일하게 노출한다.
+  `callback(...)`, async/coroutine terminator)는 동일하게 노출한다.
 - `flags`, `timeout`, callback, async 선택은 시작점 파라미터가 아니라
   builder의 선택 단계로 둔다. 시작점은 대상 주소·요청 시퀀스처럼 의미상
   키만 받는다.
@@ -1128,7 +1128,7 @@ spot.publish(topic)
 routerSocket.requestToSpot(destNodeRid, destSpotRid)
     .message(reqPart)
     .timeout(Duration.ofSeconds(3))
-    .submitAsync();
+    .submit();
 
 spotNode.joinActor(actor, destNodeRid, destUserSpotRid)
     .message(joinStatePart)
@@ -1144,12 +1144,12 @@ streamSocket.bindActor(sessionRid, actorRef)
 
 | Binding | Canonical operation-builder shape |
 |---|---|
-| C++ | move-only fluent builder. `submit()`은 rvalue 또는 one-shot state로 중복 submit을 막는다. |
-| Java | staged builder. payload가 의무인 작업은 `message(...)` 전에는 `submit()` / `submitAsync()`가 보이지 않아야 한다. payload 없는 작업은 시작점이 곧바로 submit 단계를 노출한다. |
-| .NET | fluent builder. 가능하면 interface stage로 최소 payload rule을 표현하되, public surface가 과도하게 장황해지면 submit-time validation을 허용한다. |
-| Node | fluent builder. TypeScript declaration은 payload stage를 표현하고, 런타임도 같은 validation을 수행한다. |
+| C++ | move-only fluent builder. `submit(...)`은 callback/result 기반 시작 표면이고, `async()`는 coroutine awaitable 표면이다. rvalue 또는 one-shot state로 중복 submit을 막는다. |
+| Java | staged builder. payload가 의무인 작업은 `message(...)` 전에는 `submit()` / `await()`가 보이지 않아야 한다. `submit()`은 `CompletionStage` 반환, `await()`는 같은 작업의 현재 thread 대기 adapter다. payload 없는 작업은 시작점이 곧바로 submit 단계를 노출한다. |
+| .NET | fluent builder. awaitable terminator는 `Async(...)`로 통일한다. 가능하면 interface stage로 최소 payload rule을 표현하되, public surface가 과도하게 장황해지면 submit-time validation을 허용한다. |
+| Node | fluent builder. Promise 반환 terminator는 지금처럼 `submit(...)`을 사용한다. TypeScript declaration은 payload stage를 표현하고, 런타임도 같은 validation을 수행한다. |
 | Python | fluent builder. `message(...)` 반복과 Python 관용의 `messages(*parts)` convenience를 함께 허용한다. |
-| Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `Submit(ctx, callback)` / `SubmitAsync(ctx)` 실행 시점에 전달한다. |
+| Go | fluent builder. `context.Context`는 operation 시작점이 아니라 `Submit(ctx)` / `Submit(ctx, callback)` 같은 실행 시점에 전달한다. async 표면을 추가할 때도 시작점 이름을 늘리지 않는다. |
 | Rust | typestate builder. payload 의무 작업은 `Empty` 상태에서 `message(...)` 후 `Ready` 상태로 바뀌며 `Ready` 상태에서만 submit 메서드가 존재한다. payload 없는 작업은 시작점이 곧바로 submit 가능한 typestate를 반환한다. |
 
 이 규칙은 POSD 기준에서 Required다. 새 send/request/reply/publish 또는 Actor
@@ -1646,7 +1646,7 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 | `send`, `publish`, `reply` | `DONTWAIT` — non-blocking submit |
 | `recv`, `subscribe`, `receiveSubscriptionEvent` | `DONTWAIT` — non-blocking receive |
 | `request` (callback) | `DONTWAIT` — non-blocking submit |
-| `request` (coroutine/async) | flags 없음 — 항상 blocking submit |
+| `request` (coroutine/async) | flags 없음 — async/coroutine completion 경로를 사용 |
 
 - flags 기본값은 `0` (blocking).
 - non-blocking 호출의 temporary 상태는 언어별 public 계약에 맞춰 전달한다.
@@ -1708,7 +1708,7 @@ same meaning.
 spot.request_to_channel(channel)
     .message(part)
     .timeout(Duration::from_secs(3))
-    .submit_async()                        // coroutine variant
+    .async()                               // coroutine variant
 
 spot.request_to_channel(channel)
     .message(part)
@@ -1774,15 +1774,18 @@ request 는 coroutine 변형과 callback 변형 두 완료 방식을 제공하�
 SPOT operation builder 대상의 작업 시작점은 `requestToChannel` /
 `requestToSpot` / `requestToRouter` 이고, raw `DealerSocket` /
 `RouterSocket` 의 작업 시작점은 `request` / `request(peer)` 이다. 어느
-시작점이든 builder의 `submitAsync` / `submit(callback)` (또는 언어별 동등
-submit 메서드) 로 완료 방식을 선택한다.
+시작점이든 builder의 `.NET` `Async(...)`, Java `submit()` / `await()`,
+C++ `async()` / `submit(callback)`, Node `submit(...)` 같은 언어별 terminator로
+완료 방식을 선택한다.
 
 #### Coroutine / Async request
 
-builder의 async submit 메서드 (`submit_async()` / `submitAsync()` /
-`await op.submit()`).
+builder의 async/coroutine terminator (`.NET` `Async(...)`, C++ `async()`,
+Java `submit()` 또는 `await()`, Node `await op.submit()`).
 
-- flags 파라미터 없음. submit 은 항상 blocking (코루틴 대기).
+- flags 파라미터 없음. async/coroutine terminator는 완료를 suspend 하거나
+  awaitable을 반환하며, callback submit처럼 `DONTWAIT` flags로 시작 방식을
+  바꾸지 않는다.
 - timeout 은 builder의 `.timeout(...)` 단계로 전달한다. 지정하지 않으면 소켓
   기본 timeout 을 사용한다.
 - submit 실패 시 예외. reply 실패 시 예외 (ETIMEDOUT 등).
@@ -3086,8 +3089,9 @@ request 는 두 완료 방식을 가진다.
 를 통해 노출된다. builder 의 submit 단계가 완료 방식을 고르며, 별도 이름
 (`request_callback`, `request_async`)을 만들지 않는다.
 
-- async 변형: builder의 `.submit_async()` / `.submit_await()` /
-  `await op.submit()` 같은 언어별 비동기 submit 메서드를 사용한다.
+- async 변형: builder의 `.NET` `Async(...)`, C++ `async()`, Java
+  `submit()` / `await()`, Node `await op.submit()` 같은 언어별 비동기
+  terminator를 사용한다.
   submit flags 는 받지 않는다.
 - callback 변형: builder의 `.flags(...)` 단계를 거친 뒤
   `.submit(callback)` 으로 완료한다. `DONTWAIT` 같은 non-blocking submit
@@ -3097,9 +3101,9 @@ C binding 은 `zlink_*_request_part(..., flags, part_flag, timeout, ...)`
 substrate 형태를 유지한다 (C ABI 는 builder 정책 적용 안 됨). 즉 C 에서는
 callback request submit 제어를 별도 함수명이 아니라 flags 로 표현한다.
 
-| | async submit (`builder.submit_async()`) | callback submit (`builder.submit(callback)`) |
+| | async/coroutine terminator | callback submit (`builder.submit(callback)`) |
 |---|---|---|
-| submit | blocking / suspending | blocking 또는 non-blocking (`flags`) |
+| 실행 | suspending 또는 awaitable 반환 | blocking 또는 non-blocking (`flags`) |
 | reply 전달 | 반환값 `List<Message>` | callback |
 | submit 실패 시 | 예외 또는 에러 반환 | blocking 성공 시 `true`, non-blocking temporary backpressure 는 `false`, 그 외는 예외 또는 에러 |
 | reply 실패 시 | 예외 또는 에러 반환 (ETIMEDOUT 등) | callback (`result != OK`) |

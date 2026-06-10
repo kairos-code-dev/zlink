@@ -299,8 +299,8 @@ receive-path 값을 캐시할 수 있지만, equality와 공개 동작은 오직
   아니다.
 - `SendNoWait`, `PublishWithFlags`, `RequestAsync` 같은 operation-start
   메서드 군을 추가하지 않는다. 하나의 operation 이름을 유지하고 변형은
-  builder가 흡수한다. terminal builder 메서드는 `SubmitAsync` 같은 관용 이름을
-  사용할 수 있다.
+  builder가 흡수한다. awaitable terminal builder 메서드는 `Async(...)`로
+  통일하고, callback completion 표면이 필요할 때만 `Submit(callback)`을 둔다.
 
 ## Contract 폴더 레이아웃
 

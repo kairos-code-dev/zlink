@@ -313,8 +313,8 @@ defined only by the immutable byte value.
   part of the public contract.
 - Do not add operation-start method families such as `SendNoWait`,
   `PublishWithFlags`, or `RequestAsync`; keep one operation name and let the
-  builder absorb the variation. Terminal builder methods may use idiomatic
-  names such as `SubmitAsync`.
+  builder absorb the variation. Awaitable terminal builder methods use
+  `Async(...)`; callback completion surfaces may use `Submit(callback)`.
 
 ## Contract Folder Layout
 

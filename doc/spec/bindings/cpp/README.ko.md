@@ -424,7 +424,8 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
   수준 peer routing id가 없으므로 임의 token에 reply할 수 없다.
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation 시작 오버로드
   계열을 추가하지 않는다. operation 이름은 하나로 유지하고 변형은 빌더가 흡수한다. 종단
-  빌더 메서드는 `submit_async` 같은 관용 이름을 쓸 수 있다.
+  빌더 메서드는 callback/result 기반 시작에 `submit(...)`, coroutine awaitable에
+  `async()`를 사용한다.
 - `on_send_ready(...)`, `on_packet(...)`, `on_event(...)` 같은 표준 이름 우회나 operation
   별칭을 두지 않는다. 호출 지점은 계층화된 별칭 대신 표준 공개 계약을 그대로 쓴다.
 

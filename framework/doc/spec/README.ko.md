@@ -142,9 +142,10 @@ framework 문서의 public 이름 규칙은
 - 파라미터 조합이 다르다는 이유만으로 이름을 늘리지 않는다.
 - async submit, blocking 대안 금지, coroutine adapter의 공통 의미는
   [비동기 실행과 coroutine 정책](./async-execution-policy.ko.md)을 따른다.
-- builder terminator 이름은 공통 의미를 유지하되, 각 언어의 비동기 네이밍 관례에 맞춰
-  투영한다. 예를 들어 `.NET` awaitable terminator는 `SubmitAsync(...)`이고,
-  Node.js `Promise` terminator는 `submit(...)`이다.
+- builder terminator 이름은 공통 의미를 유지하되, 각 언어의 fluent API 관례에 맞춰
+  투영한다. 예를 들어 `.NET` awaitable terminator는 `Async(...)`, Java는
+  `submit(...)` / `await(...)`, C++ coroutine terminator는 `async()`, Node.js
+  `Promise` terminator는 `submit(...)`이다.
 
 문서에서 우선 따라야 할 언어별 케이싱은 아래와 같다.
 

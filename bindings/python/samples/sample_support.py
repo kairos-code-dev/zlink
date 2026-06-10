@@ -7,14 +7,18 @@ import zlink
 
 _MONITOR_POLL_SLEEP_S = 0.005
 _MONITOR_WAIT = threading.Event()
+_ALLOCATED_TCP_PORTS = set()
 
 
 def tcp_endpoint():
-    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return port, f"tcp://127.0.0.1:{port}"
+    while True:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        if port not in _ALLOCATED_TCP_PORTS:
+            _ALLOCATED_TCP_PORTS.add(port)
+            return port, f"tcp://127.0.0.1:{port}"
 
 
 def _poll_monitor_event(monitor, timeout_ms):

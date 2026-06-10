@@ -125,6 +125,9 @@ from ._runtime.options import option_mapping as socket_options_runtime
 from ._runtime.sockets import socket_base_impl as socket_runtime
 from ._runtime.service.discovery import discovery as discovery_runtime
 from ._runtime.service.spot import spot as spot_runtime
+from . import contracts as contracts_projection
+from .contracts import messaging as messaging_contracts_projection
+from .contracts.messaging import message as message_contract_module
 
 version = core_runtime.version
 strerror = core_runtime.strerror
@@ -135,6 +138,9 @@ sleep = core_runtime.sleep
 multipart_close = core_runtime.multipart_close
 
 Message = messaging_runtime.Message
+contracts_projection.Message = Message
+messaging_contracts_projection.Message = Message
+message_contract_module.Message = Message
 create_message = messaging_runtime.create_message
 allocate_message = messaging_runtime.message_allocate
 create_received = messaging_runtime.create_received

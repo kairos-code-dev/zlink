@@ -9,12 +9,18 @@ import unittest
 import zlink
 
 
+_ALLOCATED_TCP_PORTS = set()
+
+
 def _tcp_endpoint():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
+    while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        if port not in _ALLOCATED_TCP_PORTS:
+            _ALLOCATED_TCP_PORTS.add(port)
+            return f"tcp://127.0.0.1:{port}"
 
 
 def _wait_spot_peer_connected(node, timeout_s=5.0):

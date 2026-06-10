@@ -575,6 +575,21 @@ class CoreApiAlignmentTests(unittest.TestCase):
         self.assertFalse(hasattr(zlink.Message, "copy_from"))
         self.assertFalse(hasattr(zlink.Message, "from_bytes"))
 
+    def test_message_projection_is_consistent_across_public_contract_imports(self):
+        from zlink.contracts import Message as ContractMessage
+        from zlink.contracts.messaging import Message as MessagingMessage
+        from zlink.contracts.messaging.message import Message as MessageModuleMessage
+
+        self.assertIs(ContractMessage, zlink.Message)
+        self.assertIs(MessagingMessage, zlink.Message)
+        self.assertIs(MessageModuleMessage, zlink.Message)
+        with ContractMessage.from_(b"payload") as message:
+            self.assertEqual(message.to_bytes(), b"payload")
+        with MessagingMessage.from_("text") as message:
+            self.assertEqual(message.to_bytes(), b"text")
+        with MessageModuleMessage.from_(bytearray(b"module")) as message:
+            self.assertEqual(message.to_bytes(), b"module")
+
     def test_message_does_not_expose_borrowed_wrap_surface(self):
         self.assertFalse(hasattr(zlink.Message, "wrap_buffer"))
         self.assertFalse(hasattr(zlink.Message, "_wrap_buffer"))

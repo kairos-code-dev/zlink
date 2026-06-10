@@ -178,49 +178,6 @@ test('remote spot peer delivery works across child processes', async () => {
   const serverPath = path.join(fixturesDir, 'spot_child_server.js');
   const clientPath = path.join(fixturesDir, 'spot_child_client.js');
 
-  const waitForLine = (child, expected, timeoutMs, sink) => {
-    return new Promise<void>((resolve, reject) => {
-      let buffered = '';
-      let done = false;
-      const timeout = setTimeout(() => {
-        if (!done) {
-          done = true;
-          reject(new Error(`timeout waiting for ${expected}: ${sink()}`));
-        }
-      }, timeoutMs);
-      const onData = (chunk) => {
-        buffered += chunk.toString();
-        while (true) {
-          const newline = buffered.indexOf('\n');
-          if (newline === -1) {
-            break;
-          }
-          const line = buffered.slice(0, newline).trim();
-          buffered = buffered.slice(newline + 1);
-          if (!line) {
-            continue;
-          }
-          if (!done && line === expected) {
-            done = true;
-            clearTimeout(timeout);
-            child.stdout.off('data', onData);
-            resolve();
-            return;
-          }
-        }
-      };
-      child.stdout.on('data', onData);
-      child.once('exit', (code) => {
-        if (!done) {
-          done = true;
-          clearTimeout(timeout);
-          child.stdout.off('data', onData);
-          reject(new Error(`exited before ${expected}: ${code}: ${sink()}`));
-        }
-      });
-    });
-  };
-
   const server = spawn(process.execPath, [
     serverPath,
     '--bind-endpoint', serverEndpoint,
@@ -248,12 +205,14 @@ test('remote spot peer delivery works across child processes', async () => {
   client.stderr.on('data', (chunk) => {
     clientStderr += chunk.toString();
   });
+  const waitForServerLine = createChildLineWaiter(server);
+  const waitForClientLine = createChildLineWaiter(client);
 
   try {
-    await waitForLine(server, `READY,${serverEndpoint}`, 5000, () => serverStderr);
-    await waitForLine(client, 'CLIENT_READY', 5000, () => clientStderr);
+    await waitForServerLine(`READY,${serverEndpoint}`, 5000, () => serverStderr);
+    await waitForClientLine('CLIENT_READY', 5000, () => clientStderr);
     server.stdin.write('START\n');
-    await waitForLine(client, 'RECEIVED,spot:child,payload', 5000, () => clientStderr);
+    await waitForClientLine('RECEIVED,spot:child,payload', 5000, () => clientStderr);
 
     const [clientCode] = await once(client, 'exit');
     assert.equal(clientCode, 0, clientStderr);
@@ -277,6 +236,83 @@ test('remote spot peer delivery works across child processes', async () => {
     }
   }
 });
+
+function createChildLineWaiter(child) {
+  const queued = [];
+  const waiters = [];
+  let buffered = '';
+  let exited = false;
+  let exitCode = null;
+
+  const tryResolve = (waiter) => {
+    const index = queued.indexOf(waiter.expected);
+    if (index < 0) {
+      return false;
+    }
+    queued.splice(0, index + 1);
+    clearTimeout(waiter.timeout);
+    waiter.resolve();
+    return true;
+  };
+  const flushWaiters = () => {
+    for (let index = 0; index < waiters.length;) {
+      if (tryResolve(waiters[index])) {
+        waiters.splice(index, 1);
+      } else {
+        index += 1;
+      }
+    }
+  };
+
+  child.stdout.on('data', (chunk) => {
+    buffered += chunk.toString();
+    while (true) {
+      const newline = buffered.indexOf('\n');
+      if (newline === -1) {
+        break;
+      }
+      const line = buffered.slice(0, newline).trim();
+      buffered = buffered.slice(newline + 1);
+      if (line) {
+        queued.push(line);
+      }
+    }
+    flushWaiters();
+  });
+  child.once('exit', (code) => {
+    exited = true;
+    exitCode = code;
+    for (const waiter of waiters.splice(0)) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(new Error(`exited before ${waiter.expected}: ${exitCode}: ${waiter.sink()}`));
+    }
+  });
+
+  return (expected, timeoutMs, sink) => new Promise<void>((resolve, reject) => {
+    const waiter = {
+      expected,
+      sink,
+      resolve,
+      reject,
+      timeout: setTimeout(() => {
+        const index = waiters.indexOf(waiter);
+        if (index >= 0) {
+          waiters.splice(index, 1);
+        }
+        reject(new Error(`timeout waiting for ${expected}: ${sink()}`));
+      }, timeoutMs)
+    };
+    if (tryResolve(waiter)) {
+      return;
+    }
+    if (exited) {
+      clearTimeout(waiter.timeout);
+      reject(new Error(`exited before ${expected}: ${exitCode}: ${sink()}`));
+      return;
+    }
+    waiters.push(waiter);
+  });
+}
 
 test('canonical pub/sub surface hides opposite-direction methods', () => {
   const ctx = zlink.createContext();

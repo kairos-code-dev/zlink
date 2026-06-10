@@ -134,6 +134,7 @@ proxy_steerable = core_runtime.proxy_steerable
 sleep = core_runtime.sleep
 multipart_close = core_runtime.multipart_close
 
+Message = messaging_runtime.Message
 create_message = messaging_runtime.create_message
 allocate_message = messaging_runtime.message_allocate
 create_received = messaging_runtime.create_received

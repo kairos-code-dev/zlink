@@ -453,15 +453,6 @@ class Message:
     def copy(self):
         return type(self).from_(self)
 
-    @classmethod
-    def _wrap_buffer(cls, data):
-        msg = cls.__new__(cls)
-        msg._msg = ZlinkMsg()
-        msg._valid = False
-        msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=True)
-        msg._valid = True
-        return msg
-
     def size(self):
         return _msg_size(self._msg) if self._valid else 0
 
@@ -581,7 +572,12 @@ def message_allocate(size):
 
 
 def wrap_message_buffer(data):
-    return Message._wrap_buffer(data)
+    msg = Message.__new__(Message)
+    msg._msg = ZlinkMsg()
+    msg._valid = False
+    msg._keepalive = _init_msg_from_buffer(msg._msg, data, borrow=True)
+    msg._valid = True
+    return msg
 
 
 def create_received_message(*args, **kwargs):

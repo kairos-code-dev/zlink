@@ -293,7 +293,7 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
     return 0;
 }
 
-[[nodiscard]] int spot_t::publish_no_wait_result_impl (send_result_t &result_out_,
+[[nodiscard]] int spot_t::try_publish_result_impl (send_result_t &result_out_,
                                                        const char *topic_,
                                                        std::vector<message_t> &parts_)
 {
@@ -314,7 +314,7 @@ spot_t::publish_impl (const char *topic_, std::vector<message_t> &parts_, send_f
       });
 }
 
-[[nodiscard]] int spot_t::publish_no_wait_result_impl (send_result_t &result_out_,
+[[nodiscard]] int spot_t::try_publish_result_impl (send_result_t &result_out_,
                                                        const char *topic_,
                                                        message_t &part_)
 {

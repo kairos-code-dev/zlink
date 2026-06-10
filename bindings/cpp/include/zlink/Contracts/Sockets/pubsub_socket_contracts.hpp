@@ -63,12 +63,6 @@ class pub_socket_t : public publisher_socket_t
 
     service::send_operation_t publish (const std::string &topic_id_);
 
-    [[nodiscard]] int
-    publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
-    {
-        return socket_t::publish_no_wait_result (result_, topic_id_, part_);
-    }
-
     void set_send_ready_handler (std::function<void ()> handler_)
     {
         socket_t::set_send_ready_handler (std::move (handler_));
@@ -153,12 +147,6 @@ class xpub_socket_t : public publisher_socket_t
     explicit xpub_socket_t (context_t &ctx_);
 
     service::send_operation_t publish (const std::string &topic_id_);
-
-    [[nodiscard]] int
-    publish_no_wait (send_result_t &result_, const std::string &topic_id_, message_t &part_)
-    {
-        return socket_t::publish_no_wait_result (result_, topic_id_, part_);
-    }
 
     void set_send_ready_handler (std::function<void ()> handler_)
     {

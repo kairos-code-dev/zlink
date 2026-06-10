@@ -60,7 +60,7 @@ template <typename SpotT> class has_try_publish_t
 {
   private:
     template <typename T>
-    static auto test (int) -> decltype (std::declval<T &> ().publish_no_wait_result (
+    static auto test (int) -> decltype (std::declval<T &> ().try_publish_result (
                                           std::declval<const std::string &> (),
                                           std::declval<zlink::message_t &> ()),
                                         std::true_type ());
@@ -342,7 +342,7 @@ static_assert (has_subscribe_part_t<zlink::service::spot_t>::value,
 static_assert (!has_try_subscribe_result_t<zlink::service::spot_t>::value,
                "spot_t must not expose subscribe_no_wait");
 static_assert (!has_try_publish_t<zlink::service::spot_t>::value,
-               "spot_t must not expose publish_no_wait_result");
+               "spot_t must not expose try_publish_result");
 static_assert (has_spot_publish_t<zlink::service::spot_t>::value,
                "spot_t must expose topic publish");
 static_assert (!has_topic_publish_t<zlink::service::spot_t>::value,

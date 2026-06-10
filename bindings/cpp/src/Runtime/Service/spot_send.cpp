@@ -59,7 +59,7 @@ bool spot_t::publish (const std::string &topic_, message_t &part_, send_flags_t 
 {
     if (flags_ == send_flags_t::dontwait) {
         send_result_t result = send_result_t::sent;
-        if (publish_no_wait_result_impl (result, topic_.c_str (), part_) != 0) {
+        if (try_publish_result_impl (result, topic_.c_str (), part_) != 0) {
             const int err = zlink_errno ();
             throw submit_error_t (zlink::detail::submit_result_from_errno (err), err);
         }

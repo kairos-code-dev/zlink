@@ -354,17 +354,6 @@ class socket_t
             if constexpr (std::is_same<socket_type_t, pub_socket_t>::value
                           || std::is_same<socket_type_t, xpub_socket_t>::value) {
                 try {
-                    if ((flags_ & static_cast<int> (zlink::send_flags_t::dontwait))
-                        == static_cast<int> (zlink::send_flags_t::dontwait)) {
-                        send_result_t result = send_result_t::not_ready;
-                        const int rc = socket_.publish_no_wait (result, topic_id_, part_);
-                        if (rc != 0)
-                            return -1;
-                        if (result == send_result_t::sent)
-                            return 0;
-                        errno = EAGAIN;
-                        return -1;
-                    }
                     const bool sent = std::move (socket_.publish (topic_id_))
                                         .message (part_)
                                         .flags (flags_)
@@ -427,7 +416,7 @@ class socket_t
     }
 
     int
-    send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_)
+    try_send_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_)
     {
         result_ = send_result_t::sent;
         try {

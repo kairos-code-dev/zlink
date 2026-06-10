@@ -223,12 +223,12 @@ class spot_t
                                                std::string &topic_,
                                                recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int publish_no_wait_result_impl (send_result_t &result_out_,
+    [[nodiscard]] int try_publish_result_impl (send_result_t &result_out_,
                                                    const char *topic_,
                                                    std::vector<message_t> &parts_);
 
     [[nodiscard]] int
-    publish_no_wait_result_impl (send_result_t &result_out_, const char *topic_, message_t &part_);
+    try_publish_result_impl (send_result_t &result_out_, const char *topic_, message_t &part_);
 
   private:
     explicit spot_t (spot_node_t &node_);

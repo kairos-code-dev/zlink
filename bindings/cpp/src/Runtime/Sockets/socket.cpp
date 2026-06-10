@@ -177,7 +177,7 @@ int socket_t::send (const routing_id_t &target_rid_,
       });
 }
 
-int socket_t::send_no_wait_result (send_result_t &result_, message_t &part_)
+int socket_t::try_send_result (send_result_t &result_, message_t &part_)
 {
     return detail::send_single_no_wait_result (
       result_, part_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
@@ -186,7 +186,7 @@ int socket_t::send_no_wait_result (send_result_t &result_, message_t &part_)
       });
 }
 
-int socket_t::send_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_)
+int socket_t::try_send_result (send_result_t &result_, std::vector<message_t> &parts_)
 {
     return detail::submit_message_parts_no_wait (
       result_, parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
@@ -195,7 +195,7 @@ int socket_t::send_no_wait_result (send_result_t &result_, std::vector<message_t
       });
 }
 
-int socket_t::send_no_wait_result (send_result_t &result_,
+int socket_t::try_send_result (send_result_t &result_,
                                    const routing_id_t &target_rid_,
                                    message_t &part_)
 {
@@ -207,7 +207,7 @@ int socket_t::send_no_wait_result (send_result_t &result_,
       });
 }
 
-int socket_t::send_no_wait_result (send_result_t &result_,
+int socket_t::try_send_result (send_result_t &result_,
                                    const routing_id_t &target_rid_,
                                    std::vector<message_t> &parts_)
 {
@@ -284,7 +284,7 @@ int socket_t::publish (const std::string &topic_id_,
       });
 }
 
-int socket_t::publish_no_wait_result (send_result_t &result_,
+int socket_t::try_publish_result (send_result_t &result_,
                                       const std::string &topic_id_,
                                       message_t &part_)
 {
@@ -296,7 +296,7 @@ int socket_t::publish_no_wait_result (send_result_t &result_,
       });
 }
 
-int socket_t::publish_no_wait_result (send_result_t &result_,
+int socket_t::try_publish_result (send_result_t &result_,
                                       const std::string &topic_id_,
                                       std::vector<message_t> &parts_)
 {

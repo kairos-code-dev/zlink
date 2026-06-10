@@ -92,14 +92,14 @@ class socket_t
                             send_flags_t flags_ = send_flags_t::none);
 
   protected:
-    [[nodiscard]] int send_no_wait_result (send_result_t &result_, message_t &part_);
+    [[nodiscard]] int try_send_result (send_result_t &result_, message_t &part_);
 
-    [[nodiscard]] int send_no_wait_result (send_result_t &result_, std::vector<message_t> &parts_);
+    [[nodiscard]] int try_send_result (send_result_t &result_, std::vector<message_t> &parts_);
 
     [[nodiscard]] int
-    send_no_wait_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_);
+    try_send_result (send_result_t &result_, const routing_id_t &target_rid_, message_t &part_);
 
-    [[nodiscard]] int send_no_wait_result (send_result_t &result_,
+    [[nodiscard]] int try_send_result (send_result_t &result_,
                                            const routing_id_t &target_rid_,
                                            std::vector<message_t> &parts_);
 
@@ -117,9 +117,9 @@ class socket_t
                                send_flags_t flags_ = send_flags_t::none);
 
     [[nodiscard]] int
-    publish_no_wait_result (send_result_t &result_, const std::string &topic_id_, message_t &part_);
+    try_publish_result (send_result_t &result_, const std::string &topic_id_, message_t &part_);
 
-    [[nodiscard]] int publish_no_wait_result (send_result_t &result_,
+    [[nodiscard]] int try_publish_result (send_result_t &result_,
                                               const std::string &topic_id_,
                                               std::vector<message_t> &parts_);
 

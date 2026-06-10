@@ -136,6 +136,16 @@ inline void from_json (const nlohmann::json &json, late_options_reply_t &value)
     value.value = json.value ("value", "");
 }
 
+template <typename T> zlink::message_t to_stream_payload (const T &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+template <typename T> void from_stream_payload (const zlink::message_t &message, T &value)
+{
+    value = message.parse_json<T> ();
+}
+
 class options_request_handler_t
 {
   public:

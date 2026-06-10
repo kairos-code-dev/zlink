@@ -95,22 +95,6 @@ template <typename SocketT> class has_single_part_recv_t
     static const bool value = decltype (test<SocketT> (0))::value;
 };
 
-template <typename SocketT> class has_publish_no_wait_t
-{
-  private:
-    template <typename T>
-    static auto test (int)
-      -> decltype (std::declval<T &> ().publish_no_wait (std::declval<zlink::send_result_t &> (),
-                                                         std::declval<const std::string &> (),
-                                                         std::declval<zlink::message_t &> ()),
-                   std::true_type ());
-
-    template <typename> static std::false_type test (...);
-
-  public:
-    static const bool value = decltype (test<SocketT> (0))::value;
-};
-
 template <typename SocketT> class has_subscribe_part_t
 {
   private:
@@ -274,8 +258,6 @@ static_assert (has_attach_discovery_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::pub_socket_t>::value,
                "pub_socket_t must expose publish builder");
-static_assert (has_publish_no_wait_t<zlink::pub_socket_t>::value,
-               "pub_socket_t must expose nonblocking direct publish result");
 static_assert (has_attach_discovery_t<zlink::sub_socket_t>::value,
                "sub_socket_t must expose attach_discovery");
 static_assert (has_subscribe_part_t<zlink::sub_socket_t>::value,
@@ -284,8 +266,6 @@ static_assert (!has_attach_discovery_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must not expose attach_discovery");
 static_assert (has_publish_builder_t<zlink::xpub_socket_t>::value,
                "xpub_socket_t must expose publish builder");
-static_assert (has_publish_no_wait_t<zlink::xpub_socket_t>::value,
-               "xpub_socket_t must expose nonblocking direct publish result");
 static_assert (!has_attach_discovery_t<zlink::xsub_socket_t>::value,
                "xsub_socket_t must not expose attach_discovery");
 static_assert (has_subscribe_part_t<zlink::xsub_socket_t>::value,

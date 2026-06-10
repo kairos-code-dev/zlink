@@ -176,15 +176,9 @@ result_t<void> send_call_t::submit ()
     return detail::submit_send (detail::state_from (_state), std::move (_packet));
 }
 
-task_t<void> send_call_t::async ()
-{
-    return task_t<void> (submit ());
-}
-
 void send_call_t::submit (std::function<void (result_t<void>)> callback)
 {
-    auto task = async ();
-    task.on_completed (std::move (callback));
+    callback (submit ());
 }
 
 connector_t::connector_t () : connector_t (connector_options_t{})

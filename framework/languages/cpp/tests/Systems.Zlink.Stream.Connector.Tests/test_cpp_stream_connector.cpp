@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_connector/coroutine.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
+#include <zlink/stream_connector/codecs/coroutine_auto_codec.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
 
@@ -62,10 +64,26 @@ static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for<auto_payload_t> ()),
     zlink::stream_connector::wait_call_t<auto_payload_t>>);
+template <typename T> concept has_core_async_terminator = requires (T value)
+{
+    value.async ();
+};
+static_assert (!has_core_async_terminator<zlink::stream_connector::send_call_t>);
+static_assert (
+  !has_core_async_terminator<zlink::stream_connector::request_call_t<auto_payload_t>>);
+static_assert (!has_core_async_terminator<zlink::stream_connector::wait_call_t<auto_payload_t>>);
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for<auto_payload_t> ().async ()),
+    decltype (std::declval<zlink::stream_connector::coroutine_connector_t &> ()
+                .wait_for<auto_payload_t> ()
+                .async ()),
     zlink::stream_connector::task_t<auto_payload_t>>);
+static_assert (std::is_same_v<
+               decltype (zlink::stream_connector::codecs::request<auto_payload_t> (
+                            std::declval<zlink::stream_connector::coroutine_connector_t &> (),
+                            std::declval<auto_payload_t> ())
+                           .async ()),
+               zlink::stream_connector::task_t<auto_payload_t>>);
 
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
 {
@@ -88,13 +106,13 @@ void from_stream_payload (const zlink::message_t &payload, auto_payload_t &messa
 }
 
 zlink::stream_connector::task_t<void>
-send_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
+send_with_coroutine_submit (zlink::stream_connector::coroutine_connector_t &connector)
 {
     co_await connector.send (login_request_t{}).packet_name ("coroutine.send").async ();
 }
 
 zlink::stream_connector::task_t<login_reply_t>
-request_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
+request_with_coroutine_submit (zlink::stream_connector::coroutine_connector_t &connector)
 {
     auto reply = co_await connector.request<login_reply_t> (login_request_t{})
                    .packet_name ("coroutine.request")
@@ -835,11 +853,12 @@ int main ()
     if (!coroutine_connector.connect ()) {
         return 73;
     }
-    auto coroutine_send = send_with_coroutine_submit (coroutine_connector).result ();
+    auto coroutine_adapter = zlink::stream_connector::coroutine (coroutine_connector);
+    auto coroutine_send = send_with_coroutine_submit (coroutine_adapter).result ();
     if (!coroutine_send) {
         return 74;
     }
-    auto coroutine_request = request_with_coroutine_submit (coroutine_connector).result ();
+    auto coroutine_request = request_with_coroutine_submit (coroutine_adapter).result ();
     coroutine_thread.join ();
     if (!coroutine_request || !coroutine_send_seen || !coroutine_request_seen) {
         return 75;

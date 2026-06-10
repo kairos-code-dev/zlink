@@ -2,8 +2,8 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/stream_connector/contracts/result.hpp>
 #include <zlink/stream_connector/contracts/stream_payload.hpp>
-#include <zlink/stream_connector/contracts/task.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_connector_options.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_interfaces.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_models.hpp>
@@ -57,9 +57,6 @@ class send_call_t
 
     /// Sends the packet and blocks until the send result is known.
     result_t<void> submit ();
-
-    /// Sends the packet as an awaitable task.
-    task_t<void> async ();
 
     /// Sends the packet and invokes the callback with the completion result.
     void submit (std::function<void (result_t<void>)> callback);
@@ -130,14 +127,10 @@ template <typename TReply> class request_call_t
         return submit_erased ().template as<TReply> ();
     }
 
-    /// Sends the request and returns an awaitable correlated reply.
-    task_t<TReply> async () { return task_t<TReply> (submit ()); }
-
     /// Sends the request and invokes the callback with the decoded reply result.
     void submit (std::function<void (result_t<TReply>)> callback)
     {
-        auto task = async ();
-        task.on_completed (std::move (callback));
+        callback (submit ());
     }
 
   private:
@@ -251,14 +244,10 @@ template <typename TMessage> class wait_call_t
         }
     }
 
-    /// Waits for a matching packet as an awaitable task.
-    task_t<TMessage> async () { return task_t<TMessage> (submit ()); }
-
     /// Waits for a matching packet and invokes the callback with the decoded result.
     void submit (std::function<void (result_t<TMessage>)> callback)
     {
-        auto task = async ();
-        task.on_completed (std::move (callback));
+        callback (submit ());
     }
 
   private:

@@ -66,9 +66,6 @@ namespace zlink::stream_connector::codecs {
         /// Sends the encoded packet and blocks until the send result is known.
         result_t<void> submit() { return _inner.submit(); }
 
-        /// Sends the encoded packet as an awaitable task.
-        task_t<void> async() { return _inner.async(); }
-
         /// Sends the encoded packet and invokes the callback with the completion result.
         void submit(std::function<void (result_t<void>)> callback) {
             _inner.submit(std::move(callback));
@@ -125,13 +122,9 @@ namespace zlink::stream_connector::codecs {
             return result_t<TReply>::success(codec_traits<TReply>::decode(result.value()));
         }
 
-        /// Sends the encoded request and returns an awaitable decoded reply.
-        task_t<TReply> async() { return task_t<TReply>(submit()); }
-
         /// Sends the encoded request and invokes the callback with the decoded reply result.
         void submit(std::function<void (result_t<TReply>)> callback) {
-            auto task = async();
-            task.on_completed(std::move(callback));
+            callback(submit());
         }
 
     private:

@@ -389,13 +389,18 @@ operation 시작 함수에 `*_async` 이름을 따로 붙이지 않는다. callb
 같은 builder에서 `submit(callback)`을 사용한다.
 
 ```cpp
-auto auth = co_await client
+auto coroutine_client = zlink::stream_connector::coroutine(client);
+auto auth = co_await coroutine_client
   .request<auth_res_t>(auth_req_t{"player-1"})
   .async();
 ```
 
 이 adapter는 core connector package의 필수 dependency가 아니다. 사용자가 adapter header나
-component를 선택했을 때만 `task_t<T>`와 no-callback `async()`가 보이게 한다.
+component를 선택했을 때만 `task_t<T>`와 no-callback `async()`가 보이게 한다. core
+`connector_t`의 call object는 `submit()`과 `submit(callback)`만 노출한다.
+auto codec helper도 같은 규칙을 따른다. core helper는
+`zlink/stream_connector/codecs/auto_codec.hpp`에 두고, coroutine helper는
+`zlink/stream_connector/codecs/coroutine_auto_codec.hpp`에서만 `async()`를 노출한다.
 
 ## 8. Throwing Adapter
 

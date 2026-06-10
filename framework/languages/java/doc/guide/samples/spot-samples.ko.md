@@ -106,7 +106,7 @@ public final class StageHandlers {
         return spot.context().outbound().requestToChannel(
             "profile",
             new GetProfileRequest(request.accountId())
-        ).submitAsync(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
+        ).submit(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
             spot.context().spotRid(),
             profile.nickname()
         ));
@@ -143,7 +143,7 @@ public final class StagePublishController {
             "game.stage",
             "stage.state.updated",
             new StageStateUpdated(request.stageRid(), request.userCount())
-        ).submitAsync().thenApply(submitted -> ResponseEntity.accepted().build());
+        ).submit().thenApply(submitted -> ResponseEntity.accepted().build());
     }
 }
 ```

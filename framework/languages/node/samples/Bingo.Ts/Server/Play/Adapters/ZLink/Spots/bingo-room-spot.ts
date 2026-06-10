@@ -1,8 +1,8 @@
 const {
-  createJsonMessage,
+  createProtobufMessage,
   numberDrawnNotify,
   playerJoinedNotify,
-  readJsonMessage,
+  readProtobufMessage,
   roomJoinError,
   stateEnvelope,
   submitBingoCardRes
@@ -34,26 +34,28 @@ class BingoRoomSpot {
   }
 
   async onActorJoin(actor: BingoActor, request: any): Promise<{ accepted: boolean; reply: any }> {
-    const admission = readJsonMessage(request) as BingoRoomJoinReq;
+    const admission = readProtobufMessage(request) as BingoRoomJoinReq;
     actor.displayName = admission.displayName ?? actor.displayName;
     try {
       const joined = this.game.join(actor);
       const state = this.snapshot();
       if (joined.joined) {
-        await this.notifications.publish(this.game.players.map((entry) =>
-          this.notifications.playerJoined(entry.actor, playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state))
-        ));
+        await this.notifications.publish(this.game.players
+          .filter((entry) => entry.actor.actorId !== actor.actorId)
+          .map((entry) =>
+            this.notifications.playerJoined(entry.actor, playerJoinedNotify(this.roomId, actor, joined.player.seat, joined.player.isHost, state))
+          ));
       }
       if (joined.started) {
         await this.notifications.publish(this.game.players.map((player) =>
           this.notifications.gameStarted(player.actor, stateEnvelope(this.snapshot()))
         ));
       }
-      return { accepted: true, reply: createJsonMessage(stateEnvelope(this.snapshot())) };
+      return { accepted: true, reply: createProtobufMessage(stateEnvelope(this.snapshot())) };
     } catch (error) {
       return {
         accepted: false,
-        reply: createJsonMessage(roomJoinError(error instanceof Error ? error.message : String(error)))
+        reply: createProtobufMessage(roomJoinError(error instanceof Error ? error.message : String(error)))
       };
     }
   }

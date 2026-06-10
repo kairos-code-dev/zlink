@@ -1,8 +1,9 @@
 package systems.zlink.stream.connector;
 
+import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 
-public interface ZLinkStreamConnector extends AutoCloseable {
+public interface ZLinkStreamConnector {
     boolean isConnected();
 
     ZLinkStreamConnectionState state();
@@ -11,23 +12,72 @@ public interface ZLinkStreamConnector extends AutoCloseable {
 
     int pendingDispatchCount();
 
-    CompletionStage<Void> connectAsync();
+    int receivedCount(String name);
 
-    CompletionStage<Void> disconnectAsync();
+    ZLinkStreamLifecycleCall connect();
 
-    CompletionStage<Void> reconnectAsync();
+    ZLinkStreamLifecycleCall disconnect();
 
-    CompletionStage<Void> closeAsync();
+    ZLinkStreamLifecycleCall reconnect();
 
-    CompletionStage<Void> dispatchAsync();
+    ZLinkStreamLifecycleCall close();
+
+    ZLinkStreamLifecycleCall dispatch();
+
+    default <T> T await(CompletionStage<T> stage) throws Exception {
+        Objects.requireNonNull(stage, "stage");
+        return ZLinkStreamCompletions.await(stage);
+    }
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
 
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
 
+    default ZLinkStreamSendCall send(Object payload) {
+        return send(encodeTypedPayload(payload));
+    }
+
+    default ZLinkStreamTypedRequestCall request(Object payload) {
+        return new DefaultZLinkStreamTypedRequestCall(
+            request(encodeTypedPayload(payload)),
+            requireTypedCodec());
+    }
+
+    default ZLinkStreamWaitCall waitFor(String name) {
+        return new DefaultZLinkStreamWaitCall(
+            this,
+            name,
+            options().requestTimeout(),
+            options().typedCodec());
+    }
+
+    default ZLinkStreamWaitCall waitFor(Class<?> payloadType) {
+        Objects.requireNonNull(payloadType, "payloadType");
+        return waitFor(options().nameResolver().resolve(payloadType));
+    }
+
     AutoCloseable on(
         String name,
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);
+
+    default <TPayload> AutoCloseable on(
+        Class<TPayload> payloadType,
+        ZLinkStreamMessageHandler<TPayload> handler) {
+        return on(options().nameResolver().resolve(payloadType), payloadType, handler);
+    }
+
+    default <TPayload> AutoCloseable on(
+        String name,
+        Class<TPayload> payloadType,
+        ZLinkStreamMessageHandler<TPayload> handler) {
+        Objects.requireNonNull(payloadType, "payloadType");
+        Objects.requireNonNull(handler, "handler");
+        ZLinkStreamTypedCodec codec = requireTypedCodec();
+        return on(name, message -> handler.handleAsync(new ZLinkStreamMessage<>(
+            message.packetName(),
+            codec.decode(message.payload(), payloadType),
+            message.metadata())));
+    }
 
     AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler);
 
@@ -35,6 +85,21 @@ public interface ZLinkStreamConnector extends AutoCloseable {
 
     AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);
 
-    @Override
-    void close();
+    private ZLinkStreamEncodedPayload encodeTypedPayload(Object payload) {
+        ZLinkStreamTypedCodec codec = requireTypedCodec();
+        String packetName = payload == null
+            ? "Null"
+            : options().nameResolver().resolve(payload.getClass());
+        return codec.encode(packetName, payload);
+    }
+
+    private ZLinkStreamTypedCodec requireTypedCodec() {
+        ZLinkStreamTypedCodec codec = options().typedCodec();
+        if (codec == null) {
+            throw new IllegalStateException(
+                "typed stream payload API requires ZLinkStreamConnectorOptions.typedCodec");
+        }
+        return codec;
+    }
+
 }

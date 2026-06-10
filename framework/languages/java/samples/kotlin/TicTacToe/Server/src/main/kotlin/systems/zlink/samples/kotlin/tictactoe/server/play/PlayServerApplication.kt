@@ -13,7 +13,8 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
-import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler
+import systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameCreatedHandler
 
 
 
@@ -34,6 +35,10 @@ class PlayServerApplication {
     @Bean
     fun ticTacToeGameCreatedHandler(): TicTacToeGameCreatedHandler =
         TicTacToeGameCreatedHandler()
+
+    @Bean
+    fun ticTacToeGameCreator(): TicTacToeGameCreator =
+        TicTacToeGameCreator()
 
     @Bean
     fun ticTacToeJsonMapper(): ObjectMapper =

@@ -2,11 +2,10 @@ const { Inject } = require('@nestjs/common');
 const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../packages/nestjs/dist');
 const {
   PacketNames,
-  SampleNames,
-  SampleTimings,
   createGameHttpRes,
   createGameReq
 } = require('../../../Shared/Contracts/messages');
+const { SampleNames, SampleTimings } = require('../../../Shared/Configuration/sample-settings');
 import type {
   CreateGameHttpRes,
   CreateGameReq,

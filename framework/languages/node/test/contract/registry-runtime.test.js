@@ -25,10 +25,10 @@ test('registry runtime applies dotnet defaults and supports lazy in-process quer
   });
   const query = new framework.DefaultZLinkRegistryQuery(runtime);
 
-  const status = await query.statusAsync();
-  const topology = await query.topologyAsync({ channelName: 'api' });
-  const summary = await query.serviceSummaryAsync({ channelName: 'api' });
-  const peers = await query.memberPeersAsync('api');
+  const status = await query.status();
+  const topology = await query.topology({ channelName: 'api' });
+  const summary = await query.serviceSummary({ channelName: 'api' });
+  const peers = await query.memberPeers('api');
   await runtime.stop();
 
   assert.equal(status.registryId, 7);
@@ -48,7 +48,7 @@ test('registry runtime applies dotnet defaults and supports lazy in-process quer
   ]);
 });
 
-test('registry query client owns backend context and exposes topologyAsync only', async () => {
+test('registry query client owns backend context and exposes topology only', async () => {
   const calls = [];
   const backend = fakeRegistryBackend(calls);
   const client = new framework.DefaultZLinkRegistryQueryClient({
@@ -57,11 +57,11 @@ test('registry query client owns backend context and exposes topologyAsync only'
     backendAdapterFactory: backend.factory
   });
 
-  const topology = await client.topologyAsync({ channelName: 'remote' });
+  const topology = await client.topology({ channelName: 'remote' });
   await client.dispose();
 
   assert.equal(topology[0].channelName, 'remote');
-  assert.equal(typeof client.serviceSummaryAsync, 'undefined');
+  assert.equal(typeof client.serviceSummary, 'undefined');
   assert.deepEqual(calls, [
     ['context:create'],
     ['query:create'],
@@ -142,7 +142,7 @@ test('registry modules support NestJS async imports inject and lifecycle', async
   class RegistryModule {}
   Module({
     imports: [
-      nestjs.ZLinkRegistryModule.forRootAsync({
+      nestjs.ZLinkRegistryModule.forRootFactory({
         imports: [ConfigModule],
         inject: [REGISTRY_CONFIG],
         useFactory: (config) => config
@@ -173,7 +173,7 @@ test('registry query client module supports NestJS async imports and inject', as
   class QueryClientModule {}
   Module({
     imports: [
-      nestjs.ZLinkRegistryQueryClientModule.forRootAsync({
+      nestjs.ZLinkRegistryQueryClientModule.forRootFactory({
         imports: [ConfigModule],
         inject: [QUERY_CONFIG],
         useFactory: (config) => config

@@ -30,7 +30,7 @@ function waitForJoin(spot) {
     throw new Error('actor join request not received');
 }
 async function acceptJoin(actor, spot, payload) {
-    const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submitAsync();
+    const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit();
     const request = waitForJoin(spot);
     spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
     const reply = await replyPromise;
@@ -69,23 +69,23 @@ async function main() {
             stream.setPacketHandler((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
-        await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
+        await stream.bindActor(session, actor.ref()).timeout(2000).submit();
         await acceptJoin(actor, spot, 'join-first');
         stream.sendBoundActor(session, 'single-player').message(Buffer.from('before')).submit();
-        await actor.leave(spot).timeout(2000).submitAsync();
+        await actor.leave(spot).timeout(2000).submit();
         stream.sendBoundActor(session, 'single-player').message(Buffer.from('between')).submit();
         await acceptJoin(actor, spot, 'join-second');
         for (let i = 0; i < 100 && payloads.length < 2; i += 1) {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.deepEqual(payloads, ['before', 'between']);
-        await actor.leave(spot).timeout(2000).submitAsync();
+        await actor.leave(spot).timeout(2000).submit();
         console.log('[actor/single-player] queued payload: "before/between" -> actor: "before/between"');
     }
     finally {
         if (session) {
             try {
-                await stream.unbindActor(session, 'single-player').timeout(2000).submitAsync();
+                await stream.unbindActor(session, 'single-player').timeout(2000).submit();
             }
             catch (_) {
             }

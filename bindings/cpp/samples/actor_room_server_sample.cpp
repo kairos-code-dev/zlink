@@ -20,7 +20,7 @@ int main ()
     stream_session.stream.attach_actor_gateway (node);
     (void) stream_session.stream.bind_actor (stream_session.session, actor.ref ())
       .timeout (std::chrono::milliseconds (1000))
-      .submit_async ()
+      .async ()
       .get ();
 
     zlink::message_t join = zlink::message_t::from ("enter-room");
@@ -43,7 +43,7 @@ int main ()
     assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
     assert (capture.payload == "move:north");
 
-    (void) actor.leave (spot).submit_async ().get ();
+    (void) actor.leave (spot).async ().get ();
     actor.close ();
     std::printf ("[actor/room] stream payload: \"move:north\" -> actor: \"%s\"\n",
                  capture.payload.c_str ());

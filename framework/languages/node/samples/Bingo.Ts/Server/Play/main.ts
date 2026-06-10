@@ -12,7 +12,7 @@ const { BingoRoomTimerHandler } = require('./Adapters/ZLink/Spots/Handlers/bingo
 const { BingoEntrySpot } = require('./Adapters/ZLink/Spots/bingo-entry-spot');
 const { MatchBingoActorHandler } = require('./Adapters/ZLink/Spots/Handlers/match-bingo-actor-handler');
 const { AllocateBingoRoomHandler } = require('./Adapters/ZLink/Handlers/allocate-bingo-room-handler');
-const { BingoRoomDirectory } = require('./Application/RoomAllocation/bingo-room-directory');
+const { BingoRoomAllocator } = require('./Application/RoomAllocation/bingo-room-allocator');
 const { BingoNotificationsHandler } = require('./Adapters/ZLink/Handlers/bingo-notifications-handler');
 const { EnsurePlayerActorHandler } = require('./Adapters/ZLink/Handlers/ensure-player-actor-handler');
 const { MatchBingoChannelHandler } = require('./Adapters/ZLink/Handlers/match-bingo-channel-handler');
@@ -40,7 +40,7 @@ Module({
     SampleBoundSessionRuntime,
     PlayerActorFactory,
     BingoNotificationPublisher,
-    BingoRoomDirectory,
+    BingoRoomAllocator,
     BingoRoomTimerHandler,
     SubmitBingoCardHandler,
     BingoEntrySpot,

@@ -16,7 +16,7 @@ template <typename T> class immediate_call_state_t
 
     void set_timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
 
-    task_t<T> submit_async () { return task_t<T> (_result); }
+    task_t<T> async () { return task_t<T> (_result); }
 
   private:
     result_t<T> _result;
@@ -30,7 +30,7 @@ template <> class immediate_call_state_t<void>
 
     void set_timeout (std::chrono::milliseconds timeout) { _timeout = timeout; }
 
-    task_t<void> submit_async () { return task_t<void> (_result); }
+    task_t<void> async () { return task_t<void> (_result); }
 
   private:
     result_t<void> _result;
@@ -46,7 +46,7 @@ template <typename TDerived, typename TResult> class call_facade_t
         return static_cast<TDerived &> (*this);
     }
 
-    task_t<TResult> submit_async () { return _state.submit_async (); }
+    task_t<TResult> async () { return _state.async (); }
 
   protected:
     explicit call_facade_t (result_t<TResult> result) : _state (std::move (result)) {}

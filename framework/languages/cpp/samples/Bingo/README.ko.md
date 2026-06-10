@@ -41,7 +41,7 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 - `sample_cpp_framework_bingo_session`: STREAM endpoint와 session packet dispatch
 - `sample_cpp_framework_bingo_client`: Stream Connector 기반 client flow와 push payload self-check
 
-client smoke는 connector public API 사용 형태만 보지 않는다. 실행 중 실제 STREAM server를
-띄우고 Stream Connector가 TCP로 접속해 request reply와 push notification을 주고받는지
-검증한다. 서버는 `bingo-server.log` 파일에 bind, monitoring event, receive, reply, push
-흐름을 남긴다.
+client 실행 파일은 Stream Connector public API로 request reply와 push notification을
+검증하는 시나리오를 담고 있다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
+각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
+client scenario는 `bingo-client.log`에 완료 여부를 남긴다.

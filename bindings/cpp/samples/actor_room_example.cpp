@@ -28,8 +28,8 @@ int main ()
 
     stream.attach_actor_gateway (node);
     zlink::routing_id_t session = zlink::routing_id_t::from (std::string ("game-room-session"));
-    (void) stream.bind_actor (session, player1.ref ()).submit_async ().get ();
-    (void) stream.bind_actor (session, player2.ref ()).submit_async ().get ();
+    (void) stream.bind_actor (session, player1.ref ()).async ().get ();
+    (void) stream.bind_actor (session, player2.ref ()).async ().get ();
 
     // dispatch 핸들러: join 요청을 수락하고, 도착한 메시지를 모은다.
     std::mutex mutex;
@@ -77,7 +77,7 @@ int main ()
         assert (false && "message not delivered");
     };
     auto leave = [&] (zlink::service::actor_t &actor) {
-        (void) actor.leave (room).submit_async ().get ();
+        (void) actor.leave (room).async ().get ();
     };
 
     join (player1);

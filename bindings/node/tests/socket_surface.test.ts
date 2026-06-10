@@ -232,7 +232,7 @@ test('spot operation builders keep payload and single-submit validation centrali
   const rid = zlink.RoutingId.from(Buffer.from('builder-target'));
 
   assert.throws(() => spot.sendToChannel('svc').submit(), /requires at least one message/);
-  assert.throws(() => spot.requestToChannel('svc').submitAsync(), /requires at least one message/);
+  assert.throws(() => spot.requestToChannel('svc').submit(), /requires at least one message/);
   assert.throws(() => spot.replyToRouter(rid, 1n).submit(), /requires at least one message/);
   assert.throws(() => node.joinActor(actorRef, rid, rid).submit(() => {}), /requires at least one message/);
 

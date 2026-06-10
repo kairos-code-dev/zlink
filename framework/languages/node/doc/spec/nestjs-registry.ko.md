@@ -288,17 +288,17 @@ ZLinkRegistryModule.forRoot({
 
 ```ts
 export interface ZLinkRegistryQuery {
-  statusAsync(): Promise<ZLinkRegistryStatus>;
+  status(): Promise<ZLinkRegistryStatus>;
 
-  serviceSummaryAsync(
+  serviceSummary(
     filter?: ZLinkRegistryServiceSummaryFilter,
   ): Promise<ZLinkRegistryServiceSummaryEntry[]>;
 
-  topologyAsync(
+  topology(
     filter?: ZLinkRegistryTopologyFilter,
   ): Promise<ZLinkRegistryTopologyEntry[]>;
 
-  memberPeersAsync(channelName: string): Promise<ZLinkMemberPeerEntry[]>;
+  memberPeers(channelName: string): Promise<ZLinkMemberPeerEntry[]>;
 }
 ```
 
@@ -324,17 +324,17 @@ export class AdminController {
 
   @Get('topology')
   async topology() {
-    return this.registry.topologyAsync();
+    return this.registry.topology();
   }
 
   @Get('services')
   async services() {
-    return this.registry.serviceSummaryAsync();
+    return this.registry.serviceSummary();
   }
 
   @Get('registry/status')
   async status() {
-    return this.registry.statusAsync();
+    return this.registry.status();
   }
 }
 ```
@@ -361,14 +361,14 @@ export class AppModule {}
 
 ```ts
 export interface ZLinkRegistryQueryClient {
-  topologyAsync(
+  topology(
     filter?: ZLinkRegistryTopologyFilter,
   ): Promise<ZLinkRegistryTopologyEntry[]>;
 }
 ```
 
 원격 query client 는 등록 시점에 `routerEndpoint` 에 해당하는 endpoint 로
-`connect` 를 맺어 두고, `topologyAsync` 호출마다 ROUTER endpoint 로 query 요청을
+`connect` 를 맺어 두고, `topology` 호출마다 ROUTER endpoint 로 query 요청을
 보낸다.
 
 ```ts
@@ -381,7 +381,7 @@ export class AdminController {
 
   @Get('topology')
   async topology() {
-    return this.query.topologyAsync();
+    return this.query.topology();
   }
 }
 ```
@@ -533,12 +533,12 @@ export class AdminController {
 
   @Get('topology')
   topology() {
-    return this.registry.topologyAsync();
+    return this.registry.topology();
   }
 
   @Get('registry/status')
   status() {
-    return this.registry.statusAsync();
+    return this.registry.status();
   }
 }
 ```
@@ -572,7 +572,7 @@ export class RegistryAdminController {
 
   @Get('health')
   async health(@Res() res: Response) {
-    const status = await this.registry.statusAsync();
+    const status = await this.registry.status();
     return status.state === ZLinkRegistryState.Active
       ? res.status(200).json(status)
       : res.status(503).send();
@@ -580,12 +580,12 @@ export class RegistryAdminController {
 
   @Get('admin/topology')
   topology() {
-    return this.registry.topologyAsync();
+    return this.registry.topology();
   }
 
   @Get('admin/services')
   services() {
-    return this.registry.serviceSummaryAsync();
+    return this.registry.serviceSummary();
   }
 }
 ```
@@ -614,7 +614,7 @@ export class TopologyController {
 
   @Get('topology')
   topology() {
-    return this.query.topologyAsync();
+    return this.query.topology();
   }
 }
 ```

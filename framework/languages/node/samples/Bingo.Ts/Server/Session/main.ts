@@ -11,9 +11,7 @@ const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate
 const { BingoSession } = require('./Sessions/bingo-session');
 const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
 const { PacketNames, bingoNotificationsReq, withPlayerIdentity } = require('../../Shared/Contracts/messages');
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const { fromBingoProto, toBingoProto } = require('../../Shared/Contracts/protobuf-codec');
 
 type TcpEndpoint = {
   host: string;
@@ -126,7 +124,7 @@ async function dispatchPacket(session: any, bytes: Buffer, transport: any, chann
   try {
     const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
     const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
-    const payload = JSON.parse(decoder.decode(frame.payload));
+    const payload = fromBingoProto({ codec: header.codec, payload: frame.payload });
     if (header.name === PacketNames.authenticateReq) {
       await session.dispatch(header, payload);
       return;
@@ -209,7 +207,7 @@ class StreamTransport {
   reply(requestHeader: StreamHeader, payload: unknown): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Response,
-      codec: connector.ZlinkStreamCodec.Json,
+      codec: connector.ZlinkStreamCodec.Protobuf,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
       name: requestHeader.name,
@@ -220,7 +218,7 @@ class StreamTransport {
   send(packetName: string, payload: unknown, metadata: Record<string, string> = {}): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Send,
-      codec: connector.ZlinkStreamCodec.Json,
+      codec: connector.ZlinkStreamCodec.Protobuf,
       flags: Object.keys(metadata).length === 0
         ? connector.ZlinkStreamHeaderFlags.None
         : connector.ZlinkStreamHeaderFlags.HasMetadata,
@@ -230,9 +228,10 @@ class StreamTransport {
   }
 
   write(header: unknown, payload: unknown): void {
+    const encoded = toBingoProto(payload, undefined, (header as { name?: string }).name);
     this.socket.write(connector.ZlinkStreamFrameCodec.encode(
       connector.ZlinkStreamHeaderCodec.encode(header),
-      encoder.encode(JSON.stringify(payload))
+      encoded.payload
     ));
   }
 }

@@ -10,14 +10,15 @@ import systems.zlink.contracts.messaging.Message;
 final class StreamPayloadTest {
     @Test
     void responsePayload_requiresCopyOutsideTransportBuffer() throws Exception {
-        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
-             ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
-            connector.connectAsync().toCompletableFuture().join();
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL));
+            try {
+            connector.connect().await();
 
             var requestFrame = server.readFrameAsync();
             var replyFuture = connector.request(payload("Echo", "copy-me"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .thenApply(reply -> reply);
 
@@ -35,6 +36,42 @@ final class StreamPayloadTest {
                     StandardCharsets.UTF_8));
             } finally {
                 reply.payload().close();
+            }
+            } finally {
+                connector.close().await();
+            }
+        }
+    }
+
+    @Test
+    void awaitStage_waitsForSubmittedPush() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO));
+            try {
+            connector.connect().await();
+
+            var push = connector.waitFor("Push").submit();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    0,
+                    null,
+                    "Push",
+                    Map.of()),
+                TcpStreamConnectorTestServer.bytes("event")).join();
+
+            ZLinkStreamMessage<ZLinkStreamEncodedPayload> message = connector.await(push);
+            assertEquals("Push", message.packetName());
+            try {
+                assertEquals("event", new String(
+                    message.payload().payload().toByteArray(),
+                    StandardCharsets.UTF_8));
+            } finally {
+                message.payload().payload().close();
+            }
+            } finally {
+                connector.close().await();
             }
         }
     }

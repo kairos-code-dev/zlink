@@ -46,7 +46,7 @@ test('registry monitoring source publishes snapshot changes and suppresses uncha
   const source = new framework.ZLinkRegistryMonitoringSource(
     { sourceName: 'registry', intervalMs: 1000 },
     {
-      async statusAsync() {
+      async status() {
         return {
           registryId: 1,
           bindEndpoint: 'tcp://registry',
@@ -59,10 +59,10 @@ test('registry monitoring source publishes snapshot changes and suppresses uncha
           lastChangedMs: 10n
         };
       },
-      async topologyAsync() {
+      async topology() {
         return [topologyEntry(readyCount)];
       },
-      async serviceSummaryAsync() {
+      async serviceSummary() {
         return [{
           autoConnectType: framework.ZLinkAutoConnectType.ClientServer,
           serviceRole: framework.ZLinkServiceRole.Router,
@@ -75,7 +75,7 @@ test('registry monitoring source publishes snapshot changes and suppresses uncha
           lastReportedMs: 20n
         }];
       },
-      async memberPeersAsync() {
+      async memberPeers() {
         return [];
       }
     },

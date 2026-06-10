@@ -1,11 +1,11 @@
 const { Inject } = require('@nestjs/common');
 const {
   bingoRoomJoinReq,
-  createJsonMessage,
+  createProtobufMessage,
   matchBingoRes,
-  readJsonMessage
+  readProtobufMessage
 } = require('../../../../../Shared/Contracts/messages');
-const { BingoRoomDirectory } = require('../../../Application/RoomAllocation/bingo-room-directory');
+const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
 import type {
   MatchBingoReq,
   MatchBingoRes,
@@ -28,10 +28,10 @@ class BingoEntrySpot {
 
   async match(actor: BingoActor, request: MatchBingoReq): Promise<MatchBingoRes> {
     const matched = await this.roomDirectory.allocate(request.mode);
-    const joinRequest = createJsonMessage(bingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName));
+    const joinRequest = createProtobufMessage(bingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName));
     try {
       const joined = await matched.room.onActorJoin(actor, joinRequest);
-      const reply: BingoJoinReply = joined.reply === undefined ? {} : readJsonMessage(joined.reply) as BingoJoinReply;
+      const reply: BingoJoinReply = joined.reply === undefined ? {} : readProtobufMessage(joined.reply) as BingoJoinReply;
       joined.reply?.close();
       if (!joined.accepted) {
         throw new Error(reply.error ?? `Room ${matched.roomId} rejected actor '${actor.actorId}'.`);
@@ -43,6 +43,6 @@ class BingoEntrySpot {
   }
 }
 
-Inject(BingoRoomDirectory)(BingoEntrySpot, undefined, 0);
+Inject(BingoRoomAllocator)(BingoEntrySpot, undefined, 0);
 
 export { BingoEntrySpot };

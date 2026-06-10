@@ -51,7 +51,7 @@ public final class BingoRoomModels {
         int maxDrawNumber,
         long drawPeriodMillis) {
         public static BingoRoomSettings create(String mode, int roomSeq) {
-            if (!"standard".equals(mode)) {
+            if (!"two-player".equals(mode)) {
                 throw new IllegalStateException("Unsupported bingo mode. mode=" + mode);
             }
             return new BingoRoomSettings(

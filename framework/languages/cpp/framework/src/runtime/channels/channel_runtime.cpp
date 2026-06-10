@@ -605,7 +605,7 @@ route_send_call_t &route_send_call_t::metadata (std::string key, std::string val
     return *this;
 }
 
-task_t<void> route_send_call_t::submit_async ()
+task_t<void> route_send_call_t::async ()
 {
     if (!_submit) {
         return task_t<void> (result_t<void>::failure (
@@ -638,7 +638,7 @@ route_request_call_t &route_request_call_t::metadata (std::string key, std::stri
     return *this;
 }
 
-task_t<std::uint64_t> route_request_call_t::submit_async ()
+task_t<std::uint64_t> route_request_call_t::async ()
 {
     if (!_submit) {
         return task_t<std::uint64_t> (result_t<std::uint64_t>::failure (

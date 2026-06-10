@@ -41,8 +41,8 @@ export interface ActorJoinSubmitOperation {
   timeout(timeoutMs: number): ActorJoinSubmitOperation;
   /** Set the send flags and narrow the builder to callback submission. */
   flags(flags: SendFlags): ActorJoinCallbackSubmitOperation;
-  /** Submit and asynchronously return the result and reply parts, which the caller owns. */
-  submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
+  /** Submit and return the result and reply parts, which the caller owns. */
+  submit(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
   /** Submit; the result and reply parts are delivered to `callback`. */
   submit(callback: ActorJoinHandler): boolean;
 }
@@ -63,8 +63,8 @@ export interface ActorJoinCallbackSubmitOperation {
 export interface ActorJoinEntrySpotOperation {
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorJoinEntrySpotOperation;
-  /** Submit and asynchronously return the result. */
-  submitAsync(): Promise<ActorJoinEntrySpotResult>;
+  /** Submit and return the result. */
+  submit(): Promise<ActorJoinEntrySpotResult>;
   /** Submit; the result is delivered to `callback`. */
   submit(callback: ActorJoinEntrySpotHandler): boolean;
 }
@@ -81,8 +81,8 @@ export interface ActorJoinReplyOperation {
 export interface ActorLeaveOperation {
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorLeaveOperation;
-  /** Submit and asynchronously return the reply parts, which the caller owns. */
-  submitAsync(): Promise<Message[]>;
+  /** Submit and return the reply parts, which the caller owns. */
+  submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
   submit(callback: ReplyHandler): boolean;
 }
@@ -91,8 +91,8 @@ export interface ActorLeaveOperation {
 export interface ActorDestroyOperation {
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorDestroyOperation;
-  /** Submit and asynchronously return the reply parts, which the caller owns. */
-  submitAsync(): Promise<Message[]>;
+  /** Submit and return the reply parts, which the caller owns. */
+  submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
   submit(callback: ReplyHandler): boolean;
 }
@@ -101,8 +101,8 @@ export interface ActorDestroyOperation {
 export interface ActorLookupOperation {
   /** Set how long the lookup waits for completion before timing out. */
   timeout(timeoutMs: number): ActorLookupOperation;
-  /** Submit and asynchronously return the lookup result. */
-  submitAsync(): Promise<ActorLookupResult>;
+  /** Submit and return the lookup result. */
+  submit(): Promise<ActorLookupResult>;
   /** Submit; the result is delivered to `callback`. */
   submit(callback: ActorLookupHandler): boolean;
 }
@@ -111,8 +111,8 @@ export interface ActorLookupOperation {
 export interface ActorBindOperation {
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorBindOperation;
-  /** Submit and asynchronously return the reply parts, which the caller owns. */
-  submitAsync(): Promise<Message[]>;
+  /** Submit and return the reply parts, which the caller owns. */
+  submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
   submit(callback: ReplyHandler): boolean;
 }
@@ -121,8 +121,8 @@ export interface ActorBindOperation {
 export interface ActorUnbindOperation {
   /** Set how long the operation waits for completion before timing out. */
   timeout(timeoutMs: number): ActorUnbindOperation;
-  /** Submit and asynchronously return the reply parts, which the caller owns. */
-  submitAsync(): Promise<Message[]>;
+  /** Submit and return the reply parts, which the caller owns. */
+  submit(): Promise<Message[]>;
   /** Submit; the reply is delivered to `callback`. */
   submit(callback: ReplyHandler): boolean;
 }

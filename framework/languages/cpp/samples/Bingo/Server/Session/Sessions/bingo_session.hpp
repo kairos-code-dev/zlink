@@ -56,7 +56,7 @@ class bingo_session_t final : public zlink::framework::packet_stream_session_t
             return task_t<void> (zlink::framework::result_t<void>::failure (
               actor.error_kind (), actor.error ()->what ()));
         }
-        co_await actor.value ().relay (header, payload).submit_async ();
+        co_await actor.value ().relay (header, payload).async ();
         co_return;
     }
 

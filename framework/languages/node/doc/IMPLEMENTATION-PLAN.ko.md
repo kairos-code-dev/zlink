@@ -289,7 +289,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 - **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
 - **산출물:** `runtime/host/`, `runtime/configuration/`, `@zlink-systems/nestjs`(`ZLinkModule`)
 - **작업:**
-  - `ZLinkModule.forRoot(options)` / `forRootAsync({useFactory, inject})` → `@nestjs/common` 실제 `DynamicModule`
+  - `ZLinkModule.forRoot(options)` / `forRootFactory({useFactory, inject})` → `@nestjs/common` 실제 `DynamicModule`
   - 등록 검증(forRoot 빌드 시점), provider 토큰 노출(capability→client)
   - 런타임 시동/종료를 `onApplicationBootstrap`/`onApplicationShutdown` 에 연결, **시동 순서·graceful close** 준수
   - 레지스트리/모니터링 모듈 분리(`ZLinkRegistryModule`, `ZLinkRegistryQueryClientModule`)
@@ -456,7 +456,7 @@ TS 고유 제약(표면 한계): 런타임 타입 소거 → packet key 는 **�
 - [x] **P1** backend 어댑터 포트 — factory 5어댑터 + wrapper 12 + 누수 0 · [x] POSD 게이트
 - [x] **P1.5** Node binding parity — public API gap 0 + internal 우회 0 · [x] POSD 게이트
 - [x] **P2** 계약 TS 이식 — contract 테스트 green · [x] POSD 게이트
-- [x] **P3** 호스트/모듈/lifecycle — forRoot/forRootAsync + 시동·종료 순서 · [x] POSD 게이트
+- [x] **P3** 호스트/모듈/lifecycle — forRoot/forRootFactory + 시동·종료 순서 · [x] POSD 게이트
 - [x] **P4** channel messaging — request/reply E2E + send/publish + filter · [x] POSD 게이트
 - [x] **P5** spot — lifecycle + 단일 실행 컨텍스트 + manager · [x] POSD 게이트
 - [x] **P6** actor core — 순서 보장 + actor lifecycle · [x] POSD 게이트

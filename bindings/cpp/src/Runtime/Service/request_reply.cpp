@@ -230,7 +230,7 @@ request_callback_submit_operation_t request_submit_operation_t::flags (int flags
     return request_callback_submit_operation_t (std::move (_state));
 }
 
-async_result_t<std::vector<message_t>> request_submit_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
 {
     auto &state = this->state ();
     if (state.parts.empty ())

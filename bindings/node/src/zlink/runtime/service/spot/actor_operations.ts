@@ -61,7 +61,13 @@ export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinS
     return this;
   }
 
-  submitAsync(): Promise<{ result: ActorJoinResult; parts: Message[] }> {
+  submit(): Promise<{ result: ActorJoinResult; parts: Message[] }>;
+  submit(callback: ActorJoinHandler): boolean;
+  submit(callback?: ActorJoinHandler): Promise<{ result: ActorJoinResult; parts: Message[] }> | boolean {
+    if (callback !== undefined) {
+      const flags = this._callbackMode ? this._flags : SendFlags.None;
+      return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs);
+    }
     const parts = this._payload.consume();
     return new Promise((resolve, reject) => {
       this._invoke(parts, (result, replyParts) => {
@@ -72,11 +78,6 @@ export class RuntimeActorJoinOperation implements ActorJoinOperation, ActorJoinS
         resolve({ result, parts: replyParts });
       }, SendFlags.None, this._timeoutMs);
     });
-  }
-
-  submit(callback: ActorJoinHandler): boolean {
-    const flags = this._callbackMode ? this._flags : SendFlags.None;
-    return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs);
   }
 }
 
@@ -130,8 +131,14 @@ export class ReplyHandlerOperation {
     return this;
   }
 
-  submitAsync(): Promise<Message[]> {
+  submit(): Promise<Message[]>;
+  submit(callback: ReplyHandler): boolean;
+  submit(callback?: ReplyHandler): Promise<Message[]> | boolean {
     this.ensureOpen();
+    if (callback !== undefined) {
+      this.markSubmitted();
+      return this._invoke(callback, this._timeoutMs);
+    }
     return new Promise((resolve, reject) => {
       this.markSubmitted();
       this._invoke((result, parts) => {
@@ -142,12 +149,6 @@ export class ReplyHandlerOperation {
         resolve(parts);
       }, this._timeoutMs);
     });
-  }
-
-  submit(callback: ReplyHandler): boolean {
-    this.ensureOpen();
-    this.markSubmitted();
-    return this._invoke(callback, this._timeoutMs);
   }
 }
 
@@ -184,9 +185,14 @@ class ResultHandlerOperation<TResult extends { result: RequestResult }> {
     return this;
   }
 
-  submitAsync(): Promise<TResult> {
+  submit(): Promise<TResult>;
+  submit(callback: (result: TResult) => void): boolean;
+  submit(callback?: (result: TResult) => void): Promise<TResult> | boolean {
     this.ensureOpen();
     this._submitted = true;
+    if (callback !== undefined) {
+      return this._invoke(callback, this._timeoutMs);
+    }
     return new Promise((resolve, reject) => {
       this._invoke((result) => {
         if (result.result !== RequestResult.Ok) {
@@ -196,12 +202,6 @@ class ResultHandlerOperation<TResult extends { result: RequestResult }> {
         resolve(result);
       }, this._timeoutMs);
     });
-  }
-
-  submit(callback: (result: TResult) => void): boolean {
-    this.ensureOpen();
-    this._submitted = true;
-    return this._invoke(callback, this._timeoutMs);
   }
 }
 

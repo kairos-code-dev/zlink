@@ -1,4 +1,4 @@
-const { BingoCard } = require('./bingo-card');
+const { BingoGame } = require('./bingo-game');
 const { BingoRoomStatus } = require('./bingo-room-models');
 
 type BingoActor = {
@@ -28,8 +28,7 @@ class BingoRoomGame {
     };
     this.status = BingoRoomStatus.waitingForPlayers;
     this.players = [];
-    this.drawnNumbers = [];
-    this.winners = [];
+    this.game = new BingoGame(this.settings.drawDeck);
   }
 
   join(actor: BingoActor): { joined: boolean; player: BingoPlayerSeat; started: boolean } {
@@ -60,38 +59,23 @@ class BingoRoomGame {
       throw new Error(`Room ${this.roomId} is not running.`);
     }
     const player = this.requirePlayer(actorId);
-    if (player.card !== null) {
-      throw new Error(`Actor '${actorId}' already submitted a Bingo card.`);
-    }
-    player.card = new BingoCard(cardNumbers);
+    player.card = this.game.submitCard({ actorId, card: player.card }, cardNumbers);
   }
 
   canDraw(): boolean {
     return this.status === BingoRoomStatus.running
-      && this.players.length === this.settings.requiredPlayers
-      && this.players.every((player) => player.card !== null);
+      && this.game.canDraw(this.players.map((player) => ({ actorId: player.actor.actorId, card: player.card })), this.settings.requiredPlayers);
   }
 
   drawNext(): { number: number; drawSeq: number; finished: boolean } | null {
-    if (!this.canDraw() || this.settings.drawDeck.length === 0) {
+    if (!this.canDraw()) {
       return null;
     }
-    const number = this.settings.drawDeck.shift();
-    this.drawnNumbers.push(number);
-    for (const player of this.players) {
-      const lines = player.card.mark(number);
-      if (lines > 0 && !this.winners.includes(player.actor.actorId)) {
-        this.winners.push(player.actor.actorId);
-      }
-    }
-    if (this.winners.length > 0) {
+    const drawn = this.game.drawNext(this.players.map((player) => ({ actorId: player.actor.actorId, card: player.card })));
+    if (drawn !== null && drawn.finished) {
       this.status = BingoRoomStatus.finished;
     }
-    return {
-      number,
-      drawSeq: this.drawnNumbers.length,
-      finished: this.status === BingoRoomStatus.finished
-    };
+    return drawn;
   }
 
   snapshot(): any {
@@ -100,9 +84,9 @@ class BingoRoomGame {
       status: this.status,
       hostActorId: this.players[0]?.actor.actorId ?? null,
       canStart: false,
-      drawSeq: this.drawnNumbers.length,
-      lastDrawnNumber: this.drawnNumbers.at(-1) ?? null,
-      drawnNumbers: [...this.drawnNumbers],
+      drawSeq: this.game.drawnNumbers.length,
+      lastDrawnNumber: this.game.lastDrawnNumber(),
+      drawnNumbers: [...this.game.drawnNumbers],
       players: this.players.map((player) => ({
         actorId: player.actor.actorId,
         displayName: player.actor.displayName,
@@ -112,7 +96,7 @@ class BingoRoomGame {
         marks: player.card === null ? [] : [...player.card.marks],
         completedLines: player.card === null ? 0 : player.card.completedLines()
       })),
-      winners: [...this.winners]
+      winners: [...this.game.winners]
     };
   }
 

@@ -17,6 +17,7 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamErrorHandler;
+import systems.zlink.stream.connector.ZLinkStreamLifecycleCall;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
 import systems.zlink.stream.connector.ZLinkStreamPacketName;
 import systems.zlink.stream.connector.ZLinkStreamRequestCall;
@@ -60,12 +61,118 @@ final class ZLinkStreamJsonTest {
         assertEquals("resolved.AnnotatedPayload", connector.handlerName);
     }
 
+    @Test
+    void typedWaitResolvesPayload() throws Exception {
+        FakeConnector connector = new FakeConnector(options());
+
+        CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
+            ZLinkStreamJson.waitForAsync(
+                connector,
+                "custom.packet",
+                AnnotatedPayload.class,
+                Duration.ofSeconds(1));
+
+        connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
+            "custom.packet",
+            ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("match")),
+            Map.of())).toCompletableFuture().join();
+
+        assertEquals("match", pending.toCompletableFuture().get().payload().value());
+    }
+
+    @Test
+    void typedWaitUsesConnectorRequestTimeoutByDefault() throws Exception {
+        FakeConnector connector = new FakeConnector(options());
+
+        CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
+            ZLinkStreamJson.waitForAsync(
+                connector,
+                "custom.packet",
+                AnnotatedPayload.class);
+
+        connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
+            "custom.packet",
+            ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("match")),
+            Map.of())).toCompletableFuture().join();
+
+        assertEquals("match", pending.toCompletableFuture().get().payload().value());
+    }
+
+    @Test
+    void connectorTypedRequestUsesConfiguredCodec() throws Exception {
+        FakeConnector connector = new FakeConnector(optionsWithCodec());
+
+        AnnotatedPayload reply = connector
+            .request(new AnnotatedPayload("hello"))
+            .submit(AnnotatedPayload.class)
+            .toCompletableFuture()
+            .get();
+
+        assertEquals("custom.packet", connector.requested.packetName());
+        assertEquals(ZLinkStreamCodec.JSON, connector.requested.codec());
+        assertEquals("reply", reply.value());
+    }
+
+    @Test
+    void connectorTypedWaitUsesConfiguredCodec() throws Exception {
+        FakeConnector connector = new FakeConnector(optionsWithCodec());
+
+        CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
+            connector.waitFor("custom.packet").submit(AnnotatedPayload.class);
+
+        connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
+            "custom.packet",
+            ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("match")),
+            Map.of())).toCompletableFuture().join();
+
+        assertEquals("match", pending.toCompletableFuture().get().payload().value());
+    }
+
+    @Test
+    void connectorTypedWaitWhereFiltersBeforeCompleting() throws Exception {
+        FakeConnector connector = new FakeConnector(optionsWithCodec());
+
+        CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
+            connector.waitFor("custom.packet")
+                .where(AnnotatedPayload.class, message -> message.payload().value().equals("match"))
+                .submit(AnnotatedPayload.class);
+
+        connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
+            "custom.packet",
+            ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("skip")),
+            Map.of())).toCompletableFuture().join();
+        connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
+            "custom.packet",
+            ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("match")),
+            Map.of())).toCompletableFuture().join();
+
+        assertEquals("match", pending.toCompletableFuture().get().payload().value());
+    }
+
     private static ZLinkStreamConnectorOptions options() {
         return new ZLinkStreamConnectorOptions(
             URI.create("tcp://127.0.0.1:1"),
             ZLinkStreamDispatchMode.MANUAL,
             Duration.ofSeconds(1),
             1);
+    }
+
+    private static ZLinkStreamConnectorOptions optionsWithCodec() {
+        return new ZLinkStreamConnectorOptions(
+            URI.create("tcp://127.0.0.1:1"),
+            ZLinkStreamDispatchMode.MANUAL,
+            Duration.ofSeconds(1),
+            1,
+            Duration.ofSeconds(1),
+            64 * 1024,
+            true,
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(5),
+            true,
+            Duration.ofMillis(250),
+            Duration.ofSeconds(5),
+            2.0,
+            ZLinkStreamJson.codec());
     }
 
     @ZLinkStreamPacketName("custom.packet")
@@ -75,7 +182,9 @@ final class ZLinkStreamJsonTest {
     private static final class FakeConnector implements ZLinkStreamConnector {
         private final ZLinkStreamConnectorOptions options;
         private ZLinkStreamEncodedPayload sent;
+        private ZLinkStreamEncodedPayload requested;
         private String handlerName;
+        private ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler;
 
         FakeConnector(ZLinkStreamConnectorOptions options) {
             this.options = options;
@@ -102,28 +211,33 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
-        public CompletionStage<Void> connectAsync() {
-            return CompletableFuture.completedFuture(null);
+        public int receivedCount(String name) {
+            return 0;
         }
 
         @Override
-        public CompletionStage<Void> disconnectAsync() {
-            return CompletableFuture.completedFuture(null);
+        public ZLinkStreamLifecycleCall connect() {
+            return completedLifecycleCall();
         }
 
         @Override
-        public CompletionStage<Void> reconnectAsync() {
-            return CompletableFuture.completedFuture(null);
+        public ZLinkStreamLifecycleCall disconnect() {
+            return completedLifecycleCall();
         }
 
         @Override
-        public CompletionStage<Void> closeAsync() {
-            return CompletableFuture.completedFuture(null);
+        public ZLinkStreamLifecycleCall reconnect() {
+            return completedLifecycleCall();
         }
 
         @Override
-        public CompletionStage<Void> dispatchAsync() {
-            return CompletableFuture.completedFuture(null);
+        public ZLinkStreamLifecycleCall close() {
+            return completedLifecycleCall();
+        }
+
+        @Override
+        public ZLinkStreamLifecycleCall dispatch() {
+            return completedLifecycleCall();
         }
 
         @Override
@@ -134,7 +248,8 @@ final class ZLinkStreamJsonTest {
 
         @Override
         public ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload) {
-            throw new UnsupportedOperationException();
+            requested = payload;
+            return new NoopRequestCall();
         }
 
         @Override
@@ -142,6 +257,7 @@ final class ZLinkStreamJsonTest {
             String name,
             ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler) {
             handlerName = name;
+            this.handler = handler;
             return () -> { };
         }
 
@@ -160,8 +276,8 @@ final class ZLinkStreamJsonTest {
             return () -> { };
         }
 
-        @Override
-        public void close() {
+        private static ZLinkStreamLifecycleCall completedLifecycleCall() {
+            return () -> CompletableFuture.completedFuture(null);
         }
     }
 
@@ -187,8 +303,41 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private static final class NoopRequestCall implements ZLinkStreamRequestCall {
+        @Override
+        public ZLinkStreamRequestCall packetName(String packetName) {
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamRequestCall metadata(String key, String value) {
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamRequestCall metadata(Map<String, String> metadata) {
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamRequestCall compress() {
+            return this;
+        }
+
+        @Override
+        public ZLinkStreamRequestCall timeout(Duration timeout) {
+            return this;
+        }
+
+        @Override
+        public CompletionStage<ZLinkStreamEncodedPayload> submit() {
+            return CompletableFuture.completedFuture(
+                ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("reply")));
         }
     }
 }

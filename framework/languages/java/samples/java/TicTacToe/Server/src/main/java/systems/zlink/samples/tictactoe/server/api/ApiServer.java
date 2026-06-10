@@ -12,7 +12,7 @@ public final class ApiServer {
     public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "api");
-            options.codecs().addJson();
+            options.codecs().addMessagePack();
             options.addHandlersFromPackageOf(ApiServer.class);
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
                 channel.enableServer(server -> server.bind(settings.apiChannelEndpoint()));

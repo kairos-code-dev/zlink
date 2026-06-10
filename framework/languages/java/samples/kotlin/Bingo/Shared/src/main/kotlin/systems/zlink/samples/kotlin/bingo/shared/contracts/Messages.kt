@@ -51,10 +51,10 @@ data class BingoRoomJoinReq(val roomId: String, val actorId: String, val display
 
 data class BingoRoomJoinRes(val state: BingoRoomState)
 
-@ZLinkPacket("StartBingoGameReq")
-data class StartBingoGameReq(val roomId: String)
+@ZLinkPacket("SubmitBingoCardReq")
+data class SubmitBingoCardReq(val roomId: String, val card: List<Int>)
 
-data class StartBingoGameRes(val state: BingoRoomState)
+data class SubmitBingoCardRes(val state: BingoRoomState)
 
 data class PlayerJoinedNotify(
     val roomId: String,

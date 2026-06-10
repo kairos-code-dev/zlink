@@ -26,7 +26,7 @@ int main ()
     stream_session.stream.attach_actor_gateway (node);
     (void) stream_session.stream.bind_actor (stream_session.session, ref)
       .timeout (std::chrono::milliseconds (1000))
-      .submit_async ()
+      .async ()
       .get ();
 
     actor_sample_capture_t first_capture;
@@ -52,7 +52,7 @@ int main ()
               .message (before)
               .flags (zlink::recv_flags_t::dontwait)
               .submit ());
-    (void) actor.leave (first_spot).submit_async ().get ();
+    (void) actor.leave (first_spot).async ().get ();
 
     zlink::message_t between = zlink::message_t::from ("between");
     assert (stream_session.stream.send_bound_actor (stream_session.session, "single-player")
@@ -80,7 +80,7 @@ int main ()
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::actor_read));
     assert (second_capture.payload == "beforebetween");
 
-    (void) actor.leave (second_spot).submit_async ().get ();
+    (void) actor.leave (second_spot).async ().get ();
     actor.close ();
     std::printf (
       "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");

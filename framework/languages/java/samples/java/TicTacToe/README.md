@@ -13,7 +13,7 @@ The sample is split into standalone Spring role projects:
   then stops the roles. Use `play` or `api` to run one role per process. The API
   role exposes the `/games` HTTP endpoint plus `AuthenticatePlayer` channel
   handler. The Play role owns the STREAM endpoint, actor runtime, entry Spot,
-  and game Spot. There is no SessionGateway variant for this sample.
+  and game Spot. This sample keeps only the common spec flow.
 - `Shared`: holds the typed contracts used by the client, API role, Play role,
   and STREAM messages.
 

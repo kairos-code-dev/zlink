@@ -28,7 +28,7 @@ int main ()
     // 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
     stream.attach_actor_gateway (node);
     zlink::routing_id_t session = zlink::routing_id_t::from (std::string ("single-player-session"));
-    (void) stream.bind_actor (session, actor.ref ()).submit_async ().get ();
+    (void) stream.bind_actor (session, actor.ref ()).async ().get ();
 
     // dispatch 핸들러: join 요청을 수락하고, actor에게 온 메시지를 모은다.
     std::mutex mutex;
@@ -64,7 +64,7 @@ int main ()
         zlink::message_t msg = zlink::message_t::from (payload);
         stream.send_bound_actor (session, "single-player").message (msg).submit ();
     };
-    auto leave = [&] () { (void) actor.leave (spot).submit_async ().get (); };
+    auto leave = [&] () { (void) actor.leave (spot).async ().get (); };
 
     join ("join-first");  // actor가 spot에 합류
     send ("before");      // joined 상태에서 도착

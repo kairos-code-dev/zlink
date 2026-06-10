@@ -12,6 +12,7 @@ type ReadyEvent = Record<string, any>;
 
 type StartedServer = {
   entryFile: string;
+  ready: ReadyEvent;
   exitedUnexpectedly(): Promise<Error | undefined>;
   stop(): Promise<void>;
 };
@@ -54,9 +55,10 @@ async function startServer(entryFile: string, env: Record<string, string> = {}):
   const exit = new Promise<ExitResult>((resolve) => {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
-  await readReady(output, child, entryFile, stdoutLines, stderrLines);
+  const ready = await readReady(output, child, entryFile, stdoutLines, stderrLines);
   return {
     entryFile,
+    ready,
     async exitedUnexpectedly(): Promise<Error | undefined> {
       const result = await exit;
       if (stopping) {
@@ -83,14 +85,14 @@ async function startServer(entryFile: string, env: Record<string, string> = {}):
 
 async function withServers<TValue>(
   servers: SampleServerConfig[],
-  action: () => Promise<TValue>
+  action: (ready: ReadyEvent[]) => Promise<TValue>
 ): Promise<TValue> {
   const started: StartedServer[] = [];
   try {
     for (const server of servers) {
       started.push(await startServer(server.entry, server.env));
     }
-    const actionResult = action();
+    const actionResult = action(started.map((server) => server.ready));
     const unexpectedExit = Promise.race(
       started.map((server) => server.exitedUnexpectedly())
     ).then((error) => {

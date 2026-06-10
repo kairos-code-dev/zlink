@@ -61,7 +61,10 @@ export class Received {
   private _sendContext: SendContext | null;
 
   /** Create an empty reusable envelope for use with `recv`. */
-  constructor() {
+  constructor(...args: never[]) {
+    if (args.length > 0) {
+      throw new TypeError('Received reusable envelopes are created without constructor arguments');
+    }
     this.parts = freezeMessageParts([]);
     this.routingId = null;
     this.spotRid = null;

@@ -7,7 +7,7 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlaye
 
 @ZLinkHandlerGroup("api")
 class AuthenticatePlayerHandler {
-    @ZLinkRequest(packetName = "AuthenticatePlayer")
+    @ZLinkRequest(packetName = "AuthenticatePlayerReq")
     suspend fun handle(request: AuthenticatePlayerReq): AuthenticatePlayerRes {
         val actorId = request.accessToken.trim()
         require(actorId.isNotBlank()) { "authentication token is empty" }

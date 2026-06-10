@@ -136,7 +136,7 @@ module) 로 이미 올라와 있어야 한다.
 
 > `.NET` 의 `AddZLinkMonitoring(...)` 은 `AddZLinkFramework(...)` 와 분리된 두 번째
 > 등록 호출이지만, NestJS 에서는 동일 `ZLinkModule.forRoot(...)` options 안의
-> `monitoring` 키로 합친다. 분리가 꼭 필요하면 `forRootAsync` 로 monitoring 만 다른
+> `monitoring` 키로 합친다. 분리가 꼭 필요하면 `forRootFactory` 로 monitoring 만 다른
 > 모듈에서 주입하는 방식도 허용한다. 의미는 동일하다 — source 등록은 framework 등록과
 > 같은 application 에 있어야 한다.
 

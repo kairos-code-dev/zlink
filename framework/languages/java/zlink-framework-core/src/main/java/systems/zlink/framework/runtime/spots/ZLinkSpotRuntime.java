@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -64,6 +65,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -133,6 +135,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final ZLinkBackendSpotNode primaryNode;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
+    private final Executor handlerExecutor;
+    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final Map<String, SpotActorPacketHandlerRegistration> actorPacketHandlers;
     private final List<SpotActorLifecycleHandlerRegistration> actorDisconnectedHandlers;
     private final Duration defaultTimeout;
@@ -194,6 +198,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         this.channels = channels;
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = handlerFactory;
+        this.handlerExecutor = java.util.Objects.requireNonNull(
+            registration.handlerExecutor(),
+            "handlerExecutor");
+        this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         this.actorPacketHandlers = new HashMap<>(actorPacketHandlersByPacket(handlerCatalog));
@@ -883,17 +891,33 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private <T> CompletionStage<T> withCurrentOutbound(
         DefaultSpotOutbound outbound,
         Supplier<CompletionStage<T>> action) {
-        DefaultSpotOutbound previous = currentOutbound.get();
-        currentOutbound.set(outbound);
+        CompletableFuture<T> result = new CompletableFuture<>();
         try {
-            return action.get();
-        } finally {
-            if (previous == null) {
-                currentOutbound.remove();
-            } else {
-                currentOutbound.set(previous);
-            }
+            handlerExecutor.execute(() -> {
+                DefaultSpotOutbound previous = currentOutbound.get();
+                currentOutbound.set(outbound);
+                try {
+                    action.get().whenComplete((value, error) -> {
+                        if (error != null) {
+                            result.completeExceptionally(error);
+                        } else {
+                            result.complete(value);
+                        }
+                    });
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                } finally {
+                    if (previous == null) {
+                        currentOutbound.remove();
+                    } else {
+                        currentOutbound.set(previous);
+                    }
+                }
+            });
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
         }
+        return result;
     }
 
     private DefaultSpotOutbound requireCurrentOutbound() {
@@ -1655,7 +1679,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
-                invokeSpotRequestHandler(handler, entrySpot, payloadCopy)
+                withCurrentOutbound(context.outbound, () ->
+                    invokeSpotRequestHandler(handler, entrySpot, payloadCopy))
                     .thenAccept(reply -> received.reply(List.of(reply)))
                     .whenComplete((ignored, error) -> {
                         payloadCopy.close();
@@ -1668,7 +1693,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
-                invokeSpotPacketHandler(handler, entrySpot, payloadCopy)
+                withCurrentOutbound(context.outbound, () ->
+                    invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
                     .whenComplete((ignored, error) -> payloadCopy.close());
             }
         }
@@ -1696,7 +1722,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         continue;
                     }
                     Message payloadCopy = Message.from(packet.payload());
-                    invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy)
+                    withCurrentOutbound(context.outbound, () ->
+                        invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy))
                         .whenComplete((ignored, error) -> payloadCopy.close());
                 }
             } finally {
@@ -2102,7 +2129,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         @Override
         public void close() {
             try {
-                awaitClosing(entrySpot.onClosingAsync());
+                awaitClosing(withCurrentOutbound(context.outbound, entrySpot::onClosingAsync));
             } finally {
                 if (pendingActorHeader != null) {
                     pendingActorHeader.close();
@@ -2384,7 +2411,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         String failureMessage) {
         try {
             Object handler = handlerFactory.create(handlerType);
-            return ZLinkHandlerMethodInvoker.invoke(handler, method, arguments);
+            return ZLinkHandlerMethodInvoker.invoke(
+                handler,
+                method,
+                arguments,
+                suspendHandlerInvokers);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 failureMessage + ": " + handlerType.getName() + "." + method.getName(),
@@ -3851,7 +3882,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return CompletableFuture.completedFuture(null);
                 }
                 Message payloadCopy = Message.from(packet.payload());
-                return invokeSpotRequestHandler(handler, spot, payloadCopy)
+                return withCurrentOutbound(context.outbound, () ->
+                    invokeSpotRequestHandler(handler, spot, payloadCopy))
                     .thenAccept(reply -> received.reply(List.of(reply)))
                     .whenComplete((ignored, error) -> {
                         payloadCopy.close();
@@ -3864,7 +3896,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             Message payloadCopy = Message.from(packet.payload());
             received.close();
-            return invokeSpotPacketHandler(handler, spot, payloadCopy)
+            return withCurrentOutbound(context.outbound, () ->
+                invokeSpotPacketHandler(handler, spot, payloadCopy))
                 .whenComplete((ignored, error) -> payloadCopy.close());
         }
 
@@ -3894,7 +3927,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     }
                     Message payloadCopy = Message.from(packet.payload());
                     tail = tail.thenCompose(ignored ->
-                        invokeSpotSubscriptionHandler(handler, spot, payloadCopy)
+                        withCurrentOutbound(context.outbound, () ->
+                            invokeSpotSubscriptionHandler(handler, spot, payloadCopy))
                             .whenComplete((ignored2, error) -> payloadCopy.close()));
                 }
                 return tail;
@@ -4338,7 +4372,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 return;
             }
             try {
-                awaitClosing(spot.onClosingAsync());
+                awaitClosing(withCurrentOutbound(context.outbound, spot::onClosingAsync));
             } finally {
                 closeResources();
             }

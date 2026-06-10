@@ -1,0 +1,43 @@
+package systems.zlink.samples.bingo.server.play.adapters.zlink.actors;
+
+import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.actors.ZLinkActorContext;
+
+public final class PlayerActor implements ZLinkActor {
+    private final String actorId;
+    private final ZLinkActorContext context;
+    private String displayName;
+    private String roomId = "";
+
+    public PlayerActor(String actorId, ZLinkActorContext context) {
+        this.actorId = actorId;
+        this.context = context;
+        this.displayName = actorId;
+    }
+
+    @Override
+    public String actorId() {
+        return actorId;
+    }
+
+    @Override
+    public ZLinkActorContext context() {
+        return context;
+    }
+
+    public String displayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public void joinRoom(String roomId) {
+        this.roomId = roomId;
+    }
+
+    public String roomId() {
+        return roomId;
+    }
+}

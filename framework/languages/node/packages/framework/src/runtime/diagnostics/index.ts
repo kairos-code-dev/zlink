@@ -84,9 +84,9 @@ export class ZLinkRegistryMonitoringSource {
 
   async pollOnce(signal?: AbortSignal): Promise<void> {
     const [status, topology, serviceSummary] = await Promise.all([
-      this.query.statusAsync(signal),
-      this.query.topologyAsync(undefined, signal),
-      this.query.serviceSummaryAsync(undefined, signal)
+      this.query.status(signal),
+      this.query.topology(undefined, signal),
+      this.query.serviceSummary(undefined, signal)
     ]);
 
     this.previousStatus = await publishIfChanged(

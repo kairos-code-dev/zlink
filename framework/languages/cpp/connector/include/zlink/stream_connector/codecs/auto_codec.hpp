@@ -67,11 +67,11 @@ namespace zlink::stream_connector::codecs {
         result_t<void> submit() { return _inner.submit(); }
 
         /// Sends the encoded packet as an awaitable task.
-        task_t<void> submit_async() { return _inner.submit_async(); }
+        task_t<void> async() { return _inner.async(); }
 
         /// Sends the encoded packet and invokes the callback with the completion result.
-        void submit_async(std::function<void (result_t<void>)> callback) {
-            _inner.submit_async(std::move(callback));
+        void submit(std::function<void (result_t<void>)> callback) {
+            _inner.submit(std::move(callback));
         }
 
     private:
@@ -102,7 +102,7 @@ namespace zlink::stream_connector::codecs {
             return *this;
         }
 
-        /// Sets the request timeout used by submit and submit_async.
+        /// Sets the request timeout used by submit and async.
         auto_request_call_t &timeout(std::chrono::milliseconds timeout) {
             _inner.timeout(timeout);
             return *this;
@@ -126,11 +126,11 @@ namespace zlink::stream_connector::codecs {
         }
 
         /// Sends the encoded request and returns an awaitable decoded reply.
-        task_t<TReply> submit_async() { return task_t<TReply>(submit()); }
+        task_t<TReply> async() { return task_t<TReply>(submit()); }
 
         /// Sends the encoded request and invokes the callback with the decoded reply result.
-        void submit_async(std::function<void (result_t<TReply>)> callback) {
-            auto task = submit_async();
+        void submit(std::function<void (result_t<TReply>)> callback) {
+            auto task = async();
             task.on_completed(std::move(callback));
         }
 

@@ -5,13 +5,12 @@ const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkFramework } = require('../../../../../../../../packages/nestjs/dist');
 const {
   PacketNames,
-  SampleNames,
-  SampleTimings,
   authenticateReq,
   authenticateRes,
   joinGameInternalReq,
   placeMarkReq
 } = require('../../../../../Shared/Contracts/messages');
+const { SampleNames, SampleTimings } = require('../../../../../Shared/Configuration/sample-settings');
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,

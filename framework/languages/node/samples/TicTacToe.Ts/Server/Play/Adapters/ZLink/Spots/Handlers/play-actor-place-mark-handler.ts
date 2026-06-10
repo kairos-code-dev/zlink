@@ -1,6 +1,6 @@
 const { Inject } = require('@nestjs/common');
 const { PacketNames, gameStateNotify, placeMarkRes } = require('../../../../../../Shared/Contracts/messages');
-const { TicTacToeGameDirectory } = require('../../../../Application/GameCreation/tictactoe-game');
+const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
 import type {
   PlaceMarkInternalReq,
   PlaceMarkRes
@@ -26,6 +26,6 @@ class PlayActorPlaceMarkHandler {
   }
 }
 
-Inject(TicTacToeGameDirectory)(PlayActorPlaceMarkHandler, undefined, 0);
+Inject(TicTacToeGameCreator)(PlayActorPlaceMarkHandler, undefined, 0);
 
 export { PlayActorPlaceMarkHandler };

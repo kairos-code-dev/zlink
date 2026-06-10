@@ -32,7 +32,7 @@ NestJS 표면에서 lifecycle 의 두 경계는 다음과 같이 본다.
 
 dotnet 의 `IHostedService.StartAsync` / `StopAsync` 가 정확히 이 두 hook 으로
 매핑된다. 한 가지 짚을 점은, **설정 검증은 시동 hook 이 아니라 module 등록
-시점**(`ZLinkModule.forRoot(...)` / `forRootAsync(...)`)에 먼저 일어난다는
+시점**(`ZLinkModule.forRoot(...)` / `forRootFactory(...)`)에 먼저 일어난다는
 것이다(§3 참조). dotnet 도 `AddZLinkFramework(...)` 등록 호출 안에서 검증을
 끝낸다.
 
@@ -48,7 +48,7 @@ dotnet 의 `IHostedService.StartAsync` / `StopAsync` 가 정확히 이 두 hook 
 6. monitoring source attach
 7. application host ready
 
-이 가운데 1~2 단계는 `ZLinkModule.forRoot(...)` / `forRootAsync(...)` 가
+이 가운데 1~2 단계는 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 가
 `DynamicModule` 을 만들어 내는 **등록 시점**에 끝난다. 3~7 단계가 NestJS
 lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동이다.
 
@@ -64,7 +64,7 @@ lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동�
 순서 자체보다 더 중요한 약속들은 아래와 같다.
 
 - 설정 검증에서 걸리면, bind / connect 단계에 들어가기 전에 그 자리에서 바로
-  예외를 던진다. NestJS 에서는 이 예외가 `forRoot(...)` / `forRootAsync(...)`
+  예외를 던진다. NestJS 에서는 이 예외가 `forRoot(...)` / `forRootFactory(...)`
   호출 시점에 던져지므로, application 이 부팅을 시작하기도 전에 멈춘다.
 - embedded registry 가 있는 구성에서는 Registry 가 먼저 bind 되어야 한다.
   그래야 그 위에서 돌아갈 discovery 기반 channel 과 SPOT[^spot] mesh 가
@@ -100,7 +100,7 @@ lifecycle hook(`onApplicationBootstrap()`) 안에서 일어나는 실제 시동�
 - monitoring source 이름의 mismatch
 
 앞의 두 항목(잘못된 registration 조합, 필수 endpoint 누락)은 등록 시점 검증에서
-걸리므로 `ZLinkModule.forRoot(...)` / `forRootAsync(...)` 호출 자체가 reject /
+걸리므로 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 호출 자체가 reject /
 throw 한다. 나머지(bind 실패, runtime 객체 생성 실패, monitoring source
 mismatch)는 lifecycle hook(`onApplicationBootstrap()`) 안에서 던져지고, NestJS
 가 application 부팅을 중단시킨다.
@@ -286,7 +286,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^reconnect]: reconnect 는 끊어진 연결을 다시 맺으려고 시도하는 동작을 가리킨다. 자동 재시도 정책과 명시적 호출 두 가지 모양이 있다.
 [^lifecycle]: lifecycle 은 컴포넌트가 시작·동작·종료되는 전체 수명 주기와, 그 단계마다 일어나는 일을 가리킨다. NestJS 에서는 `onApplicationBootstrap` / `onModuleDestroy` / `onApplicationShutdown` 같은 lifecycle hook 으로 그 단계가 드러난다.
-[^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다. node 에서는 `ZLinkModule.forRoot(...)` / `forRootAsync(...)` 등록 시점에 수행된다.
+[^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다. node 에서는 `ZLinkModule.forRoot(...)` / `forRootFactory(...)` 등록 시점에 수행된다.
 [^registration-surface]: registration surface 는 `ZLinkModule.forRoot(...)` 의 options 객체를 통해 framework 에 쌓이는 설정의 집합을 가리킨다.
 [^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
 [^registry]: Registry 는 어느 노드가 어떤 capability 를 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.

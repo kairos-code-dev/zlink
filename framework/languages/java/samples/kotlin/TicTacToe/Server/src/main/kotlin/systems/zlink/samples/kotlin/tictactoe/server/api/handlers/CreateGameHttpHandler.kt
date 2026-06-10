@@ -22,8 +22,8 @@ class CreateGameHttpHandler(
             CreateGameReq(request.gameName?.takeIf { it.isNotBlank() } ?: "tictactoe-game"),
         )
             .timeout(SampleNames.RequestTimeout)
-            .submitAsync(CreateGameRes::class.java)
+            .submit(CreateGameRes::class.java)
             .await()
-        return CreateGameHttpRes(game.gameId, game.playEndpoint, game.gameName)
+        return CreateGameHttpRes(game.roomId, game.playEndpoint, game.gameName)
     }
 }

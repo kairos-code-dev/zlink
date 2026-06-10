@@ -5,11 +5,9 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.time.Duration
 import java.time.Duration.ofSeconds
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
-import java.util.concurrent.CompletionStage
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.Optional
@@ -18,6 +16,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -28,10 +27,7 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.CancellationToken
-import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkSendCall
-import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -43,12 +39,13 @@ final class KotlinConnectorWrapperTest {
     @Test
     fun suspendWrapperPreservesConnectorSemantics() = runBlocking {
         TcpServer().use { server ->
-            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
-                connector.connect()
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
                 assertTrue(connector.isConnected)
 
-                connector.send(payload("Echo", "send")).submit()
-                val sent = server.readFrame()
+                connector.send(payload("Echo", "send")).await()
+                val sent = server.readApplicationFrame()
                 assertEquals(1, sent.kind)
                 assertEquals("Echo", sent.name)
                 assertEquals("send", sent.payload.toString(StandardCharsets.UTF_8))
@@ -56,7 +53,7 @@ final class KotlinConnectorWrapperTest {
                 val replyFuture = async(Dispatchers.IO) {
                     connector.request(payload("Echo", "request")).await()
                 }
-                val request = server.readFrame()
+                val request = server.readApplicationFrame()
                 assertEquals(2, request.kind)
                 assertEquals("Echo", request.name)
                 assertEquals("request", request.payload.toString(StandardCharsets.UTF_8))
@@ -76,9 +73,11 @@ final class KotlinConnectorWrapperTest {
                     reply.payload().close()
                 }
 
-                connector.disconnect()
-                connector.reconnect()
+                connector.disconnect().await()
+                connector.reconnect().await()
                 assertTrue(connector.isConnected)
+            } finally {
+                connector.close().await()
             }
         }
     }
@@ -86,8 +85,9 @@ final class KotlinConnectorWrapperTest {
     @Test
     fun connectorMessagesFlowUsesJavaManualDispatchSemantics() = runBlocking {
         TcpServer().use { server ->
-            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
-                connector.connect()
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
 
                 val received = CompletableDeferred<ZLinkStreamEncodedPayload>()
                 val collector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -108,6 +108,8 @@ final class KotlinConnectorWrapperTest {
                     payload.payload().close()
                     collector.cancel()
                 }
+            } finally {
+                connector.close().await()
             }
         }
     }
@@ -115,8 +117,9 @@ final class KotlinConnectorWrapperTest {
     @Test
     fun connectorErrorsFlowUsesJavaManualDispatchSemantics() = runBlocking {
         TcpServer().use { server ->
-            ZLinkStreamConnectorFactory.create(options(server.endpoint())).use { connector ->
-                connector.connect()
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
 
                 val received = CompletableDeferred<ZLinkStreamError>()
                 val collector = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -132,33 +135,10 @@ final class KotlinConnectorWrapperTest {
                 }
                 assertEquals(ZLinkStreamErrorCode.REMOTE_ERROR, error.code())
                 collector.cancel()
+            } finally {
+                connector.close().await()
             }
         }
-    }
-
-    @Test
-    fun frameworkSubmitAndRequestWrappersAwaitCompletionStage() = runBlocking {
-        var submitted = false
-
-        object : ZLinkSendCall {
-            override fun packetName(packetName: String): ZLinkSendCall = this
-            override fun metadata(key: String, value: String): ZLinkSendCall = this
-            override fun submitAsync(): CompletionStage<Void> {
-                submitted = true
-                return CompletableFuture.completedFuture(null)
-            }
-        }.submit()
-
-        val reply = object : ZLinkRequestCall {
-            override fun packetName(packetName: String): ZLinkRequestCall = this
-            override fun metadata(key: String, value: String): ZLinkRequestCall = this
-            override fun timeout(timeout: Duration): ZLinkRequestCall = this
-            override fun <TReply> submitAsync(replyType: Class<TReply>): CompletionStage<TReply> =
-                CompletableFuture.completedFuture(replyType.cast("reply"))
-        }.awaitReply<String>()
-
-        assertTrue(submitted)
-        assertEquals("reply", reply)
     }
 
     @Test
@@ -244,7 +224,7 @@ final class KotlinConnectorWrapperTest {
 
     private suspend fun sendAndDispatchUntilReceived(
         server: TcpServer,
-        connector: ZLinkStreamConnector,
+        connector: ZLinkKotlinStreamConnector,
         received: CompletableDeferred<*>,
     ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
@@ -257,7 +237,7 @@ final class KotlinConnectorWrapperTest {
                     payload = "event".toByteArray(StandardCharsets.UTF_8),
                 ),
             )
-            connector.dispatch()
+            connector.dispatch().await()
             yield()
             if (received.isCompleted) {
                 return
@@ -269,7 +249,7 @@ final class KotlinConnectorWrapperTest {
 
     private suspend fun sendErrorAndDispatchUntilReceived(
         server: TcpServer,
-        connector: ZLinkStreamConnector,
+        connector: ZLinkKotlinStreamConnector,
         received: CompletableDeferred<*>,
     ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
@@ -283,7 +263,7 @@ final class KotlinConnectorWrapperTest {
                     payload = "remote failed".toByteArray(StandardCharsets.UTF_8),
                 ),
             )
-            connector.dispatch()
+            connector.dispatch().await()
             yield()
             if (received.isCompleted) {
                 return
@@ -325,6 +305,15 @@ final class KotlinConnectorWrapperTest {
             val header = input.readNBytes(headerLength)
             val payload = input.readNBytes(payloadLength)
             return decodeHeader(header).copy(payload = payload)
+        }
+
+        fun readApplicationFrame(): Frame {
+            while (true) {
+                val frame = readFrame()
+                if (frame.kind != 5) {
+                    return frame
+                }
+            }
         }
 
         fun sendFrame(frame: Frame) {

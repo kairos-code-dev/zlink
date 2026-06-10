@@ -13,12 +13,12 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
-import systems.zlink.samples.kotlin.bingo.server.play.actors.PlayerActorFactory
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoNotificationPublisher
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.BingoRoomSpot
-import systems.zlink.samples.kotlin.bingo.server.play.bingoroomspots.handlers.BingoRoomSpotCreatedHandler
-import systems.zlink.samples.kotlin.bingo.server.play.entryspot.BingoEntrySpot
-import systems.zlink.samples.kotlin.bingo.server.play.handlers.BingoRoomDirectory
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActorFactory
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.notifications.BingoNotificationPublisher
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoRoomSpot
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
 
@@ -41,7 +41,7 @@ class PlayServerApplication {
             options.useDiscovery { discovery ->
                 discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             }
-            options.codecs().addJson()
+            options.codecs().addProtobuf()
             options.addClientServerChannel(SampleNames.PlayChannel) { channel ->
                 channel.enableServer { server -> server.bind(SampleTopology.PlayChannelEndpoint) }
                 channel.addHandlerGroup("play")

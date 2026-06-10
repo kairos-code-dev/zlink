@@ -20,7 +20,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 import systems.zlink.stream.connector.ZLinkStreamCodec as ConnectorStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
-import systems.zlink.stream.connector.json.ZLinkStreamJson
+import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf
 
 class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
@@ -31,7 +31,7 @@ class AuthenticateSessionHandler(
         header: ZLinkStreamHeader,
         payload: Message,
     ) {
-        val request = ZLinkStreamJson.decode(
+        val request = ZLinkStreamProtobuf.decode(
             ZLinkStreamEncodedPayload(
                 header.packetName(),
                 payload,
@@ -47,7 +47,7 @@ class AuthenticateSessionHandler(
         val authenticated = channels
             .requestToChannel(SampleNames.ApiChannel, AuthenticatePlayerReq(request.accessToken))
             .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(AuthenticatePlayerRes::class.java)
+            .submit(AuthenticatePlayerRes::class.java)
             .await()
         if (!authenticated.accepted ||
             authenticated.actorId.isBlank() ||
@@ -66,7 +66,7 @@ class AuthenticateSessionHandler(
                 ),
             )
             .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(EnsurePlayerActorRes::class.java)
+            .submit(EnsurePlayerActorRes::class.java)
             .await()
         context.actors()
             .bindAsync(
@@ -84,7 +84,7 @@ class AuthenticateSessionHandler(
                     authenticated.displayName,
                 ),
             )
-            .submitAsync()
+            .submit()
             .await()
     }
 

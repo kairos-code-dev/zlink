@@ -1,6 +1,6 @@
 const { Inject } = require('@nestjs/common');
 const { PlayerActorFactory } = require('../Actors/player-actor-factory');
-const { BingoRoomDirectory } = require('../../../Application/RoomAllocation/bingo-room-directory');
+const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
 const { SubmitBingoCardHandler } = require('../Spots/Handlers/submit-bingo-card-handler');
 const { BingoRoomTimerHandler } = require('../Spots/Handlers/bingo-room-timer-handler');
 import type {
@@ -28,7 +28,7 @@ class SubmitBingoCardChannelHandler {
 }
 
 Inject(PlayerActorFactory)(SubmitBingoCardChannelHandler, undefined, 0);
-Inject(BingoRoomDirectory)(SubmitBingoCardChannelHandler, undefined, 1);
+Inject(BingoRoomAllocator)(SubmitBingoCardChannelHandler, undefined, 1);
 Inject(SubmitBingoCardHandler)(SubmitBingoCardChannelHandler, undefined, 2);
 Inject(BingoRoomTimerHandler)(SubmitBingoCardChannelHandler, undefined, 3);
 

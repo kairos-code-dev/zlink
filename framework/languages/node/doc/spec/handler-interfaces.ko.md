@@ -28,6 +28,9 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - `ValueTask` / `ValueTask<T>` → `Promise<void>` / `Promise<T>`
 - `CancellationToken cancellationToken` → 생략 또는 `signal?: AbortSignal`
 - `HandleAsync` → `handle` (메서드는 camelCase)
+- `SubmitAsync`, `StartAsync`, `StopAsync` 처럼 비동기성을 드러내는 suffix 는
+  Node public API 에 붙이지 않는다. Node 는 `Promise<T>` 반환 타입과 `await` 로
+  비동기 계약을 표현한다.
 - `record` / `readonly record struct` → TS `interface` 또는 `type`
 - `enum` → TS string enum
 - `RoutingId(string)` → `type RoutingId = string`
@@ -806,7 +809,7 @@ export interface ZLinkSession {
 
   /**
    * framework 가 decode 한 ZlinkStreamHeader 와 Message payload 를 받는다.
-   * payload 는 callback 동안 borrowed 이다. 읽거나 relayAsync 로 넘길 수 있지만,
+   * payload 는 callback 동안 borrowed 이다. 읽거나 relay 로 넘길 수 있지만,
    * callback 뒤에도 보관할 때만 별도 copy/move 한다.
    */
   onDispatch?(header: ZlinkStreamHeader, payload: Message): Promise<void>;
@@ -1411,7 +1414,7 @@ token 만 교체한다. factory 가 새 actor 를 만드는 경우에도 반환 
 ### 6.1 framework 등록 루트 (= NestJS module options)
 
 dotnet 의 `AddZLinkFramework(options => ...)` 는 node 에서 `ZLinkModule.forRoot(...)` /
-`forRootAsync(...)` 가 반환하는 `DynamicModule` 로 매핑된다. dotnet builder 메서드 한 개 =
+`forRootFactory(...)` 가 반환하는 `DynamicModule` 로 매핑된다. dotnet builder 메서드 한 개 =
 node options 키 한 개로 1:1 대응시키는 것을 기본으로 한다(표면 매핑 §5).
 
 두 가지 표면을 함께 둔다. (A) NestJS 선언적 module-options, (B) fluent builder. 둘은 같은

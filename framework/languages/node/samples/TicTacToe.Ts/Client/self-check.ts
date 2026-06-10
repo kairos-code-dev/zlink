@@ -1,36 +1,16 @@
-const assert = require('node:assert/strict');
 const path = require('node:path');
 const connector = require('../../../../packages/stream-connector/dist');
-const json = require('../../../../packages/stream-connector-json/dist');
+const msgpack = require('../../../../packages/stream-connector-msgpack/dist');
 const nestjs = require('../../../../packages/nestjs/dist');
 const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
+import { TicTacToeClientApp } from './tictactoe-client-app';
 const {
-  PacketNames,
   SampleNames,
-  SampleTimings,
-  authenticateReq,
-  createGameReq,
-  joinGameReq,
-  placeMarkStreamReq
-} = require('../Shared/Contracts/messages');
-import type {
-  AuthenticateRes,
-  CreateGameHttpRes,
-  JoinGameRes,
-  PlaceMarkRes
-} from '../Shared/Contracts/messages';
+  SampleTimings
+} = require('../Shared/Configuration/sample-settings');
 import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
 
 type NestjsPackage = typeof nestjs;
-
-type StreamNotification = {
-  packetName: string;
-  payload: any;
-};
-
-type StreamClient = ZlinkStreamConnector & {
-  notifications: StreamNotification[];
-};
 
 async function main(): Promise<void> {
   const playEndpoint = await reserveTcpEndpoint();
@@ -69,55 +49,10 @@ async function main(): Promise<void> {
       }
     }
   ], async (): Promise<void> => {
-    const game = await createGame(apiHttpEndpoint, 'match-ready');
     const x = createPlayerClient(playStreamEndpoint);
     const o = createPlayerClient(playStreamEndpoint);
     try {
-      await x.connect();
-      await o.connect();
-      const xAuth = await x.request(authenticateReq('p1')).submit<AuthenticateRes>();
-      const oAuth = await o.request(authenticateReq('p2')).submit<AuthenticateRes>();
-      const xSelfJoined = waitForNoNotify(x, PacketNames.playerJoinedNotify);
-      const xOpponentJoined = x.waitFor<any>(PacketNames.playerJoinedNotify).where((message) => message.payload.actorId === 'p2').submit();
-      const xRunningState = x.waitFor<any>(PacketNames.gameStateNotify).where((message) => message.payload.state.status === 'InProgress').submit();
-      const xJoin = await x.request(joinGameReq(game.roomId)).submit<JoinGameRes>();
-      await xSelfJoined;
-      const oJoin = await o.request(joinGameReq(game.roomId)).submit<JoinGameRes>();
-      const [joinedMessage, runningMessage] = await Promise.all([xOpponentJoined, xRunningState]);
-      const joined = joinedMessage.payload;
-      const running = runningMessage.payload;
-      assert.equal(joined.actorId, 'p2');
-      assert.equal(joined.mark, 'O');
-      assert.equal(joined.roomId, game.roomId);
-      assert.equal(joined.state.status, 'InProgress');
-      assert.equal(running.state.status, 'InProgress');
-      assert.equal(running.state.nextTurn, 'p1');
-      const oFinalState = o.waitFor<any>(PacketNames.gameStateNotify).where((message) => message.payload.state.winner === 'p1').submit();
-      const moves = [
-        await x.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(),
-        await o.request(placeMarkStreamReq(3)).submit<PlaceMarkRes>(),
-        await x.request(placeMarkStreamReq(1)).submit<PlaceMarkRes>(),
-        await o.request(placeMarkStreamReq(4)).submit<PlaceMarkRes>(),
-        await x.request(placeMarkStreamReq(2)).submit<PlaceMarkRes>()
-      ];
-      const finalState = (await oFinalState).payload;
-      const lastMoveState = moves[moves.length - 1].state as any;
-      const xJoinState = xJoin.state as any;
-      const oJoinState = oJoin.state as any;
-
-      assert.equal(game.gameName, 'match-ready');
-      assert.equal(game.playEndpoint, playStreamEndpoint);
-      assert.deepEqual([xAuth.actorId, oAuth.actorId], ['p1', 'p2']);
-      assert.deepEqual([xJoin.mark, oJoin.mark], ['X', 'O']);
-      assert.equal(lastMoveState.board, 'XXXOO....');
-      assert.equal(lastMoveState.status, 'Won');
-      assert.equal(lastMoveState.winner, 'p1');
-      assert.equal(xJoinState.status, 'WaitingForPlayers');
-      assert.equal(oJoinState.status, 'InProgress');
-      assert.equal(x.notifications.filter((item) => item.packetName === PacketNames.playerJoinedNotify).length, 1);
-      assert.equal(o.notifications.some((item) => item.packetName === PacketNames.playerJoinedNotify), false);
-      assert.equal(x.notifications.at(-1).packetName, PacketNames.gameStateNotify);
-      assert.equal(finalState.state.winner, 'p1');
+      await new TicTacToeClientApp().run(x, o, apiHttpEndpoint);
     } finally {
       await Promise.allSettled([x.close(), o.close()]);
     }
@@ -142,42 +77,18 @@ function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): an
   return module;
 }
 
-function createPlayerClient(endpoint: string): StreamClient {
-  const client = connector.zlinkStreamConnectorFactory.create({
+function createPlayerClient(endpoint: string): ZlinkStreamConnector {
+  return connector.zlinkStreamConnectorFactory.create({
     endpoint,
-    codec: json.zlinkStreamJsonCodec,
+    codec: msgpack.zlinkStreamMessagePackCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
-  }) as StreamClient;
-  client.notifications = [];
-  for (const packetName of [PacketNames.playerJoinedNotify, PacketNames.gameStateNotify]) {
-    client.on(packetName, (message: { payload: unknown }) => {
-      client.notifications.push({ packetName, payload: message.payload });
-    });
-  }
-  return client;
-}
-
-async function createGame(apiHttpEndpoint: string, gameName: string): Promise<CreateGameHttpRes> {
-  const response = await fetch(`${apiHttpEndpoint}/games`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(createGameReq(gameName))
   });
-  if (!response.ok) {
-    throw new Error(`Create game failed: ${response.status} ${await response.text()}`);
-  }
-  return await response.json();
 }
 
 function toHttpEndpoint(tcpEndpoint: string): string {
   return tcpEndpoint.replace('tcp://', 'http://');
-}
-
-async function waitForNoNotify(client: StreamClient, packetName: string): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(client.notifications.some((item) => item.packetName === packetName), false);
 }
 
 main().catch((error: unknown) => {

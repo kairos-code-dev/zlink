@@ -195,7 +195,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | SPOT timer overrun policy | `integration-single-process` | `SkipLateTicks`, `CatchUpBounded`, `DelayNextTick` 정책이 각각 skip, bounded catch-up, fixed-delay 의미를 지킨다 |
 | SPOT timer exception policy | `integration-single-process` | handler 예외가 monitoring event로 기록되고, `stopOnUnhandledException`이 켜진 timer는 중단된다 |
 | Entry Spot timer execution context | `integration-single-process` | Entry Spot timer는 전체 Entry Spot callback을 전역으로 막지 않고, 같은 timer callback은 겹쳐 실행하지 않는다 |
-| SPOT timer cancel | `integration-single-process` | `cancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
+| SPOT timer cancel | `integration-single-process` | `cancel()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
 | Spot route channel manual connect | `integration-single-process` | `acceptSpotRoutesFromChannel(...)` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
@@ -210,12 +210,12 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | runtime task exception observation | `unit` | detached runtime task와 fire-and-forget handler에서 발생한 예외가 unhandled rejection으로 묻히지 않고 runtime error sink 또는 logger로 관찰된다 |
 | execution queue cancellation semantics | `unit` | queue enqueue/wait cancellation이 이미 queue에 들어간 work item의 순서를 깨거나 중간에 제거하지 않는다 |
 | explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `routingId` target으로 routed message를 보낸다 |
-| actor manager 생성 중복/타입 충돌 | `integration-single-process` | `ZLinkActorManager.createAsync(...)` 중복 생성은 `ActorAlreadyExists`, `getOrCreateAsync(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
-| local actor bind 생성 금지 | `integration-single-process` | `bindAsync(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
-| session actor bind resolver 제거 | `integration-single-process` | `bindAsync(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
+| actor manager 생성 중복/타입 충돌 | `integration-single-process` | `ZLinkActorManager.create(...)` 중복 생성은 `ActorAlreadyExists`, `getOrCreate(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
+| local actor bind 생성 금지 | `integration-single-process` | `bind(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
+| session actor bind resolver 제거 | `integration-single-process` | `bind(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
 | remote actor dispatch 생성 금지 | `integration-single-process` | routed actor dispatch 수신 경로는 local actor 가 없을 때 factory 를 호출하지 않고 dispatch 를 실패시킨다 |
-| session actor relay bridge | `integration-single-process` | `bindAsync(...)` 와 `ZLinkSessionActor.relayAsync(...)` 가 public session 표면에서 동작한다 |
-| session actor explicit disconnect notification | `contract`, `integration-single-process` | session disconnect 는 bound actor 전체에 자동 전파되지 않고, `notifyDisconnectedAsync(...)` 또는 runtime 명시 호출 시 현재 Spot actor disconnected handler 가 호출된다 |
+| session actor relay bridge | `integration-single-process` | `bind(...)` 와 `ZLinkSessionActor.relay(...)` 가 public session 표면에서 동작한다 |
+| session actor explicit disconnect notification | `contract`, `integration-single-process` | session disconnect 는 bound actor 전체에 자동 전파되지 않고, `notifyDisconnected(...)` 또는 runtime 명시 호출 시 현재 Spot actor disconnected handler 가 호출된다 |
 | session actor dispatch ordering | `integration-single-process` | stream session에서 actor로 relay된 packet이 actor별 순서를 보장하고, 현재 actor 위치에 맞는 handler 실행 경로로 넘어간다 |
 | actor dispatch location after mailbox wait | `integration-single-process` | 같은 actor의 앞선 packet이 join을 끝낸 뒤, 대기 중이던 다음 packet이 이전 위치가 아니라 새 user Spot 위치로 dispatch된다 |
 | session actor dispatch wire multipart | `integration-single-process` | Session 서버와 Play 서버 사이의 actor dispatch가 route header, actor metadata, stream header, payload를 별도 part로 유지하고, payload를 JSON envelope 안의 `Buffer`로 재직렬화하지 않는다 |
@@ -231,9 +231,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | sample-only session metadata store 제거 | `unit` | TicTacToe.Ts 와 Bingo.Ts 샘플이 sample-only actor-session store 없이 framework/session 흐름을 사용한다 |
 | stale bound session send | `integration-single-process` | 이미 닫힌 stream이나 stale binding으로 향하는 one-way push가 route receive loop와 host shutdown을 실패시키지 않는다 |
 | bound session gateway relay | `integration-single-process` | Play 서버에서 Session 서버로 가는 bound session send가 core ActorGateway binding 을 통해 client STREAM에 단일 stream packet으로 도착한다 |
-| bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnectAsync(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
-| bound session disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `ZLinkBoundSession.disconnectAsync(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
-| session context close | `integration-single-process` | `ZLinkSessionContext.closeAsync(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
+| bound session disconnect local actor | `integration-single-process` | local actor 가 actor id 없이 `ZLinkBoundSession.disconnect(...)` 를 호출하면 binding 이 정리되고 session disconnect callback 은 다시 호출되지 않는다 |
+| bound session disconnect remote actor | `integration-single-process` | remote actor 가 actor id 없이 `ZLinkBoundSession.disconnect(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다 |
+| session context close | `integration-single-process` | `ZLinkSessionContext.close(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
 | spot context channel request 경로 | `integration-single-process` | `spot.context.outbound.requestToChannel(...)`이 현재 Spot 에 attach 된 channel client 경로를 사용한다 |

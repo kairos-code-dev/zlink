@@ -1,107 +1,116 @@
 package systems.zlink.samples.kotlin.bingo.client
 
-import java.util.concurrent.CompletionException
-import kotlinx.coroutines.delay
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
+import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
+import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameEndedNotify
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameStartedNotify
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoNumberDrawnNotify
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
+import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoReq
+import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoRes
+import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
+import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardReq
+import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardRes
 
-class BingoClientApp(
-    private val options: BingoClientOptions,
-) {
-    suspend fun run(drawSequence: List<Int>) {
-        val clients = mutableListOf<BingoPlayerClient>()
-        for (index in 1..options.playerCount) {
-            val client = BingoPlayerClient("player-$index")
-            runAction("connect ${client.playerId}") { client.connect() }
-            val auth = runAction("authenticate ${client.playerId}") { client.authenticate() }
-            require(auth.actorId == client.playerId) { "session authenticate reply mismatch" }
-            clients += client
-        }
+class BingoClientApp {
+    suspend fun run(
+        client1: ZLinkKotlinStreamConnector,
+        client2: ZLinkKotlinStreamConnector,
+    ) = coroutineScope {
+        client1.connect().await()
+        val client1Auth = client1.request(AuthenticateReq("player-1")).await<AuthenticateRes>()
+        ensure(client1Auth.actorId == "player-1")
 
-        val firstMatch = runAction("match ${clients.first().playerId}") {
-            clients.first().match()
-        }
-        requireRejected("host start must be rejected before four players join") {
-            runAction("premature start ${clients.first().playerId}") {
-                clients.first().start(firstMatch.roomId)
+        val client1Match = client1.request(MatchBingoReq("two-player")).await<MatchBingoRes>()
+        ensure(client1Match.state.status == "WaitingForPlayers")
+        ensure(client1Match.state.hostActorId == client1Auth.actorId)
+        ensure(client1.receivedCount(SampleNames.PlayerJoinedPacket) == 0)
+
+        val client1SawClient2Join = client1.waitFor<PlayerJoinedNotify>()
+            .where { message -> message.payload().actorId == "player-2" }
+            .let { wait -> async { wait.await() } }
+        val client1Started = async { client1.waitFor<BingoGameStartedNotify>().await() }
+        val client2Started = async { client2.waitFor<BingoGameStartedNotify>().await() }
+
+        client2.connect().await()
+        val client2Auth = client2.request(AuthenticateReq("player-2")).await<AuthenticateRes>()
+        ensure(client2Auth.actorId == "player-2")
+        ensure(client2Auth.actorId != client1Auth.actorId)
+
+        val client2Match = client2.request(MatchBingoReq("two-player")).await<MatchBingoRes>()
+        ensure(client2Match.roomId == client1Match.roomId)
+        ensure(client2Match.state.status == "Running")
+
+        val join = client1SawClient2Join.await().payload()
+        ensure(join.actorId == client2Auth.actorId)
+        ensure(client2.receivedCount(SampleNames.PlayerJoinedPacket) == 0)
+        ensure(client1Started.await().payload().state.status == "Running")
+        ensure(client2Started.await().payload().state.status == "Running")
+
+        val client2Card = client2.request(SubmitBingoCardReq(client2Match.roomId, BingoClientCards.Player2)).await<SubmitBingoCardRes>()
+        ensure(client2Card.state.status == "Running")
+
+        val client1Ended = async { client1.waitFor<BingoGameEndedNotify>().await() }
+        val client2Ended = async { client2.waitFor<BingoGameEndedNotify>().await() }
+        var client1NextDraw = client1.waitFor<BingoNumberDrawnNotify>()
+            .where { message -> message.payload().drawSeq == 1 }
+            .let { wait -> async { wait.await() } }
+        var client2NextDraw = client2.waitFor<BingoNumberDrawnNotify>()
+            .where { message -> message.payload().drawSeq == 1 }
+            .let { wait -> async { wait.await() } }
+
+        val client1Card = client1.request(SubmitBingoCardReq(client1Match.roomId, BingoClientCards.Player1)).await<SubmitBingoCardRes>()
+        ensure(client1Card.state.status == "Running")
+
+        val drawnNumbers = mutableListOf<BingoNumberDrawnNotify>()
+        for (drawSeq in 1..15) {
+            val client1Drawn = client1NextDraw.await().payload()
+            val client2Drawn = client2NextDraw.await().payload()
+            drawnNumbers += client1Drawn
+            ensure(client1Drawn.drawSeq == drawSeq)
+            ensure(client2Drawn.drawSeq == drawSeq)
+            ensure(client2Drawn.number == client1Drawn.number)
+
+            if (client1Drawn.state.status == "Finished") {
+                break
             }
+            client1NextDraw = client1.waitFor<BingoNumberDrawnNotify>()
+                .where { message -> message.payload().drawSeq == drawSeq + 1 }
+                .let { wait -> async { wait.await() } }
+            client2NextDraw = client2.waitFor<BingoNumberDrawnNotify>()
+                .where { message -> message.payload().drawSeq == drawSeq + 1 }
+                .let { wait -> async { wait.await() } }
         }
+        ensure(drawnNumbers.isNotEmpty())
+        ensure(drawnNumbers.last().state.status == "Finished")
 
-        val matches = mutableListOf(firstMatch)
-        for (client in clients.drop(1)) {
-            matches += runAction("match ${client.playerId}") { client.match() }
-        }
-        require(matches.map { it.roomId }.distinct().size == 1) {
-            "all match requests must return the same room"
-        }
-        require(matches.first().state.hostActorId == clients.first().playerId) {
-            "first joined actor must become host"
-        }
-
-        requireRejected("non-host start must be rejected") {
-            runAction("non-host start ${clients[1].playerId}") { clients[1].start(firstMatch.roomId) }
-        }
-        val started = runAction("host start ${clients.first().playerId}") {
-            clients.first().start(firstMatch.roomId)
-        }
-        require(started.state.status == "Running") {
-            "host start must put room into Running status"
-        }
-
-        val ended = waitForEnded(clients)
-        require(ended.status == "Finished") { "room must finish through timer draws" }
-        require(ended.winners.size > 1) {
-            "deterministic sample must include same-sequence winners"
-        }
-        require(ended.players.all { it.card.size == 25 }) {
-            "each player card must contain 25 cells"
-        }
-        require(ended.players.all { it.marks[12] }) {
-            "center free cell must start marked"
-        }
-        require(clients.all { it.inbox.started().isNotEmpty() }) {
-            "each connector must receive game-start push"
-        }
-        require(clients.all { it.inbox.drawn().isNotEmpty() }) {
-            "each connector must receive draw push"
-        }
-        require(clients.all { it.inbox.ended().isNotEmpty() }) {
-            "each connector must receive game-ended push"
-        }
-        clients.forEach(BingoPlayerClient::close)
+        val client1Result = client1Ended.await().payload().state
+        val client2Result = client2Ended.await().payload().state
+        ensure(client1Result.status == "Finished")
+        ensure(client2Result.status == "Finished")
+        ensure(client2Result.drawnNumbers == client1Result.drawnNumbers)
+        ensure(client2Result.winners == client1Result.winners)
+        ensure(client2Result.players.map(BingoPlayerState::actorId) ==
+            client1Result.players.map(BingoPlayerState::actorId))
+        ensure(client1Result.drawnNumbers == drawnNumbers.map(BingoNumberDrawnNotify::number))
+        ensure(client1Result.winners == listOf(client1Auth.actorId))
+        ensure(client1Result.players.all { player -> player.card.size == 9 })
+        ensure(client1Result.players.all { player -> player.marks[4] })
     }
+}
 
-    private suspend fun waitForEnded(clients: List<BingoPlayerClient>): BingoRoomState {
-        val deadline = System.nanoTime() + SampleTimings.RequestTimeout.toNanos()
-        while (System.nanoTime() < deadline) {
-            clients.forEach { it.dispatch() }
-            if (clients.all { it.inbox.ended().isNotEmpty() }) {
-                return clients
-                    .flatMap { it.inbox.ended() }
-                    .last()
-                    .state
-            }
-            delay(10)
-        }
-        throw IllegalStateException("Timed out waiting for BingoGameEndedNotify")
+private fun ensure(condition: Boolean) {
+    if (!condition) {
+        throw IllegalStateException("Ensure failed")
     }
+}
 
-    private suspend fun requireRejected(message: String, action: suspend () -> Unit) {
-        try {
-            action()
-        } catch (ex: CompletionException) {
-            return
-        } catch (ex: IllegalStateException) {
-            return
-        }
-        throw IllegalStateException(message)
-    }
-
-    private suspend fun <T> runAction(action: String, block: suspend () -> T): T {
-        try {
-            return block()
-        } catch (ex: Exception) {
-            throw IllegalStateException("Bingo sample failed during $action", ex)
-        }
-    }
+private object BingoClientCards {
+    val Player1: List<Int> = listOf(1, 2, 3, 4, 0, 6, 7, 8, 9)
+    val Player2: List<Int> = listOf(10, 11, 12, 13, 0, 14, 4, 5, 6)
 }

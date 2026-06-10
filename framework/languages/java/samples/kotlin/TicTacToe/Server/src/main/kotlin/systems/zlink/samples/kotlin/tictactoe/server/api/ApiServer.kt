@@ -9,7 +9,7 @@ object ApiServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "api")
-            options.codecs().addJson()
+            options.codecs().addMessagePack()
             options.addHandlersFromPackageOf(ApiServer::class.java)
             options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
                 channel.enableServer { server -> server.bind(settings.apiChannelEndpoint) }

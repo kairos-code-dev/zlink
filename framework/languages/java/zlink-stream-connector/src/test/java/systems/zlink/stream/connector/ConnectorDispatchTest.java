@@ -12,9 +12,10 @@ import systems.zlink.contracts.messaging.Message;
 final class ConnectorDispatchTest {
     @Test
     void dispatch_invokesCallback() throws Exception {
-        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
-             ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL))) {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.MANUAL));
+            try {
             AtomicInteger handled = new AtomicInteger();
             connector.on("Ping", message -> {
                 handled.incrementAndGet();
@@ -27,7 +28,7 @@ final class ConnectorDispatchTest {
                 return CompletableFuture.completedFuture(null);
             });
 
-            connector.connectAsync().toCompletableFuture().join();
+            connector.connect().await();
             server.sendAsync(new ZLinkStreamWireProtocol.Header(
                     ZLinkStreamWireProtocol.KIND_SEND,
                     ZLinkStreamWireProtocol.CODEC_RAW,
@@ -42,10 +43,13 @@ final class ConnectorDispatchTest {
             assertEquals(1, connector.pendingDispatchCount());
             assertEquals(0, handled.get());
 
-            connector.dispatchAsync().toCompletableFuture().join();
+            connector.dispatch().await();
 
             assertEquals(0, connector.pendingDispatchCount());
             assertEquals(1, handled.get());
+            } finally {
+                connector.close().await();
+            }
         }
     }
 

@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pids=()
-role_pattern='systems\.zlink\.samples\.kotlin\.bingo\.(server\.(registry|api|play|session)\.ProgramKt|client\.ProgramKt)'
+role_pattern='systems\.zlink\.samples\.kotlin\.bingo\.(server\.(registry|api|play|session)\.ProgramKt|client\.ProgramKt|probe\.ProgramKt)'
 log_dir="build/sample-logs"
 mkdir -p "${log_dir}"
 rm -f "${log_dir}"/*.log
@@ -144,7 +144,7 @@ build_framework_jars() {
       :zlink-framework-spring-boot-starter:jar \
       :zlink-framework-kotlin:jar \
       :zlink-stream-connector:jar \
-      :zlink-stream-connector-json:jar \
+      :zlink-stream-connector-protobuf:jar \
       --quiet
   )
 }
@@ -179,6 +179,7 @@ gradle_run classes
 
 gradle_run :Server:Registry:run >"${log_dir}/registry.log" 2>&1 &
 pids+=("$!")
+wait_port "${registry_pub_host}" "${registry_pub_port}"
 wait_port "${registry_router_host}" "${registry_router_port}"
 gradle_run :Server:Session:run >"${log_dir}/session.log" 2>&1 &
 pids+=("$!")
@@ -196,4 +197,5 @@ wait_port "${play_route_host}" "${play_route_port}"
 wait_port "${play_router_host}" "${play_router_port}"
 wait_port "${play_spot_host}" "${play_spot_port}"
 
+gradle_run :Probe:run >"${log_dir}/probe.log" 2>&1
 gradle_run :Client:run >"${log_dir}/client.log" 2>&1

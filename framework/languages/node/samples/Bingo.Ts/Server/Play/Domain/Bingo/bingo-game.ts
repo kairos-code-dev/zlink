@@ -1,0 +1,54 @@
+const { BingoCard } = require('./bingo-card');
+
+type BingoPlayerGameState = {
+  actorId: string;
+  card: any | null;
+};
+
+class BingoGame {
+  [key: string]: any;
+  constructor(drawDeck: number[]) {
+    this.drawDeck = [...drawDeck];
+    this.drawnNumbers = [];
+    this.winners = [];
+  }
+
+  submitCard(player: BingoPlayerGameState, cardNumbers: number[]): any {
+    if (player.card !== null) {
+      throw new Error(`Actor '${player.actorId}' already submitted a Bingo card.`);
+    }
+    return new BingoCard(cardNumbers);
+  }
+
+  canDraw(players: BingoPlayerGameState[], requiredPlayers: number): boolean {
+    return players.length === requiredPlayers
+      && players.every((player) => player.card !== null)
+      && this.winners.length === 0
+      && this.drawDeck.length > 0;
+  }
+
+  drawNext(players: BingoPlayerGameState[]): { number: number; drawSeq: number; finished: boolean } | null {
+    if (this.drawDeck.length === 0 || this.winners.length > 0) {
+      return null;
+    }
+    const number = this.drawDeck.shift();
+    this.drawnNumbers.push(number);
+    for (const player of players) {
+      const lines = player.card.mark(number);
+      if (lines > 0 && !this.winners.includes(player.actorId)) {
+        this.winners.push(player.actorId);
+      }
+    }
+    return {
+      number,
+      drawSeq: this.drawnNumbers.length,
+      finished: this.winners.length > 0
+    };
+  }
+
+  lastDrawnNumber(): number | null {
+    return this.drawnNumbers.at(-1) ?? null;
+  }
+}
+
+export { BingoGame };

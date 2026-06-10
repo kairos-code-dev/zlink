@@ -12,5 +12,9 @@ public interface ZLinkStreamSendCall {
 
     ZLinkStreamSendCall compress();
 
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
+
+    default void await() throws Exception {
+        ZLinkStreamCompletions.await(submit());
+    }
 }

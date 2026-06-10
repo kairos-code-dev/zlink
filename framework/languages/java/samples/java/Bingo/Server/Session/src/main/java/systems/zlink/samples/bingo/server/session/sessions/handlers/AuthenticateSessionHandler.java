@@ -14,7 +14,7 @@ import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamCodec;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
-import systems.zlink.stream.connector.json.ZLinkStreamJson;
+import systems.zlink.stream.connector.protobuf.ZLinkStreamProtobuf;
 
 public final class AuthenticateSessionHandler
     implements ZLinkSessionPacketHandler<ZLinkSessionContext> {
@@ -34,7 +34,7 @@ public final class AuthenticateSessionHandler
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
         Message payload) {
-        Messages.AuthenticateReq request = ZLinkStreamJson.decode(
+        Messages.AuthenticateReq request = ZLinkStreamProtobuf.decode(
             new ZLinkStreamEncodedPayload(
                 header.packetName(),
                 payload,
@@ -48,7 +48,7 @@ public final class AuthenticateSessionHandler
         return channels
             .requestToChannel(SampleNames.ApiChannel, new Messages.AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(Messages.AuthenticatePlayerRes.class)
+            .submit(Messages.AuthenticatePlayerRes.class)
             .thenCompose(authenticated -> {
                 if (!authenticated.accepted()
                     || authenticated.actorId() == null
@@ -67,7 +67,7 @@ public final class AuthenticateSessionHandler
                             authenticated.actorId(),
                             authenticated.displayName()))
                     .timeout(SampleTimings.RequestTimeout)
-                    .submitAsync(Messages.EnsurePlayerActorRes.class)
+                    .submit(Messages.EnsurePlayerActorRes.class)
                     .thenCompose(ensured -> context.actors()
                         .bindAsync(new ZLinkActorRef(
                             RoutingId.from(ensured.actor().nodeRid()),
@@ -77,7 +77,7 @@ public final class AuthenticateSessionHandler
                             .reply(new Messages.AuthenticateRes(
                                 ensured.actorId(),
                                 authenticated.displayName()))
-                            .submitAsync()));
+                            .submit()));
             });
     }
 

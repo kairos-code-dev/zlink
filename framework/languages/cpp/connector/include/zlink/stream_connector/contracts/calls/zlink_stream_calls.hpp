@@ -59,10 +59,10 @@ class send_call_t
     result_t<void> submit ();
 
     /// Sends the packet as an awaitable task.
-    task_t<void> submit_async ();
+    task_t<void> async ();
 
     /// Sends the packet and invokes the callback with the completion result.
-    void submit_async (std::function<void (result_t<void>)> callback);
+    void submit (std::function<void (result_t<void>)> callback);
 
   private:
     friend class connector_t;
@@ -106,7 +106,7 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    /// Sets the request timeout used by submit and submit_async.
+    /// Sets the request timeout used by submit and async.
     request_call_t &timeout (std::chrono::milliseconds timeout)
     {
         _timeout = timeout;
@@ -131,12 +131,12 @@ template <typename TReply> class request_call_t
     }
 
     /// Sends the request and returns an awaitable correlated reply.
-    task_t<TReply> submit_async () { return task_t<TReply> (submit ()); }
+    task_t<TReply> async () { return task_t<TReply> (submit ()); }
 
     /// Sends the request and invokes the callback with the decoded reply result.
-    void submit_async (std::function<void (result_t<TReply>)> callback)
+    void submit (std::function<void (result_t<TReply>)> callback)
     {
-        auto task = submit_async ();
+        auto task = async ();
         task.on_completed (std::move (callback));
     }
 
@@ -200,7 +200,7 @@ template <typename TMessage> class wait_call_t
         return *this;
     }
 
-    /// Sets the wait timeout used by submit and submit_async.
+    /// Sets the wait timeout used by submit and async.
     wait_call_t &timeout (std::chrono::milliseconds timeout)
     {
         _timeout = timeout;
@@ -252,12 +252,12 @@ template <typename TMessage> class wait_call_t
     }
 
     /// Waits for a matching packet as an awaitable task.
-    task_t<TMessage> submit_async () { return task_t<TMessage> (submit ()); }
+    task_t<TMessage> async () { return task_t<TMessage> (submit ()); }
 
     /// Waits for a matching packet and invokes the callback with the decoded result.
-    void submit_async (std::function<void (result_t<TMessage>)> callback)
+    void submit (std::function<void (result_t<TMessage>)> callback)
     {
-        auto task = submit_async ();
+        auto task = async ();
         task.on_completed (std::move (callback));
     }
 

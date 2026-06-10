@@ -40,12 +40,6 @@ static_assert (
     decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for (
       "packet", std::chrono::milliseconds (1))),
     zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for_async (
-      "packet", std::chrono::milliseconds (1))),
-    zlink::stream_connector::task_t<zlink::stream_connector::packet_t>>);
-
 namespace
 {
 
@@ -70,7 +64,7 @@ static_assert (
     zlink::stream_connector::wait_call_t<auto_payload_t>>);
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for_async<auto_payload_t> ()),
+    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for<auto_payload_t> ().async ()),
     zlink::stream_connector::task_t<auto_payload_t>>);
 
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
@@ -96,7 +90,7 @@ void from_stream_payload (const zlink::message_t &payload, auto_payload_t &messa
 zlink::stream_connector::task_t<void>
 send_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
 {
-    co_await connector.send (login_request_t{}).packet_name ("coroutine.send").submit_async ();
+    co_await connector.send (login_request_t{}).packet_name ("coroutine.send").async ();
 }
 
 zlink::stream_connector::task_t<login_reply_t>
@@ -105,7 +99,7 @@ request_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
     auto reply = co_await connector.request<login_reply_t> (login_request_t{})
                    .packet_name ("coroutine.request")
                    .timeout (std::chrono::milliseconds (100))
-                   .submit_async ();
+                   .async ();
     co_return reply;
 }
 
@@ -399,7 +393,7 @@ int main ()
     connector.send (login_request_t{})
       .metadata ("trace", "t1")
       .compress ()
-      .submit_async ([&] (zlink::stream_connector::result_t<void> result) {
+      .submit ([&] (zlink::stream_connector::result_t<void> result) {
           callback_seen = static_cast<bool> (result);
       });
     if (!callback_seen) {
@@ -587,7 +581,7 @@ int main ()
     bool request_after_close_callback_seen = false;
     connector.request<login_reply_t> (login_request_t{})
       .packet_name ("after.close.request")
-      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_after_close_callback_seen =
             !result && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
       });
@@ -756,7 +750,7 @@ int main ()
     callback_response_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.response.request")
       .timeout (std::chrono::milliseconds (100))
-      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_response_seen = static_cast<bool> (result);
       });
     callback_response_thread.join ();
@@ -791,7 +785,7 @@ int main ()
     callback_timeout_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.timeout.request")
       .timeout (std::chrono::milliseconds (5))
-      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_timeout_seen =
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;

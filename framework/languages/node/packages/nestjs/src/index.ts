@@ -36,19 +36,19 @@ const framework = loadFramework();
 type RuntimeHost = InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>;
 type RuntimeHostWithNestLifecycle = RuntimeHost & OnModuleInit & OnModuleDestroy;
 
-export interface ZLinkModuleAsyncOptions {
+export interface ZLinkModuleFactoryOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkModuleOptions | Promise<ZLinkModuleOptions>;
   readonly inject?: readonly InjectionToken[];
   readonly imports?: ModuleMetadata['imports'];
 }
 
-export interface ZLinkRegistryModuleAsyncOptions {
+export interface ZLinkRegistryModuleFactoryOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkRegistryOptions | Promise<ZLinkRegistryOptions>;
   readonly inject?: readonly InjectionToken[];
   readonly imports?: ModuleMetadata['imports'];
 }
 
-export interface ZLinkRegistryQueryClientModuleAsyncOptions {
+export interface ZLinkRegistryQueryClientModuleFactoryOptions {
   readonly useFactory: (...args: unknown[]) => ZLinkRegistryQueryClientOptions | Promise<ZLinkRegistryQueryClientOptions>;
   readonly inject?: readonly InjectionToken[];
   readonly imports?: ModuleMetadata['imports'];
@@ -185,6 +185,47 @@ export function zlinkFramework(): ZLinkNestFrameworkOptionsBuilder {
 
 export function zlinkHandlers(groupName: string): ZLinkNestHandlerGroupBuilder {
   return new DefaultZLinkNestHandlerGroupBuilder(groupName);
+}
+
+export function zlinkRequestHandler(
+  groupName: string,
+  packetName?: string,
+  options: ZLinkNestHandlerOptions = {}
+): ClassDecorator {
+  return zlinkHandler(groupName, 'request', packetName, options);
+}
+
+export function zlinkSendHandler(
+  groupName: string,
+  packetName?: string,
+  options: ZLinkNestHandlerOptions = {}
+): ClassDecorator {
+  return zlinkHandler(groupName, 'send', packetName, options);
+}
+
+export function zlinkPublishHandler(
+  groupName: string,
+  packetName?: string,
+  options: ZLinkNestHandlerOptions = {}
+): ClassDecorator {
+  return zlinkHandler(groupName, 'publish', packetName, options);
+}
+
+export function zlinkHandler(
+  groupName: string,
+  kind: ZLinkNestHandlerKind,
+  packetName?: string,
+  options: ZLinkNestHandlerOptions = {}
+): ClassDecorator {
+  validateHandlerGroupName(groupName);
+  return (target: Function) => {
+    appendNestHandlerMetadata(target as Type, {
+      groupName,
+      kind,
+      methodName: options.methodName ?? 'handle',
+      packetName: packetName ?? inferPacketName(target as Type, target as Type)
+    });
+  };
 }
 
 class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptionsBuilder {
@@ -468,7 +509,7 @@ export class ZLinkModule {
     return createZLinkDynamicModule(framework.createFrameworkRegistration(createRegistrationOptions(options)));
   }
 
-  static forRootAsync(options: ZLinkModuleAsyncOptions): DynamicModule {
+  static forRootFactory(options: ZLinkModuleFactoryOptions): DynamicModule {
     const registrationProvider: Provider<Promise<ZLinkFrameworkRegistration>> = {
       provide: ZLINK_FRAMEWORK_REGISTRATION,
       inject: [...(options.inject ?? []), DiscoveryService, ModuleRef],
@@ -493,7 +534,7 @@ export class ZLinkModule {
             createRuntimeHost(registration, moduleRef, discovery)
         },
         ...alwaysAvailableClientProviders(),
-        ...conditionalClientProvidersForAsync()
+        ...conditionalClientProvidersForFactory()
       ],
       exports: [
         ZLINK_FRAMEWORK_RUNTIME,
@@ -520,8 +561,8 @@ export class ZLinkRegistryModule {
     };
   }
 
-  static forRootAsync(options: ZLinkRegistryModuleAsyncOptions): DynamicModule {
-    return createAsyncRegistryDynamicModule({
+  static forRootFactory(options: ZLinkRegistryModuleFactoryOptions): DynamicModule {
+    return createRegistryDynamicModuleFromFactory({
       module: ZLinkRegistryModule,
       options,
       runtimeToken: ZLINK_REGISTRY_RUNTIME,
@@ -547,7 +588,7 @@ export class ZLinkRegistryQueryClientModule {
     };
   }
 
-  static forRootAsync(options: ZLinkRegistryQueryClientModuleAsyncOptions): DynamicModule {
+  static forRootFactory(options: ZLinkRegistryQueryClientModuleFactoryOptions): DynamicModule {
     return {
       module: ZLinkRegistryQueryClientModule,
       imports: options.imports,
@@ -582,9 +623,9 @@ export function createZLinkDynamicModule(registration: ZLinkFrameworkRegistratio
   };
 }
 
-function createAsyncRegistryDynamicModule(options: {
+function createRegistryDynamicModuleFromFactory(options: {
   readonly module: Type;
-  readonly options: ZLinkRegistryModuleAsyncOptions;
+  readonly options: ZLinkRegistryModuleFactoryOptions;
   readonly runtimeToken: InjectionToken;
   readonly queryToken: InjectionToken;
   readonly createRuntime: (registration: ZLinkRegistryOptions) => InstanceType<FrameworkModule['ZLinkRegistryRuntime']>;
@@ -631,7 +672,7 @@ function createDiscoveringZLinkDynamicModule(options: ZLinkModuleOptions): Dynam
           createRuntimeHost(registration, moduleRef, discovery)
       },
       ...alwaysAvailableClientProviders(),
-      ...conditionalClientProvidersForAsync()
+      ...conditionalClientProvidersForFactory()
     ],
     exports: [
       ZLINK_FRAMEWORK_RUNTIME,
@@ -1129,9 +1170,9 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
   }
 ];
 
-function conditionalClientProvidersForAsync(): Provider[] {
+function conditionalClientProvidersForFactory(): Provider[] {
   return [
-    ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForAsync),
+    ...CONDITIONAL_CLIENT_PROVIDER_SPECS.map(createConditionalClientProviderForFactory),
     {
       provide: ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER,
       inject: [ZLINK_FRAMEWORK_REGISTRATION, ModuleRef, DiscoveryService],
@@ -1145,7 +1186,7 @@ function conditionalClientProvidersForAsync(): Provider[] {
   ];
 }
 
-function createConditionalClientProviderForAsync(spec: ConditionalClientProviderSpec): Provider {
+function createConditionalClientProviderForFactory(spec: ConditionalClientProviderSpec): Provider {
   return {
     provide: spec.token,
     inject: spec.requiresRuntime

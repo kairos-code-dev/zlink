@@ -3,7 +3,6 @@
 
 #include "../../Shared/sample.hpp"
 #include "../../Shared/sample_log.hpp"
-#include "../../Shared/E2E/client_e2e_server.hpp"
 #include "Handlers/authenticate_player_handler.hpp"
 #include "Handlers/create_game_http_handler.hpp"
 
@@ -17,10 +16,6 @@ class api_server_host_factory_t
   public:
     static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
-        if (!auto_stop) {
-            return build_client_e2e_api_server (topology);
-        }
-
         auto app = zlink::framework::app_t::create ();
         app.logging ().use_file (sample_log_file);
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
@@ -44,7 +39,9 @@ class api_server_host_factory_t
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_client (topology.play_endpoint);
         });
-        app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
+        if (auto_stop) {
+            app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
+        }
         return app;
     }
 };

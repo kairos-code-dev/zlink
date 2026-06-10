@@ -62,7 +62,7 @@ class actor_join_submit_operation_t
     actor_join_submit_operation_t &&message (message_t &part_) &&;
     actor_join_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
     actor_join_callback_submit_operation_t flags (int flags_) &&;
-    async_result_t<actor_join_result_t> submit_async () &&;
+    async_result_t<actor_join_result_t> async () &&;
     bool submit (actor_join_callback_t callback_) &&;
 
   private:
@@ -109,7 +109,7 @@ class actor_join_entry_spot_operation_t
     actor_join_entry_spot_operation_t &operator= (actor_join_entry_spot_operation_t &&) noexcept;
 
     actor_join_entry_spot_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<actor_join_entry_spot_result_t> submit_async () &&;
+    async_result_t<actor_join_entry_spot_result_t> async () &&;
     bool submit (actor_join_entry_spot_callback_t callback_) &&;
 
   private:
@@ -152,7 +152,7 @@ class actor_leave_operation_t
     actor_leave_operation_t &operator= (actor_leave_operation_t &&) noexcept;
 
     actor_leave_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<std::vector<message_t>> submit_async () &&;
+    async_result_t<std::vector<message_t>> async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:
@@ -175,7 +175,7 @@ class actor_destroy_operation_t
     actor_destroy_operation_t &operator= (actor_destroy_operation_t &&) noexcept;
 
     actor_destroy_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<std::vector<message_t>> submit_async () &&;
+    async_result_t<std::vector<message_t>> async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:
@@ -197,7 +197,7 @@ class actor_lookup_operation_t
     actor_lookup_operation_t &operator= (actor_lookup_operation_t &&) noexcept;
 
     actor_lookup_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<actor_lookup_result_t> submit_async () &&;
+    async_result_t<actor_lookup_result_t> async () &&;
     bool submit (actor_lookup_callback_t callback_) &&;
 
   private:
@@ -219,7 +219,7 @@ class actor_bind_operation_t
     actor_bind_operation_t &operator= (actor_bind_operation_t &&) noexcept;
 
     actor_bind_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<std::vector<message_t>> submit_async () &&;
+    async_result_t<std::vector<message_t>> async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:
@@ -242,7 +242,7 @@ class actor_unbind_operation_t
     actor_unbind_operation_t &operator= (actor_unbind_operation_t &&) noexcept;
 
     actor_unbind_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
-    async_result_t<std::vector<message_t>> submit_async () &&;
+    async_result_t<std::vector<message_t>> async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:

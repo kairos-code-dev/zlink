@@ -123,11 +123,11 @@ export class ZLinkRegistryRuntime {
 export class DefaultZLinkRegistryQuery implements ZLinkRegistryQuery {
   constructor(private readonly runtime: ZLinkRegistryRuntime) {}
 
-  statusAsync(signal?: AbortSignal): Promise<ZLinkRegistryStatus> {
+  status(signal?: AbortSignal): Promise<ZLinkRegistryStatus> {
     return this.runtime.execute((registry) => registry.status() as ZLinkRegistryStatus, signal);
   }
 
-  serviceSummaryAsync(
+  serviceSummary(
     filter?: ZLinkRegistryServiceSummaryFilter,
     signal?: AbortSignal
   ): Promise<readonly ZLinkRegistryServiceSummaryEntry[]> {
@@ -137,7 +137,7 @@ export class DefaultZLinkRegistryQuery implements ZLinkRegistryQuery {
     );
   }
 
-  topologyAsync(
+  topology(
     filter?: ZLinkRegistryTopologyFilter,
     signal?: AbortSignal
   ): Promise<readonly ZLinkRegistryTopologyEntry[]> {
@@ -147,7 +147,7 @@ export class DefaultZLinkRegistryQuery implements ZLinkRegistryQuery {
     );
   }
 
-  memberPeersAsync(channelName: string, signal?: AbortSignal): Promise<readonly ZLinkMemberPeerEntry[]> {
+  memberPeers(channelName: string, signal?: AbortSignal): Promise<readonly ZLinkMemberPeerEntry[]> {
     return this.runtime.execute(
       (registry) => registry.memberPeers(channelName) as unknown as readonly ZLinkMemberPeerEntry[],
       signal
@@ -174,7 +174,7 @@ export class DefaultZLinkRegistryQueryClient implements ZLinkRegistryQueryClient
     this.client.connect(registration.endpoint);
   }
 
-  async topologyAsync(
+  async topology(
     filter?: ZLinkRegistryTopologyFilter,
     signal?: AbortSignal
   ): Promise<readonly ZLinkRegistryTopologyEntry[]> {

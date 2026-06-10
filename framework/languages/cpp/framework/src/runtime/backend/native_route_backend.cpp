@@ -90,7 +90,7 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
     try {
         auto submit = std::move (_router->request (target_node_rid)).message (copied[0]);
         submit = append_remaining_parts (std::move (submit), copied);
-        auto reply = std::move (submit).timeout (timeout).submit_async ().get ();
+        auto reply = std::move (submit).timeout (timeout).async().get ();
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t (std::move (reply)));
     }

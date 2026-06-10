@@ -4,9 +4,11 @@ import java.time.Duration
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Job
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -141,6 +143,37 @@ final class KotlinSuspendAnnotationHandlerTest {
     }
 
     @Test
+    fun frameworkOptionsConfigureKotlinSuspendDispatcher() {
+        val executor = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "zlink-kotlin-handler-dispatcher").apply { isDaemon = true }
+        }
+        executor.asCoroutineDispatcher().use { dispatcher ->
+            val options = DefaultZLinkFrameworkOptions()
+            options.useCoroutineHandlers(dispatcher)
+            val invokers = options.registration().suspendHandlerInvokers()
+            val handler = KotlinDispatcherObservationHandler()
+            val method = KotlinDispatcherObservationHandler::class.java.methods.single {
+                it.name == "request"
+            }
+
+            val reply = ZLinkHandlerMethodInvoker
+                .invoke(
+                    handler,
+                    method,
+                    arrayOf(ProfileRequest("Ada")),
+                    invokers,
+                )
+                .toCompletableFuture()
+                .get(1, TimeUnit.SECONDS)
+
+            assertEquals(ProfileReply("Ada"), reply)
+            assertTrue(handler.threadName.get().startsWith("zlink-kotlin-handler-dispatcher"))
+            assertTrue(handler.hasCoroutineJob.get())
+        }
+        executor.shutdownNow()
+    }
+
+    @Test
     fun springCreatedKotlinSuspendHandlerRunsThroughMethodInvoker() {
         AnnotationConfigApplicationContext().use { context ->
             context.register(SpringSuspendHandlerConfig::class.java)
@@ -260,6 +293,18 @@ class KotlinCoroutineContextHandler {
     @ZLinkRequest
     suspend fun request(request: ProfileRequest): ProfileReply =
         ProfileReply(if (coroutineContext[Job] != null) "coroutine:${request.name}" else "missing")
+}
+
+class KotlinDispatcherObservationHandler {
+    val threadName: AtomicReference<String> = AtomicReference()
+    val hasCoroutineJob: AtomicReference<Boolean> = AtomicReference(false)
+
+    @ZLinkRequest
+    suspend fun request(request: ProfileRequest): ProfileReply {
+        threadName.set(Thread.currentThread().name)
+        hasCoroutineJob.set(coroutineContext[Job] != null)
+        return ProfileReply(request.name)
+    }
 }
 
 @ZLinkHandlerGroup("kotlin-channel")

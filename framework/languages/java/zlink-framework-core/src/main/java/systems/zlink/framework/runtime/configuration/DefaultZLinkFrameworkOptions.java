@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
@@ -23,6 +24,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.spots.SpotBuilders;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamBuilders;
@@ -183,6 +185,21 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public void configureDispatch(Consumer<ZLinkDispatchOptions> configure) {
         configure.accept(registration.dispatchOptions());
+    }
+
+    @Override
+    public void useVirtualThreadHandlers() {
+        registration.useVirtualThreadHandlers();
+    }
+
+    @Override
+    public void useHandlerExecutor(Executor executor) {
+        registration.useHandlerExecutor(executor);
+    }
+
+    @Override
+    public void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker) {
+        registration.useSuspendHandlerInvoker(invoker);
     }
 
     private void addChannel(String channelName) {

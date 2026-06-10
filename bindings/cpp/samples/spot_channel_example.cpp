@@ -79,7 +79,7 @@ int main ()
     std::vector<zlink::message_t> reply = room.request_channel (channel)
                                             .message (request)
                                             .timeout (std::chrono::seconds (5))
-                                            .submit_async ()
+                                            .async ()
                                             .get ();
     server.join ();
 

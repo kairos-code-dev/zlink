@@ -85,7 +85,7 @@ async function main() {
         const reply = await client.requestToSpot(rid('rpc-server-node'), rid('rpc-server-spot'))
             .message(Buffer.from('ping'))
             .timeout(3000)
-            .submitAsync();
+            .submit();
         await served;
         console.log(`[spot/rpc] request "ping" -> reply "${reply[0].data().toString()}"`);
     }

@@ -31,7 +31,7 @@ public final class ApiServerApplication {
         return options -> {
             options.useDiscovery(discovery ->
                 discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint));
-            options.codecs().addJson();
+            options.codecs().addProtobuf();
             options.addHandlersFromPackageOf(ApiServerApplication.class);
             options.addClientServerChannel(SampleNames.ApiChannel, channel -> {
                 channel.enableServer(server -> server.bind(SampleTopology.ApiChannelEndpoint));

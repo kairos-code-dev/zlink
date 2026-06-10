@@ -20,7 +20,7 @@
 
 지금 계획에서는 아래 항목을 모두 구현 범위 안에 둔다.
 
-- `ZLinkModule.forRoot(options)` / `ZLinkModule.forRootAsync(...)` 등록 루트
+- `ZLinkModule.forRoot(options)` / `ZLinkModule.forRootFactory(...)` 등록 루트
 - channel 의 `server / client / publisher / subscriber` capability[^capability]
   (options 의 `server`, `client`, `publisher`, `subscriber` 설정 키)
 - 채널 등록의 형태별 분기 — client/server channel, fanout channel,

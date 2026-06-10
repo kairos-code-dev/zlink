@@ -1,5 +1,5 @@
 const { Inject } = require('@nestjs/common');
-const { BingoRoomDirectory } = require('../../../Application/RoomAllocation/bingo-room-directory');
+const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
 const { allocateBingoRoomRes, BingoModes } = require('../../../../../Shared/Contracts/messages');
 import type {
   AllocateBingoRoomReq,
@@ -17,6 +17,6 @@ class AllocateBingoRoomHandler {
   }
 }
 
-Inject(BingoRoomDirectory)(AllocateBingoRoomHandler, undefined, 0);
+Inject(BingoRoomAllocator)(AllocateBingoRoomHandler, undefined, 0);
 
 export { AllocateBingoRoomHandler };

@@ -76,7 +76,7 @@ Spot 도 마찬가지다. `ZLinkSpotManager` 는 Spot 을 생성하고 조회하
 방식은 피한다.
 
 NestJS 에서 이 validation 은 `forRoot(...)` 의 `DynamicModule` 생성 시점이나
-`forRootAsync(...)` 의 factory 결과가 registration 으로 변환되는 시점에 돈다.
+`forRootFactory(...)` 의 factory 결과가 registration 으로 변환되는 시점에 돈다.
 따라서 잘못된 registration 자체는 runtime start 전에 throw 한다.
 
 호출 시점에만 알 수 있는 오류는 `ZLinkConfigurationException` 또는
@@ -130,7 +130,7 @@ NestJS 는 등록되지 않은 token 을 주입받는 provider 가 있으면 부
 단계에서 `UnknownDependenciesException` 으로 실패하므로, .NET 의 service provider
 validation 과 동일하게 시작 단계에서 잡힌다.
 
-`forRootAsync(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 예외다.
+`forRootFactory(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 예외다.
 NestJS 는 async factory 결과나 `DiscoveryService` 기반 registration 결과를 받기
 전에 `DynamicModule` 의 provider 목록을 확정해야 하므로, 최종 registration 에 따라
 provider 자체를 제거할 수 없다. 이 경로들은 위 capability token 을 export 하되,
@@ -254,7 +254,7 @@ capability 누락은 NestJS 일반 `Error` 가 아니라 위 예외로 처리한
 
 1. `ZLinkFrameworkRegistrationValidator`(.NET `ZLinkFrameworkRegistrationValidator`)
    에 capability validation 을 둔다. `forRoot` 는 `DynamicModule` 을 만들기 전에
-   호출하고, `forRootAsync` 는 NestJS 가 factory 를 실행한 뒤 호출한다.
+   호출하고, `forRootFactory` 는 NestJS 가 factory 를 실행한 뒤 호출한다.
 2. framework module factory(.NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`)
    에서 public service provider 를 capability 조건에 따라 `providers` / `exports`
    에 넣는다.

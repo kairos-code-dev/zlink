@@ -62,8 +62,8 @@ async function main() {
             stream.setPacketHandler((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
-        await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
-        const replyPromise = actor.join(spot).message(Buffer.from('enter-room')).timeout(2000).submitAsync();
+        await stream.bindActor(session, actor.ref()).timeout(2000).submit();
+        const replyPromise = actor.join(spot).message(Buffer.from('enter-room')).timeout(2000).submit();
         const request = waitForJoin(spot);
         assert.equal(request.message.data().toString(), 'enter-room');
         spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
@@ -75,13 +75,13 @@ async function main() {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.deepEqual(payloads, ['move:north']);
-        await actor.leave(spot).timeout(2000).submitAsync();
+        await actor.leave(spot).timeout(2000).submit();
         console.log('[actor/room] stream payload: "move:north" -> actor: "move:north"');
     }
     finally {
         if (session) {
             try {
-                await stream.unbindActor(session, 'room-player-1').timeout(2000).submitAsync();
+                await stream.unbindActor(session, 'room-player-1').timeout(2000).submit();
             }
             catch (_) {
             }

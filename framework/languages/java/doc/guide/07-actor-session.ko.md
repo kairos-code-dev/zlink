@@ -53,10 +53,10 @@ handler에서 받은 spot context로 호출한다.
 |--------------------------|------|
 | `spotRid()`, `isJoined()` | 현재 Spot join 상태 조회 |
 | `boundSession()` | 자기 client로 push (§4) |
-| `joinSpot(spotRid, request)` | user Spot으로 join. `.submitAsync(...)`로 종결 |
+| `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...)`로 종결 |
 | `joinEntrySpot(spotNodeRid)` | target SpotNode의 Entry Spot으로 이동 |
 
-`joinSpot(...).submitAsync(replyType)`는 actor join 요청을 제출하고, join reply를
+`joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고, join reply를
 `replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
 `spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. Java
 framework는 이 호출에 blocking helper를 제공하지 않는다.
@@ -160,7 +160,7 @@ public final class TicTacToeSession implements ZLinkSession {
             AuthReq req = payload.decode(AuthReq.class);
             return actors.getOrCreateAsync(req.actorId(), "player")
                 .thenCompose(actor -> context.actors().bindAsync(actor))
-                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submitAsync());
+                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit());
         }
         return context.actors().bound().stream().findFirst()
             .map(actor -> actor.relayAsync(header, payload))
@@ -178,11 +178,11 @@ Spot actor handler는 stream을 직접 들지 않는다. 자기 client로 보내
 context.boundSession()
     .send(new MatchFound(roomId))
     .packetName("MatchFound")
-    .submitAsync();
+    .submit();
 ```
 
-`ZLinkBoundSession`의 표면은 **`send(message)`** 와 **`disconnectAsync()`** 둘뿐이다.
-client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submitAsync()`는
+`ZLinkBoundSession`의 표면은 **`send(message)`** 와 **`disconnect()`** 둘뿐이다.
+client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submit()`는
 fire-and-forget(route 위임 완료이지 client app ack이 아님)이다. 다른 actor의
 client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해당 actor가 자기
 `boundSession()`으로 push한다.

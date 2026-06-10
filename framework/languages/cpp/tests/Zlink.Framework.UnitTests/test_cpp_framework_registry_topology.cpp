@@ -275,7 +275,7 @@ int main ()
       gateway.manager ()
         .bind (zlink::framework::actor_ref_t (
           zlink::framework::node_rid_t::from_string ("remote-node"), "player", "alice", 1))
-        .submit_async ().result ();
+        .async ().result ();
     if (!actor) {
         return 15;
     }
@@ -284,7 +284,7 @@ int main ()
     zlink::framework::stream_header_t header (
       zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::stream_header_flags_t::none, std::nullopt, "move");
-    auto relay = actor.value ().relay (header, payload).submit_async ().result ();
+    auto relay = actor.value ().relay (header, payload).async ().result ();
     if (!relay || query.monitoring_snapshot ().spot_lookup_count != lookup_after_actor_bind) {
         return 16;
     }

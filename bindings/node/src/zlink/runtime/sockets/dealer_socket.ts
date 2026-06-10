@@ -7,6 +7,7 @@ import {
   MessageSocket,
   RuntimeRequestOperation,
 } from './socket_operations';
+import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall } from '../errors/native_errors';
 import { executeNativeRequest } from '../messaging/request_executor';
@@ -23,6 +24,9 @@ export class DealerSocket extends MessageSocket {
     return configCall('channel name get failed', () =>
       requireNative().socketGetChannelName(this.nativeHandle()) as string
     );
+  }
+  setChannelName(channelName: string): void {
+    configureSocketChannelName(this, channelName);
   }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);

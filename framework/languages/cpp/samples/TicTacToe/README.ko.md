@@ -33,8 +33,8 @@ endpoint에 직접 연결한다.
 - `sample_cpp_framework_tictactoe_play`: play channel, Spot, actor factory, game flow
 - `sample_cpp_framework_tictactoe_client`: HTTP client `POST /games` 시작 요청과 Stream Connector 기반 client flow
 
-client smoke는 connector public API 사용 형태만 보지 않는다. 실행 중 실제 HTTP API server와
-STREAM server를 띄우고, `zlink::http_client`가 `POST /games`로 room을 만든 뒤
-Stream Connector가 TCP로 접속해 request reply와 push notification을 주고받는지 검증한다.
-서버는 `tictactoe-server.log` 파일에 HTTP request, bind, monitoring event와
-receive, reply, push 흐름을 남긴다.
+client 실행 파일은 `zlink::http_client`로 `POST /games`를 호출하고, 응답으로 받은 Play
+stream endpoint에 Stream Connector로 접속하는 시나리오를 담고 있다. API와 Play 실행
+파일은 각각 실제 샘플 서버 역할을 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample
+target은 샘플 트리에 두지 않는다. client scenario는 `tictactoe-client.log`에 완료 여부를
+남긴다.

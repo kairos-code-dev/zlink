@@ -1,4 +1,4 @@
-const { Message } = require('@zlink-systems/zlink');
+const { createProtobufMessage, readProtobufMessage } = require('./protobuf-codec');
 
 const PacketNames = Object.freeze({
   authenticateReq: 'AuthenticateReq',
@@ -180,7 +180,7 @@ export interface NumberDrawnNotify {
 }
 
 type ZLinkMessage = {
-  getString(): string;
+  data(): Buffer;
   close(): void;
 };
 
@@ -193,14 +193,6 @@ function deterministicCard(actorId: string): number[] {
     'player-1': [1, 2, 3, 4, 0, 6, 7, 8, 9],
     'player-2': [10, 11, 12, 13, 0, 14, 15, 1, 2]
   }[actorId] ?? [1, 3, 5, 7, 0, 9, 11, 13, 15];
-}
-
-function createJsonMessage(value: unknown): ZLinkMessage {
-  return Message.from(Buffer.from(JSON.stringify(value)));
-}
-
-function readJsonMessage<TValue = unknown>(message: ZLinkMessage): TValue {
-  return JSON.parse(message.getString());
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
@@ -354,7 +346,7 @@ export {
   authenticateSessionRes,
   bingoRoomJoinReq,
   bingoNotificationsReq,
-  createJsonMessage,
+  createProtobufMessage,
   deterministicCard,
   ensurePlayerActorReq,
   ensurePlayerActorRes,
@@ -363,7 +355,7 @@ export {
   matchBingoRes,
   numberDrawnNotify,
   playerJoinedNotify,
-  readJsonMessage,
+  readProtobufMessage,
   rejectedCommandRes,
   registerServiceReq,
   registerServiceRes,

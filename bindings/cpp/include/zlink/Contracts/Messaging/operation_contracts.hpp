@@ -281,7 +281,7 @@ class request_submit_operation_t
     request_submit_operation_t &&message (message_t &part_) &&;
     request_submit_operation_t &&timeout (std::chrono::milliseconds timeout_) &&;
     request_callback_submit_operation_t flags (int flags_) &&;
-    async_result_t<std::vector<message_t>> submit_async () &&;
+    async_result_t<std::vector<message_t>> async () &&;
     bool submit (request_callback_t callback_) &&;
 
   private:

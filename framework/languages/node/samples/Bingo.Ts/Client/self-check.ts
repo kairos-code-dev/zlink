@@ -1,9 +1,10 @@
 const path = require('node:path');
 const nestjs = require('../../../../packages/nestjs/dist');
 const connector = require('../../../../packages/stream-connector/dist');
-const json = require('../../../../packages/stream-connector-json/dist');
 const { reserveTcpEndpoint, withServers } = require('./sample-process-host');
-import { BingoClientApp } from './bingo-client-app';
+const { bingoProtobufCodec } = require('../Shared/Contracts/protobuf-codec');
+import { BingoClientScenario } from './bingo-client-scenario';
+import { assertBingoTopologyReady } from '../Probe/bingo-probe';
 import type { ZlinkStreamConnector } from '../../../packages/stream-connector/dist';
 const { SampleTimings } = require('../Shared/Configuration/sample-names');
 
@@ -44,11 +45,12 @@ async function main(): Promise<void> {
         BINGO_SESSION_ENDPOINT: sessionEndpoint
       }
     }
-  ], async (): Promise<void> => {
+  ], async (ready): Promise<void> => {
+    assertBingoTopologyReady(ready);
     const client1 = createClient(sessionEndpoint);
     const client2 = createClient(sessionEndpoint);
     try {
-      await new BingoClientApp().run(client1, client2);
+      await new BingoClientScenario().run(client1, client2);
     } finally {
       await Promise.allSettled([
         client1.close(),
@@ -79,7 +81,7 @@ function assertNestModule(options: any, zlinkNestjs: NestjsPackage = nestjs): an
 function createClient(sessionEndpoint: string): ZlinkStreamConnector {
   return connector.zlinkStreamConnectorFactory.create({
     endpoint: sessionEndpoint,
-    codec: json.zlinkStreamJsonCodec,
+    codec: bingoProtobufCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }

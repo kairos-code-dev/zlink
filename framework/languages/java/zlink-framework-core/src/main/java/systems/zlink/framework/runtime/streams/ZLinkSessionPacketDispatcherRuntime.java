@@ -3,7 +3,9 @@ package systems.zlink.framework.runtime.streams;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
@@ -15,11 +17,14 @@ import systems.zlink.framework.streams.ZLinkStreamHeader;
 final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSessionContext>
     implements ZLinkSessionPacketDispatcher<TSessionContext> {
     private final Map<String, ZLinkSessionPacketHandler<TSessionContext>> handlers;
+    private final Executor handlerExecutor;
 
     ZLinkSessionPacketDispatcherRuntime(
         List<Class<? extends ZLinkSessionPacketHandler<?>>> handlerTypes,
-        ZLinkHandlerFactory handlerFactory) {
+        ZLinkHandlerFactory handlerFactory,
+        Executor handlerExecutor) {
         this.handlers = buildHandlerMap(handlerTypes, handlerFactory);
+        this.handlerExecutor = java.util.Objects.requireNonNull(handlerExecutor, "handlerExecutor");
     }
 
     @Override
@@ -30,10 +35,33 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         ZLinkSessionPacketHandler<TSessionContext> handler =
             handlers.get(header.packetName());
         if (handler == null) {
-            return java.util.concurrent.CompletableFuture.completedFuture(false);
+            return CompletableFuture.completedFuture(false);
         }
-        return handler.handleAsync(context, header, payload)
+        return executeHandler(() -> handler.handleAsync(context, header, payload))
             .thenApply(ignored -> true);
+    }
+
+    private <T> CompletionStage<T> executeHandler(
+        java.util.function.Supplier<CompletionStage<T>> operation) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        try {
+            handlerExecutor.execute(() -> {
+                try {
+                    operation.get().whenComplete((value, error) -> {
+                        if (error != null) {
+                            result.completeExceptionally(error);
+                        } else {
+                            result.complete(value);
+                        }
+                    });
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                }
+            });
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+        }
+        return result;
     }
 
     private static <TSessionContext extends ZLinkSessionContext>

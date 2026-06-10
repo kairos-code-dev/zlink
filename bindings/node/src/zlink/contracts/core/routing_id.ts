@@ -62,10 +62,15 @@ function uuidString(bytes: Buffer): string {
 }
 
 /** An opaque identifier for a messaging peer or route, 1 to 255 bytes long. */
+const ROUTING_ID_CONSTRUCTOR_TOKEN = Symbol('RoutingId.constructor');
+
 export class RoutingId {
   private readonly _bytes: Buffer;
 
-  private constructor(bytes: Buffer) {
+  private constructor(bytes: Buffer, token: symbol) {
+    if (token !== ROUTING_ID_CONSTRUCTOR_TOKEN) {
+      throw new TypeError('RoutingId values are created by RoutingId.from or RoutingId.fromHex');
+    }
     this._bytes = bytes;
     Object.freeze(this);
   }
@@ -76,7 +81,7 @@ export class RoutingId {
    * length is not 1..255.
    */
   static from(value: string | Buffer | Uint8Array | number): RoutingId {
-    return new RoutingId(normalizeRoutingIdValue(value));
+    return new RoutingId(normalizeRoutingIdValue(value), ROUTING_ID_CONSTRUCTOR_TOKEN);
   }
 
   /**
@@ -84,7 +89,7 @@ export class RoutingId {
    * length, up to 510 digits for 255 bytes).
    */
   static fromHex(value: string): RoutingId {
-    return new RoutingId(normalizeRoutingIdHex(value));
+    return new RoutingId(normalizeRoutingIdHex(value), ROUTING_ID_CONSTRUCTOR_TOKEN);
   }
 
   /** Return a copy of the routing id bytes. */

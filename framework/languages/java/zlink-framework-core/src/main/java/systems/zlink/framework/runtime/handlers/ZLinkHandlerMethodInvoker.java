@@ -9,6 +9,7 @@ import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Collection;
 import java.util.ServiceLoader;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -55,6 +56,14 @@ public final class ZLinkHandlerMethodInvoker {
     }
 
     public static CompletionStage<Object> invoke(Object handler, Method method, Object[] logicalArguments) {
+        return invoke(handler, method, logicalArguments, SUSPEND_INVOKERS);
+    }
+
+    public static CompletionStage<Object> invoke(
+        Object handler,
+        Method method,
+        Object[] logicalArguments,
+        Collection<ZLinkSuspendHandlerInvoker> suspendInvokers) {
         if (!isKotlinSuspendMethod(method)) {
             try {
                 method.setAccessible(true);
@@ -66,7 +75,11 @@ public final class ZLinkHandlerMethodInvoker {
                 return CompletableFuture.failedFuture(unwrapReflectionFailure(ex));
             }
         }
-        for (ZLinkSuspendHandlerInvoker invoker : SUSPEND_INVOKERS) {
+        Collection<ZLinkSuspendHandlerInvoker> effectiveInvokers =
+            suspendInvokers == null || suspendInvokers.isEmpty()
+                ? SUSPEND_INVOKERS
+                : suspendInvokers;
+        for (ZLinkSuspendHandlerInvoker invoker : effectiveInvokers) {
             if (invoker.supports(method)) {
                 return invoker.invoke(handler, method, logicalArguments);
             }

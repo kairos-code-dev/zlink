@@ -27,6 +27,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final ZLinkBackendSpotNode spotNode;
@@ -34,6 +35,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final Duration defaultTimeout;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
+    private final ZLinkStreamCodec defaultStreamCodec;
     private final Map<String, ZLinkActor> actors = new HashMap<>();
     private final Map<String, String> actorTypes = new HashMap<>();
     private final Map<ZLinkActor, DefaultActorContext> contextsByActor = new HashMap<>();
@@ -56,6 +58,22 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         Duration defaultTimeout,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory) {
+        this(
+            spotNode,
+            factories,
+            defaultTimeout,
+            serializer,
+            handlerFactory,
+            ZLinkStreamCodec.JSON);
+    }
+
+    public ZLinkActorRuntime(
+        ZLinkBackendSpotNode spotNode,
+        Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Duration defaultTimeout,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerFactory handlerFactory,
+        ZLinkStreamCodec defaultStreamCodec) {
         if (factories.isEmpty()) {
             throw new ZLinkConfigurationException("at least one actor factory is required");
         }
@@ -70,6 +88,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         this.defaultTimeout = defaultTimeout;
         this.serializer = serializer;
         this.handlerFactory = handlerFactory;
+        this.defaultStreamCodec =
+            defaultStreamCodec == null ? ZLinkStreamCodec.JSON : defaultStreamCodec;
     }
 
     @Override
@@ -286,7 +306,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             serializer,
             this,
             actor,
-            defaultTimeout);
+            defaultTimeout,
+            defaultStreamCodec);
         long bindingToken = bindSession(actor, boundSession);
         boundSession.setBindingToken(bindingToken);
     }

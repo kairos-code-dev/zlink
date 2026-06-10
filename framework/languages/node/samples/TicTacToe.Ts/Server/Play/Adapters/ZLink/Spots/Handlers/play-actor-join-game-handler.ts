@@ -5,7 +5,7 @@ const {
   joinGameRes,
   playerJoinedNotify
 } = require('../../../../../../Shared/Contracts/messages');
-const { TicTacToeGameDirectory } = require('../../../../Application/GameCreation/tictactoe-game');
+const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
 import type {
   JoinGameInternalReq,
   JoinGameRes
@@ -38,6 +38,6 @@ class PlayActorJoinGameHandler {
   }
 }
 
-Inject(TicTacToeGameDirectory)(PlayActorJoinGameHandler, undefined, 0);
+Inject(TicTacToeGameCreator)(PlayActorJoinGameHandler, undefined, 0);
 
 export { PlayActorJoinGameHandler };

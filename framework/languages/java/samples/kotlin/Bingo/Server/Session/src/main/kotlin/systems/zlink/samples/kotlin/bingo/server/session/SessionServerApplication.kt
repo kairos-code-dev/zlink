@@ -32,7 +32,7 @@ class SessionServerApplication {
             options.useDiscovery { discovery ->
                 discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             }
-            options.codecs().addJson()
+            options.codecs().addProtobuf()
             options.addClientServerChannel(SampleNames.ApiChannel) { channel -> channel.enableClient() }
             options.addClientServerChannel(SampleNames.PlayChannel) { channel -> channel.enableClient() }
             options.addRouteMeshChannel(SampleNames.RoomRouteChannel) { route ->

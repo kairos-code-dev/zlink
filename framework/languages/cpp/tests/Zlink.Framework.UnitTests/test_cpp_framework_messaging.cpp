@@ -202,7 +202,7 @@ int main ()
     using zlink::framework::runtime::messaging::pending_submit_t;
     using zlink::framework::runtime::messaging::submit_queue_t;
 
-    auto sample_task = sample_call_t (42).submit_async ();
+    auto sample_task = sample_call_t (42).async ();
     if (sample_task.result ().value () != 42) {
         return 1;
     }

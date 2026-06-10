@@ -7,6 +7,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -15,6 +17,7 @@ import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.spots.SpotChannelClientRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.spots.SpotRouteChannelAcceptanceRegistration;
@@ -35,6 +38,9 @@ public final class ZLinkFrameworkRegistration {
         new LinkedHashMap<>();
     private final Set<Class<?>> handlerPackageMarkers = new LinkedHashSet<>();
     private final List<Class<? extends ZLinkHandlerFilter>> filters = new ArrayList<>();
+    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers = new ArrayList<>();
+    private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private boolean closeHandlerExecutor = true;
     private Duration defaultTimeout = Duration.ofSeconds(30);
     private Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType;
     private ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses;
@@ -87,6 +93,18 @@ public final class ZLinkFrameworkRegistration {
         return filters;
     }
 
+    public List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers() {
+        return List.copyOf(suspendHandlerInvokers);
+    }
+
+    public Executor handlerExecutor() {
+        return handlerExecutor;
+    }
+
+    public boolean closeHandlerExecutor() {
+        return closeHandlerExecutor;
+    }
+
     public Class<? extends ZLinkSpotRemoteAddressResolver> spotRemoteAddressResolverType() {
         return spotRemoteAddressResolverType;
     }
@@ -126,6 +144,29 @@ public final class ZLinkFrameworkRegistration {
     void setRegistrySpotRemoteAddresses(
         ZLinkRegistrySpotRemoteAddressesRegistration registrySpotRemoteAddresses) {
         this.registrySpotRemoteAddresses = registrySpotRemoteAddresses;
+    }
+
+    void useVirtualThreadHandlers() {
+        closeOwnedHandlerExecutor();
+        handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        closeHandlerExecutor = true;
+    }
+
+    void useHandlerExecutor(Executor executor) {
+        if (executor == null) {
+            throw new ZLinkConfigurationException("handler executor is required");
+        }
+        closeOwnedHandlerExecutor();
+        handlerExecutor = executor;
+        closeHandlerExecutor = false;
+    }
+
+    void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker) {
+        if (invoker == null) {
+            throw new ZLinkConfigurationException("suspend handler invoker is required");
+        }
+        suspendHandlerInvokers.clear();
+        suspendHandlerInvokers.add(invoker);
     }
 
     public boolean discoveryEnabled() {
@@ -249,6 +290,16 @@ public final class ZLinkFrameworkRegistration {
             throw new ZLinkConfigurationException(
                 "registry SPOT remote addresses routerChannelId must name a route mesh channel: "
                     + registrySpotRemoteAddresses.routerChannelId());
+        }
+    }
+
+    private void closeOwnedHandlerExecutor() {
+        if (closeHandlerExecutor && handlerExecutor instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception ex) {
+                throw new ZLinkConfigurationException("failed to close handler executor", ex);
+            }
         }
     }
 }

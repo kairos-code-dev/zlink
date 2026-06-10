@@ -294,7 +294,7 @@ function resolveSocketMessagingProperty(
         const [routingId, payload, callback, flags, timeoutMs] = args as [unknown, unknown, unknown, number, number | undefined];
         void flags;
         peerRoutingIds.add(routingId);
-        return submitBindingRequestAsync(
+        return submitBindingRequestCallback(
           (target as { request(routingId: unknown): ZLinkBindingRequestOperation }).request(toNativeRoutingId(routingId)),
           payload,
           callback,
@@ -304,7 +304,7 @@ function resolveSocketMessagingProperty(
       if (args.length >= 4) {
         const [payload, callback, flags, timeoutMs] = args as [unknown, unknown, number, number | undefined];
         void flags;
-        return submitBindingRequestAsync(
+        return submitBindingRequestCallback(
           (target as { request(): ZLinkBindingRequestOperation }).request(),
           payload,
           callback,
@@ -365,10 +365,10 @@ function resolveSocketActorGatewayProperty(target: unknown, property: string | s
     return async (sessionRid: unknown, actor: unknown, timeoutMs: number) => {
       const operation = (target as {
         bindActor(sessionRid: unknown, actor: unknown): {
-          timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+          timeout(timeoutMs: number): ZLinkBindingPromiseRequestSubmitOperation<Array<{ close(): void }>>;
         };
       }).bindActor(sessionRid, actor);
-      const replies = await operation.timeout(timeoutMs).submitAsync();
+      const replies = await submitBindingRequest(operation.timeout(timeoutMs));
       for (const reply of replies) {
         reply.close();
       }
@@ -378,10 +378,10 @@ function resolveSocketActorGatewayProperty(target: unknown, property: string | s
     return async (sessionRid: unknown, actorId: string, timeoutMs: number) => {
       const operation = (target as {
         unbindActor(sessionRid: unknown, actorId: string): {
-          timeout(timeoutMs: number): { submitAsync(): Promise<Array<{ close(): void }>> };
+          timeout(timeoutMs: number): ZLinkBindingPromiseRequestSubmitOperation<Array<{ close(): void }>>;
         };
       }).unbindActor(sessionRid, actorId);
-      const replies = await operation.timeout(timeoutMs).submitAsync();
+      const replies = await submitBindingRequest(operation.timeout(timeoutMs));
       for (const reply of replies) {
         reply.close();
       }
@@ -488,8 +488,12 @@ interface ZLinkBindingRequestOperation {
 interface ZLinkBindingRequestSubmitOperation {
   message(message: unknown): ZLinkBindingRequestSubmitOperation;
   timeout(timeoutMs: number): ZLinkBindingRequestSubmitOperation;
-  submitAsync(): Promise<unknown[]>;
   flags(flags: number): { submit(callback: unknown): boolean };
+  submit(callback: unknown): boolean;
+}
+
+interface ZLinkBindingPromiseRequestSubmitOperation<TParts extends unknown[]> {
+  submit(callback: (result: number, parts: TParts) => void): boolean;
 }
 
 function submitBindingSend(operation: ZLinkBindingSendOperation, payload: unknown, flags: number): boolean {
@@ -504,7 +508,7 @@ function submitBindingSend(operation: ZLinkBindingSendOperation, payload: unknow
   return current.flags(flags).submit();
 }
 
-function submitBindingRequestAsync(
+function submitBindingRequestCallback(
   operation: ZLinkBindingRequestOperation,
   payload: unknown,
   callback: unknown,
@@ -524,18 +528,24 @@ function submitBindingRequestAsync(
   if (timeoutMs !== undefined) {
     current = current.timeout(timeoutMs);
   }
-  current.submitAsync().then(
-    (parts: unknown[]) => {
-      (callback as (result: number, parts: unknown[]) => void)(0, parts);
-    },
-    (error: unknown) => {
-      const result = typeof error === 'object' && error !== null && 'result' in error
-        ? Number((error as { result: unknown }).result)
-        : -1;
-      (callback as (result: number, parts: unknown[]) => void)(result, []);
+  return current.submit(callback);
+}
+
+function submitBindingRequest<TParts extends unknown[]>(
+  operation: ZLinkBindingPromiseRequestSubmitOperation<TParts>
+): Promise<TParts> {
+  return new Promise((resolve, reject) => {
+    const accepted = operation.submit((result, parts) => {
+      if (result !== 0) {
+        reject(new Error(`Binding request failed with result ${result}.`));
+        return;
+      }
+      resolve(parts);
+    });
+    if (!accepted) {
+      reject(new Error('Binding request submit was not accepted.'));
     }
-  );
-  return true;
+  });
 }
 
 function wrapMonitorSocket(nativeInstance: { close(): void; recv(flags?: number): MonitorEvent | null }): ZLinkBackendSocketMonitor {

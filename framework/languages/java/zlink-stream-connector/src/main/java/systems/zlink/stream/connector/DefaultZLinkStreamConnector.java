@@ -22,6 +22,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -42,6 +43,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final List<ZLinkStreamErrorHandler> errorHandlers = new ArrayList<>();
     private final List<ZLinkStreamDisconnectedHandler> disconnectedHandlers = new ArrayList<>();
     private final List<ZLinkStreamConnectionStateHandler> stateHandlers = new ArrayList<>();
+    private final Map<String, AtomicInteger> receivedCounts = new ConcurrentHashMap<>();
     private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
     private final AtomicLong nextRequestSeq = new AtomicLong();
     private final ZLinkStreamPendingRequests pendingRequests = new ZLinkStreamPendingRequests();
@@ -79,7 +81,18 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public CompletionStage<Void> connectAsync() {
+    public int receivedCount(String name) {
+        requirePacketName(name);
+        AtomicInteger count = receivedCounts.get(name);
+        return count == null ? 0 : count.get();
+    }
+
+    @Override
+    public ZLinkStreamLifecycleCall connect() {
+        return new DefaultZLinkStreamLifecycleCall(this::connectInternalAsync);
+    }
+
+    private CompletionStage<Void> connectInternalAsync() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -156,7 +169,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public CompletionStage<Void> disconnectAsync() {
+    public ZLinkStreamLifecycleCall disconnect() {
+        return new DefaultZLinkStreamLifecycleCall(this::disconnectInternalAsync);
+    }
+
+    private CompletionStage<Void> disconnectInternalAsync() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -175,7 +192,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public CompletionStage<Void> reconnectAsync() {
+    public ZLinkStreamLifecycleCall reconnect() {
+        return new DefaultZLinkStreamLifecycleCall(this::reconnectInternalAsync);
+    }
+
+    private CompletionStage<Void> reconnectInternalAsync() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -191,7 +212,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public CompletionStage<Void> closeAsync() {
+    public ZLinkStreamLifecycleCall close() {
+        return new DefaultZLinkStreamLifecycleCall(this::closeInternalAsync);
+    }
+
+    private CompletionStage<Void> closeInternalAsync() {
         boolean wasConnected = isConnected();
         ZLinkStreamTransportConnection current = connection;
         connection = null;
@@ -207,7 +232,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public CompletionStage<Void> dispatchAsync() {
+    public ZLinkStreamLifecycleCall dispatch() {
+        return new DefaultZLinkStreamLifecycleCall(this::dispatchInternalAsync);
+    }
+
+    private CompletionStage<Void> dispatchInternalAsync() {
         dispatchQueue.drain();
         return CompletableFuture.completedFuture(null);
     }
@@ -251,11 +280,6 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Objects.requireNonNull(handler, "handler");
         stateHandlers.add(handler);
         return () -> stateHandlers.remove(handler);
-    }
-
-    @Override
-    public void close() {
-        closeAsync();
     }
 
     private CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload, boolean compress) {
@@ -381,6 +405,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         if (header.kind() == ZLinkStreamWireProtocol.KIND_SEND
             || header.kind() == ZLinkStreamWireProtocol.KIND_REQUEST) {
+            receivedCounts.computeIfAbsent(header.name(), ignored -> new AtomicInteger()).incrementAndGet();
             dispatchToHandlers(header, decodedPayload);
         }
     }
@@ -849,7 +874,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return connector.submit(payload, compressed);
         }
     }
@@ -896,7 +921,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
 
         @Override
-        public CompletionStage<ZLinkStreamEncodedPayload> submitAsync() {
+        public CompletionStage<ZLinkStreamEncodedPayload> submit() {
             return connector.submitRequest(payload, timeout, compressed);
         }
     }

@@ -34,13 +34,14 @@ test('node samples define the required sample directories and README files', () 
 test('node topology samples mirror dotnet role layout', () => {
   const expected = {
     'TicTacToe.Ts': [
+      'Client/tictactoe-client-app.ts',
       'Client/self-check.ts',
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/create-game-http-handler.ts',
       'Server/Api/main.ts',
       'Server/Play/Domain/TicTacToe/tictactoe-board.ts',
       'Server/Play/Domain/TicTacToe/tictactoe-match.ts',
-      'Server/Play/Application/GameCreation/tictactoe-game.ts',
+      'Server/Play/Application/GameCreation/tictactoe-game-creator.ts',
       'Server/Play/Adapters/ZLink/Actors/play-actor.ts',
       'Server/Play/Adapters/ZLink/Actors/play-actor-factory.ts',
       'Server/Play/Adapters/ZLink/Handlers/create-game-handler.ts',
@@ -54,15 +55,17 @@ test('node topology samples mirror dotnet role layout', () => {
       'Shared/Contracts/messages.ts'
     ],
     'Bingo.Ts': [
-      'Client/bingo-client-app.ts',
+      'Client/bingo-client-scenario.ts',
       'Client/self-check.ts',
       'Server/Api/Handlers/authenticate-player-handler.ts',
       'Server/Api/Handlers/match-bingo-handler.ts',
       'Server/Api/main.ts',
       'Server/Play/Domain/Bingo/bingo-card.ts',
+      'Server/Play/Domain/Bingo/bingo-game.ts',
       'Server/Play/Domain/Bingo/bingo-room-game.ts',
       'Server/Play/Domain/Bingo/bingo-room-models.ts',
-      'Server/Play/Application/RoomAllocation/bingo-room-directory.ts',
+      'Probe/bingo-probe.ts',
+      'Server/Play/Application/RoomAllocation/bingo-room-allocator.ts',
       'Server/Play/Adapters/ZLink/Actors/player-actor.ts',
       'Server/Play/Adapters/ZLink/Actors/player-actor-factory.ts',
       'Server/Play/Adapters/ZLink/Handlers/allocate-bingo-room-handler.ts',
@@ -82,6 +85,8 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Session/Sessions/bingo-session.ts',
       'Server/Session/main.ts',
       'Shared/Configuration/sample-names.ts',
+      'Shared/Contracts/bingo_messages.proto',
+      'Shared/Contracts/protobuf-codec.ts',
       'Shared/Contracts/messages.ts'
     ]
   };
@@ -228,7 +233,7 @@ test('TicTacToe TypeScript sample builds and exposes basic TypeScript roles', ()
 
 test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
   const readme = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'README.ko.md'), 'utf8');
-  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const client = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-app.ts'), 'utf8');
   const board = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-board.ts'), 'utf8');
   const match = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-match.ts'), 'utf8');
   const joinHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-join-game-handler.ts'), 'utf8');
@@ -242,7 +247,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [joinHandler, 'gameStateNotify(state)'],
     [moveHandler, 'gameStateNotify(state)'],
     [client, "payload.state.status === 'InProgress'"],
-    [client, "lastMoveState.status, 'Won'"],
+    [client, "stateOf(client1FinalMove).status === 'Won'"],
     [readme, '`Won`']
   ];
   const missing = required
@@ -278,7 +283,7 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
     [packageJson, 'tsc -p tsconfig.json'],
     [tsconfig, '"outDir": "dist"'],
     [tsconfig, '"Server/**/*.ts"'],
-    [client, "from './bingo-client-app'"],
+    [client, "from './bingo-client-scenario'"],
     [client, "../Server/Api/main.js"],
     [client, 'PASS Bingo.Ts'],
     [api, 'async function bootstrap'],
@@ -418,13 +423,13 @@ test('node samples do not hide readiness with sleeps or pre-ready pings', () => 
 });
 
 test('node client samples wait for push packets through stream connector helpers', () => {
-  const bingoApp = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'bingo-client-app.ts'), 'utf8');
-  const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const bingoApp = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'bingo-client-scenario.ts'), 'utf8');
+  const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-app.ts'), 'utf8');
   const missing = [];
   const violations = [];
   for (const [name, content] of [
-    ['Bingo.Ts/Client/bingo-client-app.ts', bingoApp],
-    ['TicTacToe.Ts/Client/self-check.ts', ticTacToeClient]
+    ['Bingo.Ts/Client/bingo-client-scenario.ts', bingoApp],
+    ['TicTacToe.Ts/Client/tictactoe-client-app.ts', ticTacToeClient]
   ]) {
     if (!/\.waitFor(?:<|\()/.test(content)) {
       missing.push(`${name}:.waitFor(`);
@@ -434,11 +439,254 @@ test('node client samples wait for push packets through stream connector helpers
     }
   }
   for (const [name, content] of [
-    ['Bingo.Ts/Client/bingo-client-app.ts', bingoApp],
-    ['TicTacToe.Ts/Client/self-check.ts', ticTacToeClient]
+    ['Bingo.Ts/Client/bingo-client-scenario.ts', bingoApp],
+    ['TicTacToe.Ts/Client/tictactoe-client-app.ts', ticTacToeClient]
   ]) {
     if (/waitForJson|waitForNotify|async function waitFor\s*\(|\.waitFor(?:<[^>]+>)?\([^)]*,/.test(content)) {
       violations.push(name);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('node client scenarios follow the common sample document order', () => {
+  const bingoApp = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'bingo-client-scenario.ts'), 'utf8');
+  const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-app.ts'), 'utf8');
+
+  assertOrdered('Bingo.Ts/Client/bingo-client-scenario.ts', bingoApp, [
+    "1. Both clients connect to Session, authenticate",
+    "client1.request(authenticateReq('player-1'))",
+    "client2.request(authenticateReq('player-2'))",
+    '2. player-1 matches first',
+    'client1.request(matchBingoReq())',
+    'client1MatchRes.roomId.length > 0',
+    'client1PlayerJoinedNotifies.length === 0',
+    '3-5. player-2 joins the same room',
+    '.waitFor<PlayerJoinedNotify>',
+    '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
+    '.waitFor<StateEnvelope>(PacketNames.gameStartedNotify)',
+    'client2.request(matchBingoReq())',
+    'client2PlayerJoinedNotifies.length === 0',
+    '6. Both clients submit deterministic cards',
+    '.request(submitBingoCardReq',
+    '.request(submitBingoCardReq',
+    'stateOf(client1Card).players.length === 2',
+    '7. Number drawing is server-driven',
+    'requireSameDraw(client1Draw1.payload, client2Draw1.payload, 1)',
+    '8. Both clients receive the final finished state',
+    'client1EndedTask',
+    'ended.status === \'Finished\''
+  ]);
+
+  assertOrdered('TicTacToe.Ts/Client/tictactoe-client-app.ts', ticTacToeClient, [
+    '1. Create the room through API',
+    "JSON.stringify(createGameReq('match-ready'))",
+    'game.roomId.length > 0',
+    'game.playEndpoint.length > 0',
+    '2. Both clients connect directly',
+    "client1.request(authenticateReq('p1'))",
+    "client2.request(authenticateReq('p2'))",
+    '3. Host joins by explicit RoomId',
+    'client1.request(joinGameReq(game.roomId))',
+    "stateOf(client1Join).roomId === game.roomId",
+    "client1Join.mark === 'X'",
+    'client1PlayerJoinedNotifies.length === 0',
+    '4-6. Guest joins by the same RoomId',
+    'client1SawClient2Join',
+    '.request(joinGameReq(game.roomId))',
+    "client2Join.mark === 'O'",
+    'client2PlayerJoinedNotifies.length === 0',
+    'client1Running.payload.state.nextTurn === client1Auth.actorId',
+    '7. Each move response and opponent notify',
+    'client1.request(placeMarkStreamReq(0))',
+    'lastMoveActorId === client1Auth.actorId',
+    'lastMoveCell === 0',
+    '8. The final host move wins',
+    'client1.request(placeMarkStreamReq(2))',
+    "stateOf(client1FinalMove).status === 'Won'",
+    'lastMoveCell === 2'
+  ]);
+});
+
+test('node samples use the codecs required by the common specs', () => {
+  const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const ticTacToePlay = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const ticTacToeContracts = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
+  const bingoClient = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'self-check.ts'), 'utf8');
+  const bingoSession = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
+  const bingoContracts = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
+  const bingoCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-codec.ts'), 'utf8');
+  const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
+  const required = [
+    [ticTacToeClient, 'zlinkStreamMessagePackCodec'],
+    [ticTacToePlay, 'ZlinkStreamCodec.MessagePack'],
+    [ticTacToeContracts, 'createMessagePackMessage'],
+    [bingoClient, 'bingoProtobufCodec'],
+    [bingoSession, 'ZlinkStreamCodec.Protobuf'],
+    [bingoSession, 'fromBingoProto'],
+    [bingoSession, 'toBingoProto'],
+    [bingoContracts, 'createProtobufMessage'],
+    [bingoContracts, 'readProtobufMessage'],
+    [bingoCodec, 'BingoPayloadEnvelope'],
+    [bingoProto, 'message AuthenticateReq'],
+    [bingoProto, 'message BingoRoomState'],
+    [bingoProto, 'message BingoNumberDrawnNotify']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const sample of ['Bingo.Ts', 'TicTacToe.Ts']) {
+    for (const file of sampleSourceFiles(path.join(samplesRoot, sample))) {
+      if (!file.endsWith('.ts')) {
+        continue;
+      }
+      const content = fs.readFileSync(file, 'utf8');
+      if (/stream-connector-json|zlinkStreamJsonCodec|ZlinkStreamCodec\.Json|createJsonMessage|readJsonMessage/.test(content)) {
+        violations.push(path.relative(samplesRoot, file));
+      }
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('node samples keep contracts separate from sample configuration and application roles explicit', () => {
+  const ticTacToeContracts = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
+  const ticTacToeSettings = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Shared', 'Configuration', 'sample-settings.ts'), 'utf8');
+  const ticTacToeCreator = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Application',
+    'GameCreation',
+    'tictactoe-game-creator.ts'
+  ), 'utf8');
+  const bingoAllocator = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Application',
+    'RoomAllocation',
+    'bingo-room-allocator.ts'
+  ), 'utf8');
+  const bingoProbe = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Probe', 'bingo-probe.ts'), 'utf8');
+  const required = [
+    [ticTacToeSettings, 'SampleNames'],
+    [ticTacToeSettings, 'SampleTimings'],
+    [ticTacToeCreator, 'class TicTacToeGameCreator'],
+    [bingoAllocator, 'class BingoRoomAllocator'],
+    [bingoProbe, 'assertBingoTopologyReady']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const text of [
+    'SampleNames',
+    'SampleTimings',
+    'TicTacToeGameDirectory',
+    'BingoRoomDirectory'
+  ]) {
+    if (ticTacToeContracts.includes(text)) {
+      violations.push(`TicTacToe.Ts/Shared/Contracts/messages.ts:${text}`);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('TicTacToe TypeScript sample uses declarative handler registration', () => {
+  const apiMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
+  const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const apiHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Api',
+    'Handlers',
+    'authenticate-player-handler.ts'
+  ), 'utf8');
+  const playHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Handlers',
+    'create-game-handler.ts'
+  ), 'utf8');
+  const nestPackage = fs.readFileSync(path.join(workspaceRoot, 'packages', 'nestjs', 'src', 'index.ts'), 'utf8');
+  const required = [
+    [nestPackage, 'export function zlinkRequestHandler'],
+    [apiHandler, "zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)"],
+    [playHandler, "zlinkRequestHandler('play', PacketNames.createGame)"],
+    [apiMain, '.handlerGroup(\'api\')'],
+    [playMain, '.handlerGroup(\'play\')']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const [name, content] of [
+    ['TicTacToe.Ts/Server/Api/main.ts', apiMain],
+    ['TicTacToe.Ts/Server/Play/main.ts', playMain]
+  ]) {
+    if (content.includes('zlinkHandlers')) {
+      violations.push(name);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('Bingo TypeScript sample separates room lifecycle from pure bingo game rules', () => {
+  const roomGame = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Domain',
+    'Bingo',
+    'bingo-room-game.ts'
+  ), 'utf8');
+  const bingoGame = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Domain',
+    'Bingo',
+    'bingo-game.ts'
+  ), 'utf8');
+  const required = [
+    [bingoGame, 'class BingoGame'],
+    [bingoGame, 'submitCard'],
+    [bingoGame, 'drawNext'],
+    [bingoGame, 'this.winners.push'],
+    [roomGame, 'new BingoGame'],
+    [roomGame, 'this.game.submitCard'],
+    [roomGame, 'this.game.drawNext']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+  const violations = [];
+  for (const text of [
+    'new BingoCard',
+    'this.winners.push',
+    'player.card.mark('
+  ]) {
+    if (roomGame.includes(text)) {
+      violations.push(text);
     }
   }
 
@@ -528,6 +776,15 @@ function sampleSourceFiles(root) {
     }
   }
   return files;
+}
+
+function assertOrdered(name, content, snippets) {
+  let offset = 0;
+  for (const snippet of snippets) {
+    const index = content.indexOf(snippet, offset);
+    assert.notEqual(index, -1, `${name} is missing ordered scenario snippet: ${snippet}`);
+    offset = index + snippet.length;
+  }
 }
 
 function escapeRegExp(value) {

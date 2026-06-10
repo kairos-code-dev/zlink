@@ -5,16 +5,17 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
-import systems.zlink.samples.kotlin.tictactoe.server.play.actors.PlayActorFactory
-import systems.zlink.samples.kotlin.tictactoe.server.play.entryspot.PlayEntrySpot
-import systems.zlink.samples.kotlin.tictactoe.server.play.gamespots.TicTacToeGame
-import systems.zlink.samples.kotlin.tictactoe.server.play.sessions.PlaySession
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.actors.PlayActorFactory
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.PlayEntrySpot
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.TicTacToeGame
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.sessions.PlaySession
+import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.sessions.handlers.AuthenticatePlaySessionHandler
 
 object PlayServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             SampleLogging.configure(settings, "play")
-            options.codecs().addJson()
+            options.codecs().addMessagePack()
             options.addHandlersFromPackageOf(PlayServer::class.java)
             options.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)
             options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
@@ -53,6 +54,7 @@ object PlayServer {
             options.addStreamNode(SampleNames.PlayStream) { stream ->
                 stream.bind(settings.playEndpoint)
                 stream.registerSession(PlaySession::class.java)
+                stream.addSessionPacketHandler(AuthenticatePlaySessionHandler::class.java)
             }
         }
 }

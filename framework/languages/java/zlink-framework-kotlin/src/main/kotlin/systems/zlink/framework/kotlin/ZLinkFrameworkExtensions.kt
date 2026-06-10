@@ -1,17 +1,13 @@
 package systems.zlink.framework.kotlin
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.actors.ZLinkBoundSession
-import systems.zlink.framework.actors.ZLinkBoundSessionSendCall
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.actors.ZLinkActorRef
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
-import systems.zlink.framework.channels.ZLinkPublishCall
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.channels.ZLinkSendCall
 import systems.zlink.framework.registry.ZLinkRegistryQuery
 import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry
 import systems.zlink.framework.registry.ZLinkRegistryStatus
@@ -21,46 +17,20 @@ import systems.zlink.framework.spots.ZLinkSpotInfo
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.streams.ZLinkSessionActors
-import systems.zlink.framework.streams.ZLinkSessionReplyCall
-import systems.zlink.framework.streams.ZLinkSessionSendCall
 import java.util.Optional
 import systems.zlink.contracts.core.RoutingId
 
-suspend fun ZLinkSendCall.submit() {
-    submitAsync().await()
-}
-
-suspend fun ZLinkPublishCall.submit() {
-    submitAsync().await()
-}
-
 suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TReply =
-    submitAsync(replyType).await()
+    submit(replyType).await()
 
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
-
-suspend fun ZLinkBoundSessionSendCall.submit() {
-    submitAsync().await()
-}
-
-suspend fun ZLinkSessionSendCall.submit() {
-    submitAsync().await()
-}
-
-suspend fun ZLinkSessionReplyCall.submit() {
-    submitAsync().await()
-}
-
-suspend fun ZLinkBoundSession.disconnect() {
-    disconnectAsync().await()
-}
 
 suspend fun <TMessage> ZLinkClient.send(
     channelName: String,
     message: TMessage,
 ) {
-    sendToChannel(channelName, message).submit()
+    sendToChannel(channelName, message).submit().await()
 }
 
 suspend inline fun <reified TReply, TMessage> ZLinkClient.request(
@@ -74,7 +44,7 @@ suspend fun <TMessage> ZLinkFanoutClient.publishToTopic(
     topic: String,
     message: TMessage,
 ) {
-    publish(channelName, topic, message).submit()
+    publish(channelName, topic, message).submit().await()
 }
 
 suspend fun <TMessage> ZLinkRouteClient.send(
@@ -82,7 +52,7 @@ suspend fun <TMessage> ZLinkRouteClient.send(
     target: RoutingId,
     message: TMessage,
 ) {
-    sendTo(channelName, target, message).submit()
+    sendTo(channelName, target, message).submit().await()
 }
 
 suspend inline fun <reified TReply, TMessage> ZLinkRouteClient.request(
@@ -121,9 +91,6 @@ suspend fun ZLinkSpotManager.find(spotRid: RoutingId): Optional<ZLinkSpotInfo> =
 
 suspend fun ZLinkSpotManager.list(): List<ZLinkSpotInfo> =
     listAsync().await()
-
-suspend fun ZLinkSpotManager.close(spotRid: RoutingId): Boolean =
-    closeAsync(spotRid).await()
 
 suspend fun ZLinkRegistryQuery.status(): ZLinkRegistryStatus =
     statusAsync().await()

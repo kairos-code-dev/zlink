@@ -1,9 +1,11 @@
 package systems.zlink.framework.configuration;
 
 import java.time.Duration;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddressResolver;
 
 public interface ZLinkFrameworkOptions {
@@ -59,4 +61,10 @@ public interface ZLinkFrameworkOptions {
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
 
     void configureDispatch(Consumer<ZLinkDispatchOptions> configure);
+
+    void useVirtualThreadHandlers();
+
+    void useHandlerExecutor(Executor executor);
+
+    void useSuspendHandlerInvoker(ZLinkSuspendHandlerInvoker invoker);
 }

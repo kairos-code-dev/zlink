@@ -52,11 +52,27 @@ import systems.zlink.stream.connector.ZLinkStreamErrorHandler
 import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler
 
-class ZLinkCoroutineRuntime @JvmOverloads constructor(
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : AutoCloseable {
-    private val job = SupervisorJob()
-    private val scope = CoroutineScope(job + dispatcher)
+class ZLinkCoroutineRuntime : AutoCloseable {
+    private val dispatcher: CoroutineDispatcher
+    private val scope: CoroutineScope
+    private val ownsScope: Boolean
+
+    @JvmOverloads
+    constructor(dispatcher: CoroutineDispatcher = Dispatchers.Default) {
+        this.dispatcher = dispatcher
+        this.scope = CoroutineScope(SupervisorJob() + dispatcher)
+        this.ownsScope = true
+    }
+
+    @JvmOverloads
+    constructor(
+        scope: CoroutineScope,
+        dispatcher: CoroutineDispatcher = Dispatchers.Default,
+    ) {
+        this.dispatcher = dispatcher
+        this.scope = scope
+        this.ownsScope = false
+    }
 
     fun <TRequest, TReply> requestHandler(
         block: suspend (TRequest, ZLinkRequestContext) -> TReply,
@@ -184,7 +200,9 @@ class ZLinkCoroutineRuntime @JvmOverloads constructor(
         }
 
     override fun close() {
-        scope.cancel()
+        if (ownsScope) {
+            scope.cancel()
+        }
     }
 
     fun <T> completionStage(block: suspend CoroutineScope.() -> T): CompletionStage<T> =

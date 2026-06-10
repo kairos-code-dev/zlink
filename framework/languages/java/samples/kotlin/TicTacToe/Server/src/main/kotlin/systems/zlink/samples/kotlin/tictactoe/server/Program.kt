@@ -37,6 +37,5 @@ private suspend fun runAll(settings: SampleSettings) {
 
 private suspend fun runClient(settings: SampleSettings) {
     val defaults = TicTacToeClientOptions.createDefault()
-    val result = TicTacToeClient().run(defaults.copy(apiUrl = settings.apiPublicUrl))
-    result.writeTo(System.out)
+    TicTacToeClient().run(defaults.copy(apiUrl = settings.apiPublicUrl))
 }

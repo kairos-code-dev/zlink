@@ -28,6 +28,7 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionActors;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
 import systems.zlink.framework.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
@@ -48,6 +49,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private final Predicate<RoutingId> routeReady;
     private final LocalActorDispatcher localActorDispatcher;
     private final boolean nativeActorGatewayAttached;
+    private final ZLinkStreamCodec defaultCodec;
     private final List<ZLinkSessionActor> bound = new ArrayList<>();
 
     @FunctionalInterface
@@ -63,7 +65,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         RoutingId sessionRid,
         ZLinkActorRuntime actors,
         ZLinkMessageSerializer serializer) {
-        this(stream, sessionRid, actors, serializer, ignored -> true, null, true);
+        this(
+            stream,
+            sessionRid,
+            actors,
+            serializer,
+            ignored -> true,
+            null,
+            true,
+            ZLinkStreamCodec.JSON);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -72,7 +82,15 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkActorRuntime actors,
         ZLinkMessageSerializer serializer,
         Predicate<RoutingId> routeReady) {
-        this(stream, sessionRid, actors, serializer, routeReady, null, true);
+        this(
+            stream,
+            sessionRid,
+            actors,
+            serializer,
+            routeReady,
+            null,
+            true,
+            ZLinkStreamCodec.JSON);
     }
 
     public ZLinkSessionActorsRuntime(
@@ -82,7 +100,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkMessageSerializer serializer,
         Predicate<RoutingId> routeReady,
         LocalActorDispatcher localActorDispatcher,
-        boolean nativeActorGatewayAttached) {
+        boolean nativeActorGatewayAttached,
+        ZLinkStreamCodec defaultCodec) {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.actors = actors;
@@ -90,6 +109,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         this.routeReady = routeReady == null ? ignored -> true : routeReady;
         this.localActorDispatcher = localActorDispatcher;
         this.nativeActorGatewayAttached = nativeActorGatewayAttached;
+        this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
     }
 
     @Override
@@ -158,8 +178,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         sessionRid,
                         ref.actorId(),
                         serializer,
-                    actors,
-                    actor);
+                        actors,
+                        actor,
+                        defaultCodec);
                 long bindingToken = actors.bindSession(actor, boundSession);
                 boundSession.setBindingToken(bindingToken);
                 ZLinkSessionActor boundActor = new BoundActor(

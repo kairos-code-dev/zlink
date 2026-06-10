@@ -95,7 +95,7 @@ session 객체는 stream 객체를 직접 인자로 받지 않는다. session �
 context.client()
     .send(new Welcome("player-42"))
     .packetName("Welcome")
-    .submitAsync();
+    .submit();
 ```
 
 ## 4. ActorGateway attach
@@ -135,8 +135,8 @@ connector.on("MatchFound", (message) -> {
     return CompletableFuture.completedFuture(null);
 });
 
-connector.connectAsync()
-    .thenCompose(ignored -> connector.send(encodedPayload).submitAsync());
+connector.connect().submit()
+    .thenCompose(ignored -> connector.send(encodedPayload).submit());
 ```
 
 connector는 heartbeat, reconnect, manual dispatch, request timeout, compression,

@@ -139,6 +139,7 @@ public final class BingoRoomGame {
         BingoRoomModels.RoomPlayer joined,
         Messages.BingoRoomState state) {
         return players.stream()
+            .filter(player -> !player.actorId().equals(joined.actorId()))
             .map(player -> new BingoRoomModels.RoomEvent(
                 BingoRoomModels.EventKind.PLAYER_JOINED,
                 player.actorId(),

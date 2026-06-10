@@ -36,8 +36,6 @@ export interface Socket {
    * also trusts the system CA store.
    */
   setTlsClient(ca: string, hostname: string, trustSystem?: boolean): void;
-  /** Set the logical channel name used to identify this socket in routing and discovery. */
-  setChannelName(channelName: string): void;
 }
 
 /** A socket that can also initiate outbound connections, not just bind. */

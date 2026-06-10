@@ -64,7 +64,7 @@
 연결과 수동 연결을 어떻게 골라 두는지를 정리한다.
 
 dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
-`ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootAsync(...)`(비동기, 설정 주입)
+`ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootFactory(...)`(비동기, 설정 주입)
 가 반환하는 `DynamicModule` 로 매핑한다. dotnet builder 메서드 한 개 = node options 의
 키 한 개로 1:1 대응시키는 것을 기본으로 한다.
 
@@ -740,6 +740,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 > `publisher.publish(...).packetName(...).submit()` 형태다. `packetName` /
 > `timeoutMs` 같은 변형은 마지막 options 인자가 아니라 builder chain 에 둔다.
 > 그래야 send/request/publish 표면과 dotnet 표면이 같은 사용 흐름을 갖는다.
+> `submit()` 은 `Promise` 를 반환하는 비동기 terminator 다. Node 표면에서는
+> 반환 타입과 `await` 가 비동기 의미를 맡으므로 별도 suffix 를 붙이지 않는다.
 
 | dotnet (fluent) | node (fluent) |
 | --- | --- |

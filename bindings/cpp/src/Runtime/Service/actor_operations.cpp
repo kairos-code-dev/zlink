@@ -192,7 +192,7 @@ actor_join_callback_submit_operation_t actor_join_submit_operation_t::flags (int
     return actor_join_callback_submit_operation_t (std::move (state ()));
 }
 
-async_result_t<actor_join_result_t> actor_join_submit_operation_t::submit_async () &&
+async_result_t<actor_join_result_t> actor_join_submit_operation_t::async () &&
 {
     return submit_actor_join_async (state ());
 }
@@ -280,7 +280,7 @@ actor_join_entry_spot_operation_t::timeout (std::chrono::milliseconds timeout_) 
     return std::move (*this);
 }
 
-async_result_t<actor_join_entry_spot_result_t> actor_join_entry_spot_operation_t::submit_async () &&
+async_result_t<actor_join_entry_spot_result_t> actor_join_entry_spot_operation_t::async () &&
 {
     return submit_actor_join_entry_spot_async (state ());
 }
@@ -371,7 +371,7 @@ actor_leave_operation_t &&actor_leave_operation_t::timeout (std::chrono::millise
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>> actor_leave_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> actor_leave_operation_t::async () &&
 {
     return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
         return zlink_spot_node_actor_leave_spot (
@@ -421,7 +421,7 @@ actor_destroy_operation_t::timeout (std::chrono::milliseconds timeout_) &&
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>> actor_destroy_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> actor_destroy_operation_t::async () &&
 {
     return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
         return zlink_spot_node_actor_destroy (state ().node,
@@ -468,7 +468,7 @@ actor_lookup_operation_t &&actor_lookup_operation_t::timeout (std::chrono::milli
     return std::move (*this);
 }
 
-async_result_t<actor_lookup_result_t> actor_lookup_operation_t::submit_async () &&
+async_result_t<actor_lookup_result_t> actor_lookup_operation_t::async () &&
 {
     return submit_actor_lookup_async ([&] (detail::actor_lookup_result_state_t *request_state) {
         return zlink_remote_actor_get_ref (
@@ -515,7 +515,7 @@ actor_bind_operation_t &&actor_bind_operation_t::timeout (std::chrono::milliseco
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>> actor_bind_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> actor_bind_operation_t::async () &&
 {
     return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
         return zlink_stream_bind_actor (
@@ -562,7 +562,7 @@ actor_unbind_operation_t &&actor_unbind_operation_t::timeout (std::chrono::milli
     return std::move (*this);
 }
 
-async_result_t<std::vector<message_t>> actor_unbind_operation_t::submit_async () &&
+async_result_t<std::vector<message_t>> actor_unbind_operation_t::async () &&
 {
     return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
         return zlink_stream_unbind_actor (

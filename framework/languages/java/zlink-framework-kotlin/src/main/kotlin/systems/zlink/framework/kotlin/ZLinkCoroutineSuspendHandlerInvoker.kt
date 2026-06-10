@@ -11,8 +11,9 @@ import kotlin.coroutines.suspendCoroutine
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker
 
-class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendHandlerInvoker {
-    private val coroutines = ZLinkCoroutineRuntime()
+class ZLinkCoroutineSuspendHandlerInvoker @JvmOverloads constructor(
+    private val coroutines: ZLinkCoroutineRuntime = ZLinkCoroutineRuntime(),
+) : ZLinkSuspendHandlerInvoker {
 
     override fun supports(method: Method): Boolean =
         ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)

@@ -1,8 +1,10 @@
 const { Inject } = require('@nestjs/common');
+const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
 const { createGameRes } = require('../../../../../Shared/Contracts/messages');
+const { PacketNames } = require('../../../../../Shared/Contracts/messages');
 const { PLAY_STREAM_ENDPOINT } = require('../../../play-tokens');
 const { TicTacToeGameTimerHandler } = require('../Spots/Handlers/tictactoe-game-timer-handler');
-const { TicTacToeGameDirectory } = require('../../../Application/GameCreation/tictactoe-game');
+const { TicTacToeGameCreator } = require('../../../Application/GameCreation/tictactoe-game-creator');
 import type {
   CreateGameReq,
   CreateGameRes
@@ -23,8 +25,9 @@ class CreateGameHandler {
   }
 }
 
-Inject(TicTacToeGameDirectory)(CreateGameHandler, undefined, 0);
+Inject(TicTacToeGameCreator)(CreateGameHandler, undefined, 0);
 Inject(PLAY_STREAM_ENDPOINT)(CreateGameHandler, undefined, 1);
 Inject(TicTacToeGameTimerHandler)(CreateGameHandler, undefined, 2);
+zlinkRequestHandler('play', PacketNames.createGame)(CreateGameHandler);
 
 export { CreateGameHandler };

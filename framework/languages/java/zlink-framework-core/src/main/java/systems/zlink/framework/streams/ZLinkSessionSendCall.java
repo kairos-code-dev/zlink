@@ -9,5 +9,9 @@ public interface ZLinkSessionSendCall {
 
     ZLinkSessionSendCall compress();
 
+    default CompletionStage<Void> submit() {
+        return submitAsync();
+    }
+
     CompletionStage<Void> submitAsync();
 }

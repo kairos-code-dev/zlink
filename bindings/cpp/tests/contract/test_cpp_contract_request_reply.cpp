@@ -61,7 +61,7 @@ void test_request_dealer_router_roundtrip ()
       dealer_socket.request ()
         .message (request)
         .timeout (std::chrono::milliseconds (5000))
-        .submit_async ();
+        .async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");
@@ -100,7 +100,7 @@ void test_request_wait_for_zero_pumps_progress ()
       dealer_socket.request ()
         .message (request)
         .timeout (std::chrono::milliseconds (5000))
-        .submit_async ();
+        .async ();
 
     bool ready = false;
     const std::chrono::steady_clock::time_point deadline =
@@ -192,7 +192,7 @@ void test_received_reply_rejects_non_none_flags ()
       dealer_socket.request ()
         .message (request)
         .timeout (std::chrono::milliseconds (5000))
-        .submit_async ();
+        .async ();
     const std::vector<zlink::message_t> reply = future.get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == "reply:ok");

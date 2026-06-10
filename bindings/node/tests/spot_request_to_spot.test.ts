@@ -98,7 +98,7 @@ test('router requestToSpot promise resolves through spot routed reply', async ()
     const reply = await requester.requestToSpot(
       responderNode.routingId,
       responder.routingId
-    ).message(Buffer.from('spot-ping')).timeout(2000).submitAsync();
+    ).message(Buffer.from('spot-ping')).timeout(2000).submit();
     assert.equal(reply.length, 1);
     assert.equal(reply[0].data().toString(), 'spot-pong');
     await handled;
@@ -176,7 +176,7 @@ test('spot requestToSpot promise resolves through peer spot routed reply', async
     const reply = await clientSpot.requestToSpot(
       serverNode.routingId,
       serverSpot.routingId
-    ).message(Buffer.from('mesh-ping')).timeout(2000).submitAsync();
+    ).message(Buffer.from('mesh-ping')).timeout(2000).submit();
     assert.equal(reply.length, 1);
     assert.equal(reply[0].data().toString(), 'mesh-pong');
     await handled;

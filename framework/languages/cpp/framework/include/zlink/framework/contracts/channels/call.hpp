@@ -58,7 +58,7 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    task_t<TReply> submit_async ()
+    task_t<TReply> async ()
     {
         if (_immediate) {
             return task_t<TReply> (*_immediate);
@@ -111,7 +111,7 @@ class send_call_t
         return *this;
     }
 
-    task_t<void> submit_async ()
+    task_t<void> async ()
     {
         if (_immediate) {
             return task_t<void> (*_immediate);
@@ -140,7 +140,7 @@ class relay_call_t : private detail::call_facade_t<relay_call_t, void>
   public:
     explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
 
-    using base_t::submit_async;
+    using base_t::async;
     using base_t::timeout;
 };
 
@@ -163,7 +163,7 @@ class stream_write_call_t
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
-    task_t<void> submit_async ();
+    task_t<void> async ();
 
   private:
     friend class stream_t;

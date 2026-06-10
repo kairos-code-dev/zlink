@@ -109,11 +109,12 @@ export class RuntimeRequestOperation implements RequestOperation, RequestSubmitO
     return this;
   }
 
-  submitAsync(): Promise<Message[]> {
-    return this._invoke(this._payload.consume(), this._timeoutMs) as Promise<Message[]>;
-  }
-
-  submit(callback: RequestCallback): boolean {
+  submit(): Promise<Message[]>;
+  submit(callback: RequestCallback): boolean;
+  submit(callback?: RequestCallback): Promise<Message[]> | boolean {
+    if (callback === undefined) {
+      return this._invoke(this._payload.consume(), this._timeoutMs) as Promise<Message[]>;
+    }
     const flags = this._callbackMode ? this._flags : SendFlags.None;
     return this._invoke(this._payload.consume(), callback, flags, this._timeoutMs) as boolean;
   }

@@ -31,5 +31,9 @@ public interface ZLinkSpotManager {
 
     CompletionStage<List<ZLinkSpotInfo>> listAsync();
 
+    default CompletionStage<Boolean> close(RoutingId spotRid) {
+        return closeAsync(spotRid);
+    }
+
     CompletionStage<Boolean> closeAsync(RoutingId spotRid);
 }

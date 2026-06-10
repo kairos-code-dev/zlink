@@ -10,14 +10,14 @@ data class AuthenticateReq(val accessToken: String)
 
 data class CreateGameHttpReq(val gameName: String?)
 
-data class CreateGameHttpRes(val gameId: String, val playEndpoint: String, val gameName: String)
+data class CreateGameHttpRes(val roomId: String, val playEndpoint: String, val gameName: String)
 
 data class CreateGameReq(val gameName: String)
 
-data class CreateGameRes(val gameId: String, val playEndpoint: String, val gameName: String)
+data class CreateGameRes(val roomId: String, val playEndpoint: String, val gameName: String)
 
 data class GameState(
-    val gameId: String,
+    val roomId: String,
     val board: String,
     val status: String,
     val winner: String?,
@@ -32,9 +32,9 @@ data class GameStateNotify(val state: GameState)
 
 data class JoinGameRes(val state: GameState)
 
-data class JoinGameReq(val gameId: String)
+data class JoinGameReq(val roomId: String)
 
-data class TicTacToeGameJoinReq(val gameId: String, val actorId: String)
+data class TicTacToeGameJoinReq(val roomId: String, val actorId: String)
 
 data class TicTacToeGameJoinRes(val state: GameState)
 
@@ -43,7 +43,7 @@ data class PlaceMarkRes(val state: GameState)
 data class PlaceMarkReq(val cell: Int)
 
 data class PlayerJoinedNotify(
-    val gameId: String,
+    val roomId: String,
     val actorId: String,
     val mark: String,
     val state: GameState,

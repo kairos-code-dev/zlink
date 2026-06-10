@@ -29,7 +29,7 @@ class ApiServerApplication {
             options.useDiscovery { discovery ->
                 discovery.addRegistryEndpoint(SampleTopology.RegistryRouterEndpoint)
             }
-            options.codecs().addJson()
+            options.codecs().addProtobuf()
             options.addClientServerChannel(SampleNames.ApiChannel) { channel ->
                 channel.enableServer { server -> server.bind(SampleTopology.ApiChannelEndpoint) }
                 channel.addHandlerGroup("api")

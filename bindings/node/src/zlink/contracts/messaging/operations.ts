@@ -49,8 +49,8 @@ export interface RequestSubmitOperation {
   timeout(timeoutMs: number): RequestSubmitOperation;
   /** Set the send flags and narrow the builder to callback submission. */
   flags(flags: SendFlags): RequestCallbackSubmitOperation;
-  /** Submit the request and asynchronously return the reply parts, which the caller owns. */
-  submitAsync(): Promise<Message[]>;
+  /** Submit the request and return the reply parts, which the caller owns. */
+  submit(): Promise<Message[]>;
   /** Submit the request; the result and reply parts are delivered to `callback`. Returns false under DontWait back-pressure. */
   submit(callback: RequestCallback): boolean;
 }

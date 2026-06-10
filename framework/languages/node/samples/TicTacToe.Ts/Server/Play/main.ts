@@ -4,21 +4,19 @@ const net = require('node:net');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const connector = require('../../../../../packages/stream-connector/dist');
-const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
+const msgpack = require('../../../../../packages/stream-connector-msgpack/dist');
+const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { PacketNames, SampleNames } = require('../../Shared/Contracts/messages');
+const { SampleNames } = require('../../Shared/Configuration/sample-settings');
 const { PlayActorFactory } = require('./Adapters/ZLink/Actors/play-actor-factory');
 const { PlayEntrySpot } = require('./Adapters/ZLink/Spots/play-entry-spot');
 const { PlayActorJoinGameHandler } = require('./Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler');
 const { PlayActorPlaceMarkHandler } = require('./Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler');
 const { TicTacToeGameTimerHandler } = require('./Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler');
-const { TicTacToeGameDirectory } = require('./Application/GameCreation/tictactoe-game');
+const { TicTacToeGameCreator } = require('./Application/GameCreation/tictactoe-game-creator');
 const { CreateGameHandler } = require('./Adapters/ZLink/Handlers/create-game-handler');
 const { PlaySessionFactory } = require('./Adapters/ZLink/Sessions/play-session-factory');
 const { PLAY_STREAM_ENDPOINT } = require('./play-tokens');
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 type TcpEndpoint = {
   host: string;
@@ -54,16 +52,14 @@ async function main(): Promise<void> {
     ],
     providers: [
       { provide: PLAY_STREAM_ENDPOINT, useValue: process.env.TICTACTOE_PLAY_STREAM_ENDPOINT },
-      TicTacToeGameDirectory,
+      TicTacToeGameCreator,
       PlayActorFactory,
       PlayActorJoinGameHandler,
       PlayEntrySpot,
       PlayActorPlaceMarkHandler,
       TicTacToeGameTimerHandler,
       PlaySessionFactory,
-      ...zlinkHandlers('play')
-        .request(CreateGameHandler, PacketNames.createGame)
-        .providers()
+      CreateGameHandler
     ]
   })(TicTacToePlayModule);
 
@@ -110,7 +106,7 @@ class StreamTransport {
   reply(requestHeader: StreamHeader, payload: unknown): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Response,
-      codec: connector.ZlinkStreamCodec.Json,
+      codec: connector.ZlinkStreamCodec.MessagePack,
       flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
       name: requestHeader.name,
@@ -121,7 +117,7 @@ class StreamTransport {
   send(packetName: string, payload: unknown, metadata: Record<string, string> = {}): void {
     this.write({
       kind: connector.ZlinkStreamMessageKind.Send,
-      codec: connector.ZlinkStreamCodec.Json,
+      codec: connector.ZlinkStreamCodec.MessagePack,
       flags: Object.keys(metadata).length === 0
         ? connector.ZlinkStreamHeaderFlags.None
         : connector.ZlinkStreamHeaderFlags.HasMetadata,
@@ -133,7 +129,7 @@ class StreamTransport {
   write(header: unknown, payload: unknown): void {
     this.socket.write(connector.ZlinkStreamFrameCodec.encode(
       connector.ZlinkStreamHeaderCodec.encode(header),
-      encoder.encode(JSON.stringify(payload))
+      msgpack.toMsgPack(payload).payload
     ));
   }
 }
@@ -142,7 +138,7 @@ async function dispatchPacket(session: DispatchSession, bytes: Buffer, transport
   try {
     const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
     const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
-    await session.dispatch(header, JSON.parse(decoder.decode(frame.payload)));
+    await session.dispatch(header, msgpack.fromMsgPack({ codec: header.codec, payload: frame.payload }));
   } catch (error) {
     transport.send('StreamError', { message: error instanceof Error ? error.message : String(error) });
   }

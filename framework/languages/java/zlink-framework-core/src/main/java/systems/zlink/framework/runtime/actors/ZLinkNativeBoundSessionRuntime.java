@@ -48,6 +48,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkActorRuntime actorRuntime;
     private final ZLinkActor actor;
     private final Duration timeout;
+    private final ZLinkStreamCodec defaultCodec;
     private long bindingToken;
 
     ZLinkNativeBoundSessionRuntime(
@@ -56,13 +57,15 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actorRuntime,
         ZLinkActor actor,
-        Duration timeout) {
+        Duration timeout,
+        ZLinkStreamCodec defaultCodec) {
         this.spotNode = spotNode;
         this.actorRef = actorRef;
         this.serializer = serializer;
         this.actorRuntime = actorRuntime;
         this.actor = actor;
         this.timeout = timeout;
+        this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
     }
 
     void setBindingToken(long bindingToken) {
@@ -78,7 +81,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             packetNameFor(message),
             Map.of(),
             Optional.empty(),
-            timeout);
+            timeout,
+            defaultCodec);
     }
 
     @Override
@@ -94,7 +98,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         String defaultPacketName,
         Map<String, String> metadata,
         Optional<String> packetName,
-        Duration timeout) implements ZLinkBoundSessionSendCall {
+        Duration timeout,
+        ZLinkStreamCodec codec) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             if (packetName == null || packetName.isBlank()) {
@@ -107,7 +112,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 defaultPacketName,
                 metadata,
                 Optional.of(packetName),
-                timeout);
+                timeout,
+                codec);
         }
 
         @Override
@@ -121,7 +127,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 defaultPacketName,
                 Map.copyOf(next),
                 packetName,
-                timeout);
+                timeout,
+                codec);
         }
 
         @Override
@@ -130,7 +137,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(
                     ZLinkStreamMessageKind.SEND,
-                    ZLinkStreamCodec.JSON,
+                    codec,
                     EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
                     Optional.empty(),
                     packetName.orElse(defaultPacketName),

@@ -40,7 +40,7 @@ class stream_write_call_state_t
 
     void compress () { _compressed = true; }
 
-    task_t<void> submit_async ()
+    task_t<void> async ()
     {
         if (_immediate) {
             return task_t<void> (*_immediate);
@@ -158,9 +158,9 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-task_t<void> stream_write_call_t::submit_async ()
+task_t<void> stream_write_call_t::async ()
 {
-    return _state->submit_async ();
+    return _state->async ();
 }
 
 stream_error_t::stream_error_t (stream_session_error_t error,

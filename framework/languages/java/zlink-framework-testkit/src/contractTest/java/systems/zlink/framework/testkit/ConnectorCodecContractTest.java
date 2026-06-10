@@ -50,19 +50,20 @@ final class ConnectorCodecContractTest {
 
     @Test
     void jsonTypedHelperUsesConnectorSendRequestAndOnSurface() throws Exception {
-        try (TcpServer server = new TcpServer();
-             ZLinkStreamConnector connector =
-                 ZLinkStreamConnectorFactory.create(options(server.endpoint()))) {
+        try (TcpServer server = new TcpServer()) {
+            ZLinkStreamConnector connector =
+                ZLinkStreamConnectorFactory.create(options(server.endpoint()));
+            try {
             List<String> handled = new ArrayList<>();
             ZLinkStreamJson.on(connector, "String", String.class, message -> {
                 handled.add(message.payload());
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             });
 
-            connector.connectAsync().toCompletableFuture().join();
+            connector.connect().await();
             ZLinkStreamJson.send(connector, "hello")
                 .compress()
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             Frame sent = server.readFrame();
@@ -77,11 +78,11 @@ final class ConnectorCodecContractTest {
                 "String",
                 "\"server\"".getBytes(StandardCharsets.UTF_8)));
             awaitPendingDispatch(connector);
-            connector.dispatchAsync().toCompletableFuture().join();
+            connector.dispatch().await();
 
             var replyFuture = ZLinkStreamJson.request(connector, "reply")
                 .compress()
-                .submitAsync()
+                .submit()
                 .toCompletableFuture();
             Frame request = server.readFrame();
             assertEquals(2, request.kind());
@@ -102,6 +103,9 @@ final class ConnectorCodecContractTest {
             }
 
             assertEquals(List.of("server"), handled);
+            } finally {
+                connector.close().await();
+            }
         }
     }
 

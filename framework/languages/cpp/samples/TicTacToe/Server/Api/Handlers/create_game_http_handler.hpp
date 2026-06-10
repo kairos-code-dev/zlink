@@ -37,7 +37,7 @@ class create_game_http_handler_t
         auto room = co_await _client
                       .request<create_game_res_t> (sample_names_t::play_channel,
                                                    create_game_req_t{game_name})
-                      .submit_async ();
+                      .async ();
         const auto endpoint =
           room.play_endpoint.empty () ? _topology.stream_endpoint : room.play_endpoint;
         _logger.info (std::string ("reply ") + create_game_http_res_t::packet_name);

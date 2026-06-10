@@ -28,13 +28,8 @@ set(required_labels
   framework-extension
   framework-sample-smoke
   framework-sample-parity
-  framework-sample-e2e
-  framework-sample-process-e2e
-  framework-sample-log
   framework-sample-api
   framework-sample-bingo
-  framework-sample-client
-  framework-sample-client-e2e
   framework-sample-play
   framework-sample-registry
   framework-sample-session

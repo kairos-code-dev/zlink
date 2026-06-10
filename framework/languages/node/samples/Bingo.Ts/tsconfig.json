@@ -8,6 +8,7 @@
   },
   "include": [
     "Client/**/*.ts",
+    "Probe/**/*.ts",
     "Server/**/*.ts",
     "Shared/**/*.ts"
   ]

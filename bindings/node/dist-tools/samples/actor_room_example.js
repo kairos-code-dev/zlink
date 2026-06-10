@@ -27,8 +27,8 @@ async function main() {
     try {
         stream.attachActorGateway(node);
         const session = zlink.RoutingId.from(Buffer.from('game-room-session'));
-        await stream.bindActor(session, player1.ref()).timeout(2000).submitAsync();
-        await stream.bindActor(session, player2.ref()).timeout(2000).submitAsync();
+        await stream.bindActor(session, player1.ref()).timeout(2000).submit();
+        await stream.bindActor(session, player2.ref()).timeout(2000).submit();
         // dispatch 핸들러: 도착한 메시지를 모은다.
         room.setDispatchHandler((info) => {
             if (info.event !== zlink.SpotDispatchEvent.ActorReadable)
@@ -41,7 +41,7 @@ async function main() {
             }
         });
         async function joinAndAccept(actor) {
-            const reply = actor.join(room).message(Buffer.from('enter-room')).timeout(2000).submitAsync();
+            const reply = actor.join(room).message(Buffer.from('enter-room')).timeout(2000).submit();
             const request = waitForJoin(room);
             room.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
             await reply;
@@ -60,8 +60,8 @@ async function main() {
         await sendAndWait('player-1', 'your-turn', 1);
         await sendAndWait('player-2', 'wait', 2);
         assert.deepEqual(received, ['your-turn', 'wait']);
-        await player1.leave(room).timeout(2000).submitAsync();
-        await player2.leave(room).timeout(2000).submitAsync();
+        await player1.leave(room).timeout(2000).submit();
+        await player2.leave(room).timeout(2000).submit();
         console.log('[actor/room] player-1: "your-turn", player-2: "wait"');
     }
     finally {

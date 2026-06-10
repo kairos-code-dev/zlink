@@ -25,7 +25,7 @@ class MatchBingoHandler(
         val allocated = client
             .requestToChannel(SampleNames.PlayChannel, AllocateBingoRoomReq(request.actorId, request.mode))
             .timeout(SampleTimings.RequestTimeout)
-            .submitAsync(AllocateBingoRoomRes::class.java)
+            .submit(AllocateBingoRoomRes::class.java)
             .await()
 
         MatchBingoApiRes(allocated.roomId)

@@ -1002,7 +1002,18 @@ function submitRequestMultipart(operation, parts) {
   for (let index = 1; index < parts.length; index++) {
     current = current.message(parts[index]);
   }
-  return current.submitAsync();
+  return new Promise((resolve, reject) => {
+    const accepted = current.submit((result, replyParts) => {
+      if (result !== 0) {
+        reject(new Error(`request failed with result ${result}`));
+        return;
+      }
+      resolve(replyParts);
+    });
+    if (!accepted) {
+      reject(new Error('request submit was not accepted'));
+    }
+  });
 }
 
 function withTimeout(promise, timeoutMs, label) {
@@ -1037,8 +1048,9 @@ function createMultipartRequestOperation() {
     timeout() {
       return this;
     },
-    async submitAsync() {
-      return [];
+    submit(callback) {
+      callback(0, []);
+      return true;
     }
   };
 }

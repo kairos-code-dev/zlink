@@ -139,12 +139,12 @@ public interface ZLinkActorContext {
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submitAsync();
+    CompletionStage<ZLinkActorRef> submit();
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
 }
 
@@ -156,7 +156,7 @@ public record ZLinkActorJoinResult<TReply>(
 
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
-    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> disconnect();
 }
 ```
 
@@ -169,7 +169,7 @@ public interface ZLinkBoundSession {
 `ZLinkBoundSession`은 server-to-client request API를 제공하지 않는다. client
 request에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로
 처리한다.
-`disconnectAsync()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
+`disconnect()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
 actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
 `@ZLinkSpotActorDisconnected` handler를 대신 실행하지 않는다.
 

@@ -176,14 +176,14 @@ result_t<void> send_call_t::submit ()
     return detail::submit_send (detail::state_from (_state), std::move (_packet));
 }
 
-task_t<void> send_call_t::submit_async ()
+task_t<void> send_call_t::async ()
 {
     return task_t<void> (submit ());
 }
 
-void send_call_t::submit_async (std::function<void (result_t<void>)> callback)
+void send_call_t::submit (std::function<void (result_t<void>)> callback)
 {
-    auto task = submit_async ();
+    auto task = async ();
     task.on_completed (std::move (callback));
 }
 
@@ -338,11 +338,6 @@ result_t<void> connector_t::connect ()
     return result_t<void>::failure (error_code_t::connect_timeout, last_error);
 }
 
-task_t<void> connector_t::connect_async ()
-{
-    return task_t<void> (connect ());
-}
-
 result_t<void> connector_t::close ()
 {
     auto state = detail::state_from (_state);
@@ -355,19 +350,9 @@ result_t<void> connector_t::close ()
     return result_t<void>::success ();
 }
 
-task_t<void> connector_t::close_async ()
-{
-    return task_t<void> (close ());
-}
-
 result_t<void> connector_t::dispatch ()
 {
     return detail::dispatch_pending (detail::state_from (_state));
-}
-
-task_t<void> connector_t::dispatch_async ()
-{
-    return task_t<void> (dispatch ());
 }
 
 result_t<packet_t> connector_t::wait_for (std::string packet_name,
@@ -375,12 +360,6 @@ result_t<packet_t> connector_t::wait_for (std::string packet_name,
 {
     return detail::wait_for_packet (
       detail::state_from (_state), std::move (packet_name), nullptr, timeout);
-}
-
-task_t<packet_t> connector_t::wait_for_async (std::string packet_name,
-                                              std::chrono::milliseconds timeout)
-{
-    return task_t<packet_t> (wait_for (std::move (packet_name), timeout));
 }
 
 connector_t &connector_t::on_connection_state_changed (

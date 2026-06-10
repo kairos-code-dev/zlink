@@ -38,7 +38,7 @@ class authenticate_play_session_handler_t
                                .request<authenticate_player_res_t> (
                                  sample_names_t::api_channel,
                                  authenticate_player_req_t{request.access_token})
-                               .submit_async ();
+                               .async ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::request_failed,
@@ -47,11 +47,11 @@ class authenticate_play_session_handler_t
         }
 
         const auto ensured = _ensure_actor.handle ({authenticated.actor_id});
-        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit_async ();
+        auto bound = co_await actors.bind (to_actor_ref (ensured)).async ();
 
         co_await stream
           .reply_packet (header, to_stream_payload (authenticate_res_t{ensured.actor_id}))
-          .submit_async ();
+          .async ();
 
         co_return bound;
     }

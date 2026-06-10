@@ -1,4 +1,6 @@
+const { zlinkRequestHandler } = require('../../../../../../packages/nestjs/dist');
 const { authenticatePlayerRes } = require('../../../Shared/Contracts/messages');
+const { PacketNames } = require('../../../Shared/Contracts/messages');
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq
@@ -13,5 +15,7 @@ class AuthenticatePlayerHandler {
     return authenticatePlayerRes(request.accessToken);
   }
 }
+
+zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)(AuthenticatePlayerHandler);
 
 export { AuthenticatePlayerHandler };

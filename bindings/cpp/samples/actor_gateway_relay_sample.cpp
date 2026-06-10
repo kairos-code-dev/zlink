@@ -25,7 +25,7 @@ int main ()
     stream_session.stream.attach_actor_gateway (gateway_node);
     (void) stream_session.stream.bind_actor (stream_session.session, concrete)
       .timeout (std::chrono::milliseconds (1000))
-      .submit_async ()
+      .async ()
       .get ();
 
     zlink::routing_id_t play_spot_rid = play_spot.routing_id ();
@@ -52,11 +52,11 @@ int main ()
 
     (void) gateway_node.leave_actor (concrete, play_spot_rid)
       .timeout (std::chrono::milliseconds (1000))
-      .submit_async ()
+      .async ()
       .get ();
     (void) gateway_node.destroy_actor (concrete)
       .timeout (std::chrono::milliseconds (1000))
-      .submit_async ()
+      .async ()
       .get ();
     std::printf ("[actor/gateway] stream payload: \"client-input\" -> actor: \"%s\"\n",
                  capture.payload.c_str ());

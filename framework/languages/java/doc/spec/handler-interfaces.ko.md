@@ -41,10 +41,11 @@ public interface ZLinkFrameworkOptions {
 }
 ```
 
-기본값은 Java virtual thread per task executor다. framework의 channel receive loop는
-native 또는 backend receive boundary를 담당하고, channel handler method와 handler
-interface 호출은 handler executor 뒤에서 실행된다. 이 분리는 native wait 지점과
-application handler 실행 지점이 같은 thread 정책에 묶이지 않게 하기 위한 것이다.
+기본값은 Java virtual thread per task executor다. framework의 receive loop와 backend
+dispatch boundary는 native 또는 backend receive boundary를 담당하고, channel handler,
+Spot lifecycle/packet/timer handler, stream session lifecycle/dispatch handler는 handler
+executor 뒤에서 실행된다. 이 분리는 native wait 지점과 application handler 실행 지점이
+같은 thread 정책에 묶이지 않게 하기 위한 것이다.
 
 `useHandlerExecutor`로 application이 소유한 executor를 넘기면 framework는 그 executor를
 종료하지 않는다. 기본 virtual thread executor 또는 `useVirtualThreadHandlers()`로 만든
@@ -53,6 +54,19 @@ executor는 framework host가 닫힐 때 함께 닫힌다.
 Kotlin `suspend` handler의 coroutine dispatcher와 scope ownership은 Kotlin adapter가
 담당한다. Java handler executor는 Kotlin coroutine dispatcher의 대체물이 아니며,
 Kotlin adapter가 `CompletionStage`로 변환한 completion만 Java core가 받는다.
+
+Kotlin adapter는 Java core의 generic suspend invoker 주입 지점을 사용한다. Kotlin
+application은 Kotlin extension으로 dispatcher 또는 scope를 설정한다.
+
+```kotlin
+options.useCoroutineHandlers(dispatcher)
+options.useCoroutineHandlers(scope, dispatcher)
+```
+
+dispatcher만 넘기면 Kotlin adapter가 `CoroutineScope`를 만들고 framework handler
+completion을 그 scope에서 실행한다. 외부 `CoroutineScope`를 넘기면 scope ownership은
+application에 남고, framework는 해당 scope를 닫지 않는다. 두 경우 모두 Java core는
+Kotlin handler의 결과를 `CompletionStage` completion으로만 관찰한다.
 
 ## 1. 인터페이스 전체 목록
 
@@ -374,13 +388,13 @@ public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall metadata(String key, String value);
     ZLinkSessionSendCall packetName(String messageName);
     ZLinkSessionSendCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkSessionReplyCall {
     ZLinkSessionReplyCall metadata(String key, String value);
     ZLinkSessionReplyCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkSessionActor {
@@ -421,12 +435,12 @@ public interface ZLinkActorContext {
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submitAsync();
+    CompletionStage<ZLinkActorRef> submit();
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
 }
 
@@ -438,13 +452,13 @@ public record ZLinkActorJoinResult<TReply>(
 
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
-    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> disconnect();
 }
 
 public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 ```
 
@@ -735,13 +749,13 @@ public interface ZLinkClient {
 
 public interface ZLinkSendCall {
     ZLinkSendCall packetName(String messageName);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkRequestCall {
     ZLinkRequestCall packetName(String messageName);
     ZLinkRequestCall timeout(Duration timeout);
-    <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
 
 public interface ZLinkSpotOutbound {
@@ -838,7 +852,7 @@ public interface ZLinkFanoutClient {
 
 public interface ZLinkPublishCall {
     ZLinkPublishCall packetName(String messageName);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public record ZLinkSpotCreateResult(
@@ -1021,11 +1035,11 @@ public interface ZLinkStreamConnector extends AutoCloseable {
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
 
-    CompletionStage<Void> connectAsync();
-    CompletionStage<Void> disconnectAsync();
-    CompletionStage<Void> reconnectAsync();
-    CompletionStage<Void> closeAsync();
-    CompletionStage<Void> dispatchAsync();
+    ZLinkStreamLifecycleCall connect();
+    ZLinkStreamLifecycleCall disconnect();
+    ZLinkStreamLifecycleCall reconnect();
+    ZLinkStreamLifecycleCall close();
+    ZLinkStreamLifecycleCall dispatch();
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);

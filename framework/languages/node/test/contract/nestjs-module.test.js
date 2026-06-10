@@ -278,7 +278,7 @@ test('ZLinkModule.forRoot maps grouped value providers by provider token', async
   await app.close();
 });
 
-test('ZLinkModule.forRootAsync maps zlinkHandlers request providers from NestJS DI', async () => {
+test('ZLinkModule.forRootFactory maps zlinkHandlers request providers from NestJS DI', async () => {
   const apiEndpoint = await reserveTcpEndpoint();
   class ProfileHandler {
     async handle(request) {
@@ -288,7 +288,7 @@ test('ZLinkModule.forRootAsync maps zlinkHandlers request providers from NestJS 
 
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRootAsync({
+    imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => ({
         clientServerChannels: {
           api: {
@@ -1171,7 +1171,7 @@ test('ZLinkModule.forRoot registers custom spot remote address resolver as concr
   );
 });
 
-test('ZLinkModule.forRootAsync exposes capability providers through the real NestJS app context', async () => {
+test('ZLinkModule.forRootFactory exposes capability providers through the real NestJS app context', async () => {
   class AsyncSpot {
     constructor(context) {
       this.context = context;
@@ -1182,7 +1182,7 @@ test('ZLinkModule.forRootAsync exposes capability providers through the real Nes
       return { actorId, context };
     }
   }
-  const module = nestjs.ZLinkModule.forRootAsync({
+  const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
       return {
         spotNodes: ['game'],
@@ -1206,7 +1206,7 @@ test('ZLinkModule.forRootAsync exposes capability providers through the real Nes
   await app.close();
 });
 
-test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJS modules', async () => {
+test('ZLinkModule.forRootFactory resolves factory dependencies from imported NestJS modules', async () => {
   const CONFIG = Symbol('config');
   const apiEndpoint = await reserveTcpEndpoint();
   class ConfigModule {}
@@ -1215,7 +1215,7 @@ test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJ
     exports: [CONFIG]
   })(ConfigModule);
 
-  const module = nestjs.ZLinkModule.forRootAsync({
+  const module = nestjs.ZLinkModule.forRootFactory({
     imports: [ConfigModule],
     inject: [CONFIG],
     async useFactory(config) {
@@ -1238,8 +1238,8 @@ test('ZLinkModule.forRootAsync resolves factory dependencies from imported NestJ
   await app.close();
 });
 
-test('ZLinkModule.forRootAsync boots through NestJS when async capability providers are absent', async () => {
-  const module = nestjs.ZLinkModule.forRootAsync({
+test('ZLinkModule.forRootFactory boots through NestJS when async capability providers are absent', async () => {
+  const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
       return {};
     }

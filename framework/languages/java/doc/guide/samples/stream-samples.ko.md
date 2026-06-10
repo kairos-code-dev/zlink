@@ -30,7 +30,7 @@ public final class RouteSession implements ZLinkSession {
         Message payload) {
         return context.client()
             .reply(new Pong())
-            .submitAsync();
+            .submit();
     }
 }
 ```

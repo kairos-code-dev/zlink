@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "tictactoe_client_scenario.hpp"
-#include "../../Shared/client_connector_helpers.hpp"
 
 #include <zlink/http_client.hpp>
+#include <zlink/stream_connector.hpp>
 
 #include <iostream>
 #include <stdexcept>
@@ -29,12 +29,16 @@ int main ()
             throw std::runtime_error ("API returned an empty play endpoint.");
         }
 
+        zlink::stream_connector::connector_options_t connector_options;
+        connector_options.endpoint = room.play_endpoint;
+        connector_options.connect_timeout = options.stream_timeout;
+        connector_options.request_timeout = options.stream_timeout;
+        connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+
         auto client1 = zlink::stream_connector::connector_factory_t::create (
-          zlink::samples::make_manual_connector_options (
-            room.play_endpoint, options.stream_timeout, options.stream_timeout));
+          connector_options);
         auto client2 = zlink::stream_connector::connector_factory_t::create (
-          zlink::samples::make_manual_connector_options (
-            room.play_endpoint, options.stream_timeout, options.stream_timeout));
+          connector_options);
         register_tictactoe_client_codecs (client1);
         register_tictactoe_client_codecs (client2);
 

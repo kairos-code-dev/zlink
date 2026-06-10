@@ -15,5 +15,5 @@ public interface ZLinkStreamRequestCall {
 
     ZLinkStreamRequestCall timeout(Duration timeout);
 
-    CompletionStage<ZLinkStreamEncodedPayload> submitAsync();
+    CompletionStage<ZLinkStreamEncodedPayload> submit();
 }

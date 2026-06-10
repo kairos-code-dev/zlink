@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamCodec;
@@ -14,6 +16,7 @@ import systems.zlink.stream.connector.ZLinkStreamMessage;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
 import systems.zlink.stream.connector.ZLinkStreamRequestCall;
 import systems.zlink.stream.connector.ZLinkStreamSendCall;
+import systems.zlink.stream.connector.ZLinkStreamTypedCodec;
 
 public final class ZLinkStreamJson {
     public static final String CONTENT_TYPE = "application/json";
@@ -24,6 +27,10 @@ public final class ZLinkStreamJson {
         .build();
 
     private ZLinkStreamJson() {
+    }
+
+    public static ZLinkStreamTypedCodec codec() {
+        return JsonCodec.INSTANCE;
     }
 
     public static ZLinkStreamSendCall send(
@@ -58,6 +65,46 @@ public final class ZLinkStreamJson {
             message.packetName(),
             decode(message.payload(), payloadType),
             message.metadata())));
+    }
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        Class<TPayload> payloadType) {
+        return waitForAsync(
+            connector,
+            connector.options().nameResolver().resolve(payloadType),
+            payloadType);
+    }
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        Class<TPayload> payloadType,
+        Duration timeout) {
+        return waitForAsync(
+            connector,
+            connector.options().nameResolver().resolve(payloadType),
+            payloadType,
+            timeout);
+    }
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        String name,
+        Class<TPayload> payloadType,
+        Duration timeout) {
+        return connector.waitFor(name)
+            .timeout(timeout)
+            .submit()
+            .thenApply(message -> decodeMessage(message, payloadType));
+    }
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        String name,
+        Class<TPayload> payloadType) {
+        return connector.waitFor(name)
+            .submit()
+            .thenApply(message -> decodeMessage(message, payloadType));
     }
 
     public static ZLinkStreamEncodedPayload encode(String packetName, Object value) {
@@ -112,5 +159,28 @@ public final class ZLinkStreamJson {
 
     private static String valueTypeName(Object value) {
         return value == null ? "null" : value.getClass().getName();
+    }
+
+    private static <TPayload> ZLinkStreamMessage<TPayload> decodeMessage(
+        ZLinkStreamMessage<ZLinkStreamEncodedPayload> message,
+        Class<TPayload> payloadType) {
+        return new ZLinkStreamMessage<>(
+            message.packetName(),
+            decode(message.payload(), payloadType),
+            message.metadata());
+    }
+
+    private enum JsonCodec implements ZLinkStreamTypedCodec {
+        INSTANCE;
+
+        @Override
+        public <T> ZLinkStreamEncodedPayload encode(String packetName, T value) {
+            return ZLinkStreamJson.encode(packetName, value);
+        }
+
+        @Override
+        public <T> T decode(ZLinkStreamEncodedPayload payload, Class<T> type) {
+            return ZLinkStreamJson.decode(payload, type);
+        }
     }
 }

@@ -31,6 +31,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actorRuntime;
     private final ZLinkActor actor;
+    private final ZLinkStreamCodec defaultCodec;
     private long bindingToken;
 
     ZLinkBoundSessionRuntime(
@@ -39,13 +40,15 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         String actorId,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actorRuntime,
-        ZLinkActor actor) {
+        ZLinkActor actor,
+        ZLinkStreamCodec defaultCodec) {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.actorId = actorId;
         this.serializer = serializer;
         this.actorRuntime = actorRuntime;
         this.actor = actor;
+        this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
     }
 
     void setBindingToken(long bindingToken) {
@@ -61,7 +64,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             serializer.serialize(message),
             packetNameFor(message),
             Map.of(),
-            Optional.empty());
+            Optional.empty(),
+            defaultCodec);
     }
 
     @Override
@@ -78,7 +82,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         Message payload,
         String defaultPacketName,
         Map<String, String> metadata,
-        Optional<String> packetName) implements ZLinkBoundSessionSendCall {
+        Optional<String> packetName,
+        ZLinkStreamCodec codec) implements ZLinkBoundSessionSendCall {
         @Override
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             if (packetName == null || packetName.isBlank()) {
@@ -91,7 +96,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 payload,
                 defaultPacketName,
                 metadata,
-                Optional.of(packetName));
+                Optional.of(packetName),
+                codec);
         }
 
         @Override
@@ -105,7 +111,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 payload,
                 defaultPacketName,
                 Map.copyOf(next),
-                packetName);
+                packetName,
+                codec);
         }
 
         @Override
@@ -113,7 +120,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(
                     ZLinkStreamMessageKind.SEND,
-                    ZLinkStreamCodec.JSON,
+                    codec,
                     EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
                     Optional.empty(),
                     packetName.orElse(defaultPacketName),

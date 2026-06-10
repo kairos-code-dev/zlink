@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -56,6 +57,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
+import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
 import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
@@ -91,6 +93,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     private final Map<String, ZLinkAsyncSerialQueue> routeSendDispatchQueues = new HashMap<>();
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerFactory handlerFactory;
+    private final Executor handlerExecutor;
+    private final List<ZLinkSuspendHandlerInvoker> suspendHandlerInvokers;
     private final List<Class<? extends ZLinkHandlerFilter>> filterTypes;
     private final Duration defaultTimeout;
     private final ZLinkBackendAdapterFactory backendFactory;
@@ -134,6 +138,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkHandlerFactory handlerFactory) {
         this.serializer = Objects.requireNonNull(serializer, "serializer");
         this.handlerFactory = Objects.requireNonNull(handlerFactory, "handlerFactory");
+        this.handlerExecutor = Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor");
+        this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.filterTypes = List.copyOf(registration.filters());
         this.defaultTimeout = registration.defaultTimeout();
         this.backendFactory = backendFactory;
@@ -635,7 +641,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             long requestSeq = received.requestSeq().get();
             Message payloadCopy = Message.from(packet.payload());
             requestDispatchQueues.get(channelName).enqueue(() ->
-                invokeRequestHandler(channelName, registration, payloadCopy)
+                executeHandler(() -> invokeRequestHandler(channelName, registration, payloadCopy))
                     .thenAccept(reply -> replyAndClose(router, routingId, requestSeq, reply))
                     .whenComplete((ignored, error) -> payloadCopy.close()));
         } finally {
@@ -684,11 +690,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             long requestSeq = received.requestSeq().get();
             Message payloadCopy = Message.from(packet.payload());
             routeRequestDispatchQueues.get(channelName).enqueue(() ->
-                invokeRouteRequestHandler(
+                executeHandler(() -> invokeRouteRequestHandler(
                     channelName,
                     registration,
                     routingId,
-                    payloadCopy)
+                    payloadCopy))
                     .thenAccept(reply -> replyAndClose(router, routingId, requestSeq, reply))
                     .whenComplete((ignored, error) -> payloadCopy.close()));
         } finally {
@@ -737,7 +743,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             Message payloadCopy = Message.from(packet.payload());
             publishDispatchQueues.get(channelName).enqueue(() ->
-                invokePublishHandler(channelName, registration, received.topic(), payloadCopy)
+                executeHandler(() -> invokePublishHandler(channelName, registration, received.topic(), payloadCopy))
                     .whenComplete((ignored, error) -> payloadCopy.close()));
         } finally {
             received.parts().forEach(Message::close);
@@ -752,7 +758,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         Message payloadCopy = Message.from(packet.payload());
         sendDispatchQueues.get(channelName).enqueue(() ->
-            invokeSendHandler(channelName, registration, payloadCopy)
+            executeHandler(() -> invokeSendHandler(channelName, registration, payloadCopy))
                 .whenComplete((ignored, error) -> payloadCopy.close()));
     }
 
@@ -767,8 +773,31 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
         Message payloadCopy = Message.from(packet.payload());
         routeSendDispatchQueues.get(channelName).enqueue(() ->
-            invokeRouteSendHandler(channelName, registration, sourceRoutingId, payloadCopy)
+            executeHandler(() -> invokeRouteSendHandler(channelName, registration, sourceRoutingId, payloadCopy))
                 .whenComplete((ignored, error) -> payloadCopy.close()));
+    }
+
+    private <T> CompletionStage<T> executeHandler(
+        java.util.function.Supplier<CompletionStage<T>> operation) {
+        CompletableFuture<T> result = new CompletableFuture<>();
+        try {
+            handlerExecutor.execute(() -> {
+                try {
+                    operation.get().whenComplete((value, error) -> {
+                        if (error != null) {
+                            result.completeExceptionally(error);
+                        } else {
+                            result.complete(value);
+                        }
+                    });
+                } catch (RuntimeException ex) {
+                    result.completeExceptionally(ex);
+                }
+            });
+        } catch (RuntimeException ex) {
+            result.completeExceptionally(ex);
+        }
+        return result;
     }
 
     private boolean dispatchSpotRelaySendOrRequest(
@@ -933,7 +962,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         ZLinkHandlerContext context) {
         try {
             Object handler = handlerFactory.create(handlerType);
-            return ZLinkHandlerMethodInvoker.invoke(handler, method, methodArguments(method, message, context));
+            return ZLinkHandlerMethodInvoker.invoke(
+                handler,
+                method,
+                methodArguments(method, message, context),
+                suspendHandlerInvokers);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "failed to invoke handler method: " + handlerType.getName() + "." + method.getName(),

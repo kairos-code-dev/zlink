@@ -3,11 +3,11 @@ require('reflect-metadata');
 const http = require('node:http');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
+const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
-const { PacketNames, SampleNames } = require('../../Shared/Contracts/messages');
+const { SampleNames } = require('../../Shared/Configuration/sample-settings');
 
 type HttpEndpoint = {
   host: string;
@@ -31,9 +31,7 @@ async function main(): Promise<void> {
     ],
     providers: [
       CreateGameHttpHandler,
-      ...zlinkHandlers('api')
-        .request(AuthenticatePlayerHandler, PacketNames.authenticatePlayerReq)
-        .providers()
+      AuthenticatePlayerHandler
     ]
   })(TicTacToeApiModule);
 

@@ -12,7 +12,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
-import systems.zlink.samples.tictactoe.server.play.gamespots.handlers.TicTacToeGameCreatedHandler;
+import systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots.handlers.TicTacToeGameCreatedHandler;
 
 
 

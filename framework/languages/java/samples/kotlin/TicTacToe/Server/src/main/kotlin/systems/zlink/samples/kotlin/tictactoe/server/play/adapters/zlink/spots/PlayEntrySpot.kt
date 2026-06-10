@@ -1,0 +1,10 @@
+package systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots
+
+import systems.zlink.framework.spots.ZLinkEntrySpot
+import systems.zlink.framework.spots.ZLinkEntrySpotContext
+
+class PlayEntrySpot(
+    private val context: ZLinkEntrySpotContext,
+) : ZLinkEntrySpot {
+    override fun context(): ZLinkEntrySpotContext = context
+}

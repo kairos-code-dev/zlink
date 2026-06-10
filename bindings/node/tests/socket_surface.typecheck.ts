@@ -166,7 +166,7 @@ spot.recvRouted(spotRoutedStorage, zlink.RecvFlags.DontWait);
 spot.sendToChannel('svc').message('ok').submit();
 spot.sendToSpot(routingId, routingId).message(Buffer.from('ok')).flags(zlink.SendFlags.DontWait).submit();
 spot.requestToSpot(routingId, routingId).message(Buffer.from('ok')).flags(zlink.SendFlags.DontWait).timeout(1000).submit((_result, _parts) => {});
-spot.requestToChannel('svc').message('ok').submitAsync();
+spot.requestToChannel('svc').message('ok').submit();
 spot.setSubscription('topic');
 spot.subscriptionAt(0);
 spot.unsetSubscription('topic');

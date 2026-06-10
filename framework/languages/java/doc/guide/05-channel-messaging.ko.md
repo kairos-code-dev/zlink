@@ -14,7 +14,7 @@
 ```java
 client.requestToChannel("profile", new GetProfileRequest(accountId))
     .timeout(Duration.ofMillis(200))
-    .submitAsync(GetProfileReply.class);
+    .submit(GetProfileReply.class);
 ```
 
 server는 handler를 등록한다.
@@ -36,7 +36,7 @@ public final class GetProfileHandler
 
 ```java
 fanoutClient.publish("profile", "profile.changed", new ProfileChanged(accountId))
-    .submitAsync();
+    .submit();
 ```
 
 fanout은 reply를 기대하지 않는 event 전파다.

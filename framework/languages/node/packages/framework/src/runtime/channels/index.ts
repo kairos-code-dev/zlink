@@ -616,7 +616,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     if (timeoutMs !== undefined) {
       operation.timeout(timeoutMs);
     }
-    const reply = await operation.submitAsync();
+    const reply = await submitRequestOperation(operation);
     return decodeChannelReply<TReply>(reply);
   }
 
@@ -1025,6 +1025,23 @@ function appendParts<TNext extends ZLinkMultipartOperation<TNext>>(
     current = current.message(parts[index]);
   }
   return current;
+}
+
+function submitRequestOperation(operation: {
+  submit(callback: (result: number, parts: readonly Message[]) => void): boolean;
+}): Promise<readonly Message[]> {
+  return new Promise((resolve, reject) => {
+    const accepted = operation.submit((result, parts) => {
+      if (result !== 0) {
+        reject(new Error(`Channel request failed with result ${result}.`));
+        return;
+      }
+      resolve(parts);
+    });
+    if (!accepted) {
+      reject(new Error('Channel request submit was not accepted.'));
+    }
+  });
 }
 
 export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {

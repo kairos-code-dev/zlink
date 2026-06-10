@@ -166,13 +166,16 @@ final class SpotManagerTest {
                 .toCompletableFuture()
                 .join()
                 .state());
+            assertTrue(PublishingSpot.initializedOnVirtualThread.get());
             assertTrue(PublishingSpot.timerPublished.await(3, TimeUnit.SECONDS));
+            assertTrue(PublishingSpot.timerOnVirtualThread.get());
 
             assertTrue(runtime.spotManager()
                 .closeAsync(spotRid)
                 .toCompletableFuture()
                 .join());
             assertTrue(PublishingSpot.closed.await(1, TimeUnit.SECONDS));
+            assertTrue(PublishingSpot.closedOnVirtualThread.get());
 
             int ticksAtRemove = PublishingSpot.ticks.get();
             PublishingSpot.removed.set(true);
@@ -227,6 +230,9 @@ final class SpotManagerTest {
     public static final class PublishingSpot implements ZLinkSpot {
         static final AtomicInteger ticks = new AtomicInteger();
         static final AtomicBoolean removed = new AtomicBoolean();
+        static final AtomicBoolean initializedOnVirtualThread = new AtomicBoolean();
+        static final AtomicBoolean timerOnVirtualThread = new AtomicBoolean();
+        static final AtomicBoolean closedOnVirtualThread = new AtomicBoolean();
         static CountDownLatch timerPublished;
         static CountDownLatch closed;
         static CountDownLatch afterRemoveTick;
@@ -240,6 +246,9 @@ final class SpotManagerTest {
         static void reset() {
             ticks.set(0);
             removed.set(false);
+            initializedOnVirtualThread.set(false);
+            timerOnVirtualThread.set(false);
+            closedOnVirtualThread.set(false);
             timerPublished = new CountDownLatch(1);
             closed = new CountDownLatch(1);
             afterRemoveTick = new CountDownLatch(1);
@@ -252,6 +261,7 @@ final class SpotManagerTest {
 
         @Override
         public CompletionStage<Void> onInitializeAsync() {
+            initializedOnVirtualThread.set(Thread.currentThread().isVirtual());
             return context.addTimer(
                     "heartbeat",
                     Duration.ofMillis(10),
@@ -262,6 +272,7 @@ final class SpotManagerTest {
 
         @Override
         public CompletionStage<Void> onClosingAsync() {
+            closedOnVirtualThread.set(Thread.currentThread().isVirtual());
             closed.countDown();
             return CompletableFuture.completedFuture(null);
         }
@@ -322,6 +333,7 @@ final class SpotManagerTest {
     public static final class HeartbeatTimerHandler implements ZLinkSpotTimerHandler<PublishingSpot> {
         @Override
         public CompletionStage<Void> handleAsync(PublishingSpot spot, ZLinkTimerTick tick) {
+            PublishingSpot.timerOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (PublishingSpot.removed.get()) {
                 PublishingSpot.afterRemoveTick.countDown();
             }

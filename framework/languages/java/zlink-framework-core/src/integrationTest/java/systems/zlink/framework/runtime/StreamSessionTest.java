@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.Zlink;
@@ -58,6 +59,7 @@ final class StreamSessionTest {
     @Test
     void streamNodeDispatchesTcpRequestAndReplies() throws Exception {
         Zlink.version();
+        EchoSession.reset();
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addStreamNode("gateway", stream -> {
@@ -84,6 +86,7 @@ final class StreamSessionTest {
             assertEquals(3, Byte.toUnsignedInt(header[0]));
             assertEquals(7L, ByteBuffer.wrap(header, 3, Long.BYTES).getLong());
             assertEquals("pong", new String(body, StandardCharsets.UTF_8));
+            assertTrue(EchoSession.dispatchedOnVirtualThread.get());
         }
     }
 
@@ -200,10 +203,15 @@ final class StreamSessionTest {
     }
 
     public static final class EchoSession implements ZLinkSession {
+        static final AtomicBoolean dispatchedOnVirtualThread = new AtomicBoolean();
         private final ZLinkSessionContext context;
 
         public EchoSession(ZLinkSessionContext context) {
             this.context = context;
+        }
+
+        static void reset() {
+            dispatchedOnVirtualThread.set(false);
         }
 
         @Override
@@ -230,6 +238,7 @@ final class StreamSessionTest {
         public CompletionStage<Void> onDispatchAsync(
             ZLinkStreamHeader header,
             Message payload) {
+            dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (!"Ping".equals(header.packetName())) {
                 return CompletableFuture.failedFuture(
                     new IllegalArgumentException("unexpected packet: " + header.packetName()));

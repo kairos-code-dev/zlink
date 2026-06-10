@@ -1,11 +1,8 @@
 package systems.zlink.samples.tictactoe.server;
 
 import java.util.Arrays;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.tictactoe.client.TicTacToeClient;
 import systems.zlink.samples.tictactoe.client.TicTacToeClientOptions;
-import systems.zlink.samples.tictactoe.client.TicTacToeClientResult;
 import systems.zlink.samples.tictactoe.server.api.ApiServerApplication;
 import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
 import systems.zlink.samples.tictactoe.server.play.PlayServerApplication;
@@ -52,19 +49,7 @@ public final class Program {
             defaults.gameName(),
             defaults.xActorId(),
             defaults.oActorId());
-        TicTacToeClientResult result = awaitSample(new TicTacToeClient().run(options));
-        result.writeTo(System.out);
-    }
-
-    private static <T> T awaitSample(CompletionStage<T> stage) throws Exception {
-        CompletableFuture<T> done = new CompletableFuture<>();
-        stage.whenComplete((value, error) -> {
-            if (error != null) {
-                done.completeExceptionally(error);
-            } else {
-                done.complete(value);
-            }
-        });
-        return done.get();
+        new TicTacToeClient().run(options);
+        System.out.println("tictactoe=completed");
     }
 }

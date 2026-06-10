@@ -53,7 +53,7 @@ async function main() {
     const reply = await spot.requestToSpot(
       rid('REQREP_SERVER_NODE'),
       rid('REQREP_SERVER_SPOT')
-    ).message(Buffer.from('mesh-ping')).timeout(2000).submitAsync();
+    ).message(Buffer.from('mesh-ping')).timeout(2000).submit();
     console.log(`CLIENT_REPLY,${reply[0].data().toString()}`);
   } finally {
     spot.close();

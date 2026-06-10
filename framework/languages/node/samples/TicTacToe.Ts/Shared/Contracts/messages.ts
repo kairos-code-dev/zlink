@@ -1,4 +1,5 @@
 const { Message } = require('@zlink-systems/zlink');
+const msgpack = require('../../../../../packages/stream-connector-msgpack/dist');
 
 const PacketNames = Object.freeze({
   authenticateReq: 'AuthenticateReq',
@@ -14,18 +15,6 @@ const PacketNames = Object.freeze({
   placeMarkRes: 'PlaceMarkRes',
   playerJoinedNotify: 'PlayerJoinedNotify',
   gameStateNotify: 'GameStateNotify'
-});
-
-const SampleNames = Object.freeze({
-  apiChannel: 'tictactoe.api',
-  playChannel: 'tictactoe.play',
-  clientStreamNode: 'client.stream',
-  playerActorType: 'player',
-  playActorNodeRid: 'tictactoe.play.node'
-});
-
-const SampleTimings = Object.freeze({
-  requestTimeout: 7000
 });
 
 export interface AuthenticateReq {
@@ -139,6 +128,7 @@ export interface TicTacToeActor {
 }
 
 type ZLinkMessage = {
+  data(): Buffer;
   getString(): string;
   close(): void;
 };
@@ -147,12 +137,12 @@ function actorDisplayName(actorId: string): string {
   return actorId === 'p1' ? 'Player X' : 'Player O';
 }
 
-function createJsonMessage(value: unknown): ZLinkMessage {
-  return Message.from(Buffer.from(JSON.stringify(value)));
+function createMessagePackMessage(value: unknown): ZLinkMessage {
+  return Message.from(Buffer.from(msgpack.toMsgPack(value).payload));
 }
 
-function readJsonMessage<TValue = unknown>(message: ZLinkMessage): TValue {
-  return JSON.parse(message.getString());
+function readMessagePackMessage<TValue = unknown>(message: ZLinkMessage): TValue {
+  return msgpack.fromMsgPack({ codec: msgpack.toMsgPack({}).codec, payload: message.data() }) as TValue;
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
@@ -220,8 +210,6 @@ function gameStateNotify(state: GameState): GameStateNotify {
 
 export {
   PacketNames,
-  SampleNames,
-  SampleTimings,
   actorDisplayName,
   authenticatePlayerRes,
   authenticateReq,
@@ -229,7 +217,7 @@ export {
   createGameRes,
   createGameHttpRes,
   createGameReq,
-  createJsonMessage,
+  createMessagePackMessage,
   gameStateNotify,
   joinGameInternalReq,
   joinGameReq,
@@ -238,5 +226,5 @@ export {
   placeMarkReq,
   placeMarkStreamReq,
   playerJoinedNotify,
-  readJsonMessage
+  readMessagePackMessage
 };

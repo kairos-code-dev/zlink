@@ -362,11 +362,11 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvid
        {"sample_cpp_framework_bingo_registry", "sample_cpp_framework_bingo_api",
         "sample_cpp_framework_bingo_play", "sample_cpp_framework_bingo_session",
         "sample_cpp_framework_bingo_client"},
-       "bingo-server.log"},
+       "bingo-client.log"},
       {"samples/TicTacToe/README.ko.md",
        {"sample_cpp_framework_tictactoe_api", "sample_cpp_framework_tictactoe_play",
         "sample_cpp_framework_tictactoe_client"},
-       "tictactoe-server.log"}};
+       "tictactoe-client.log"}};
 
     for (const auto &sample : cases) {
         const auto readme = read_file (cpp_root / sample.readme_path);
@@ -382,16 +382,16 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvid
           << "targets as public sample executables";
         EXPECT_NE (readme.find (sample.log_file), std::string::npos)
           << sample.readme_path << " does not document the server log file";
-        EXPECT_NE (readme.find ("monitoring event"), std::string::npos)
-          << sample.readme_path << " does not document monitoring event evidence";
-        EXPECT_NE (readme.find ("receive, reply, push"), std::string::npos)
-          << sample.readme_path << " does not document request/reply/push " << "log evidence";
+        EXPECT_NE (readme.find ("테스트 전용 fake 서버"), std::string::npos)
+          << sample.readme_path << " does not document that fake servers stay out of samples";
+        EXPECT_NE (readme.find ("client scenario"), std::string::npos)
+          << sample.readme_path << " does not document client scenario evidence";
     }
 
     const auto tictactoe_readme = read_file (cpp_root / "samples/TicTacToe/README.ko.md");
     EXPECT_NE (tictactoe_readme.find ("HTTP client `POST /games`"), std::string::npos);
     EXPECT_NE (tictactoe_readme.find ("`zlink::http_client`"), std::string::npos);
-    EXPECT_NE (tictactoe_readme.find ("HTTP request"), std::string::npos);
+    EXPECT_NE (tictactoe_readme.find ("`POST /games`를 호출"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGateway)

@@ -14,7 +14,7 @@ void run_request_round_trip (zlink::dealer_socket_t &dealer_)
     std::vector<zlink::message_t> reply = dealer_.request ()
                                             .message (request)
                                             .timeout (std::chrono::milliseconds (2000))
-                                            .submit_async ()
+                                            .async ()
                                             .get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);
@@ -69,7 +69,7 @@ int main ()
     std::vector<zlink::message_t> reply = dealer_socket.request ()
                                             .message (request)
                                             .timeout (std::chrono::milliseconds (5000))
-                                            .submit_async ()
+                                            .async ()
                                             .get ();
     assert (reply.size () == 1);
     assert (reply[0].to_string () == detail::k_dealer_router_reply);

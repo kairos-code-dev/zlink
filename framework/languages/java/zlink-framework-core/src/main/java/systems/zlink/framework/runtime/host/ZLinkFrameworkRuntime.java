@@ -9,6 +9,7 @@ import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
@@ -22,6 +23,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotRemoteAddress;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.core.RoutingId;
 
 public final class ZLinkFrameworkRuntime implements AutoCloseable {
@@ -29,6 +31,7 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
     private final ZLinkStreamRuntime streams;
+    private final ZLinkFrameworkRegistration registration;
 
     public ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
@@ -43,8 +46,10 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
         ZLinkMessageSerializer serializer,
         ZLinkHandlerFactory handlerFactory) {
         options.validate();
+        this.registration = options.registration();
         ZLinkBackendAdapterOptions adapterOptions =
             new ZLinkBackendAdapterOptions(options.defaultTimeout());
+        ZLinkStreamCodec defaultStreamCodec = defaultStreamCodec(options);
         ZLinkHandlerFactory.MutableServices runtimeHandlers =
             ZLinkHandlerFactory.services(handlerFactory);
         this.channels = new ZLinkChannelRuntime(
@@ -76,7 +81,8 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 options.registration().actorFactories(),
                 options.registration().defaultTimeout(),
                 serializer,
-                runtimeHandlers)
+                runtimeHandlers,
+                defaultStreamCodec)
             : null;
         if (this.actors != null) {
             runtimeHandlers.add(ZLinkActorManager.class, this.actors);
@@ -119,10 +125,23 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     }
 
     private static ZLinkMessageSerializer serializerFor(DefaultZLinkFrameworkOptions options) {
-        if (options.registration().codecs().registeredCodecs().contains("json")) {
+        if (options.registration().codecs().registeredCodecs().contains("json")
+            || options.registration().codecs().registeredCodecs().contains("messagepack")
+            || options.registration().codecs().registeredCodecs().contains("protobuf")) {
             return new ZLinkJsonMessageSerializer();
         }
         return new ZLinkStringMessageSerializer();
+    }
+
+    private static ZLinkStreamCodec defaultStreamCodec(DefaultZLinkFrameworkOptions options) {
+        java.util.Set<String> codecs = options.registration().codecs().registeredCodecs();
+        if (codecs.contains("protobuf")) {
+            return ZLinkStreamCodec.PROTOBUF;
+        }
+        if (codecs.contains("messagepack")) {
+            return ZLinkStreamCodec.MESSAGE_PACK;
+        }
+        return ZLinkStreamCodec.JSON;
     }
 
     public ZLinkClient client() {
@@ -206,9 +225,24 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                     streams.close();
                 }
             } finally {
-                if (spots != null) {
-                    spots.close();
+                try {
+                    if (spots != null) {
+                        spots.close();
+                    }
+                } finally {
+                    closeHandlerExecutor();
                 }
+            }
+        }
+    }
+
+    private void closeHandlerExecutor() {
+        if (registration.closeHandlerExecutor()
+            && registration.handlerExecutor() instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception ex) {
+                throw new ZLinkConfigurationException("failed to close handler executor", ex);
             }
         }
     }

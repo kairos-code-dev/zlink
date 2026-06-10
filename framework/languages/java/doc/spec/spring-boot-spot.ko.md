@@ -91,7 +91,7 @@ channel 해소는 `ZLinkSpotRemoteAddressResolver` 가 맡는다.
 ```java
 context.outbound()
     .requestToSpot(targetSpotRid, request)
-    .submitAsync(StageReply.class);
+    .submit(StageReply.class);
 ```
 
 ## 5. Entry Spot과 user Spot

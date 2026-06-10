@@ -48,14 +48,8 @@ class connector_t
     /// Opens the stream connection and blocks until it succeeds or fails.
     result_t<void> connect ();
 
-    /// Opens the stream connection as an awaitable task.
-    task_t<void> connect_async ();
-
     /// Closes the stream connection and clears pending requests and received packets.
     result_t<void> close ();
-
-    /// Closes the stream connection as an awaitable task.
-    task_t<void> close_async ();
 
     /// Runs one pending On(...) callback when manual dispatch mode is used.
     ///
@@ -63,9 +57,6 @@ class connector_t
     /// is called. wait_for(...) consumes matching received packets directly and does not require
     /// dispatch() to be called.
     result_t<void> dispatch ();
-
-    /// Runs one pending manual-dispatch callback as an awaitable task.
-    task_t<void> dispatch_async ();
 
     /// Waits for the next unread packet with the given name and consumes it.
     result_t<packet_t> wait_for (std::string packet_name)
@@ -75,16 +66,6 @@ class connector_t
 
     /// Waits for the next unread packet with the given name and consumes it.
     result_t<packet_t> wait_for (std::string packet_name, std::chrono::milliseconds timeout);
-
-    /// Waits for the next unread packet with the given name as an awaitable task.
-    task_t<packet_t> wait_for_async (std::string packet_name)
-    {
-        return wait_for_async (std::move (packet_name), options ().request_timeout);
-    }
-
-    /// Waits for the next unread packet with the given name as an awaitable task.
-    task_t<packet_t> wait_for_async (std::string packet_name,
-                                     std::chrono::milliseconds timeout);
 
     /// Starts a typed wait call for the packet name resolved from TMessage.
     template <typename TMessage> wait_call_t<TMessage> wait_for ()
@@ -111,31 +92,6 @@ class connector_t
     wait_call_t<TMessage> wait_for (std::string packet_name, std::chrono::milliseconds timeout)
     {
         return wait_for<TMessage> (std::move (packet_name)).timeout (timeout);
-    }
-
-    /// Waits for the next unread typed packet resolved from TMessage as an awaitable task.
-    template <typename TMessage> task_t<TMessage> wait_for_async ()
-    {
-        return wait_for<TMessage> ().submit_async ();
-    }
-
-    /// Waits for the next unread typed packet resolved from TMessage as an awaitable task.
-    template <typename TMessage> task_t<TMessage> wait_for_async (std::chrono::milliseconds timeout)
-    {
-        return wait_for<TMessage> (timeout).submit_async ();
-    }
-
-    /// Waits for the next unread typed packet with the given name as an awaitable task.
-    template <typename TMessage> task_t<TMessage> wait_for_async (std::string packet_name)
-    {
-        return wait_for<TMessage> (std::move (packet_name)).submit_async ();
-    }
-
-    /// Waits for the next unread typed packet with the given name as an awaitable task.
-    template <typename TMessage>
-    task_t<TMessage> wait_for_async (std::string packet_name, std::chrono::milliseconds timeout)
-    {
-        return wait_for<TMessage> (std::move (packet_name), timeout).submit_async ();
     }
 
     /// Registers a connection state callback owned by this connector.

@@ -12,7 +12,7 @@ namespace detail
 {
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t>> submit_request_part_async (message_t &part_,
+async_result_t<std::vector<message_t>> submit_request_part_awaitable (message_t &part_,
                                                                   std::function<void ()> progress_,
                                                                   SubmitPart submit_part_)
 {
@@ -74,7 +74,7 @@ bool submit_request_part_callback (message_t &part_,
 }
 
 template <typename SubmitPart>
-async_result_t<std::vector<message_t>> submit_request_parts_async (std::vector<message_t> &parts_,
+async_result_t<std::vector<message_t>> submit_request_parts_awaitable (std::vector<message_t> &parts_,
                                                                    std::function<void ()> progress_,
                                                                    SubmitPart submit_part_)
 {

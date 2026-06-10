@@ -72,9 +72,9 @@ struct connector_options_t
 
     /// Controls when On(...) callbacks run for received push packets.
     ///
-    /// In manual mode, callbacks run only when dispatch() or dispatch_async() is called. In
-    /// immediate mode, callbacks run from the connector receive path. wait_for(...) consumes
-    /// matching packets directly in either mode.
+    /// In manual mode, callbacks run only when dispatch() is called. In immediate mode, callbacks
+    /// run from the connector receive path. wait_for(...) consumes matching packets directly in
+    /// either mode.
     dispatch_mode_t dispatch_mode = dispatch_mode_t::manual;
 
     /// Default compression preference for connector calls that opt into compression.

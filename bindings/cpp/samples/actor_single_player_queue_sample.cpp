@@ -77,8 +77,7 @@ int main ()
               }));
     assert (wait_until_flag (second_capture, &actor_sample_capture_t::joined));
     assert (second_capture.join_result == zlink::request_result_t::ok);
-    assert (wait_until_flag (second_capture, &actor_sample_capture_t::actor_read));
-    assert (second_capture.payload == "beforebetween");
+    assert (wait_until_payload (second_capture, "beforebetween"));
 
     (void) actor.leave (second_spot).async ().get ();
     actor.close ();

@@ -351,14 +351,14 @@ if(ZLINK_CPP_BUILD_SAMPLES)
   endfunction()
 
   set(ZLINK_CPP_SAMPLE_SOURCES
-    request_reply_async_sample.cpp
+    request_reply_coroutine_sample.cpp
     pair_recv_sample.cpp
     pubsub_recv_sample.cpp
     dealer_router_recv_sample.cpp
     stream_recv_sample.cpp
     stream_packet_callback_sample.cpp
     spot_recv_sample.cpp
-    spot_request_async_sample.cpp
+    spot_request_coroutine_sample.cpp
     monitor_recv_sample.cpp
     discovery_registry_sample.cpp
     registry_query_sample.cpp

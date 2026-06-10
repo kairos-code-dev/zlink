@@ -15,7 +15,7 @@ namespace
 {
 
 template <typename Submit>
-async_result_t<std::vector<message_t>> submit_actor_request_async (Submit submit_)
+async_result_t<std::vector<message_t>> submit_actor_request_awaitable (Submit submit_)
 {
     std::unique_ptr<detail::request_state_t> request_state (detail::make_future_request_state ());
     std::future<std::vector<message_t>> future = request_state->promise->get_future ();
@@ -39,7 +39,7 @@ bool submit_actor_request_callback (request_callback_t callback_, Submit submit_
 }
 
 template <typename Submit>
-async_result_t<actor_lookup_result_t> submit_actor_lookup_async (Submit submit_)
+async_result_t<actor_lookup_result_t> submit_actor_lookup_awaitable (Submit submit_)
 {
     std::unique_ptr<detail::actor_lookup_result_state_t> request_state (
       detail::make_future_actor_lookup_state ());
@@ -63,7 +63,7 @@ bool submit_actor_lookup_callback (actor_lookup_callback_t callback_, Submit sub
     return true;
 }
 
-async_result_t<actor_join_result_t> submit_actor_join_async (detail::actor_join_state_t &state_)
+async_result_t<actor_join_result_t> submit_actor_join_awaitable (detail::actor_join_state_t &state_)
 {
     std::unique_ptr<detail::actor_join_result_state_t> request_state (
       detail::make_future_actor_join_state ());
@@ -92,7 +92,7 @@ bool submit_actor_join_callback (detail::actor_join_state_t &state_,
 }
 
 async_result_t<actor_join_entry_spot_result_t>
-submit_actor_join_entry_spot_async (detail::actor_payloadless_state_t &state_)
+submit_actor_join_entry_spot_awaitable (detail::actor_payloadless_state_t &state_)
 {
     std::unique_ptr<detail::actor_join_entry_spot_result_state_t> request_state (
       detail::make_future_actor_join_entry_spot_state ());
@@ -194,7 +194,7 @@ actor_join_callback_submit_operation_t actor_join_submit_operation_t::flags (int
 
 async_result_t<actor_join_result_t> actor_join_submit_operation_t::async () &&
 {
-    return submit_actor_join_async (state ());
+    return submit_actor_join_awaitable (state ());
 }
 
 bool actor_join_submit_operation_t::submit (actor_join_callback_t callback_) &&
@@ -282,7 +282,7 @@ actor_join_entry_spot_operation_t::timeout (std::chrono::milliseconds timeout_) 
 
 async_result_t<actor_join_entry_spot_result_t> actor_join_entry_spot_operation_t::async () &&
 {
-    return submit_actor_join_entry_spot_async (state ());
+    return submit_actor_join_entry_spot_awaitable (state ());
 }
 
 bool actor_join_entry_spot_operation_t::submit (actor_join_entry_spot_callback_t callback_) &&
@@ -373,7 +373,7 @@ actor_leave_operation_t &&actor_leave_operation_t::timeout (std::chrono::millise
 
 async_result_t<std::vector<message_t>> actor_leave_operation_t::async () &&
 {
-    return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
+    return submit_actor_request_awaitable ([&] (detail::request_state_t *request_state) {
         return zlink_spot_node_actor_leave_spot (
           state ().node, zlink::detail::actor_ref_native (state ().actor),
           zlink::detail::routing_id_native (state ().aux_rid), &detail::request_callback_trampoline,
@@ -423,7 +423,7 @@ actor_destroy_operation_t::timeout (std::chrono::milliseconds timeout_) &&
 
 async_result_t<std::vector<message_t>> actor_destroy_operation_t::async () &&
 {
-    return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
+    return submit_actor_request_awaitable ([&] (detail::request_state_t *request_state) {
         return zlink_spot_node_actor_destroy (state ().node,
                                               zlink::detail::actor_ref_native (state ().actor),
                                               &detail::request_callback_trampoline, request_state,
@@ -470,7 +470,7 @@ actor_lookup_operation_t &&actor_lookup_operation_t::timeout (std::chrono::milli
 
 async_result_t<actor_lookup_result_t> actor_lookup_operation_t::async () &&
 {
-    return submit_actor_lookup_async ([&] (detail::actor_lookup_result_state_t *request_state) {
+    return submit_actor_lookup_awaitable ([&] (detail::actor_lookup_result_state_t *request_state) {
         return zlink_remote_actor_get_ref (
           state ().node, zlink::detail::routing_id_native (state ().aux_rid),
           state ().actor_id.c_str (), &detail::actor_lookup_result_trampoline, request_state,
@@ -517,7 +517,7 @@ actor_bind_operation_t &&actor_bind_operation_t::timeout (std::chrono::milliseco
 
 async_result_t<std::vector<message_t>> actor_bind_operation_t::async () &&
 {
-    return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
+    return submit_actor_request_awaitable ([&] (detail::request_state_t *request_state) {
         return zlink_stream_bind_actor (
           state ().stream, zlink::detail::routing_id_native (state ().session_rid),
           zlink::detail::actor_ref_native (state ().actor), &detail::request_callback_trampoline,
@@ -564,7 +564,7 @@ actor_unbind_operation_t &&actor_unbind_operation_t::timeout (std::chrono::milli
 
 async_result_t<std::vector<message_t>> actor_unbind_operation_t::async () &&
 {
-    return submit_actor_request_async ([&] (detail::request_state_t *request_state) {
+    return submit_actor_request_awaitable ([&] (detail::request_state_t *request_state) {
         return zlink_stream_unbind_actor (
           state ().stream, zlink::detail::routing_id_native (state ().session_rid),
           state ().actor_id.c_str (), &detail::request_callback_trampoline, request_state,

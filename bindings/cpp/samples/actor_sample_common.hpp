@@ -39,6 +39,13 @@ inline bool wait_until_flag (actor_sample_capture_t &capture_, bool actor_sample
                                  [&] () { return capture_.*flag_; });
 }
 
+inline bool wait_until_payload (actor_sample_capture_t &capture_, const std::string &payload_)
+{
+    std::unique_lock<std::mutex> lock (capture_.mutex);
+    return capture_.cv.wait_for (lock, std::chrono::seconds (2),
+                                 [&] () { return capture_.payload == payload_; });
+}
+
 inline zlink::routing_id_t sample_rid (const char *text_)
 {
     return zlink::routing_id_t::from (reinterpret_cast<const uint8_t *> (text_),

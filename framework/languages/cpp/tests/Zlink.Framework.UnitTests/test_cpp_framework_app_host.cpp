@@ -422,7 +422,7 @@ struct response_context_http_handler_t
     }
 };
 
-struct request_async_http_handler_t
+struct request_task_http_handler_t
 {
     using request_type = create_game_http_handler_t::request_type;
     using reply_type = create_game_http_handler_t::reply_type;
@@ -431,7 +431,7 @@ struct request_async_http_handler_t
                                                  const zlink::framework::http_request_t &http)
     {
         co_return reply_type{.id = http.route_values.at ("id"),
-                             .name = "request-async:" + request.name,
+                             .name = "request-task:" + request.name,
                              .filter = http.query_values.at ("filter"),
                              .correlationId = http.correlation_id};
     }
@@ -816,7 +816,7 @@ int main ()
           .map_get<number_http_handler_t> ("/numbers/{id}")
           .map_get<response_game_http_handler_t> ("/response-games/{id}")
           .map_get<response_context_http_handler_t> ("/response-context-games/{id}")
-          .map_get<request_async_http_handler_t> ("/request-async-games/{id}")
+          .map_get<request_task_http_handler_t> ("/request-task-games/{id}")
           .map_post<raw_echo_http_handler_t> ("/raw/{id}")
           .map_post<raw_async_http_handler_t> ("/raw-async/{id}")
           .map_get<create_game_http_handler_t> ("/secure-games/{id}")
@@ -857,8 +857,8 @@ int main ()
       http_client.get ("/response-context-games/10?filter=context&name=object")
         .submit<create_game_http_handler_t::reply_type> ()
         .result ();
-    const auto request_async_result =
-      http_client.get ("/request-async-games/13?filter=request&name=async")
+    const auto request_task_result =
+      http_client.get ("/request-task-games/13?filter=request&name=task")
         .submit<create_game_http_handler_t::reply_type> ()
         .result ();
     const auto raw_result = http_client.post ("/raw/42?mode=echo")
@@ -1007,10 +1007,10 @@ int main ()
         || response_context_result.value ().headers.at ("X-Response-Wins") != "true") {
         return 61;
     }
-    if (!request_async_result || request_async_result.value ().status != 200
-        || request_async_result.value ().body.id != "13"
-        || request_async_result.value ().body.name != "request-async:async"
-        || request_async_result.value ().body.filter != "request") {
+    if (!request_task_result || request_task_result.value ().status != 200
+        || request_task_result.value ().body.id != "13"
+        || request_task_result.value ().body.name != "request-task:task"
+        || request_task_result.value ().body.filter != "request") {
         return 62;
     }
     if (!raw_result || raw_result.value ().status != 206

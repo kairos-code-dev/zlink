@@ -62,11 +62,11 @@ zlink_submit_result_t submit_raw_request_part (detail::spot_operation_state_t &s
 }
 
 async_result_t<std::vector<message_t>>
-submit_raw_request_async (detail::spot_operation_state_t &state_)
+submit_raw_request_awaitable (detail::spot_operation_state_t &state_)
 {
     ensure_raw_request_state (state_);
 
-    return detail::submit_request_parts_async (
+    return detail::submit_request_parts_awaitable (
       state_.parts, zlink::detail::make_socket_request_progress (state_.raw_socket),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
            void *request_state_) {
@@ -237,7 +237,7 @@ async_result_t<std::vector<message_t>> request_submit_operation_t::async () &&
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     if (is_raw_request_kind (state.kind))
-        return submit_raw_request_async (state);
+        return submit_raw_request_awaitable (state);
 
     if (!state.spot)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);

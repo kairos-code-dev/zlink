@@ -590,9 +590,9 @@ UnrealEditor-Cmd <TestProject>.uproject \
 ## 14. 구현 순서
 
 이 초안은 아직 정식 공개 계약이 아니므로 기존 실험 API와의 호환성을 유지하지 않는다.
-코드 적용 시에는 callback을 받는 과거 async submit 표면, core header의 불필요한 `task_t` 노출,
-`connect_async()`, `close_async()`, `dispatch_async()`, `wait_for_async()`를 deprecated로
-남기지 않고 제거한다. 샘플과 테스트도 새 표면으로 바로 옮긴다.
+코드 적용 시에는 callback을 받는 과거 async submit 표면, core header의 불필요한 `task_t`
+노출, lifecycle에 붙어 있던 과거 `*_async` member를 deprecated로 남기지 않고 제거한다.
+샘플과 테스트도 새 표면으로 바로 옮긴다.
 
 구현은 아래 순서로 진행한다.
 

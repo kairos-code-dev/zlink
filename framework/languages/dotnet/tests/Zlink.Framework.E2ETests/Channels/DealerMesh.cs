@@ -49,7 +49,7 @@ public sealed class DealerMeshTests
             {
                 await client
                     .SendToChannel("mesh", new MeshProfileRequest { UserId = "mesh-send" })
-                    .Submit();
+                    .SubmitAsync();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

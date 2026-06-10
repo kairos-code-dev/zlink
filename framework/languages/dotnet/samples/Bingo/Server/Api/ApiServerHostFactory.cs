@@ -11,8 +11,9 @@ public static class ApiServerHostFactory
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
-            options.Codecs.AddJson();
+            options.Codecs.AddProtobuf();
             options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.ApiChannel, channel =>
             {

@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
@@ -23,8 +23,12 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
         logger.LogInformation("match: actor request. actor={ActorId}, mode={Mode}", actor.ActorId, message.Mode);
         var matched = await entrySpot.Context.Outbound.RequestToChannel(
                 SampleNames.ApiChannel,
-                new MatchBingoApiReq(actor.ActorId, actor.DisplayName, message.Mode))
-            .Timeout(SampleTimings.RequestTimeout)
+                new MatchBingoApiReq
+                {
+                    ActorId = actor.ActorId,
+                    DisplayName = actor.DisplayName,
+                    Mode = message.Mode,
+                })
             .SubmitAsync<MatchBingoApiRes>(cancellationToken)
             ;
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
@@ -32,12 +36,20 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
         var roomRid = RoutingId.FromHex(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
                 roomRid,
-                new BingoRoomJoinReq(matched.RoomId, actor.ActorId, actor.DisplayName).Encode())
-            .Timeout(SampleTimings.RequestTimeout)
+                new BingoRoomJoinReq
+                {
+                    RoomId = matched.RoomId,
+                    ActorId = actor.ActorId,
+                    DisplayName = actor.DisplayName,
+                }.ToProto())
             .SubmitAsync(cancellationToken)
             ;
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
-        return new MatchBingoRes(matched.RoomId, joined.Reply.Decode<BingoRoomJoinRes>().State);
+        return new MatchBingoRes
+        {
+            RoomId = matched.RoomId,
+            State = joined.Reply.FromProto<BingoRoomJoinRes>().State,
+        };
     }
 }

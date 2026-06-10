@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;

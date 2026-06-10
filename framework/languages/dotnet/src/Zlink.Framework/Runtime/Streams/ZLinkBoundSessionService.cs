@@ -112,15 +112,15 @@ internal sealed class ZLinkBoundSessionService(
         IReadOnlyDictionary<string, string> metadata,
         TPayload payload)
     {
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(payload, payload?.GetType() ?? typeof(TPayload));
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Send,
-            ZlinkStreamCodec.Json,
+            encoded.Codec,
             MetadataFlags(metadata),
             null,
             packetName ?? throw new InvalidOperationException("Packet name is required."),
             ToStreamMetadata(metadata));
-        var body = ZLinkEnvelopeCodec.EncodeJsonBytes(payload, payload?.GetType() ?? typeof(TPayload));
-        return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, body);
+        return ZLinkStreamFrameCodec.Encode(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span, encoded.Payload.Span);
     }
 
     private static ZlinkStreamHeaderFlags MetadataFlags(IReadOnlyDictionary<string, string> metadata)
@@ -179,7 +179,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask Submit(CancellationToken cancellationToken = default)
+    public async ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         await service.SendBoundSessionAsync(
                 actorId,

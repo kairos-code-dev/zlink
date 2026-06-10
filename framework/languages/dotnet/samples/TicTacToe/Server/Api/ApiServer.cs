@@ -13,6 +13,8 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.WebHost.UseUrls(settings.ApiBindUrl);
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DefaultTimeout = SampleTimeouts.Request;
+            options.Codecs.AddMessagePack();
             options.AddHandlersFromAssemblyOf<ApiServer>();
             options.AddClientServerChannel(SampleChannels.Api, channel =>
             {

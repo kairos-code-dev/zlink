@@ -8,19 +8,26 @@
 이 디렉토리의 문서도 상위 sample spec과 같은 작성 기준을 따른다. `.NET` Bingo와
 TicTacToe 샘플처럼 서버 역할, 연결 방식, 메시지 계약, 흐름, client 시나리오, 구현 완료
 기준을 한 문서 안에서 확인할 수 있어야 한다. 차이는 event의 기준 경로뿐이다.
-durable event가 필요한 업무 흐름은 Redis Stream 또는 Kafka를 기준 경로로 두고,
-유실되어도 snapshot으로 보정할 수 있는 realtime 흐름은 ZLink fanout을 기준 경로로 둔다.
+durable event가 필요한 업무 흐름은 도메인 event store, state owner, projection으로 필요한
+의미를 먼저 구성한다. event 양과 consumer 수가 커지면 Redis Stream 또는 Kafka를 확장 경로로
+둔다. 유실되어도 snapshot으로 보정할 수 있는 realtime 흐름은 ZLink fanout을 기준 경로로 둔다.
+event sourcing이 도메인 모델을 더 선명하게 만드는 경우에는 event stream을 상태의 기준으로
+두고 projection은 다시 만들 수 있는 조회 모델로 둔다.
 
 | 샘플 | 목적 | event 기준 경로 | ZLink 역할 |
 |------|------|----------------|------------|
-| [ShoppingMallCheckout](./shoppingmall-checkout.ko.md) | 주문, 재고, 결제처럼 event 저장이 필요한 웹서비스에서 ZLink를 함께 쓰는 구조를 보여 준다. | Redis Stream 또는 Kafka | channel, discovery, workflow Spot, stream notify |
-| [GameQuest](./gamequest.ko.md) | 여러 gameplay subsystem에서 발생한 event를 구독해 quest 진행을 갱신한다. | ZLink fanout | realtime fanout, Quest Spot, stream notify |
+| [ShoppingMallCheckout](./shoppingmall-checkout.ko.md) | 단일 Commerce API 서버 타입에서 견고한 event-sourced 주문 workflow를 구성한다. | ZLink owner routing + OrderEventStore | event sourcing, workflow Spot, projection 조회 |
+| [GameQuest](./gamequest.ko.md) | stateless Game API action event를 받아 event sourced quest aggregate를 갱신한다. | ZLink fanout + QuestEventStore | realtime fanout, event sourcing, QuestMission Spot, WebSocket notify |
 
-ShoppingMallCheckout은 durable event broker가 필요한 경계를 명확히 보여 준다. ZLink는
-event broker를 대체하지 않고 service command/query, endpoint discovery, 상태 소유,
-client push를 맡는다.
+ShoppingMallCheckout은 Kafka를 그대로 복제하지 않는다. 작은 규모에서 시작하는 커머스 서비스도
+주문, 재고, 결제 workflow는 실패와 중복 요청을 견고하게 처리해야 한다. 이 샘플은
+`CommerceApi` 안의 module과 `OrderWorkflowSpot`, `OrderEventStore`, projection으로 주문 상태
+전이를 event sourced workflow로 구성한다. Redis Stream 또는 Kafka는 다수 consumer, 큰 backlog,
+외부 downstream replay가 필요할 때 붙이는 확장 선택지다.
 
-GameQuest는 ZLink fanout이 자연스러운 샘플이다. combat, inventory, mission, world 같은
-여러 영역에서 발생하는 event를 Quest 서버가 구독하고, `PlayerQuestSpot`이 quest 진행을
-갱신한다. 영속성이 필요한 quest 진행 상태는 저장소에 남기고, 누락 가능성은 snapshot
-재동기화로 보정한다.
+GameQuest는 ZLink fanout과 event sourcing을 함께 보여 주는 샘플이다. stateless
+`GameApi` 서버가 combat, inventory, mission, world action을 처리하고 gameplay event를
+publish한다. `QuestMission` 서버의 `PlayerQuestSpot`은 `PlayerId` 기준 owner로 route된
+event stream을 replay해 aggregate를 복원한 뒤 새 quest domain event를 append한다. client
+조회와 notify는 projection을 사용하고, 누락 가능성은 snapshot 재동기화 결과를 다시 event
+stream에 append해 보정한다.

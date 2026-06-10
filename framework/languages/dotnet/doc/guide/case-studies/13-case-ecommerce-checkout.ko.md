@@ -190,7 +190,7 @@ public sealed class PlaceOrderHandler(
 }
 ```
 
-> **왜 여전히 outbox 인가.** `Publish(...).Submit()` 의 완료는 **transport 위임까지만**
+> **왜 여전히 outbox 인가.** `Publish(...).SubmitAsync()` 의 완료는 **transport 위임까지만**
 > 보장한다(remote 수신 보장 아님, [03-concepts](../03-concepts.ko.md) §7). 즉
 > 유실 없이 재발행해야 하거나 중복 처리를 제어해야 하는 이벤트는 ZLink 에서도 outbox
 > row 를 남기고 publisher 가 재발행하는 패턴을 그대로 쓴다. 단순 통지성(유실 허용)

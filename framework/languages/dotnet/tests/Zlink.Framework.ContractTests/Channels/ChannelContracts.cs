@@ -16,7 +16,7 @@ public sealed class ChannelContracts
         await client
             .SendToChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
-            .Submit();
+            .SubmitAsync();
 
         var reply = await client
             .RequestToChannel("api", new AuthenticateRequest("player-1"))
@@ -44,7 +44,7 @@ public sealed class ChannelContracts
         await client
             .Send("play-router", target, new RoomEvent("opened"))
             .PacketName("room.event")
-            .Submit();
+            .SubmitAsync();
 
         var room = await client
             .Request("play-router", target, new AllocateRoom("alice"))
@@ -68,7 +68,7 @@ public sealed class ChannelContracts
         await publisher
             .Publish("events", "room.opened", new RoomEvent("opened"))
             .PacketName("room.event")
-            .Submit();
+            .SubmitAsync();
 
         Assert.Equal(("events", "room.opened", "room.event"), publisher.LastPublish);
     }
@@ -98,13 +98,13 @@ public sealed class ChannelContracts
         await orders
             .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .PacketName("inventory.reserve")
-            .Submit();
+            .SubmitAsync();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
         await events
             .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
             .PacketName("order.status-changed")
-            .Submit();
+            .SubmitAsync();
 
         Assert.Equal("order-1042", placed.OrderId);          // unary RPC reply correlated by type
         Assert.Equal("inventory", orders.LastChannelName);    // last one-way send routed by channel name
@@ -206,7 +206,7 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
@@ -231,7 +231,7 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall

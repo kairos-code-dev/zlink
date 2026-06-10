@@ -1,7 +1,6 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.MessagePack;
 using System.Text;
-using Microsoft.Extensions.Logging;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
 using TicTacToe.Server.Play.Domain.TicTacToe;
 using TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
@@ -59,7 +58,7 @@ sealed class TicTacToeGame(
         Message request,
         CancellationToken cancellationToken)
     {
-        var joinRequest = request.Decode<TicTacToeGameJoinReq>();
+        var joinRequest = request.FromMsgPack<TicTacToeGameJoinReq>();
         var reply = await JoinPlayerAsync(player, joinRequest.RoomId, cancellationToken);
         logger.LogInformation(
             "TicTacToeGame: actor join accepted. actor={ActorId}, roomId={RoomId}, mark={Mark}",
@@ -67,7 +66,7 @@ sealed class TicTacToeGame(
             joinRequest.RoomId,
             reply.State.XActorId == player.ActorId ? "X" : "O");
 
-        return ZLinkSpotActorJoinResult.Accept(reply.Encode());
+        return ZLinkSpotActorJoinResult.Accept(reply.ToMsgPack());
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
@@ -150,7 +149,7 @@ sealed class TicTacToeGame(
             .ToArray();
         return SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken));
     }
 
     private ValueTask NotifyPlayerJoinedAsync(
@@ -171,7 +170,7 @@ sealed class TicTacToeGame(
             .ToArray();
         return SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken));
     }
 
     private static async ValueTask SendSessionPushAsync(

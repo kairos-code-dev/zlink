@@ -61,7 +61,7 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
     IZLinkSessionSendCall IZLinkSessionSendCall.Compress()
         => (IZLinkSessionSendCall)Compress();
 
-    public ValueTask Submit()
+    public ValueTask SubmitAsync()
     {
         return Execute();
     }
@@ -95,7 +95,7 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
     IZLinkSessionReplyCall IZLinkSessionReplyCall.Compress()
         => (IZLinkSessionReplyCall)Compress();
 
-    public ValueTask Submit()
+    public ValueTask SubmitAsync()
     {
         return Execute();
     }

@@ -16,21 +16,27 @@ SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어�
 
 ## 샘플 목록
 
-| 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 |
-|------|------|-----------|-----------|-------------------|
-| [Bingo](./bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler 계약 명시 등록 |
-| [TicTacToe](./tictactoe/README.ko.md) | API 서버와 Play 서버만으로 가장 작은 실시간 게임 흐름을 보여 준다. | `Api` 역할 분리, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 | 선언형 등록 우선, 불가능하면 명시 등록 |
-| [SupportChat](./supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher |
-| [ShoppingMallCheckout](./event/shoppingmall-checkout.ko.md) | event 저장이 필요한 웹서비스에서 durable broker와 ZLink를 함께 쓰는 구조를 보여 준다. | `Session`, `Api`, `Inventory`, `Payment`, `Order`, `Registry`, Redis/Kafka | Registry/Discovery 자동 연결 | typed handler와 durable event consumer |
-| [GameQuest](./event/gamequest.ko.md) | 여러 gameplay subsystem event를 ZLink fanout으로 구독해 quest 진행을 갱신한다. | `Session`, `Combat`, `Inventory`, `Mission`, `World`, `Quest`, `Registry` 분리 | Registry/Discovery 자동 연결 | fanout subscriber와 Quest Spot handler |
+| 샘플 | 목적 | 서버 구성 | 연결 방식 | Handler 등록 방식 | 기본 payload codec |
+|------|------|-----------|-----------|-------------------|--------------------|
+| [Bingo](./bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
+| [TicTacToe](./tictactoe/README.ko.md) | API 서버와 Play 서버만으로 가장 작은 실시간 게임 흐름을 보여 준다. | `Api` 역할 분리, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 | 선언형 등록 우선, 불가능하면 명시 등록 | MessagePack |
+| [SupportChat](./supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
+| [ShoppingMallCheckout](./event/shoppingmall-checkout.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `Registry`, `OrderEventStore`, `OrderReadModelStore`, `CommerceStateStore` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
+| [GameQuest](./event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry`, `QuestEventStore`, `QuestReadModelStore`, `GameplayStateStore` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
 ## 공통 작성 원칙
 
 - 샘플은 framework가 어떤 일을 대신해 주는지 보여 주어야 한다.
 - 도메인 규칙은 작게 유지하고, session, actor, Spot, channel, timer, push 흐름이
   코드에서 잘 보이게 둔다.
-- 실시간 상태를 소유하는 서버는 `Domain`, `Application`, `Adapters` 레이어를 나누어 구현한다.
-  디렉토리 이름은 언어 관용에 맞게 바꿀 수 있지만 같은 책임 분리는 유지해야 한다.
+- 이 문서에서 `Spot`은 독립적인 생명주기를 가지는 stateful coordination point를 뜻한다.
+  Spot은 room, conversation, workflow instance, player quest처럼 상태와 이벤트가 모이는
+  단위를 표현한다. Spot은 actor 참여를 받을 수 있지만 actor가 필수는 아니다. Spot은
+  directed request를 처리하거나, event를 publish하거나, timer를 실행하거나, pub/sub event에
+  반응할 수 있다.
+- 실시간 상태를 소유하는 서버는 `Domain`, `Application`, `Adapters` 책임을 나누어 구현한다.
+  아래 이름은 권장 구조이며, 디렉토리 이름은 언어 관용과 기존 샘플 구조에 맞게 바꿀 수 있다.
+  다만 같은 책임 분리와 의존 방향은 유지해야 한다.
   - `Domain`은 순수 도메인 규칙, 상태 전이, 결과 판정, 도메인 event 생성을 맡는다.
     framework 타입, socket, stream, handler, logger, DI container에 의존하지 않는다.
   - `Application`은 room 생성, room 배정처럼 domain을 사용하는 use case를 맡는다.
@@ -39,22 +45,62 @@ SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어�
     handler, notification publisher, channel request handler는 이 레이어에 둔다.
 - 언어별 샘플은 같은 역할과 메시지 이름을 사용한다. 언어 관용구 때문에 이름을
   바꿔야 하면 공통 문서에 차이를 먼저 기록한다.
+- 클라이언트에서 실제 서버에 접속해 request, push, final state를 확인하는 흐름은
+  `ClientScenario` 이름으로 둔다. 예를 들어 `BingoClientScenario`처럼 샘플 이름과
+  client scenario 역할이 함께 드러나야 한다. `TestScenario`는 별도 테스트 fixture로
+  오해될 수 있으므로 샘플 client 실행 흐름의 이름으로 쓰지 않는다.
 - 공통 문서의 메시지 계약은 언어 중립 schema로 읽는다. 언어별 샘플은 record,
   class, struct, interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드와
   의미를 구현한다.
 - channel, route, stream, actor, Spot 경계를 넘는 wire message는 이름 있는 계약으로
   둔다. Python `dict` 나 Node.js object literal 처럼 동적 객체를 쉽게 만들 수 있는
   언어에서도 호출 지점에 `{ ... }` 를 바로 쓰거나 packet name 문자열을 흩어 놓지
-  않는다. 요청, 응답, 알림 payload factory 또는 schema를 `Shared/Contracts` 같은
-  공용 계약 위치에 두어야 한다.
+  않는다. 요청, 응답, 알림 payload는 `Shared/Contracts` 같은 공용 계약 위치에
+  message type 또는 schema로 두고, client와 server는 그 객체의 public interface만
+  사용해야 한다.
+- codec별 편의 wrapper나 샘플 전용 helper로 message 객체의 계약을 감추면 안 된다.
+  JSON, MessagePack, Protobuf 중 어떤 codec을 쓰더라도 샘플 코드는 connector와
+  message 객체가 제공하는 public interface를 직접 사용해야 한다.
 - inline object literal은 한 함수 안에서만 쓰는 local state, 테스트 보조 값, 파싱 결과처럼
   wire 계약이 아닌 값에만 사용한다. 샘플은 짧은 데모보다 여러 언어에서 같은 메시지
   흐름을 비교할 수 있는 가시성을 우선한다.
 - Bingo와 TicTacToe는 같은 기능을 반복해서 보여 주지 않는다. Bingo는 Registry/Discovery를
   이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint를 쓰는 직접 play 연결 구조를 맡는다.
+- codec도 같은 기능을 반복해서 보여 주지 않는다. Bingo는 cross-language schema가 분명한
+  Protobuf payload를 맡고, TicTacToe는 작은 실시간 game packet에 적합한 MessagePack
+  payload를 맡는다. SupportChat, ShoppingMallCheckout, GameQuest는 읽기 쉬운 JSON payload를
+  기본으로 둔다.
 - 식별자는 도메인 의미가 드러나게 이름 붙인다. 예를 들어 TicTacToe에서 client가 받는
   값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`이며, room Spot
   routing id는 각 언어의 routing id 생성 API로 `RoomId` 문자열에서 만든다.
+
+## Client self-check 기준
+
+Bingo와 TicTacToe는 `.NET` 샘플의 client 검증 흐름을 기준으로 삼는다. 샘플 client는
+성공 로그를 출력하는 데서 끝나면 안 된다. request로 보낸 값이 response와 push payload에
+같은 의미로 돌아오는지 직접 확인해야 한다.
+
+언어별 client는 아래 항목을 반드시 검증한다.
+
+- 인증 요청에 사용한 token 또는 actor id가 인증 응답의 actor id와 일치한다.
+- room 생성이나 matching 요청이 반환한 식별자, endpoint, state status가 요청 시나리오와
+  일치한다. `GameName`처럼 특정 샘플에만 있는 필드는 해당 샘플에서만 확인한다.
+- 첫 번째 참가자는 waiting 상태를 받고, 두 번째 참가자는 running 또는 in-progress 상태를
+  만든다.
+- 자기 자신에게 보내면 안 되는 join notify는 받지 않았음을 확인한다.
+- 상대 참가자의 join notify는 actor id, room id, state status를 확인한다. TicTacToe의
+  `Mark`처럼 특정 샘플에만 있는 필드는 해당 샘플에서 추가로 확인한다.
+- game start, move, draw, ended notify는 단순 수신 개수가 아니라 payload 안의 board,
+  turn, draw sequence, winner, player list 같은 의미 값을 확인한다.
+- deterministic sample은 마지막 winner와 최종 state를 고정값으로 확인한다.
+
+push message 대기는 sample-local polling 함수가 아니라 stream connector의 public
+interface를 사용한다. 예를 들어 `.NET` 샘플의 `WaitFor<TPayload>().Where(...).SubmitAsync(...)`
+처럼 connector 객체가 제공하는 wait API를 직접 호출한다. codec별 JSON, MessagePack,
+Protobuf wrapper나 샘플 전용 함수 뒤에 대기 흐름을 숨기면 안 된다. sample은 connector가
+반환한 message 객체의 public interface로 payload를 읽고 바로 검증한다. notification
+수집용 inbox나 로그 queue는 결과 출력과 추가 검증을 위해 둘 수 있지만, push 도착을
+기다리는 기준 경로가 되어서는 안 된다.
 
 ## 상태 소유 서버 공통 디렉토리 구조
 

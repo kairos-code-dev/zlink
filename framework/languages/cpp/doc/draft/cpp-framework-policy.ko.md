@@ -69,7 +69,7 @@ configuration, handler registry, CAPI dispatch 연결, lifecycle, ActorGateway a
 언어별 문서를 맞춘다.
 
 동작 기준은 현재 `.NET` framework 구현과 정식 spec 문서다. `C++` 문서는 그 동작을
-`C++20` coroutine, callback submit, RAII, CMake/package 구조에 맞게 투영한다. 기능
+`C++20` coroutine, RAII, CMake/package 구조에 맞게 투영한다. 기능
 범위는 축소하지 않고, 언어별 표현과 구현 순서만 다르게 둔다.
 
 최종 완료 기준은 아래 세 가지다.
@@ -410,15 +410,14 @@ codec registry, thread dispatch 구현을 담는다.
 
 ## 3.0 Language Baseline
 
-`C++` framework는 `C++20` 이상만 지원한다. 이 기준은 coroutine 기반 handler와
-`task_t<T>` async 표면을 framework의 기본 표현으로 삼기 위한 결정이다.
+`C++` framework는 `C++20` 이상만 지원한다. 이 기준은
+[framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을
+`C++`의 coroutine 기반 handler와 `task_t<T>` async 표면으로 투영하기 위한 결정이다.
 
 필수 기준은 아래와 같다.
 
 - public header와 samples는 `C++20`으로 작성한다.
 - coroutine handler는 `task_t<T>` 또는 `task_t<void>`를 반환한다.
-- callback submit 경로는 항상 함께 제공한다. 모든 사용자가 coroutine으로만 작성해야
-  한다는 뜻은 아니다.
 - public async 표면에는 `std::future`를 사용하지 않는다.
 - handler, timer, stream session, actor relay 안에서 blocking wait를 허용하지 않는다.
   handler dispatch 내부에서 `.result()`로 task를 기다리는 bridge 구현도 허용하지 않는다.
@@ -428,6 +427,34 @@ codec registry, thread dispatch 구현을 담는다.
   명시적으로 사용한다.
 - C++20 표준 library 기능을 사용할 수 있지만, CAPI dispatch callback을 handler 등록
   표면에 연결하는 내부 경계는 framework가 직접 소유한다.
+
+### 3.0.1 Server Network Async Policy
+
+C++ server framework의 네트워크 public API는 `.NET` framework와 같은 방향으로 정리한다.
+네트워크 호출, listen/connect, send, request/reply, stream write, packet wait, graceful
+close, shutdown drain처럼 I/O 완료 조건을 가진 함수는 blocking 동기 API를 제공하지 않는다.
+
+이 정책은 server framework에만 적용한다. C++ Stream Connector core는 게임 client와 엔진
+환경을 위해 no-exception/no-coroutine 계약을 따르고, 필요한 coroutine 표면을 별도 adapter로
+분리한다. server framework는 framework runtime과 coroutine scheduler를 소유하므로, 네트워크
+API를 `task_t<T>` 기반 awaitable 표면으로 통일한다.
+
+서버 public API의 이름 규칙은 아래와 같다.
+
+- 네트워크 작업은 `*_async` 또는 call object의 `submit_async()`로 완료한다.
+- `*_async` 함수는 callback을 받지 않고 `task_t<T>` 또는 `task_t<void>`를 반환한다.
+- `submit_async(callback)` 형태는 server framework public API로 제공하지 않는다.
+- `submit()`이 thread를 block해서 `result_t<T>`를 반환하는 네트워크 API는 제공하지 않는다.
+- 설정 builder, DI 등록, route 등록, serializer 등록처럼 I/O가 없는 구성 API는 동기 함수로
+  유지한다.
+- handler는 application callback이므로 동기 handler와 coroutine handler를 모두 허용할 수
+  있다. 단, handler 안에서 네트워크 호출을 해야 하면 `co_await ...submit_async()`를 사용한다.
+
+네트워크 작업은 응답 payload가 없어도 async API로 둔다. reply가 없다는 뜻은 대기할 payload가
+없다는 뜻일 뿐, backpressure, route ready, send timeout, cancellation, runtime shutdown,
+graceful drain 같은 완료 조건이 사라지는 것은 아니다. blocking wrapper를 public API로 만들면
+framework scheduler를 우회하고, shutdown 지연이나 worker 고갈을 만들 수 있으므로 제공하지
+않는다.
 
 ## 3.1 외부 라이브러리 정책
 
@@ -902,8 +929,7 @@ spot, stream session 같은 의미 단위의 직렬화 정책으로 닫는다. �
 | Entry Spot actor packet | registered Entry Spot actor handler | 같은 actor id는 core actor ordering을 따른다 |
 | user Spot packet/actor packet/subscription/timer | registered Spot handler | 같은 user Spot 안에서는 core SPOT dispatch boundary를 따른다 |
 | Entry Spot timer | registered Entry Spot timer handler | Entry Spot 전체를 전역 직렬화하지 않고, 같은 timer instance만 재진입 금지 |
-| callback submit completion | `submit_async(callback)` | `result_t<T>`로 완료한다 |
-| coroutine resume | `co_await call.submit_async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
+| network operation resume | `co_await call.submit_async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
 | CPU-bound handler | `handler_options_t::execution = handler_execution_t::offload` | framework core offload executor에서 실행한다 |
 
 application handler는 CAPI callback 함수 본문 안에서 직접 실행하지 않는다. framework는
@@ -928,7 +954,8 @@ backpressure는 zlink framework의 핵심 강점으로 다룬다.
 명시적으로 둘 수 있어야 한다.
 
 send-ready callback, pending queue resume, HWM drain 순서는 runtime 내부 구현이다.
-application은 `submit()`, timeout, 실패 result, monitoring event로 backpressure를 본다.
+application은 `co_await call.submit_async()`, timeout exception, monitoring event로
+backpressure를 본다.
 `spot_context_t` 같은 public context가 pending queue를 직접 resume하는 API를 제공하지
 않는다.
 
@@ -1206,15 +1233,14 @@ timeout, graceful close, drain은 core reliability 표면이다. retry와 dead-l
 handler 재실행 의미, ordering, 중복 처리 정책이 필요하므로 별도 초안으로 분리해
 정확한 계약을 닫는다.
 
-호출 실행 표면은 동기와 비동기를 이름으로 구분한다. C++에서는 `request(...)`, `send(...)`,
-`relay(...)`가 call object를 만들고, `submit()`은 `result_t<T>`를 반환하는 동기 실행 지점이다.
-`.NET`의 `SubmitAsync()`와 callback completion 모델은 `submit_async()` 이름으로 투영한다.
-callback 방식은 `submit_async(callback)`을 쓰고, coroutine 방식은
-`co_await call.submit_async()`을 쓴다. public async 표면에 `std::future`를 사용하지 않고,
-handler/runtime 내부에서 blocking wait를 허용하지 않는다.
+호출 실행 표면은 `.NET` framework의 awaitable network API와 같은 방향으로 둔다.
+C++에서는 `request(...)`, `send(...)`, `relay(...)`가 call object를 만들고,
+`co_await call.submit_async()`가 실행 지점이다. `submit_async()`는 callback을 받지 않고
+`task_t<T>` 또는 `task_t<void>`를 반환한다. public async 표면에 `std::future`를 사용하지
+않고, handler/runtime 내부에서 blocking wait를 허용하지 않는다.
 
-callback submit은 `result_t<T>`로 완료된다. coroutine submit은 성공 시 값을 반환하고,
-실패 시 `framework_exception_t`를 throw한다. 이 exception은 `.NET` framework의
+coroutine submit은 성공 시 값을 반환하고, 실패 시 `framework_exception_t`를 throw한다.
+이 exception은 `.NET` framework의
 `ZLinkFrameworkException`처럼 error kind와 message, retriable 여부를 담는다.
 error kind 이름은 C++ naming으로 바꾸되 의미는 `.NET`의 `ZLinkFrameworkErrorKind`를
 기준으로 맞춘다.
@@ -1320,8 +1346,8 @@ Unreal Connector도 같은 문서에서 다루며 framework target에 포함하�
 framework 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개로 둔다.
 
 `Bingo`는 channel/SPOT/session stream 중심의 기본 실시간 메시징 샘플이다. app/host, DI,
-channel request/reply, session packet dispatch, publish/subscribe, callback submit,
-coroutine submit, handler error mapping, user Spot, timer, monitoring, graceful shutdown,
+channel request/reply, session packet dispatch, publish/subscribe, coroutine submit,
+handler error mapping, user Spot, timer, monitoring, graceful shutdown,
 CPU-bound handler offload를 검토한다. packet 이름과 handler 흐름은 `.NET` Bingo 샘플과
 같은 수준으로 유지한다.
 
@@ -1428,7 +1454,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 - GoogleTest와 GoogleMock은 framework C++ 개발 의존성이다. public framework header와
   배포 runtime dependency에는 노출하지 않는다.
 - C++20 compile contract 테스트를 별도로 둔다. public header, concepts, coroutine
-  return type, callback submit signature가 깨지면 컴파일 단계에서 실패해야 한다.
+  return type, network `submit_async()` signature가 깨지면 컴파일 단계에서 실패해야 한다.
 - 회귀 테스트는 `.NET` framework와 같은 기능 축을 C++ 표면으로 반복한다. C++ 문법만
   다르고 기능 기대값은 같아야 한다.
 
@@ -1440,7 +1466,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 | channel send/event | no-reply send, command dispatch, event dispatch, handler exception masking, topic mismatch, no subscriber |
 | pub/sub | single subscriber, multiple subscriber, unsubscribe, publisher close, subscriber disconnect, slow subscriber backpressure |
 | route channel | manual route connection, discovery route connection, routing id selection, routed request/reply, route handler not found, ambiguous route validation |
-| async surface | `submit_async(callback)`, `co_await submit_async()`, completion path, blocking wait 금지 |
+| async surface | `co_await submit_async()`, exception mapping, callback overload 금지, blocking wait 금지 |
 | handler execution | 기본 handler 실행, CPU-bound handler offload, concurrency 제한, shutdown drain |
 | STREAM | connected/disconnected/error callback, packet header validation, session ordering, write backpressure, close cleanup, invalid packet drop |
 | SPOT | spot create/destroy, join/leave, actor handler, publish, request_to, route resolver, core SPOT dispatch ordering |
@@ -1468,8 +1494,8 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 
 필수 회귀 항목은 아래와 같다.
 
-- `submit_async(callback)`과 `co_await submit_async()`가 같은 timeout/error kind를 반환한다.
-- shutdown 이후 새 submit은 `shutdown`으로 실패한다.
+- `co_await submit_async()`가 timeout/error kind를 보존한 `framework_exception_t`로 실패한다.
+- shutdown 이후 새 `submit_async()`는 `shutdown`으로 실패한다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
 - channel handler가 없으면 request는 `handler_not_found` 계열 error로 닫히고 runtime은 계속
   동작한다.

@@ -20,6 +20,8 @@ internal sealed class PlayServer(SampleSettings settings)
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DefaultTimeout = SampleTimeouts.Request;
+            options.Codecs.AddMessagePack();
             options.AddHandlersFromAssemblyOf<PlayServer>();
             options.AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor);
 

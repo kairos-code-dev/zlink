@@ -13,6 +13,18 @@
 > 이 묶음은 **구현 기준 문서**다. 사용자 가이드(usability), 정식 계약(spec),
 > 내부 정책(internals), 샘플 실행 기준을 분리해서 다룬다.
 
+## 비동기 API 네이밍 투영
+
+공통 실행 의미는
+[비동기 실행과 coroutine 정책](../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+Node framework 의 서버와 client network API 는 `Promise` 기반 비동기 함수로 투영한다.
+`Async` suffix 는 옮기지 않고, `connect()`, `close()`, `submit()`, `waitFor()`,
+`start()`, `stop()`, `handle()` 처럼 동작 이름과 `Promise<T>` 반환 타입으로
+비동기 계약을 드러낸다.
+
+codec 변환, packet name 계산, 값 객체 생성처럼 network I/O 를 하지 않는 순수 helper 는
+동기 함수일 수 있다.
+
 ## 0. 먼저 읽어야 하는 문서
 
 - [**구현 작업 Plan**](./IMPLEMENTATION-PLAN.ko.md) — 참조 파일·작업 순서·코드

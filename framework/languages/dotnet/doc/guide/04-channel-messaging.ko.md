@@ -185,7 +185,7 @@ public sealed class UserHandlers
         await _publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
     }
 }
 ```
@@ -269,7 +269,7 @@ public sealed class PriceService(IZLinkChannelClient client)
         => client
             .SendToChannel("profile", new RefreshCacheCommand(accountId))
             .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
-            .Submit(ct);
+            .SubmitAsync(ct);
 }
 ```
 
@@ -288,7 +288,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
         => publisher
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 }
 ```
 
@@ -298,7 +298,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
   최적화).
 - `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
-> `Submit(...)`/`SubmitAsync<T>(...)` 의 완료는 transport 위임까지만 보장한다.
+> `SubmitAsync(...)`/`SubmitAsync<T>(...)` 의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §7).
 
 ## 5. filter — 공통 처리
@@ -432,7 +432,7 @@ public sealed class UserHandlers(IZLinkFanoutClient publisher)
         => publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 }
 
 [ZLinkHandlerGroup("api.events")]

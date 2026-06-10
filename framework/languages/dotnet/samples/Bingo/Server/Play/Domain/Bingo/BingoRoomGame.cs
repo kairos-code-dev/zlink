@@ -1,4 +1,3 @@
-using Bingo.Server.Play;
 using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Domain.Bingo;
@@ -109,16 +108,23 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
     {
         var hostActorId = _players.Count == 0 ? string.Empty : _players[0].ActorId;
         var game = _game?.Snapshot() ?? new BingoGameSnapshot(0, null, [], []);
-        return new BingoRoomState(
-            roomId,
-            Status,
-            hostActorId,
-            Status == BingoRoomStatus.WaitingForPlayers && _players.Count == _settings.RequiredPlayers,
-            game.DrawSeq,
-            game.LastDrawnNumber,
-            game.DrawnNumbers,
-            _players.Select(player => player.ToState(hostActorId, _game)).ToArray(),
-            game.Winners);
+        var state = new BingoRoomState
+        {
+            RoomId = roomId,
+            Status = Status,
+            HostActorId = hostActorId,
+            CanStart = Status == BingoRoomStatus.WaitingForPlayers && _players.Count == _settings.RequiredPlayers,
+            DrawSeq = game.DrawSeq,
+            DrawnNumbers = { game.DrawnNumbers },
+            Players = { _players.Select(player => player.ToState(hostActorId, _game)) },
+            Winners = { game.Winners },
+        };
+        if (game.LastDrawnNumber is { } lastDrawnNumber)
+        {
+            state.LastDrawnNumber = lastDrawnNumber;
+        }
+
+        return state;
     }
 
     private IReadOnlyList<BingoGameEvent> PlayerJoinedEvents(
@@ -173,14 +179,16 @@ internal sealed class BingoRoomGame(string roomId, BingoRoomSettings settings)
         public BingoPlayerState ToState(string hostActorId, BingoGame? game)
         {
             var card = game?.CardSnapshot(ActorId) ?? BingoCardSnapshot.Empty;
-            return new BingoPlayerState(
-                ActorId,
-                DisplayName,
-                Seat,
-                string.Equals(ActorId, hostActorId, StringComparison.Ordinal),
-                card.Numbers,
-                card.Marks,
-                card.CompletedLines);
+            return new BingoPlayerState
+            {
+                ActorId = ActorId,
+                DisplayName = DisplayName,
+                Seat = Seat,
+                IsHost = string.Equals(ActorId, hostActorId, StringComparison.Ordinal),
+                Card = { card.Numbers },
+                Marks = { card.Marks },
+                CompletedLines = card.CompletedLines,
+            };
         }
     }
 }

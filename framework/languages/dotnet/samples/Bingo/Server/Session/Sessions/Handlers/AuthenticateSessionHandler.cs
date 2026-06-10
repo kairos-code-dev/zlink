@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 using Bingo.Shared.Configuration;
@@ -20,11 +20,10 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
         CancellationToken cancellationToken)
     {
         _ = header;
-        var request = payload.Decode<AuthenticateReq>();
+        var request = payload.FromProto<AuthenticateReq>();
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
-                new AuthenticatePlayerReq(request.AccessToken))
-            .Timeout(SampleTimings.RequestTimeout)
+                new AuthenticatePlayerReq { AccessToken = request.AccessToken })
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
         if (!authenticated.Accepted
@@ -36,22 +35,29 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
 
         var ensured = await channels.RequestToChannel(
                 SampleNames.PlayChannel,
-                new EnsurePlayerActorReq(authenticated.ActorId, authenticated.DisplayName))
-            .Timeout(SampleTimings.RequestTimeout)
+                new EnsurePlayerActorReq
+                {
+                    ActorId = authenticated.ActorId,
+                    DisplayName = authenticated.DisplayName,
+                })
             .SubmitAsync<EnsurePlayerActorRes>(cancellationToken) ;
 
         await context.Actors.BindAsync(
                 ToActorRef(ensured.Actor),
                 cancellationToken);
 
-        await context.Client.Reply(new AuthenticateRes(ensured.ActorId, authenticated.DisplayName))
-            .Submit();
+        await context.Client.Reply(new AuthenticateRes
+            {
+                ActorId = ensured.ActorId,
+                DisplayName = authenticated.DisplayName,
+            })
+            .SubmitAsync();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)
     {
         return new ActorRef(
-            RoutingId.From(snapshot.NodeRid),
+            RoutingId.FromHex(snapshot.NodeRid),
             snapshot.ActorId,
             snapshot.Generation);
     }

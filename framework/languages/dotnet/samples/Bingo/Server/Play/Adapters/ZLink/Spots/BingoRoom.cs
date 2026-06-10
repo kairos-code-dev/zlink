@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
@@ -70,8 +70,8 @@ internal sealed class BingoRoom(
         Message request,
         CancellationToken cancellationToken)
     {
-        var reply = await JoinAsync(actor, request.Decode<BingoRoomJoinReq>(), cancellationToken);
-        return ZLinkSpotActorJoinResult.Accept(reply.Encode());
+        var reply = await JoinAsync(actor, request.FromProto<BingoRoomJoinReq>(), cancellationToken);
+        return ZLinkSpotActorJoinResult.Accept(reply.ToProto());
     }
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
@@ -98,7 +98,12 @@ internal sealed class BingoRoom(
             return DefaultSettings;
         }
 
-        return request.FromJson<BingoRoomSettings>();
+        var payload = request.FromProto<BingoRoomSettingsPayload>();
+        return new BingoRoomSettings(
+            payload.RoomName,
+            payload.Mode,
+            payload.RequiredPlayers,
+            payload.MaxDrawNumber);
     }
 
     public async ValueTask<BingoRoomJoinRes> JoinAsync(
@@ -112,7 +117,7 @@ internal sealed class BingoRoom(
 
         var change = _game.JoinPlayer(actor.ActorId, actor.DisplayName);
         await PublishAsync(change, cancellationToken);
-        return new BingoRoomJoinRes(change.State);
+        return new BingoRoomJoinRes { State = change.State };
     }
 
     internal async ValueTask StartDrawTimerAsync(CancellationToken cancellationToken)

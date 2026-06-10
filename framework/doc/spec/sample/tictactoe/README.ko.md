@@ -186,10 +186,10 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
   때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
   payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
-- Java와 Kotlin client scenario는 connector call의 `submit`과 `await` 의미를 맞춘다.
-  `submit`은 push 대기를 먼저 걸어 두기 위해 비동기 작업을 시작하고 future를 반환하는
-  이름으로 사용한다. `await`는 완료를 기다려 결과를 받는 이름으로 사용한다. Java에서는
-  현재 thread가 기다리고, Kotlin에서는 coroutine이 중단되었다가 재개된다.
+- Java와 Kotlin client scenario의 `submit`과 `await` 의미는
+  [framework 공통 비동기 정책](../../async-execution-policy.ko.md)을 따른다.
+  `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
+  결과를 받는 이름으로 사용한다.
 - sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
   대기와 검증은 connector와 message 객체 인터페이스를 사용하는 샘플 시나리오 코드에서
   드러나야 한다.

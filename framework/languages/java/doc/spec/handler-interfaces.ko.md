@@ -19,15 +19,40 @@
   `sendTo`, `requestTo`, `sendChannel`, `requestChannel` 같은 action 이름을
   유지한다.
 - blocking과 non-blocking을 별도 동사 이름으로 나누지 않는다.
-- Java handler와 submit 표면은 `CompletionStage`를 기준으로 한다. Kotlin
-  `suspend` 표면은 이 Java handler를 감싸는 adapter이며, 별도 runtime 의미를 만들지
-  않는다.
+- Java handler와 submit 표면은
+  [framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)에 따라
+  `CompletionStage`를 기준으로 한다. Kotlin `suspend` 표면은 이 Java handler를
+  감싸는 adapter이며, 별도 runtime 의미를 만들지 않는다.
 - Kotlin `suspend fun`에 Java와 같은 ZLink annotation을 붙인 handler도 같은 계약으로
   본다. Spring bean scanner는 Kotlin suspend method를 별도 수동 등록 없이 발견해야
   하며, framework-owned coroutine adapter를 통해 Java `CompletionStage` handler로
   실행해야 한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
+
+### 0.1 Handler 실행 executor
+
+`ZLinkFrameworkOptions`는 handler 실행 executor를 설정할 수 있다.
+
+```java
+public interface ZLinkFrameworkOptions {
+    void useVirtualThreadHandlers();
+    void useHandlerExecutor(Executor executor);
+}
+```
+
+기본값은 Java virtual thread per task executor다. framework의 channel receive loop는
+native 또는 backend receive boundary를 담당하고, channel handler method와 handler
+interface 호출은 handler executor 뒤에서 실행된다. 이 분리는 native wait 지점과
+application handler 실행 지점이 같은 thread 정책에 묶이지 않게 하기 위한 것이다.
+
+`useHandlerExecutor`로 application이 소유한 executor를 넘기면 framework는 그 executor를
+종료하지 않는다. 기본 virtual thread executor 또는 `useVirtualThreadHandlers()`로 만든
+executor는 framework host가 닫힐 때 함께 닫힌다.
+
+Kotlin `suspend` handler의 coroutine dispatcher와 scope ownership은 Kotlin adapter가
+담당한다. Java handler executor는 Kotlin coroutine dispatcher의 대체물이 아니며,
+Kotlin adapter가 `CompletionStage`로 변환한 completion만 Java core가 받는다.
 
 ## 1. 인터페이스 전체 목록
 
@@ -1112,10 +1137,10 @@ public record ZLinkSpotEvent(
 표면에서 `spotRid`를 다시 볼 수 있게 한다. 같은 `SpotNode` 안에서 이미 등록된
 Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지는 편을 기본으로 본다.
 
-send/publish는 기본 async submit이다. blocking send를 async 호출로 감싸는 것이
-아니라, nonblocking send와 ready notification을 이용해 backpressure 동안 호출
-thread가 막히지 않게 해야 한다. request도 request packet을 보내는 단계에서는
-같은 async submit 경로를 사용하고, reply 대기는 request timeout이 따로 정한다.
+send/publish는 기본 async submit이다. async submit과 backpressure의 공통 의미는
+[framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
+reply 대기는 request timeout이 따로 정한다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 

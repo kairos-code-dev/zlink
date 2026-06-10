@@ -62,7 +62,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "discovery" }).Submit();
+                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "discovery" }).SubmitAsync();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },
@@ -118,7 +118,7 @@ public sealed class ClientServerTests
         await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () =>
             {
-                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "alice" }).Submit();
+                await client.SendToChannel("api", new RefreshProfileCacheCommand { UserId = "alice" }).SubmitAsync();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

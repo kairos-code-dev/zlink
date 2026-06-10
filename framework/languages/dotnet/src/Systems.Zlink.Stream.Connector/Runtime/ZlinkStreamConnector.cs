@@ -144,23 +144,19 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return _typedHandlers.Add(name, handler);
     }
 
-    public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
-        string name,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+    public IZlinkStreamWaitCall WaitFor(string name)
     {
         ThrowIfDisposed();
         ValidateName(name);
-        return _receivedMessages.WaitForAsync(name, timeout, cancellationToken);
+        return new ZlinkStreamWaitBuilder(this, name);
     }
 
-    public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+    public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForEncodedAsync(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(predicate);
         ThrowIfDisposed();
         ValidateName(name);
         return _receivedMessages.WaitForAsync(name, predicate, timeout, cancellationToken);

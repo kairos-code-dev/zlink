@@ -22,7 +22,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
         Assert.Equal("json.send", connector.SendCall.Name);
@@ -61,23 +61,20 @@ public sealed partial class StreamConnectorTests
         Assert.Equal(ZlinkStreamErrorCode.UserCallbackFailed, failedDecode.GetValueOrDefault().Error!.Code);
 
         connector.RecordReceived("json.notify", StreamJson.ToJson(new JsonPayload("notify")));
-        var notify = await JsonConnector.WaitForAsync<JsonPayload>(
-            connector,
-            "json.notify",
-            TimeSpan.FromSeconds(1));
+        var notify = await JsonConnector.WaitFor<JsonPayload>(connector, "json.notify")
+            .Timeout(TimeSpan.FromSeconds(1))
+            .SubmitAsync();
         Assert.Equal("notify", notify.Payload.Text);
 
         connector.RecordReceived("json.filtered", StreamJson.ToJson(new JsonPayload("first")));
         connector.RecordReceived("json.filtered", StreamJson.ToJson(new JsonPayload("second")));
-        var filtered = await JsonConnector.WaitForAsync<JsonPayload>(
-            connector,
-            "json.filtered",
-            message => message.Payload.Text == "second",
-            TimeSpan.FromSeconds(1));
-        var remaining = await JsonConnector.WaitForAsync<JsonPayload>(
-            connector,
-            "json.filtered",
-            TimeSpan.FromSeconds(1));
+        var filtered = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
+            .Where(message => message.Payload.Text == "second")
+            .Timeout(TimeSpan.FromSeconds(1))
+            .SubmitAsync();
+        var remaining = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
+            .Timeout(TimeSpan.FromSeconds(1))
+            .SubmitAsync();
         Assert.Equal("second", filtered.Payload.Text);
         Assert.Equal("first", remaining.Payload.Text);
     }
@@ -92,7 +89,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
         Assert.Equal("packed.send", connector.SendCall.Name);
@@ -130,7 +127,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
         Assert.Equal("proto.send", connector.SendCall.Name);
@@ -162,17 +159,17 @@ public sealed partial class StreamConnectorTests
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new JsonPayload("json"))
             .PacketName("auto.json")
-            .Submit();
+            .SubmitAsync();
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new PackedConnectorPayload { Text = "packed" })
             .PacketName("auto.packed")
-            .Submit();
+            .SubmitAsync();
         Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new StringValue { Value = "proto" })
             .PacketName("auto.proto")
-            .Submit();
+            .SubmitAsync();
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
 
         JsonPayload? namedPayload = null;
@@ -273,16 +270,19 @@ public sealed partial class StreamConnectorTests
             return new Subscription(() => _handlers.Remove(name));
         }
 
+        public IZlinkStreamWaitCall WaitFor(string name)
+            => new RecordingWaitCall(name, this);
+
         public ValueTask DisposeAsync()
             => ValueTask.CompletedTask;
 
-        public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        private ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForRecordedAsync(
             string name,
             TimeSpan timeout,
             CancellationToken cancellationToken = default)
-            => WaitForAsync(name, static _ => true, timeout, cancellationToken);
+            => WaitForRecordedAsync(name, static _ => true, timeout, cancellationToken);
 
-        public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
+        private ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForRecordedAsync(
             string name,
             Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
             TimeSpan timeout,
@@ -309,6 +309,44 @@ public sealed partial class StreamConnectorTests
             }
 
             throw new TimeoutException($"Timed out waiting for {name}.");
+        }
+
+        private sealed class RecordingWaitCall : IZlinkStreamWaitCall
+        {
+            private readonly string _name;
+            private readonly RecordingConnector _connector;
+            private Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? _predicate;
+            private TimeSpan? _timeout;
+
+            public RecordingWaitCall(string name, RecordingConnector connector)
+            {
+                _name = name;
+                _connector = connector;
+            }
+
+            public IZlinkStreamWaitCall Timeout(TimeSpan timeout)
+            {
+                _timeout = timeout;
+                return this;
+            }
+
+            public IZlinkStreamWaitCall Where(Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate)
+            {
+                ArgumentNullException.ThrowIfNull(predicate);
+                var previous = _predicate;
+                _predicate = previous is null
+                    ? predicate
+                    : message => previous(message) && predicate(message);
+                return this;
+            }
+
+            public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> SubmitAsync(
+                CancellationToken cancellationToken = default)
+                => _connector.WaitForRecordedAsync(
+                    _name,
+                    _predicate ?? (static _ => true),
+                    _timeout ?? _connector.Options.RequestTimeout,
+                    cancellationToken);
         }
 
         public ValueTask InvokeHandler(string name, ZlinkStreamEncodedPayload payload)
@@ -382,7 +420,7 @@ public sealed partial class StreamConnectorTests
             return this;
         }
 
-        public ValueTask Submit(CancellationToken cancellationToken = default)
+        public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
             => ValueTask.CompletedTask;
     }
 

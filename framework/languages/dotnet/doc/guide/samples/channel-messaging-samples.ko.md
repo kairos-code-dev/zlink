@@ -444,7 +444,7 @@ app.MapPost("/profiles/refresh-cache", async (
         .Send(
             "profile",
             new RefreshUserCacheCommand { AccountId = request.AccountId })
-        .Submit(cancellationToken);
+        .SubmitAsync(cancellationToken);
 
     return Results.Accepted();
 });
@@ -498,7 +498,7 @@ public sealed class UserHandlers
                 {
                     AccountId = command.AccountId
                 })
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
     }
 }
 
@@ -670,7 +670,7 @@ await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 ```csharp
@@ -696,7 +696,7 @@ await client
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 ### 6.1 framework client의 reply 처리 기준
@@ -726,7 +726,7 @@ await publisher
         "api.events",
         "user.cache-refreshed",
         new UserCacheRefreshedEvent { AccountId = accountId })
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 이 예시에서 두 문자열의 의미는 다음과 같다.

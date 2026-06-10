@@ -28,7 +28,7 @@ framework 는 새 transport 를 만들지 않는다. 기존 Node 바인딩
 
 이 문서가 닫는 두 가지 골격은 다음과 같다.
 
-1. **부트스트랩 척추** — `ZLinkModule.forRoot/forRootAsync` 가 `DynamicModule` 을
+1. **부트스트랩 척추** — `ZLinkModule.forRoot/forRootFactory` 가 `DynamicModule` 을
    만들고, provider 를 등록하고, lifecycle hook(`onApplicationBootstrap` /
    `onApplicationShutdown`)으로 runtime 을 시동·종료한다. 이 골격 위에
    handler-interfaces 의 계약을 얹으면 runtime spine 이 완성된다.
@@ -45,10 +45,10 @@ registry/monitoring). §6 에서 다시 정리한다.
 
 ## 2. 모듈 부트스트랩
 
-### 2.1 등록 진입점 — `ZLinkModule.forRoot` / `forRootAsync`
+### 2.1 등록 진입점 — `ZLinkModule.forRoot` / `forRootFactory`
 
 .NET 의 `IServiceCollection.AddZLinkFramework(options => ...)`(빌더 람다)를
-NestJS 에서는 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootAsync(
+NestJS 에서는 `ZLinkModule.forRoot(options)`(동기) / `ZLinkModule.forRootFactory(
 { useFactory, inject, imports })`(비동기, 설정 주입)가 반환하는
 `DynamicModule` 로 매핑한다.
 이 `DynamicModule` 은 `@nestjs/common` 의 실제 모듈/provider 타입으로 만든다.
@@ -103,7 +103,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-`forRootAsync` 는 설정값이 `ConfigService` 같은 다른 provider 에서 와야 할 때
+`forRootFactory` 는 설정값이 `ConfigService` 같은 다른 provider 에서 와야 할 때
 쓴다. .NET 에 정확한 대응은 없지만(`AddZLinkFramework` 는 동기), NestJS 의
 표준 async module 패턴을 그대로 따른다.
 
@@ -112,7 +112,7 @@ builder.Services.AddZLinkFramework(options =>
 @Module({
   imports: [
     ConfigModule,
-    ZLinkModule.forRootAsync({
+    ZLinkModule.forRootFactory({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => zlinkFramework()
@@ -135,7 +135,7 @@ export class PricingModule {}
 > 에 끝난다. .NET 은 `AddZLinkFramework(...)` 호출 안에서
 > `ZLinkFrameworkRegistrationValidator.Validate(...)` 를 돌린다. NestJS 도
 > `forRoot(...)` 에서는 `DynamicModule` 을 만들기 전에 검증을 수행하고,
-> `forRootAsync(...)` 에서는 NestJS 가 factory 를 실행해 옵션을 받은 직후
+> `forRootFactory(...)` 에서는 NestJS 가 factory 를 실행해 옵션을 받은 직후
 > registration 을 만든다. 잘못된 registration 조합·필수 endpoint 누락은
 > runtime start 전에 실패한다([lifecycle §2~3](../internals/lifecycle-and-failure-semantics.ko.md)).
 
@@ -147,8 +147,8 @@ export class PricingModule {}
 
 | .NET 확장 메서드 | node module | 역할 |
 |------|------|------|
-| `services.AddZLinkRegistry(reg => ...)` | `ZLinkRegistryModule.forRoot(options)` / `forRootAsync(...)` | embedded Registry 를 bind·구동하고 `ZLINK_REGISTRY_QUERY` provider 노출 |
-| `services.AddZLinkRegistryQueryClient(c => ...)` | `ZLinkRegistryQueryClientModule.forRoot(options)` / `forRootAsync(...)` | 원격 Registry 에 connect 해 topology 조회만 하는 client(`ZLINK_REGISTRY_QUERY_CLIENT`) |
+| `services.AddZLinkRegistry(reg => ...)` | `ZLinkRegistryModule.forRoot(options)` / `forRootFactory(...)` | embedded Registry 를 bind·구동하고 `ZLINK_REGISTRY_QUERY` provider 노출 |
+| `services.AddZLinkRegistryQueryClient(c => ...)` | `ZLinkRegistryQueryClientModule.forRoot(options)` / `forRootFactory(...)` | 원격 Registry 에 connect 해 topology 조회만 하는 client(`ZLINK_REGISTRY_QUERY_CLIENT`) |
 | `services.AddZLinkMonitoring(m => ...)` | `ZLinkMonitoringModule.forRoot(options)` | runtime/registry/spot/socket 이벤트 source attach([nestjs-monitoring](./nestjs-monitoring.ko.md)) |
 
 ```ts
@@ -180,7 +180,7 @@ export class RegistryModule {}
 export class TopologyDashboardModule {}
 ```
 
-Registry module 과 Registry query client module 도 `forRootAsync({ imports,
+Registry module 과 Registry query client module 도 `forRootFactory({ imports,
 inject, useFactory })` 를 지원한다. 설정 provider 에서 endpoint 를 읽어야 할 때
 NestJS 표준 async module 패턴과 같은 방식으로 쓴다.
 
@@ -234,7 +234,7 @@ capability 조건이 충족될 때만 `providers`/`exports` 에 들어간다. �
 가 소유한다. 아래는 .NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`
 의 등록 조건을 옮긴 요약이다.
 
-`forRootAsync(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 registration 이
+`forRootFactory(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 registration 이
 DI 단계에서 확정되기 전에는 어떤 capability 가 필요한지 알 수 없다. 그래서 이 두
 경로는 capability 토큰을 export 하되, 해당 capability 가 없는 경우 provider 값은
 `null` 이다. 이 정책은 NestJS application context 가 optional capability 때문에
@@ -358,6 +358,13 @@ framework 의 **유일한** backend 의존은 .NET
 - `Action` → `() => void`; `Action<T>` → `(arg: T) => void`;
   콜백 delegate(`RequestCallback`, `ActorJoinCallback` …)는 동일 시그니처의
   함수 타입으로 옮긴다.
+- `.NET` / C++ 의 coroutine 계열 이름에 붙는 `Async` suffix 는 Node public API 로
+  옮기지 않는다. 비동기 실행의 공통 의미는
+  [framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따르고,
+  Node에서는 `Promise<T>` 반환 타입과 `await` 사용이 비동기 계약이다.
+  예: `SubmitAsync<T>` → `submit<T>()`, `HandleAsync` → `handle()`.
+- 서버와 client 의 socket, stream, channel, registry, actor, Spot lifecycle
+  함수는 동기 쌍을 따로 두지 않고 `Promise` 기반 함수만 제공한다.
 - `out bool created` 같은 out 파라미터는 **반환 객체**로 옮긴다
   (예: `{ spot, created }`).
 - `RoutingId`(string), `Message`(payload 구조 타입), `SendFlags`, `RecvFlags`
@@ -730,7 +737,7 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 
 ## 6. 구현 순서
 
-1. **overview(이 문서)** — 부트스트랩 척추(`ZLinkModule.forRoot/forRootAsync`,
+1. **overview(이 문서)** — 부트스트랩 척추(`ZLinkModule.forRoot/forRootFactory`,
    provider/lifecycle wiring)와 backend 포트 6개를 고정한다.
 2. **backend 어댑터** — §5 의 포트를 `@zlink-systems/zlink` 위에 구현한다
    (`ZLinkNodeBackendAdapterFactory` + 12개 wrapper). 이것이 **유일한** backend
@@ -758,7 +765,7 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 |--------|-----------|
 | `backend-contract.test.js` | backend adapter factory 가 channel, spot, stream, registry, monitoring adapter 를 모두 제공한다. |
 | `backend-public-api-only.test.js` | framework runtime 이 binding internal/native 경로를 직접 import 하지 않는다. |
-| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootAsync`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
+| `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootFactory`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
 | `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
 
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)

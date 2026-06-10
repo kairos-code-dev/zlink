@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
@@ -23,18 +23,19 @@ internal sealed class AuthenticatePlayerHandler
         cancellationToken.ThrowIfCancellationRequested();
         if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal))
         {
-            return ValueTask.FromResult(new AuthenticatePlayerRes(
-                false,
-                null,
-                null,
-                "Access token must be a sample player id."));
+            return ValueTask.FromResult(new AuthenticatePlayerRes
+            {
+                Accepted = false,
+                Reason = "Access token must be a sample player id.",
+            });
         }
 
         var displayName = request.AccessToken.Replace("player-", "Player ", StringComparison.Ordinal);
-        return ValueTask.FromResult(new AuthenticatePlayerRes(
-            true,
-            request.AccessToken,
-            displayName,
-            null));
+        return ValueTask.FromResult(new AuthenticatePlayerRes
+        {
+            Accepted = true,
+            ActorId = request.AccessToken,
+            DisplayName = displayName,
+        });
     }
 }

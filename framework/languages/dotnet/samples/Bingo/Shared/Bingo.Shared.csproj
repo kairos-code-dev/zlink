@@ -8,6 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+    <Protobuf Include="Contracts\bingo_messages.proto" GrpcServices="None" />
     <ProjectReference Include="../../../../../../bindings/dotnet/src/Zlink/Zlink.csproj" />
   </ItemGroup>
 </Project>

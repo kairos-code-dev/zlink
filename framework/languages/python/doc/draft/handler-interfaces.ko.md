@@ -22,9 +22,9 @@
 - 개념 이름은 공통 정책과 맞춘다. 예를 들어 `send`, `request`, `publish`,
   `send_to`, `request_to`, `send_channel`, `request_channel` 같은 action 이름을
   유지한다.
-- send/publish는 기본 async submit으로 설명한다. backpressure는 별도 public
-  no-wait 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
-  ready notification으로 처리한다.
+- send/publish의 async submit과 backpressure 의미는
+  [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을
+  따른다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 

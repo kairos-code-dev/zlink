@@ -17,7 +17,7 @@ internal static class Program
         await using var client1 = CreateClient(streamEndpoint);
         await using var client2 = CreateClient(streamEndpoint);
 
-        await new BingoClientApp().RunAsync(
+        await new BingoClientScenario().RunAsync(
             client1,
             client2);
         Console.WriteLine("bingo=completed");

@@ -186,7 +186,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 
         await spot.Context.Outbound
             .Publish("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
     }
 }
 ```
@@ -340,7 +340,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
         await publisher
             .Publish("game.stage", "stage.state.updated",
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
-            .Submit(ct);
+            .SubmitAsync(ct);
 
         return stage.SpotRid.ToString();
     }
@@ -378,17 +378,17 @@ public sealed class StageNoticeHandler
         var outbound = spot.Context.Outbound;
 
         // (a) 현재 channel 의 topic 으로 publish
-        await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).SubmitAsync(ct);
 
         // (b) attach 된 일반 channel 로 send/request
-        await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
+        await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).SubmitAsync(ct);
         var state = await outbound
             .RequestToChannel("orders", new GetOrderStateRequest())
             .Timeout(TimeSpan.FromMilliseconds(200))
             .SubmitAsync<GetOrderStateReply>(ct);
 
         // (c) 다른 Spot 으로 (RoutingId)
-        await outbound.SendToSpot(spotRid, new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.SendToSpot(spotRid, new StageNoticeEvent(request.Text)).SubmitAsync(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -421,7 +421,7 @@ app.MapPost("/stage/publish", async (
     await spotPublisher
         .Publish("game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
-        .Submit(ct);
+        .SubmitAsync(ct);
     return Results.Accepted();
 });
 ```

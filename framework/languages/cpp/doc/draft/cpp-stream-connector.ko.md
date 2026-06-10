@@ -17,9 +17,10 @@
 C++ Stream Connector는 `ZLink Framework for C++` 샘플이 아니다. 서버 framework와 같은
 저장소에 있을 수는 있지만, public header, CMake target, package는 분리한다.
 
-C++ connector는 엔진별로 core 구현을 복제하지 않는다. 하나의 독립 core connector를 두고,
-coroutine, 예외 기반 호출, Unreal, Godot, Axmol 같은 환경별 표면은 adapter나 plugin으로
-분리한다.
+C++ connector는 엔진별로 core 구현을 복제하지 않는다.
+[framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)에 따라
+하나의 독립 core connector를 두고, coroutine, 예외 기반 호출, Unreal, Godot, Axmol 같은
+환경별 표면은 adapter나 plugin으로 분리한다.
 
 핵심 결정은 아래와 같다.
 
@@ -267,9 +268,11 @@ core connector는 client 엔진에서 예외와 coroutine이 꺼져 있어도 �
 - blocking `submit()`은 `result_t<T>`를 반환한다.
 - engine client의 주 사용 흐름은 callback/event와 `dispatch()`다.
 - callback은 manual dispatch mode에서 game loop와 맞춰 실행할 수 있어야 한다.
-- `wait_for`는 sample, CLI, E2E test 편의 API로 둔다. 엔진 client의 주 push 수신 방식은
+- `wait_for`는 sample, CLI, test client 편의 API로 둔다. 엔진 client의 주 push 수신 방식은
   `on<T>(...)` callback이다.
 - core public header는 C++ exception이나 coroutine header에 의존하지 않는다.
+- core public contract에서 `*_async` 이름은 사용하지 않는다. 이 이름은 awaitable을 반환하는
+  coroutine adapter 전용 표면으로 예약한다.
 
 public namespace는 `zlink::stream_connector`로 둔다. 서버 framework의
 `zlink::framework` namespace에 넣지 않는다.
@@ -331,7 +334,7 @@ public:
 
 기본 사용법은 동기 호출과 callback 호출을 분리한다. `connect()`, `dispatch()`,
 `send(...).submit()`, `request(...).submit()`, `wait_for<T>().submit()`는 모두 `result_t<T>`를
-바로 반환한다. 비동기 completion은 callback을 먼저 등록하고 `start()`로 시작한다.
+바로 반환한다. callback completion은 callback을 먼저 등록하고 `start()`로 시작한다.
 
 ```cpp
 auto connected = connector.connect();
@@ -355,8 +358,10 @@ connector.on<chat_pushed_t>([](const chat_pushed_t &message) {
 connector.dispatch();
 ```
 
-`submit_async(callback)`을 주 API로 밀지 않는다. callback을 인자로 바로 넘기는 함수보다
-`on_completed(...).start()` 형태가 Unreal, Godot, Axmol facade로 옮기기 쉽다.
+callback API에는 `submit_async(callback)` 이름을 쓰지 않는다. C++ connector에서 `*_async`는
+`co_await` 가능한 값을 반환하는 coroutine adapter 전용 이름이다. core callback 표면은
+`on_completed(...).start()`를 기준으로 둔다. 이 형태가 completion 등록과 operation 시작을
+분리해서 보여 주고, Unreal, Godot, Axmol facade로 옮기기도 쉽다.
 
 typed wait에서 조건이 필요하면 `.where(...)`를 사용한다. predicate는 디코딩된 메시지를
 받기 때문에 sample code가 packet payload나 codec을 직접 다루지 않는다. 조건에 맞지 않는
@@ -375,8 +380,15 @@ connector.codecs()
 
 ## 7. Coroutine Adapter
 
-coroutine adapter는 core connector 위의 선택 표면이다. 서버 성능 테스트 client, CLI,
-tool처럼 C++20 coroutine을 안정적으로 켤 수 있는 환경에서 사용한다.
+coroutine adapter는 core connector 위의 선택 표면이다. 공통 의미는
+[framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+서버 성능 테스트 client, CLI, tool처럼 C++20 coroutine을 안정적으로 켤 수 있는 환경에서
+사용한다.
+
+coroutine adapter에서만 `connect_async()`, `close_async()`, `dispatch_async()`,
+`submit_async()`, `wait_for_async()` 같은 `*_async` 이름을 제공한다. 이 함수들은 callback을
+받지 않고 `task_t<T>`처럼 `co_await` 가능한 값을 반환한다. callback 기반 completion이 필요하면
+core connector의 `on_completed(...).start()` 표면을 사용한다.
 
 ```cpp
 auto auth = co_await client
@@ -579,18 +591,34 @@ UnrealEditor-Cmd <TestProject>.uproject \
 
 ## 14. 구현 순서
 
+이 초안은 아직 정식 공개 계약이 아니므로 기존 실험 API와의 호환성을 유지하지 않는다.
+코드 적용 시에는 `submit_async(callback)`, core header의 `task_t`, core header의
+`connect_async()`, `close_async()`, `dispatch_async()`, `wait_for_async()`를 deprecated로
+남기지 않고 제거한다. 샘플과 테스트도 새 표면으로 바로 옮긴다.
+
 구현은 아래 순서로 진행한다.
 
 1. `connector/`를 독립 CMake package로 분리한다.
-2. core connector public contract를 no-exception/no-coroutine 기준으로 정리한다.
-3. callback completion 표면을 `on_completed(...).start()` 형태로 정리한다.
-4. coroutine adapter를 core와 분리한다.
-5. throwing adapter를 core와 분리한다.
-6. 서버 framework call 표면을 예외 기반으로 정리한다.
-7. Unreal plugin을 core connector 위 facade로 정리한다.
-8. Godot GDExtension adapter를 설계한다.
-9. Axmol adapter를 설계한다.
-10. Cocos Creator 문서에는 TypeScript connector 사용을 명시한다.
+2. core connector public contract에서 `task_t` include와 모든 `*_async` member를 제거한다.
+3. `send_call_t`, `request_call_t`, `wait_call_t`에 core callback 표면인
+   `on_completed(...).start()`를 추가하고, 기존 `submit_async(callback)`은 제거한다.
+4. codec helper도 core helper와 coroutine helper로 나눈다. core codec helper는
+   `submit()`, `on_completed(...).start()`만 노출하고, `submit_async()`는 coroutine helper로
+   옮긴다.
+5. coroutine adapter header와 package component를 추가한다. 이 adapter에서만
+   `connect_async()`, `close_async()`, `dispatch_async()`, `wait_for_async()`,
+   `submit_async()`를 제공한다.
+6. throwing adapter를 core와 분리한다.
+7. 샘플과 테스트를 새 core 표면 또는 coroutine adapter 표면 중 하나로 명시적으로 옮긴다.
+   게임 client 샘플은 core 표면을 기준으로 작성하고, 서버 성능 테스트 client나 CLI 성격의
+   테스트만 coroutine adapter를 include한다.
+8. core connector contract test로 core public header가 coroutine header와 exception header에
+   의존하지 않는지 고정한다.
+9. 서버 framework call 표면을 예외 기반 awaitable API로 정리한다.
+10. Unreal plugin을 core connector 위 facade로 정리한다.
+11. Godot GDExtension adapter를 설계한다.
+12. Axmol adapter를 설계한다.
+13. Cocos Creator 문서에는 TypeScript connector 사용을 명시한다.
 
-각 단계는 독립적으로 빌드하고 테스트할 수 있어야 한다. 특히 core connector test는 예외와
-coroutine adapter 없이 통과해야 한다.
+호환성 shim은 두지 않는다. 각 단계는 해당 단계의 최종 표면으로 빌드하고 테스트해야 한다.
+특히 core connector test는 예외와 coroutine adapter 없이 통과해야 한다.

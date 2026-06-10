@@ -8,6 +8,8 @@
 
 - **공통 스펙** (`spec/`) — 언어와 무관한 정식 계약. 상호작용 모델, 메시지
   모델, channel topology, framework API, actor 모델, use case를 정의한다.
+- **구현 계획** (`plan/`) — 정식 스펙과 sample scenario를 실제 코드, 테스트,
+  sample runner로 옮길 때의 순서와 완료 기준을 정의한다.
 - **언어별 문서** (`../languages/<lang>/doc/`) — 공통 스펙을 각 언어와 대표
   프레임워크 표면으로 구체화한다. 공통 의미를 재정의하지 않는다.
 
@@ -18,7 +20,8 @@
 1. [공통 스펙 목록](./spec/README.ko.md)
 2. [Use case 목록](./spec/use-cases/README.ko.md)
 3. [Use case 검증](./spec/usecase-validation.ko.md)
-4. [언어별 문서](#3-언어별-문서)
+4. [구현 계획](#3-구현-계획)
+5. [언어별 문서](#4-언어별-문서)
 
 ## 2. 공통 스펙
 
@@ -43,7 +46,14 @@
 Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와 Play 서버만으로
 구성한 직접 play 연결 구조를 맡는다.
 
-## 3. 언어별 문서
+## 3. 구현 계획
+
+| 문서 | 다루는 범위 |
+|------|-------------|
+| [Framework sample scenario 구현 계획](./plan/sample-scenarios-implementation-plan.ko.md) | SupportChat, ShoppingMallCheckout, GameQuest를 Bingo식 client scenario와 self-check 기준으로 구현하는 순서 |
+| [Framework Adapter 구현 계획](./plan/framework-adapter/README.ko.md) | framework adapter 구현 계획 문서 묶음 |
+
+## 4. 언어별 문서
 
 | 언어 | 상태 | 진입점 |
 |------|------|--------|
@@ -59,7 +69,7 @@ Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와 Play 
 튜토리얼, `spec`은 그 언어의 공개 계약, `internals`는 구현·검증 기준,
 `draft`는 아직 닫히지 않은 항목이다.
 
-## 4. 유지 규칙
+## 5. 유지 규칙
 
 - 공통 의미를 바꿀 때는 `spec/`을 먼저 고치고, 언어 문서는 링크로 연결한다.
 - 언어별 문서는 공통 의미를 해당 언어의 시그니처와 샘플로만 구체화한다.

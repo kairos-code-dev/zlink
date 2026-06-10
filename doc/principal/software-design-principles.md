@@ -24,7 +24,7 @@ Complexity has two root causes:
 - **Dependencies** — code cannot be understood or changed independently
 - **Obscurity** — important information is not obvious
 
-Complexity grows incrementally. No single thing causes it — hundreds of small additions accumulate.  
+Complexity grows incrementally — not one big cause but hundreds of small additions.
 **Sweat the small stuff.**
 
 ---
@@ -64,16 +64,15 @@ A module's **cost** = its interface (what others must learn and depend on).
 A module's **benefit** = its implementation (what it does).  
 **Maximize benefit-to-cost: simple interface, powerful implementation.**
 
-```
-Deep Module (Good)          Shallow Module (Bad)
-┌────────────────┐          ┌──────────────────────────┐
-│  simple API    │          │  complex API             │
-├────────────────┤          ├──────────────────────────┤
-│                │          │  thin implementation     │
-│  large, rich   │          └──────────────────────────┘
-│  implementation│
-│                │
-└────────────────┘
+```text
++----------------------+  +----------------------+
+| Deep Module (Good)   |  | Shallow Module (Bad) |
++----------------------+  +----------------------+
+| simple API           |  | complex API          |
++----------------------+  +----------------------+
+| large, rich          |  | thin implementation  |
+| implementation       |  |                      |
++----------------------+  +----------------------+
 ```
 
 ### Canonical examples
@@ -623,6 +622,303 @@ Once you identify what is important, make it visible:
 
 ---
 
+## Domain Boundaries and Language
+
+POSD gives the criteria for reducing complexity. DDD (Domain-Driven Design)
+helps decide which concepts belong at the center of a system and where their
+boundaries should sit. They are not competing principles. **Use DDD to capture
+meaningful boundaries and language, and POSD to verify those boundaries are deep
+and simple.**
+
+A domain is not unique to business applications. System software has domains
+too. Where enterprise software's domain is business concepts like order,
+payment, customer, conversation, and settlement, system software's domain is
+system concepts the user must understand precisely: context, handle, socket,
+message, buffer, ownership, lifecycle, timeout, error code.
+
+Read the DDD terms in this section with these meanings.
+
+- An entity has an identity and changes state over time.
+- A value object means more by its value than its identity. Equal values are
+  treated as equal.
+- An aggregate is a boundary that owns state and invariants together — state
+  that must change as one unit, such as a conversation, room, or workflow
+  instance.
+- A bounded context is the boundary within which a term keeps the same meaning.
+- An application use case is the flow that coordinates several domain objects,
+  repositories, channel, and actor calls to handle one external request.
+- A port is the interface expressing what an application use case expects from
+  external storage, external services, or runtime capabilities.
+- An adapter is the edge code that converts between the outside world and the
+  domain: HTTP, socket, codec, framework callbacks.
+- A policy or process is a rule or flow where one event triggers the next
+  command.
+
+### What DDD helps with
+
+The DDD perspective answers these questions.
+
+- Are the names of core concepts consistent across code, docs, and tests?
+- Is the boundary that owns state and lifecycle clear?
+- Are ownership, state transitions, and failure meanings managed within one
+  module?
+- Are domain rules kept free of adapter details like transport, codec, storage,
+  and framework callbacks?
+- Is the public contract expressed in language meaningful to the user, not in
+  internal implementation terms?
+
+In enterprise software, concepts like `Order`, `Conversation`, `Invoice`, and
+`PlayerQuest` can become domain boundaries. In system software, the boundaries
+are message-buffer ownership, handle lifecycle, identifier representation and
+comparison rules, and the error meaning of timeout and nonblocking.
+
+### Design procedure
+
+When applying DDD and POSD together, work in this order. The key is to find
+domain facts first, then decide code structure, and finally verify the depth of
+that structure with POSD.
+
+1. Write the domain flow with event storming first.
+   - Record the significant events the user sees, in past tense. E.g.
+     `ConversationOpened`, `AgentAssigned`, `MessageSent`, `ConversationClosed`.
+   - For system software, record state transitions and contract events instead
+     of business events. E.g. `BufferAllocated`, `MessageMoved`, `HandleCreated`,
+     `PeerConnected`, `ReceiveTimedOut`, `HandleDestroyed`.
+   - Do not fix class, table, or function names yet. First surface "what
+     happens."
+
+2. Attach commands and actors.
+   - Record the request or intent that produced each event as a command. E.g.
+     `OpenConversation`, `AssignAgent`, `SendMessage`.
+   - Record the actor that starts each command. E.g. customer, agent, timer,
+     remote peer, application caller.
+   - If a command can fail, record its failure event or error contract too.
+   - If an event triggers the next command, record the policy or process
+     between them. E.g. after `ConversationOpened`, if an agent is available,
+     run `AssignAgent`.
+
+3. Find entity, value object, and aggregate candidates.
+   - Event clusters sharing the same identity and lifecycle are entity
+     candidates.
+   - Things whose value is the meaning, needing no identity, are value object
+     candidates.
+   - State clusters that must hold an invariant together are aggregate
+     candidates.
+   - In system software, view handle, message buffer, identifier, socket
+     endpoint, and descriptor — anything that holds lifecycle or ownership in
+     the public contract — the same way.
+
+4. Set bounded-context and adapter boundaries.
+   - Find the range within which the same word keeps the same meaning.
+   - Push other protocols, codecs, storage, framework callbacks, and external
+     APIs out to adapter boundaries.
+   - If a domain object starts to know external technology directly, the
+     boundary is leaking.
+
+5. Define application use cases.
+   - Record which aggregates, ports, channels, actors, and timers must be
+     coordinated to handle one external request.
+   - Policies and processes found in event storming are use-case or
+     domain-service candidates.
+   - A use case coordinates; it does not implement domain rules directly.
+   - An adapter only decodes requests, encodes responses, and wires framework
+     callbacks.
+
+6. Re-examine through the POSD lens.
+   - If a new layer only forwards requests, remove it or redistribute
+     responsibility.
+   - If mappers and classes grew for domain purity but caller burden and change
+     complexity did not drop, merge them.
+   - If an aggregate interface is as complex as its implementation, redraw the
+     boundary.
+   - If important decisions like lifecycle, ownership, timeout, and error
+     contract are scattered across many places, gather them into one module.
+
+This procedure is not only for large enterprise applications. In system
+software too, putting events like message ownership transfer, handle
+create/destroy, socket connect/disconnect, and receive timeout first makes it
+clearer which concepts the public contract should be organized around.
+
+### Choosing an architecture
+
+After finding the domain boundaries, you must lay them out as code structure.
+Architecture is the default placement strategy for this. Do not pick an
+architecture first and force the domain into it. Find the boundaries with event
+storming and domain modeling first, then choose the architecture that protects
+those boundaries most simply.
+
+For enterprise software, make hexagonal architecture the default, because
+business rules and use cases must outlive HTTP, queues, databases, UI, and
+external APIs. Put domain and application use cases at the center, and external
+technology as adapters. Define ports by the capabilities the application needs,
+not by the shape of the external technology.
+
+```text
+dependency direction: outside -> in (adapters depend on application-defined ports)
+
++--------------------------------+
+| Adapters                       |
+| HTTP, Queue, DB, External API  |
++--------------------------------+
+              | port
+              v
++--------------------------------+
+| Application Use Cases          |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Domain Model                   |
+| Aggregate, Entity, Value       |
++--------------------------------+
+```
+
+Hexagonal architecture also needs a POSD review. If a port and adapter only
+forward requests, they are a shallow layer. Remove them, or grow their
+responsibility into a deep interface that hides the external technology's
+details and is easy for the application to use.
+
+For system software, make layered architecture with a public-contract/runtime
+split the default. The core of a system API is keeping the public contract
+stable for a long time while leaving runtime, transport, codec, and platform
+implementation free to change. The public contract is the surface users learn
+and depend on; the runtime is the implementation that absorbs internal
+complexity to satisfy that contract.
+
+```text
++--------------------------------+
+| Public Contract                |
+| API, ABI, Spec, Bindings       |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Runtime Boundary               |
+| Lifecycle, State, Ownership    |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Integration Layers             |
+| Transport, Codec, Platform     |
++--------------------------------+
+```
+
+In system software, the public contract holds only the meanings the caller must
+know: ownership, lifecycle, timeout, cancellation, error contract. Runtime data
+structures, queue implementation, transport wiring, and codec details are
+hidden so they do not leak into the contract. A layered structure, too, must
+have each layer provide a different abstraction. If the public API and the
+runtime boundary repeat the same names and behavior and only forward, one of
+them is unnecessary or the responsibility is split wrong.
+
+### Enterprise software application
+
+In enterprise software, event storming is the tool that surfaces the business
+flow. Events express the business outcomes the user perceives, in past tense.
+For example, write business-meaningful changes first, like `OrderPlaced`,
+`PaymentApproved`, `ShipmentRequested`, `ConversationClosed`.
+
+Then attach commands and actors to find the user's intent and the responsible
+party. `PlaceOrder` is started by a customer; `ApprovePayment` may be started by
+a payment service or operator. Find entities and aggregates in event clusters,
+and split bounded contexts where the same word keeps the same meaning. Even if
+order, payment, shipping, and settlement all use the word `Status`, do not force
+them into one model when the meaning differs.
+
+An application use case coordinates several aggregates, repositories, external
+services, and domain events. Domain objects keep business rules and invariants;
+adapters handle HTTP, queue, database, UI, and external-API connections. In the
+POSD review step, check whether the DDD layers actually own knowledge. If
+`OrderService` is a shallow wrapper that only calls `Order.Approve()`, remove it
+or give it clear coordination responsibility like payment approval, inventory
+reservation, and event publication.
+
+### System software application
+
+In system software, event storming is the tool that surfaces the public
+contract's state transitions and ownership rules. Events are not business
+outcomes but system state changes the caller observes or is responsible for.
+For example, write events like `HandleCreated`, `BufferMoved`, `SocketBound`,
+`PeerDisconnected`, `ReadTimedOut`, `ResourceClosed` first.
+
+Commands become API calls or internal runtime requests. For example, record
+which events calls like `CreateHandle`, `SendMessage`, `PollReadable`,
+`CloseResource` produce and which error contracts they carry. Entity and
+aggregate candidates are not business objects but system concepts that hold
+lifecycle and ownership: handle, buffer, connection, session, descriptor.
+
+Split bounded contexts along boundaries where meaning changes: runtime,
+transport, codec, storage, binding. Be especially careful with words like
+timeout, cancellation, backpressure, and ownership, which easily take different
+meanings per layer.
+
+Do not carry business DDD vocabulary over verbatim. Avoid names like
+`ContextAggregate`, `SocketRepository`, `MessageDomainService` when they do not
+help the caller, and instead make these clear:
+
+- Which object owns the lifecycle?
+- Who frees memory and handles?
+- Which calls are valid after close, destroy, move?
+- Is the name for the same concept identical across every public API, binding,
+  and doc?
+- Do error codes express state transitions and caller responsibility
+  consistently?
+- Are meanings like timeout, cancellation, backpressure, and reconnect kept
+  from being interpreted differently per layer?
+
+A deep system API absorbs the internal complexity of these decisions and
+exposes only a simple lifecycle and a consistent error contract to the caller.
+
+### What POSD filters out
+
+Putting DDD names on something does not make it good design. POSD keeps a DDD
+structure from turning into excess layers and shallow modules.
+
+Bad application:
+
+```text
+Controller -> ApplicationService -> DomainService -> Aggregate
+```
+
+If each layer only forwards the same request, the names look like DDD but the
+design is shallow. In that case, merge the layers, or redistribute
+responsibility so each layer actually owns different knowledge.
+
+Good application:
+
+- An aggregate or lifecycle owner keeps state transitions and invariants
+  directly.
+- An application use case coordinates several aggregate, actor, channel, and
+  storage calls.
+- An adapter converts external input into application-use-case or domain-object
+  calls, and does not let framework or transport details flow into the domain.
+- A public API surfaces domain language and hides internal data structures and
+  protocol details.
+
+### Rules
+
+- First write events, commands, actors, and failure meanings with event
+  storming. If you cannot name something, the concept is unclear.
+- Find entity, value object, and aggregate candidates in event clusters, and set
+  boundaries by lifecycle and invariants.
+- For enterprise software, make hexagonal architecture the default: put
+  domain/application at the center, then push external technology out to
+  adapters.
+- For system software, make layered architecture with a public-contract/runtime
+  split the default, separating the public contract from the internal execution
+  structure.
+- Keep domain rules inside domain objects or lifecycle owners. Adapters only
+  convert and wire.
+- After building a DDD design, inspect it with POSD. Remove forwarding-only
+  layers or grow their responsibility.
+- Do not blindly add mappers and classes just to keep the domain pure. Split
+  only when boundary protection actually reduces complexity.
+- In system software, treat lifecycle, ownership, state transition, and error
+  contract as strictly as a domain model.
+
+---
+
 ## Test Coverage Baseline
 
 Tests are part of the design. They make behavior explicit, keep contracts from
@@ -669,6 +965,8 @@ Each flag signals design debt that will compound.
 | 12 | **Hard-to-name** | Is it difficult to find a good name? (the concept itself may be unclear) |
 | 13 | **Hard-to-describe** | Does the interface comment need to be long? (interface may be too complex) |
 | 14 | **Non-obvious code** | Can a competent reader understand the code's behavior at a glance? |
+| 15 | **Domain boundary leak** | Are domain rules mixed with adapter, transport, codec, or storage details? |
+| 16 | **DDD-named shallow layer** | Does the layer have a plausible name but actually only forward requests? |
 
 ---
 
@@ -690,7 +988,9 @@ Each flag signals design debt that will compound.
 14. Software must be designed to be **read, not written**.
 15. The unit of incremental development is an **abstraction**, not a feature.
 16. **Decide what matters.** Emphasize it. Minimize and hide what doesn't.
-17. Default test coverage target is **80%**, but contract and risk coverage are
+17. **Make domain boundaries and language explicit.** Use DDD to capture
+    meaningful boundaries and POSD to filter out shallow layers.
+18. Default test coverage target is **80%**, but contract and risk coverage are
     more important than the raw percentage.
 
 ---

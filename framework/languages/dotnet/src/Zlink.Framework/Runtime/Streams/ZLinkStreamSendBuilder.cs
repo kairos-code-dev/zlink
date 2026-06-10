@@ -40,7 +40,8 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(TMessage message)
             throw new InvalidOperationException("Stream send builders can be executed only once.");
         }
 
-        ReadOnlyMemory<byte> payload = ZLinkEnvelopeCodec.EncodeJsonBytes(message);
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(message, typeof(TMessage));
+        ReadOnlyMemory<byte> payload = encoded.Payload;
         var flags = ZlinkStreamHeaderFlags.None;
 
         if (_compress)
@@ -49,7 +50,7 @@ internal sealed class ZLinkStreamSendBuilder<TMessage>(TMessage message)
             flags |= ZlinkStreamHeaderFlags.PayloadCompressed;
         }
 
-        var header = createHeader(ZlinkStreamCodec.Json, flags, _messageName, _metadata);
+        var header = createHeader(encoded.Codec, flags, _messageName, _metadata);
         ZLinkStreamFrameWriter.Write(write, header, payload.Span, errorMessage);
     }
 }

@@ -1220,7 +1220,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask Submit();
+    ValueTask SubmitAsync();
 }
 
 public interface IZLinkSessionReplyCall
@@ -1229,7 +1229,7 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask Submit();
+    ValueTask SubmitAsync();
 }
 
 ```
@@ -1871,7 +1871,7 @@ public interface IZLinkSendCall
 {
     IZLinkSendCall PacketName(string packetName);
 
-    ValueTask Submit(
+    ValueTask SubmitAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -1937,10 +1937,10 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 - `RequestToChannel(...)` 는 reply 를 기다리므로 `Timeout(...)` 을 둘 수 있다.
 - `SendToChannel(...)` 는 응답을 기다리지 않으므로 timeout 설정을 두지 않는다.
 - `Publish(...)` 도 같은 이유로 timeout 설정을 두지 않는다.
-- `SendToChannel(...).Submit(...)` 는 handler 완료를 기다리는 호출이 아니다.
+- `SendToChannel(...).SubmitAsync(...)` 는 handler 완료를 기다리는 호출이 아니다.
   framework 가 메시지를 transport 에 위임할 수 있을 때까지 기다리는,
   비동기 submit 이다.
-- `Publish(...).Submit(...)` 도 동일한 의미다. subscriber 의 handler
+- `Publish(...).SubmitAsync(...)` 도 동일한 의미다. subscriber 의 handler
   완료나 subscriber 수신을 기다리지 않는다. local publish transport 에
   submit 되는 시점까지만 대기한다.
 - send backpressure 의 대기 한계는 builder 가 아니라, channel 또는
@@ -1952,7 +1952,7 @@ timeout 은 request 와 send 간에 다르게 다룬다.
   `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
   로 본다.
 - `RequestToChannel(...).SubmitAsync<TReply>(...)` 도 마찬가지다. request packet 을
-  내보내는 단계에서는, `SendToChannel(...).Submit(...)` 와 동일한 nonblocking
+  내보내는 단계에서는, `SendToChannel(...).SubmitAsync(...)` 와 동일한 nonblocking
   submit 경로를 사용한다.
 - `RequestToChannel(...).Timeout(...)` 은 reply 대기 시간만을 결정한다.
 - 이 문서는 별도의 public no-wait 옵션을 제공하지 않는다. temporary
@@ -1999,7 +1999,7 @@ var reply = await client
 await client
     .SendToChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 ### 5.2 IZLinkSpotOutbound
@@ -2155,7 +2155,7 @@ public interface IZLinkPublishCall
 {
     IZLinkPublishCall PacketName(string packetName);
 
-    ValueTask Submit(
+    ValueTask SubmitAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -2299,7 +2299,7 @@ public interface IZLinkBoundSessionSendCall
         string key,
         string value);
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
 }
 ```
 

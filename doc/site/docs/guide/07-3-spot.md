@@ -7,14 +7,21 @@ For exact API contracts, see the [SPOT spec](https://github.com/kairos-code-dev/
 
 ## 1. What SPOT does
 
+In application design, a Spot is a stateful coordination point with its own
+lifecycle. It represents a unit where state and events meet, such as a room,
+conversation, workflow instance, or player quest. Actor participation is
+optional: a Spot may accept actor joins, handle directed requests, publish
+events, run timers, or react to pub/sub events.
+
 SPOT has two layers.
 
 - `SpotNode`
   Owns node topology, discovery-backed wiring, manual peer wiring,
   channel-call `DEALER` attachments, and external publish ingress.
 - `Spot`
-  The facade your application uses for topic publish/subscribe, routed recv,
-  and channel send/request.
+  The public facade your application uses for a Spot. It exposes topic
+  publish/subscribe, routed recv, channel send/request, dispatch, timer, and
+  actor operation entry points.
 
 The usual flow is:
 

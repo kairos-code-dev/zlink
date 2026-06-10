@@ -1,5 +1,4 @@
-using Systems.Zlink.Codecs.Json;
-using TicTacToe.Server.Configuration;
+using Systems.Zlink.Codecs.MessagePack;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
@@ -28,11 +27,10 @@ internal sealed class PlayActorJoinGameHandler(ILogger<PlayActorJoinGameHandler>
         var spotRid = RoutingId.From(message.RoomId);
         var joined = await actor.Context.JoinSpot(
                 spotRid,
-                new TicTacToeGameJoinReq(message.RoomId, actor.ActorId).Encode())
-            .Timeout(SampleTimeouts.Request)
+                new TicTacToeGameJoinReq(message.RoomId, actor.ActorId).ToMsgPack())
             .SubmitAsync(cancellationToken);
 
-        var joinReply = joined.Reply.Decode<TicTacToeGameJoinRes>();
+        var joinReply = joined.Reply.FromMsgPack<TicTacToeGameJoinRes>();
         var reply = new JoinGameRes(joinReply.State);
         logger.LogInformation(
             "actor -> client: JoinGameRes returned. actor={ActorId}, roomId={RoomId}, mark={Mark}",

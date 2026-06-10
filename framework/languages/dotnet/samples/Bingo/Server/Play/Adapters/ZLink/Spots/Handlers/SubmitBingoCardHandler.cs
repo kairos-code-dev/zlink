@@ -25,6 +25,6 @@ internal sealed class SubmitBingoCardHandler
             await spot.StartDrawTimerAsync(cancellationToken);
         }
 
-        return new SubmitBingoCardRes(change.State);
+        return new SubmitBingoCardRes { State = change.State };
     }
 }

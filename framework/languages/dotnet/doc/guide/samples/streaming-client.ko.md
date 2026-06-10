@@ -543,7 +543,7 @@ connector 는 이 문서에서 정의한 helper header 만 decode 한다. 수신
 오류만 `ErrorReceived` 로 전달한다. packet payload 를 raw 상태 그대로 사용자에게
 넘겨주지는 않는다.
 
-`Send(...).Submit(...)` 은 응답을 기다리지 않는 submit API 다.
+`Send(...).SubmitAsync(...)` 은 응답을 기다리지 않는 submit API 다.
 
 submit 시점의 동작은 두 갈래로 나뉜다.
 
@@ -585,7 +585,7 @@ public interface IZlinkStreamSendCall
 
     IZlinkStreamSendCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IZlinkStreamRequestCall
@@ -629,13 +629,13 @@ packet 이름을 따로 명시하지 않으면, 기본 이름은 namespace 를 �
 ```csharp
 client
     .Send(new ChatMessage { Text = "hello" })
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 
 client
     .Send(new ChatMessage { Text = "hello" })
     .PacketName("chat.message")
     .Metadata("traceId", traceId)
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 client 에서 server 로 보내는 방향의 압축은, 명시적으로 호출했을 때만 적용한다.
@@ -644,7 +644,7 @@ client 에서 server 로 보내는 방향의 압축은, 명시적으로 호출�
 client
     .Send(new UploadReplayChunk { Bytes = chunk })
     .Compress()
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 `.Compress()` 의 동작은 다음과 같다.
@@ -885,7 +885,7 @@ using Systems.Zlink.Stream.Connector.Codecs;
 
 client
     .Send(new ChatMessage("hello"))
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 
 var reply = await client
     .Request(new ChatRequest("hello"))
@@ -933,6 +933,12 @@ Unity용 별도 connector package는 두지 않는다. Unity도 `Systems.Zlink.S
 core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출한다. 그러면
 수신 handler와 lifecycle event가 Unity main thread에서 실행된다.
 
+비동기 실행과 coroutine adapter의 의미는
+[framework 공통 정책](../../../../../../framework/doc/spec/async-execution-policy.ko.md)을
+따른다. Unity에서도 connector의 public API는 일반 `.NET`과 같은 `Task` / `ValueTask`
+기반 비동기 표면이다. `StartCoroutine(...)` 중심의 프로젝트에서는 application helper가
+awaitable 호출을 감싸는 방식으로 맞춘다.
+
 Unity 사용 예제와 lifecycle 처리 방식은
 [Unity Stream Connector 가이드](../../../../../../doc/guide/unity-stream-connector.ko.md)
 에서 다룬다. 이 가이드는 사용법 문서이며, 별도의 wire protocol이나 별도 public API 계약을
@@ -946,9 +952,9 @@ Unity 사용 예제와 lifecycle 처리 방식은
 `.NET` 구현의 완료 기준은 다음과 같다.
 
 - `tcp://`, `tls://`, `ws://`, `wss://` endpoint에 모두 연결할 수 있다.
-- `Send(...).Submit(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
+- `Send(...).SubmitAsync(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
 - 서버가 helper header로 만든 packet을 client가 typed handler로 받는다.
-- callback request와 `Request(...).Submit(...)`이 각각 정상 동작한다.
+- callback request와 `Request(...).SubmitAsync<TReply>(...)`이 각각 정상 동작한다.
 - request timeout, close 중 pending request 실패, disconnected 상태에서의 send 동작을
   테스트한다.
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.

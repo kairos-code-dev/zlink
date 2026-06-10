@@ -33,4 +33,10 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
         bool compress,
         TimeSpan timeout,
         Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback);
+
+    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForEncodedAsync(
+        string name,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
 }

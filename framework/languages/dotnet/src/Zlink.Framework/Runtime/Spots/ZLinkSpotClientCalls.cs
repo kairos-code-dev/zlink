@@ -58,7 +58,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask Submit(CancellationToken cancellationToken = default)
+    public async ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
@@ -160,7 +160,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = ZLinkClientCallCodec.CreateEnvelope(

@@ -35,20 +35,7 @@ internal sealed class ZlinkStreamReceivedMessages
 
     public async ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
         string name,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        return await WaitForAsync(
-                name,
-                static _ => true,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
-        string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
@@ -79,7 +66,7 @@ internal sealed class ZlinkStreamReceivedMessages
 
     private ZlinkStreamMessage<ZlinkStreamEncodedPayload>? TryTake(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate)
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate)
     {
         lock (_gate)
         {
@@ -90,7 +77,12 @@ internal sealed class ZlinkStreamReceivedMessages
 
             foreach (var message in messages)
             {
-                if (message.Consumed || !predicate(message.Value))
+                if (message.Consumed)
+                {
+                    continue;
+                }
+
+                if (predicate is not null && !predicate(message.Value))
                 {
                     continue;
                 }

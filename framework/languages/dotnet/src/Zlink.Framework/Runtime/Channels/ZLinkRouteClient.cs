@@ -88,7 +88,7 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         return runtime.GetRouteChannel(routerChannelId).SubmitSendAsync(
             targetNodeRid,

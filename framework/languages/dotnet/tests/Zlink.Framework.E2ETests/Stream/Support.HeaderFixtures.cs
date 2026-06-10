@@ -152,7 +152,7 @@ public abstract partial class StreamTestSupport
             }
 
             return _context.Client.Reply("pong")
-                .Submit();
+                .SubmitAsync();
         }
     }
 

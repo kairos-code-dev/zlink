@@ -1,14 +1,4 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
-using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Configuration;
-using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Spots;
-using Zlink.Framework.Contracts.Streams;
-using Zlink.Framework.Contracts.Timers;
 using Bingo.Server.Play.Adapters.ZLink.Actors;
-using Bingo.Server.Play.Adapters.ZLink.Handlers;
 using Bingo.Server.Play.Adapters.ZLink.Notifications;
 using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
@@ -31,8 +21,9 @@ public static class PlayServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DefaultTimeout = SampleTimings.RequestTimeout;
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
-            options.Codecs.AddJson();
+            options.Codecs.AddProtobuf();
             options.UseDiscovery(discovery => discovery.AddRegistryEndpoint(topology.RegistryRouterEndpoint));
             options.AddClientServerChannel(SampleNames.PlayChannel, channel =>
             {

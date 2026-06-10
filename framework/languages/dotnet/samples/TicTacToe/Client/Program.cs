@@ -27,7 +27,7 @@ internal static class Program
         await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
         await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
 
-        await new TicTacToeClientApp().RunAsync(
+        await new TicTacToeClientScenario().RunAsync(
             room,
             client1,
             client2,

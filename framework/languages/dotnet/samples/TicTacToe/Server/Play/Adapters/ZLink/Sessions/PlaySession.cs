@@ -1,10 +1,9 @@
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.MessagePack;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
-using System.Text.Json;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 
@@ -17,8 +16,6 @@ sealed class PlaySession(
     ILogger<PlaySession> logger)
     : IZLinkSession
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     private string? _actorId;
     private IZLinkSessionActor? _actor;
 
@@ -98,7 +95,7 @@ sealed class PlaySession(
         Message payload,
         CancellationToken cancellationToken)
     {
-        var authenticate = payload.Decode<AuthenticateReq>(JsonOptions);
+        var authenticate = payload.FromMsgPack<AuthenticateReq>();
 
         logger.LogInformation(
             "play stream -> api: authenticate requested. sessionId={SessionId}",
@@ -107,11 +104,10 @@ sealed class PlaySession(
         var reply = await channels.RequestToChannel(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
-            .Timeout(SampleTimeouts.Request)
             .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
 
         await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
-            .Submit();
+            .SubmitAsync();
 
         logger.LogInformation(
             "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
@@ -146,7 +142,6 @@ sealed class PlaySession(
                 Context.SessionId,
                 actorId);
             await playerActor.Context.JoinEntrySpot(RoutingId.From(SampleTypes.PlaySpotNodeId))
-                .Timeout(SampleTimeouts.Request)
                 .SubmitAsync(cancellationToken);
 
             logger.LogInformation(

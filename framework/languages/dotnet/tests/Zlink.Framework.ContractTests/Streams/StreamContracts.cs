@@ -41,13 +41,13 @@ public sealed class StreamContracts
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         await context
             .Client.Reply(new AuthenticateReply("player-1"))
             .Metadata("trace-id", "abc")
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         await context.CloseAsync();
 
@@ -114,7 +114,7 @@ public sealed class StreamContracts
             .Send(new PlayerJoined("player-1"))
             .PacketName("player.joined")
             .Metadata("trace-id", "abc")
-            .Submit();
+            .SubmitAsync();
 
         await boundSession.DisconnectAsync();
 
@@ -300,7 +300,7 @@ public sealed class StreamContracts
     {
         public IZLinkSendCall PacketName(string messageName) => this;
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
@@ -321,7 +321,7 @@ public sealed class StreamContracts
 
         public IZLinkSessionSendCall Compress() => this;
 
-        public ValueTask Submit() => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class SessionReplyCall : IZLinkSessionReplyCall
@@ -330,7 +330,7 @@ public sealed class StreamContracts
 
         public IZLinkSessionReplyCall Compress() => this;
 
-        public ValueTask Submit() => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall
@@ -339,7 +339,7 @@ public sealed class StreamContracts
 
         public IZLinkBoundSessionSendCall Metadata(string key, string value) => this;
 
-        public ValueTask Submit(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy

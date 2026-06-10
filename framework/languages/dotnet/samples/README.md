@@ -2,8 +2,8 @@
 
 | Sample | Purpose |
 |--------|---------|
-| [TicTacToe](./TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. |
-| [Bingo](./Bingo/) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. |
+| [TicTacToe](./TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. Uses MessagePack payloads. |
+| [Bingo](./Bingo/) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. Uses Protobuf payloads. |
 
 Run all samples:
 

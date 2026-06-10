@@ -233,7 +233,7 @@ public sealed class ClientHeaderSession(
                         {
                             Input = input
                         })
-                    .Submit(cancellationToken);
+                    .SubmitAsync(cancellationToken);
 
                 break;
             }
@@ -249,14 +249,14 @@ public sealed class ClientHeaderSession(
                         {
                             Sequence = ping.Sequence
                         })
-                    .Submit(cancellationToken);
+                    .SubmitAsync(cancellationToken);
 
                 await context
                     .Reply(new Pong
                     {
                         Sequence = ping.Sequence
                     })
-                    .Submit();
+                    .SubmitAsync();
                 break;
             }
         }
@@ -382,7 +382,7 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
     {
         return context
             .Reply(new Pong())
-            .Submit();
+            .SubmitAsync();
     }
 }
 ```

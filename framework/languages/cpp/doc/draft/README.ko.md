@@ -25,9 +25,10 @@
 기능 기준은 현재 `.NET` framework다. `C++` framework는 같은 application model,
 messaging model, handler model, `STREAM`, `SPOT`, ActorGateway session relay,
 monitoring, graceful shutdown을 제공한다. 차이는 언어 표현과 ownership 모델뿐이다.
-`.NET`의 `Submit()` 계열 동기 호출은 C++의 `submit()`이 `result_t<T>`를 바로 돌려주는
-형태로, `.NET`의 `SubmitAsync()`는 C++20 `task_t<T>`를 돌려주는 `submit_async()`와
-`co_await`로 투영한다. `.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로 투영한다.
+`.NET`의 네트워크 `SubmitAsync()` 계열 호출은 C++20 `task_t<T>`를 돌려주는
+`submit_async()`와 `co_await`로 투영한다. 서버 framework public API에는 thread를 block하는
+네트워크 `submit()` 표면을 두지 않는다. `.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로
+투영한다.
 
 폴더 구조도 `.NET` framework의 역할 분리를 기준으로 맞춘다. `.NET`의
 `Contracts/*`는 C++에서 설치되는 public header인
@@ -97,7 +98,7 @@ runtime 구현인지에 대한 경계는 바꾸지 않는다.
 | `Contracts/Channels` | `contracts/channels` | channel send/request/pub/sub public 계약 |
 | `Contracts/Codecs` | `contracts/codecs` | serializer와 message codec public 계약 |
 | `Contracts/Configuration` | `contracts/configuration` | app builder, DI, option public 계약 |
-| `Contracts/Dispatch` | `contracts/dispatch` | task, callback submit, offload option public 계약 |
+| `Contracts/Dispatch` | `contracts/dispatch` | task, coroutine submit, offload option public 계약 |
 | `Contracts/Errors` | `contracts/errors` | error kind, exception, result public 계약 |
 | `Contracts/Eventing` | `contracts/eventing` | monitoring event public 계약 |
 | `Contracts/Handlers` | `contracts/handlers` | handler shape와 registry public 계약 |
@@ -112,7 +113,7 @@ runtime 구현인지에 대한 경계는 바꾸지 않는다.
 | `Runtime/Codecs` | `src/runtime/codecs` | type-erased serializer map과 codec wiring |
 | `Runtime/Configuration` | `src/runtime/configuration` | service registry, option materialization 구현 |
 | `Runtime/Diagnostics` | `src/runtime/diagnostics` | logging, monitoring source, health 구현 |
-| `Runtime/Dispatch` | `src/runtime/dispatch` | callback/coroutine completion 구현 |
+| `Runtime/Dispatch` | `src/runtime/dispatch` | coroutine completion 구현 |
 | `Runtime/Execution` | `src/runtime/execution` | offload executor와 drain 구현 |
 | `Runtime/Handlers` | `src/runtime/handlers` | descriptor map, DI resolve, invoke 구현 |
 | `Runtime/Host` | `src/runtime/host` | app lifecycle, graceful shutdown 구현 |
@@ -168,9 +169,9 @@ host/runtime 표면으로만 구체화한다.
   타입은 `_t` 접미사를 기준으로 적는다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다. 같은 capability 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
-- send/publish는 기본 async submit으로 설명한다. backpressure는 public
-  non-blocking 옵션이 아니라 framework 내부의 nonblocking send, pending queue,
-  ready notification으로 처리한다.
+- send/publish의 async submit과 backpressure 의미는
+  [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을
+  따른다.
 - `SPOT`을 지원하는 문서는 named spot factory 등록, `spot_name` 기준 생성,
   `spot_rid -> spot_name` 조회, lifecycle timer, 외부 spot publish 표면을
   공통 정책과 맞춰 설명해야 한다.

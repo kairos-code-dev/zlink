@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
@@ -28,12 +28,15 @@ internal sealed class MatchBingoHandler(
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}", request.ActorId, request.Mode);
         var allocated = await client.RequestToChannel(
                 SampleNames.PlayChannel,
-                new AllocateBingoRoomReq(request.Mode, request.ActorId))
-            .Timeout(SampleTimings.RequestTimeout)
+                new AllocateBingoRoomReq
+                {
+                    Mode = request.Mode,
+                    ActorId = request.ActorId,
+                })
             .SubmitAsync<AllocateBingoRoomRes>(cancellationToken)
             ;
         logger.LogInformation("api match: allocated. actor={ActorId}, room={RoomId}", request.ActorId, allocated.RoomId);
 
-        return new MatchBingoApiRes(allocated.RoomId);
+        return new MatchBingoApiRes { RoomId = allocated.RoomId };
     }
 }

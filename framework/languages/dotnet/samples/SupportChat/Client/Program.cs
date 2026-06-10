@@ -1,0 +1,47 @@
+using SupportChat.Shared.Configuration;
+using Systems.Zlink.Stream.Connector.Contracts;
+
+namespace SupportChat.Client;
+
+internal static class Program
+{
+    public static async Task Main(string[] args)
+    {
+        var streamEndpoint = ReadOption(args, "--stream-endpoint")
+            ?? throw new ArgumentException("Missing --stream-endpoint.");
+
+        await using var customer = CreateClient(streamEndpoint);
+        await using var agent = CreateClient(streamEndpoint);
+        await using var reconnectingCustomer = CreateClient(streamEndpoint);
+        await using var waitingCustomer = CreateClient(streamEndpoint);
+        await using var closingCustomer = CreateClient(streamEndpoint);
+        await using var closingAgent = CreateClient(streamEndpoint);
+
+        await new SupportChatClientScenario().RunAsync(
+            customer,
+            agent,
+            reconnectingCustomer,
+            waitingCustomer,
+            closingCustomer,
+            closingAgent);
+
+        Console.WriteLine("supportchat=completed");
+    }
+
+    private static IZlinkStreamConnector CreateClient(string streamEndpoint)
+    {
+        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(streamEndpoint),
+            ConnectTimeout = SampleTimings.ConnectTimeout,
+            RequestTimeout = SampleTimings.RequestTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        });
+    }
+
+    private static string? ReadOption(string[] args, string name)
+    {
+        var index = Array.IndexOf(args, name);
+        return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+    }
+}

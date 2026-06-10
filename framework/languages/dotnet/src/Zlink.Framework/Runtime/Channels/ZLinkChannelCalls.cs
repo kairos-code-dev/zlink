@@ -28,7 +28,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
@@ -152,7 +152,7 @@ internal sealed class ZLinkPublishCall(
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetOrCreatePublisherBundle(channelName);

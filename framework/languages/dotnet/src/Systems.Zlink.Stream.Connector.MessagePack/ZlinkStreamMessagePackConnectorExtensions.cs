@@ -43,64 +43,21 @@ public static class ZlinkStreamMessagePackConnectorExtensions
         });
     }
 
-    public static async ValueTask<ZlinkStreamMessage<TPayload>> WaitForAsync<TPayload>(
+    public static ZlinkStreamMessagePackWaitBuilder<TPayload> WaitFor<TPayload>(
         this IZlinkStreamConnector connector,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        string name)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        return await WaitForAsync<TPayload>(
-                connector,
-                connector.Options.NameResolver.Resolve(typeof(TPayload)),
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
+        return new ZlinkStreamMessagePackWaitBuilder<TPayload>(connector.WaitFor(name));
     }
 
-    public static async ValueTask<ZlinkStreamMessage<TPayload>> WaitForAsync<TPayload>(
-        this IZlinkStreamConnector connector,
-        string name,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+    public static ZlinkStreamMessagePackWaitBuilder<TPayload> WaitFor<TPayload>(
+        this IZlinkStreamConnector connector)
     {
         ArgumentNullException.ThrowIfNull(connector);
-        var message = await connector.WaitForAsync(name, timeout, cancellationToken)
-            .ConfigureAwait(false);
-        return Decode<TPayload>(message);
-    }
-
-    public static async ValueTask<ZlinkStreamMessage<TPayload>> WaitForAsync<TPayload>(
-        this IZlinkStreamConnector connector,
-        Func<ZlinkStreamMessage<TPayload>, bool> predicate,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(connector);
-        return await WaitForAsync(
-                connector,
-                connector.Options.NameResolver.Resolve(typeof(TPayload)),
-                predicate,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public static async ValueTask<ZlinkStreamMessage<TPayload>> WaitForAsync<TPayload>(
-        this IZlinkStreamConnector connector,
-        string name,
-        Func<ZlinkStreamMessage<TPayload>, bool> predicate,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(connector);
-        ArgumentNullException.ThrowIfNull(predicate);
-        var message = await connector.WaitForAsync(
-                name,
-                encoded => predicate(Decode<TPayload>(encoded)),
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-        return Decode<TPayload>(message);
+        return WaitFor<TPayload>(
+            connector,
+            connector.Options.NameResolver.Resolve(typeof(TPayload)));
     }
 
     private static ZlinkStreamMessage<TPayload> Decode<TPayload>(
@@ -108,6 +65,42 @@ public static class ZlinkStreamMessagePackConnectorExtensions
     {
         var payload = message.Payload.FromMsgPack<TPayload>();
         return new ZlinkStreamMessage<TPayload>(message.Name, message.Metadata, payload);
+    }
+}
+
+public sealed class ZlinkStreamMessagePackWaitBuilder<TPayload>
+{
+    private readonly IZlinkStreamWaitCall _inner;
+
+    internal ZlinkStreamMessagePackWaitBuilder(IZlinkStreamWaitCall inner)
+    {
+        _inner = inner;
+    }
+
+    public ZlinkStreamMessagePackWaitBuilder<TPayload> Timeout(TimeSpan timeout)
+    {
+        _inner.Timeout(timeout);
+        return this;
+    }
+
+    public ZlinkStreamMessagePackWaitBuilder<TPayload> Where(Func<ZlinkStreamMessage<TPayload>, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        _inner.Where(message => predicate(new ZlinkStreamMessage<TPayload>(
+            message.Name,
+            message.Metadata,
+            message.Payload.FromMsgPack<TPayload>())));
+        return this;
+    }
+
+    public async ValueTask<ZlinkStreamMessage<TPayload>> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var message = await _inner.SubmitAsync(cancellationToken).ConfigureAwait(false);
+        return new ZlinkStreamMessage<TPayload>(
+            message.Name,
+            message.Metadata,
+            message.Payload.FromMsgPack<TPayload>());
     }
 }
 
@@ -144,8 +137,8 @@ public sealed class ZlinkStreamMessagePackSendBuilder
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
-        => _inner.Submit(cancellationToken);
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+        => _inner.SubmitAsync(cancellationToken);
 }
 
 public sealed class ZlinkStreamMessagePackRequestBuilder

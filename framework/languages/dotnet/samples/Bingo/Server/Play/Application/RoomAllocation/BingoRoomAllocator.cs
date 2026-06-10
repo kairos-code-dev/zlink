@@ -1,8 +1,8 @@
-using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Spots;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
+using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Application.RoomAllocation;
 
@@ -41,7 +41,7 @@ internal sealed class BingoRoomAllocator(IZLinkSpotManager spots)
                 || _reservedSeats >= _currentRoomSettings.RequiredPlayers)
             {
                 settings = settings with { RoomName = $"Bingo Room {++_roomSeq:000}" };
-                using var settingsPart = settings.ToJson();
+                using var settingsPart = ToPayload(settings).ToProto();
                 var room = await spots.CreateAsync<BingoRoom>(settingsPart, cancellationToken);
                 if (room.State != ZLinkSpotCreateState.Created)
                 {
@@ -61,5 +61,16 @@ internal sealed class BingoRoomAllocator(IZLinkSpotManager spots)
         {
             _gate.Release();
         }
+    }
+
+    private static BingoRoomSettingsPayload ToPayload(BingoRoomSettings settings)
+    {
+        return new BingoRoomSettingsPayload
+        {
+            RoomName = settings.RoomName,
+            Mode = settings.Mode,
+            RequiredPlayers = settings.RequiredPlayers,
+            MaxDrawNumber = settings.MaxDrawNumber,
+        };
     }
 }

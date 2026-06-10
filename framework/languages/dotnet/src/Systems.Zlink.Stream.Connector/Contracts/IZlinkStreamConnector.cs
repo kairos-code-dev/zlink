@@ -5,7 +5,7 @@ namespace Systems.Zlink.Stream.Connector.Contracts;
 /// </summary>
 /// <remarks>
 /// <see cref="On"/> is the normal callback path for long-lived push handling.
-/// <see cref="WaitForAsync(string, TimeSpan, CancellationToken)"/> is a
+/// <see cref="WaitFor"/> is a
 /// deterministic wait path for samples, command-line flows, and e2e scenario
 /// tests.
 /// </remarks>
@@ -93,42 +93,12 @@ public interface IZlinkStreamConnector : IAsyncDisposable
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
 
     /// <summary>
-    /// Waits for the next unread received message with the given packet name.
+    /// Starts a wait operation for the next unread received message with the given packet name.
     /// </summary>
     /// <remarks>
     /// The matched message is consumed by this wait operation. Use this API for
     /// deterministic sample, CLI, or e2e scenario flow; production clients
     /// should normally use <see cref="On"/>.
     /// </remarks>
-    /// <exception cref="TimeoutException">
-    /// Thrown when no matching message is received before <paramref name="timeout"/>.
-    /// </exception>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when <paramref name="cancellationToken"/> is canceled.
-    /// </exception>
-    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
-        string name,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Waits for an unread received message with the given packet name that
-    /// satisfies <paramref name="predicate"/>.
-    /// </summary>
-    /// <remarks>
-    /// The matching message is consumed. Unmatched messages remain available for
-    /// later waits, which is useful when a scenario expects several message
-    /// types or sequence numbers in a non-strict arrival order.
-    /// </remarks>
-    /// <exception cref="TimeoutException">
-    /// Thrown when no matching message is received before <paramref name="timeout"/>.
-    /// </exception>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when <paramref name="cancellationToken"/> is canceled.
-    /// </exception>
-    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForAsync(
-        string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default);
+    IZlinkStreamWaitCall WaitFor(string name);
 }

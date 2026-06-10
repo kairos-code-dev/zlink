@@ -283,7 +283,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
             ct);
         await context.Actors.BindAsync(
             actor, ct);
-        await context.Client.Reply(new AuthRep(ok: true)).Submit();
+        await context.Client.Reply(new AuthRep(ok: true)).SubmitAsync();
     }
 }
 ```
@@ -312,7 +312,7 @@ public sealed class JoinMatchActorHandler
         // 같은 actor 에 묶인 client 로 push
         await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 
         // 응답 frame의 metadata/compression 옵션. 응답 body는 반환값이다.
         context.Reply
@@ -338,13 +338,13 @@ public sealed class PlayerNotifyHandler
         ZLinkSpotActorSendContext context,
         GameStateNotify message,
         CancellationToken ct)
-        => actor.Context.BoundSession.Send(message).Submit(ct);
+        => actor.Context.BoundSession.Send(message).SubmitAsync(ct);
 }
 ```
 
 - `IZLinkBoundSession` 의 표면은 **`Send<TMessage>(message)`** 와
   **`DisconnectAsync(...)`** 둘뿐이다. client 로의 push 는 단방향이며 별도의
-  `Request` 표면은 없다. `Send(...).Submit(...)` 은 fire-and-forget(route 위임
+  `Request` 표면은 없다. `Send(...).SubmitAsync(...)` 은 fire-and-forget(route 위임
   완료이지 client app ack 이 아님)이다.
 - `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를
   다시 일으키지 않는다(stream 만 닫고 binding 정리).

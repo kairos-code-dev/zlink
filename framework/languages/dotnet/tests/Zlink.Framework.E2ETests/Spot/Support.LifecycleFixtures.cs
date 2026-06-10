@@ -193,7 +193,7 @@ public abstract partial class SpotTestSupport
             _ = tick;
             recorder.RecordTick();
             await spot.Context.Outbound.Publish("stage.local", new LocalStageEvent(spot.Context.SpotRid.ToString()))
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
         }
     }
 

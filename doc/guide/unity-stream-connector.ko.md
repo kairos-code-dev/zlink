@@ -13,6 +13,13 @@ disconnect event, request callback을 직접 호출하지 않고 connector 내�
 Unity에서는 `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출한다. 그러면 그 frame에
 쌓인 callback이 Unity main thread에서 실행된다.
 
+비동기 실행과 coroutine adapter의 공통 의미는
+[framework 공통 정책](../../framework/doc/spec/async-execution-policy.ko.md)을 따른다.
+Unity에서도 connector의 public API는 일반 `.NET`과 같은 `Task` / `ValueTask` 기반
+비동기 API다. `ConnectAsync()`, `CloseAsync()`, `DispatchAsync()`,
+`Send(...).SubmitAsync(...)`, `Request(...).SubmitAsync<TReply>(...)`,
+`WaitFor(...).SubmitAsync(...)` 같은 호출을 그대로 사용한다.
+
 ## MonoBehaviour 예시
 
 ```csharp
@@ -91,6 +98,8 @@ private async void OnApplicationPause(bool paused)
 
 최신 Unity에서는 `async` / `await`를 쓸 수 있으므로 코루틴이 필수는 아니다. 기존 코드가
 `StartCoroutine(...)` 중심이라면 아래처럼 얇은 helper를 application 안에 둘 수 있다.
+이 helper는 `DispatchAsync()` 전용 기능이 아니라, connector의 awaitable 호출을 Unity
+frame 흐름에 맞추는 application adapter 예시다.
 
 ```csharp
 using System.Collections;
@@ -113,4 +122,5 @@ private IEnumerator DispatchCoroutine()
 ```
 
 이 helper는 Unity 사용법일 뿐 connector 계약이 아니다. connector 자체는 Unity 타입에
-의존하지 않는다.
+의존하지 않는다. framework나 connector는 공통 정책에 따라 Unity coroutine 전용 public
+API나 blocking sync API를 따로 제공하지 않는다.

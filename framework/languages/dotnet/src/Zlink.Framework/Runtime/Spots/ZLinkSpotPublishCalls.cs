@@ -16,7 +16,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
@@ -51,7 +51,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask Submit(CancellationToken cancellationToken = default)
+    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);

@@ -31,28 +31,45 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 ## 3. Public API
 
 ```java
-public interface ZLinkStreamConnector extends AutoCloseable {
+public interface ZLinkStreamConnector {
     boolean isConnected();
     ZLinkStreamConnectionState state();
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
+    int receivedCount(String name);
 
-    CompletionStage<Void> connectAsync();
-    CompletionStage<Void> disconnectAsync();
-    CompletionStage<Void> reconnectAsync();
-    CompletionStage<Void> closeAsync();
-    CompletionStage<Void> dispatchAsync();
+    ZLinkStreamLifecycleCall connect();
+    ZLinkStreamLifecycleCall disconnect();
+    ZLinkStreamLifecycleCall reconnect();
+    ZLinkStreamLifecycleCall close();
+    ZLinkStreamLifecycleCall dispatch();
+    <T> T await(CompletionStage<T> stage) throws Exception;
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
+    ZLinkStreamSendCall send(Object payload);
+    ZLinkStreamTypedRequestCall request(Object payload);
+    ZLinkStreamWaitCall waitFor(String name);
+    ZLinkStreamWaitCall waitFor(Class<?> payloadType);
 
     AutoCloseable on(
         String name,
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);
-
+    <TPayload> AutoCloseable on(
+        Class<TPayload> payloadType,
+        ZLinkStreamMessageHandler<TPayload> handler);
+    <TPayload> AutoCloseable on(
+        String name,
+        Class<TPayload> payloadType,
+        ZLinkStreamMessageHandler<TPayload> handler);
     AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler);
     AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler);
     AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);
+}
+
+public interface ZLinkStreamLifecycleCall {
+    CompletionStage<Void> submit();
+    void await() throws Exception;
 }
 
 public final class ZLinkStreamConnectorFactory {
@@ -62,6 +79,18 @@ public final class ZLinkStreamConnectorFactory {
 
 Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의미는 같다.
 등록 해제는 반환된 `AutoCloseable`로 한다.
+`waitFor(...)`는 특정 packet name의 server push를 한 번 기다리는 call builder를 반환한다.
+필요한 message만 고를 때는 builder의 `where(...)`를 사용한다. timeout이 지나면 반환된
+`CompletionStage`가 timeout 실패로 끝난다. 별도 timeout을 지정하지 않으면 connector
+options의 `requestTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
+기존처럼 `dispatch().submit()` 또는 `dispatch().await()`를 호출해야 wait handler가 실행된다.
+
+Java API에서 `submit(...)`은 비동기 작업을 시작하고 `CompletionStage`를 반환한다.
+`await(...)`는 같은 작업의 완료를 현재 thread에서 기다린 뒤 결과를 반환한다. lifecycle도
+`connect().submit()`, `connect().await()`, `dispatch().submit()`, `dispatch().await()`
+처럼 같은 call builder 규칙을 따른다. Kotlin wrapper는 `submit()`으로 얻은
+`CompletionStage`를 coroutine suspension으로 기다린다. 이 실행 의미는
+[framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
 
 ## 4. Options
 
@@ -173,7 +202,7 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(ZLinkStreamMetadata metadata);
     ZLinkStreamSendCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkStreamRequestCall {
@@ -182,13 +211,36 @@ public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall metadata(ZLinkStreamMetadata metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
-    CompletionStage<ZLinkStreamEncodedPayload> submitAsync();
-    AutoCloseable submit(Consumer<ZLinkStreamResult<ZLinkStreamEncodedPayload>> callback);
+    CompletionStage<ZLinkStreamEncodedPayload> submit();
+}
+
+public interface ZLinkStreamTypedRequestCall {
+    ZLinkStreamTypedRequestCall packetName(String packetName);
+    ZLinkStreamTypedRequestCall metadata(String key, String value);
+    ZLinkStreamTypedRequestCall metadata(Map<String, String> metadata);
+    ZLinkStreamTypedRequestCall compress();
+    ZLinkStreamTypedRequestCall timeout(Duration timeout);
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> TReply await(Class<TReply> replyType) throws Exception;
+}
+
+public interface ZLinkStreamWaitCall {
+    ZLinkStreamWaitCall timeout(Duration timeout);
+    ZLinkStreamWaitCall where(
+        Predicate<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> predicate);
+    <TPayload> ZLinkStreamWaitCall where(
+        Class<TPayload> payloadType,
+        Predicate<ZLinkStreamMessage<TPayload>> predicate);
+    CompletionStage<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> submit();
+    <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> submit(
+        Class<TPayload> payloadType);
+    <TPayload> ZLinkStreamMessage<TPayload> await(Class<TPayload> payloadType)
+        throws Exception;
 }
 ```
 
 request timeout이 끝나면 pending request를 제거한다. response가 늦게 도착하면
-사용자 callback을 다시 호출하지 않는다.
+request stage를 완료하지 않는다.
 현재 in-memory smoke connector는 등록된 reply handler가 없는 request를 즉시 timeout
 실패로 드러낸다. 이 동작은 sample이 timeout을 sleep으로 숨기지 않고 pending request
 정리 의미를 검증하기 위한 첫 구현 기준이다.
@@ -219,12 +271,40 @@ public final class ZLinkStreamJson {
         String name,
         Class<TPayload> payloadType,
         ZLinkStreamMessageHandler<TPayload> handler);
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        Class<TPayload> payloadType,
+        Duration timeout);
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        Class<TPayload> payloadType,
+        Predicate<ZLinkStreamMessage<TPayload>> predicate,
+        Duration timeout);
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        String name,
+        Class<TPayload> payloadType,
+        Duration timeout);
+
+    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
+        ZLinkStreamConnector connector,
+        String name,
+        Class<TPayload> payloadType,
+        Predicate<ZLinkStreamMessage<TPayload>> predicate,
+        Duration timeout);
 }
 ```
 
 auto codec helper는 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
 수 없으면 configuration error로 실패한다. typed helper가 만드는 packet name도 core
 connector의 name resolver를 그대로 사용한다.
+typed `waitForAsync(...)`는 core connector의 wait helper를 사용하고, predicate에는
+decode된 payload를 담은 `ZLinkStreamMessage<TPayload>`를 넘긴다. sample client는 server
+push를 기다릴 때 이 helper를 사용해 packet name, timeout, payload 조건을 한 곳에서
+표현한다.
 첫 구현의 typed helper는 core connector smoke와 같은 `String`, `byte[]`, `Message`
 payload를 지원한다. 복합 DTO 직렬화는 JSON/MessagePack/Protobuf 라이브러리 선택과
 schema 정책이 닫힌 뒤 확장한다.
@@ -252,7 +332,7 @@ public enum ZLinkStreamDispatchMode {
 
 기본값은 `MANUAL`이다. receive loop, reconnect loop, request callback task가 사용자
 handler를 직접 호출하지 않고 dispatch queue에 넣는다. application은 자신이 원하는
-thread에서 `dispatchAsync()`를 호출한다.
+thread에서 `dispatch().submit()` 또는 `dispatch().await()`를 호출한다.
 
 `IMMEDIATE`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
 있는 client sample은 `MANUAL`을 유지한다.
@@ -282,7 +362,7 @@ DISCONNECTED -> CONNECTING
 
 heartbeat timeout이나 transport disconnect가 발생하면 reconnect가 켜져 있을 때
 `RECONNECTING`으로 이동한다. `maxAttempts`를 넘으면 `DISCONNECTED`가 된다.
-`closeAsync()` 이후에는 `CLOSED`이고, 새 `connectAsync()`는 실패한다.
+`close().submit()` 또는 `close().await()` 이후에는 `CLOSED`이고, 새 `connect()`는 실패한다.
 
 ## 11. Error Code
 
@@ -309,23 +389,50 @@ error event로 올리고, connector lifecycle은 명시된 상태 전이 규칙�
 
 ## 12. Kotlin 표면
 
-Kotlin module은 Java connector 위의 thin wrapper다.
+Kotlin module은 Java connector 위의 thin wrapper다. Kotlin 사용자 code는 Java `submit()`을
+직접 호출하지 않고 Kotlin wrapper의 suspend `await()`를 사용한다. 이 `await()`는 Java blocking
+`await()`를 호출하지 않고, Java `submit()`이 반환한 `CompletionStage`를 coroutine suspension으로
+기다린다.
 
 ```kotlin
-suspend fun ZLinkStreamConnector.connect()
-suspend fun ZLinkStreamConnector.disconnect()
-suspend fun ZLinkStreamConnector.reconnect()
-suspend fun ZLinkStreamConnector.closeConnector()
-suspend fun ZLinkStreamSendCall.submit()
+fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
+
+class ZLinkKotlinStreamConnector {
+    fun connect(): ZLinkKotlinLifecycleCall
+    fun disconnect(): ZLinkKotlinLifecycleCall
+    fun reconnect(): ZLinkKotlinLifecycleCall
+    fun close(): ZLinkKotlinLifecycleCall
+    fun dispatch(): ZLinkKotlinLifecycleCall
+    fun send(payload: Any): ZLinkKotlinSendCall
+    fun request(payload: Any): ZLinkStreamTypedRequestCall
+    fun <TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
+    fun <TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload>
+    fun messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
+    fun errors(): Flow<ZLinkStreamError>
+}
+
+class ZLinkKotlinLifecycleCall {
+    suspend fun await()
+}
+
+class ZLinkKotlinSendCall {
+    suspend fun await()
+}
+
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-fun ZLinkStreamConnector.messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
-fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
+suspend fun <TReply> ZLinkStreamTypedRequestCall.await(): TReply
+
+class ZLinkStreamTypedWaitCall<TPayload> {
+    fun timeout(timeout: Duration): ZLinkStreamTypedWaitCall<TPayload>
+    fun where(predicate: (ZLinkStreamMessage<TPayload>) -> Boolean): ZLinkStreamTypedWaitCall<TPayload>
+    suspend fun await(): ZLinkStreamMessage<TPayload>
+}
 ```
 
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들지 않는다.
 `messages(...)`와 `errors()`는 Java connector의 `on(...)`, `onErrorReceived(...)`
 handler를 `callbackFlow`로 감싼다. 따라서 manual dispatch mode에서는 Java와 마찬가지로
-`dispatchAsync()`가 호출되어야 collector가 메시지나 error event를 받는다.
+Kotlin wrapper의 `dispatch().await()`가 호출되어야 collector가 메시지나 error event를 받는다.
 
 ## 13. 검증 기준
 

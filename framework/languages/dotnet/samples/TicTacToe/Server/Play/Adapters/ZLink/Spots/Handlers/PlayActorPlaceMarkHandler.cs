@@ -2,7 +2,6 @@ using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using TicTacToe.Server.Play.Adapters.ZLink.Actors;
-using TicTacToe.Server.Play.Adapters.ZLink.Spots;
 
 namespace TicTacToe.Server.Play.Adapters.ZLink.Spots.Handlers;
 

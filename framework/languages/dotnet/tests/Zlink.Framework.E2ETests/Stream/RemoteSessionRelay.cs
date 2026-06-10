@@ -157,7 +157,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             var boundSession = sessionActor.Context.BoundSession;
             await boundSession.Send(new GatewayPing("one-way-from-play"))
                 .PacketName("client.notify")
-                .Submit();
+                .SubmitAsync();
             var clientPush = ReceiveFrame(network);
             Assert.Equal(ZlinkStreamMessageKind.Send, clientPush.Header.Kind);
             Assert.Equal("client.notify", clientPush.Header.Name);

@@ -79,7 +79,7 @@ public sealed class ChatSession(IZLinkSessionContext context, IZLinkActorManager
             var req = payload.Decode<AuthReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.UserId, "chat-user", ct);
             _user = await context.Actors.BindAsync(actor, ct);
-            await context.Client.Reply(new AuthOk()).Submit();
+            await context.Client.Reply(new AuthOk()).SubmitAsync();
             return;
         }
         await _user!.RelayAsync(header, payload, ct);
@@ -118,7 +118,7 @@ public sealed class UserActor(IZLinkActorContext context) : IZLinkActor
     public IZLinkActorContext Context { get; } = context;
 
     public ValueTask PushChatAsync(ChatMessage chat, CancellationToken ct)
-        => Context.BoundSession.Send(chat).Submit(ct);
+        => Context.BoundSession.Send(chat).SubmitAsync(ct);
 }
 ```
 

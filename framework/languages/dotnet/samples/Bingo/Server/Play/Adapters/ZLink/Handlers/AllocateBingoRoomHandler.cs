@@ -27,6 +27,6 @@ internal sealed class AllocateBingoRoomHandler(
             request.ActorId,
             roomId);
 
-        return new AllocateBingoRoomRes(roomId);
+        return new AllocateBingoRoomRes { RoomId = roomId };
     }
 }

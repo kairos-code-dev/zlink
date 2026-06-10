@@ -121,8 +121,10 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
                 message,
                 cancellationToken)
             .ConfigureAwait(false);
+        var encoded = ZLinkStreamPacketPayloadCodec.Encode(reply, descriptor.ReplyType);
         return ZLinkActorReply.FromPayload(
-            ZLinkStreamPacketPayloadCodec.EncodeJson(reply, descriptor.ReplyType),
+            encoded.Codec,
+            encoded.Payload.ToArray(),
             context.Reply.CreateSnapshot());
     }
 

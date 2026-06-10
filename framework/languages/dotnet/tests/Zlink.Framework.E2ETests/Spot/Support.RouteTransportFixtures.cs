@@ -96,7 +96,7 @@ public abstract partial class SpotTestSupport
             CancellationToken cancellationToken)
         {
             await spot.Context.Outbound.SendToSpot(RoutingId.From("route-target"), new SpotRouteTargetCommand(message.Value))
-                .Submit(cancellationToken)
+                .SubmitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
     }

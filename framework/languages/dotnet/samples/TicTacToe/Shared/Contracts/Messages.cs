@@ -1,44 +1,84 @@
+using MessagePack;
+
 namespace TicTacToe.Shared.Contracts;
 
-public sealed record CreateGameHttpReq(string? GameName);
+[MessagePackObject]
+public sealed record CreateGameHttpReq([property: Key(0)] string? GameName);
 
-public sealed record CreateGameHttpRes(string RoomId, string PlayEndpoint, string GameName);
+[MessagePackObject]
+public sealed record CreateGameHttpRes(
+    [property: Key(0)] string RoomId,
+    [property: Key(1)] string PlayEndpoint,
+    [property: Key(2)] string GameName);
 
-public sealed record CreateGameReq(string GameName);
+[MessagePackObject]
+public sealed record CreateGameReq([property: Key(0)] string GameName);
 
-public sealed record CreateGameRes(string RoomId, string PlayEndpoint, string GameName);
+[MessagePackObject]
+public sealed record CreateGameRes(
+    [property: Key(0)] string RoomId,
+    [property: Key(1)] string PlayEndpoint,
+    [property: Key(2)] string GameName);
 
-public sealed record AuthenticatePlayerReq(string AccessToken);
+[MessagePackObject]
+public sealed record AuthenticatePlayerReq([property: Key(0)] string AccessToken);
 
-public sealed record AuthenticatePlayerRes(string ActorId);
+[MessagePackObject]
+public sealed record AuthenticatePlayerRes([property: Key(0)] string ActorId);
 
-public sealed record AuthenticateReq(string AccessToken);
+[MessagePackObject]
+public sealed record AuthenticateReq([property: Key(0)] string AccessToken);
 
-public sealed record AuthenticateRes(string ActorId);
+[MessagePackObject]
+public sealed record AuthenticateRes([property: Key(0)] string ActorId);
 
-public sealed record TicTacToeGameJoinReq(string RoomId, string ActorId);
+[MessagePackObject]
+public sealed record TicTacToeGameJoinReq(
+    [property: Key(0)] string RoomId,
+    [property: Key(1)] string ActorId);
 
-public sealed record TicTacToeGameJoinRes(GameState State);
+[MessagePackObject]
+public sealed record TicTacToeGameJoinRes([property: Key(0)] GameState State);
 
-public sealed record JoinGameReq(string RoomId);
+[MessagePackObject]
+public sealed record JoinGameReq([property: Key(0)] string RoomId);
 
-public sealed record JoinGameRes(GameState State);
+[MessagePackObject]
+public sealed record JoinGameRes([property: Key(0)] GameState State);
 
-public sealed record PlaceMarkReq(int Cell);
+[MessagePackObject]
+public sealed record PlaceMarkReq([property: Key(0)] int Cell);
 
-public sealed record PlaceMarkRes(GameState State);
+[MessagePackObject]
+public sealed record PlaceMarkRes([property: Key(0)] GameState State);
 
-public sealed record PlayerJoinedNotify(string RoomId, string ActorId, string Mark, GameState State);
+[MessagePackObject]
+public sealed record PlayerJoinedNotify(
+    [property: Key(0)] string RoomId,
+    [property: Key(1)] string ActorId,
+    [property: Key(2)] string Mark,
+    [property: Key(3)] GameState State);
 
-public sealed record GameStateNotify(GameState State);
+[MessagePackObject]
+public sealed record GameStateNotify([property: Key(0)] GameState State);
 
+[MessagePackObject]
 public sealed record GameState(
+    [property: Key(0)]
     string RoomId,
+    [property: Key(1)]
     string Board,
+    [property: Key(2)]
     string Status,
+    [property: Key(3)]
     string? Winner,
+    [property: Key(4)]
     string NextTurn,
+    [property: Key(5)]
     string? XActorId,
+    [property: Key(6)]
     string? OActorId,
+    [property: Key(7)]
     string? LastMoveActorId,
+    [property: Key(8)]
     int? LastMoveCell);

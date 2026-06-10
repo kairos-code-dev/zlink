@@ -6,6 +6,9 @@
 > [공통 스펙](../../../doc/spec/README.ko.md)을 따르며, 여기서는 그 의미를
 > Java/Kotlin 표면으로 구체화한다.
 
+비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
+[비동기 실행과 coroutine 정책](../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+
 ## 1. 사용자 guide
 
 Spring Boot 개발자가 읽고 바로 따라 쓸 수 있도록 기능과 사용법을 설명한다. 내부

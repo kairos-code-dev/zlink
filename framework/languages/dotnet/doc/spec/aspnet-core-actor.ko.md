@@ -915,7 +915,7 @@ public sealed class JoinMatchHandler
     {
         await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(...))
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
 
         context.Reply
             .Metadata("trace-id", "reply-trace")

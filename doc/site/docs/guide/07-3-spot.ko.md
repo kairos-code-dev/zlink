@@ -10,14 +10,20 @@ pub/sub)는 **한 파일로 된 실행 가능한 예제**를 **9개 언어 코�
 
 ## 1. SPOT이 하는 일
 
+애플리케이션 설계 관점에서 Spot은 독립적인 생명주기를 가지는 stateful coordination
+point다. Spot은 room, conversation, workflow instance, player quest처럼 상태와
+이벤트가 모이는 단위를 표현한다. actor 참여를 받을 수 있지만 actor가 필수는 아니다.
+Spot은 directed request를 처리하거나, event를 publish하거나, timer를 실행하거나,
+pub/sub event에 반응할 수 있다.
+
 SPOT은 `SpotNode`와 `Spot` 두 층으로 나뉜다.
 
 - `SpotNode`
   노드 토폴로지와 디스커버리(discovery) 기반 연결, 수동 피어 연결, 채널 호출용
   `DEALER`, 외부 발행 유입(publish ingress)을 관리한다.
 - `Spot`
-  애플리케이션이 실제로 쓰는 파사드(facade, 단순화된 인터페이스)다. 토픽 발행/구독, 라우팅 수신,
-  채널 전송/요청을 제공한다.
+  애플리케이션이 Spot을 다룰 때 쓰는 public facade다. 토픽 발행/구독, 라우팅 수신,
+  채널 전송/요청, dispatch, timer, actor operation 진입점을 제공한다.
 
 일반적인 순서는 다음과 같다.
 

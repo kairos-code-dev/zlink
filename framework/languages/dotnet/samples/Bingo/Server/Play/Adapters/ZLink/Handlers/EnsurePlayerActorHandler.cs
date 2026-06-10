@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using Systems.Zlink.Codecs.Json;
+using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
@@ -36,15 +36,18 @@ internal sealed class EnsurePlayerActorHandler(
         }
 
         var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
-            .Timeout(SampleTimings.RequestTimeout)
             .SubmitAsync(cancellationToken)
             ;
-        return new EnsurePlayerActorRes(
-            request.ActorId,
-            SampleNames.PlayerActorType,
-            new ActorRefSnapshot(
-                joined.NodeRid.ToBytes().ToArray(),
-                joined.ActorId,
-                joined.Generation));
+        return new EnsurePlayerActorRes
+        {
+            ActorId = request.ActorId,
+            ActorType = SampleNames.PlayerActorType,
+            Actor = new ActorRefSnapshot
+            {
+                NodeRid = joined.NodeRid.ToHex(),
+                ActorId = joined.ActorId,
+                Generation = joined.Generation,
+            },
+        };
     }
 }

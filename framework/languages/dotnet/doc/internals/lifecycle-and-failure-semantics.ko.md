@@ -74,11 +74,11 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 | 동작 | 실패 의미 |
 | ---- | --------- |
-| `Request(...).Submit(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
-| `Send(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
-| `Publish(...).Submit(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `Request(...).SubmitAsync<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
+| `Send(...).SubmitAsync(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `Publish(...).SubmitAsync(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 
-`Send(...).Submit(...)` 과 `Publish(...).Submit(...)` 은 원격 peer 의 handler
+`Send(...).SubmitAsync(...)` 과 `Publish(...).SubmitAsync(...)` 은 원격 peer 의 handler
 처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수
 있게 될 때까지만 기다리는 비동기 submit 이다. 일시적인
 backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
@@ -93,9 +93,9 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 - runtime stop 이나 cancellation 이 들어오면, 대기 중이던 submit 을 깨워서
   완료 또는 실패로 정리해 줘야 한다.
 
-`Request(...).Submit(...)` 은 두 단계로 나눠서 본다.
+`Request(...).SubmitAsync<TReply>(...)` 은 두 단계로 나눠서 본다.
 
-- request packet 의 submit 자체는 `Send(...).Submit(...)` 과 같은 전송 경로를
+- request packet 의 submit 자체는 `Send(...).SubmitAsync(...)` 과 같은 전송 경로를
   타고 `SendTimeout` 정책을 따른다.
 - 그 뒤의 reply 대기는 `Timeout(...)` 으로 정한 request timeout 정책을 따른다.
 

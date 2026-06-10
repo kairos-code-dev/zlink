@@ -1,0 +1,30 @@
+using GameQuest.Client;
+using GameQuest.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
+using Systems.Zlink.Stream.Connector.Json;
+
+namespace GameQuest.Client;
+
+internal static class Program
+{
+    public static async Task Main()
+    {
+        var topology = GameQuestTopology.FromEnvironment();
+        await using var apiA = ZlinkStreamConnectorFactory.Create(new()
+        {
+            Endpoint = new Uri(topology.GameApiAStreamEndpoint),
+            RequestTimeout = SampleNames.RequestTimeout,
+            ConnectTimeout = SampleNames.RequestTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        });
+        await using var apiB = ZlinkStreamConnectorFactory.Create(new()
+        {
+            Endpoint = new Uri(topology.GameApiBStreamEndpoint),
+            RequestTimeout = SampleNames.RequestTimeout,
+            ConnectTimeout = SampleNames.RequestTimeout,
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+        });
+
+        await new GameQuestClientScenario(topology).RunAsync(apiA, apiB);
+    }
+}

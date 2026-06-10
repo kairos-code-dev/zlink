@@ -407,7 +407,7 @@ public sealed class ProfilePublisherHandlers(IZLinkFanoutClient publisher)
                 "profile",
                 "profile.cache-invalidated",
                 new ProfileInvalidated { UserId = request.UserId })
-            .Submit(cancellationToken)
+            .SubmitAsync(cancellationToken)
             .ConfigureAwait(false);
         return new PublishProfileReply { Accepted = true };
     }

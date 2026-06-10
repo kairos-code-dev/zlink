@@ -88,12 +88,12 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
-                await channels.SendToChannel("play", new ForwardInputCommand(input)).Submit(ct);
+                await channels.SendToChannel("play", new ForwardInputCommand(input)).SubmitAsync(ct);
                 break;
 
             case "Ping":
                 var ping = payload.Decode<Ping>();
-                await context.Client.Reply(new Pong(ping.Sequence)).Submit();
+                await context.Client.Reply(new Pong(ping.Sequence)).SubmitAsync();
                 break;
         }
     }
@@ -104,7 +104,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Send(msg).Submit()` / `Reply(msg).Submit()` | client 로 push / 요청에 응답 |
+| `Send(msg).SubmitAsync()` / `Reply(msg).SubmitAsync()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -194,7 +194,7 @@ while (running)
 // 단방향 send
 await connector
     .Send(new ChatMessage("hello"))
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 
 // 요청-응답
 var reply = await connector
@@ -207,7 +207,7 @@ var reply = await connector
 await connector
     .Send(new UploadReplayChunk(bytes))
     .Compress()
-    .Submit(cancellationToken);
+    .SubmitAsync(cancellationToken);
 ```
 
 - 기본 packet 이름은 namespace 없는 CLR 타입 이름. `[ZlinkStreamPacketName("...")]`
@@ -235,7 +235,12 @@ Endpoint = new Uri("wss://game.example.com:443"),
 
 별도 Unity connector 패키지는 없다. Unity 는 `Systems.Zlink.Stream.Connector` core
 를 그대로 쓰고 `MonoBehaviour.Update()` 에서 `DispatchAsync()` 를 호출한다. 그러면
-수신 handler 와 lifecycle 이벤트가 Unity 메인 스레드에서 돈다. 자세한 예제는
+수신 handler 와 lifecycle 이벤트가 Unity 메인 스레드에서 돈다.
+
+비동기 실행과 coroutine adapter의 의미는
+[framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
+코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
 [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md).
 
 ## 3. 오류 코드와 결과

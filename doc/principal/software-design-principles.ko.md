@@ -24,7 +24,7 @@
 - **의존성** — 코드를 독립적으로 이해하거나 변경할 수 없다
 - **불명확성** — 중요한 정보가 눈에 보이지 않는다
 
-복잡성은 점진적으로 쌓인다. 단 하나의 큰 원인이 아니라, 수백 개의 작은 추가가 누적된 결과다.  
+복잡성은 점진적으로 쌓인다. 큰 원인 하나가 아니라 작은 추가 수백 개가 누적된다.
 **사소한 것도 신경 써야 한다.**
 
 ---
@@ -64,16 +64,15 @@
 모듈의 **이득** = 구현 (모듈이 실제로 하는 일)  
 **이득 대 비용을 최대화하라: 단순한 인터페이스, 강력한 구현.**
 
-```
-Deep Module (Good)          Shallow Module (Bad)
-┌────────────────┐          ┌──────────────────────────┐
-│  simple API    │          │  complex API             │
-├────────────────┤          ├──────────────────────────┤
-│                │          │  thin implementation     │
-│  large, rich   │          └──────────────────────────┘
-│  implementation│
-│                │
-└────────────────┘
+```text
++----------------------+  +----------------------+
+| Deep Module (Good)   |  | Shallow Module (Bad) |
++----------------------+  +----------------------+
+| simple API           |  | complex API          |
++----------------------+  +----------------------+
+| large, rich          |  | thin implementation  |
+| implementation       |  |                      |
++----------------------+  +----------------------+
 ```
 
 ### 대표적인 예시
@@ -623,6 +622,262 @@ public void insertString(String text, int offset) {
 
 ---
 
+## 도메인 경계와 언어
+
+POSD는 복잡성을 줄이는 기준을 제공한다. DDD(Domain-Driven Design)는 어떤 개념을
+시스템의 중심에 두고, 그 개념의 경계를 어디에 둘지 판단하는 데 도움을 준다. 둘은
+경쟁하는 원칙이 아니다. **DDD로 의미 있는 경계와 언어를 잡고, POSD로 그 경계가 깊고
+단순한지 검증한다.**
+
+여기서 도메인은 비즈니스 애플리케이션에만 있는 것이 아니다. 시스템 소프트웨어에도
+도메인이 있다. 엔터프라이즈 소프트웨어의 도메인이 주문, 결제, 고객, 상담, 정산 같은
+업무 개념이라면, 시스템 소프트웨어의 도메인은 context, handle, socket, message,
+buffer, ownership, lifecycle, timeout, error code처럼 사용자가 정확히 이해해야 하는
+시스템 개념이다.
+
+이 섹션에서 사용하는 DDD 용어는 아래 뜻으로 읽는다.
+
+- entity는 식별자를 가지며 시간에 따라 상태가 바뀌는 도메인 객체다.
+- value object는 식별자보다 값 자체가 의미인 객체다. 같은 값을 가지면 같은 의미로 본다.
+- aggregate는 상태와 불변 조건을 함께 소유하는 경계다. 예를 들어 conversation, room,
+  workflow instance처럼 한 단위로 변경되어야 하는 상태를 뜻한다.
+- bounded context는 같은 용어가 같은 의미로 쓰이는 모델의 경계다.
+- application use case는 외부 요청 하나를 처리하기 위해 여러 도메인 객체, 저장소,
+  channel, actor 호출을 조율하는 흐름이다.
+- port는 application use case가 외부 저장소, 외부 서비스, runtime 기능에 기대하는 능력을
+  표현한 인터페이스다.
+- adapter는 HTTP, socket, codec, framework callback처럼 외부 세계와 도메인 사이를
+  변환하는 가장자리 코드다.
+- policy나 process는 한 사건이 다음 command를 유발하는 규칙이나 흐름이다.
+
+### DDD가 돕는 것
+
+DDD 관점은 아래 질문에 답하게 한다.
+
+- 핵심 개념의 이름이 코드, 문서, 테스트에서 일관적인가?
+- 상태와 생명주기를 소유하는 경계가 명확한가?
+- 소유권, 상태 전이, 실패 의미가 한 모듈 안에서 관리되는가?
+- 도메인 규칙이 transport, codec, storage, framework callback 같은 adapter 세부 사항과
+  섞이지 않았는가?
+- public contract가 내부 구현 용어가 아니라 사용자에게 의미 있는 언어로 표현되는가?
+
+엔터프라이즈 소프트웨어에서는 `Order`, `Conversation`, `Invoice`, `PlayerQuest` 같은
+개념이 도메인 경계가 될 수 있다. 시스템 소프트웨어에서는 message buffer의 소유권,
+handle의 생명주기, identifier의 표현과 비교 규칙, timeout과 nonblocking의 오류 의미가
+도메인 경계가 된다.
+
+### 설계 절차
+
+DDD와 POSD를 함께 적용할 때는 아래 순서로 진행한다. 핵심은 도메인 사실을 먼저 찾고,
+그 뒤에 코드 구조를 정한 다음, 마지막에 POSD로 구조의 깊이를 검증하는 것이다.
+
+1. 이벤트 스토밍으로 도메인 흐름을 먼저 적는다.
+   - 사용자가 보는 중요한 사건을 과거형으로 적는다. 예: `ConversationOpened`,
+     `AgentAssigned`, `MessageSent`, `ConversationClosed`.
+   - 시스템 소프트웨어라면 업무 사건 대신 상태 전이와 계약 사건을 적는다. 예:
+     `BufferAllocated`, `MessageMoved`, `HandleCreated`, `PeerConnected`,
+     `ReceiveTimedOut`, `HandleDestroyed`.
+   - 이 단계에서는 클래스, 테이블, 함수 이름을 먼저 정하지 않는다. 먼저 "무슨 일이
+     일어나는가"를 드러낸다.
+
+2. command와 actor를 붙인다.
+   - 각 사건을 만든 요청이나 의도를 command로 적는다. 예: `OpenConversation`,
+     `AssignAgent`, `SendMessage`.
+   - 그 command를 시작하는 주체를 적는다. 예: customer, agent, timer, remote peer,
+     application caller.
+   - command가 실패할 수 있다면 실패 사건이나 오류 계약도 함께 적는다.
+   - 어떤 사건이 다음 command를 유발한다면 그 사이의 policy나 process를 적는다.
+     예: `ConversationOpened` 뒤에 available agent가 있으면 `AssignAgent`를 실행한다.
+
+3. entity, value object, aggregate 후보를 찾는다.
+   - 같은 식별자와 생명주기를 공유하는 사건 묶음은 entity 후보가 된다.
+   - 값 자체가 의미이고 식별자가 필요 없는 것은 value object 후보가 된다.
+   - 불변 조건을 함께 지켜야 하는 상태 묶음은 aggregate 후보가 된다.
+   - 시스템 소프트웨어에서는 handle, message buffer, identifier, socket endpoint,
+     descriptor처럼 public contract에서 생명주기나 소유권을 갖는 개념을 같은 방식으로 본다.
+
+4. bounded context와 adapter 경계를 정한다.
+   - 같은 단어가 같은 의미로 쓰이는 범위를 찾는다.
+   - 다른 protocol, codec, storage, framework callback, 외부 API는 adapter 경계로
+     밀어낸다.
+   - 도메인 객체가 외부 기술을 직접 알기 시작하면 경계가 새고 있는 것이다.
+
+5. application use case를 정의한다.
+   - 하나의 외부 요청을 처리하기 위해 어떤 aggregate, port, channel, actor, timer를
+     조율해야 하는지 적는다.
+   - 이벤트 스토밍에서 찾은 policy나 process는 use case나 domain service 후보가 된다.
+   - use case는 도메인 규칙을 직접 구현하지 않고 조율을 맡는다.
+   - adapter는 request decode, response encode, framework callback 연결만 맡는다.
+
+6. POSD 관점으로 다시 검토한다.
+   - 새로 만든 계층이 요청을 전달만 한다면 제거하거나 책임을 재분배한다.
+   - 도메인 순도를 이유로 mapper와 class가 늘었지만 호출자 부담이나 변경 복잡성이 줄지
+     않았다면 합친다.
+   - aggregate interface가 구현만큼 복잡하면 경계를 다시 잡는다.
+   - lifecycle, ownership, timeout, error contract 같은 중요한 결정이 여러 곳에
+     흩어졌다면 하나의 모듈로 모은다.
+
+이 절차는 큰 엔터프라이즈 애플리케이션에만 적용되는 것이 아니다. 시스템 소프트웨어에서도
+message ownership transfer, handle create/destroy, socket connect/disconnect,
+receive timeout 같은 사건을 먼저 놓고 보면 public contract가 어떤 개념을 중심으로
+정리되어야 하는지 더 분명해진다.
+
+### 아키텍처 선택
+
+도메인 경계를 찾은 뒤에는 그 경계를 코드 구조로 배치해야 한다. 아키텍처는 이때 쓰는
+기본 배치 전략이다. 아키텍처를 먼저 고르고 도메인을 끼워 맞추지 않는다. 이벤트 스토밍과
+도메인 모델링으로 경계를 찾은 뒤, 그 경계를 가장 단순하게 보호하는 아키텍처를 선택한다.
+
+엔터프라이즈 소프트웨어에서는 헥사고날 아키텍처를 기본값으로 둔다. 업무 규칙과 use case가
+HTTP, queue, database, UI, 외부 API보다 오래 살아야 하기 때문이다. 중심에는 domain과
+application use case를 두고, 외부 기술은 adapter로 둔다. port는 외부 기술의 모양이 아니라
+application이 필요로 하는 능력 기준으로 정의한다.
+
+```text
+의존 방향: 바깥 → 안 (adapter가 application이 정의한 port에 의존)
+
++--------------------------------+
+| Adapters                       |
+| HTTP, Queue, DB, External API  |
++--------------------------------+
+              | port
+              v
++--------------------------------+
+| Application Use Cases          |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Domain Model                   |
+| Aggregate, Entity, Value       |
++--------------------------------+
+```
+
+헥사고날 아키텍처를 적용할 때도 POSD 검토가 필요하다. port와 adapter가 요청을 전달만 한다면
+얕은 계층이다. 제거하거나, 외부 기술의 세부 사항을 숨기고 application이 쓰기 쉬운 깊은
+인터페이스로 책임을 키운다.
+
+시스템 소프트웨어에서는 레이어드 아키텍처와 public contract/runtime 분리를 기본값으로 둔다.
+시스템 API의 핵심은 공개 계약을 오래 안정적으로 유지하면서 runtime, transport, codec,
+platform 세부 구현은 바꿀 수 있게 두는 것이다. public contract는 사용자가 배우고 의존하는
+표면이고, runtime은 그 계약을 만족시키기 위해 내부 복잡성을 흡수하는 구현이다.
+
+```text
++--------------------------------+
+| Public Contract                |
+| API, ABI, Spec, Bindings       |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Runtime Boundary               |
+| Lifecycle, State, Ownership    |
++--------------------------------+
+              |
+              v
++--------------------------------+
+| Integration Layers             |
+| Transport, Codec, Platform     |
++--------------------------------+
+```
+
+시스템 소프트웨어에서 public contract에는 ownership, lifecycle, timeout, cancellation,
+error contract처럼 호출자가 알아야 하는 의미만 둔다. runtime 자료구조, queue 구현,
+transport wiring, codec 세부 사항은 계약에 새지 않게 숨긴다. 레이어드 구조도 각 계층이
+다른 추상화를 제공해야 한다. public API와 runtime boundary가 같은 이름과 같은 동작을
+반복해서 전달만 한다면 둘 중 하나는 불필요하거나 책임이 잘못 나뉜 것이다.
+
+### 엔터프라이즈 소프트웨어 적용
+
+엔터프라이즈 소프트웨어에서는 이벤트 스토밍이 업무 흐름을 드러내는 도구가 된다.
+사건은 사용자가 인식하는 업무 결과를 과거형으로 표현한다. 예를 들어
+`OrderPlaced`, `PaymentApproved`, `ShipmentRequested`, `ConversationClosed`처럼
+업무적으로 의미 있는 변화를 먼저 적는다.
+
+이후 command와 actor를 붙여 사용자의 의도와 책임 주체를 찾는다. `PlaceOrder`는
+customer가 시작하고, `ApprovePayment`는 payment service나 operator가 시작할 수 있다.
+사건 묶음에서 entity와 aggregate를 찾고, 같은 단어가 같은 의미로 쓰이는 bounded
+context를 나눈다. 주문, 결제, 배송, 정산이 같은 `Status`라는 단어를 쓰더라도 의미가
+다르면 같은 모델에 억지로 넣지 않는다.
+
+application use case는 여러 aggregate, repository, external service, domain event를
+조율한다. domain 객체는 업무 규칙과 불변 조건을 지키고, adapter는 HTTP, queue, database,
+UI, 외부 API 연결을 맡는다. POSD 검토 단계에서는 DDD 계층이 실제 지식을 소유하는지
+확인한다. `OrderService`가 `Order.Approve()`만 호출하는 얕은 래퍼라면 제거하거나,
+결제 승인, 재고 예약, 이벤트 발행 같은 조율 책임을 명확히 가져야 한다.
+
+### 시스템 소프트웨어 적용
+
+시스템 소프트웨어에서는 이벤트 스토밍이 public contract의 상태 전이와 소유권 규칙을
+드러내는 도구가 된다. 사건은 업무 결과가 아니라 호출자가 관찰하거나 책임져야 하는
+시스템 상태 변화다. 예를 들어 `HandleCreated`, `BufferMoved`, `SocketBound`,
+`PeerDisconnected`, `ReadTimedOut`, `ResourceClosed` 같은 사건을 먼저 적는다.
+
+command는 API 호출이나 내부 runtime 요청이 된다. 예를 들어 `CreateHandle`,
+`SendMessage`, `PollReadable`, `CloseResource` 같은 호출이 어떤 사건을 만들고 어떤
+오류 계약을 갖는지 적는다. entity와 aggregate 후보는 business object가 아니라 handle,
+buffer, connection, session, descriptor처럼 생명주기와 소유권을 갖는 시스템 개념이다.
+
+bounded context는 runtime, transport, codec, storage, binding처럼 의미가 달라지는
+경계를 기준으로 나눈다. timeout, cancellation, backpressure, ownership 같은 단어는
+계층마다 다른 뜻으로 쓰이기 쉬우므로 특히 조심한다.
+
+비즈니스 DDD의 용어를 그대로 가져오지는 않는다. `ContextAggregate`, `SocketRepository`,
+`MessageDomainService` 같은 이름은 호출자에게 도움을 주지 않으면 피하고, 대신 아래를
+명확히 한다.
+
+- 어떤 객체가 생명주기를 소유하는가?
+- 누가 메모리와 핸들을 해제하는가?
+- close, destroy, move 이후 어떤 호출이 가능한가?
+- 같은 개념을 가리키는 이름이 모든 공개 API, 바인딩, 문서에서 같은가?
+- 오류 코드는 상태 전이와 호출자 책임을 일관되게 표현하는가?
+- timeout, cancellation, backpressure, reconnect 같은 의미가 계층마다 다르게 해석되지
+  않는가?
+
+깊은 시스템 API는 이 결정들의 내부 복잡성을 흡수하고, 호출자에게는 단순한 생명주기와
+일관된 오류 계약만 노출한다.
+
+### POSD가 걸러내는 것
+
+DDD 이름을 붙였다고 좋은 설계가 되지는 않는다. POSD는 DDD 구조가 과한 계층과 얕은
+모듈로 변하는 것을 막는다.
+
+나쁜 적용:
+
+```text
+Controller -> ApplicationService -> DomainService -> Aggregate
+```
+
+각 계층이 같은 요청을 전달만 한다면 이름은 DDD처럼 보여도 설계는 얕다. 이 경우 계층을
+합치거나, 각 계층이 실제로 다른 지식을 소유하도록 책임을 재분배한다.
+
+좋은 적용:
+
+- aggregate나 lifecycle owner는 상태 전이와 불변 조건을 직접 지킨다.
+- application use case는 여러 aggregate, actor, channel, 저장소 호출을 조율한다.
+- adapter는 외부 입력을 application use case나 도메인 객체 호출로 변환하고, framework나
+  transport 세부 사항을 도메인으로 흘려보내지 않는다.
+- public API는 도메인 언어를 드러내고, 내부 자료구조나 프로토콜 세부 사항은 숨긴다.
+
+### 규칙
+
+- 먼저 이벤트 스토밍으로 사건, command, actor, 실패 의미를 적는다. 이름을 정하지
+  못하면 개념이 불명확한 것이다.
+- 사건 묶음에서 entity, value object, aggregate 후보를 찾고, 생명주기와 불변 조건을
+  기준으로 경계를 정한다.
+- 엔터프라이즈 소프트웨어에서는 헥사고날 아키텍처를 기본값으로 두고, domain/application을
+  중심에 둔 뒤 외부 기술을 adapter로 밀어낸다.
+- 시스템 소프트웨어에서는 레이어드 아키텍처와 public contract/runtime 분리를 기본값으로
+  두고, 공개 계약과 내부 실행 구조를 분리한다.
+- 도메인 규칙은 도메인 객체 또는 생명주기 소유자 안에 둔다. adapter는 변환과 연결만 맡는다.
+- DDD 설계를 만든 뒤에는 POSD로 검사한다. 전달만 하는 계층은 제거하거나 책임을 키운다.
+- 도메인을 순수하게 유지한다는 이유만으로 mapper와 class를 무조건 늘리지 않는다. 경계
+  보호가 실제 복잡성을 줄일 때만 분리한다.
+- 시스템 소프트웨어에서는 lifecycle, ownership, state transition, error contract를 도메인
+  모델처럼 엄격히 다룬다.
+
+---
+
 ## 테스트 커버리지 기본 기준
 
 테스트는 설계의 일부다. 테스트는 동작을 명확하게 만들고, 계약이 시간이 지나며
@@ -667,6 +922,8 @@ public void insertString(String text, int offset) {
 | 12 | **이름 짓기 어려움** | 좋은 이름을 찾기 어려운가? (개념 자체가 불명확할 수 있다) |
 | 13 | **설명하기 어려움** | 인터페이스 주석이 길어야 하는가? (인터페이스가 너무 복잡할 수 있다) |
 | 14 | **비자명한 코드** | 유능한 독자가 한눈에 코드의 동작을 이해할 수 있는가? |
+| 15 | **도메인 경계 누출** | 도메인 규칙이 adapter, transport, codec, storage 세부 사항과 섞여 있는가? |
+| 16 | **DDD 이름을 단 얕은 계층** | 계층 이름은 그럴듯하지만 실제로는 요청을 전달만 하는가? |
 
 ---
 
@@ -688,7 +945,9 @@ public void insertString(String text, int offset) {
 14. 소프트웨어는 **작성하기 위해서가 아니라 읽히기 위해** 설계되어야 한다.
 15. 증분 개발의 단위는 기능이 아니라 **추상화**다.
 16. **중요한 것을 결정한다.** 강조한다. 중요하지 않은 것은 최소화하고 숨긴다.
-17. 기본 테스트 커버리지 목표는 **80%**다. 다만 원시 비율보다 계약과 위험 경로
+17. **도메인 경계와 언어를 명확히 한다.** DDD로 의미 있는 경계를 잡고 POSD로 얕은
+    계층을 걸러낸다.
+18. 기본 테스트 커버리지 목표는 **80%**다. 다만 원시 비율보다 계약과 위험 경로
     커버리지가 더 중요하다.
 
 ---

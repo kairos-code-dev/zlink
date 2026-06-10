@@ -10,7 +10,7 @@ public interface IZlinkStreamSendCall
 
     IZlinkStreamSendCall Compress();
 
-    ValueTask Submit(CancellationToken cancellationToken = default);
+    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IZlinkStreamRequestCall
@@ -30,4 +30,14 @@ public interface IZlinkStreamRequestCall
     void Submit(Action<ZlinkStreamResult> callback);
 
     void Submit(Action<ZlinkStreamResult<ZlinkStreamEncodedPayload>> callback);
+}
+
+public interface IZlinkStreamWaitCall
+{
+    IZlinkStreamWaitCall Timeout(TimeSpan timeout);
+
+    IZlinkStreamWaitCall Where(Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate);
+
+    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> SubmitAsync(
+        CancellationToken cancellationToken = default);
 }

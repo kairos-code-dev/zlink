@@ -95,7 +95,7 @@ public sealed class PublisherTests : SpotTestSupport
 	                            "game.stage",
 	                            "stage.external",
 	                            new ExternalStageEvent("external"))
-	                        .Submit();
+	                        .SubmitAsync();
 	                    await Task.Yield();
 	                    return recorder.ExternalEvents.Count;
 	                },
@@ -228,7 +228,7 @@ public sealed class PublisherTests : SpotTestSupport
                         "game.stage",
                         "stage.external",
                         new ExternalStageEvent("raw"))
-                    .Submit();
+                    .SubmitAsync();
                 await Task.Yield();
 
                 try

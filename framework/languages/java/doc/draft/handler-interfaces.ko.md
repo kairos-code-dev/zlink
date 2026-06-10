@@ -1041,10 +1041,10 @@ public record ZLinkSpotEvent(
 표면에서 `spotRid`를 다시 볼 수 있게 한다. 같은 `SpotNode` 안에서 이미 등록된
 Spot type을 다시 등록하면 조용히 덮어쓰지 않고 예외를 던지는 편을 기본으로 본다.
 
-send/publish는 기본 async submit이다. blocking send를 async 호출로 감싸는 것이
-아니라, nonblocking send와 ready notification을 이용해 backpressure 동안 호출
-thread가 막히지 않게 해야 한다. request도 request packet을 보내는 단계에서는
-같은 async submit 경로를 사용하고, reply 대기는 request timeout이 따로 정한다.
+send/publish의 async submit과 backpressure 의미는
+[framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
+request도 request packet을 보내는 단계에서는 같은 async submit 경로를 사용하고,
+reply 대기는 request timeout이 따로 정한다.
 
 packet key 해석 규칙은 아래 순서를 기본으로 본다.
 

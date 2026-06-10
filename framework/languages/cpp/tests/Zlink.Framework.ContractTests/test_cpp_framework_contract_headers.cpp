@@ -67,11 +67,33 @@ static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
 static_assert (!std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit ()),
-                 zlink::framework::result_t<int>>);
-static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit_async ()),
                  zlink::framework::task_t<int>>);
+
+template <typename T> concept has_blocking_submit = requires (T value)
+{
+    value.submit ();
+};
+
+template <typename T, typename TResult> concept has_callback_submit_async = requires (T value)
+{
+    value.submit_async ([] (zlink::framework::result_t<TResult>) {});
+};
+
+static_assert (!has_blocking_submit<zlink::framework::request_call_t<int>>);
+static_assert (!has_callback_submit_async<zlink::framework::request_call_t<int>, int>);
+static_assert (!has_blocking_submit<zlink::framework::send_call_t>);
+static_assert (!has_callback_submit_async<zlink::framework::send_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::relay_call_t>);
+static_assert (!has_callback_submit_async<zlink::framework::relay_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::stream_write_call_t>);
+static_assert (!has_callback_submit_async<zlink::framework::stream_write_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::route_send_call_t>);
+static_assert (!has_callback_submit_async<zlink::framework::route_send_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::route_request_call_t>);
+static_assert (!has_callback_submit_async<zlink::framework::route_request_call_t, std::uint64_t>);
+static_assert (!has_blocking_submit<zlink::framework::typed_route_request_call_t<int>>);
+static_assert (!has_callback_submit_async<zlink::framework::typed_route_request_call_t<int>, int>);
 
 template <typename T> concept has_blocking_wait = requires (T value)
 {
@@ -157,6 +179,36 @@ void to_json (nlohmann::json &json, const named_reply_t &value)
 void from_json (const nlohmann::json &json, named_reply_t &value)
 {
     value.value = json.value ("value", 0);
+}
+
+zlink::message_t to_stream_payload (const named_request_t &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+void from_stream_payload (const zlink::message_t &message, named_request_t &value)
+{
+    value = message.parse_json<named_request_t> ();
+}
+
+zlink::message_t to_stream_payload (const named_context_request_t &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+void from_stream_payload (const zlink::message_t &message, named_context_request_t &value)
+{
+    value = message.parse_json<named_context_request_t> ();
+}
+
+zlink::message_t to_stream_payload (const named_reply_t &value)
+{
+    return zlink::message_t::from_json (value);
+}
+
+void from_stream_payload (const zlink::message_t &message, named_reply_t &value)
+{
+    value = message.parse_json<named_reply_t> ();
 }
 
 struct named_send_handler_t
@@ -589,23 +641,19 @@ static_assert (
 
 int main ()
 {
-    auto callback_kind = zlink::framework::framework_error_kind_t::request_failed;
     zlink::framework::request_call_t<int> call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::timeout, "timeout"));
 
-    call.submit_async (
-      [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
-
     auto task = call.submit_async ();
     const auto coroutine_kind = task.result ().error_kind ();
-    if (callback_kind != coroutine_kind) {
+    if (coroutine_kind != zlink::framework::framework_error_kind_t::timeout) {
         return 1;
     }
 
     zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
 
-    if (shutdown_call.submit ().error_kind ()
+    if (shutdown_call.submit_async ().result ().error_kind ()
         != zlink::framework::framework_error_kind_t::shutdown) {
         return 2;
     }

@@ -140,9 +140,9 @@ public:
     {
     }
 
-    void notify_turn_changed(turn_changed_t event)
+    task_t<void> notify_turn_changed(turn_changed_t event)
     {
-        context_.bound_session().send(event).submit();
+        co_await context_.bound_session().send(event).submit_async();
     }
 
 private:

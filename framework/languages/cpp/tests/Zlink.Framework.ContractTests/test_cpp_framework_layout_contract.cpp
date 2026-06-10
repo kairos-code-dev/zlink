@@ -314,10 +314,8 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
       "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, "
       "`unreal-connector-smoke` |",
       "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, "
-      "`framework-sample-e2e`, "
-      "`framework-sample-process-e2e`, `framework-sample-log`, `framework-sample-api`, "
-      "`framework-sample-bingo`, "
-      "`framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, "
+      "`framework-sample-api`, "
+      "`framework-sample-bingo`, `framework-sample-play`, "
       "`framework-sample-registry`, "
       "`framework-sample-session`, `framework-sample-tictactoe` |"};
     for (const auto &row : rows) {
@@ -1076,8 +1074,8 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
       "`json()`",
       "`get(path)`, `post(path)`, `put(path)`, `delete_(path)`",
       "typed request body: `body(dto)`",
-      "callback submit",
-      "coroutine submit",
+      "raw coroutine submit",
+      "typed coroutine submit",
       "typed JSON response: `submit<TReply>()`",
       "HTTP status와 transport error를 client result/error kind로 매핑",
       "HTTP client regression test suite",
@@ -1090,7 +1088,6 @@ bool implementation_plan_goal18_covers_http_client (const std::filesystem::path 
       "`base_url(...)`은 `http://`와 `https://` endpoint를 모두 받는다",
       "TLS handshake, server certificate verification, hostname verification",
       "묵시적으로 TLS verification을 끄지 않는다",
-      "`submit(callback)` 또는",
       "`co_await submit<T>()`",
       "`message_t` 또는 DTO serializer hook",
       "`nlohmann::json::parse`로 field를 직접 꺼내지 않는다",
@@ -1249,13 +1246,8 @@ bool implementation_plan_goal21_covers_sample_labels (const std::filesystem::pat
     const std::string commands[] = {
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-log",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-api",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-play",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-session",
@@ -1314,16 +1306,8 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
       "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-parity "
       "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-log --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client "
-      "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e "
       "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-sample-registry "
       "--output-on-failure",
@@ -1542,7 +1526,7 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
         std::size_t line_no = 0;
         while (std::getline (input, line)) {
             ++line_no;
-            if (line.find ("nlohmann::json::parse") != std::string::npos) {
+            if (!dto_contract_file && line.find ("nlohmann::json::parse") != std::string::npos) {
                 std::cerr << "sample application code must use message_t/serializer "
                              "instead of direct JSON parse: "
                           << entry.path () << ':' << line_no << '\n';
@@ -1602,13 +1586,10 @@ bool client_sample_uses_connector (const std::filesystem::path &root,
     const auto path = root / client_file;
     bool ok = true;
     ok &= file_contains (path, "zlink/stream_connector.hpp");
-    ok &= file_contains (path, "../../Shared/client_connector_helpers.hpp");
     ok &= file_contains (path, "connector_factory_t::create");
-    ok &= file_contains (path, "connect_client_connector");
-    ok &= file_contains (path, "request_client_packet");
-    ok &= file_contains (path, "zlink::stream_connector::codecs::on<");
+    ok &= file_contains (path, "dispatch_mode_t::manual");
     if (!ok) {
-        std::cerr << "client sample does not use shared connector policy helper: " << path << '\n';
+        std::cerr << "client sample does not configure connector directly: " << path << '\n';
     }
     return ok;
 }
@@ -1911,7 +1892,8 @@ int main ()
     ok &= require_exists (root / "http-client/src/runtime/http_client_runtime.cpp");
     ok &= require_exists (root / "tests/Zlink.Framework.UnitTests");
     ok &= require_exists (root / "tests/Zlink.Framework.ContractTests");
-    ok &= require_exists (root / "tests/Zlink.Framework.E2ETests");
+    ok &= require_absent (root / "tests/Zlink.Framework.E2ETests",
+                          "sample e2e must not rely on separate fake process runners");
     ok &= require_exists (root / "tests/Systems.Zlink.Stream.Connector.Tests");
     ok &= require_exists (root / "tests/Zlink.Unreal.Stream.Connector.Tests");
     ok &= require_exists (
@@ -1930,6 +1912,10 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/Bingo/Shared/Contracts/messages.hpp");
+    ok &= require_absent (root / "samples/Bingo/Server/E2E",
+                          "Bingo sample e2e must run the public sample server roles");
+    ok &= require_absent (root / "samples/Bingo/Shared/E2E",
+                          "Bingo sample tree must not contain test-only stream harnesses");
     ok &=
       require_exists (root / "samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Api/api_server_host_factory.hpp");
@@ -1974,17 +1960,28 @@ int main ()
     ok &= require_exists (root / "samples/Bingo/Server/Session/Sessions/bingo_session.hpp");
     ok &= require_exists (
       root / "samples/Bingo/Server/Session/Sessions/Handlers/authenticate_session_handler.hpp");
-    ok &= require_exists (root / "samples/Bingo/Client/bingo_notification_inbox.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/bingo_client_options.hpp");
-    ok &= require_exists (root / "samples/Bingo/Client/bingo_player_client.hpp");
-    ok &= require_exists (root / "samples/Bingo/Client/bingo_client_app.hpp");
+    ok &= require_exists (root / "samples/Bingo/Client/bingo_client_scenario.hpp");
+    ok &= require_absent (root / "samples/Bingo/Client/bingo_notification_inbox.hpp",
+                          "Bingo client scenario waits on connector messages directly");
+    ok &= require_absent (root / "samples/Bingo/Client/bingo_player_client.hpp",
+                          "Bingo client scenario must not hide connector calls in a wrapper");
+    ok &= require_absent (root / "samples/Bingo/Client/bingo_client_app.hpp",
+                          "Bingo client scenario is kept in bingo_client_scenario.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Server/E2E",
+                          "TicTacToe sample e2e must run the public sample server roles");
+    ok &= require_absent (root / "samples/TicTacToe/Shared/E2E",
+                          "TicTacToe sample tree must not contain test-only stream harnesses");
+    ok &= require_absent (root / "samples/Shared/stream_frame_server.hpp",
+                          "test-only stream frame server code must not live under samples");
     ok &= require_exists (
       root / "samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Server/Api/api_server_host_factory.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Server/Api/Handlers/create_game_handler.hpp");
+    ok &=
+      require_exists (root / "samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Server/Api/api_server_framework.hpp",
                           "TicTacToe API framework setup belongs in api_server_host_factory.hpp");
     ok &= require_absent (
@@ -1993,7 +1990,7 @@ int main ()
     ok &=
       require_exists (root / "samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp");
     ok &= require_exists (
-      root / "samples/TicTacToe/Server/Play/Application/GameCreation/create_game_room_handler.hpp");
+      root / "samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp");
     ok &= require_exists (root
                           / "samples/TicTacToe/Server/Play/Adapters/ZLink/Actors/player_actor.hpp");
     ok &= require_exists (root
@@ -2026,14 +2023,18 @@ int main ()
                           "TicTacToe uses manual endpoints and has no Registry role");
     ok &= require_absent (root / "samples/TicTacToe/Server/Session",
                           "TicTacToe Play owns the stream session");
-    ok &= require_exists (root / "samples/TicTacToe/Client/session_actor_notification_inbox.hpp");
     ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_client_options.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_player_client.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_client.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Client/session_actor_notification_inbox.hpp",
+                          "TicTacToe client scenario waits on connector messages directly");
+    ok &= require_absent (root / "samples/TicTacToe/Client/tictactoe_player_client.hpp",
+                          "TicTacToe client scenario must not hide connector calls in a wrapper");
+    ok &= require_absent (root / "samples/TicTacToe/Client/tictactoe_client.hpp",
+                          "TicTacToe client scenario is kept in tictactoe_client_scenario.hpp");
 
-    ok &= client_sample_uses_connector (root, "samples/Bingo/Client/bingo_player_client.hpp");
+    ok &= client_sample_uses_connector (root, "samples/Bingo/Client/main.cpp");
     ok &=
-      client_sample_uses_connector (root, "samples/TicTacToe/Client/tictactoe_player_client.hpp");
+      client_sample_uses_connector (root, "samples/TicTacToe/Client/main.cpp");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
     ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "socket_fd",

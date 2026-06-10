@@ -53,8 +53,7 @@
 
 - C++20 이상만 지원한다.
 - public async 표면에는 `std::future`를 쓰지 않는다.
-- public 호출은 call object를 만들고 동기 경로에서는 `submit()`, callback/coroutine 경로에서는
-  `submit_async(callback)` 또는 `co_await submit_async()`으로 실행한다.
+- public 호출은 call object를 만들고 `co_await submit_async()`로 실행한다.
 - public cancellation token 타입은 두지 않는다. shutdown, timeout, close, disconnected
   상태는 framework result 또는 `framework_exception_t`로 표현한다.
 - handler, timer, stream session, actor relay 안에서 blocking wait를 허용하지 않는다.
@@ -159,10 +158,10 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
   - Error contract: decode 실패는 payload decode 계열 error로 집약한다.
   - Regression contract: base target dependency 검사와 JSON/MessagePack/Protobuf round-trip.
 - Goal 3:
-  - Public contract: `result_t<T>`, `task_t<T>`, call object, callback submit, coroutine submit.
+  - Public contract: `task_t<T>`, call object, coroutine submit.
   - Runtime owner: completion state, cancellation, timeout timer, executor resumption.
   - Error contract: timeout, shutdown, disconnected, queue full, decode failure, handler not found.
-  - Regression contract: callback/coroutine parity, first-complete-wins, no `std::future` public exposure.
+  - Regression contract: coroutine parity, first-complete-wins, no `std::future` public exposure.
 - Goal 4:
   - Public contract: `app_t`, config/logging builders, `logger_t<TCategory>`, `logger_factory_t`.
   - Runtime owner: app host가 native context, signal, config source merge, sink fan-out, flush를 소유한다.
@@ -410,13 +409,13 @@ git diff --check -- bindings/cpp framework/languages/cpp
 - `request_call_t<T>`
 - `stream_write_call_t`
 - `relay_call_t`
-- `submit_async(callback)`
 - `co_await submit_async()`
 - timeout, shutdown, disconnected, queue full, decode failure, handler not found mapping
 
 완료 기준:
 
-- callback submit과 coroutine submit이 같은 error kind를 반환한다.
+- coroutine submit이 timeout, shutdown, disconnected, queue full, decode failure,
+  handler not found error kind를 보존한다.
 - public async 표면에 `std::future`가 없다.
 - public async 표면에 `boost::asio::awaitable`이 없다.
 - `task_t<T>`는 다중 await와 first-complete-wins를 지원한다.
@@ -965,8 +964,8 @@ framework core target의 기본 의존성이 아니다.
 - `json()`
 - `get(path)`, `post(path)`, `put(path)`, `delete_(path)`
 - typed request body: `body(dto)`
-- callback submit
-- coroutine submit
+- raw coroutine submit
+- typed coroutine submit
 - typed JSON response: `submit<TReply>()`
 - HTTP status와 transport error를 client result/error kind로 매핑
 - HTTP client regression test suite
@@ -985,8 +984,7 @@ framework core target의 기본 의존성이 아니다.
   수행한다.
 - test certificate나 local development certificate를 trust하는 설정은 HTTP client option으로
   명시해야 하며, 묵시적으로 TLS verification을 끄지 않는다.
-- public 호출은 zlink 스타일 call object를 만들고 동기 경로에서는 `submit()`, callback/coroutine
-  경로에서는 `submit_async(callback)` 또는 `co_await submit_async()`으로 실행한다.
+- public 호출은 zlink 스타일 call object를 만들고 `co_await submit<T>()`로 실행한다.
 - JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리하고, application sample code가
   `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
 - retry, redirect, cookie, proxy, multipart, streaming download는 C++ framework가 필요로 하는
@@ -1413,7 +1411,7 @@ ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1 \
 - WebSocket over TLS binary transport
 - unsupported transport와 endpoint scheme mismatch validation
 - typed send/request/on
-- callback submit
+- coroutine submit
 - coroutine submit
 - reconnect, heartbeat, pending request correlation
 - JSON 기본 ON
@@ -1485,13 +1483,8 @@ ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
 ```bash
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity
-ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e
-ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e
-ctest --test-dir framework/languages/cpp/build -L framework-sample-log
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api
 ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo
-ctest --test-dir framework/languages/cpp/build -L framework-sample-client
-ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e
 ctest --test-dir framework/languages/cpp/build -L framework-sample-play
 ctest --test-dir framework/languages/cpp/build -L framework-sample-registry
 ctest --test-dir framework/languages/cpp/build -L framework-sample-session
@@ -1563,13 +1556,8 @@ ctest --test-dir framework/languages/cpp/build -L http-client-https --output-on-
 ctest --test-dir framework/languages/cpp/build -L parity --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-parity --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-log --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-api --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-bingo --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-client --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-client-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-registry --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-play --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-sample-session --output-on-failure
@@ -1665,7 +1653,7 @@ concrete label을 선택한다.
 | `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |
 | `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |
 | `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |
-| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-e2e`, `framework-sample-process-e2e`, `framework-sample-log`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-client`, `framework-sample-client-e2e`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
+| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
 
 ## 8. Goal 실행용 문구
 

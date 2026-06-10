@@ -259,9 +259,9 @@ class message_bus_t
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const typename request_call_t<TReply>::metadata_map_t &metadata) {
               (void) request;
-              return message_bus_t (state)
-                .submit_request (channel_name, packet_name, timeout, metadata)
-                .template as<TReply> ();
+              return task_t<TReply> (message_bus_t (state)
+                                       .submit_request (channel_name, packet_name, timeout, metadata)
+                                       .template as<TReply> ());
           });
     }
 
@@ -274,8 +274,8 @@ class message_bus_t
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const send_call_t::metadata_map_t &metadata) {
               (void) message;
-              return message_bus_t (state).submit_send (channel_name, packet_name, timeout,
-                                                        metadata);
+              return task_t<void> (
+                message_bus_t (state).submit_send (channel_name, packet_name, timeout, metadata));
           });
     }
 
@@ -288,8 +288,8 @@ class message_bus_t
                               const std::string &packet_name, std::chrono::milliseconds timeout,
                               const send_call_t::metadata_map_t &metadata) {
                                 (void) event;
-                                return message_bus_t (state).submit_publish (
-                                  channel_name, topic, packet_name, timeout, metadata);
+                                return task_t<void> (message_bus_t (state).submit_publish (
+                                  channel_name, topic, packet_name, timeout, metadata));
                             });
     }
 
@@ -342,15 +342,13 @@ class route_send_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<void> (const std::string &, const metadata_map_t &)>;
+    using submit_fn_t = std::function<task_t<void> (const std::string &, const metadata_map_t &)>;
 
     route_send_call_t (std::string packet_name, submit_fn_t submit);
 
     route_send_call_t &packet_name (std::string packet_name);
     route_send_call_t &metadata (std::string key, std::string value);
-    result_t<void> submit ();
     task_t<void> submit_async ();
-    pending_operation_t submit_async (std::function<void (result_t<void>)> callback);
 
   private:
     std::string _packet_name;
@@ -362,7 +360,7 @@ class route_request_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<std::uint64_t> (
+    using submit_fn_t = std::function<task_t<std::uint64_t> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     route_request_call_t (std::string packet_name, submit_fn_t submit);
@@ -370,9 +368,7 @@ class route_request_call_t
     route_request_call_t &packet_name (std::string packet_name);
     route_request_call_t &timeout (std::chrono::milliseconds timeout);
     route_request_call_t &metadata (std::string key, std::string value);
-    result_t<std::uint64_t> submit ();
     task_t<std::uint64_t> submit_async ();
-    pending_operation_t submit_async (std::function<void (result_t<std::uint64_t>)> callback);
 
   private:
     std::string _packet_name;
@@ -385,7 +381,7 @@ template <typename TReply> class typed_route_request_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<TReply> (
+    using submit_fn_t = std::function<task_t<TReply> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     typed_route_request_call_t (std::string packet_name, submit_fn_t submit) :
@@ -411,23 +407,14 @@ template <typename TReply> class typed_route_request_call_t
         return *this;
     }
 
-    result_t<TReply> submit ()
+    task_t<TReply> submit_async ()
     {
         if (!_submit) {
-            return result_t<TReply>::failure (
+            return task_t<TReply> (result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "typed route request call is not bound to a route client");
+              "typed route request call is not bound to a route client"));
         }
         return _submit (_packet_name, _timeout, _metadata);
-    }
-
-    task_t<TReply> submit_async () { return task_t<TReply> (submit ()); }
-
-    pending_operation_t submit_async (std::function<void (result_t<TReply>)> callback)
-    {
-        auto task = submit_async ();
-        detail::observe_task_completion (task, std::move (callback));
-        return pending_operation_t::make_completed ();
     }
 
   private:
@@ -458,7 +445,7 @@ class route_client_t
           [state, router_channel_id = std::move (router_channel_id),
            target_node_rid = std::move (target_node_rid), message = std::move (message)] (
             const std::string &packet_name,
-            const route_send_call_t::metadata_map_t &metadata) -> result_t<void> {
+            const route_send_call_t::metadata_map_t &metadata) -> task_t<void> {
               return submit_send_erased (state, router_channel_id, target_node_rid, packet_name,
                                          std::type_index (typeid (TMessage)), &message, metadata);
           });
@@ -474,7 +461,7 @@ class route_client_t
           [state, router_channel_id = std::move (router_channel_id),
            target_node_rid = std::move (target_node_rid), request = std::move (request)] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
-            const route_request_call_t::metadata_map_t &metadata) -> result_t<std::uint64_t> {
+            const route_request_call_t::metadata_map_t &metadata) -> task_t<std::uint64_t> {
               return submit_request_erased (state, router_channel_id, target_node_rid, packet_name,
                                             std::type_index (typeid (TRequest)), &request, timeout,
                                             metadata);
@@ -493,27 +480,10 @@ class route_client_t
            target_node_rid = std::move (target_node_rid), request = std::move (request)] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const typename typed_route_request_call_t<TReply>::metadata_map_t &metadata)
-            -> result_t<TReply> {
-              auto reply = submit_request_reply_erased (
-                state, router_channel_id, target_node_rid, packet_name,
+            -> task_t<TReply> {
+              return submit_request_reply_erased<TReply> (
+                state, serializers, router_channel_id, target_node_rid, packet_name,
                 std::type_index (typeid (TRequest)), &request, timeout, metadata);
-              if (!reply) {
-                  return result_t<TReply>::failure (reply.error_kind (),
-                                                    reply.error () ? reply.error ()->what ()
-                                                                   : "route request failed");
-              }
-              if (serializers == nullptr) {
-                  return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                    "route client has no serializer registry");
-              }
-              try {
-                  return result_t<TReply>::success (
-                    serializers->get<TReply> ().deserialize (reply.value ()));
-              }
-              catch (const framework_exception_t &error) {
-                  return result_t<TReply>::failure (error.kind (), error.what (),
-                                                    error.is_retriable ());
-              }
           });
     }
 
@@ -522,7 +492,7 @@ class route_client_t
     explicit route_client_t (std::shared_ptr<detail::route_client_state_t> state,
                              serializer_registry_t &serializers);
 
-    static result_t<void>
+    static task_t<void>
     submit_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                         const std::string &router_channel_id,
                         const zlink::routing_id_t &target_node_rid,
@@ -531,7 +501,7 @@ class route_client_t
                         const void *message,
                         const route_send_call_t::metadata_map_t &metadata);
 
-    static result_t<std::uint64_t>
+    static task_t<std::uint64_t>
     submit_request_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                            const std::string &router_channel_id,
                            const zlink::routing_id_t &target_node_rid,
@@ -541,19 +511,58 @@ class route_client_t
                            std::chrono::milliseconds timeout,
                            const route_request_call_t::metadata_map_t &metadata);
 
-    static result_t<zlink::message_t>
+    template <typename TReply>
+    static task_t<TReply>
     submit_request_reply_erased (const std::shared_ptr<detail::route_client_state_t> &state,
-                                 const std::string &router_channel_id,
-                                 const zlink::routing_id_t &target_node_rid,
-                                 const std::string &packet_name,
+                                 serializer_registry_t *serializers,
+                                 std::string router_channel_id,
+                                 zlink::routing_id_t target_node_rid,
+                                 std::string packet_name,
                                  std::type_index request_type,
                                  const void *request,
                                  std::chrono::milliseconds timeout,
                                  const std::map<std::string, std::string> &metadata);
 
+    static task_t<zlink::message_t>
+    submit_request_reply_message_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                                         std::string router_channel_id,
+                                         zlink::routing_id_t target_node_rid,
+                                         std::string packet_name,
+                                         std::type_index request_type,
+                                         const void *request,
+                                         std::chrono::milliseconds timeout,
+                                         std::map<std::string, std::string> metadata);
+
     std::shared_ptr<detail::route_client_state_t> _state;
     serializer_registry_t *_serializers = nullptr;
 };
+
+template <typename TReply>
+task_t<TReply> route_client_t::submit_request_reply_erased (
+  const std::shared_ptr<detail::route_client_state_t> &state,
+  serializer_registry_t *serializers,
+  std::string router_channel_id,
+  zlink::routing_id_t target_node_rid,
+  std::string packet_name,
+  std::type_index request_type,
+  const void *request,
+  std::chrono::milliseconds timeout,
+  const std::map<std::string, std::string> &metadata)
+{
+    if (serializers == nullptr) {
+        co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                             "route client has no serializer registry");
+    }
+    auto reply = co_await submit_request_reply_message_erased (
+      state, std::move (router_channel_id), std::move (target_node_rid), std::move (packet_name),
+      request_type, request, timeout, metadata);
+    try {
+        co_return result_t<TReply>::success (serializers->get<TReply> ().deserialize (reply));
+    }
+    catch (const framework_exception_t &error) {
+        co_return result_t<TReply>::failure (error.kind (), error.what (), error.is_retriable ());
+    }
+}
 
 class request_client_t
 {

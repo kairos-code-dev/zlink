@@ -40,14 +40,15 @@ class stream_write_call_state_t
 
     void compress () { _compressed = true; }
 
-    result_t<void> submit ()
+    task_t<void> submit_async ()
     {
         if (_immediate) {
-            return *_immediate;
+            return task_t<void> (*_immediate);
         }
         if (!_submit || !_header || !_payload) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "STREAM write call is not bound to a stream");
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "STREAM write call is not bound to a stream"));
         }
 
         auto metadata = _header->metadata ().values ();
@@ -157,21 +158,9 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-result_t<void> stream_write_call_t::submit ()
-{
-    return _state->submit ();
-}
-
 task_t<void> stream_write_call_t::submit_async ()
 {
-    return task_t<void> (submit ());
-}
-
-pending_operation_t stream_write_call_t::submit_async (
-  std::function<void (result_t<void>)> callback)
-{
-    callback (submit ());
-    return pending_operation_t::make_completed ();
+    return _state->submit_async ();
 }
 
 stream_error_t::stream_error_t (stream_session_error_t error,
@@ -319,12 +308,12 @@ stream_write_call_t stream_t::write_packet (const stream_header_t &header,
       header, payload,
       [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
           if (state->closed) {
-              return result_t<void>::failure (framework_error_kind_t::disconnected,
-                                              "STREAM session is disconnected");
+              return task_t<void> (result_t<void>::failure (
+                framework_error_kind_t::disconnected, "STREAM session is disconnected"));
           }
           state->written_headers.push_back (submitted_header);
           state->written_payloads.push_back (submitted_payload);
-          return result_t<void>::success ();
+          return task_t<void> (result_t<void>::success ());
       });
 }
 

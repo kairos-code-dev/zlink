@@ -38,7 +38,7 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     {
         events.push_back ("packet:" + std::string (header.packet_name ()) + ":"
                           + payload.to_string ());
-        auto write = stream.reply_packet (header, payload).submit ();
+        auto write = stream.reply_packet (header, payload).submit_async ().result ();
         if (!write) {
             return zlink::framework::task_t<void> (write);
         }
@@ -253,7 +253,7 @@ int main ()
     const auto send_result = send_call.metadata ("trace", "send-trace")
                                .packet_name ("renamed")
                                .compress ()
-                               .submit ();
+                               .submit_async ().result ();
     if (!send_result || runtime.written_headers (fluent_stream).size () != 1
         || runtime.written_headers (fluent_stream)[0].packet_name () != "renamed"
         || runtime.written_headers (fluent_stream)[0].metadata ("trace") != "send-trace"
@@ -265,7 +265,7 @@ int main ()
     const auto close_result = fluent_stream.close ().result ();
     const auto close_write =
       fluent_stream.write_packet (send_header, zlink::message_t::from (std::string ("after-close")))
-        .submit ();
+        .submit_async ().result ();
     if (!close_result || close_write
         || close_write.error_kind () != framework_error_kind_t::disconnected
         || runtime.written_headers (fluent_stream).size () != 1) {
@@ -274,7 +274,7 @@ int main ()
     const auto disconnected_write =
       stream
         .write_packet (request_header, zlink::message_t::from (std::string ("after-disconnect")))
-        .submit ();
+        .submit_async ().result ();
     if (disconnected_write
         || disconnected_write.error_kind () != framework_error_kind_t::disconnected
         || runtime.written_headers (stream).size () != 1) {

@@ -75,7 +75,6 @@ class actor_join_spot_call_t
     {
     }
 
-    using base_t::submit;
     using base_t::submit_async;
     using base_t::timeout;
 };
@@ -92,7 +91,6 @@ class actor_join_entry_spot_call_t
     {
     }
 
-    using base_t::submit;
     using base_t::submit_async;
     using base_t::timeout;
 };

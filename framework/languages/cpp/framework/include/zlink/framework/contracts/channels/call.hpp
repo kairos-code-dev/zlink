@@ -30,7 +30,7 @@ template <typename TReply> class request_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<TReply> (
+    using submit_fn_t = std::function<task_t<TReply> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     explicit request_call_t (result_t<TReply> result) : _immediate (std::move (result)) {}
@@ -58,24 +58,17 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    result_t<TReply> submit ()
+    task_t<TReply> submit_async ()
     {
         if (_immediate) {
-            return *_immediate;
+            return task_t<TReply> (*_immediate);
         }
         if (!_submit) {
-            return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                              "request call is not bound to a channel client");
+            return task_t<TReply> (result_t<TReply>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "request call is not bound to a channel client"));
         }
         return _submit (_packet_name, _timeout, _metadata);
-    }
-
-    task_t<TReply> submit_async () { return task_t<TReply> (submit ()); }
-
-    pending_operation_t submit_async (std::function<void (result_t<TReply>)> callback)
-    {
-        callback (submit ());
-        return pending_operation_t::make_completed ();
     }
 
   private:
@@ -90,7 +83,7 @@ class send_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<void> (
+    using submit_fn_t = std::function<task_t<void> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
 
     explicit send_call_t (result_t<void> result) : _immediate (std::move (result)) {}
@@ -118,24 +111,17 @@ class send_call_t
         return *this;
     }
 
-    result_t<void> submit ()
+    task_t<void> submit_async ()
     {
         if (_immediate) {
-            return *_immediate;
+            return task_t<void> (*_immediate);
         }
         if (!_submit) {
-            return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                            "send call is not bound to a channel client");
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "send call is not bound to a channel client"));
         }
         return _submit (_packet_name, _timeout, _metadata);
-    }
-
-    task_t<void> submit_async () { return task_t<void> (submit ()); }
-
-    pending_operation_t submit_async (std::function<void (result_t<void>)> callback)
-    {
-        callback (submit ());
-        return pending_operation_t::make_completed ();
     }
 
   private:
@@ -154,7 +140,6 @@ class relay_call_t : private detail::call_facade_t<relay_call_t, void>
   public:
     explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
 
-    using base_t::submit;
     using base_t::submit_async;
     using base_t::timeout;
 };
@@ -164,7 +149,7 @@ class stream_write_call_t
   public:
     using metadata_map_t = std::map<std::string, std::string>;
     using submit_fn_t =
-      std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>;
+      std::function<task_t<void> (const stream_header_t &, const zlink::message_t &)>;
 
     explicit stream_write_call_t (result_t<void> result);
     ~stream_write_call_t ();
@@ -178,9 +163,7 @@ class stream_write_call_t
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
-    result_t<void> submit ();
     task_t<void> submit_async ();
-    pending_operation_t submit_async (std::function<void (result_t<void>)> callback);
 
   private:
     friend class stream_t;

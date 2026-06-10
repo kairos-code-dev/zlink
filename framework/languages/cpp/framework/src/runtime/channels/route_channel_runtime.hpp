@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -112,6 +113,7 @@ class route_channel_runtime_t
     result_t<void> ensure_connected () const;
 
     std::string _router_channel_id;
+    mutable std::mutex _mutex;
     std::optional<zlink::routing_id_t> _routing_id;
     std::optional<std::string> _spot_route_egress_target;
     bool _running = false;

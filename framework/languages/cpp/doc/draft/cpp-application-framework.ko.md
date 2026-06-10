@@ -495,7 +495,7 @@ C++ framework는 설정이 불편하면 `.NET Core`/`ASP.NET Core`, Spring Boot,
 | zlink channel send/event | fire-and-forget send, typed event dispatch, handler exception masking, no-reply path, queue full rejection |
 | zlink pub/sub | publisher/subscriber delivery, multiple subscribers, unsubscribe/close cleanup, topic mismatch, disconnected subscriber |
 | zlink route channel | manual connection, discovery connection, routing id selection, route handler dispatch, route handler not found, ambiguous route validation |
-| zlink backpressure | pending request limit, outbound queue limit, send-ready resume, shutdown while pending, callback/coroutine 동일 error kind |
+| zlink backpressure | pending request limit, outbound queue limit, send-ready resume, shutdown while pending, coroutine 동일 error kind |
 | zlink serializer/codec | raw message, JSON DTO, optional MessagePack/Protobuf target off/on, serializer missing startup failure, invalid payload runtime failure |
 | zlink lifecycle | channel bind/connect start order, receive loop start/stop, in-flight drain, shutdown after close, reconnect/disconnect event |
 | SPOT | activation, destroy, join, leave, actor handler, publish, request_to, route resolver, discovery-backed remote address |
@@ -515,12 +515,11 @@ C++ framework는 설정이 불편하면 `.NET Core`/`ASP.NET Core`, Spring Boot,
 | developer tooling | CMake presets, vcpkg manifest, install consumer, CLion/Visual Studio configure smoke |
 | samples | Bingo e2e, TicTacToe HTTP `POST /games` + zlink channel + STREAM connector e2e, server/client file log assertions |
 
-zlink 관련 회귀 테스트는 `.NET` framework와 같은 기능 기대값을 기준으로 한다. C++ 비동기 문법은
-`submit_async(callback)`과 `co_await submit_async()`로 다르지만, timeout, decode failure,
-handler not found, shutdown, queue full, disconnected 같은 error kind와 로그/monitoring event는 같은
-의미로 고정한다. 테스트는 단순히 process exit code만 확인하지 않고, request sequence,
-topic/packet name, correlation id, server-side file log, client-side callback 결과를 함께
-검증해야 한다.
+zlink 관련 회귀 테스트는 `.NET` framework와 같은 기능 기대값을 기준으로 한다. C++ 서버
+framework는 `co_await submit_async()` 표면을 사용하지만, timeout, decode failure,
+handler not found, shutdown, queue full, disconnected 같은 error kind와 로그/monitoring event는
+같은 의미로 고정한다. 테스트는 단순히 process exit code만 확인하지 않고, request sequence,
+topic/packet name, correlation id, server-side file log, client-side 결과를 함께 검증해야 한다.
 
 CTest label은 최소 아래처럼 나눈다.
 

@@ -28,7 +28,7 @@ public:
           .request<account_reply_t>("account", account_query_t{
               .account_id = request.account_id,
           })
-          .submit();
+          .submit_async();
 
         co_return build_user_reply(account);
     }

@@ -76,13 +76,10 @@ int main ()
         return 2;
     }
 
-    auto callback_kind = zlink::framework::framework_error_kind_t::request_failed;
-    zlink::framework::request_call_t<int> callback_call (zlink::framework::result_t<int>::failure (
+    zlink::framework::request_call_t<int> call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::timeout, "timeout"));
-    callback_call.submit (
-      [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
-    auto coroutine_result = callback_call.submit ();
-    if (callback_kind != coroutine_result.error_kind ()) {
+    auto coroutine_result = call.submit_async ().result ();
+    if (coroutine_result.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
         return 3;
     }
 
@@ -94,7 +91,7 @@ int main ()
 
     zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
-    if (shutdown_call.submit ().error_kind ()
+    if (shutdown_call.submit_async ().result ().error_kind ()
         != zlink::framework::framework_error_kind_t::shutdown) {
         return 5;
     }

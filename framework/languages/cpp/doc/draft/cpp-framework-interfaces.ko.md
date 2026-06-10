@@ -201,7 +201,7 @@ public `route_client_t`, `route_send_call_t`, `route_request_call_t`,
 대응한다. 사용자는 router channel id, target node routing id, typed payload만 넘기고,
 route channel runtime lookup, envelope 작성, serializer 호출은 runtime owner가 처리한다.
 C++는 낮은 수준 검증을 위해 request sequence submission call도 유지하지만, 일반 사용 표면은
-`request<TRequest, TReply>(...).packet_name(...).metadata(...).timeout(...).submit()`으로
+`request<TRequest, TReply>(...).packet_name(...).metadata(...).timeout(...).submit_async()`으로
 typed reply를 받는다. `.metadata(key, value)`로 넣은 값은 framework envelope header에 보존되며,
 route runtime lookup과 serializer 호출은 사용자에게 드러나지 않는다. typed reply completion은
 route runtime backend seam을 통해 검증되고,
@@ -235,10 +235,10 @@ point가 필요하면 `contracts/*` 아래 별도 public 타입을 만든다. ba
 
 #### Runtime/Messaging 상태 분리
 
-`pending_operation_t`는 callback 기반 `submit_async(callback)`의 추적 핸들이다. 사용자는 이
-객체로 작업이 유효한지, 완료됐는지, 취소됐는지를 확인할 수 있다. 상태 저장소, 실패
-예외, queue slot은 public header에 두지 않고 `src/runtime/messaging`의 private state에
-둔다.
+`pending_operation_t`는 runtime 내부 pending queue와 cancellation 상태를 추적하는 핸들이다.
+서버 framework public call object는 callback submit을 노출하지 않으므로 일반 사용자는 이
+타입을 직접 다루지 않는다. 상태 저장소, 실패 예외, queue slot은 public header에 두지 않고
+`src/runtime/messaging`의 private state에 둔다.
 
 `src/runtime/messaging/pending_submit.*`는 `.NET`의 `PendingSubmit`에 대응한다. C++에서는
 public cancellation token을 두지 않으므로 cancellation registration은 만들지 않는다.
@@ -801,9 +801,7 @@ public:
     request_call_t &timeout(std::chrono::milliseconds timeout);
     request_call_t &packet_name(std::string packet_name);
     request_call_t &metadata(std::string key, std::string value);
-    result_t<TReply> submit();
     task_t<TReply> submit_async();
-    pending_operation_t submit_async(std::function<void(result_t<TReply>)> callback);
 };
 
 class send_call_t {
@@ -811,17 +809,13 @@ public:
     send_call_t &timeout(std::chrono::milliseconds timeout);
     send_call_t &packet_name(std::string packet_name);
     send_call_t &metadata(std::string key, std::string value);
-    result_t<void> submit();
     task_t<void> submit_async();
-    pending_operation_t submit_async(std::function<void(result_t<void>)> callback);
 };
 
 class relay_call_t {
 public:
     relay_call_t &timeout(std::chrono::milliseconds timeout);
-    result_t<void> submit();
     task_t<void> submit_async();
-    pending_operation_t submit_async(std::function<void(result_t<void>)> callback);
 };
 
 class stream_write_call_t {
@@ -830,18 +824,14 @@ public:
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();
-    result_t<void> submit();
     task_t<void> submit_async();
-    pending_operation_t submit_async(std::function<void(result_t<void>)> callback);
 };
 
 template <typename TActor>
 class bind_actor_call_t {
 public:
     bind_actor_call_t &timeout(std::chrono::milliseconds timeout);
-    result_t<TActor> submit();
     task_t<TActor> submit_async();
-    pending_operation_t submit_async(std::function<void(result_t<TActor>)> callback);
 };
 
 enum class stream_message_kind_t : std::uint8_t {
@@ -1051,7 +1041,7 @@ handler 실행은 framework runtime의 coroutine executor를 통과한다. 이 e
 `boost::asio::thread_pool`과 `boost::asio::co_spawn`으로
 `boost::asio::awaitable<result_t<T>>`를 실행한다. 그러나 public API에는
 `boost::asio::awaitable`, executor, strand 타입을 노출하지 않는다. 사용자 코드는
-`task_t<T>`, `co_await call.submit_async()`, callback submit만 본다.
+`task_t<T>`와 `co_await call.submit_async()`만 본다.
 내부 handler invoker는 `result_t<T>`를 직접 반환하지 않고 `task_t<T>`를 반환한다.
 executor는 task 완료를 callback으로 받아 Asio coroutine을 재개한다. 따라서 async handler
 실행 중에 `.result()`로 기다리는 bridge는 없다. `.result()`는 C core dispatch callback처럼
@@ -1128,7 +1118,6 @@ class route_send_call_t {
 public:
     route_send_call_t &packet_name(std::string packet_name);
     route_send_call_t &metadata(std::string key, std::string value);
-    result_t<void> submit();
     task_t<void> submit_async();
 };
 
@@ -1137,7 +1126,6 @@ public:
     route_request_call_t &packet_name(std::string packet_name);
     route_request_call_t &metadata(std::string key, std::string value);
     route_request_call_t &timeout(std::chrono::milliseconds timeout);
-    result_t<std::uint64_t> submit();
     task_t<std::uint64_t> submit_async();
 };
 
@@ -1147,7 +1135,6 @@ public:
     typed_route_request_call_t &packet_name(std::string packet_name);
     typed_route_request_call_t &metadata(std::string key, std::string value);
     typed_route_request_call_t &timeout(std::chrono::milliseconds timeout);
-    result_t<TReply> submit();
     task_t<TReply> submit_async();
 };
 
@@ -1509,12 +1496,10 @@ protobuf, json, messagepack 사용자는 `message_t`와 serializer registry에�
 선택한다. `actor_join_result_t`는 join result code, join 이후 actor ref, reply `message_t`를
 함께 담는다. Entry Spot join은 `.NET`과 같이 actor ref만 돌려준다.
 
-호출 실행 표면은 동기와 비동기를 이름으로 구분한다. 동기 `Submit()` 의미는 C++의
-`submit()`이 `result_t<T>`를 반환하는 형태로 투영하고, 비동기 표면은 `.NET`의
-`SubmitAsync()`와 callback completion 모델을 `submit_async()`로 투영한다.
+호출 실행 표면은 `.NET` framework의 awaitable network API와 같은 방향으로 둔다.
 `request(...)`, `send(...)`, `relay(...)`, `join_spot(...)`, `join_entry_spot(...)` 같은
-호출은 즉시 실행하지 않는 call object를 반환하고, 마지막 `submit()` 또는 `submit_async()`가
-실제 submit 지점이다.
+호출은 즉시 실행하지 않는 call object를 반환하고, 마지막 `submit_async()`가 실제 submit
+지점이다.
 일반 channel `request_call_t`와 `send_call_t`는 `packet_name(...)`, `metadata(...)`,
 `timeout(...)`을 submit 전에 모으고, submit 시점에 framework envelope 정책으로 넘긴다.
 
@@ -1524,24 +1509,14 @@ auto reply = co_await client
   .timeout(std::chrono::seconds(2))
   .submit_async();
 
-client
-  .request<profile_reply_t>("profile", query)
-  .timeout(std::chrono::seconds(2))
-  .submit_async([](zlink::framework::result_t<profile_reply_t> result) {
-      if (!result) {
-          return;
-      }
-
-      use_profile(result.value());
-  });
+use_profile(reply);
 ```
 
 public framework async 표면에 `std::future`를 사용하지 않는다. blocking wait는 handler,
 timer, STREAM session callback, actor relay 경로에서 허용하지 않는다.
 
 오류 종류는 `.NET` framework의 `ZLinkFrameworkErrorKind`를 C++ naming으로 투영한다.
-callback `submit_async`는 `result_t<T>` 안에 `framework_error_kind_t`와 message를 담고,
-coroutine `submit_async`는 같은 정보를 가진 `framework_exception_t`를 throw한다.
+`submit_async()`는 실패 시 같은 정보를 가진 `framework_exception_t`를 throw한다.
 
 ## 12. Hosted Service 와 Module
 
@@ -1971,15 +1946,15 @@ task_t<match_bingo_api_res_t> handle(const match_bingo_api_req_t &request)
       .request<allocate_bingo_room_res_t>(
         sample_names_t::play_channel,
         allocate_bingo_room_req_t { request.mode })
-      .submit();
+      .submit_async();
 
     co_return match_bingo_api_res_t { allocated.room_id };
 }
 ```
 
-샘플 handler는 `.submit().result().value()`로 결과를 직접 꺼내지 않는다. 그런 코드는 handler가
-runtime 안에서 blocking wait를 수행하는 것처럼 보이고, 모든 언어 버전에서 같은 async 모델을
-제공한다는 목표와 맞지 않다.
+샘플 handler는 `.submit_async().result().value()`로 결과를 직접 꺼내지 않는다. 그런 코드는
+handler가 runtime 안에서 blocking wait를 수행하는 것처럼 보이고, 모든 언어 버전에서 같은 async
+모델을 제공한다는 목표와 맞지 않다.
 
 ```cpp
 class order_module_t final : public zlink::framework::module_t {

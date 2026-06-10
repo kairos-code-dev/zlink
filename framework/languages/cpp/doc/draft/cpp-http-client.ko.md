@@ -43,7 +43,7 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 - `zlink::http_client` CMake target
 - `client_t::create().base_url(...).json().timeout(...).trust_certificate_file(...).build()`
 - `get`, `post`, `put`, `delete_` request builder
-- typed JSON `body(...)`, `submit<T>()`, callback `submit<T>(...)`, `submit_raw()`
+- typed JSON `body(...)`, `submit<T>()`, `submit_raw()`
 
 ## 3. Public API Shape
 
@@ -62,19 +62,9 @@ auto created = co_await client
   .submit<create_match_res_t>();
 ```
 
-callback submit도 같은 call object에서 제공한다.
 typed submit은 내부에서 raw submit 결과를 `.result()`로 기다리지 않고 `task_t` 완료를
-await하거나 관찰한다. 이 규칙은 샘플 handler가 HTTP client를 사용할 때 runtime thread를
-막지 않도록 하기 위한 것이다.
-
-```cpp
-client
-  .post("/games")
-  .body(create_match_req_t { .owner_actor_id = actor_id })
-  .submit<create_match_res_t>([](auto result) {
-      // result는 HTTP status, transport error, decode error를 함께 표현한다.
-  });
-```
+await한다. 이 규칙은 샘플 handler가 HTTP client를 사용할 때 runtime thread를 막지 않도록
+하기 위한 것이다.
 
 초기 범위는 아래로 제한한다.
 
@@ -142,7 +132,6 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - public header boundary: runtime 구현 header와 Beast/Asio/OpenSSL 타입이 public header에
   드러나지 않는다
 - JSON request/response: typed DTO request를 JSON으로 보내고 reply DTO를 읽는다
-- callback submit: result에 HTTP status와 decode error가 전달된다
 - coroutine submit: `co_await submit<T>()`가 typed response를 반환하고 내부 raw submit을
   blocking wait로 기다리지 않는다
 - HTTP status mapping: `400`, `404`, `500` 응답이 client result/error kind로 고정된다

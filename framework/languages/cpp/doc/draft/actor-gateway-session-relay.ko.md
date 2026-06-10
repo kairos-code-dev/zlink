@@ -81,13 +81,13 @@ public:
         if (is_login(header)) {
             actor_ = co_await actors_
               .bind(find_or_create_actor_ref(payload))
-              .submit();
+              .submit_async();
             co_return;
         }
 
         co_await actor_
           .relay(header, payload)
-          .submit();
+          .submit_async();
     }
 
 private:
@@ -135,9 +135,9 @@ actor가 자기 client로 push할 때는 `bound_session_t`를 사용한다.
 ```cpp
 class player_actor_t final {
 public:
-    void notify_turn_changed(turn_changed_t event)
+    task_t<void> notify_turn_changed(turn_changed_t event)
     {
-        context_.bound_session().send(event).submit();
+        co_await context_.bound_session().send(event).submit_async();
     }
 
 private:
@@ -147,7 +147,7 @@ private:
 
 `bound_session_t`는 server-to-client request API를 기본 제공하지 않는다. client request
 에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로 처리한다.
-actor가 client 연결을 끊어야 할 때는 `bound_session_t::disconnect().submit()`을 사용한다.
+actor가 client 연결을 끊어야 할 때는 `bound_session_t::disconnect().submit_async()`을 사용한다.
 이 호출은 session binding만 닫고 actor의 현재 Spot 소속은 바꾸지 않는다.
 
 ## 6. Runtime Mapping

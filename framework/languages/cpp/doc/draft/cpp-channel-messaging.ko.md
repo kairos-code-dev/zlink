@@ -103,11 +103,11 @@ current Spot 밖에서 target Spot으로 직접 send/request 하는 public clien
 messaging 표면에 넣지 않는다. 그런 흐름은 actor 생성 또는 Entry Spot join으로 actor
 handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
 
-request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `submit()`에서
+request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `submit_async()`에서
 실행한다. 반환된 call object에서 `packet_name(...)`, `metadata(key, value)`,
 `timeout(...)`을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
-넘어간다. 동기 호출은 `submit()`이 `result_t<T>`를 바로 돌려주고, callback 방식과
-coroutine 방식은 각각 `submit_async(callback)`, `co_await call.submit_async()`를 사용한다.
+넘어간다. 서버 framework public API는 blocking 동기 호출을 제공하지 않으며,
+handler에서는 `co_await call.submit_async()`를 사용한다.
 handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
@@ -172,14 +172,13 @@ local handler 없이 outbound client만 쓰는 host도 가능해야 한다.
 ## 6. 회귀 테스트
 
 channel messaging 회귀 테스트는 `.NET` framework의 channel 동작과 같은 의미를 C++ 표면으로
-고정한다. C++에서는 callback submit과 coroutine submit을 모두 제공하지만, 완료 결과와 오류
-의미는 같아야 한다.
+고정한다. C++에서는 `co_await call.submit_async()`가 완료 결과와 오류 의미를 보존해야 한다.
 
 필수 항목:
 
 - client/server request가 typed request DTO를 전달하고 typed reply DTO를 받는다.
 - handler가 없으면 caller는 handler not found 계열 error를 받고 runtime은 계속 동작한다.
-- request timeout은 callback submit과 coroutine submit에서 같은 error kind로 돌아온다.
+- request timeout은 `co_await call.submit_async()`에서 같은 error kind로 돌아온다.
 - payload decode failure와 reply serialization failure는 server log, monitoring event,
   caller failure result에 모두 반영된다. 특히 request envelope header를 읽은 뒤 body가
   없거나 payload를 읽을 수 없으면 dispatcher 자체 실패로 끝내지 않고 error envelope로

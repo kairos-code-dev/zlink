@@ -25,9 +25,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                                  zlink::framework::spot_actor_request_context_t &,
                                  const join_game_req_t &request)
     {
-        auto joined = request;
-        joined.actor_id = actor.actor_id;
-        return room.join (joined);
+        return room.join (actor.actor_id, request);
     }
 
     void on_post_actor_joined (const player_actor_t &actor)

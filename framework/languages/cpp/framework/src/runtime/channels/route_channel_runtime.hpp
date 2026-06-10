@@ -13,13 +13,13 @@
 #include <string>
 #include <vector>
 
-namespace zlink::framework::detail
-{
-
-namespace backend
+namespace zlink::framework::detail::backend
 {
 class native_route_backend_t;
-} // namespace backend
+} // namespace zlink::framework::detail::backend
+
+namespace zlink::framework::detail
+{
 
 struct route_outbound_packet_t
 {

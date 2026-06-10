@@ -16,7 +16,10 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
           .add<authenticate_player_handler_t> ("api")
           .add<match_bingo_api_handler_t> ("api");
 
-        options.codecs ().add_json ();
+        options.codecs ()
+          .add_protobuf ()
+          .add_protobuf<allocate_bingo_room_req_t> ()
+          .add_protobuf<allocate_bingo_room_res_t> ();
 
         options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
 

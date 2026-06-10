@@ -418,8 +418,7 @@ int main ()
     auto lifecycle_join =
       lifecycle_actor_context
         .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("41")))
-        .submit ()
-        .result ();
+        .submit ();
     if (!lifecycle_join || lifecycle_join.value ().result_code != 0
         || lifecycle_join.value ().reply.to_string () != "42"
         || lifecycle_stage_spot->join_seen != 41 || lifecycle_stage_spot->joined_count != 1
@@ -439,8 +438,7 @@ int main ()
     auto rejected_runtime_join =
       rejected_context
         .join_spot (lifecycle_stage.spot_rid, zlink::message_t::from (std::string ("50")))
-        .submit ()
-        .result ();
+        .submit ();
     lifecycle_stage_spot->accept_join = true;
     if (!rejected_runtime_join || rejected_runtime_join.value ().result_code == 0
         || rejected_runtime_join.value ().reply.to_string () != "rejected"
@@ -457,8 +455,7 @@ int main ()
     auto lifecycle_entry_join =
       lifecycle_actor_context
         .join_entry_spot (zlink::framework::node_rid_t::from_string ("lifecycle-stage"))
-        .submit ()
-        .result ();
+        .submit ();
     if (!lifecycle_entry_join || lifecycle_stage_spot->left_count != 1
         || lifecycle_entry_spot->joined_count != 1 || lifecycle_actor_state.moved_value != 100
         || lifecycle_actor_state.joined_value != 151) {
@@ -800,15 +797,14 @@ int main ()
     }
 
     auto publish_result =
-      context.publish ("stage.state.updated", state_update_t{1}).submit ().result ();
+      context.publish ("stage.state.updated", state_update_t{1}).submit ();
     if (!publish_result) {
         return 14;
     }
 
     auto send_result =
       context.send_to (remote_route->node_rid, remote_route->spot_rid, state_update_t{2})
-        .submit ()
-        .result ();
+        .submit ();
     if (!send_result) {
         return 15;
     }
@@ -816,8 +812,7 @@ int main ()
     auto request_result = context
                             .request_to<move_reply_t> (remote_route->node_rid,
                                                        remote_route->spot_rid, move_request_t{3})
-                            .submit ()
-                            .result ();
+                            .submit ();
     if (request_result || request_result.error_kind () != framework_error_kind_t::timeout) {
         return 16;
     }
@@ -826,8 +821,7 @@ int main ()
       context
         .request_to<move_reply_t> (zlink::framework::node_rid_t{}, zlink::framework::spot_rid_t{},
                                    move_request_t{4})
-        .submit ()
-        .result ();
+        .submit ();
     if (missing_route_result
         || missing_route_result.error_kind () != framework_error_kind_t::spot_route_not_found) {
         return 17;

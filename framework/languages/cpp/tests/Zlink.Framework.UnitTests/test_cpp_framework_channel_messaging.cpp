@@ -153,7 +153,7 @@ int main ()
     if (!outbound_runtime.outbound_calls ().empty ()) {
         return 30;
     }
-    auto request_result = request_call.submit ().result ();
+    auto request_result = request_call.submit ();
     if (request_result
         || request_result.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
         return 2;
@@ -173,7 +173,7 @@ int main ()
     if (outbound_runtime.outbound_calls ().size () != 1) {
         return 32;
     }
-    auto send_result = send_call.submit ().result ();
+    auto send_result = send_call.submit ();
     if (!send_result) {
         return 3;
     }
@@ -188,8 +188,7 @@ int main ()
                             .publish ("events", "profile.changed", event_t{3})
                             .packet_name ("profile.changed.event")
                             .metadata ("trace-id", "publish-trace")
-                            .submit ()
-                            .result ();
+                            .submit ();
     if (!publish_result) {
         return 4;
     }
@@ -201,7 +200,7 @@ int main ()
         return 34;
     }
 
-    auto disconnected_result = bus.send ("missing", request_t{4}).submit ().result ();
+    auto disconnected_result = bus.send ("missing", request_t{4}).submit ();
     if (disconnected_result
         || disconnected_result.error_kind ()
              != zlink::framework::framework_error_kind_t::disconnected) {
@@ -215,7 +214,7 @@ int main ()
             [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
       });
     auto queue_full_result =
-      full_queue.message_bus ().request<request_t, reply_t> ("profile", {5}).submit ().result ();
+      full_queue.message_bus ().request<request_t, reply_t> ("profile", {5}).submit ();
     if (queue_full_result
         || queue_full_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_rejected) {
@@ -840,8 +839,7 @@ int main ()
         .send ("public.route", zlink::routing_id_t::from (std::string ("target-node")), event_t{31})
         .packet_name ("client.event")
         .metadata ("trace-id", "trace-send")
-        .submit ()
-        .result ();
+        .submit ();
     if (!public_route_send || public_route.outbound_packets ().size () != 1
         || send_backend_seen != 1) {
         return 58;
@@ -864,8 +862,7 @@ int main ()
         .packet_name ("client.request")
         .metadata ("trace-id", "trace-request")
         .timeout (std::chrono::milliseconds (25))
-        .submit ()
-        .result ();
+        .submit ();
     if (!public_route_request || public_route_request.value () != 1
         || public_route.pending_request_count () != 1
         || public_route.outbound_packets ().size () != 2
@@ -923,8 +920,7 @@ int main ()
         .packet_name ("typed.client.request")
         .metadata ("trace-id", "trace-typed")
         .timeout (std::chrono::milliseconds (50))
-        .submit ()
-        .result ();
+        .submit ();
     if (!public_typed_reply || public_typed_reply.value ().value != 351
         || public_route.outbound_packets ().size () != 3
         || public_route.pending_request_count () != 1) {

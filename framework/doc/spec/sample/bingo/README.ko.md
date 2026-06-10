@@ -25,6 +25,18 @@ API 서버는 인증과 매칭 요청을 처리하며, Registry는 서버 간 en
   Play 서버는 번호와 state를 bound session으로 Notify한다.
 - Registry/Discovery를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
 - handler는 interface 구현체를 framework에 명시 등록하는 방식을 사용한다.
+- Bingo의 stream, channel, actor, room Spot payload는 Protobuf를 사용한다.
+
+Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 각 request 응답과 server
+push payload를 즉시 검증해야 한다. 특히 `PlayerJoinedNotify`,
+`BingoGameStartedNotify`, `BingoNumberDrawnNotify`, `BingoGameEndedNotify` 대기는
+stream connector의 public wait interface를 직접 사용한다. inbox를 두더라도 push 도착을
+기다리는 로직을 sample-local polling 함수로 숨기면 안 된다.
+
+Bingo가 Protobuf를 맡는 이유는 이 샘플이 여러 서버 역할과 많은 request/response/notify
+계약을 가진 gateway형 게임이기 때문이다. Protobuf schema는 언어별 샘플이 같은 필드와
+같은 wire 이름을 유지하도록 돕는다. JSON payload 가독성은 다른 샘플이 맡고, 작은 binary
+game packet 예시는 TicTacToe의 MessagePack 샘플이 맡는다.
 
 ## 2. 서버 구성
 
@@ -83,7 +95,165 @@ channel, stream, Spot node endpoint를 Registry에 등록하고, 다른 서버�
 | `Bingo.Play` | `BingoRoom` room Spot | room 참가자, 제출된 카드, draw deck, 승리 판정, Notify 생성을 소유한다. |
 | `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
 
-## 5. Play 서버 디렉토리 구조
+## 5. 디렉토리와 파일 구성
+
+Bingo 샘플은 Session, API, Play, Registry가 분리된 gateway형 게임 샘플이다. 규모가
+TicTacToe보다 크기 때문에 DDD와 헥사고날 아키텍처의 경계를 더 분명히 유지해야 한다.
+이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
+공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
+`Client`, `Shared`, `Server/Api`, `Server/Session`, `Server/Play/Domain`,
+`Server/Play/Application`, `Server/Play/Adapters`, `Server/Registry` 경계와 각 책임은
+유지해야 한다.
+
+```text
+Bingo/
+  README
+  build files
+  run sample script
+  Client/
+    Program
+    BingoClientScenario
+    client build/module files
+  Probe/
+    Program
+    probe build/module files
+  Shared/
+    shared build/module files
+    Configuration/
+      SampleNames
+      SampleTopology
+    Contracts/
+      bingo_messages.proto
+  Server/
+    Registry/
+      Program
+      RegistryHostFactory
+      registry build/module files
+    Api/
+      Program
+      ApiServerHostFactory
+      api build/module files
+      Handlers/
+        AuthenticatePlayerHandler
+        MatchBingoHandler
+    Session/
+      Program
+      SessionServerHostFactory
+      session build/module files
+      Sessions/
+        BingoSession
+        Handlers/
+          AuthenticateSessionHandler
+    Play/
+      Program
+      PlayServerHostFactory
+      play build/module files
+      Domain/
+        Bingo/
+          BingoCard
+          BingoGame
+          BingoRoomGame
+          BingoRoomModels
+      Application/
+        RoomAllocation/
+          BingoRoomAllocator
+      Adapters/
+        ZLink/
+          Actors/
+            PlayerActor
+            PlayerActorFactory
+          Handlers/
+            AllocateBingoRoomHandler
+            EnsurePlayerActorHandler
+          Notifications/
+            BingoNotificationPublisher
+            BingoRoomEvent
+            BingoRoomEventMapper
+          Spots/
+            BingoEntrySpot
+            BingoRoom
+            Handlers/
+              MatchBingoActorHandler
+              SubmitBingoCardHandler
+              BingoRoomDrawTimerHandler
+```
+
+위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
+package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은 header/source
+쌍과 namespace로, .NET은 project와 class 이름으로 같은 구조를 표현할 수 있다. 중요한
+점은 같은 책임의 코드가 같은 위치에 있고, 다른 레이어로 섞이지 않는 것이다.
+
+각 영역의 역할은 아래와 같다.
+
+| 위치 | 공통 아키텍처 역할 | 책임 |
+|------|----------------------|------|
+| `Client/Program` | 외부 driving adapter | Session stream 연결을 만들고 client self-check 시나리오를 실행한다. |
+| `Client/BingoClientScenario` | sample scenario | 인증, matching, card 제출, draw push, final state 검증을 순서대로 수행한다. |
+| `Probe/*` | topology probe | Registry와 서버 endpoint가 준비되었는지 샘플 실행 전에 확인한다. |
+| `Shared/Configuration/*` | shared settings | sample service 이름, packet 이름, endpoint topology를 공유한다. |
+| `Shared/Contracts/*` | shared contract | Protobuf schema처럼 언어 간 동일해야 하는 payload 계약을 둔다. |
+| `Server/Registry/*` | discovery adapter | 각 서버의 channel, stream, Spot endpoint를 발견 가능하게 한다. |
+| `Server/Api/*` | API channel adapter | 인증과 matching 요청을 처리하고 Play 서버 room allocation으로 연결한다. |
+| `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
+| `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
+| `Server/Play/Application/RoomAllocation/*` | application use case | waiting room 재사용과 room Spot 생성을 조율한다. |
+| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, actor, Spot callback, notification publish를 application/domain 호출로 변환한다. |
+
+의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, Registry,
+stream session, actor gateway, logger를 알지 않는다. Application은 room 배정 같은 use
+case 조율만 맡고, server endpoint 발견, session binding, push 전송 같은 외부 입출력은
+adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구조와 게임 규칙의 위치가
+같게 유지된다.
+
+## 6. 언어별 구현 기준
+
+Bingo 샘플은 현재 .NET 샘플에서 검증된 실행 형태와 같은 수준으로 C++, Java, Kotlin,
+TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 달라도 사용자가 샘플을 열었을
+때 같은 서버 역할, 같은 gateway 흐름, 같은 검증 지점을 찾을 수 있어야 한다.
+
+언어별 구현은 아래 기준을 만족해야 한다.
+
+- 샘플 루트에는 client, probe, shared contracts, registry, api, session, play 역할이
+  한 번만 보이게 구성한다. IDE나 build tool에서 같은 역할의 프로젝트나 module이 중복으로
+  보이면 안 된다.
+- 각 실행 역할은 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고, host 구성과
+  client self-check 시나리오는 역할별 구성 요소로 분리한다.
+- `Shared/Contracts`에는 Protobuf schema를 둔다. 각 언어는 이 schema에서 생성한 message를
+  사용해야 하며, Protobuf와 별도로 손으로 만든 parallel message 정의를 유지하면 안 된다.
+  client와 server는 생성된 message 객체의 public interface만 사용해야 하며, 샘플 전용
+  helper로 payload 계약을 감추면 안 된다.
+- Bingo의 payload codec은 Protobuf다. stream, channel, actor, room Spot payload는 같은
+  schema와 같은 packet 이름을 사용하고, JSON이나 MessagePack으로 바꾸지 않는다.
+- client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
+  샘플 실행은 Registry, API, Session, Play server를 띄우고 client가 Session stream에
+  접속해 `bingo=completed`와 server evidence에 해당하는 성공 결과를 만들 수 있어야 한다.
+- Probe 또는 동등한 readiness 확인 흐름을 둔다. 단순 sleep으로 서버 준비 상태를 숨기지
+  말고, Registry와 필요한 endpoint가 실제로 준비되었는지 확인한다.
+- push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
+  때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
+  payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
+- Java와 Kotlin client scenario는 connector call의 `submit`과 `await` 의미를 맞춘다.
+  `submit`은 push 대기를 먼저 걸어 두기 위해 비동기 작업을 시작하고 future를 반환하는
+  이름으로 사용한다. `await`는 완료를 기다려 결과를 받는 이름으로 사용한다. Java에서는
+  현재 thread가 기다리고, Kotlin에서는 coroutine이 중단되었다가 재개된다.
+- sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
+  대기와 검증은 connector, probe, message 객체 인터페이스를 사용하는 샘플 시나리오 코드에서
+  드러나야 한다.
+- Session 서버는 gateway 역할만 한다. 인증, actor binding, packet relay, bound session
+  push 수신을 맡고, card 검증, draw, winner 판정 같은 게임 규칙을 해석하지 않는다.
+- Domain에는 card, draw deck, room status, winner 판정만 둔다. Registry, stream session,
+  actor gateway, handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
+- Application은 room allocation use case를 조율한다. framework callback을 직접 받거나
+  transport 세부 구현을 다루지 않는다.
+- Adapters는 Registry/Discovery, channel, stream session, actor, Spot, timer,
+  notification publish, codec 연결을 맡는다. handler나 Spot adapter가 card 판정, draw
+  order, winner 판정을 직접 구현하면 안 된다.
+
+이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
+나란히 읽었을 때 framework 기능 차이와 언어 차이만 보이고, 샘플 구조 차이 때문에
+흐름을 다시 해석하지 않아도 되게 하기 위한 기준이다.
+
+## 7. Play 서버 내부 레이어
 
 Bingo Play 서버는 domain logic과 framework adapter를 분리해야 한다. 다른 언어
 framework로 구현할 때도 아래 책임 분리를 유지한다.
@@ -137,7 +307,7 @@ callback을 받아 domain method를 호출하고, domain이 반환한 change와 
 message로 바꾼다. card validation, draw order, winner 판정이 handler나 Spot handler에
 흩어지면 안 된다.
 
-## 6. Handler 등록 방식
+## 8. Handler 등록 방식
 
 Bingo 샘플은 typed handler 계약을 명시 등록하는 방식을 사용한다. 각 handler는
 framework가 정의한 handler 계약을 구현하고, 서버 구성 코드에서 scan 또는 명시
@@ -155,7 +325,7 @@ framework가 정의한 handler 계약을 구현하고, 서버 구성 코드에�
 사라지는 언어는 handler class와 명시 등록으로 같은 의미를 표현한다. 선언형 등록
 방식은 TicTacToe 샘플이 맡는다.
 
-## 7. 게임 규칙
+## 9. 게임 규칙
 
 Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙을 사용한다.
 
@@ -175,7 +345,31 @@ Bingo는 샘플 흐름을 짧게 유지하기 위해 2인 자동 시작 규칙�
 방장, ready 버튼, 수동 mark, 여러 라운드, 랭킹은 공통 샘플 범위에서 제외한다.
 이 기능들은 게임 샘플을 크게 만들지만 framework 흐름을 이해하는 데 꼭 필요하지 않다.
 
-## 8. 메시지 계약
+## 10. Client 검증 흐름
+
+Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 확인한다.
+
+1. `player-1`, `player-2`로 stream 인증을 요청하고, 각 `AuthenticateRes.ActorId`가
+   요청한 actor id와 같은지 확인한다.
+2. `player-1`이 먼저 `MatchBingoReq`를 보내고 `WaitingForPlayers` 상태와 room id를
+   확인한다. 이 시점에 `player-1`이 자기 join notify를 받지 않았는지도 확인한다.
+3. `player-2`가 `MatchBingoReq`를 보내면 같은 room id와 `Running` 상태를 확인한다.
+4. `player-1`은 connector wait API로 `PlayerJoinedNotify`를 기다리고,
+   payload의 `ActorId`가 `player-2`인지 확인한다. `player-2`는 자기 join notify를
+   받지 않아야 한다.
+5. 두 client는 connector wait API로 `BingoGameStartedNotify`를 기다리고,
+   push state가 `Running`인지 확인한다.
+6. 두 client가 deterministic card를 제출한 뒤 response state에 두 player card가 모두
+   9칸으로 들어갔는지 확인한다.
+7. 두 client는 draw sequence별로 `BingoNumberDrawnNotify`를 기다리고, 양쪽 push의
+   `DrawSeq`, `Number`, state가 서로 같은지 확인한다.
+8. 두 client는 `BingoGameEndedNotify`를 기다리고, final state의 `Finished`, drawn
+   number sequence, winners, player list, center free-cell mark를 확인한다.
+
+이 검증은 성공 시나리오를 눈으로 읽기 위한 로그가 아니라 sample release gate다. 언어별
+client가 위 값을 확인하지 않으면 공통 sample 기준을 만족하지 못한다.
+
+## 11. 메시지 계약
 
 아래 계약은 언어 중립 schema다. 언어별 샘플은 같은 이름과 필드를 자기 언어의
 record, class, struct, type alias 등으로 구현한다.
@@ -334,7 +528,7 @@ BingoPlayerState {
 있다. 2인 자동 시작 공통 시나리오에서는 별도 시작 요청을 보내지 않으므로 client
 검증 기준으로 사용하지 않는다.
 
-## 9. 인증과 Actor Binding 흐름
+## 12. 인증과 Actor Binding 흐름
 
 ```mermaid
 sequenceDiagram
@@ -356,7 +550,7 @@ Session 서버는 인증 성공 후 actor reference를 얻고 현재 stream sess
 bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하지 않고 bound actor로
 relay한다.
 
-## 10. Matching과 카드 제출 흐름
+## 13. Matching과 카드 제출 흐름
 
 ```mermaid
 sequenceDiagram
@@ -411,7 +605,7 @@ room은 별도 `StartBingoGameReq` 없이 자동으로 `Running` 상태가 되�
 제출한다. 두 client의 card가 모두 제출되면 room Spot이 draw timer를 시작하고,
 일정 간격으로 번호를 뽑아 양쪽 client에 `BingoNumberDrawnNotify`를 보낸다.
 
-## 11. Server Draw Timer와 Bound Push 흐름
+## 14. Server Draw Timer와 Bound Push 흐름
 
 ```mermaid
 sequenceDiagram
@@ -442,7 +636,7 @@ client는 자기 card를 제출한 뒤 번호 추첨을 요청하지 않는다. 
 card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보낸 Notify와 state로
 확인한다.
 
-## 12. 완료 기준
+## 15. 완료 기준
 
 - client 두 개가 각각 Session 서버에 하나의 stream 연결만 연다.
 - Session, API, Play 서버는 Registry/Discovery로 서로를 자동 발견한다.

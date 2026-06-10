@@ -68,6 +68,9 @@ static_assert (zlink::stream_connector::version_major == 0);
 static_assert (!std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit ()),
+                 zlink::framework::result_t<int>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().submit_async ()),
                  zlink::framework::task_t<int>>);
 
 template <typename T> concept has_blocking_wait = requires (T value)
@@ -590,10 +593,10 @@ int main ()
     zlink::framework::request_call_t<int> call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::timeout, "timeout"));
 
-    call.submit (
+    call.submit_async (
       [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
 
-    auto task = call.submit ();
+    auto task = call.submit_async ();
     const auto coroutine_kind = task.result ().error_kind ();
     if (callback_kind != coroutine_kind) {
         return 1;
@@ -602,7 +605,7 @@ int main ()
     zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
 
-    if (shutdown_call.submit ().result ().error_kind ()
+    if (shutdown_call.submit ().error_kind ()
         != zlink::framework::framework_error_kind_t::shutdown) {
         return 2;
     }

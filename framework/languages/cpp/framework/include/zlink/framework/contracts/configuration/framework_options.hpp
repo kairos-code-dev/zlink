@@ -57,8 +57,8 @@ class handler_options_builder_t
           THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
 
         auto *handlers = _handlers;
-        add_json_serializer<request_type> ();
-        add_json_serializer<reply_type> ();
+        add_serializers<request_type> ();
+        add_serializers<reply_type> ();
         _state->add_installer (
           std::move (group_name), detail::handler_group_kind_t::request,
           [handlers] (const std::string &channel_name) {
@@ -79,7 +79,7 @@ class handler_options_builder_t
           THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
 
         auto *handlers = _handlers;
-        add_json_serializer<message_type> ();
+        add_serializers<message_type> ();
         _state->add_installer (
           std::move (group_name), detail::handler_group_kind_t::send,
           [handlers] (const std::string &channel_name) {
@@ -100,7 +100,7 @@ class handler_options_builder_t
           THandler, typename detail::handler_dependencies_t<THandler>::type>::add (*_services);
 
         auto *handlers = _handlers;
-        add_json_serializer<event_type> ();
+        add_serializers<event_type> ();
         _state->add_installer (
           std::move (group_name), detail::handler_group_kind_t::publish,
           [handlers] (const std::string &channel_name) {
@@ -112,6 +112,13 @@ class handler_options_builder_t
     }
 
   private:
+    template <typename TPayload> void add_serializers ()
+    {
+        add_json_serializer<TPayload> ();
+        add_message_pack_serializer<TPayload> ();
+        add_protobuf_serializer<TPayload> ();
+    }
+
     template <typename TPayload> void add_json_serializer ()
     {
         auto *serializers = _serializers;
@@ -120,6 +127,32 @@ class handler_options_builder_t
             if (state->json_serializer_types.emplace (std::type_index (typeid (TPayload))).second
                 && !serializers->contains (std::type_index (typeid (TPayload)))) {
                 serializers->template add_json<TPayload> ();
+            }
+        });
+    }
+
+    template <typename TPayload> void add_message_pack_serializer ()
+    {
+        auto *serializers = _serializers;
+        auto state = _state;
+        _state->add_message_pack_serializer_installer ([serializers, state] {
+            if (state->message_pack_serializer_types.emplace (
+                  std::type_index (typeid (TPayload))).second
+                && !serializers->contains (std::type_index (typeid (TPayload)))) {
+                serializers->template add_message_pack<TPayload> ();
+            }
+        });
+    }
+
+    template <typename TPayload> void add_protobuf_serializer ()
+    {
+        auto *serializers = _serializers;
+        auto state = _state;
+        _state->add_protobuf_serializer_installer ([serializers, state] {
+            if (state->protobuf_serializer_types.emplace (std::type_index (typeid (TPayload)))
+                  .second
+                && !serializers->contains (std::type_index (typeid (TPayload)))) {
+                serializers->template add_protobuf<TPayload> ();
             }
         });
     }
@@ -157,9 +190,18 @@ class codec_options_builder_t
 {
   public:
     explicit codec_options_builder_t (
+      serializer_registry_t &serializers,
       std::shared_ptr<detail::handler_group_options_state_t> state) :
-        _state (std::move (state))
+        _serializers (&serializers), _state (std::move (state))
     {
+    }
+
+    template <typename TPayload> codec_options_builder_t &add_json ()
+    {
+        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
+            _serializers->template add_json<TPayload> ();
+        }
+        return *this;
     }
 
     codec_options_builder_t &add_json ()
@@ -171,7 +213,42 @@ class codec_options_builder_t
         return *this;
     }
 
+    template <typename TPayload> codec_options_builder_t &add_message_pack ()
+    {
+        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
+            _serializers->template add_message_pack<TPayload> ();
+        }
+        return *this;
+    }
+
+    codec_options_builder_t &add_message_pack ()
+    {
+        _state->message_pack_enabled = true;
+        for (const auto &installer : _state->message_pack_serializer_installers) {
+            installer ();
+        }
+        return *this;
+    }
+
+    template <typename TPayload> codec_options_builder_t &add_protobuf ()
+    {
+        if (!_serializers->contains (std::type_index (typeid (TPayload)))) {
+            _serializers->template add_protobuf<TPayload> ();
+        }
+        return *this;
+    }
+
+    codec_options_builder_t &add_protobuf ()
+    {
+        _state->protobuf_enabled = true;
+        for (const auto &installer : _state->protobuf_serializer_installers) {
+            installer ();
+        }
+        return *this;
+    }
+
   private:
+    serializer_registry_t *_serializers;
     std::shared_ptr<detail::handler_group_options_state_t> _state;
 };
 
@@ -1263,7 +1340,10 @@ class zlink_framework_options_t
         return handler_options_builder_t (*_services, *_handlers, *_serializers, _handler_groups);
     }
 
-    codec_options_builder_t codecs () { return codec_options_builder_t (_handler_groups); }
+    codec_options_builder_t codecs ()
+    {
+        return codec_options_builder_t (*_serializers, _handler_groups);
+    }
 
     metadata_policy_builder_t metadata () { return metadata_policy_builder_t (_options); }
 

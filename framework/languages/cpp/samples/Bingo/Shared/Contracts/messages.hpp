@@ -2,7 +2,10 @@
 #pragma once
 
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/codec/json.hpp>
 #include <nlohmann/json.hpp>
+#include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <array>
@@ -84,6 +87,7 @@ struct allocate_bingo_room_req_t
 {
     static constexpr const char *packet_name = "AllocateBingoRoomReq";
     std::string mode;
+    std::string actor_id;
 };
 
 struct allocate_bingo_room_res_t
@@ -97,7 +101,7 @@ struct bingo_player_state_t
     std::string actor_id;
     std::string display_name;
     int seat = 0;
-    bool host = false;
+    bool is_host = false;
     std::vector<int> card;
     std::vector<bool> marks;
     int completed_lines = 0;
@@ -157,7 +161,7 @@ struct player_joined_notify_t
     std::string actor_id;
     std::string display_name;
     int seat = 0;
-    bool host = false;
+    bool is_host = false;
     bingo_room_state_t state;
 };
 
@@ -294,12 +298,13 @@ inline void from_json (const nlohmann::json &json, match_bingo_api_res_t &value)
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_req_t &value)
 {
-    json = {{"mode", value.mode}};
+    json = {{"mode", value.mode}, {"actorId", value.actor_id}};
 }
 
 inline void from_json (const nlohmann::json &json, allocate_bingo_room_req_t &value)
 {
     value.mode = json.value ("mode", "");
+    value.actor_id = json.value ("actorId", "");
 }
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_res_t &value)
@@ -341,7 +346,7 @@ inline void to_json (nlohmann::json &json, const bingo_player_state_t &value)
     json = {{"actorId", value.actor_id},
             {"displayName", value.display_name},
             {"seat", value.seat},
-            {"host", value.host},
+            {"isHost", value.is_host},
             {"card", value.card},
             {"marks", value.marks},
             {"completedLines", value.completed_lines}};
@@ -352,7 +357,7 @@ inline void from_json (const nlohmann::json &json, bingo_player_state_t &value)
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
     value.seat = json.value ("seat", 0);
-    value.host = json.value ("host", false);
+    value.is_host = json.value ("isHost", false);
     value.card = json.value ("card", std::vector<int>{});
     value.marks = json.value ("marks", std::vector<bool>{});
     value.completed_lines = json.value ("completedLines", 0);
@@ -391,8 +396,8 @@ inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
 
 inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
 {
-    value.actor_id = json.value ("actorId", "");
-    value.display_name = json.value ("displayName", "");
+    value.actor_id = json.value ("actorId", json.value ("ActorId", ""));
+    value.display_name = json.value ("displayName", json.value ("DisplayName", ""));
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_res_t &value)
@@ -430,7 +435,7 @@ inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
 {
     json = {
       {"roomId", value.room_id}, {"actorId", value.actor_id}, {"displayName", value.display_name},
-      {"seat", value.seat},      {"host", value.host},        {"state", value.state}};
+      {"seat", value.seat},      {"isHost", value.is_host},   {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, player_joined_notify_t &value)
@@ -439,7 +444,7 @@ inline void from_json (const nlohmann::json &json, player_joined_notify_t &value
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
     value.seat = json.value ("seat", 0);
-    value.host = json.value ("host", false);
+    value.is_host = json.value ("isHost", false);
     value.state = json.value ("state", bingo_room_state_t{});
 }
 
@@ -487,6 +492,76 @@ inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
 inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
 {
     value.state = json.value ("state", bingo_room_state_t{});
+}
+
+namespace detail
+{
+
+inline void append_protobuf_varint (std::vector<std::uint8_t> &bytes, std::size_t value)
+{
+    while (value >= 0x80) {
+        bytes.push_back (static_cast<std::uint8_t> ((value & 0x7f) | 0x80));
+        value >>= 7;
+    }
+    bytes.push_back (static_cast<std::uint8_t> (value));
+}
+
+inline std::size_t read_protobuf_varint (const std::vector<std::uint8_t> &bytes,
+                                         std::size_t &offset)
+{
+    std::size_t value = 0;
+    int shift = 0;
+    while (offset < bytes.size ()) {
+        const auto byte = bytes[offset++];
+        value |= static_cast<std::size_t> (byte & 0x7f) << shift;
+        if ((byte & 0x80) == 0) {
+            return value;
+        }
+        shift += 7;
+        if (shift >= static_cast<int> (sizeof (std::size_t) * 8)) {
+            throw std::runtime_error ("protobuf payload varint is too large");
+        }
+    }
+    throw std::runtime_error ("protobuf payload varint is truncated");
+}
+
+inline zlink::message_t json_to_protobuf_payload (const nlohmann::json &json)
+{
+    const auto text = json.dump ();
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve (1 + text.size () + 8);
+    bytes.push_back (0x0a);
+    append_protobuf_varint (bytes, text.size ());
+    bytes.insert (bytes.end (), text.begin (), text.end ());
+    return zlink::message_t::from (bytes);
+}
+
+inline nlohmann::json json_from_protobuf_payload (const zlink::message_t &payload)
+{
+    const auto bytes = payload.to_bytes ();
+    std::size_t offset = 0;
+    if (offset >= bytes.size () || bytes[offset++] != 0x0a) {
+        throw std::runtime_error ("protobuf payload must contain field 1");
+    }
+    const auto size = read_protobuf_varint (bytes, offset);
+    if (offset + size > bytes.size ()) {
+        throw std::runtime_error ("protobuf payload string is truncated");
+    }
+    return nlohmann::json::parse (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
+                                  bytes.begin ()
+                                    + static_cast<std::ptrdiff_t> (offset + size));
+}
+
+} // namespace detail
+
+template <typename T> inline zlink::message_t to_stream_payload (const T &value)
+{
+    return detail::json_to_protobuf_payload (nlohmann::json (value));
+}
+
+template <typename T> inline void from_stream_payload (const zlink::message_t &payload, T &value)
+{
+    value = detail::json_from_protobuf_payload (payload).template get<T> ();
 }
 
 } // namespace zlink::samples::bingo

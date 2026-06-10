@@ -25,8 +25,9 @@
 기능 기준은 현재 `.NET` framework다. `C++` framework는 같은 application model,
 messaging model, handler model, `STREAM`, `SPOT`, ActorGateway session relay,
 monitoring, graceful shutdown을 제공한다. 차이는 언어 표현과 ownership 모델뿐이다.
-`.NET`의 `Task<T>`와 `SubmitAsync()`는 C++20 `task_t<T>`와 `submit()`/`co_await`로,
-`.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로 투영한다.
+`.NET`의 `Submit()` 계열 동기 호출은 C++의 `submit()`이 `result_t<T>`를 바로 돌려주는
+형태로, `.NET`의 `SubmitAsync()`는 C++20 `task_t<T>`를 돌려주는 `submit_async()`와
+`co_await`로 투영한다. `.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로 투영한다.
 
 폴더 구조도 `.NET` framework의 역할 분리를 기준으로 맞춘다. `.NET`의
 `Contracts/*`는 C++에서 설치되는 public header인
@@ -34,6 +35,13 @@ monitoring, graceful shutdown을 제공한다. 차이는 언어 표현과 owners
 C++에서 배포 대상이 아닌 `framework/src/runtime/*` 구현에 대응한다. C++는 파일명,
 namespace, header 배치를 `snake_case`와 `.hpp` 중심으로 유지하되, public 계약과
 runtime 구현을 같은 파일이나 같은 디렉토리에 섞지 않는다.
+
+namespace 정의는 C++17 nested namespace 문법을 사용한다. `zlink`가 소유한 top-level
+framework namespace block은 `namespace zlink::framework`, `namespace
+zlink::framework::detail`, `namespace zlink::framework::runtime::messaging`처럼 전체 경로를
+한 번에 연다. `namespace zlink { namespace framework { ... } }`처럼 계층을 여러 block으로
+쪼개지 않는다. 이미 열린 `zlink::framework` block 안에서 짧은 local subnamespace를 열어야
+하는 경우에도 닫는 주석은 실제 namespace 경로가 분명해야 한다.
 
 이 분리는 기존 `bindings/cpp`보다 더 강하게 적용한다. binding은 native zlink API를
 C++ 타입으로 감싸는 낮은 계층이므로 일부 thin wrapper와 inline 구현이 public header에
@@ -198,7 +206,7 @@ host/runtime 표면으로만 구체화한다.
 | [actor-gateway-session-relay.ko.md](./actor-gateway-session-relay.ko.md) | STREAM session과 actor를 ActorGateway로 bind/relay하는 C++ standalone runtime 초안 |
 | [cpp-stream.ko.md](./cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM 결정 기록 |
-| [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리와 배포 정책 |
+| [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리, 배포 단위, Unreal/Godot/Axmol adapter 기준 |
 | [cpp-http-client.ko.md](./cpp-http-client.ko.md) | C++ framework 샘플과 HTTP e2e에서 쓰는 fluent HTTP/JSON client |
 | [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
 | [cpp-embedded-http-server.ko.md](./cpp-embedded-http-server.ko.md) | 내장 HTTP 웹서버 runtime 개발 기준 |

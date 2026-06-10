@@ -21,6 +21,7 @@ endpoint에 직접 연결한다.
 - place mark response
 - Play session actor bind
 - actor join, place mark, player joined, game state 흐름
+- MessagePack stream/channel/actor/Spot payload
 - disconnect cleanup
 
 샘플 이름에는 별도 접미사를 붙이지 않는다. 이 샘플은 수동 endpoint를 쓰는 직접 Play

@@ -31,8 +31,20 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <typeindex>
 #include <vector>
+
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for (
+      "packet", std::chrono::milliseconds (1))),
+    zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for_async (
+      "packet", std::chrono::milliseconds (1))),
+    zlink::stream_connector::task_t<zlink::stream_connector::packet_t>>);
 
 namespace
 {
@@ -52,6 +64,15 @@ struct auto_payload_t
     std::string text;
 };
 
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for<auto_payload_t> ()),
+    zlink::stream_connector::wait_call_t<auto_payload_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for_async<auto_payload_t> ()),
+    zlink::stream_connector::task_t<auto_payload_t>>);
+
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
 {
     json = nlohmann::json{{"text", payload.text}};
@@ -62,10 +83,20 @@ void from_json (const nlohmann::json &json, auto_payload_t &payload)
     payload.text = json.at ("text").get<std::string> ();
 }
 
+zlink::message_t to_stream_payload (const auto_payload_t &payload)
+{
+    return zlink::message_t::from_json (payload);
+}
+
+void from_stream_payload (const zlink::message_t &payload, auto_payload_t &message)
+{
+    message = payload.parse_json<auto_payload_t> ();
+}
+
 zlink::stream_connector::task_t<void>
 send_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
 {
-    co_await connector.send (login_request_t{}).packet_name ("coroutine.send").submit ();
+    co_await connector.send (login_request_t{}).packet_name ("coroutine.send").submit_async ();
 }
 
 zlink::stream_connector::task_t<login_reply_t>
@@ -74,7 +105,7 @@ request_with_coroutine_submit (zlink::stream_connector::connector_t &connector)
     auto reply = co_await connector.request<login_reply_t> (login_request_t{})
                    .packet_name ("coroutine.request")
                    .timeout (std::chrono::milliseconds (100))
-                   .submit ();
+                   .submit_async ();
     co_return reply;
 }
 
@@ -354,7 +385,7 @@ int main ()
           states.push_back (state.current);
       });
 
-    if (!connector.connect ().result () || !connector.is_connected () || states.size () != 2
+    if (!connector.connect () || !connector.is_connected () || states.size () != 2
         || states.back () != zlink::stream_connector::connection_state_t::connected) {
         return 2;
     }
@@ -368,7 +399,7 @@ int main ()
     connector.send (login_request_t{})
       .metadata ("trace", "t1")
       .compress ()
-      .submit ([&] (zlink::stream_connector::result_t<void> result) {
+      .submit_async ([&] (zlink::stream_connector::result_t<void> result) {
           callback_seen = static_cast<bool> (result);
       });
     if (!callback_seen) {
@@ -383,7 +414,7 @@ int main ()
     }
 
     auto uncompressed_send =
-      connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ().result ();
+      connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
     if (!uncompressed_send) {
         return 68;
     }
@@ -391,8 +422,7 @@ int main ()
     auto request = connector.request<login_reply_t> (login_request_t{})
                      .packet_name ("login.request")
                      .timeout (std::chrono::milliseconds (5))
-                     .submit ()
-                     .result ();
+                     .submit ();
     if (!request || runtime.pending_request_count () != 0) {
         return 6;
     }
@@ -411,7 +441,7 @@ int main ()
     if (connector.pending_dispatch_count () != 1) {
         return 28;
     }
-    if (!connector.dispatch ().result () || compressed_dispatch_count != 1
+    if (!connector.dispatch () || compressed_dispatch_count != 1
         || connector.pending_dispatch_count () != 0) {
         return 29;
     }
@@ -439,17 +469,18 @@ int main ()
     receive_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
     receive_options.request_timeout = std::chrono::milliseconds (100);
     auto receive_connector = zlink::stream_connector::connector_factory_t::create (receive_options);
-    if (!receive_connector.connect ().result ()) {
+    if (!receive_connector.connect ()) {
         return 56;
     }
     if (!receive_connector.send (login_request_t{})
            .packet_name ("receive.trigger")
-           .submit ()
-           .result ()) {
+           .submit ()) {
         return 57;
     }
-    auto received_first = receive_connector.receive (std::chrono::milliseconds (100)).result ();
-    auto received_second = receive_connector.receive (std::chrono::milliseconds (100)).result ();
+    auto received_first =
+      receive_connector.wait_for ("server.receive.one", std::chrono::milliseconds (100));
+    auto received_second =
+      receive_connector.wait_for ("server.receive.two", std::chrono::milliseconds (100));
     receive_server_thread.join ();
     if (!received_first || !received_second || received_first.value ().name != "server.receive.one"
         || received_first.value ().payload.to_string () != "one"
@@ -458,7 +489,7 @@ int main ()
         || receive_connector.pending_dispatch_count () != 0) {
         return 58;
     }
-    receive_connector.close ().result ();
+    receive_connector.close ();
 
     auto oversized_payload =
       connector
@@ -467,8 +498,7 @@ int main ()
                                                  zlink::stream_connector::codec_t::raw,
                                                  false,
                                                  zlink::message_t::from (std::string (17, 'x'))})
-        .submit ()
-        .result ();
+        .submit ();
     if (oversized_payload
         || oversized_payload.error_code ()
              != zlink::stream_connector::error_code_t::frame_too_large) {
@@ -482,8 +512,7 @@ int main ()
                                          "oversized.metadata", std::move (oversized_metadata),
                                          zlink::stream_connector::codec_t::raw, false,
                                          zlink::message_t::from (std::string ("ok"))})
-                                       .submit ()
-                                       .result ();
+                                       .submit ();
     if (oversized_metadata_result
         || oversized_metadata_result.error_code ()
              != zlink::stream_connector::error_code_t::validation_failed) {
@@ -506,7 +535,7 @@ int main ()
     if (manual_dispatch_count != 0 || connector.pending_dispatch_count () != 1) {
         return 7;
     }
-    if (!connector.dispatch ().result () || manual_dispatch_count != 1
+    if (!connector.dispatch () || manual_dispatch_count != 1
         || connector.pending_dispatch_count () != 0) {
         return 8;
     }
@@ -515,7 +544,7 @@ int main ()
     immediate_options.endpoint = endpoint;
     immediate_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto immediate = zlink::stream_connector::connector_factory_t::create (immediate_options);
-    if (!immediate.connect ().result ()) {
+    if (!immediate.connect ()) {
         return 9;
     }
     int immediate_count = 0;
@@ -543,14 +572,14 @@ int main ()
     if (message_pack_supported == error_seen) {
         return 11;
     }
-    auto disconnected = connector.close ().result ();
+    auto disconnected = connector.close ();
     if (!disconnected
         || connector.state () != zlink::stream_connector::connection_state_t::closed) {
         return 12;
     }
 
     auto send_after_close =
-      connector.send (login_request_t{}).packet_name ("after.close").submit ().result ();
+      connector.send (login_request_t{}).packet_name ("after.close").submit ();
     if (send_after_close
         || send_after_close.error_code () != zlink::stream_connector::error_code_t::disconnected) {
         return 13;
@@ -558,7 +587,7 @@ int main ()
     bool request_after_close_callback_seen = false;
     connector.request<login_reply_t> (login_request_t{})
       .packet_name ("after.close.request")
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_after_close_callback_seen =
             !result && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
       });
@@ -567,8 +596,8 @@ int main ()
     }
     auto missing_endpoint = zlink::stream_connector::connector_factory_t::create (
       zlink::stream_connector::connector_options_t{});
-    if (missing_endpoint.connect ().result ()
-        || missing_endpoint.connect ().result ().error_code ()
+    if (missing_endpoint.connect ()
+        || missing_endpoint.connect ().error_code ()
              != zlink::stream_connector::error_code_t::configuration_error) {
         return 14;
     }
@@ -599,12 +628,11 @@ int main ()
     auto_options.endpoint = auto_endpoint;
     auto_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
     auto auto_connector = zlink::stream_connector::connector_factory_t::create (auto_options);
-    if (!auto_connector.connect ().result ()) {
+    if (!auto_connector.connect ()) {
         return 30;
     }
     if (!zlink::stream_connector::codecs::send (auto_connector, auto_payload_t{"auto"})
-           .submit ()
-           .result ()) {
+           .submit ()) {
         return 31;
     }
     auto_server_thread.join ();
@@ -629,11 +657,43 @@ int main ()
     if (auto_connector.pending_dispatch_count () != 1 || auto_dispatch_count != 0) {
         return 33;
     }
-    if (!auto_connector.dispatch ().result () || auto_dispatch_count != 1
+    if (!auto_connector.dispatch () || auto_dispatch_count != 1
         || auto_connector.pending_dispatch_count () != 0) {
         return 34;
     }
-    auto_connector.close ().result ();
+    zlink::stream_connector::detail::connector_runtime_t::from (auto_connector)
+      .receive_packet (zlink::stream_connector::packet_t{
+        auto_payload_t::packet_name,
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from_json (auto_payload_t{"typed-wait"})});
+    auto auto_typed_wait = auto_connector.wait_for<auto_payload_t> ().submit ();
+    if (!auto_typed_wait || auto_typed_wait.value ().text != "typed-wait") {
+        return 78;
+    }
+    zlink::stream_connector::detail::connector_runtime_t::from (auto_connector)
+      .receive_packet (zlink::stream_connector::packet_t{
+        auto_payload_t::packet_name,
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from_json (auto_payload_t{"typed-filter-skipped"})});
+    zlink::stream_connector::detail::connector_runtime_t::from (auto_connector)
+      .receive_packet (zlink::stream_connector::packet_t{
+        auto_payload_t::packet_name,
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from_json (auto_payload_t{"typed-filtered"})});
+    auto auto_filtered_wait =
+      auto_connector.wait_for<auto_payload_t> ()
+        .where ([] (const auto_payload_t &payload) { return payload.text == "typed-filtered"; })
+        .submit ();
+    if (!auto_filtered_wait || auto_filtered_wait.value ().text != "typed-filtered") {
+        return 79;
+    }
+    auto_connector.close ();
 
     zlink::stream_socket_t timeout_server (context);
     timeout_server.options ().notify (false);
@@ -652,21 +712,20 @@ int main ()
     timeout_options.endpoint = timeout_endpoint;
     timeout_options.request_timeout = std::chrono::milliseconds (5);
     auto timeout_connector = zlink::stream_connector::connector_factory_t::create (timeout_options);
-    if (!timeout_connector.connect ().result ()) {
+    if (!timeout_connector.connect ()) {
         return 35;
     }
     auto timeout_reply = timeout_connector.request<login_reply_t> (login_request_t{})
                            .packet_name ("timeout.request")
                            .timeout (std::chrono::milliseconds (5))
-                           .submit ()
-                           .result ();
+                           .submit ();
     timeout_server_thread.join ();
     if (timeout_reply
         || timeout_reply.error_code () != zlink::stream_connector::error_code_t::request_timeout
         || !timed_request_seen) {
         return 36;
     }
-    timeout_connector.close ().result ();
+    timeout_connector.close ();
 
     zlink::stream_socket_t callback_response_server (context);
     callback_response_server.options ().notify (false);
@@ -690,21 +749,21 @@ int main ()
     callback_response_options.endpoint = callback_response_endpoint;
     auto callback_response_connector =
       zlink::stream_connector::connector_factory_t::create (callback_response_options);
-    if (!callback_response_connector.connect ().result ()) {
+    if (!callback_response_connector.connect ()) {
         return 60;
     }
     bool request_callback_response_seen = false;
     callback_response_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.response.request")
       .timeout (std::chrono::milliseconds (100))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_response_seen = static_cast<bool> (result);
       });
     callback_response_thread.join ();
     if (!request_callback_response_seen) {
         return 61;
     }
-    callback_response_connector.close ().result ();
+    callback_response_connector.close ();
 
     zlink::stream_socket_t callback_timeout_server (context);
     callback_timeout_server.options ().notify (false);
@@ -725,14 +784,14 @@ int main ()
     callback_timeout_options.request_timeout = std::chrono::milliseconds (5);
     auto callback_timeout_connector =
       zlink::stream_connector::connector_factory_t::create (callback_timeout_options);
-    if (!callback_timeout_connector.connect ().result ()) {
+    if (!callback_timeout_connector.connect ()) {
         return 62;
     }
     bool request_callback_timeout_seen = false;
     callback_timeout_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.timeout.request")
       .timeout (std::chrono::milliseconds (5))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit_async ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_timeout_seen =
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;
@@ -741,7 +800,7 @@ int main ()
     if (!request_callback_timeout_seen || !callback_timeout_request_seen) {
         return 63;
     }
-    callback_timeout_connector.close ().result ();
+    callback_timeout_connector.close ();
 
     zlink::stream_socket_t coroutine_server (context);
     coroutine_server.options ().notify (false);
@@ -779,7 +838,7 @@ int main ()
     coroutine_options.endpoint = coroutine_endpoint;
     auto coroutine_connector =
       zlink::stream_connector::connector_factory_t::create (coroutine_options);
-    if (!coroutine_connector.connect ().result ()) {
+    if (!coroutine_connector.connect ()) {
         return 73;
     }
     auto coroutine_send = send_with_coroutine_submit (coroutine_connector).result ();
@@ -791,7 +850,7 @@ int main ()
     if (!coroutine_request || !coroutine_send_seen || !coroutine_request_seen) {
         return 75;
     }
-    coroutine_connector.close ().result ();
+    coroutine_connector.close ();
 
     boost::asio::io_context partial_io;
     boost::asio::ip::tcp::acceptor partial_acceptor (
@@ -823,22 +882,22 @@ int main ()
     partial_options.endpoint = partial_endpoint;
     partial_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
     auto partial_connector = zlink::stream_connector::connector_factory_t::create (partial_options);
-    if (!partial_connector.connect ().result ()) {
+    if (!partial_connector.connect ()) {
         return 64;
     }
     if (!partial_connector.send (login_request_t{})
            .packet_name ("partial.trigger")
-           .submit ()
-           .result ()) {
+           .submit ()) {
         return 65;
     }
-    auto partial_packet = partial_connector.receive (std::chrono::milliseconds (100)).result ();
+    auto partial_packet =
+      partial_connector.wait_for ("server.partial", std::chrono::milliseconds (100));
     partial_server_thread.join ();
     if (!partial_packet || !partial_write_seen || partial_packet.value ().name != "server.partial"
         || partial_packet.value ().payload.to_string () != "split") {
         return 66;
     }
-    partial_connector.close ().result ();
+    partial_connector.close ();
 
     zlink::stream_socket_t large_receive_server (context);
     large_receive_server.options ().notify (false);
@@ -861,23 +920,22 @@ int main ()
     large_receive_options.max_send_payload_size = 16;
     auto large_receive_connector =
       zlink::stream_connector::connector_factory_t::create (large_receive_options);
-    if (!large_receive_connector.connect ().result ()) {
+    if (!large_receive_connector.connect ()) {
         return 70;
     }
     if (!large_receive_connector.send (login_request_t{})
            .packet_name ("large.receive.trigger")
-           .submit ()
-           .result ()) {
+           .submit ()) {
         return 71;
     }
     auto large_received =
-      large_receive_connector.receive (std::chrono::milliseconds (100)).result ();
+      large_receive_connector.wait_for ("server.large", std::chrono::milliseconds (100));
     large_receive_server_thread.join ();
     if (!large_received || large_received.value ().name != "server.large"
         || large_received.value ().payload.to_string ().size () != large_receive_payload.size ()) {
         return 72;
     }
-    large_receive_connector.close ().result ();
+    large_receive_connector.close ();
 
     zlink::stream_socket_t heartbeat_server (context);
     heartbeat_server.options ().notify (false);
@@ -905,7 +963,7 @@ int main ()
     heartbeat_options.heartbeat.interval = std::chrono::milliseconds (0);
     auto heartbeat_connector =
       zlink::stream_connector::connector_factory_t::create (heartbeat_options);
-    if (!heartbeat_connector.connect ().result () || !heartbeat_connector.dispatch ().result ()) {
+    if (!heartbeat_connector.connect () || !heartbeat_connector.dispatch ()) {
         return 37;
     }
     heartbeat_server_thread.join ();
@@ -916,11 +974,11 @@ int main ()
     heartbeat_connector.on<zlink::stream_connector::packet_t> (
       "$zlink.heartbeat.pong",
       [&] (const zlink::stream_connector::packet_t &) { heartbeat_control_delivered = true; });
-    if (!heartbeat_connector.dispatch ().result () || heartbeat_control_delivered
+    if (!heartbeat_connector.dispatch () || heartbeat_control_delivered
         || heartbeat_connector.pending_dispatch_count () != 0) {
         return 44;
     }
-    heartbeat_connector.close ().result ();
+    heartbeat_connector.close ();
 
     zlink::stream_socket_t heartbeat_timeout_server (context);
     heartbeat_timeout_server.options ().notify (false);
@@ -930,10 +988,10 @@ int main ()
     heartbeat_timeout_options.heartbeat.timeout = std::chrono::milliseconds (0);
     auto heartbeat_timeout_connector =
       zlink::stream_connector::connector_factory_t::create (heartbeat_timeout_options);
-    if (!heartbeat_timeout_connector.connect ().result ()) {
+    if (!heartbeat_timeout_connector.connect ()) {
         return 45;
     }
-    auto heartbeat_timeout_result = heartbeat_timeout_connector.dispatch ().result ();
+    auto heartbeat_timeout_result = heartbeat_timeout_connector.dispatch ();
     if (heartbeat_timeout_result
         || heartbeat_timeout_result.error_code ()
              != zlink::stream_connector::error_code_t::disconnected
@@ -972,13 +1030,13 @@ int main ()
     websocket_options.transport = zlink::stream_connector::transport_t::websocket;
     auto websocket_connector =
       zlink::stream_connector::connector_factory_t::create (websocket_options);
-    if (!websocket_connector.connect ().result ()) {
+    if (!websocket_connector.connect ()) {
         return 47;
     }
-    if (!websocket_connector.send (login_request_t{}).submit ().result ()) {
+    if (!websocket_connector.send (login_request_t{}).submit ()) {
         return 48;
     }
-    websocket_connector.close ().result ();
+    websocket_connector.close ();
     websocket_server_thread.join ();
     if (!websocket_send_seen) {
         return 49;
@@ -1026,13 +1084,13 @@ int main ()
     tls_options.transport = zlink::stream_connector::transport_t::tls;
     tls_options.skip_server_certificate_validation = true;
     auto tls_connector = zlink::stream_connector::connector_factory_t::create (tls_options);
-    if (!tls_connector.connect ().result ()) {
+    if (!tls_connector.connect ()) {
         return 50;
     }
-    if (!tls_connector.send (login_request_t{}).submit ().result ()) {
+    if (!tls_connector.send (login_request_t{}).submit ()) {
         return 51;
     }
-    tls_connector.close ().result ();
+    tls_connector.close ();
     tls_server_thread.join ();
     if (!tls_send_seen) {
         return 52;
@@ -1077,13 +1135,13 @@ int main ()
     wss_options.transport = zlink::stream_connector::transport_t::websocket_secure;
     wss_options.skip_server_certificate_validation = true;
     auto wss_connector = zlink::stream_connector::connector_factory_t::create (wss_options);
-    if (!wss_connector.connect ().result ()) {
+    if (!wss_connector.connect ()) {
         return 53;
     }
-    if (!wss_connector.send (login_request_t{}).submit ().result ()) {
+    if (!wss_connector.send (login_request_t{}).submit ()) {
         return 54;
     }
-    wss_connector.close ().result ();
+    wss_connector.close ();
     wss_server_thread.join ();
     if (!wss_send_seen) {
         return 55;
@@ -1143,7 +1201,7 @@ int main ()
               reconnect_success_connecting = true;
           }
       });
-    if (!reconnect_success_connector.connect ().result ()
+    if (!reconnect_success_connector.connect ()
         || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
                       zlink::stream_connector::connection_state_t::reconnecting)
              == reconnect_success_states.end ()
@@ -1151,10 +1209,10 @@ int main ()
              != zlink::stream_connector::connection_state_t::connected) {
         return 67;
     }
-    if (!reconnect_success_connector.send (login_request_t{}).submit ().result ()) {
+    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
         return 68;
     }
-    reconnect_success_connector.close ().result ();
+    reconnect_success_connector.close ();
     reconnect_success_server_thread.join ();
     if (!reconnect_success_send_seen) {
         return 69;
@@ -1172,7 +1230,7 @@ int main ()
       [&] (const zlink::stream_connector::connection_state_changed_t &state) {
           reconnect_states.push_back (state.current);
       });
-    auto reconnect_result = reconnect_connector.connect ().result ();
+    auto reconnect_result = reconnect_connector.connect ();
     if (reconnect_result
         || reconnect_result.error_code () != zlink::stream_connector::error_code_t::connect_timeout
         || std::find (reconnect_states.begin (), reconnect_states.end (),
@@ -1207,7 +1265,7 @@ int main ()
         invalid_transport_options.transport = mismatch_case.transport;
         auto invalid_transport =
           zlink::stream_connector::connector_factory_t::create (invalid_transport_options);
-        auto invalid_transport_result = invalid_transport.connect ().result ();
+        auto invalid_transport_result = invalid_transport.connect ();
         if (invalid_transport_result
             || invalid_transport_result.error_code ()
                  != zlink::stream_connector::error_code_t::configuration_error
@@ -1222,8 +1280,7 @@ int main ()
     auto request_after_reconnect_failure =
       reconnect_connector.request<login_reply_t> (login_request_t{})
         .packet_name ("after.reconnect.failure")
-        .submit ()
-        .result ();
+        .submit ();
     if (request_after_reconnect_failure
         || request_after_reconnect_failure.error_code ()
              != zlink::stream_connector::error_code_t::disconnected) {

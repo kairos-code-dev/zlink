@@ -32,8 +32,9 @@ class match_bingo_api_handler_t
     {
         auto allocated = co_await _client
                            .request<allocate_bingo_room_res_t> (
-                             sample_names_t::play_channel, allocate_bingo_room_req_t{request.mode})
-                           .submit ();
+                             sample_names_t::play_channel,
+                             allocate_bingo_room_req_t{request.mode, request.actor_id})
+                           .submit_async ();
         _logger.info (
           "match bingo room",
           {{"actor_id", request.actor_id}, {"room_id", allocated.room_id}, {"mode", request.mode}});

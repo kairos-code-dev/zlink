@@ -204,7 +204,7 @@ int main ()
 
     bool callback_seen = false;
     auto callback_operation =
-      sample_call_t (42).submit ([&] (zlink::framework::result_t<int> result) {
+      sample_call_t (42).submit_async ([&] (zlink::framework::result_t<int> result) {
           callback_seen = result.has_value () && result.value () == 42;
       });
     if (!callback_seen || !callback_operation.valid () || !callback_operation.completed ()

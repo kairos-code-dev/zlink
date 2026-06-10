@@ -347,4 +347,52 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
     }
 }
 
+result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
+                                    std::string packet_name,
+                                    std::function<bool (const packet_t &)> predicate,
+                                    std::chrono::milliseconds timeout)
+{
+    const auto deadline = steady_clock_t::now () + timeout;
+    for (;;) {
+        {
+            std::lock_guard<std::mutex> lock (state->transport_mutex);
+            if (is_transport_connected (*state)) {
+                drain_available_pushes (*state);
+            }
+            for (auto iter = state->dispatch_queue.begin ();
+                 iter != state->dispatch_queue.end (); ++iter) {
+                if ((packet_name.empty () || iter->name == packet_name)
+                    && (!predicate || predicate (*iter))) {
+                    auto packet = std::move (*iter);
+                    state->dispatch_queue.erase (iter);
+                    return result_t<packet_t>::success (std::move (packet));
+                }
+            }
+            if (!is_transport_connected (*state)) {
+                return result_t<packet_t>::failure (error_code_t::disconnected,
+                                                    "stream connector is not connected");
+            }
+        }
+
+        if (steady_clock_t::now () >= deadline) {
+            return result_t<packet_t>::failure (error_code_t::request_timeout,
+                                                "stream connector wait timed out");
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+}
+
+result_t<packet_t> submit_wait (std::shared_ptr<void> state,
+                                std::string packet_name,
+                                std::function<bool (const packet_t &)> predicate,
+                                std::chrono::milliseconds timeout)
+{
+    if (!state) {
+        return result_t<packet_t>::failure (error_code_t::configuration_error,
+                                            "wait call has no connector");
+    }
+    return wait_for_packet (std::static_pointer_cast<connector_state_t> (std::move (state)),
+                            std::move (packet_name), std::move (predicate), timeout);
+}
+
 } // namespace zlink::stream_connector::detail

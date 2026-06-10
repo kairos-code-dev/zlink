@@ -1,26 +1,21 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "bingo_client_app.hpp"
+#include "bingo_client_scenario.hpp"
+#include "../../Shared/client_connector_helpers.hpp"
 
 int main ()
 {
     using namespace zlink::samples::bingo;
 
     bingo_client_options_t options;
-    const auto result = bingo_client_app_t{}.run (options);
-    if (!result.connected || result.requests.size () != 6 || !result.sends.empty ()
-        || result.requests.front ().packet_name != "AuthenticateReq"
-        || result.requests.back ().packet_name != "SubmitBingoCardReq") {
-        return 1;
-    }
-    for (const auto &request : result.requests) {
-        if (!request.completed) {
-            return 2;
-        }
-    }
-    if (result.player_joined_notifications == 0 || result.started_notifications == 0
-        || result.drawn_notifications == 0 || result.ended_notifications == 0) {
-        return 4;
-    }
-    return 0;
+    auto client1 = zlink::stream_connector::connector_factory_t::create (
+      zlink::samples::make_manual_connector_options (
+        options.stream_endpoint, options.connect_timeout, options.request_timeout));
+    auto client2 = zlink::stream_connector::connector_factory_t::create (
+      zlink::samples::make_manual_connector_options (
+        options.stream_endpoint, options.connect_timeout, options.request_timeout));
+    register_bingo_client_codecs (client1);
+    register_bingo_client_codecs (client2);
+
+    return bingo_client_scenario_t{}.run (client1, client2) ? 0 : 1;
 }

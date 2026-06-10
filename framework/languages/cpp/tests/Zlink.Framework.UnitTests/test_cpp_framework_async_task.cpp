@@ -81,7 +81,7 @@ int main ()
       zlink::framework::framework_error_kind_t::timeout, "timeout"));
     callback_call.submit (
       [&] (zlink::framework::result_t<int> result) { callback_kind = result.error_kind (); });
-    auto coroutine_result = callback_call.submit ().result ();
+    auto coroutine_result = callback_call.submit ();
     if (callback_kind != coroutine_result.error_kind ()) {
         return 3;
     }
@@ -94,7 +94,7 @@ int main ()
 
     zlink::framework::request_call_t<int> shutdown_call (zlink::framework::result_t<int>::failure (
       zlink::framework::framework_error_kind_t::shutdown, "shutdown"));
-    if (shutdown_call.submit ().result ().error_kind ()
+    if (shutdown_call.submit ().error_kind ()
         != zlink::framework::framework_error_kind_t::shutdown) {
         return 5;
     }

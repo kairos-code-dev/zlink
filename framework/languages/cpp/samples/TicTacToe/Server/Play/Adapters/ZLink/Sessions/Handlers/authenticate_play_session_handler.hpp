@@ -1,12 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../../../../Server/Api/Handlers/authenticate_player_handler.hpp"
 #include "../../Handlers/ensure_player_actor_handler.hpp"
 
-#include <zlink/codec/json.hpp>
 #include <zlink/framework.hpp>
-
 
 namespace zlink::samples::tictactoe
 {
@@ -14,9 +11,13 @@ namespace zlink::samples::tictactoe
 class authenticate_play_session_handler_t
 {
   public:
-    authenticate_play_session_handler_t (authenticate_player_handler_t &authenticate,
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::channel_client_t,
+                                          ensure_player_actor_handler_t>;
+
+    authenticate_play_session_handler_t (zlink::framework::channel_client_t &client,
                                          ensure_player_actor_handler_t &ensure_actor) :
-        _authenticate (authenticate), _ensure_actor (ensure_actor)
+        _client (client), _ensure_actor (ensure_actor)
     {
     }
 
@@ -31,8 +32,13 @@ class authenticate_play_session_handler_t
             const zlink::framework::stream_header_t &header,
             const zlink::message_t &payload)
     {
-        const auto request = payload.parse_json<authenticate_req_t> ();
-        const auto authenticated = _authenticate.handle ({request.actor_id});
+        authenticate_req_t request;
+        from_stream_payload (payload, request);
+        auto authenticated = co_await _client
+                               .request<authenticate_player_res_t> (
+                                 sample_names_t::api_channel,
+                                 authenticate_player_req_t{request.access_token})
+                               .submit_async ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
               zlink::framework::framework_error_kind_t::request_failed,
@@ -41,11 +47,11 @@ class authenticate_play_session_handler_t
         }
 
         const auto ensured = _ensure_actor.handle ({authenticated.actor_id});
-        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
+        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit_async ();
 
         co_await stream
-          .reply_packet (header, zlink::message_t::from_json (authenticate_res_t{ensured.actor_id}))
-          .submit ();
+          .reply_packet (header, to_stream_payload (authenticate_res_t{ensured.actor_id}))
+          .submit_async ();
 
         co_return bound;
     }
@@ -58,7 +64,7 @@ class authenticate_play_session_handler_t
           ensured.actor.actor_id, ensured.actor.generation);
     }
 
-    authenticate_player_handler_t &_authenticate;
+    zlink::framework::channel_client_t &_client;
     ensure_player_actor_handler_t &_ensure_actor;
     const char *_play_node_name = sample_names_t::spot_node;
 };

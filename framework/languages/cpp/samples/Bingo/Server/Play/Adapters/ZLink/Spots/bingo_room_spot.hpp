@@ -25,14 +25,15 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
     zlink::framework::spot_actor_join_response_t
     on_actor_join (const player_actor_t &actor, const zlink::message_t &request_message)
     {
-        const auto request = request_message.parse_json<bingo_room_join_req_t> ();
+        bingo_room_join_req_t request;
+        from_stream_payload (request_message, request);
         const auto actor_id =
           actor.actor.actor_id.empty () ? request.actor_id : actor.actor.actor_id;
         const auto display_name =
           actor.display_name.empty () ? request.display_name : actor.display_name;
         join (actor_id, display_name);
         return zlink::framework::spot_actor_join_response_t::accept (
-          zlink::message_t::from_json (bingo_room_join_res_t{snapshot ()}));
+          to_stream_payload (bingo_room_join_res_t{snapshot ()}));
     }
 
     submit_bingo_card_res_t

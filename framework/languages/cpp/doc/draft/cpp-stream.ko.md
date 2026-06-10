@@ -113,7 +113,9 @@ public:
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();
-    task_t<void> submit();
+    result_t<void> submit();
+    task_t<void> submit_async();
+    pending_operation_t submit_async(std::function<void(result_t<void>)> callback);
 };
 
 class session_actor_t {

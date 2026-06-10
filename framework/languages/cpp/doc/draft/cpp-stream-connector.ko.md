@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ STREAM Decisions](./stream-open-items.ko.md) | [다음: Draft -- ZLink Framework C++ STREAM Samples](./stream-samples.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ STREAM Decisions](./stream-open-items.ko.md) | [다음: Draft -- ZLink Framework C++ HTTP Client](./cpp-http-client.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -12,95 +12,134 @@
 > 현재 공개 계약이 아니며, C++용 `ZLink Stream Connector`를 별도 라이브러리와 별도
 > 배포 단위로 어떻게 만들지 정리한다.
 
-## 1. 위치
+## 1. 결정 요약
 
 C++ Stream Connector는 `ZLink Framework for C++` 샘플이 아니다. 서버 framework와 같은
 저장소에 있을 수는 있지만, public header, CMake target, package는 분리한다.
+
+C++ connector는 엔진별로 core 구현을 복제하지 않는다. 하나의 독립 core connector를 두고,
+coroutine, 예외 기반 호출, Unreal, Godot, Axmol 같은 환경별 표면은 adapter나 plugin으로
+분리한다.
+
+핵심 결정은 아래와 같다.
+
+| 영역 | 결정 |
+|------|------|
+| core connector | 예외와 coroutine에 의존하지 않는 독립 C++ 라이브러리 |
+| server framework | 예외 기반 application API로 정리 |
+| coroutine | core에 직접 섞지 않고 선택 adapter로 제공 |
+| Unreal | Unreal plugin으로 제공하며 core API를 그대로 노출하지 않음 |
+| Godot | GDExtension adapter로 제공 |
+| Axmol | C++ native 2D 엔진 adapter로 제공 |
+| Cocos Creator | TypeScript connector 사용, 별도 C++ adapter 제공하지 않음 |
+| Cocos2d-x | 업데이트 중단 제품으로 보고 지원하지 않음 |
+
+이 결정의 목적은 build option 조합을 사용자에게 떠넘기지 않는 것이다. 예외가 꺼진 client
+엔진에서도 core connector를 쓸 수 있어야 하고, 서버나 성능 테스트 client에서는 coroutine과
+예외 기반 API를 선택해서 더 짧은 코드를 쓸 수 있어야 한다.
+
+## 2. 위치
 
 권장 배치는 아래와 같다.
 
 ```text
 framework/languages/cpp/
-+-- framework/
-|   +-- include/zlink/framework/contracts/
-|   +-- src/runtime/
 +-- connector/
-|   +-- include/zlink/stream_connector/
-|   |   +-- contracts/
+|   +-- CMakeLists.txt
+|   +-- include/
+|   |   +-- zlink/stream_connector/
+|   |       +-- contracts/
 |   +-- src/
 |   |   +-- runtime/
+|   +-- adapters/
+|   |   +-- coroutine/
+|   |   |   +-- include/
+|   |   +-- throwing/
+|   |       +-- include/
+|   +-- packaging/
+|   |   +-- cmake/
+|   |   +-- vcpkg/
+|   |   +-- conan/
 |   +-- tests/
 |   +-- samples/
-|   +-- CMakeLists.txt
 +-- unreal-connector/
-|   +-- Source/
-|   |   +-- ZLinkStreamConnector/
-|   |   |   +-- Public/
-|   |   |   +-- Private/
 |   +-- ZLinkStreamConnector.uplugin
-|   +-- Tests/
-|   +-- Samples/
+|   +-- Source/ZLinkStreamConnector/
+|       +-- Public/
+|       +-- Private/
++-- godot-connector/
+|   +-- extension/
+|   +-- include/
+|   +-- src/
++-- axmol-connector/
+|   +-- CMakeLists.txt
+|   +-- include/
+|   +-- src/
++-- framework/
++-- http-client/
++-- samples/
 +-- CMakeLists.txt
 ```
+
+`connector/`는 자체 `CMakeLists.txt`와 packaging 파일을 가진다. 상위
+`framework/languages/cpp/CMakeLists.txt`는 개발 편의를 위해 이를 포함할 수 있지만,
+connector package의 기준은 `connector/` 자체다.
+
+`connector/` 아래에는 Unreal, Godot, Axmol 타입을 넣지 않는다. core connector는 특정 엔진
+header 없이 빌드되어야 한다. 엔진 adapter는 core connector를 링크하거나 source로 포함할 수
+있지만, core connector가 adapter를 알면 안 된다.
 
 서버 framework package는 connector package를 필요로 하지 않는다. connector package도
 서버 framework package를 필요로 하지 않는다. 양쪽은 STREAM header/payload wire 계약만
 공유한다.
 
-Unreal Connector도 별도 배포 단위다. 일반 C++ connector를 그대로 노출하는 wrapper가
-아니라, Unreal 타입과 Unreal thread model에 맞춘 public API를 제공한다. 내부 wire
-protocol, codec id, header/payload frame, heartbeat/reconnect 의미는 일반 C++ connector와
-같게 유지한다.
-
-connector의 public contract와 runtime 구현도 `.NET` Stream Connector의
-`Contracts/*`와 `Runtime/*` 분리를 따른다. C++에서는 public header가
+connector의 public contract와 runtime 구현도 `.NET` Stream Connector의 `Contracts/*`와
+`Runtime/*` 분리를 따른다. C++에서는 public header가
 `include/zlink/stream_connector/contracts/*`에 있고, 구현은 `src/runtime/*`에 있다.
-Unreal Connector는 Unreal 관례 때문에 `Public/`과 `Private/`를 쓰지만, 의미는 같다.
-`Public/`에는 Unreal 전용 타입과 호출 표면만 두고, connection, receive loop, codec,
-thread dispatch 구현은 `Private/`에 둔다.
 
 connector도 framework와 같은 public surface gate를 적용한다. public header는 endpoint,
-packet, request/send builder, callback/coroutine submit, codec option만 노출한다.
-reconnect state, heartbeat scheduler, pending request table, frame encoder/decoder,
-compression worker, Asio socket receive loop는 `src/runtime/*`에 둔다. Unreal Connector도
-Blueprint/Game Thread 표면만 `Public/`에 두고, 일반 C++ connector runtime class를 그대로
-public type으로 노출하지 않는다.
+packet, request/send builder, callback/event, dispatch, codec option만 노출한다. reconnect
+state, heartbeat scheduler, pending request table, frame encoder/decoder, compression worker,
+Asio socket receive loop는 `src/runtime/*`에 둔다.
 
-connector의 contract/runtime 분리는 framework보다 약하게 적용하지 않는다. connector는
-별도 배포 라이브러리지만, 사용자는 client endpoint와 packet 호출 모델만 알아야 한다.
-`connector_t`가 내부 connection state를 가져야 하면 public header에는 opaque state만
-두고, reconnect loop, heartbeat timer, request correlation, frame codec, compression
-worker는 runtime 구현에 둔다. Unreal Connector도 같은 원칙을 Unreal 방식으로 적용한다.
-Unreal `Public/` header에는 `UObject`, Blueprint delegate, Game Thread callback처럼
-Unreal 사용자가 직접 보는 표면만 두며, 일반 C++ connector runtime class를 상속하거나
-멤버로 노출하지 않는다.
+## 3. 제품과 지원 범위
 
-connector 구현도 시작 전에 owner를 아래처럼 나눈다.
+지원 범위는 제품 이름이 아니라 현재 유지 상태와 실제 개발 언어를 기준으로 정한다.
 
-| 기능 | C++ connector public owner | C++ connector runtime owner | Unreal public owner | Unreal private owner |
-|------|----------------------------|-----------------------------|---------------------|----------------------|
-| connector lifecycle | `contracts/zlink_stream_connector.hpp`, `contracts/zlink_stream_connector_factory.hpp` | `src/runtime/connector_lifecycle.*`, `src/runtime/transport/*` with Asio | `Public/ZLinkStreamConnector.h` | `Private/Connection/*` with Unreal Sockets |
-| packet send/request | `contracts/calls/zlink_stream_calls.hpp`, `contracts/zlink_stream_models.hpp` | `src/runtime/calls/*`, `src/runtime/connector_runtime.*` | Blueprint callable send/request API | `Private/Messaging/*` with Unreal Sockets |
-| callback/coroutine submit | `contracts/task.hpp`, callback overloads on call objects | `contracts/task.hpp` | Blueprint delegate, Game Thread callback | `Private/Dispatch/*` |
-| codec option | `contracts/codec_registry.hpp`, `contracts/zlink_stream_enums.hpp` | `src/runtime/protocol/*`, `src/runtime/protocol/compression/*` | Unreal codec option types | `Private/Codecs/*` |
-| reconnect/heartbeat | state event contract, options contract | `src/runtime/heartbeat_monitor.*`, `src/runtime/connector_lifecycle.*` | connection state delegate | `Private/Connection/*` |
-| compression | packet option contract | `src/runtime/protocol/compression/*` | Unreal packet option | `Private/Compression/*` |
+| 제품 | 지원 결정 | 이유 |
+|------|-----------|------|
+| 일반 C++ client/tool | 지원 | core connector의 기본 대상 |
+| 서버 성능 테스트 client | 지원 | coroutine adapter를 사용하면 시나리오를 짧게 유지할 수 있음 |
+| Unreal Engine | 지원 | Unreal plugin과 delegate/Game Thread 표면이 필요함 |
+| Godot | 지원 | GDExtension 표면이 필요함 |
+| Axmol Engine | 지원 | 유지되는 C++ Cocos2d-x 계열 엔진 |
+| Cocos Creator 3.x | C++ adapter 미지원 | TypeScript 중심 제품이므로 TypeScript connector를 사용 |
+| Cocos Creator 2.x | 미지원 | 업데이트 중단 |
+| Cocos Creator 3D | 미지원 | Cocos Creator 3.x에 흡수된 제품 |
+| Cocos2d-x | 미지원 | 업데이트 중단 |
 
-이 표의 public owner는 사용자 호출 shape와 option만 담는다. request correlation table,
-receive loop, heartbeat scheduler, frame encoder/decoder, compression worker, Game Thread
-queue 구현은 public header에 두지 않는다. 일반 C++ connector만 `task_t`와 `co_await`
-기반 coroutine submit을 제공한다. Unreal Connector는 Unreal 사용자가 자연스럽게 쓰는
-Blueprint delegate와 native multicast delegate callback만 public 표면으로 제공하며,
-별도 coroutine API를 두지 않는다. 현재 C++ runtime 파일 분류는
-`calls`, `protocol`, `protocol/compression`, `protocol/framing`, `transport`,
-`connector_lifecycle`, `connector_runtime`, `heartbeat_monitor`를 기준으로 고정한다. 받은
-packet을 즉시 dispatch할지 queue에 둘지는 `connector_runtime`의 helper가 소유하고, frame을
-읽고 쓰는 구현은 `protocol/framing`과 `transport`에 둔다. 일반 C++ connector와 Unreal
-Connector는 같은 wire 의미를 공유하지만 public 타입은 서로 독립이다.
+Cocos 계열 이름은 혼동을 줄이기 위해 문서와 package 이름에서 분명히 나눈다.
+`cocos-connector`라는 이름은 쓰지 않는다. C++ native 계열은 `axmol-connector`로 부르고,
+Cocos Creator는 TypeScript connector 문서에서 다룬다.
 
-## 2. 패키징
+## 4. 패키징
 
-패키징 기준은 아래와 같다.
+배포 이름은 사용자가 설치하는 단위와 일치시킨다.
+
+| 배포 단위 | 형식 | 내용 |
+|-----------|------|------|
+| `zlink-stream-connector` | CMake package, vcpkg, Conan | no-exception/no-coroutine core |
+| `zlink-stream-connector-coroutine` | CMake component 또는 feature | `co_await` adapter |
+| `zlink-stream-connector-throwing` | CMake component 또는 feature | 예외 기반 adapter |
+| `zlink-unreal-stream-connector` | Unreal plugin | Unreal delegate와 Game Thread dispatch |
+| `zlink-godot-stream-connector` | GDExtension artifact | Godot signal/callback 표면 |
+| `zlink-axmol-connector` | CMake package 또는 source package | Axmol scheduler/main thread 표면 |
+
+core connector는 단독 설치가 가능해야 한다. Unreal, Godot, Axmol adapter는 core connector를
+내부 `ThirdParty`로 포함하거나 외부 package로 참조할 수 있다. 어느 쪽이든 adapter package
+사용자가 서버 framework package를 설치할 필요는 없어야 한다.
+
+기본 CMake target은 아래처럼 나눈다.
 
 | 항목 | 서버 framework | C++ Stream Connector | Unreal Stream Connector |
 |------|----------------|----------------------|-------------------------|
@@ -139,7 +178,7 @@ CMake는 먼저 system `lz4.h`와 `liblz4`를 찾는다. 개발 패키지가 없
 직접 링크하지 않는다. 다만 실제 packet을 압축할지는 `send_call_t::compress()`나 Unreal
 `FZLinkStreamSendOptions::bCompress`처럼 호출 지점의 option으로 결정한다.
 
-## 3. 기능 기준
+## 5. 기능 기준
 
 C++ Stream Connector는 공통 [ZLink Stream Connector](../../../../doc/spec/draft/streaming-client.ko.md)
 초안과 `.NET` `Systems.Zlink.Stream.Connector`의 기능성을 C++20 방식으로 투영한다.
@@ -149,33 +188,23 @@ receive loop와 timer/reconnect 구조를 유지하기 위해 raw file descripto
 API를 connector runtime에 직접 흩어 놓지 않는다. 현재 저장소에서는 C++ binding이 이미
 Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로 사용한다.
 
-현재 구현된 포함 기능은 아래와 같다.
+기능 기준은 아래와 같고, core와 adapter가 맡는 범위를 분리한다.
 
-- TCP transport
-- TLS transport
-- WebSocket transport
-- WebSocket over TLS transport
-- transport connection abstraction
-- connector 생성과 명시 connect
-- connection state event
-- reconnect
-- heartbeat
-- graceful close
-- packet send
-- typed send helper
-- typed request/reply helper
-- callback submit
-- coroutine submit
-- request timeout
-- pending request correlation
-- packet callback receive
-- manual dispatch mode
-- immediate dispatch mode
-- metadata
-- payload compression flag 처리
-- max send payload size
-- max metadata size
-- connector instance별 독립 실행
+| 소유 범위 | 포함 기능 |
+|-----------|----------|
+| core connector | TCP, TLS, WebSocket, WebSocket over TLS transport |
+| core connector | connector 생성, 명시 connect, graceful close |
+| core connector | connection state event, reconnect, heartbeat |
+| core connector | packet send, typed send helper, typed request/reply helper |
+| core connector | callback completion, packet callback receive |
+| core connector | request timeout, pending request correlation |
+| core connector | manual dispatch mode, immediate dispatch mode |
+| core connector | metadata, payload compression flag 처리 |
+| core connector | max send payload size, max metadata size |
+| core connector | connector instance별 독립 실행 |
+| coroutine adapter | no-callback `submit_async()`와 `co_await` 표면 |
+| throwing adapter | 성공 값을 바로 반환하고 실패를 예외로 바꾸는 표면 |
+| engine adapter | 엔진별 delegate, signal, main thread dispatch 표면 |
 
 공통 Stream Connector 초안과 `.NET` connector가 공개 범위로 둔 TCP, TLS, WebSocket,
 WebSocket over TLS transport는 모두 같은 `stream_connection_t` runtime abstraction 아래에서
@@ -196,13 +225,6 @@ application packet callback으로 전달하지 않는다. reconnect는 `connect(
 connector는 ActorGateway나 server-side session actor relay를 직접 구현하지 않는다. 그것은
 서버 framework의 STREAM/ActorGateway 기능이다. connector는 STREAM 서버가 이해하는
 header/payload packet을 만들고 해석하는 client-side library다.
-
-구현 검증은 두 단계로 나눈다. 첫 단계는 local test runtime으로 packet 생성, pending
-request 등록, callback dispatch 같은 내부 상태를 검증한다. 이 검증은 transport가 없어도
-가능하지만 실제 서버 접속을 증명하지 않는다. 둘째 단계는 framework STREAM endpoint를
-실제로 띄우고 connector가 그 endpoint에 연결한 뒤 request reply와 push notification을
-주고받는 end-to-end 검증이다. connector를 완료로 볼 수 있는 기준은 둘째 단계까지 통과하는
-것이다.
 
 codec 표면은 `message_t` 중심으로 둔다. 사용자가 별도 codec namespace를 찾아
 `decode(message)`를 호출하는 방식은 주 표면으로 두지 않는다. connector 내부 typed
@@ -228,7 +250,7 @@ zlink::stream_connector::codecs::send(connector, login_request)
 zlink::stream_connector::codecs::on<login_notify_t>(
   connector,
   [](const login_notify_t &notify) {
-    // notify is decoded before this callback runs.
+    // Decoded notification.
   });
 ```
 
@@ -236,7 +258,18 @@ codec id는 STREAM header의 `codec` 필드에 기록한다. 압축은 codec이 
 수신 처리 순서는 `decompress -> codec decode -> typed payload`이고, 송신 처리 순서는
 `typed payload -> codec encode -> optional compress -> header flag 설정`이다.
 
-## 4. C++ API 방향
+## 6. Core Connector 계약
+
+core connector는 client 엔진에서 예외와 coroutine이 꺼져 있어도 빌드되어야 한다. 따라서
+기본 public contract는 아래 원칙을 따른다.
+
+- 실패는 `result_t<T>`로 표현한다.
+- blocking `submit()`은 `result_t<T>`를 반환한다.
+- engine client의 주 사용 흐름은 callback/event와 `dispatch()`다.
+- callback은 manual dispatch mode에서 game loop와 맞춰 실행할 수 있어야 한다.
+- `wait_for`는 sample, CLI, E2E test 편의 API로 둔다. 엔진 client의 주 push 수신 방식은
+  `on<T>(...)` callback이다.
+- core public header는 C++ exception이나 coroutine header에 의존하지 않는다.
 
 public namespace는 `zlink::stream_connector`로 둔다. 서버 framework의
 `zlink::framework` namespace에 넣지 않는다.
@@ -252,11 +285,11 @@ class send_call_t;
 template <typename TReply>
 class request_call_t;
 
-template <typename T>
-class result_t;
+template <typename TMessage>
+class wait_call_t;
 
 template <typename T>
-class task_t;
+class result_t;
 
 class connector_factory_t {
 public:
@@ -265,8 +298,8 @@ public:
 
 class connector_t {
 public:
-    task_t<void> connect();
-    task_t<void> close();
+    result_t<void> connect();
+    result_t<void> close();
     codec_registry_t &codecs();
 
     template <typename TMessage>
@@ -276,33 +309,61 @@ public:
     request_call_t<TReply> request(const TRequest &request);
 
     template <typename TMessage>
-    void on(std::string packet_name,
-      std::function<void(const TMessage &)> callback);
+    void on(std::function<void(const TMessage &)> callback);
 
-    task_t<packet_t> receive();
-    task_t<packet_t> receive(std::chrono::milliseconds timeout);
-    task_t<void> dispatch();
+    result_t<void> dispatch();
+
+    template <typename TMessage>
+    wait_call_t<TMessage> wait_for();
+};
+
+template <typename TMessage>
+class wait_call_t {
+public:
+    wait_call_t &packet_name(std::string name);
+    wait_call_t &timeout(std::chrono::milliseconds timeout);
+    wait_call_t &where(std::function<bool(const TMessage &)> predicate);
+    result_t<TMessage> submit();
 };
 
 } // namespace zlink::stream_connector
 ```
 
-비동기 호출 방식은 서버 framework와 같은 사용성으로 맞춘다.
+기본 사용법은 동기 호출과 callback 호출을 분리한다. `connect()`, `dispatch()`,
+`send(...).submit()`, `request(...).submit()`, `wait_for<T>().submit()`는 모두 `result_t<T>`를
+바로 반환한다. 비동기 completion은 callback을 먼저 등록하고 `start()`로 시작한다.
 
 ```cpp
-auto reply = co_await connector
+auto connected = connector.connect();
+
+auto login = connector
   .request<login_reply_t>(login_request_t{.user_id = "alice"})
-  .timeout(std::chrono::seconds(2))
   .submit();
 
 connector
-  .send(chat_message_t{.text = "hello"})
-  .submit([](zlink::stream_connector::result_t<void> result) {
+  .request<login_reply_t>(login_request_t{.user_id = "alice"})
+  .on_completed([](zlink::stream_connector::result_t<login_reply_t> result) {
       if (!result) {
           return;
       }
-  });
+  })
+  .start();
+
+connector.on<chat_pushed_t>([](const chat_pushed_t &message) {
+    // Push notification.
+});
+connector.dispatch();
 ```
+
+`submit_async(callback)`을 주 API로 밀지 않는다. callback을 인자로 바로 넘기는 함수보다
+`on_completed(...).start()` 형태가 Unreal, Godot, Axmol facade로 옮기기 쉽다.
+
+typed wait에서 조건이 필요하면 `.where(...)`를 사용한다. predicate는 디코딩된 메시지를
+받기 때문에 sample code가 packet payload나 codec을 직접 다루지 않는다. 조건에 맞지 않는
+packet은 소비하지 않고 이후 wait나 manual dispatch에서 다시 볼 수 있게 queue에 남는다.
+
+기본 대기 시간과 다르게 기다려야 하는 호출에만 `.timeout(...)`을 붙인다.
+별도 설정이 없으면 request와 wait는 `connector_options_t::request_timeout` 값을 사용한다.
 
 typed codec은 registry에 등록한다.
 
@@ -312,22 +373,157 @@ connector.codecs()
   .add_json<login_reply_t>();
 ```
 
-## 5. Dispatch Mode
+## 7. Coroutine Adapter
+
+coroutine adapter는 core connector 위의 선택 표면이다. 서버 성능 테스트 client, CLI,
+tool처럼 C++20 coroutine을 안정적으로 켤 수 있는 환경에서 사용한다.
+
+```cpp
+auto auth = co_await client
+  .request<auth_res_t>(auth_req_t{"player-1"})
+  .submit_async();
+```
+
+이 adapter는 core connector package의 필수 dependency가 아니다. 사용자가 adapter header나
+component를 선택했을 때만 `task_t<T>`와 no-callback `submit_async()`가 보이게 한다.
+
+## 8. Throwing Adapter
+
+throwing adapter는 서버 framework와 tool code에서 사용할 수 있는 선택 표면이다. core
+connector의 `result_t<T>` 실패를 전용 예외로 바꾸고, 성공 경로에서는 값을 바로 반환한다.
+
+```cpp
+auto auth = client.request<auth_res_t>(auth_req_t{"player-1"}).submit();
+```
+
+이 adapter의 예외는 error code와 message를 보존해야 한다. 예외 기반 표면을 쓰더라도 core
+connector에서 알 수 있던 timeout, disconnected, validation failure 같은 정보가 사라지면
+안 된다.
+
+서버 framework는 장기적으로 예외 기반 application API로 정리한다. 단, client core connector
+자체를 예외 기반으로 바꾸지는 않는다.
+
+## 9. Dispatch Mode
 
 기본 dispatch mode는 manual이다. connector는 수신 packet을 내부 queue에 넣고, 사용자가
 `dispatch()`를 호출할 때 등록 callback을 실행한다. 게임 client나 UI runtime에서 frame
 loop와 명확히 맞추기 쉽기 때문이다.
 
-callback을 등록하지 않고 직접 다음 packet을 꺼내야 하는 client는 `receive()`를 호출한다.
-이 API는 manual dispatch queue와 같은 수신 queue에서 다음 application packet을 하나
-반환한다. timeout을 넘기면 `request_timeout` 오류가 반환되고, 연결이 닫혀 있으면
-`disconnected` 오류가 반환된다. callback dispatch와 explicit receive를 같은 connector에서
-섞어 쓰면 먼저 호출된 쪽이 packet을 소비한다.
+callback을 등록하지 않고 특정 packet을 기다려야 하는 sample, CLI, e2e client는
+`wait_for<T>().submit()`를 호출한다. 이 API는 `.NET` connector의 `WaitForAsync(...)`와 같은
+목적으로 둔다. matching된 packet은 소비되고, 조건에 맞지 않는 packet은 이후 wait나
+manual dispatch에서 다시 볼 수 있게 queue에 남는다. timeout 인자를 생략하면
+`connector_options_t::request_timeout` 값을 사용한다. timeout을 넘기면 `request_timeout`
+오류가 반환되고, 연결이 닫혀 있으면 `disconnected` 오류가 반환된다.
 
 immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 흐름에서 callback 실행을
 예약한다. 사용자는 이 모드에서 callback이 UI thread에서 실행된다고 가정하면 안 된다.
 
-## 6. 테스트
+## 10. Unreal Connector
+
+Unreal Connector는 일반 C++ connector와 별도 배포물이다. Unreal 프로젝트에서 바로 쓸 수
+있도록 Unreal 전용 함수와 타입을 제공한다. Unreal connector는 core connector API를 그대로
+노출하지 않는다. Unreal 사용자는 `std::function`, `result_t<T>`, worker thread callback을
+직접 다루지 않는 표면을 기대한다.
+
+Unreal adapter는 아래 원칙을 따른다.
+
+- Unreal plugin/module packaging으로 배포한다.
+- `UObject` 또는 subsystem 기반 lifecycle owner를 둔다.
+- `FString`, `FName`, `TArray<uint8>`, `TMap<FString, FString>` 기반 packet API를 제공한다.
+- Blueprint에서 호출 가능한 connect, close, send, request 함수를 제공한다.
+- Unreal delegate나 Blueprint delegate를 completion 표면으로 사용한다.
+- callback은 Game Thread에서 실행되도록 dispatch한다.
+- Tick 또는 subsystem update에서 manual dispatch를 호출할 수 있어야 한다.
+- `UObject` lifetime을 고려해서 completion target이 사라진 경우 호출하지 않는다.
+- 예외와 coroutine에 의존하지 않는다.
+- core connector runtime type을 Unreal public header에 직접 노출하지 않는다.
+- PIE 종료, map unload, game instance shutdown에서 graceful close한다.
+
+예시 표면은 아래 방향으로 둔다.
+
+```cpp
+UCLASS(BlueprintType)
+class UZLinkStreamConnector : public UObject {
+    GENERATED_BODY()
+
+public:
+    UFUNCTION(BlueprintCallable)
+    void Connect(const FString &Endpoint);
+
+    UFUNCTION(BlueprintCallable)
+    void Close();
+
+    UFUNCTION(BlueprintCallable)
+    void SendJson(FName PacketName, const FString &JsonPayload);
+
+    UFUNCTION(BlueprintCallable)
+    void RequestJson(
+      FName PacketName,
+      const FString &JsonPayload,
+      float TimeoutSeconds);
+
+    UFUNCTION(BlueprintCallable)
+    void Dispatch();
+
+    UPROPERTY(BlueprintAssignable)
+    FZLinkStreamPacketReceived OnPacketReceived;
+
+    UPROPERTY(BlueprintAssignable)
+    FZLinkStreamRequestCompleted OnRequestCompleted;
+};
+```
+
+native C++ 표면은 Unreal delegate와 `Dispatch()` 흐름을 유지한다.
+
+```cpp
+Client.Request<FAuthRes>(Req)
+  .OnCompleted(AuthCompletedDelegate)
+  .Submit();
+
+Client.OnNumberDrawn.AddUObject(this, &UMyObject::HandleNumberDrawn);
+Client.Dispatch();
+```
+
+Unreal Connector는 callback을 Game Thread에서 실행해야 한다. 내부 network receive나
+background thread에서 `UObject`, `AActor`, `UWorld`를 직접 만지지 않는다. 기본 dispatch
+mode는 manual이며, `Dispatch()`를 game tick에서 호출하면 그 frame에 쌓인 packet과
+lifecycle event를 Game Thread에서 처리한다.
+
+Unreal plugin은 `.uplugin` 단위로 배포한다. 내부적으로 core connector를 `ThirdParty`로
+포함할지, 설치된 CMake package를 참조할지는 배포 채널별로 결정한다. Unreal lifecycle 때문에
+transport를 Unreal `Sockets`/`Networking` 모듈로 바꾸는 구현도 허용할 수 있지만, public
+API와 STREAM wire 의미는 일반 C++ connector와 같아야 한다.
+
+codec은 일반 C++ connector와 같은 배포 정책을 따른다. JSON은 기본 포함한다. MessagePack과
+Protobuf는 Unreal plugin 안의 build option으로 포함할 수 있지만, Unreal 사용자가 codec
+산출물을 따로 가져오게 만들지 않는다.
+
+## 11. Godot Connector
+
+Godot connector는 GDExtension adapter로 제공한다. core connector의 result/callback 표면을
+Godot signal이나 callable 표면으로 바꾼다.
+
+Godot adapter는 아래 원칙을 따른다.
+
+- GDExtension public type으로 노출한다.
+- Godot main thread에서 signal을 emit할 수 있게 dispatch 경계를 둔다.
+- C++ exception에 의존하지 않는다.
+- core connector의 C++ template 표면을 Godot script 사용자에게 직접 노출하지 않는다.
+
+## 12. Axmol Connector
+
+Axmol connector는 유지되는 C++ Cocos2d-x 계열을 대상으로 한다. Cocos2d-x 자체는 지원하지
+않는다.
+
+Axmol adapter는 아래 원칙을 따른다.
+
+- Axmol scheduler나 main thread dispatch 방식과 맞춘다.
+- 예외에 의존하지 않는다.
+- callback/event 중심 표면을 제공한다.
+- core connector를 CMake package나 source dependency로 참조한다.
+
+## 13. 테스트
 
 테스트 도구는 서버 framework C++와 같게 둔다.
 
@@ -355,88 +551,7 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 - reconnect 실패 뒤 새 request는 queue에 쌓지 않고 disconnected 계열 오류로 실패한다.
 - heartbeat ping/pong과 heartbeat timeout을 검증한다.
 - compressed server packet은 typed callback 전에 복원된다.
-
-## 7. Unreal Connector
-
-Unreal Connector는 일반 C++ connector와 별도 배포물이다. Unreal 프로젝트에서 바로 쓸 수
-있도록 Unreal 전용 함수와 타입을 제공한다. Unreal Connector의 transport 구현은 일반 C++
-connector의 Asio runtime을 감싸지 않고 Unreal의 `Sockets`/`Networking` 모듈을 사용한다.
-그래야 Unreal lifecycle, PIE 종료, map unload, Game Thread callback 규칙과 충돌하지
-않는다.
-
-포함해야 할 Unreal 전용 표면은 아래와 같다.
-
-- Unreal plugin/module packaging
-- `UObject` 또는 subsystem 기반 lifecycle owner
-- `FString`, `FName`, `TArray<uint8>`, `TMap<FString, FString>` 기반 packet API
-- Blueprint에서 호출 가능한 connect, close, send, request 함수
-- Blueprint assignable connection state event
-- Game Thread callback dispatch
-- Tick 또는 subsystem update에서 manual dispatch
-- Unreal logging category
-- Unreal build system module dependency 정리
-- PIE 종료, map unload, game instance shutdown에서 graceful close
-
-예시 표면은 아래 방향으로 둔다.
-
-```cpp
-UCLASS(BlueprintType)
-class UZLinkStreamConnector : public UObject {
-    GENERATED_BODY()
-
-public:
-    UFUNCTION(BlueprintCallable)
-    void Connect(const FString &Endpoint);
-
-    UFUNCTION(BlueprintCallable)
-    void Close();
-
-    UFUNCTION(BlueprintCallable)
-    void SendJson(FName PacketName, const FString &JsonPayload);
-
-    UFUNCTION(BlueprintCallable)
-    void SendJsonWithOptions(
-      FName PacketName,
-      const FString &JsonPayload,
-      const FZLinkStreamSendOptions &Options);
-
-    UFUNCTION(BlueprintCallable)
-    void RequestJson(
-      FName PacketName,
-      const FString &JsonPayload,
-      float TimeoutSeconds);
-
-    UFUNCTION(BlueprintCallable)
-    void RequestJsonWithOptions(
-      FName PacketName,
-      const FString &JsonPayload,
-      float TimeoutSeconds,
-      const FZLinkStreamSendOptions &Options);
-
-    UFUNCTION(BlueprintCallable)
-    void Dispatch();
-
-    UPROPERTY(BlueprintAssignable)
-    FZLinkStreamPacketReceived OnPacketReceived;
-
-    UPROPERTY(BlueprintAssignable)
-    FZLinkStreamRequestCompleted OnRequestCompleted;
-};
-```
-
-Unreal Connector는 callback을 Game Thread에서 실행해야 한다. 내부 network receive나
-background thread에서 `UObject`, `AActor`, `UWorld`를 직접 만지지 않는다. 기본 dispatch
-mode는 manual이며, `Dispatch()`를 game tick에서 호출하면 그 frame에 쌓인 packet과
-lifecycle event를 Game Thread에서 처리한다.
-Unreal Connector에는 coroutine API를 별도로 두지 않는다. 일반 C++ connector의
-`task_t`, `submit()`, `co_await` 표면을 Unreal public header로 가져오지 않는다. Unreal
-사용자는 Blueprint delegate나 native multicast delegate로 callback을 받고,
-`PendingDispatchCount()`는
-`Dispatch()` 전에 처리할 완성 frame이 private queue에 몇 개 쌓여 있는지 알려준다.
-
-codec은 일반 C++ connector와 같은 배포 정책을 따른다. JSON은 기본 포함한다. MessagePack과
-Protobuf는 Unreal plugin 안의 build option으로 포함할 수 있지만, Unreal 사용자가 codec
-산출물을 따로 가져오게 만들지 않는다.
+- core connector test는 예외와 coroutine adapter 없이 통과한다.
 
 Unreal Connector 테스트는 일반 C++ connector GoogleTest 회귀와 별도로 둔다. Unreal
 module compile test, Blueprint-callable API compile check, Game Thread dispatch smoke를
@@ -461,3 +576,21 @@ UnrealEditor-Cmd <TestProject>.uproject \
   -ExecCmds="Automation RunTests ZLink.StreamConnector; Quit" \
   -unattended -nop4 -nosplash -NullRHI
 ```
+
+## 14. 구현 순서
+
+구현은 아래 순서로 진행한다.
+
+1. `connector/`를 독립 CMake package로 분리한다.
+2. core connector public contract를 no-exception/no-coroutine 기준으로 정리한다.
+3. callback completion 표면을 `on_completed(...).start()` 형태로 정리한다.
+4. coroutine adapter를 core와 분리한다.
+5. throwing adapter를 core와 분리한다.
+6. 서버 framework call 표면을 예외 기반으로 정리한다.
+7. Unreal plugin을 core connector 위 facade로 정리한다.
+8. Godot GDExtension adapter를 설계한다.
+9. Axmol adapter를 설계한다.
+10. Cocos Creator 문서에는 TypeScript connector 사용을 명시한다.
+
+각 단계는 독립적으로 빌드하고 테스트할 수 있어야 한다. 특히 core connector test는 예외와
+coroutine adapter 없이 통과해야 한다.

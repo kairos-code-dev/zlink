@@ -57,7 +57,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
         if (!actor) {
             co_return;
         }
-        co_await actor.value ().relay (header, payload).submit ();
+        co_await actor.value ().relay (header, payload).submit_async ();
         co_return;
     }
 

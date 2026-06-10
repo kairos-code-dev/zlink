@@ -17,7 +17,8 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - match API handler와 actor match handler
 - allocate room, join room, card submit handler
 - bingo room state, 3 x 3 card, server draw, winner 판단
-- client notification inbox
+- Stream Connector public wait helper 기반 client push 검증
+- Protobuf stream/channel/actor/Spot payload
 - channel request/reply handler
 - handler logger와 callback log sink
 - STREAM packet relay
@@ -38,7 +39,7 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 - `sample_cpp_framework_bingo_api`: API channel과 authenticate handler
 - `sample_cpp_framework_bingo_play`: play channel, room domain, room handlers, publish, Spot timer
 - `sample_cpp_framework_bingo_session`: STREAM endpoint와 session packet dispatch
-- `sample_cpp_framework_bingo_client`: Stream Connector 기반 client flow와 notification inbox
+- `sample_cpp_framework_bingo_client`: Stream Connector 기반 client flow와 push payload self-check
 
 client smoke는 connector public API 사용 형태만 보지 않는다. 실행 중 실제 STREAM server를
 띄우고 Stream Connector가 TCP로 접속해 request reply와 push notification을 주고받는지

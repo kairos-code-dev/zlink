@@ -23,20 +23,27 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
     }
 
     zlink::framework::spot_actor_join_response_t
-    on_actor_join (const player_actor_t &, const zlink::message_t &request_message)
+    on_actor_join (const player_actor_t &actor, const zlink::message_t &request_message)
     {
+        join_game_req_t request;
+        from_stream_payload (request_message, request);
         return zlink::framework::spot_actor_join_response_t::accept (
-          zlink::message_t::from_json (join (request_message.parse_json<join_game_req_t> ())));
+          to_stream_payload (join (actor.actor_id, request)));
     }
 
-    place_mark_res_t place_mark (const player_actor_t &,
+    place_mark_res_t place_mark (const player_actor_t &actor,
                                  const zlink::framework::spot_actor_request_context_t &context,
                                  const place_mark_req_t &request)
     {
         if (context.packet_name.empty ()) {
             throw std::runtime_error ("packet name is required");
         }
-        return {place (request)};
+        auto state = place (actor.actor_id, request);
+        publisher.publish_game_state ({state.room_id, state.next_turn, state});
+        if (state.status == "Won" || state.status == "Draw") {
+            publisher.publish_game_ended ({state.room_id, state.winner, state.draw, state});
+        }
+        return {state};
     }
 
     void on_post_actor_joined (const player_actor_t &actor)

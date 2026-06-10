@@ -106,8 +106,9 @@ handle을 얻은 뒤 ActorGateway/session actor 경로로 연결한다.
 request/send 같은 outbound 호출은 call object를 반환하고, 마지막 `submit()`에서
 실행한다. 반환된 call object에서 `packet_name(...)`, `metadata(key, value)`,
 `timeout(...)`을 설정할 수 있고, 이 값은 submit 시점에 framework envelope 정책으로
-넘어간다. callback 방식은 `submit(callback)`, coroutine 방식은 `co_await call.submit()`을
-사용한다. handler 안에서 blocking wait를 쓰지 않는다.
+넘어간다. 동기 호출은 `submit()`이 `result_t<T>`를 바로 돌려주고, callback 방식과
+coroutine 방식은 각각 `submit_async(callback)`, `co_await call.submit_async()`를 사용한다.
+handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
 

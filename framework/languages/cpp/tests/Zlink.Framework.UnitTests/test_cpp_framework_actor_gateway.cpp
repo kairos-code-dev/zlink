@@ -101,7 +101,7 @@ int main ()
 
     zlink::framework::actor_ref_t remote_ref (
       zlink::framework::node_rid_t::from_string ("remote-node"), "player", "bob", 7);
-    auto bound = manager.bind (remote_ref).submit ().result ();
+    auto bound = manager.bind (remote_ref).submit ();
     if (!bound || !gateway.actor_bound ("bob") || bound.value ().ref ().generation () != 7) {
         return 6;
     }
@@ -112,7 +112,7 @@ int main ()
       zlink::framework::stream_message_kind_t::send, zlink::framework::stream_codec_t::json,
       zlink::framework::stream_header_flags_t::has_metadata, std::nullopt, "move", metadata);
     const auto payload = zlink::message_t::from (std::string ("payload"));
-    auto relay = bound.value ().relay (header, payload).submit ().result ();
+    auto relay = bound.value ().relay (header, payload).submit ();
     if (!relay || gateway.relayed_frames ().size () != 1
         || gateway.relayed_frames ()[0].payload.to_string () != "payload"
         || payload.to_string () != "payload") {
@@ -120,14 +120,14 @@ int main ()
     }
 
     zlink::framework::session_actor_t unbound;
-    auto missing_relay = unbound.relay (header, payload).submit ().result ();
+    auto missing_relay = unbound.relay (header, payload).submit ();
     if (missing_relay
         || missing_relay.error_kind () != framework_error_kind_t::actor_route_not_found) {
         return 8;
     }
 
     auto push_result =
-      bound.value ().context ().bound_session ().send_raw (payload).submit ().result ();
+      bound.value ().context ().bound_session ().send_raw (payload).submit ();
     if (!push_result || gateway.bound_session_pushes ().size () != 1
         || gateway.bound_session_pushes ()[0].payload.to_string () != "payload") {
         return 9;
@@ -137,39 +137,38 @@ int main ()
                         .context ()
                         .bound_session ()
                         .send (typed_session_push_t{"typed-payload"})
-                        .submit ()
-                        .result ();
+                        .submit ();
     if (!typed_push || gateway.bound_session_pushes ().size () != 2
         || gateway.bound_session_pushes ()[1].payload.to_string () != "typed-payload") {
         return 13;
     }
 
-    auto disconnect = bound.value ().bound_session ().disconnect ().submit ().result ();
+    auto disconnect = bound.value ().bound_session ().disconnect ().submit ();
     if (!disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 10;
     }
-    auto disconnected_push = bound.value ().bound_session ().send_raw (payload).submit ().result ();
+    auto disconnected_push = bound.value ().bound_session ().send_raw (payload).submit ();
     if (disconnected_push
         || disconnected_push.error_kind () != framework_error_kind_t::disconnected) {
         return 16;
     }
-    auto disconnected_relay = bound.value ().relay (header, payload).submit ().result ();
+    auto disconnected_relay = bound.value ().relay (header, payload).submit ();
     if (disconnected_relay
         || disconnected_relay.error_kind () != framework_error_kind_t::disconnected
         || payload.to_string () != "payload") {
         return 17;
     }
 
-    auto rebound = manager.bind (remote_ref).submit ().result ();
+    auto rebound = manager.bind (remote_ref).submit ();
     if (!rebound || !gateway.actor_bound ("bob")) {
         return 11;
     }
 
-    auto actor_disconnect = rebound.value ().notify_disconnected ().submit ().result ();
+    auto actor_disconnect = rebound.value ().notify_disconnected ().submit ();
     if (!actor_disconnect || gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 18;
     }
-    rebound = manager.bind (remote_ref).submit ().result ();
+    rebound = manager.bind (remote_ref).submit ();
     if (!rebound || !gateway.actor_bound ("bob")) {
         return 19;
     }
@@ -192,20 +191,19 @@ int main ()
     const auto join_spot = actor_context
                              .join_spot (zlink::framework::spot_rid_t::from_string ("match-1"),
                                          zlink::message_t::from_json (join_request_t{"match-1"}))
-                             .submit ()
-                             .result ();
+                             .submit ();
     if (!join_spot || !join_spot_seen || join_spot.value ().result_code != 0
         || join_spot.value ().actor.generation () != 8
         || join_spot.value ().reply.parse_json<join_reply_t> ().mark != "O") {
         return 14;
     }
-    const auto stale_relay = rebound.value ().relay (header, payload).submit ().result ();
+    const auto stale_relay = rebound.value ().relay (header, payload).submit ();
     if (stale_relay || stale_relay.error_kind () != framework_error_kind_t::actor_stale_generation
         || payload.to_string () != "payload") {
         return 20;
     }
     const auto stale_push =
-      rebound.value ().bound_session ().send_raw (payload).submit ().result ();
+      rebound.value ().bound_session ().send_raw (payload).submit ();
     if (stale_push || stale_push.error_kind () != framework_error_kind_t::actor_stale_generation) {
         return 21;
     }
@@ -220,8 +218,7 @@ int main ()
       });
     const auto entry_join =
       actor_context.join_entry_spot (zlink::framework::node_rid_t::from_string ("entry-node"))
-        .submit ()
-        .result ();
+        .submit ();
     if (!entry_join || !entry_join_seen || entry_join.value ().generation () != 9) {
         return 15;
     }

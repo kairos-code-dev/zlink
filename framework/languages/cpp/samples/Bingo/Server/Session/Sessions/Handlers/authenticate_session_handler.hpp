@@ -1,14 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../Api/Handlers/authenticate_player_handler.hpp"
-#include "../../../Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "../../../../Shared/Configuration/sample_names.hpp"
+#include "../../../../Shared/Contracts/messages.hpp"
 
-#include <zlink/codec/json.hpp>
 #include <zlink/framework.hpp>
-
-#include <string>
-#include <utility>
 
 namespace zlink::samples::bingo
 {
@@ -16,12 +12,10 @@ namespace zlink::samples::bingo
 class authenticate_session_handler_t
 {
   public:
-    authenticate_session_handler_t (authenticate_player_handler_t &authenticate,
-                                    ensure_player_actor_handler_t &ensure_actor,
-                                    std::string play_node_name) :
-        _authenticate (authenticate),
-        _ensure_actor (ensure_actor),
-        _play_node_name (std::move (play_node_name))
+    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
+
+    explicit authenticate_session_handler_t (zlink::framework::channel_client_t &client) :
+        _client (client)
     {
     }
 
@@ -36,8 +30,13 @@ class authenticate_session_handler_t
             const zlink::framework::stream_header_t &header,
             const zlink::message_t &payload)
     {
-        const auto request = payload.parse_json<authenticate_req_t> ();
-        const auto authenticated = _authenticate.handle ({request.access_token});
+        authenticate_req_t request;
+        from_stream_payload (payload, request);
+        auto authenticated = co_await _client
+                               .request<authenticate_player_res_t> (
+                                 sample_names_t::api_channel,
+                                 authenticate_player_req_t{request.access_token})
+                               .submit_async ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()
             || authenticated.display_name.empty ()) {
             co_return zlink::framework::result_t<zlink::framework::session_actor_t>::failure (
@@ -46,14 +45,18 @@ class authenticate_session_handler_t
                                             : authenticated.reason);
         }
 
-        const auto ensured =
-          _ensure_actor.handle ({authenticated.actor_id, authenticated.display_name});
-        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit ();
+        auto ensured = co_await _client
+                         .request<ensure_player_actor_res_t> (
+                           sample_names_t::play_channel,
+                           ensure_player_actor_req_t{authenticated.actor_id,
+                                                     authenticated.display_name})
+                         .submit_async ();
+        auto bound = co_await actors.bind (to_actor_ref (ensured)).submit_async ();
 
         co_await stream
-          .reply_packet (header, zlink::message_t::from_json (authenticate_res_t{
+          .reply_packet (header, to_stream_payload (authenticate_res_t{
                                    ensured.actor_id, authenticated.display_name}))
-          .submit ();
+          .submit_async ();
 
         co_return bound;
     }
@@ -62,13 +65,12 @@ class authenticate_session_handler_t
     zlink::framework::actor_ref_t to_actor_ref (const ensure_player_actor_res_t &ensured) const
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (_play_node_name), ensured.actor_type,
+          zlink::framework::node_rid_t::from_string (sample_names_t::room_spot_node),
+          ensured.actor_type,
           ensured.actor.actor_id, ensured.actor.generation);
     }
 
-    authenticate_player_handler_t &_authenticate;
-    ensure_player_actor_handler_t &_ensure_actor;
-    std::string _play_node_name;
+    zlink::framework::channel_client_t &_client;
 };
 
 } // namespace zlink::samples::bingo

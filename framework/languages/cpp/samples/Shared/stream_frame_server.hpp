@@ -22,6 +22,7 @@ namespace zlink::samples
 struct stream_server_frame_t
 {
     zlink::stream_connector::message_kind_t kind = zlink::stream_connector::message_kind_t::send;
+    zlink::stream_connector::codec_t codec = zlink::stream_connector::codec_t::raw;
     std::optional<std::uint64_t> request_seq;
     std::string name;
     std::string payload;
@@ -84,7 +85,8 @@ inline std::optional<stream_server_frame_t> try_read_stream_frame (std::string &
     stream_server_frame_t frame;
     frame.kind = static_cast<zlink::stream_connector::message_kind_t> (
       static_cast<std::uint8_t> (buffer[offset++]));
-    (void) buffer[offset++];
+    frame.codec =
+      static_cast<zlink::stream_connector::codec_t> (static_cast<std::uint8_t> (buffer[offset++]));
     const auto flags = static_cast<zlink::stream_connector::header_flags_t> (
       static_cast<std::uint8_t> (buffer[offset++]));
     if (has_request_seq (flags)) {
@@ -99,13 +101,14 @@ inline std::optional<stream_server_frame_t> try_read_stream_frame (std::string &
 }
 
 inline zlink::message_t make_stream_frame (zlink::stream_connector::message_kind_t kind,
+                                           zlink::stream_connector::codec_t codec,
                                            std::optional<std::uint64_t> request_seq,
                                            std::string name,
                                            std::string payload)
 {
     std::vector<std::uint8_t> header;
     header.push_back (static_cast<std::uint8_t> (kind));
-    header.push_back (static_cast<std::uint8_t> (zlink::stream_connector::codec_t::raw));
+    header.push_back (static_cast<std::uint8_t> (codec));
     header.push_back (request_seq ? static_cast<std::uint8_t> (
                                       zlink::stream_connector::header_flags_t::has_request_seq)
                                   : 0);
@@ -126,13 +129,15 @@ inline zlink::message_t make_stream_frame (zlink::stream_connector::message_kind
 inline zlink::message_t make_stream_reply_frame (const stream_server_frame_t &request,
                                                  zlink::message_t payload)
 {
-    return make_stream_frame (zlink::stream_connector::message_kind_t::response,
+    return make_stream_frame (zlink::stream_connector::message_kind_t::response, request.codec,
                               request.request_seq, "reply", payload.to_string ());
 }
 
-inline zlink::message_t make_stream_push_frame (std::string packet_name, zlink::message_t payload)
+inline zlink::message_t make_stream_push_frame (zlink::stream_connector::codec_t codec,
+                                                std::string packet_name,
+                                                zlink::message_t payload)
 {
-    return make_stream_frame (zlink::stream_connector::message_kind_t::send, std::nullopt,
+    return make_stream_frame (zlink::stream_connector::message_kind_t::send, codec, std::nullopt,
                               std::move (packet_name), payload.to_string ());
 }
 
@@ -174,13 +179,20 @@ inline void send_stream_frames (zlink::received_t &inbound, std::vector<zlink::m
     send_stream_bytes (inbound, bytes);
 }
 
+template <typename TPayload> TPayload parse_stream_payload (const std::string &payload)
+{
+    TPayload value{};
+    from_stream_payload (zlink::message_t::from (payload), value);
+    return value;
+}
+
 template <typename TReply>
 void send_stream_reply (zlink::received_t &inbound,
                         const stream_server_frame_t &request,
                         const TReply &reply)
 {
     send_stream_frames (inbound,
-                        {make_stream_reply_frame (request, zlink::message_t::from_json (reply))});
+                        {make_stream_reply_frame (request, to_stream_payload (reply))});
 }
 
 template <typename TReply, typename TNotify>
@@ -192,15 +204,18 @@ void send_stream_reply_and_push (zlink::received_t &inbound,
 {
     send_stream_frames (
       inbound,
-      {make_stream_reply_frame (request, zlink::message_t::from_json (reply)),
-       make_stream_push_frame (std::move (packet_name), zlink::message_t::from_json (notify))});
+      {make_stream_reply_frame (request, to_stream_payload (reply)),
+       make_stream_push_frame (request.codec, std::move (packet_name), to_stream_payload (notify))});
 }
 
 template <typename TNotify>
-void send_stream_push (zlink::received_t &inbound, std::string packet_name, const TNotify &notify)
+void send_stream_push (zlink::received_t &inbound,
+                       zlink::stream_connector::codec_t codec,
+                       std::string packet_name,
+                       const TNotify &notify)
 {
-    send_stream_frames (inbound, {make_stream_push_frame (std::move (packet_name),
-                                                          zlink::message_t::from_json (notify))});
+    send_stream_frames (inbound, {make_stream_push_frame (codec, std::move (packet_name),
+                                                          to_stream_payload (notify))});
 }
 
 } // namespace zlink::samples

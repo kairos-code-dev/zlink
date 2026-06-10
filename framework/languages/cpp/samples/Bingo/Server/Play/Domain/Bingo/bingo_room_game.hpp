@@ -28,17 +28,18 @@ class bingo_room_game_t
             return {_state.room_id, actor_id, display_name, 0, false, _state};
         }
 
-        const bool host = _state.players.empty ();
+        const bool is_host = _state.players.empty ();
         const int seat = static_cast<int> (_state.players.size ()) + 1;
-        if (host) {
+        if (is_host) {
             _state.host_actor_id = actor_id;
         }
-        _state.players.push_back ({actor_id, display_name, seat, host, {}, {}, 0});
+        _state.players.push_back ({actor_id, display_name, seat, is_host, {}, {}, 0});
         _state.can_start = _state.players.size () == 2;
         if (_state.can_start) {
             _state.status = "running";
         }
-        return {_state.room_id, std::move (actor_id), std::move (display_name), seat, host, _state};
+        return {_state.room_id, std::move (actor_id), std::move (display_name), seat, is_host,
+                _state};
     }
 
     submit_bingo_card_res_t submit_card (const std::string &actor_id,

@@ -40,7 +40,7 @@ auto to_packet_payload (const TMessage &message, int) -> decltype (to_stream_pay
     }
 }
 
-template <typename TMessage> zlink::message_t to_packet_payload (const TMessage &, long)
+template <typename TMessage> zlink::message_t to_packet_payload (const TMessage &, ...)
 {
     return zlink::message_t::from (std::string ("{}"));
 }
@@ -53,7 +53,7 @@ auto apply_packet_payload (TMessage &message,
     from_stream_payload (payload, message);
 }
 
-template <typename TMessage> void apply_packet_payload (TMessage &, const zlink::message_t &, long)
+template <typename TMessage> void apply_packet_payload (TMessage &, const zlink::message_t &, ...)
 {
 }
 

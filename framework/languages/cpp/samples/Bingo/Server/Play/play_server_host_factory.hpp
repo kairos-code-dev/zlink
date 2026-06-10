@@ -25,7 +25,7 @@ class play_server_host_factory_t
             options.handlers ()
               .add<allocate_bingo_room_handler_t> ("play")
               .add<ensure_player_actor_handler_t> ("play");
-            options.codecs ().add_json ();
+            options.codecs ().add_protobuf ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.play_channel_endpoint)

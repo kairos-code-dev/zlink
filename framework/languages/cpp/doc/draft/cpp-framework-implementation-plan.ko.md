@@ -53,8 +53,8 @@
 
 - C++20 이상만 지원한다.
 - public async 표면에는 `std::future`를 쓰지 않는다.
-- public 호출은 call object를 만들고 마지막에 `submit(callback)` 또는
-  `co_await submit()`으로 실행한다.
+- public 호출은 call object를 만들고 동기 경로에서는 `submit()`, callback/coroutine 경로에서는
+  `submit_async(callback)` 또는 `co_await submit_async()`으로 실행한다.
 - public cancellation token 타입은 두지 않는다. shutdown, timeout, close, disconnected
   상태는 framework result 또는 `framework_exception_t`로 표현한다.
 - handler, timer, stream session, actor relay 안에서 blocking wait를 허용하지 않는다.
@@ -410,8 +410,8 @@ git diff --check -- bindings/cpp framework/languages/cpp
 - `request_call_t<T>`
 - `stream_write_call_t`
 - `relay_call_t`
-- `submit(callback)`
-- `co_await submit()`
+- `submit_async(callback)`
+- `co_await submit_async()`
 - timeout, shutdown, disconnected, queue full, decode failure, handler not found mapping
 
 완료 기준:
@@ -985,8 +985,8 @@ framework core target의 기본 의존성이 아니다.
   수행한다.
 - test certificate나 local development certificate를 trust하는 설정은 HTTP client option으로
   명시해야 하며, 묵시적으로 TLS verification을 끄지 않는다.
-- public 호출은 zlink 스타일 call object를 만들고 마지막에 `submit(callback)` 또는
-  `co_await submit<T>()`으로 실행한다.
+- public 호출은 zlink 스타일 call object를 만들고 동기 경로에서는 `submit()`, callback/coroutine
+  경로에서는 `submit_async(callback)` 또는 `co_await submit_async()`으로 실행한다.
 - JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리하고, application sample code가
   `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
 - retry, redirect, cookie, proxy, multipart, streaming download는 C++ framework가 필요로 하는

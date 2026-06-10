@@ -20,7 +20,7 @@ class session_server_host_factory_t
               app, topology.stream_endpoint, run_client_e2e_stream_server));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-            options.codecs ().add_json ();
+            options.codecs ().add_protobuf ();
             options.use_discovery ().add_registry_endpoint (topology.registry_router_endpoint);
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
             options.add_client_server_channel (sample_names_t::play_channel).enable_client ();

@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package zlink.samples.bingo;
+
+message AuthenticateReq {
+  string access_token = 1;
+}
+
+message AuthenticateRes {
+  string actor_id = 1;
+  string display_name = 2;
+}
+
+message AuthenticatePlayerReq {
+  string access_token = 1;
+}
+
+message AuthenticatePlayerRes {
+  bool accepted = 1;
+  string actor_id = 2;
+  string display_name = 3;
+  string reason = 4;
+}
+
+message EnsurePlayerActorReq {
+  string actor_id = 1;
+  string display_name = 2;
+}
+
+message ActorRefSnapshot {
+  bytes node_rid = 1;
+  string actor_id = 2;
+  uint64 generation = 3;
+}
+
+message EnsurePlayerActorRes {
+  string actor_id = 1;
+  string actor_type = 2;
+  ActorRefSnapshot actor = 3;
+}
+
+message MatchBingoReq {
+  string mode = 1;
+}
+
+message MatchBingoApiReq {
+  string actor_id = 1;
+  string display_name = 2;
+  string mode = 3;
+}
+
+message MatchBingoApiRes {
+  string room_id = 1;
+}
+
+message AllocateBingoRoomReq {
+  string mode = 1;
+  string actor_id = 2;
+}
+
+message AllocateBingoRoomRes {
+  string room_id = 1;
+}
+
+message BingoPlayerState {
+  string actor_id = 1;
+  string display_name = 2;
+  int32 seat = 3;
+  bool is_host = 4;
+  repeated int32 card = 5;
+  repeated bool marks = 6;
+  int32 completed_lines = 7;
+}
+
+message BingoRoomState {
+  string room_id = 1;
+  string status = 2;
+  string host_actor_id = 3;
+  bool can_start = 4;
+  int32 draw_seq = 5;
+  int32 last_drawn_number = 6;
+  repeated int32 drawn_numbers = 7;
+  repeated BingoPlayerState players = 8;
+  repeated string winners = 9;
+}
+
+message MatchBingoRes {
+  string room_id = 1;
+  BingoRoomState state = 2;
+}
+
+message BingoRoomJoinReq {
+  string room_id = 1;
+  string actor_id = 2;
+  string display_name = 3;
+}
+
+message BingoRoomJoinRes {
+  BingoRoomState state = 1;
+}
+
+message SubmitBingoCardReq {
+  string room_id = 1;
+  repeated int32 card = 2;
+}
+
+message SubmitBingoCardRes {
+  BingoRoomState state = 1;
+}
+
+message PlayerJoinedNotify {
+  string room_id = 1;
+  string actor_id = 2;
+  string display_name = 3;
+  int32 seat = 4;
+  bool is_host = 5;
+  BingoRoomState state = 6;
+}
+
+message BingoGameStartedNotify {
+  BingoRoomState state = 1;
+}
+
+message BingoNumberDrawnNotify {
+  string room_id = 1;
+  int32 draw_seq = 2;
+  int32 number = 3;
+  BingoRoomState state = 4;
+}
+
+message BingoStateNotify {
+  BingoRoomState state = 1;
+}
+
+message BingoGameEndedNotify {
+  BingoRoomState state = 1;
+}

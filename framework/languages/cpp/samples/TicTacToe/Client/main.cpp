@@ -1,26 +1,49 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "tictactoe_client.hpp"
+#include "tictactoe_client_scenario.hpp"
+#include "../../Shared/client_connector_helpers.hpp"
+
+#include <zlink/http_client.hpp>
+
+#include <iostream>
+#include <stdexcept>
 
 int main ()
 {
     using namespace zlink::samples::tictactoe;
 
-    tictactoe_client_options_t options;
-    const auto result = tictactoe_client_t{}.run (options);
-    if (!result.connected || !result.http_game_created || result.game_name != "room-1"
-        || result.play_endpoint.rfind ("tcp://127.0.0.1:", 0) != 0 || result.requests.size () != 9
-        || result.requests.front ().packet_name != "AuthenticateReq"
-        || result.requests.back ().packet_name != "PlaceMarkReq") {
+    try {
+        tictactoe_client_options_t options;
+        auto http_client = zlink::http_client::client_t::create ()
+                             .base_url (options.api_http_endpoint)
+                             .json ()
+                             .build ();
+        auto created = http_client.post ("/games")
+                         .body (create_game_http_req_t{options.game_name})
+                         .submit<create_game_http_res_t> ()
+                         .result ();
+        if (!created) { throw std::runtime_error ("HTTP POST /games failed."); }
+
+        const auto room = created.value ().body;
+        if (room.play_endpoint.empty ()) {
+            throw std::runtime_error ("API returned an empty play endpoint.");
+        }
+
+        auto client1 = zlink::stream_connector::connector_factory_t::create (
+          zlink::samples::make_manual_connector_options (
+            room.play_endpoint, options.stream_timeout, options.stream_timeout));
+        auto client2 = zlink::stream_connector::connector_factory_t::create (
+          zlink::samples::make_manual_connector_options (
+            room.play_endpoint, options.stream_timeout, options.stream_timeout));
+        register_tictactoe_client_codecs (client1);
+        register_tictactoe_client_codecs (client2);
+
+        if (!tictactoe_client_scenario_t{}.run (client1, client2, room, options)) { return 1; }
+        std::cout << "tictactoe=completed\n";
+        return 0;
+    }
+    catch (const std::exception &ex) {
+        std::cerr << "tictactoe=failed " << ex.what () << '\n';
         return 1;
     }
-    for (const auto &request : result.requests) {
-        if (!request.completed) {
-            return 2;
-        }
-    }
-    if (result.game_state_notifications == 0) {
-        return 3;
-    }
-    return 0;
 }

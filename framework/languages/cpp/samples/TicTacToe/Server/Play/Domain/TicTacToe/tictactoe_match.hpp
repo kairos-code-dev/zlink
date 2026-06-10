@@ -22,33 +22,46 @@ class tictactoe_match_t
 
     create_game_res_t create (const create_game_req_t &request)
     {
-        if (request.owner_actor_id.empty ()) {
-            throw std::runtime_error ("owner actor id must not be empty");
+        if (request.game_name.empty ()) {
+            throw std::runtime_error ("game name must not be empty");
         }
-        _state.x_actor_id = request.owner_actor_id;
-        _state.next_turn = request.owner_actor_id;
-        return {_state.room_id, request.owner_actor_id, ""};
+        return {_state.room_id, "", request.game_name};
     }
 
-    join_game_res_t join (const join_game_req_t &request)
+    join_game_res_t join (const std::string &actor_id, const join_game_req_t &request)
     {
-        if (request.actor_id == _state.x_actor_id) {
-            return {_state.room_id, request.actor_id, "X", _state};
+        if (request.room_id != _state.room_id) {
+            throw std::runtime_error ("room id mismatch");
+        }
+        if (actor_id.empty ()) {
+            throw std::runtime_error ("actor id must not be empty");
+        }
+        if (_state.x_actor_id.empty ()) {
+            _state.x_actor_id = actor_id;
+            _state.next_turn = actor_id;
+            _state.status = "WaitingForPlayers";
+            return {_state};
+        }
+        if (actor_id == _state.x_actor_id) {
+            return {_state};
         }
         if (_state.o_actor_id.empty ()) {
-            _state.o_actor_id = request.actor_id;
-            _state.status = "playing";
-            return {_state.room_id, request.actor_id, "O", _state};
+            _state.o_actor_id = actor_id;
+            _state.status = "InProgress";
+            return {_state};
+        }
+        if (actor_id == _state.o_actor_id) {
+            return {_state};
         }
         throw std::runtime_error ("match already has two players");
     }
 
-    tictactoe_state_t place (const place_mark_req_t &request)
+    tictactoe_state_t place (const std::string &actor_id, const place_mark_req_t &request)
     {
-        if (_state.status != "playing") {
+        if (_state.status != "InProgress") {
             throw std::runtime_error ("match is not playing");
         }
-        if (request.actor_id != _state.next_turn) {
+        if (actor_id != _state.next_turn) {
             throw std::runtime_error ("not actor turn");
         }
         if (request.cell < 0 || request.cell >= 9
@@ -56,19 +69,19 @@ class tictactoe_match_t
             throw std::runtime_error ("invalid move");
         }
 
-        const char mark = request.actor_id == _state.x_actor_id ? 'X' : 'O';
+        const char mark = actor_id == _state.x_actor_id ? 'X' : 'O';
         _state.board[static_cast<std::size_t> (request.cell)] = mark;
         _state.last_move_cell = request.cell;
-        _state.last_move_actor_id = request.actor_id;
+        _state.last_move_actor_id = actor_id;
         if (has_winner (mark)) {
-            _state.status = "ended";
-            _state.winner = request.actor_id;
+            _state.status = "Won";
+            _state.winner = actor_id;
         } else if (_state.board.find ('.') == std::string::npos) {
-            _state.status = "ended";
+            _state.status = "Draw";
             _state.draw = true;
         } else {
             _state.next_turn =
-              request.actor_id == _state.x_actor_id ? _state.o_actor_id : _state.x_actor_id;
+              actor_id == _state.x_actor_id ? _state.o_actor_id : _state.x_actor_id;
         }
         return _state;
     }

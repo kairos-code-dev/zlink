@@ -17,10 +17,10 @@ class authenticate_player_handler_t
 
     authenticate_player_res_t handle (const authenticate_player_req_t &request)
     {
-        if (request.actor_id.empty ()) {
+        if (request.access_token.empty ()) {
             return {false, "", "actor id must not be empty"};
         }
-        return {true, request.actor_id, ""};
+        return {true, request.access_token, ""};
     }
 };
 

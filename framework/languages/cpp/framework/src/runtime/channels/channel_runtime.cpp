@@ -604,19 +604,24 @@ route_send_call_t &route_send_call_t::metadata (std::string key, std::string val
     return *this;
 }
 
-task_t<void> route_send_call_t::submit ()
+result_t<void> route_send_call_t::submit ()
 {
     if (!_submit) {
-        return task_t<void> (
-          result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                   "route send call is not bound to a route client"));
+        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
+                                        "route send call is not bound to a route client");
     }
-    return task_t<void> (_submit (_packet_name, _metadata));
+    return _submit (_packet_name, _metadata);
 }
 
-pending_operation_t route_send_call_t::submit (std::function<void (result_t<void>)> callback)
+task_t<void> route_send_call_t::submit_async ()
 {
-    auto task = submit ();
+    return task_t<void> (submit ());
+}
+
+pending_operation_t route_send_call_t::submit_async (
+  std::function<void (result_t<void>)> callback)
+{
+    auto task = submit_async ();
     detail::observe_task_completion (task, std::move (callback));
     return pending_operation_t::make_completed ();
 }
@@ -644,20 +649,25 @@ route_request_call_t &route_request_call_t::metadata (std::string key, std::stri
     return *this;
 }
 
-task_t<std::uint64_t> route_request_call_t::submit ()
+result_t<std::uint64_t> route_request_call_t::submit ()
 {
     if (!_submit) {
-        return task_t<std::uint64_t> (
-          result_t<std::uint64_t>::failure (framework_error_kind_t::request_protocol_error,
-                                            "route request call is not bound to a route client"));
+        return result_t<std::uint64_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "route request call is not bound to a route client");
     }
-    return task_t<std::uint64_t> (_submit (_packet_name, _timeout, _metadata));
+    return _submit (_packet_name, _timeout, _metadata);
 }
 
-pending_operation_t
-route_request_call_t::submit (std::function<void (result_t<std::uint64_t>)> callback)
+task_t<std::uint64_t> route_request_call_t::submit_async ()
 {
-    auto task = submit ();
+    return task_t<std::uint64_t> (submit ());
+}
+
+pending_operation_t route_request_call_t::submit_async (
+  std::function<void (result_t<std::uint64_t>)> callback)
+{
+    auto task = submit_async ();
     detail::observe_task_completion (task, std::move (callback));
     return pending_operation_t::make_completed ();
 }

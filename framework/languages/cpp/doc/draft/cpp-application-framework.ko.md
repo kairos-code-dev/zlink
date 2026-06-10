@@ -515,9 +515,9 @@ C++ framework는 설정이 불편하면 `.NET Core`/`ASP.NET Core`, Spring Boot,
 | developer tooling | CMake presets, vcpkg manifest, install consumer, CLion/Visual Studio configure smoke |
 | samples | Bingo e2e, TicTacToe HTTP `POST /games` + zlink channel + STREAM connector e2e, server/client file log assertions |
 
-zlink 관련 회귀 테스트는 `.NET` framework와 같은 기능 기대값을 기준으로 한다. C++ 문법은
-`submit(callback)`과 `co_await submit()`로 다르지만, timeout, decode failure, handler not
-found, shutdown, queue full, disconnected 같은 error kind와 로그/monitoring event는 같은
+zlink 관련 회귀 테스트는 `.NET` framework와 같은 기능 기대값을 기준으로 한다. C++ 비동기 문법은
+`submit_async(callback)`과 `co_await submit_async()`로 다르지만, timeout, decode failure,
+handler not found, shutdown, queue full, disconnected 같은 error kind와 로그/monitoring event는 같은
 의미로 고정한다. 테스트는 단순히 process exit code만 확인하지 않고, request sequence,
 topic/packet name, correlation id, server-side file log, client-side callback 결과를 함께
 검증해야 한다.

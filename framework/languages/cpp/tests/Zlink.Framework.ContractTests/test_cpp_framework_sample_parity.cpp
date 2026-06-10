@@ -15,10 +15,11 @@
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_contract_mapper.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
 #include "../../samples/TicTacToe/Server/Api/Handlers/authenticate_player_handler.hpp"
-#include "../../samples/TicTacToe/Server/Api/Handlers/create_game_handler.hpp"
+#include "../../samples/TicTacToe/Server/Api/Handlers/create_game_http_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/create_game_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
-#include "../../samples/TicTacToe/Server/Play/Application/GameCreation/create_game_room_handler.hpp"
+#include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 
 #include <gtest/gtest.h>
@@ -95,7 +96,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_allocator_t rooms;
     allocate_bingo_room_handler_t allocator (rooms);
-    const auto allocated = allocator.handle ({"two-player"});
+    const auto allocated = allocator.handle ({"two-player", authenticated.actor_id});
 
     ensure_player_actor_handler_t actors;
     const auto actor = actors.handle ({authenticated.actor_id, authenticated.display_name});
@@ -107,11 +108,14 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot.on_actor_join (
-      player_actor, zlink::message_t::from_json (bingo_room_join_req_t{
-                      allocated.room_id, authenticated.actor_id, authenticated.display_name}));
+      player_actor,
+      to_stream_payload (bingo_room_join_req_t{allocated.room_id, authenticated.actor_id,
+                                               authenticated.display_name}));
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
-    EXPECT_EQ (joined.reply->parse_json<bingo_room_join_res_t> ().state.players.size (), 1U);
+    bingo_room_join_res_t join_reply;
+    from_stream_payload (*joined.reply, join_reply);
+    EXPECT_EQ (join_reply.state.players.size (), 1U);
 
     zlink::framework::spot_context_t room_context;
     room_spot.configure (room_context);
@@ -129,8 +133,9 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined =
-      room_spot.on_actor_join (second_actor, zlink::message_t::from_json (bingo_room_join_req_t{
-                                               allocated.room_id, "player-2", "Player 2"}));
+      room_spot.on_actor_join (
+        second_actor,
+        to_stream_payload (bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
     ASSERT_TRUE (second_joined.accepted);
     const auto submitted =
       room_spot.submit_card (player_actor,
@@ -162,36 +167,46 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     const auto authenticated = auth.handle ({sample_names_t::x_actor_id});
     ASSERT_TRUE (authenticated.accepted);
 
-    create_game_room_handler_t rooms;
     sample_topology_t topology;
-    auto logger = zlink::framework::logger_factory_t ().create<create_game_handler_t> ();
-    create_game_handler_t create (rooms, topology, logger);
-    const auto created = create.handle ({authenticated.actor_id});
+    tictactoe_game_creator_t creator;
+    create_game_handler_t rooms (creator, topology);
+    const auto created = rooms.handle ({"tictactoe-game"});
     EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);
+    EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
-    room.create ({created.owner_actor_id});
+    room.create ({created.game_name});
+    EXPECT_EQ (room.join (sample_names_t::x_actor_id, {created.room_id}).state.x_actor_id,
+               sample_names_t::x_actor_id);
+    EXPECT_EQ (room.join (sample_names_t::o_actor_id, {created.room_id}).state.status,
+               "InProgress");
 
     entry_spot_t entry_spot;
-    entry_spot.room.create ({created.owner_actor_id});
+    entry_spot.room.create ({created.game_name});
     zlink::framework::spot_actor_request_context_t join_context{
       join_game_req_t::packet_name, "application/json", {}, {}};
+    player_actor_t first_actor{sample_names_t::x_actor_id};
+    EXPECT_EQ (entry_spot.join_game (first_actor, join_context,
+                                     {entry_spot.room.snapshot ().room_id})
+                 .state.x_actor_id,
+               sample_names_t::x_actor_id);
     player_actor_t opponent_actor{sample_names_t::o_actor_id};
     const auto joined =
-      entry_spot.join_game (opponent_actor, join_context,
-                            {entry_spot.room.snapshot ().room_id, sample_names_t::o_actor_id});
-    EXPECT_EQ (joined.mark, "O");
+      entry_spot.join_game (opponent_actor, join_context, {entry_spot.room.snapshot ().room_id});
+    EXPECT_EQ (joined.state.o_actor_id, sample_names_t::o_actor_id);
 
     tictactoe_game_spot_t game_spot (created.room_id);
-    game_spot.create ({created.owner_actor_id});
+    game_spot.create ({created.game_name});
+    const auto x_join = game_spot.on_actor_join (
+      player_actor_t{sample_names_t::x_actor_id}, to_stream_payload (join_game_req_t{created.room_id}));
+    ASSERT_TRUE (x_join.accepted);
     const auto game_join = game_spot.on_actor_join (
       player_actor_t{sample_names_t::o_actor_id},
-      zlink::message_t::from_json (join_game_req_t{created.room_id, sample_names_t::o_actor_id}));
+      to_stream_payload (join_game_req_t{created.room_id}));
     ASSERT_TRUE (game_join.accepted);
     zlink::framework::spot_actor_request_context_t place_context{
       place_mark_req_t::packet_name, "application/json", {}, {}};
     player_actor_t player_actor{sample_names_t::x_actor_id};
-    const auto moved = game_spot.place_mark (player_actor, place_context,
-                                             {created.room_id, sample_names_t::x_actor_id, 0});
+    const auto moved = game_spot.place_mark (player_actor, place_context, {0});
     EXPECT_EQ (moved.state.last_move_actor_id, sample_names_t::x_actor_id);
 
     zlink::framework::spot_context_t game_context;
@@ -383,7 +398,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
 {
     const auto tictactoe_root = cpp_language_root () / "samples/TicTacToe";
     const auto api_factory = read_file (tictactoe_root / "Server/Api/api_server_host_factory.hpp");
-    const auto client = read_file (tictactoe_root / "Client/tictactoe_client.hpp");
+    const auto client = read_file (tictactoe_root / "Client/tictactoe_client_scenario.hpp");
+    const auto client_main = read_file (tictactoe_root / "Client/main.cpp");
+    const auto create_game_handler =
+      read_file (tictactoe_root / "Server/Api/Handlers/create_game_http_handler.hpp");
     const auto play_factory =
       read_file (tictactoe_root / "Server/Play/play_server_host_factory.hpp");
 
@@ -407,14 +425,30 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_NE (play_factory.find (".attach_actor_gateway (sample_names_t::spot_node)"),
                std::string::npos);
     EXPECT_NE (api_factory.find (".listen (topology.api_http_endpoint)"), std::string::npos);
-    EXPECT_NE (api_factory.find (".map_post<create_game_handler_t> (\"/games\")"),
+    EXPECT_NE (api_factory.find (".map_post<create_game_http_handler_t> (\"/games\")"),
                std::string::npos);
-    EXPECT_NE (client.find ("#include <zlink/http_client.hpp>"), std::string::npos);
-    EXPECT_NE (client.find ("zlink::http_client::client_t::create ()"), std::string::npos);
-    EXPECT_NE (client.find (".base_url (run_options.api_http_endpoint)"), std::string::npos);
-    EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
-    EXPECT_NE (client.find (".submit<create_game_res_t> ()"), std::string::npos);
-    EXPECT_NE (client.find ("result.http_game_created = http_ready"), std::string::npos);
+    EXPECT_NE (api_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"),
+               std::string::npos);
+    EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
+    EXPECT_NE (create_game_handler.find ("create_game_req_t{game_name}"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t>"),
+               std::string::npos);
+    EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"),
+               std::string::npos);
+    EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"),
+               std::string::npos);
+    EXPECT_FALSE (std::filesystem::exists (
+      tictactoe_root / "Server/Play/Application/GameCreation/create_game_room_handler.hpp"));
+    EXPECT_NE (client_main.find ("#include <zlink/http_client.hpp>"), std::string::npos);
+    EXPECT_NE (client_main.find ("zlink::http_client::client_t::create ()"), std::string::npos);
+    EXPECT_NE (client_main.find (".base_url (options.api_http_endpoint)"), std::string::npos);
+    EXPECT_NE (client_main.find (".post (\"/games\")"), std::string::npos);
+    EXPECT_NE (client_main.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_NE (client.find ("client1.request<authenticate_res_t>"), std::string::npos);
+    EXPECT_NE (client.find ("client1.wait_for<game_state_notify_t>"), std::string::npos);
     EXPECT_NE (client.find ("tictactoe-client.log"), std::string::npos);
     EXPECT_NE (client.find ("client game completed"), std::string::npos);
 }
@@ -425,7 +459,7 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     const auto play_factory = read_file (bingo_root / "Server/Play/play_server_host_factory.hpp");
     const auto session_factory =
       read_file (bingo_root / "Server/Session/session_server_host_factory.hpp");
-    const auto client = read_file (bingo_root / "Client/bingo_client_app.hpp");
+    const auto client = read_file (bingo_root / "Client/bingo_client_scenario.hpp");
 
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (session_factory.find ("options.add_spot_mesh"), std::string::npos);

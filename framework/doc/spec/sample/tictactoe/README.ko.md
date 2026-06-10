@@ -23,6 +23,17 @@ TicTacToe는 직접 play 연결 구조를 보여 주는 기본 샘플이다. API
 - room Spot은 board, turn, 승패 판정을 소유한다.
 - 연결은 Registry/Discovery 없이 수동 endpoint 설정으로 구성한다.
 - handler 등록은 attribute, annotation, decorator 같은 선언형 방식을 우선 사용한다.
+- TicTacToe의 stream, channel, actor, room Spot payload는 MessagePack을 사용한다.
+
+Client self-check도 샘플의 일부다. client는 `.NET` 샘플처럼 request에 넣은 값과 response,
+server push payload가 맞는지 확인한다. `PlayerJoinedNotify`와 `GameStateNotify` 대기는
+stream connector의 public wait interface를 직접 사용한다. sample-local queue polling은
+결과 출력이나 추가 검증에는 사용할 수 있지만 push 대기의 기준 경로가 되면 안 된다.
+
+TicTacToe가 MessagePack을 맡는 이유는 이 샘플의 payload가 작고 빈번한 실시간 게임
+packet이기 때문이다. MessagePack은 C# record나 class에 필드 순서를 명시해 compact binary
+payload를 만들기 쉽고, room 생성, 인증, join, move, notify 흐름을 짧게 유지한다. schema
+중심의 cross-language binary 계약은 Bingo의 Protobuf 샘플이 맡는다.
 
 ## 2. 서버 구성
 
@@ -63,7 +74,137 @@ Play 서버 안에서 stream session과 actor, room이 함께 움직인다. 이 
 Bingo처럼 Session 서버를 분리한 gateway 샘플보다 작고, 처음 framework를 읽는 사람이
 핵심 흐름을 따라가기 쉽다.
 
-## 4. 수동 연결 방식
+## 4. 디렉토리와 파일 구성
+
+TicTacToe 샘플은 작은 게임이지만 DDD와 헥사고날 아키텍처의 경계를 드러내도록 구성한다.
+이 구조는 C++, Java, Kotlin, TypeScript, .NET 샘플을 작성할 때 함께 따라야 하는
+공통 기준이다. 언어별 빌드 도구, 파일 확장자, package/module 표현은 달라질 수 있지만,
+`Client`, `Shared`, `Server/Api`, `Server/Play/Domain`, `Server/Play/Application`,
+`Server/Play/Adapters` 경계와 각 책임은 유지해야 한다.
+
+`Client`는 외부 사용자가 수행하는 self-check 시나리오이고, `Shared`는 client와 server가
+공유하는 메시지 계약이다. `Server` 안에서는 HTTP API adapter와 Play runtime adapter가
+같은 프로세스에 있어도 코드 경계는 분리한다.
+
+```text
+TicTacToe/
+  README
+  build files
+  Client/
+    Program
+    TicTacToeClientScenario
+    client build/module files
+    README
+  Shared/
+    shared build/module files
+    Contracts/
+      Messages
+  Server/
+    server build/module files
+    Program
+    Configuration/
+      SampleLogging
+      SampleNames
+      SamplePorts
+      SampleSettings
+    Api/
+      ApiServer
+      Handlers/
+        AuthenticatePlayerHandler
+        CreateGameHttpHandler
+    Play/
+      PlayServer
+      Domain/
+        TicTacToe/
+          TicTacToeBoard
+          TicTacToeMatch
+      Application/
+        GameCreation/
+          TicTacToeGameCreator
+      Adapters/
+        ZLink/
+          Actors/
+            PlayActor
+            PlayActorFactory
+          Handlers/
+            CreateGameHandler
+          Sessions/
+            PlaySession
+          Spots/
+            PlayEntrySpot
+            TicTacToeGame
+            Handlers/
+              PlayActorJoinGameHandler
+              PlayActorPlaceMarkHandler
+              TicTacToeGameTimerHandler
+```
+
+위 구조는 파일명 고정 규칙이 아니라 역할과 경계의 기준이다. 예를 들어 Java/Kotlin은
+package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은 header/source
+쌍과 namespace로, .NET은 project와 class 이름으로 같은 구조를 표현할 수 있다. 중요한
+점은 같은 책임의 코드가 같은 위치에 있고, 다른 레이어로 섞이지 않는 것이다.
+
+각 영역의 역할은 아래와 같다.
+
+| 위치 | 공통 아키텍처 역할 | 책임 |
+|------|----------------------|------|
+| `Client/Program` | 외부 driving adapter | client stream 연결을 만들고 self-check 시나리오를 실행한다. |
+| `Client/TicTacToeClientScenario` | sample scenario | HTTP 생성, stream 인증, join, move, push 검증을 순서대로 수행한다. |
+| `Shared/Contracts/*` | shared contract | HTTP, channel, stream, actor, Spot payload 계약을 정의한다. |
+| `Server/Configuration/*` | composition settings | 샘플 endpoint, 이름, timeout, logging 설정을 한 곳에 모은다. |
+| `Server/Api/*` | inbound HTTP adapter, API channel adapter | client의 room 생성 요청과 Play 서버의 인증 요청을 처리한다. |
+| `Server/Play/Domain/TicTacToe/*` | domain model | board, player, turn, 승패 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
+| `Server/Play/Application/GameCreation/*` | application use case | room id 생성과 Spot 생성 요청을 조율한다. |
+| `Server/Play/Adapters/ZLink/*` | ZLink adapter | channel, stream session, actor, Spot callback을 application/domain 호출로 변환한다. |
+
+의존 방향은 `Adapters -> Application -> Domain`이다. Domain은 ZLink framework, HTTP,
+stream connector, logger를 알지 않는다. Application은 use case 조율을 맡고, 외부 입출력
+세부 사항은 adapter에 둔다. 이 규칙 덕분에 샘플은 작아도 게임 규칙과 framework 배선이
+섞이지 않는다.
+
+## 5. 언어별 구현 기준
+
+TicTacToe 샘플은 현재 .NET 샘플에서 검증된 실행 형태와 같은 수준으로 C++, Java, Kotlin,
+TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 달라도 사용자가 샘플을 열었을
+때 같은 역할, 같은 흐름, 같은 검증 지점을 찾을 수 있어야 한다.
+
+언어별 구현은 아래 기준을 만족해야 한다.
+
+- 샘플 루트에는 client, shared contracts, server 역할이 한 번만 보이게 구성한다. IDE나
+  build tool에서 같은 역할의 프로젝트나 module이 중복으로 보이면 안 된다.
+- client와 server는 각각 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고,
+  실제 시나리오 검증은 `TicTacToeClientScenario` 같은 client scenario 구성 요소에 둔다.
+- `Shared/Contracts`에는 HTTP, channel, stream, actor, Spot payload 계약을 모은다.
+  packet name 문자열이나 동적 payload 구조를 handler와 client 코드에 흩어 놓지 않는다.
+  client와 server는 message 객체의 public interface만 사용해야 하며, 샘플 전용 helper로
+  payload 계약을 감추면 안 된다.
+- TicTacToe의 payload codec은 MessagePack이다. 각 언어는 MessagePack에 맞는 typed
+  message 정의를 사용하고, JSON이나 Protobuf로 바꾸지 않는다.
+- client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
+  샘플 실행은 실제 server를 띄우고 client가 접속해 `tictactoe=completed`에 해당하는
+  성공 결과를 만들 수 있어야 한다.
+- push 대기는 connector 객체의 public wait interface를 직접 사용한다. 필요한 push를 고를
+  때는 connector wait API의 filter 기능을 사용하고, 받은 message 객체의 public interface로
+  payload를 읽어 `Ensure(condition)`처럼 조건식이 직접 보이는 방식으로 검증한다.
+- Java와 Kotlin client scenario는 connector call의 `submit`과 `await` 의미를 맞춘다.
+  `submit`은 push 대기를 먼저 걸어 두기 위해 비동기 작업을 시작하고 future를 반환하는
+  이름으로 사용한다. `await`는 완료를 기다려 결과를 받는 이름으로 사용한다. Java에서는
+  현재 thread가 기다리고, Kotlin에서는 coroutine이 중단되었다가 재개된다.
+- sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
+  대기와 검증은 connector와 message 객체 인터페이스를 사용하는 샘플 시나리오 코드에서
+  드러나야 한다.
+- Domain에는 board, turn, win/draw 판정만 둔다. stream session, actor context,
+  handler, logger, codec, endpoint 설정은 Domain으로 들어오면 안 된다.
+- Application은 room 생성 use case를 조율한다. framework callback을 직접 받거나
+  transport 세부 구현을 다루지 않는다.
+- Adapters는 HTTP, channel, stream session, actor, Spot, timer, codec 연결을 맡는다.
+  handler나 Spot adapter가 board 판정, turn 판정, winner 판정을 직접 구현하면 안 된다.
+
+이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
+나란히 읽었을 때 framework 기능 차이와 언어 차이만 보이고, 샘플 구조 차이 때문에
+흐름을 다시 해석하지 않아도 되게 하기 위한 기준이다.
+
+## 6. 수동 연결 방식
 
 TicTacToe는 Registry/Discovery 자동 연결을 사용하지 않는다. API 서버와 Play 서버는
 샘플 설정에 적힌 endpoint를 직접 사용한다.
@@ -78,7 +219,7 @@ TicTacToe는 Registry/Discovery 자동 연결을 사용하지 않는다. API 서
 이 샘플이 수동 연결을 쓰는 이유는 자동 발견이 없는 기본 배선도 framework로 표현할 수
 있음을 보여 주기 위해서다. Registry/Discovery 자동 연결은 Bingo 샘플이 맡는다.
 
-## 5. Handler 등록 방식
+## 7. Handler 등록 방식
 
 TicTacToe는 선언형 handler 등록 방식을 우선 사용한다. 언어별 표현은 다를 수 있다.
 
@@ -92,7 +233,7 @@ TicTacToe는 선언형 handler 등록 방식을 우선 사용한다. 언어별 �
 명시 등록으로 대체하는 언어도 handler 역할은 같아야 한다. 예를 들어 room 생성,
 인증, join, move 처리 handler는 같은 메시지 이름과 같은 책임을 유지한다.
 
-## 6. Play 서버 디렉토리 구조
+## 8. Play 서버 내부 레이어
 
 TicTacToe Play 서버는 작은 샘플이지만 domain logic과 framework adapter를 분리해야
 한다. 다른 언어 framework로 구현할 때도 아래 구조와 책임 분리를 유지한다.
@@ -141,7 +282,7 @@ Domain 객체는 ZLink framework 타입, stream session, actor context, logger�
 승리 판정을 직접 구현하지 않는다. 이 규칙들이 handler나 Spot adapter에 들어가면
 다른 언어 샘플에서 구조가 쉽게 달라지므로 공통 샘플 기준을 만족하지 못한다.
 
-## 7. 게임 규칙
+## 9. 게임 규칙
 
 TicTacToe는 같은 규칙을 모든 언어 샘플에서 사용한다.
 
@@ -153,7 +294,32 @@ TicTacToe는 같은 규칙을 모든 언어 샘플에서 사용한다.
 - 가로, 세로, 대각선 중 한 줄을 먼저 완성한 actor가 이긴다.
 - 모든 cell이 찼고 승자가 없으면 draw다.
 
-## 8. 메시지 계약
+## 10. Client 검증 흐름
+
+TicTacToe client는 아래 순서로 scenario를 실행하고 각 단계의 값을 확인한다.
+
+1. HTTP `CreateGameHttpReq`에 넣은 `GameName`이 `CreateGameHttpRes.GameName`으로
+   돌아오는지 확인한다. `RoomId`와 `PlayEndpoint`가 비어 있지 않은지도 확인한다.
+2. host와 guest가 각각 stream 인증을 요청하고, `AuthenticateRes.ActorId`가 요청한
+   actor id와 같은지 확인한다.
+3. host가 `JoinGameReq(RoomId)`를 보내고 response state의 `RoomId`, `WaitingForPlayers`,
+   `X` 배정을 확인한다. host는 자기 join notify를 받지 않아야 한다.
+4. guest가 같은 `RoomId`로 join하고 response state의 `InProgress`, `O` 배정을 확인한다.
+5. host는 connector wait API로 `PlayerJoinedNotify`를 기다리고, payload의 `ActorId`,
+   `Mark`, `RoomId`, state status가 guest join을 뜻하는지 확인한다. guest는 자기 join
+   notify를 받지 않아야 한다.
+6. host는 connector wait API로 game start `GameStateNotify`를 기다리고 첫 turn이 `X`인지
+   확인한다.
+7. 각 `PlaceMarkReq` response는 board, next turn, last move actor, last move cell을
+   확인한다. 상대 client는 connector wait API로 같은 state를 담은 `GameStateNotify`를
+   기다려 확인한다.
+8. 마지막 host move는 `Won`, winner가 host actor id, board가 deterministic final board인지
+   확인한다. guest는 같은 winner를 담은 final `GameStateNotify`를 받아야 한다.
+
+이 검증은 성공 로그가 아니라 sample release gate다. 언어별 client가 위 값을 확인하지
+않으면 공통 sample 기준을 만족하지 못한다.
+
+## 11. 메시지 계약
 
 아래 계약은 언어 중립 schema다. 언어별 샘플은 같은 이름과 필드를 자기 언어의
 record, class, struct, type alias 등으로 구현한다.
@@ -266,7 +432,7 @@ GameState {
 mark는 `O`로 표현한다. 예를 들어 `"X.O...X.."`는 0번과 6번 cell에 `X`, 2번 cell에
 `O`가 놓인 상태다.
 
-## 9. Room 생성 흐름
+## 12. Room 생성 흐름
 
 ```mermaid
 sequenceDiagram
@@ -293,7 +459,7 @@ stream endpoint를 반환하고, API 서버는 이 값을 client가 사용할 HT
 Spot을 만들고, `JoinGameReq.RoomId`를 같은 방식으로 routing id로 바꾸어 join한다.
 `RoomId`를 core routing id의 hex 문자열로 노출하지 않는다.
 
-## 10. 인증과 입장 흐름
+## 13. 인증과 입장 흐름
 
 ```mermaid
 sequenceDiagram
@@ -317,7 +483,7 @@ sequenceDiagram
     ACT-->>S: JoinGameRes
     S-->>C: Stream JoinGameRes
     ROOM-->>OACT: PlayerJoinedNotify for existing member
-    ROOM-->>OACT: GameStateNotify for running state
+    ROOM-->>OACT: GameStateNotify for in-progress state
     OACT-->>OC: Stream PlayerJoinedNotify
     OACT-->>OC: Stream GameStateNotify
 ```
@@ -327,11 +493,11 @@ sequenceDiagram
 생성하지 않는다.
 
 첫 actor가 join할 때는 self-join notify를 보내지 않는다. 두 번째 actor가 join하면
-기존 room member에게 새 actor 정보를 담은 `PlayerJoinedNotify`와 `Running` state를
+기존 room member에게 새 actor 정보를 담은 `PlayerJoinedNotify`와 `InProgress` state를
 담은 `GameStateNotify`를 보낸다. 두 번째 actor는 자기 join 결과를 `JoinGameRes`로
 확인한다.
 
-## 11. 수 두기와 Notify 흐름
+## 14. 수 두기와 Notify 흐름
 
 ```mermaid
 flowchart LR
@@ -358,7 +524,7 @@ flowchart LR
 잘못된 turn, 이미 사용한 cell, 끝난 room에
 대한 요청은 `PlaceMarkRes` 대신 오류 response를 반환한다.
 
-## 12. Bingo와의 차이
+## 15. Bingo와의 차이
 
 | 항목 | TicTacToe | Bingo |
 |------|-----------|-------|
@@ -370,7 +536,7 @@ flowchart LR
 | 주요 목적 | 작은 직접 play 연결 구조 | 분리된 session gateway 구조 |
 | Handler 등록 | 선언형 등록 우선 | typed handler 계약 명시 등록 |
 
-## 13. 완료 기준
+## 16. 완료 기준
 
 - API 역할과 Play 역할이 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - 별도 Session 서버 프로세스는 없다.

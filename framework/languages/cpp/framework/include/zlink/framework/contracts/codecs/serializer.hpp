@@ -71,6 +71,16 @@ class serializer_registry_t
           [] (const zlink::message_t &message) { return message.template parse_json<T> (); });
     }
 
+    template <typename T> serializer_registry_t &add_message_pack ()
+    {
+        return add_stream_payload<T> ();
+    }
+
+    template <typename T> serializer_registry_t &add_protobuf ()
+    {
+        return add_stream_payload<T> ();
+    }
+
     template <typename T>
     serializer_registry_t &add (typename serializer_t<T>::serialize_fn_t serialize,
                                 typename serializer_t<T>::deserialize_fn_t deserialize)
@@ -101,6 +111,17 @@ class serializer_registry_t
     bool contains (std::type_index type) const;
 
   private:
+    template <typename T> serializer_registry_t &add_stream_payload ()
+    {
+        return add<T> (
+          [] (const T &value) { return to_stream_payload (value); },
+          [] (const zlink::message_t &message) {
+              T value{};
+              from_stream_payload (message, value);
+              return value;
+          });
+    }
+
     serializer_registry_t &add_erased (std::type_index type,
                                        serialize_any_fn_t serialize,
                                        deserialize_any_fn_t deserialize);

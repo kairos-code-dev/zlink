@@ -157,14 +157,20 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-task_t<void> stream_write_call_t::submit ()
+result_t<void> stream_write_call_t::submit ()
 {
-    return task_t<void> (_state->submit ());
+    return _state->submit ();
 }
 
-pending_operation_t stream_write_call_t::submit (std::function<void (result_t<void>)> callback)
+task_t<void> stream_write_call_t::submit_async ()
 {
-    callback (_state->submit ());
+    return task_t<void> (submit ());
+}
+
+pending_operation_t stream_write_call_t::submit_async (
+  std::function<void (result_t<void>)> callback)
+{
+    callback (submit ());
     return pending_operation_t::make_completed ();
 }
 

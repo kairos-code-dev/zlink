@@ -5,6 +5,8 @@
 
 #include <zlink/framework.hpp>
 
+#include <stdexcept>
+
 namespace zlink::samples::bingo
 {
 
@@ -20,6 +22,9 @@ class allocate_bingo_room_handler_t
 
     allocate_bingo_room_res_t handle (const allocate_bingo_room_req_t &request)
     {
+        if (request.actor_id.empty ()) {
+            throw std::runtime_error ("actor id must not be empty");
+        }
         return {_rooms.allocate (request.mode)};
     }
 

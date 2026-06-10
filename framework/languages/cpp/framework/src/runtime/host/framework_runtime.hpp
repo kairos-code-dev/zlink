@@ -11,13 +11,14 @@ class context_t;
 class router_socket_t;
 class dealer_socket_t;
 class stream_socket_t;
-namespace service
+} // namespace zlink
+
+namespace zlink::service
 {
 class discovery_t;
 class registry_t;
 class spot_node_t;
-} // namespace service
-} // namespace zlink
+} // namespace zlink::service
 
 namespace zlink::framework::runtime
 {

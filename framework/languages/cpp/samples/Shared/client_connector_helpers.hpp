@@ -24,6 +24,17 @@ make_immediate_connector_options (std::string endpoint,
     return options;
 }
 
+inline stream_connector::connector_options_t
+make_manual_connector_options (std::string endpoint,
+                               std::chrono::milliseconds connect_timeout,
+                               std::chrono::milliseconds request_timeout)
+{
+    auto options = make_immediate_connector_options (std::move (endpoint), connect_timeout,
+                                                     request_timeout);
+    options.dispatch_mode = stream_connector::dispatch_mode_t::manual;
+    return options;
+}
+
 template <typename TCallResult, typename TValue>
 TCallResult make_client_call_result (std::string packet_name,
                                      const stream_connector::result_t<TValue> &result,
@@ -37,17 +48,17 @@ TCallResult make_client_call_result (std::string packet_name,
 
 inline bool connect_client_connector (stream_connector::connector_t &connector)
 {
-    return static_cast<bool> (connector.connect ().result ());
+    return static_cast<bool> (connector.connect ());
 }
 
 inline void close_client_connector (stream_connector::connector_t &connector)
 {
-    (void) connector.close ().result ();
+    (void) connector.close ();
 }
 
 inline void dispatch_client_connector (stream_connector::connector_t &connector)
 {
-    (void) connector.dispatch ().result ();
+    (void) connector.dispatch ();
 }
 
 template <typename TCallResult, typename TReply, typename TRequest>
@@ -56,7 +67,7 @@ TCallResult request_client_packet (stream_connector::connector_t &connector,
                                    const char *fallback_error = "request failed")
 {
     auto result =
-      stream_connector::codecs::request<TReply> (connector, request).submit ().result ();
+      stream_connector::codecs::request<TReply> (connector, request).submit ();
     return make_client_call_result<TCallResult> (TRequest::packet_name, result, fallback_error);
 }
 
@@ -66,7 +77,7 @@ TCallResult send_client_packet (stream_connector::connector_t &connector,
                                 const char *fallback_error = "send failed")
 {
     auto result =
-      stream_connector::codecs::send (connector, std::move (request)).submit ().result ();
+      stream_connector::codecs::send (connector, std::move (request)).submit ();
     return make_client_call_result<TCallResult> (TRequest::packet_name, result, fallback_error);
 }
 

@@ -883,7 +883,7 @@ CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offlo
 모든 channel handler, route handler, SPOT handler, stream session callback은 framework
 coroutine executor를 통과해 실행한다. 내부 구현은 `boost::asio::thread_pool` 위에서
 `boost::asio::co_spawn`으로 `boost::asio::awaitable<result_t<T>>`를 실행한다. 사용자는
-이 사실을 알 필요가 없고, handler에서는 `task_t<T>`와 `co_await call.submit()`만 사용한다.
+이 사실을 알 필요가 없고, handler에서는 `task_t<T>`와 `co_await call.submit_async()`만 사용한다.
 handler registry와 route/SPOT/stream dispatch의 내부 invoker는 `task_t<...>`를 반환해야
 하며, executor coroutine은 이 task를 await한다. `.result()`는 C core callback처럼
 동기 반환값이 필요한 framework 경계나 테스트 검증 경계에서만 사용한다.
@@ -902,8 +902,8 @@ spot, stream session 같은 의미 단위의 직렬화 정책으로 닫는다. �
 | Entry Spot actor packet | registered Entry Spot actor handler | 같은 actor id는 core actor ordering을 따른다 |
 | user Spot packet/actor packet/subscription/timer | registered Spot handler | 같은 user Spot 안에서는 core SPOT dispatch boundary를 따른다 |
 | Entry Spot timer | registered Entry Spot timer handler | Entry Spot 전체를 전역 직렬화하지 않고, 같은 timer instance만 재진입 금지 |
-| callback submit completion | `submit(callback)` | `result_t<T>`로 완료한다 |
-| coroutine resume | `co_await call.submit()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
+| callback submit completion | `submit_async(callback)` | `result_t<T>`로 완료한다 |
+| coroutine resume | `co_await call.submit_async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
 | CPU-bound handler | `handler_options_t::execution = handler_execution_t::offload` | framework core offload executor에서 실행한다 |
 
 application handler는 CAPI callback 함수 본문 안에서 직접 실행하지 않는다. framework는
@@ -1206,10 +1206,11 @@ timeout, graceful close, drain은 core reliability 표면이다. retry와 dead-l
 handler 재실행 의미, ordering, 중복 처리 정책이 필요하므로 별도 초안으로 분리해
 정확한 계약을 닫는다.
 
-비동기 호출은 `.NET`의 `SubmitAsync()`와 callback submit 모델을 따른다. C++에서는
-`request(...)`, `send(...)`, `relay(...)`가 call object를 만들고, 마지막 `submit()`이
-실제 실행 지점이다. callback 방식은 `submit(callback)`을 쓰고, coroutine 방식은
-`co_await call.submit()`을 쓴다. public async 표면에 `std::future`를 사용하지 않고,
+호출 실행 표면은 동기와 비동기를 이름으로 구분한다. C++에서는 `request(...)`, `send(...)`,
+`relay(...)`가 call object를 만들고, `submit()`은 `result_t<T>`를 반환하는 동기 실행 지점이다.
+`.NET`의 `SubmitAsync()`와 callback completion 모델은 `submit_async()` 이름으로 투영한다.
+callback 방식은 `submit_async(callback)`을 쓰고, coroutine 방식은
+`co_await call.submit_async()`을 쓴다. public async 표면에 `std::future`를 사용하지 않고,
 handler/runtime 내부에서 blocking wait를 허용하지 않는다.
 
 callback submit은 `result_t<T>`로 완료된다. coroutine submit은 성공 시 값을 반환하고,
@@ -1439,7 +1440,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 | channel send/event | no-reply send, command dispatch, event dispatch, handler exception masking, topic mismatch, no subscriber |
 | pub/sub | single subscriber, multiple subscriber, unsubscribe, publisher close, subscriber disconnect, slow subscriber backpressure |
 | route channel | manual route connection, discovery route connection, routing id selection, routed request/reply, route handler not found, ambiguous route validation |
-| async surface | `submit(callback)`, `co_await submit()`, completion path, blocking wait 금지 |
+| async surface | `submit_async(callback)`, `co_await submit_async()`, completion path, blocking wait 금지 |
 | handler execution | 기본 handler 실행, CPU-bound handler offload, concurrency 제한, shutdown drain |
 | STREAM | connected/disconnected/error callback, packet header validation, session ordering, write backpressure, close cleanup, invalid packet drop |
 | SPOT | spot create/destroy, join/leave, actor handler, publish, request_to, route resolver, core SPOT dispatch ordering |
@@ -1467,7 +1468,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 
 필수 회귀 항목은 아래와 같다.
 
-- `submit(callback)`과 `co_await submit()`이 같은 timeout/error kind를 반환한다.
+- `submit_async(callback)`과 `co_await submit_async()`가 같은 timeout/error kind를 반환한다.
 - shutdown 이후 새 submit은 `shutdown`으로 실패한다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
 - channel handler가 없으면 request는 `handler_not_found` 계열 error로 닫히고 runtime은 계속

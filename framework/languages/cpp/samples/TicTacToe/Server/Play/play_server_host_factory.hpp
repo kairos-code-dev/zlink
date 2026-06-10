@@ -2,12 +2,12 @@
 #pragma once
 
 #include "../../Shared/sample.hpp"
-#include "../Api/Handlers/authenticate_player_handler.hpp"
 #include "Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
+#include "Adapters/ZLink/Handlers/create_game_handler.hpp"
 #include "Adapters/ZLink/Sessions/play_session.hpp"
 #include "Adapters/ZLink/Spots/tictactoe_entry_spot.hpp"
 #include "Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
-#include "Application/GameCreation/create_game_room_handler.hpp"
+#include "Application/GameCreation/tictactoe_game_creator.hpp"
 
 #include <memory>
 
@@ -24,16 +24,21 @@ class play_server_host_factory_t
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+            options.services ().add_singleton<tictactoe_game_creator_t> ();
             options.handlers ()
-              .add<authenticate_player_handler_t> ("play")
-              .add<create_game_room_handler_t> ("play")
+              .add<create_game_handler_t> ("play")
               .add<ensure_player_actor_handler_t> ("play");
-            options.codecs ().add_json ();
+            options.codecs ()
+              .add_message_pack ()
+              .add_message_pack<authenticate_player_req_t> ()
+              .add_message_pack<authenticate_player_res_t> ();
             options.services ().add_singleton<sample_topology_t> (
               std::make_unique<sample_topology_t> (topology));
             options.add_client_server_channel (sample_names_t::play_channel)
               .enable_server (topology.play_endpoint)
               .use_handler_group ("play");
+            options.add_client_server_channel (sample_names_t::api_channel)
+              .enable_client (topology.api_endpoint);
             options.add_route_mesh_channel (sample_names_t::router_channel)
               .bind (topology.play_router_endpoint)
               .set_routing_id (topology.play_rid)

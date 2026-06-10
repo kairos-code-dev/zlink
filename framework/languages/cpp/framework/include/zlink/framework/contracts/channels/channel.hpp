@@ -348,8 +348,9 @@ class route_send_call_t
 
     route_send_call_t &packet_name (std::string packet_name);
     route_send_call_t &metadata (std::string key, std::string value);
-    task_t<void> submit ();
-    pending_operation_t submit (std::function<void (result_t<void>)> callback);
+    result_t<void> submit ();
+    task_t<void> submit_async ();
+    pending_operation_t submit_async (std::function<void (result_t<void>)> callback);
 
   private:
     std::string _packet_name;
@@ -369,8 +370,9 @@ class route_request_call_t
     route_request_call_t &packet_name (std::string packet_name);
     route_request_call_t &timeout (std::chrono::milliseconds timeout);
     route_request_call_t &metadata (std::string key, std::string value);
-    task_t<std::uint64_t> submit ();
-    pending_operation_t submit (std::function<void (result_t<std::uint64_t>)> callback);
+    result_t<std::uint64_t> submit ();
+    task_t<std::uint64_t> submit_async ();
+    pending_operation_t submit_async (std::function<void (result_t<std::uint64_t>)> callback);
 
   private:
     std::string _packet_name;
@@ -409,19 +411,21 @@ template <typename TReply> class typed_route_request_call_t
         return *this;
     }
 
-    task_t<TReply> submit ()
+    result_t<TReply> submit ()
     {
         if (!_submit) {
-            return task_t<TReply> (result_t<TReply>::failure (
+            return result_t<TReply>::failure (
               framework_error_kind_t::request_protocol_error,
-              "typed route request call is not bound to a route client"));
+              "typed route request call is not bound to a route client");
         }
-        return task_t<TReply> (_submit (_packet_name, _timeout, _metadata));
+        return _submit (_packet_name, _timeout, _metadata);
     }
 
-    pending_operation_t submit (std::function<void (result_t<TReply>)> callback)
+    task_t<TReply> submit_async () { return task_t<TReply> (submit ()); }
+
+    pending_operation_t submit_async (std::function<void (result_t<TReply>)> callback)
     {
-        auto task = submit ();
+        auto task = submit_async ();
         detail::observe_task_completion (task, std::move (callback));
         return pending_operation_t::make_completed ();
     }

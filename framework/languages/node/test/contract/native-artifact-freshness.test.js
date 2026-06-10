@@ -38,8 +38,7 @@ function activeNativeArtifact() {
 
 function newestNativeSource() {
   const roots = [
-    path.join(bindingRoot, 'native', 'src'),
-    path.join(bindingRoot, 'src', 'zlink', 'runtime', 'native')
+    path.join(bindingRoot, 'native', 'src')
   ];
   const files = [path.join(bindingRoot, 'binding.gyp')];
   for (const root of roots) {

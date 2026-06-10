@@ -131,6 +131,26 @@ try (Message msg = new Message(256)) {
 }
 ```
 
+직접 `recv(..., RecvFlags.NONE)`를 호출하면 현재 Java thread가 native recv에서
+대기합니다. 이 표면은 low-level socket API입니다. 많은 session이나 handler를 처리하는
+framework 경로에서는 이 호출을 handler thread에 직접 올리지 말고, `ZlinkNativeDispatcher`
+를 사용해 poller thread와 callback executor를 분리합니다.
+
+```java
+try (var dispatcher = ZlinkNativeDispatcher.create(
+         ZlinkDispatchOptions.builder()
+             .callbackExecutor(callbackExecutor)
+             .build())) {
+    dispatcher.register(socket, received -> {
+        try (received) {
+            handle(received);
+        }
+        return CompletableFuture.completedFuture(null);
+    });
+    dispatcher.start();
+}
+```
+
 수신된 메시지 읽기:
 
 ```java

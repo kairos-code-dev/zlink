@@ -152,6 +152,40 @@ Enum, flag, result 타입은 그 의미를 부여하는 개념과 함께 둔다.
 `SocketEnums/` 같은 물리 source 폴더는 Java `package` 선언이 소유 contract
 패키지로 유지될 때에만 파일 분류 그룹으로 허용한다.
 
+## Native Wait Boundary
+
+Java 바인딩은 low-level socket recv API와 scalable dispatcher API를 구분한다.
+
+- `socket.recv(received, RecvFlags.NONE)`은 native blocking recv다. 적은 수의 전용
+  thread나 단순 테스트에서 직접 사용할 수 있다.
+- framework나 많은 client session을 처리하는 runtime은 blocking recv를 handler thread에
+  직접 올리지 않는다.
+- `ZlinkNativeDispatcher`는 `Poller`로 readiness를 기다린 뒤, ready socket에 대해
+  `RecvFlags.DONT_WAIT` recv를 수행한다.
+- dispatcher가 수신한 `Received`는 Java callback executor로 전달된다. application handler는
+  native wait thread가 아니라 callback executor 뒤에서 실행된다.
+
+```java
+try (ZlinkNativeDispatcher dispatcher = ZlinkNativeDispatcher.create(
+         ZlinkDispatchOptions.builder()
+             .runtimeThreadCount(1)
+             .pollTimeout(Duration.ofMillis(10))
+             .callbackExecutor(callbackExecutor)
+             .build())) {
+    dispatcher.register(socket, received -> {
+        try (received) {
+            // handle message
+        }
+        return CompletableFuture.completedFuture(null);
+    });
+
+    dispatcher.start();
+}
+```
+
+dispatcher의 목적은 native poll/recv 지식을 bindings 안에 가두는 것이다. framework는
+이미 Java object로 올라온 message를 받아 handler dispatch 정책을 적용한다.
+
 ## Proposed Repository Layout
 
 Java 바인딩 저장소 레이아웃의 리뷰 대상은 다음과 같다. `.NET`과 동일한 public

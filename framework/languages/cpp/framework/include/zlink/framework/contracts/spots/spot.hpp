@@ -747,6 +747,8 @@ class spot_node_builder_t
     spot_node_builder_t &use_discovery (std::string channel_name);
     spot_node_builder_t &use_registry_spot_remote_addresses ();
     spot_node_builder_t &use_registry_spot_remote_addresses (std::string route_channel_name);
+    spot_node_builder_t &accept_routes_from_channel (std::string route_channel_name,
+                                                     std::string endpoint);
     spot_node_builder_t &
     accept_routes_from_channel (std::string route_channel_name,
                                 std::vector<std::string> manual_connections = {});

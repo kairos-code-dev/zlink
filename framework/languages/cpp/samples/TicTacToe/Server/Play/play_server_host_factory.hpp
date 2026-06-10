@@ -47,11 +47,7 @@ class play_server_host_factory_t
             options.add_spot_mesh (sample_names_t::game_spot_discovery)
               .add_node (sample_names_t::spot_node)
               .enable_router (topology.play_spot_router_endpoint, topology.play_rid)
-              .accept_routes_from_channel (
-                sample_names_t::router_channel,
-                [&] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
-                    routes.connect (topology.play_router_endpoint);
-                })
+              .accept_routes_from_channel (sample_names_t::router_channel,topology.play_router_endpoint)
               .add_entry_spot<entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type);

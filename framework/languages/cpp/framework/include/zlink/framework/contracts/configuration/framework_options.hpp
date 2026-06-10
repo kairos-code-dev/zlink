@@ -936,6 +936,17 @@ class spot_node_options_builder_t
         return *this;
     }
 
+    spot_node_options_builder_t &accept_routes_from_channel (std::string route_channel_name,
+                                                             std::string endpoint)
+    {
+        return accept_routes_from_channel (
+          std::move (route_channel_name),
+          [endpoint = std::move (endpoint)] (
+            accepted_spot_route_channel_builder_t &routes) mutable {
+              routes.connect (std::move (endpoint));
+          });
+    }
+
     spot_node_options_builder_t &accept_routes_from_channel (
       std::string route_channel_name,
       std::function<void (accepted_spot_route_channel_builder_t &)> configure)

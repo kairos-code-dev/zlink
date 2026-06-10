@@ -372,10 +372,7 @@ int main ()
       .enable_server (manual_route_endpoint);
     manual_route_options.add_spot_node ("manual-node")
       .enable_router (manual_route_router_endpoint)
-      .accept_routes_from_channel (
-        "manual.api", [&] (zlink::framework::accepted_spot_route_channel_builder_t &routes) {
-            routes.connect (manual_route_endpoint);
-        });
+      .accept_routes_from_channel ("manual.api", manual_route_endpoint);
     manual_route_options.apply ();
     const auto manual_route_spots = manual_route_zlink.spot_nodes ();
     if (manual_route_spots.size () != 1

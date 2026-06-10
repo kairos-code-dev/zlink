@@ -386,6 +386,14 @@ spot_node_builder_t::use_registry_spot_remote_addresses (std::string route_chann
 
 spot_node_builder_t &
 spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
+                                                 std::string endpoint)
+{
+    return accept_routes_from_channel (std::move (route_channel_name),
+                                       std::vector<std::string>{std::move (endpoint)});
+}
+
+spot_node_builder_t &
+spot_node_builder_t::accept_routes_from_channel (std::string route_channel_name,
                                                  std::vector<std::string> manual_connections)
 {
     if (route_channel_name.empty () || is_blank (route_channel_name)) {

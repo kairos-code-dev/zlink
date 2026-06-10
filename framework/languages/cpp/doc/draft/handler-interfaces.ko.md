@@ -93,7 +93,7 @@ framework core에서 Header 기반 packet 방식만 지원하므로 raw stream s
 
 request handler는 `TReply`를 바로 반환하거나 `task_t<TReply>`를 반환할 수 있다.
 후자는 `.NET`의 `async Task<TReply>` handler와 같은 의미다. handler 안에서 다른
-request/relay를 기다려야 하면 blocking wait를 쓰지 않고 `co_await call.submit_async()`를
+request/relay를 기다려야 하면 blocking wait를 쓰지 않고 `co_await call.async()`를
 사용한다.
 
 CPU-bound 또는 blocking 가능성이 있는 handler는 framework handler coroutine executor에서

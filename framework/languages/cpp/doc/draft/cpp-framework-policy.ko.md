@@ -441,14 +441,14 @@ API를 `task_t<T>` 기반 awaitable 표면으로 통일한다.
 
 서버 public API의 이름 규칙은 아래와 같다.
 
-- 네트워크 작업은 `*_async` 또는 call object의 `submit_async()`로 완료한다.
+- 네트워크 작업은 `*_async` 또는 call object의 `async()`로 완료한다.
 - `*_async` 함수는 callback을 받지 않고 `task_t<T>` 또는 `task_t<void>`를 반환한다.
-- `submit_async(callback)` 형태는 server framework public API로 제공하지 않는다.
+- `submit(callback)` 형태는 server framework public API로 제공하지 않는다.
 - `submit()`이 thread를 block해서 `result_t<T>`를 반환하는 네트워크 API는 제공하지 않는다.
 - 설정 builder, DI 등록, route 등록, serializer 등록처럼 I/O가 없는 구성 API는 동기 함수로
   유지한다.
 - handler는 application callback이므로 동기 handler와 coroutine handler를 모두 허용할 수
-  있다. 단, handler 안에서 네트워크 호출을 해야 하면 `co_await ...submit_async()`를 사용한다.
+  있다. 단, handler 안에서 네트워크 호출을 해야 하면 `co_await ...async()`를 사용한다.
 
 네트워크 작업은 응답 payload가 없어도 async API로 둔다. reply가 없다는 뜻은 대기할 payload가
 없다는 뜻일 뿐, backpressure, route ready, send timeout, cancellation, runtime shutdown,
@@ -910,7 +910,7 @@ CPU-bound 또는 blocking 가능성이 있는 handler는 framework core의 offlo
 모든 channel handler, route handler, SPOT handler, stream session callback은 framework
 coroutine executor를 통과해 실행한다. 내부 구현은 `boost::asio::thread_pool` 위에서
 `boost::asio::co_spawn`으로 `boost::asio::awaitable<result_t<T>>`를 실행한다. 사용자는
-이 사실을 알 필요가 없고, handler에서는 `task_t<T>`와 `co_await call.submit_async()`만 사용한다.
+이 사실을 알 필요가 없고, handler에서는 `task_t<T>`와 `co_await call.async()`만 사용한다.
 handler registry와 route/SPOT/stream dispatch의 내부 invoker는 `task_t<...>`를 반환해야
 하며, executor coroutine은 이 task를 await한다. `.result()`는 C core callback처럼
 동기 반환값이 필요한 framework 경계나 테스트 검증 경계에서만 사용한다.
@@ -929,7 +929,7 @@ spot, stream session 같은 의미 단위의 직렬화 정책으로 닫는다. �
 | Entry Spot actor packet | registered Entry Spot actor handler | 같은 actor id는 core actor ordering을 따른다 |
 | user Spot packet/actor packet/subscription/timer | registered Spot handler | 같은 user Spot 안에서는 core SPOT dispatch boundary를 따른다 |
 | Entry Spot timer | registered Entry Spot timer handler | Entry Spot 전체를 전역 직렬화하지 않고, 같은 timer instance만 재진입 금지 |
-| network operation resume | `co_await call.submit_async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
+| network operation resume | `co_await call.async()` | 성공 값 또는 `framework_exception_t`로 완료한다 |
 | CPU-bound handler | `handler_options_t::execution = handler_execution_t::offload` | framework core offload executor에서 실행한다 |
 
 application handler는 CAPI callback 함수 본문 안에서 직접 실행하지 않는다. framework는
@@ -954,7 +954,7 @@ backpressure는 zlink framework의 핵심 강점으로 다룬다.
 명시적으로 둘 수 있어야 한다.
 
 send-ready callback, pending queue resume, HWM drain 순서는 runtime 내부 구현이다.
-application은 `co_await call.submit_async()`, timeout exception, monitoring event로
+application은 `co_await call.async()`, timeout exception, monitoring event로
 backpressure를 본다.
 `spot_context_t` 같은 public context가 pending queue를 직접 resume하는 API를 제공하지
 않는다.
@@ -1235,7 +1235,7 @@ handler 재실행 의미, ordering, 중복 처리 정책이 필요하므로 별�
 
 호출 실행 표면은 `.NET` framework의 awaitable network API와 같은 방향으로 둔다.
 C++에서는 `request(...)`, `send(...)`, `relay(...)`가 call object를 만들고,
-`co_await call.submit_async()`가 실행 지점이다. `submit_async()`는 callback을 받지 않고
+`co_await call.async()`가 실행 지점이다. `async()`는 callback을 받지 않고
 `task_t<T>` 또는 `task_t<void>`를 반환한다. public async 표면에 `std::future`를 사용하지
 않고, handler/runtime 내부에서 blocking wait를 허용하지 않는다.
 
@@ -1454,7 +1454,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 - GoogleTest와 GoogleMock은 framework C++ 개발 의존성이다. public framework header와
   배포 runtime dependency에는 노출하지 않는다.
 - C++20 compile contract 테스트를 별도로 둔다. public header, concepts, coroutine
-  return type, network `submit_async()` signature가 깨지면 컴파일 단계에서 실패해야 한다.
+  return type, network `async()` signature가 깨지면 컴파일 단계에서 실패해야 한다.
 - 회귀 테스트는 `.NET` framework와 같은 기능 축을 C++ 표면으로 반복한다. C++ 문법만
   다르고 기능 기대값은 같아야 한다.
 
@@ -1466,7 +1466,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 | channel send/event | no-reply send, command dispatch, event dispatch, handler exception masking, topic mismatch, no subscriber |
 | pub/sub | single subscriber, multiple subscriber, unsubscribe, publisher close, subscriber disconnect, slow subscriber backpressure |
 | route channel | manual route connection, discovery route connection, routing id selection, routed request/reply, route handler not found, ambiguous route validation |
-| async surface | `co_await submit_async()`, exception mapping, callback overload 금지, blocking wait 금지 |
+| async surface | `co_await async()`, exception mapping, callback overload 금지, blocking wait 금지 |
 | handler execution | 기본 handler 실행, CPU-bound handler offload, concurrency 제한, shutdown drain |
 | STREAM | connected/disconnected/error callback, packet header validation, session ordering, write backpressure, close cleanup, invalid packet drop |
 | SPOT | spot create/destroy, join/leave, actor handler, publish, request_to, route resolver, core SPOT dispatch ordering |
@@ -1494,8 +1494,8 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 
 필수 회귀 항목은 아래와 같다.
 
-- `co_await submit_async()`가 timeout/error kind를 보존한 `framework_exception_t`로 실패한다.
-- shutdown 이후 새 `submit_async()`는 `shutdown`으로 실패한다.
+- `co_await async()`가 timeout/error kind를 보존한 `framework_exception_t`로 실패한다.
+- shutdown 이후 새 `async()`는 `shutdown`으로 실패한다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
 - channel handler가 없으면 request는 `handler_not_found` 계열 error로 닫히고 runtime은 계속
   동작한다.

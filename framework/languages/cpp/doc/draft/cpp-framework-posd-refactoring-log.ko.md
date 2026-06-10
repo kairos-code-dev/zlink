@@ -3235,7 +3235,7 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_channel_mes
 - `native_route_backend_t`가 route send parts를 `router_socket_t::send(...).message(...).submit()`
   경로로 내려보내도록 구현했다.
 - `native_route_backend_t`가 route request parts를
-  `router_socket_t::request(...).message(...).timeout(...).submit_async().get()` 경로로 보내고
+  `router_socket_t::request(...).message(...).timeout(...).async().get()` 경로로 보내고
   reply vector를 framework `message_parts_t`로 복원하도록 구현했다.
 - `route_channel_runtime_t`에 send backend seam과 `attach_native_backend(...)`를 추가했다.
 - `message_parts_t`가 native multipart reply를 보존할 수 있도록 vector 생성자를 추가했다.

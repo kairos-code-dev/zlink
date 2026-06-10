@@ -88,13 +88,13 @@ public:
         if (is_login(header)) {
             actor_ = co_await actors_
               .bind(find_actor_ref(payload))
-              .submit_async();
+              .async();
             co_return;
         }
 
         co_await actor_
           .relay(header, payload)
-          .submit_async();
+          .async();
     }
 
 private:

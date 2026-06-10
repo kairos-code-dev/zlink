@@ -203,7 +203,7 @@ Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로
 | core connector | metadata, payload compression flag 처리 |
 | core connector | max send payload size, max metadata size |
 | core connector | connector instance별 독립 실행 |
-| coroutine adapter | no-callback `submit_async()`와 `co_await` 표면 |
+| coroutine adapter | no-callback `async()`와 `co_await` 표면 |
 | throwing adapter | 성공 값을 바로 반환하고 실패를 예외로 바꾸는 표면 |
 | engine adapter | 엔진별 delegate, signal, main thread dispatch 표면 |
 
@@ -358,7 +358,7 @@ connector.on<chat_pushed_t>([](const chat_pushed_t &message) {
 connector.dispatch();
 ```
 
-callback API에는 `submit_async(callback)` 이름을 쓰지 않는다. C++ connector에서 `*_async`는
+callback API에는 `submit(callback)` 이름을 쓰지 않는다. C++ connector에서 `*_async`는
 `co_await` 가능한 값을 반환하는 coroutine adapter 전용 이름이다. core callback 표면은
 `on_completed(...).start()`를 기준으로 둔다. 이 형태가 completion 등록과 operation 시작을
 분리해서 보여 주고, Unreal, Godot, Axmol facade로 옮기기도 쉽다.
@@ -386,18 +386,18 @@ coroutine adapter는 core connector 위의 선택 표면이다. 공통 의미는
 사용한다.
 
 coroutine adapter에서만 `connect_async()`, `close_async()`, `dispatch_async()`,
-`submit_async()`, `wait_for_async()` 같은 `*_async` 이름을 제공한다. 이 함수들은 callback을
+`async()`, `wait_for(...).async()` 같은 `*_async` 이름을 제공한다. 이 함수들은 callback을
 받지 않고 `task_t<T>`처럼 `co_await` 가능한 값을 반환한다. callback 기반 completion이 필요하면
 core connector의 `on_completed(...).start()` 표면을 사용한다.
 
 ```cpp
 auto auth = co_await client
   .request<auth_res_t>(auth_req_t{"player-1"})
-  .submit_async();
+  .async();
 ```
 
 이 adapter는 core connector package의 필수 dependency가 아니다. 사용자가 adapter header나
-component를 선택했을 때만 `task_t<T>`와 no-callback `submit_async()`가 보이게 한다.
+component를 선택했을 때만 `task_t<T>`와 no-callback `async()`가 보이게 한다.
 
 ## 8. Throwing Adapter
 
@@ -592,8 +592,8 @@ UnrealEditor-Cmd <TestProject>.uproject \
 ## 14. 구현 순서
 
 이 초안은 아직 정식 공개 계약이 아니므로 기존 실험 API와의 호환성을 유지하지 않는다.
-코드 적용 시에는 `submit_async(callback)`, core header의 `task_t`, core header의
-`connect_async()`, `close_async()`, `dispatch_async()`, `wait_for_async()`를 deprecated로
+코드 적용 시에는 `submit(callback)`, core header의 `task_t`, core header의
+`connect_async()`, `close_async()`, `dispatch_async()`, `wait_for(...).async()`를 deprecated로
 남기지 않고 제거한다. 샘플과 테스트도 새 표면으로 바로 옮긴다.
 
 구현은 아래 순서로 진행한다.
@@ -601,13 +601,13 @@ UnrealEditor-Cmd <TestProject>.uproject \
 1. `connector/`를 독립 CMake package로 분리한다.
 2. core connector public contract에서 `task_t` include와 모든 `*_async` member를 제거한다.
 3. `send_call_t`, `request_call_t`, `wait_call_t`에 core callback 표면인
-   `on_completed(...).start()`를 추가하고, 기존 `submit_async(callback)`은 제거한다.
+   `on_completed(...).start()`를 추가하고, 기존 `submit(callback)`은 제거한다.
 4. codec helper도 core helper와 coroutine helper로 나눈다. core codec helper는
-   `submit()`, `on_completed(...).start()`만 노출하고, `submit_async()`는 coroutine helper로
+   `submit()`, `on_completed(...).start()`만 노출하고, `async()`는 coroutine helper로
    옮긴다.
 5. coroutine adapter header와 package component를 추가한다. 이 adapter에서만
-   `connect_async()`, `close_async()`, `dispatch_async()`, `wait_for_async()`,
-   `submit_async()`를 제공한다.
+   `connect_async()`, `close_async()`, `dispatch_async()`, `wait_for(...).async()`,
+   `async()`를 제공한다.
 6. throwing adapter를 core와 분리한다.
 7. 샘플과 테스트를 새 core 표면 또는 coroutine adapter 표면 중 하나로 명시적으로 옮긴다.
    게임 client 샘플은 core 표면을 기준으로 작성하고, 서버 성능 테스트 client나 CLI 성격의

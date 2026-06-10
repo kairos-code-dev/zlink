@@ -259,13 +259,13 @@ test('native addon registration stays limited to runtime-owned methods', () => {
   ];
 
   for (const name of removedExports) {
-    assert.doesNotMatch(body, new RegExp(`ZLINK_METHOD\\("${name}"`));
+    assert.doesNotMatch(body, new RegExp(`ZLINK_METHOD\\s*\\("${name}"`));
   }
 });
 
 test('native addon registration matches the typed native binding surface', () => {
   const addon = readNativeRegistrationSources();
-  const registered = [...addon.matchAll(/ZLINK_METHOD\("([^"]+)"/g)]
+  const registered = [...addon.matchAll(/ZLINK_METHOD\s*\("([^"]+)"/g)]
     .map((match) => match[1])
     .sort();
   const typed = readTypedNativeBindingMethods();

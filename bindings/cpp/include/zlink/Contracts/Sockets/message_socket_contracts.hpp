@@ -72,11 +72,6 @@ class dealer_socket_t : public message_socket_t
 
     int recv (message_t &part_out_, recv_flags_t flags_ = recv_flags_t::none);
 
-    [[nodiscard]] int send_no_wait (send_result_t &result_, message_t &part_)
-    {
-        return socket_t::send_no_wait_result (result_, part_);
-    }
-
     void set_send_ready_handler (std::function<void ()> handler_)
     {
         socket_t::set_send_ready_handler (std::move (handler_));

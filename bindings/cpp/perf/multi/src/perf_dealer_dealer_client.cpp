@@ -250,17 +250,10 @@ class dealer_dealer_client_bench_t
             debug_log ("stamp payload failed");
             return false;
         }
-        zlink::send_result_t send_result = zlink::send_result_t::not_ready;
-        if (state.sock->send_no_wait (send_result, state.message) != 0) {
-            const int err = errno;
-            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR) {
-                debug_log ("send failed errno=" + std::to_string (err));
-                errno = err;
-                return false;
-            }
-            errno = err;
-        }
-        sent = send_result == zlink::send_result_t::sent;
+        sent = state.sock->send ()
+                 .message (state.message)
+                 .flags (zlink::send_flags_t::dontwait)
+                 .submit ();
         if (sent) {
             ++_seq;
             state.pending = false;

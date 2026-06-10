@@ -5,11 +5,11 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const specPath = path.join(workspaceRoot, 'doc', 'spec', 'handler-interfaces.ko.md');
-const declarationsPath = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts', 'index.d.ts');
+const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 
 test('framework contract declarations cover handler interface catalog exports', () => {
   const spec = fs.readFileSync(specPath, 'utf8');
-  const declarations = fs.readFileSync(declarationsPath, 'utf8');
+  const declarations = readTree(declarationsRoot);
   const missing = [];
 
   for (const name of exportedCatalogNames(spec)) {
@@ -37,7 +37,7 @@ test('framework runtime exports decorator factories and enums from the catalog',
 });
 
 test('spot actor lifecycle handler registration API is not public', () => {
-  const declarations = fs.readFileSync(declarationsPath, 'utf8');
+  const declarations = readTree(declarationsRoot);
   const workspaceText = [
     declarations,
     readTree(path.join(workspaceRoot, 'samples')),
@@ -61,7 +61,7 @@ test('spot actor lifecycle handler registration API is not public', () => {
 });
 
 test('entry spot public surface exposes no create or admission callbacks', () => {
-  const declarations = fs.readFileSync(declarationsPath, 'utf8');
+  const declarations = readTree(declarationsRoot);
   const entrySpot = declarationBody(declarations, 'ZLinkEntrySpot');
   const entryContext = declarationBody(declarations, 'ZLinkEntrySpotContext');
 

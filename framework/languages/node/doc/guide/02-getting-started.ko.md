@@ -5,6 +5,10 @@ runtime 과 기본 client provider 가 등록된다.
 `@zlink-systems/nestjs` 는 `@nestjs/common` 의 실제 `DynamicModule`, provider,
 lifecycle hook 을 사용한다. 따라서 아래 모듈은 NestJS 애플리케이션 컨텍스트 안에서
 생성되고, provider 주입도 NestJS DI 컨테이너가 처리한다.
+application 코드는 `@zlink-systems/framework`의 root export와
+`@zlink-systems/nestjs`가 공개한 module, decorator, token만 사용한다. `dist/runtime/*`
+또는 `dist/internal` 같은 runtime 구현 경로는 public contract가 아니며, NestJS adapter가
+host lifecycle 안에서 대신 시작하고 종료한다.
 
 ```ts
 import { Module } from '@nestjs/common';
@@ -95,11 +99,11 @@ export class AppModule {}
 
 ## 3. 종료
 
-`ZLinkFrameworkRuntimeHost` 는 NestJS lifecycle hook 으로 시작되고 닫힌다.
+ZLink runtime은 NestJS lifecycle hook 안에서 시작되고 닫힌다.
 `NestFactory.createApplicationContext(...)` 또는 일반 NestJS 애플리케이션 부트스트랩이
 끝나면 runtime 이 시작되고, `app.close()` 또는 shutdown hook 에서 framework context 도
-같이 정리된다. 샘플도 직접 `new ZLinkFrameworkRuntimeHost(...)` 를 만들지 않고
-NestJS application context 를 통해 runtime 과 client provider 를 받는다.
+같이 정리된다. 샘플도 runtime 구현체를 직접 만들지 않고 NestJS application context 를
+통해 client provider 를 받는다.
 
 ## 회귀 테스트
 

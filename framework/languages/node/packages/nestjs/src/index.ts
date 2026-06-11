@@ -29,11 +29,55 @@ import type {
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 
-type FrameworkModule = typeof import('@zlink-systems/framework');
+type RuntimeConstructor<T> = new (...args: unknown[]) => T;
+
+interface FrameworkRuntimeHost {
+  readonly channelTransport: unknown;
+  readonly routeTransport: unknown;
+  readonly spotPublisherTransport: unknown;
+  readonly streamBindingRuntime: unknown;
+  readonly boundSessionFactory: unknown;
+  readonly isStarted: boolean;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  onApplicationBootstrap(): Promise<void>;
+  onApplicationShutdown(): Promise<void>;
+}
+
+interface RegistryRuntime {
+  readonly isStarted: boolean;
+  start(signal?: AbortSignal): Promise<void>;
+  stop(signal?: AbortSignal): Promise<void>;
+}
+
+interface FrameworkModule {
+  readonly ZLinkConfigurationException: new (message: string) => Error;
+  readonly ZLinkRegistryRuntime: RuntimeConstructor<RegistryRuntime>;
+  readonly DefaultZLinkRegistryQuery: new (runtime: RegistryRuntime) => unknown;
+  readonly DefaultZLinkRegistryQueryClient: new (options: { readonly registration: ZLinkRegistryQueryClientOptions }) => unknown;
+  readonly ZLinkFrameworkRuntimeHost: new (options: {
+    readonly registration: ZLinkFrameworkRegistration;
+    readonly providerResolver?: ZLinkProviderResolver;
+  }) => FrameworkRuntimeHost;
+  readonly DefaultZLinkChannelClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkFanoutClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkRouteClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkSpotPublisherClient: new (registration: ZLinkFrameworkRegistration, transport: unknown) => unknown;
+  readonly DefaultZLinkActorManager: new (options: Record<string, unknown>) => unknown;
+  readonly DefaultZLinkSpotManager: new (options: Record<string, unknown>) => unknown;
+  readonly DefaultZLinkSpotOutbound: new (...args: unknown[]) => unknown;
+  readonly ZLinkSpotSerialExecutor: new () => unknown;
+  readonly ZLinkRegistrySpotRemoteAddressResolver: new (options: { readonly registration: ZLinkFrameworkRegistration }) => ZLinkSpotRemoteAddressResolver;
+  createFrameworkRegistration(options: ZLinkFrameworkRegistrationOptions): ZLinkFrameworkRegistration;
+  hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
+  hasActorManager(registration: ZLinkFrameworkRegistration): boolean;
+  hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean;
+  hasSpotRemoteAddressResolver(registration: ZLinkFrameworkRegistration): boolean;
+}
 
 const framework = loadFramework();
 
-type RuntimeHost = InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>;
+type RuntimeHost = FrameworkRuntimeHost;
 type RuntimeHostWithNestLifecycle = RuntimeHost & OnModuleInit & OnModuleDestroy;
 
 export interface ZLinkModuleFactoryOptions {
@@ -569,7 +613,7 @@ export class ZLinkRegistryModule {
       queryToken: ZLINK_REGISTRY_QUERY,
       createRuntime: (registration: ZLinkRegistryOptions) =>
         new framework.ZLinkRegistryRuntime({ registration }),
-      createQuery: (runtime: InstanceType<FrameworkModule['ZLinkRegistryRuntime']>) =>
+      createQuery: (runtime: RegistryRuntime) =>
         new framework.DefaultZLinkRegistryQuery(runtime)
     });
   }
@@ -628,10 +672,10 @@ function createRegistryDynamicModuleFromFactory(options: {
   readonly options: ZLinkRegistryModuleFactoryOptions;
   readonly runtimeToken: InjectionToken;
   readonly queryToken: InjectionToken;
-  readonly createRuntime: (registration: ZLinkRegistryOptions) => InstanceType<FrameworkModule['ZLinkRegistryRuntime']>;
+  readonly createRuntime: (registration: ZLinkRegistryOptions) => RegistryRuntime;
   readonly createQuery: (
-    runtime: InstanceType<FrameworkModule['ZLinkRegistryRuntime']>
-  ) => InstanceType<FrameworkModule['DefaultZLinkRegistryQuery']>;
+    runtime: RegistryRuntime
+  ) => unknown;
 }): DynamicModule {
   return {
     module: options.module,
@@ -1051,8 +1095,6 @@ function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {
   );
 }
 
-type FrameworkRuntimeHost = InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>;
-
 interface AlwaysAvailableClientProviderSpec {
   readonly token: InjectionToken;
   create(registration: ZLinkFrameworkRegistration, runtime: FrameworkRuntimeHost): unknown;
@@ -1312,7 +1354,7 @@ function createSpotManager(
   registration: ZLinkFrameworkRegistration,
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
-): InstanceType<FrameworkModule['DefaultZLinkSpotManager']> {
+): unknown {
   return new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
@@ -1321,10 +1363,10 @@ function createSpotManager(
 
 async function createSpotOutbound(
   registration: ZLinkFrameworkRegistration,
-  runtime: InstanceType<FrameworkModule['ZLinkFrameworkRuntimeHost']>,
+  runtime: FrameworkRuntimeHost,
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
-): Promise<InstanceType<FrameworkModule['DefaultZLinkSpotOutbound']>> {
+): Promise<unknown> {
   const resolver = framework.hasSpotRemoteAddressResolver(registration)
     ? await createSpotRemoteAddressResolver(registration, moduleRef, discovery)
     : undefined;
@@ -1379,12 +1421,5 @@ function spotRemoteAddressResolverProviders(registration: ZLinkFrameworkRegistra
 
 function loadFramework(): FrameworkModule {
   const requireFramework = createRequire(__filename);
-  try {
-    return requireFramework('@zlink-systems/framework') as FrameworkModule;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') {
-      throw error;
-    }
-    return requireFramework(path.resolve(__dirname, '../../framework/dist')) as FrameworkModule;
-  }
+  return requireFramework(path.resolve(__dirname, '../../framework/dist/internal')) as FrameworkModule;
 }

@@ -102,7 +102,7 @@ public sealed class test_spot_router_channel_peer
             .RequestToSpot(nodeRid, spotRid)
             .Message(request)
             .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync();
+            .Async();
         try
         {
             Message part = Assert.Single(reply);
@@ -167,7 +167,7 @@ public sealed class test_spot_router_channel_peer
             .Message(requestHeader)
             .Message(requestBody)
             .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync();
+            .Async();
         try
         {
             Message part = Assert.Single(reply);

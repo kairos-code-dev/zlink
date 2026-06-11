@@ -47,7 +47,7 @@ internal static class Program
         IReadOnlyList<Message> reply = await room.RequestToChannel(channel)
             .Message(Message.From("get-profile"))
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
         await server;
 
         Console.WriteLine($"[spot/channel] request \"get-profile\" -> reply \"{reply[0].GetString()}\"");

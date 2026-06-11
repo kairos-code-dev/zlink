@@ -74,7 +74,7 @@ public interface ActorJoinSubmitOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> SubmitAsync(
+    Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> Async(
         CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
@@ -117,7 +117,7 @@ public interface ActorJoinEntrySpotOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<ActorJoinEntrySpotResult> SubmitAsync(CancellationToken ct = default);
+    Task<ActorJoinEntrySpotResult> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>

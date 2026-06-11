@@ -22,7 +22,7 @@ internal static class Program
         RoutingId session = RoutingId.From("player-session");
         // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
         Zlink.MultipartClose(await stream.BindActor(session, player.Ref)
-            .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+            .Timeout(TimeSpan.FromSeconds(2)).Async());
 
         // dispatch 핸들러: STREAM이 relay한 메시지를 모은다.
         room.SetDispatchHandler(info =>
@@ -53,7 +53,7 @@ internal static class Program
         // join으로 Entry Spot에서 room(user Spot)으로 이동한다.
         using (Message joinMsg = Message.From("enter-room"))
         {
-            var task = player.Join(room).Message(joinMsg).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+            var task = player.Join(room).Message(joinMsg).Timeout(TimeSpan.FromSeconds(2)).Async();
             Accept();
             Zlink.MultipartClose((await task).Parts);
         }
@@ -71,7 +71,7 @@ internal static class Program
         if (!processed.SequenceEqual(commands))
             throw new Exception($"messages were not processed in order: {string.Join(",", processed)}");
 
-        Zlink.MultipartClose(await player.Leave(room).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+        Zlink.MultipartClose(await player.Leave(room).Timeout(TimeSpan.FromSeconds(2)).Async());
         Console.WriteLine("[actor/sequential] processed in order: move -> attack -> loot");
         // --8<-- [end:doc]
     }

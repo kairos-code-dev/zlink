@@ -40,7 +40,7 @@ public interface ActorLeaveOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<Message>> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>
@@ -59,7 +59,7 @@ public interface ActorDestroyOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<Message>> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>
@@ -78,7 +78,7 @@ public interface ActorLookupOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<ActorLookupResult> SubmitAsync(CancellationToken ct = default);
+    Task<ActorLookupResult> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>
@@ -97,7 +97,7 @@ public interface ActorBindOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<Message>> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>
@@ -116,7 +116,7 @@ public interface ActorUnbindOperation
     /// <summary>
     /// Submits the operation and returns the result asynchronously.
     /// </summary>
-    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<Message>> Async(CancellationToken ct = default);
     /// <summary>
     /// Submits the operation; the result is delivered to the callback.
     /// </summary>

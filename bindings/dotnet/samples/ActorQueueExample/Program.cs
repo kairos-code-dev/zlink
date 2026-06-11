@@ -20,7 +20,7 @@ internal static class Program
         stream.AttachActorGateway(node);
         RoutingId session = RoutingId.From("single-player-session");
         Zlink.MultipartClose(await stream.BindActor(session, actor.Ref)
-            .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+            .Timeout(TimeSpan.FromSeconds(2)).Async());
 
         // dispatch 핸들러: actor에게 온 메시지를 모은다.
         spot.SetDispatchHandler(info =>
@@ -51,7 +51,7 @@ internal static class Program
         async Task Join(string payload)
         {
             using Message m = Message.From(payload);
-            var task = actor.Join(spot).Message(m).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+            var task = actor.Join(spot).Message(m).Timeout(TimeSpan.FromSeconds(2)).Async();
             Accept();
             Zlink.MultipartClose((await task).Parts);
         }
@@ -64,7 +64,7 @@ internal static class Program
 
         await Join("join-first");  // actor가 spot에 합류
         Send("before");            // joined 상태에서 도착
-        Zlink.MultipartClose(await actor.Leave(spot).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync()); // 처리 위치 이탈
+        Zlink.MultipartClose(await actor.Leave(spot).Timeout(TimeSpan.FromSeconds(2)).Async()); // 처리 위치 이탈
         Send("between");           // leave 사이에 도착 → 큐잉
         await Join("join-second"); // rejoin → 큐된 메시지가 핸들러로 배달된다
 
@@ -73,7 +73,7 @@ internal static class Program
         if (!payloads.SequenceEqual(new[] { "before", "between" }))
             throw new Exception($"queued payloads were not preserved: {string.Join(",", payloads)}");
 
-        Zlink.MultipartClose(await actor.Leave(spot).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+        Zlink.MultipartClose(await actor.Leave(spot).Timeout(TimeSpan.FromSeconds(2)).Async());
         Console.WriteLine("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");
     }
 }

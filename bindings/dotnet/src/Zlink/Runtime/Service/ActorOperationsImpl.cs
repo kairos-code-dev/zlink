@@ -88,7 +88,7 @@ internal sealed class ActorJoinOperationImpl : ActorJoinOperation,
     }
 
     public Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)>
-        SubmitAsync(CancellationToken ct = default)
+        Async(CancellationToken ct = default)
     {
         EnsureReady();
         if (_callbackStage)
@@ -151,7 +151,7 @@ internal sealed class ActorJoinEntrySpotOperationImpl :
         return this;
     }
 
-    public Task<ActorJoinEntrySpotResult> SubmitAsync(
+    public Task<ActorJoinEntrySpotResult> Async(
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
@@ -231,7 +231,7 @@ internal sealed class ActorLeaveOperationImpl : ActorLeaveOperation
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
@@ -276,7 +276,7 @@ internal sealed class ActorDestroyOperationImpl : ActorDestroyOperation
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
@@ -323,7 +323,7 @@ internal sealed class ActorLookupOperationImpl : ActorLookupOperation
         return this;
     }
 
-    public Task<ActorLookupResult> SubmitAsync(CancellationToken ct = default)
+    public Task<ActorLookupResult> Async(CancellationToken ct = default)
     {
         EnsureNotSubmitted();
         _submission.MarkSubmitted();
@@ -370,7 +370,7 @@ internal sealed class ActorBindOperationImpl : ActorBindOperation
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();
@@ -418,7 +418,7 @@ internal sealed class ActorUnbindOperationImpl : ActorUnbindOperation
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureNotSubmitted();

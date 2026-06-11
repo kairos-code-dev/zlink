@@ -66,7 +66,7 @@ internal sealed class DealerRequestOperation : RequestOperation,
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureReady();
@@ -183,7 +183,7 @@ internal sealed class RouterRequestOperation : RequestOperation,
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureReady();

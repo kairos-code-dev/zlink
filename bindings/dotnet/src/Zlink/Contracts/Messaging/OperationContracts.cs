@@ -88,7 +88,7 @@ public interface RequestSubmitOperation
 
     /// <summary>
     /// Sets the send flags and narrows the builder to callback submission:
-    /// once flags are set the awaitable <see cref="SubmitAsync"/> is no longer
+    /// once flags are set the awaitable <see cref="Async"/> is no longer
     /// reachable, only <see cref="RequestCallbackSubmitOperation.Submit"/>.
     /// </summary>
     RequestCallbackSubmitOperation Flags(SendFlags flags);
@@ -100,7 +100,7 @@ public interface RequestSubmitOperation
     /// The caller owns the returned messages and must dispose them. Request
     /// parts follow the consume-on-submit contract of <see cref="SendOperation"/>.
     /// </remarks>
-    Task<IReadOnlyList<Message>> SubmitAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<Message>> Async(CancellationToken ct = default);
 
     /// <summary>
     /// Submits the request; the result and reply parts are delivered later to

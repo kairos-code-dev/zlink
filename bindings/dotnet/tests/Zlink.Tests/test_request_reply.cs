@@ -50,7 +50,7 @@ public sealed class test_request_reply
         IReadOnlyList<Message> reply = await dealerSocket.Request()
             .Message(request)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync();
+            .Async();
         try
         {
             Assert.Equal("pong", reply[0].GetString());
@@ -88,11 +88,11 @@ public sealed class test_request_reply
         Task<IReadOnlyList<Message>> requestATask = clientA.Request()
             .Message(requestA)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync();
+            .Async();
         Task<IReadOnlyList<Message>> requestBTask = clientB.Request()
             .Message(requestB)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync();
+            .Async();
 
         Received? receivedA = null;
         Received? receivedB = null;

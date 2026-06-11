@@ -38,7 +38,7 @@ internal static class Program
         var replyParts = await requester.RequestToChannel(channelName)
             .Message(request)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync();
+            .Async();
         using Message replyPart = replyParts[0];
         SampleSupport.EnsureEqual("spot-pong", replyPart.GetString(), "reply");
         for (int i = 1; i < replyParts.Count; i++)

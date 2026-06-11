@@ -154,7 +154,7 @@ internal sealed class SpotRequestOperation : RequestOperation,
         return this;
     }
 
-    public Task<IReadOnlyList<Message>> SubmitAsync(
+    public Task<IReadOnlyList<Message>> Async(
         CancellationToken ct = default)
     {
         EnsureReadyToSubmit();

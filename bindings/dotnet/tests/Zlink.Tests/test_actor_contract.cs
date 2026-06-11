@@ -22,7 +22,7 @@ public sealed class test_actor_contract
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+                .Timeout(TimeSpan.FromSeconds(2)).Async();
 
         ActorJoinRequest? request = null;
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -52,7 +52,7 @@ public sealed class test_actor_contract
         Assert.Contains(spot.Actors(),
             entry => entry.ActorId == actor.Ref.ActorId);
         Zlink.MultipartClose(await actor.Leave(spot)
-            .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+            .Async().WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class test_actor_contract
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+                .Timeout(TimeSpan.FromSeconds(2)).Async();
 
         ActorJoinRequest? request = null;
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -133,7 +133,7 @@ public sealed class test_actor_contract
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+                .Timeout(TimeSpan.FromSeconds(2)).Async();
 
         ActorJoinRequest? request = null;
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -157,7 +157,7 @@ public sealed class test_actor_contract
         Assert.True(joinInfo.JoinEpoch > 0);
 
         Zlink.MultipartClose(await actor.Leave(spot)
-            .SubmitAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+            .Async().WaitAsync(TimeSpan.FromSeconds(5)));
 
         SpotActorLifecycleInfo leaveInfo =
             await left.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -181,7 +181,7 @@ public sealed class test_actor_contract
 
         Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
             actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+                .Timeout(TimeSpan.FromSeconds(2)).Async();
 
         ActorJoinRequest? request = null;
         Assert.True(CoreTestSupport.WaitUntil(() =>
@@ -200,7 +200,7 @@ public sealed class test_actor_contract
         ActorJoinEntrySpotResult result =
             await node.JoinActorEntrySpot(actor.Ref, node.RoutingId)
                 .Timeout(TimeSpan.FromSeconds(2))
-                .SubmitAsync()
+                .Async()
                 .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(RequestResult.Ok, result.Result);

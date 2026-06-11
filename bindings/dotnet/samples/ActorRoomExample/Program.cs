@@ -19,9 +19,9 @@ internal static class Program
         stream.AttachActorGateway(node);
         RoutingId session = RoutingId.From("game-room-session");
         Zlink.MultipartClose(await stream.BindActor(session, player1.Ref)
-            .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+            .Timeout(TimeSpan.FromSeconds(2)).Async());
         Zlink.MultipartClose(await stream.BindActor(session, player2.Ref)
-            .Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+            .Timeout(TimeSpan.FromSeconds(2)).Async());
 
         // dispatch 핸들러: 도착한 메시지를 모은다.
         room.SetDispatchHandler(info =>
@@ -52,7 +52,7 @@ internal static class Program
         async Task Join(IActor actor)
         {
             using Message m = Message.From("enter-room");
-            var task = actor.Join(room).Message(m).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync();
+            var task = actor.Join(room).Message(m).Timeout(TimeSpan.FromSeconds(2)).Async();
             Accept();
             Zlink.MultipartClose((await task).Parts);
         }
@@ -78,8 +78,8 @@ internal static class Program
         if (!received.SequenceEqual(new[] { "your-turn", "wait" }))
             throw new Exception($"messages were not routed per actor: {string.Join(",", received)}");
 
-        Zlink.MultipartClose(await player1.Leave(room).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
-        Zlink.MultipartClose(await player2.Leave(room).Timeout(TimeSpan.FromSeconds(2)).SubmitAsync());
+        Zlink.MultipartClose(await player1.Leave(room).Timeout(TimeSpan.FromSeconds(2)).Async());
+        Zlink.MultipartClose(await player2.Leave(room).Timeout(TimeSpan.FromSeconds(2)).Async());
         Console.WriteLine("[actor/room] player-1: \"your-turn\", player-2: \"wait\"");
         // --8<-- [end:doc]
     }

@@ -27,7 +27,7 @@ internal static class Program
         RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
         Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync()
+            .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
 
         using Message joinMessage = Message.From("enter-room");
@@ -35,7 +35,7 @@ internal static class Program
             actor.Join(spot)
                 .Message(joinMessage)
                 .Timeout(TimeSpan.FromSeconds(2))
-                .SubmitAsync();
+                .Async();
         ActorJoinRequest? request = null;
         SampleSupport.WaitOrThrow(() =>
         {
@@ -69,7 +69,7 @@ internal static class Program
         Console.WriteLine("[actor/room] stream payload: \"move:north\" -> actor: \"move:north\"");
         Zlink.MultipartClose(await actor.Leave(spot)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync()
+            .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
     }
 }

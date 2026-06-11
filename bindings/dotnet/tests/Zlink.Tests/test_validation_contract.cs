@@ -213,7 +213,7 @@ public sealed class test_validation_contract
         TimeSpan negative = TimeSpan.FromMilliseconds(-1);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            dealer.Request().Message(message).Timeout(negative).SubmitAsync());
+            dealer.Request().Message(message).Timeout(negative).Async());
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             dealer.Request().Message(message).Timeout(negative).Submit(
                 (_, parts) => Zlink.MultipartClose(parts)));

@@ -77,7 +77,7 @@ internal static class Program
             .RequestToSpot(RoutingId.From("rpc-server-node"), RoutingId.From("rpc-server-spot"))
             .Message(Message.From("ping"))
             .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync();
+            .Async();
         Console.WriteLine($"[spot/rpc] request \"ping\" -> reply \"{reply[0].GetString()}\"");
         Zlink.MultipartClose(reply);
         // --8<-- [end:doc]

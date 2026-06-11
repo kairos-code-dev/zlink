@@ -72,7 +72,7 @@ public sealed class test_discovery_router_socket
 
         using var ping = Message.From("ping");
         var replies = await left.Request(rightRid).Message(ping)
-            .Timeout(TimeSpan.FromSeconds(3)).SubmitAsync();
+            .Timeout(TimeSpan.FromSeconds(3)).Async();
         try
         {
             Assert.Equal("pong", replies[0].GetString());

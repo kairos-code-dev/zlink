@@ -51,7 +51,7 @@ internal static class Program
         stream.AttachActorGateway(node);
         Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync()
+            .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
 
         using Message joinMessage = Message.From("join-play");
@@ -59,7 +59,7 @@ internal static class Program
             actor.Join(spot)
                 .Message(joinMessage)
                 .Timeout(TimeSpan.FromSeconds(2))
-                .SubmitAsync();
+                .Async();
         ActorJoinRequest? request = null;
         SampleSupport.WaitOrThrow(() =>
         {
@@ -83,11 +83,11 @@ internal static class Program
         Console.WriteLine("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
         Zlink.MultipartClose(await actor.Leave(spot)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync()
+            .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
         Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.Ref.ActorId)
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync()
+            .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
     }
 }

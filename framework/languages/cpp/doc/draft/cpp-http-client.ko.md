@@ -8,6 +8,7 @@
 
 # Draft -- ZLink HTTP Client For C++
 
+> 사용법 중심 문서는 [사용자 가이드](../../http-client/doc/README.ko.md)를 본다.
 > 이 문서는 **draft 계약**이다.
 > `zlink::http_client` 산출물의 현재 구현 범위와 다음 구현 범위를 함께 정리한다.
 > 정식 spec으로 승격하기 전까지는 `core/include/zlink.h` 기준 공개 계약이 아니다.

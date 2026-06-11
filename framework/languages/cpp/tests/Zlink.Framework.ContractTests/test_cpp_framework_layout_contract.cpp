@@ -1601,16 +1601,19 @@ bool sample_server_code_does_not_block_on_task_result (const std::filesystem::pa
     return ok;
 }
 
-bool client_sample_uses_connector (const std::filesystem::path &root,
-                                   const std::filesystem::path &client_file)
+bool client_sample_uses_e2e_connector (const std::filesystem::path &root,
+                                       const std::filesystem::path &client_file)
 {
     const auto path = root / client_file;
     bool ok = true;
     ok &= file_contains (path, "zlink/stream_connector.hpp");
+    ok &= file_contains (path, "zlink/stream_e2e_client");
+    ok &= file_contains (path, "stream_e2e_client::use");
     ok &= file_contains (path, "connector_factory_t::create");
     ok &= file_contains (path, "dispatch_mode_t::manual");
     if (!ok) {
-        std::cerr << "client sample does not configure connector directly: " << path << '\n';
+        std::cerr << "client sample does not wrap the stream connector with e2e client: "
+                  << path << '\n';
     }
     return ok;
 }
@@ -2121,9 +2124,9 @@ int main ()
     ok &= require_absent (root / "samples/TicTacToe/Client/tictactoe_client.hpp",
                           "TicTacToe client scenario is kept in tictactoe_client_scenario.hpp");
 
-    ok &= client_sample_uses_connector (root, "samples/Bingo/Client/main.cpp");
+    ok &= client_sample_uses_e2e_connector (root, "samples/Bingo/Client/main.cpp");
     ok &=
-      client_sample_uses_connector (root, "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
+      client_sample_uses_e2e_connector (root, "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
     ok &= sample_client_targets_do_not_link_framework (root);

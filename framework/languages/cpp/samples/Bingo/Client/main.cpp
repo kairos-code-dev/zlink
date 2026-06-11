@@ -5,6 +5,7 @@
 #include "Configuration/sample_configuration.hpp"
 
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_e2e_client.hpp>
 
 int main (int argc, char **argv)
 {
@@ -17,12 +18,14 @@ int main (int argc, char **argv)
     connector_options.request_timeout = options.request_timeout;
     connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
 
-    auto client1 = zlink::stream_connector::connector_factory_t::create (
+    auto core_client1 = zlink::stream_connector::connector_factory_t::create (
       connector_options);
-    auto client2 = zlink::stream_connector::connector_factory_t::create (
+    auto core_client2 = zlink::stream_connector::connector_factory_t::create (
       connector_options);
-    register_bingo_client_codecs (client1);
-    register_bingo_client_codecs (client2);
+    register_bingo_client_codecs (core_client1);
+    register_bingo_client_codecs (core_client2);
 
+    auto client1 = zlink::stream_e2e_client::use (core_client1);
+    auto client2 = zlink::stream_e2e_client::use (core_client2);
     return bingo_client_scenario_t{}.run (client1, client2) ? 0 : 1;
 }

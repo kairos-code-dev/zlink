@@ -198,6 +198,10 @@ class coroutine_connector_t
           _connector->wait_for<TMessage> (std::move (packet_name), timeout));
     }
 
+    result_t<void> connect () { return _connector->connect (); }
+
+    result_t<void> close () { return _connector->close (); }
+
   private:
     connector_t *_connector;
 };

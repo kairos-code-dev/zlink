@@ -4,7 +4,7 @@
 #include "bingo_client_options.hpp"
 #include "../Shared/Contracts/messages.hpp"
 
-#include <zlink/stream_connector/codecs/auto_codec.hpp>
+#include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -21,8 +21,8 @@ namespace zlink::samples::bingo
 class bingo_client_scenario_t
 {
   public:
-    bool run (stream_connector::connector_t &client1,
-              stream_connector::connector_t &client2)
+    bool run (stream_e2e_client::coroutine_connector_t &client1,
+              stream_e2e_client::coroutine_connector_t &client2)
     {
         try {
             auto client1_connect = client1.connect ();
@@ -123,7 +123,7 @@ class bingo_client_scenario_t
     }
 
     template <typename T>
-    static T ensure_result (stream_connector::result_t<T> result, const char *expression)
+    static T ensure_result (stream_e2e_client::result_t<T> result, const char *expression)
     {
         if (!result) {
             const auto message =
@@ -134,7 +134,7 @@ class bingo_client_scenario_t
         return result.value ();
     }
 
-    static void ensure_no_self_join_notify (stream_connector::connector_t &client,
+    static void ensure_no_self_join_notify (stream_e2e_client::coroutine_connector_t &client,
                                             const std::string &actor_id)
     {
         auto notify =

@@ -6,6 +6,7 @@
 
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
+#include <zlink/stream_e2e_client.hpp>
 
 #include <chrono>
 #include <stdexcept>
@@ -22,8 +23,8 @@ inline void register_tictactoe_client_codecs (stream_connector::connector_t &con
 class tictactoe_client_scenario_t
 {
   public:
-    bool run (stream_connector::connector_t &client1,
-              stream_connector::connector_t &client2,
+    bool run (stream_e2e_client::coroutine_connector_t &client1,
+              stream_e2e_client::coroutine_connector_t &client2,
               const create_game_http_res_t &room,
               const tictactoe_client_options_t &options)
     {
@@ -44,13 +45,15 @@ class tictactoe_client_scenario_t
             connector_options.request_timeout = options.stream_timeout;
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
 
-            auto client1 = zlink::stream_connector::connector_factory_t::create (
+            auto core_client1 = zlink::stream_connector::connector_factory_t::create (
               connector_options);
-            auto client2 = zlink::stream_connector::connector_factory_t::create (
+            auto core_client2 = zlink::stream_connector::connector_factory_t::create (
               connector_options);
-            register_tictactoe_client_codecs (client1);
-            register_tictactoe_client_codecs (client2);
+            register_tictactoe_client_codecs (core_client1);
+            register_tictactoe_client_codecs (core_client2);
 
+            auto client1 = zlink::stream_e2e_client::use (core_client1);
+            auto client2 = zlink::stream_e2e_client::use (core_client2);
             return run_game (client1, client2, room, options);
         }
         catch (const std::exception &ex) {
@@ -60,8 +63,8 @@ class tictactoe_client_scenario_t
     }
 
   private:
-    static bool run_game (stream_connector::connector_t &client1,
-                          stream_connector::connector_t &client2,
+    static bool run_game (stream_e2e_client::coroutine_connector_t &client1,
+                          stream_e2e_client::coroutine_connector_t &client2,
                           const create_game_http_res_t &room,
                           const tictactoe_client_options_t &options)
     {
@@ -174,7 +177,7 @@ class tictactoe_client_scenario_t
     }
 
     template <typename T>
-    static T require_result (stream_connector::result_t<T> result, const char *expression)
+    static T require_result (stream_e2e_client::result_t<T> result, const char *expression)
     {
         if (!result) {
             const auto message =
@@ -185,7 +188,7 @@ class tictactoe_client_scenario_t
         return result.value ();
     }
 
-    static void ensure_no_self_join_notify (stream_connector::connector_t &client,
+    static void ensure_no_self_join_notify (stream_e2e_client::coroutine_connector_t &client,
                                             const std::string &actor_id)
     {
         auto notify =

@@ -103,9 +103,7 @@ TicTacToe/
     server build/module files
     Program
     Configuration/
-      SampleLogging
       SampleNames
-      SamplePorts
       SampleSettings
     Api/
       ApiServer
@@ -148,8 +146,8 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 
 | 위치 | 공통 아키텍처 역할 | 책임 |
 |------|----------------------|------|
-| `Client/Program` | 외부 driving adapter | client stream 연결을 만들고 self-check 시나리오를 실행한다. |
-| `Client/TicTacToeClientScenario` | sample scenario | HTTP 생성, stream 인증, join, move, push 검증을 순서대로 수행한다. |
+| `Client/Program` | 외부 driving adapter | client 설정을 읽고 self-check 시나리오를 실행한다. 서버 실행이나 Play stream 연결 생성은 맡지 않는다. |
+| `Client/TicTacToeClientScenario` | sample scenario | HTTP `POST /games`로 room을 만들고, 응답의 Play stream endpoint로 connector를 만든 뒤 인증, join, move, push 검증을 순서대로 수행한다. |
 | `Shared/Contracts/*` | shared contract | HTTP, channel, stream, actor, Spot payload 계약을 정의한다. |
 | `Server/Configuration/*` | composition settings | 샘플 endpoint, 이름, timeout, logging 설정을 한 곳에 모은다. |
 | `Server/Api/*` | inbound HTTP adapter, API channel adapter | client의 room 생성 요청과 Play 서버의 인증 요청을 처리한다. |
@@ -174,6 +172,9 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   build tool에서 같은 역할의 프로젝트나 module이 중복으로 보이면 안 된다.
 - client와 server는 각각 명시적인 entry point를 가진다. 실행 시작 코드는 짧게 두고,
   실제 시나리오 검증은 `TicTacToeClientScenario` 같은 client scenario 구성 요소에 둔다.
+- client scenario는 API HTTP endpoint만 입력으로 받아야 한다. Play stream endpoint는
+  `CreateGameHttpRes`에서 받은 값을 사용해 connector를 만든다. client 설정 파일이나
+  entry point가 Play stream endpoint를 미리 주입하면 실제 사용자 흐름과 달라진다.
 - `Shared/Contracts`에는 HTTP, channel, stream, actor, Spot payload 계약을 모은다.
   packet name 문자열이나 동적 payload 구조를 handler와 client 코드에 흩어 놓지 않는다.
   client와 server는 message 객체의 public interface만 사용해야 하며, 샘플 전용 helper로

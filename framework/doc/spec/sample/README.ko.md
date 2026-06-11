@@ -29,6 +29,10 @@ SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어�
 - 샘플은 framework가 어떤 일을 대신해 주는지 보여 주어야 한다.
 - 도메인 규칙은 작게 유지하고, session, actor, Spot, channel, timer, push 흐름이
   코드에서 잘 보이게 둔다.
+- 샘플 애플리케이션 코드는 각 언어 framework가 공개한 package entrypoint, DI token,
+  builder, client interface만 사용한다. `internal`, `runtime`, `dist/runtime`처럼
+  유지보수용 구현 위치를 직접 import하거나 reflection으로 접근하지 않는다. 필요한 기능이
+  공개 계약에 없으면 샘플에서 우회하지 않고 framework의 public contract를 먼저 보완한다.
 - 이 문서에서 `Spot`은 독립적인 생명주기를 가지는 stateful coordination point를 뜻한다.
   Spot은 room, conversation, workflow instance, player quest처럼 상태와 이벤트가 모이는
   단위를 표현한다. Spot은 actor 참여를 받을 수 있지만 actor가 필수는 아니다. Spot은

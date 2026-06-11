@@ -16,7 +16,7 @@
 
 이 묶음은 zlink의 `.NET`, `Java`, `Node.js`, `Python`, `Go`, `Rust`, `C++` 바인딩
 위에 `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `net/http` / `Gin`,
-`Axum`, standalone host/runtime 사용자를 위한 `ZLink Framework` 방향을 정리한다.
+`Axum`, C++ zlink framework host 사용자를 위한 `ZLink Framework` 방향을 정리한다.
 제품 개요와 핵심 가치는 [overview.ko.md](./overview.ko.md)를 참고한다.
 
 ## 1.1 버전 기준
@@ -57,7 +57,7 @@
 | 15 | [Python 문서](../../languages/python/doc/draft/README.ko.md) | `Python`과 `FastAPI` 전용 문서 진입점. |
 | 16 | [Go 문서](../../languages/go/doc/draft/README.ko.md) | `Go`와 `net/http` 계열 전용 문서 진입점. |
 | 17 | [Rust 문서](../../languages/rust/doc/draft/README.ko.md) | `Rust`와 `Axum` 전용 문서 진입점. |
-| 18 | [C++ 문서](../../languages/cpp/doc/draft/README.ko.md) | `C++` standalone host/runtime 전용 문서 진입점. |
+| 18 | [C++ 문서](../../languages/cpp/doc/draft/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
 | 19 | [Use case 검증](./usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,
@@ -207,11 +207,15 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | `Python` | `FastAPI` |
 | `Go` | `net/http`, 필요하면 `Gin` |
 | `Rust` | `Axum` |
-| `C++` | standalone host/runtime |
+| `C++` | zlink framework host |
 
 `C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter로 보기보다,
-zlink framework가 host, lifecycle, dispatch loop를 직접 포함하는 standalone
-runtime으로 설명하는 편이 맞다.
+zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식으로 설명한다.
+이 경우에도 application이 runtime 구현을 직접 시작하는 public contract는 두지 않는다.
+각 언어별 상세 문서는 application이 접근하는 public contract와 adapter 내부 runtime
+구현을 구분해야 한다. runtime 구현 타입이 테스트나 adapter 내부에 남아 있더라도,
+사용자 guide와 package/module entrypoint에서는 직접 runtime을 만들거나 시작하는 경로를
+노출하지 않는다.
 
 ### 5.4 언어별 문서의 최소 체크리스트
 

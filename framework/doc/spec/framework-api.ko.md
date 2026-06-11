@@ -11,7 +11,7 @@
 ## 1. 목적
 
 같은 `ZLink Framework`라도 `ASP.NET Core`, `Spring Boot`, `NestJS`,
-`FastAPI`, `C++ standalone host/runtime` 사용자가 기대하는 표면은 조금씩
+`FastAPI`, C++ zlink framework host 사용자가 기대하는 표면은 조금씩
 다르다. 이 문서는 각 환경에서 "어떤 식으로 보이면 자연스러운가"를 정리한다.
 
 핵심 원칙은 단순하다.
@@ -162,8 +162,31 @@ public 계약 영역에 둘 타입은 아래 범위로 제한한다.
 - framework 내부 구현 class
 - public interface를 구현하는 기본 구현체
 - socket, codec, dispatch, routing, registry 같은 내부 정책 class
+- runtime을 직접 만들거나 시작하는 host class와 start 함수
 - runtime 상태를 담는 record
 - 특정 binding 내부 테스트나 샘플만 편하게 하기 위한 helper
+
+framework runtime은 application이 직접 시작하는 public contract로 노출하지 않는다.
+각 언어 adapter는 해당 언어의 host lifetime에 runtime 시작과 종료를 묶는다. `.NET`은
+`IHostedService`, Java는 Spring `SmartLifecycle`, Node.js는 NestJS lifecycle hook,
+C++는 zlink framework `app_t` host가 이 역할을 맡는다. 테스트나 adapter 내부 구현이
+runtime 객체를 직접 만들 수는 있지만, guide와 public entrypoint에서는 이 경로를
+사용자 실행 방법으로 설명하지 않는다.
+
+언어별로 경계를 막는 방식은 아래 기준을 따른다. 모든 언어에서 같은 수준의 접근 제한을
+문법만으로 강제할 수는 없으므로, 각 생태계에서 실제로 유지 가능한 가장 강한 장치를
+사용한다.
+
+| 언어 | application이 보는 표면 | runtime 접근 제한 |
+|------|--------------------------|-------------------|
+| `.NET` | `Zlink.Framework` public contract와 `Zlink.Framework.AspNetCore` extension | runtime class는 `internal`로 둔다. application은 DI로 등록된 public service만 받는다. |
+| `Java` | `zlink-framework-core` public contract와 Spring Boot starter bean | direct start facade와 public constructor/start 함수를 두지 않는다. Spring `SmartLifecycle`이 runtime을 시작한다. JPMS 또는 artifact 분리가 없는 classpath 환경에서는 class 이름 자체를 완전히 숨길 수 없으므로, public entrypoint와 guide에서 runtime 생성 경로를 제공하지 않는다. |
+| `Node.js` | `@zlink-systems/framework` root export와 `@zlink-systems/nestjs` module/token | package `exports`는 root entrypoint만 공개한다. NestJS adapter는 내부 workspace 경로로 runtime 구현을 읽고, application은 `dist/runtime/*` 또는 `dist/internal` package subpath를 import하지 않는다. |
+| `C++` | 설치되는 `framework/include` public header와 `app_t` host | runtime header와 `src/runtime/*`는 설치하지 않고 target private input으로 둔다. public header는 runtime header를 include하지 않는다. |
+
+따라서 application 예제와 샘플은 항상 host framework의 시작점을 사용한다. Java 샘플은
+Spring Boot application context, Node.js 샘플은 NestJS application context, `.NET`
+샘플은 ASP.NET Core host, C++ 샘플은 zlink framework `app_t` host를 기준으로 작성한다.
 
 public 타입을 interface로 둘지 concrete 값 객체로 둘지는 타입이 가진 도메인 의미를
 기준으로 판단한다. 필드 수가 적다는 이유만으로 값 객체로 보고, 구현 클래스가 있다는
@@ -488,12 +511,12 @@ async def get_profile(
 FastAPI 방향에서는 framework 내부 dispatch loop를 route 함수로 끌어올리지 않고,
 기존 async application 구조 안에 zlink runtime을 붙이는 모양을 기본으로 본다.
 
-## 7. C++ standalone host 방향
+## 7. C++ zlink framework host 방향
 
 ### 7.1 기대하는 표면
 
-`C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter보다, zlink framework가
-host/runtime 역할 일부를 직접 제공하는 쪽이 더 자연스럽다.
+`C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter보다, zlink framework host가
+application lifetime과 dispatch loop를 직접 소유하는 쪽이 더 자연스럽다.
 
 - application host builder
 - local channel 등록
@@ -518,7 +541,8 @@ int main() {
 
 `C++` 방향에서는 DI container보다 host builder와 registration API가 더 중요하다.
 핵심은 raw socket 배선을 application 코드로 퍼뜨리지 않으면서, lifecycle과
-dispatch loop를 framework가 직접 관리하는 것이다.
+dispatch loop를 framework host가 직접 관리하는 것이다. application이 runtime 구현체를
+직접 만들고 시작하는 방법은 public contract로 두지 않는다.
 
 ## 8. 결정된 기준
 

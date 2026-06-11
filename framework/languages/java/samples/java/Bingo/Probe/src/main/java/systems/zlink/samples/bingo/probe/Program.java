@@ -6,7 +6,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.locks.LockSupport;
-import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
+import systems.zlink.samples.bingo.probe.configuration.SampleTopology;
 
 public final class Program {
     private Program() {

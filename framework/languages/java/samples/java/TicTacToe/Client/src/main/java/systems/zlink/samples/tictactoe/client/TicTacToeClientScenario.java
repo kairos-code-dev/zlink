@@ -22,15 +22,15 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack;
 
-public final class TicTacToeClient {
+public final class TicTacToeClientScenario {
     private final HttpClient http;
     private final ObjectMapper json;
 
-    public TicTacToeClient() {
+    public TicTacToeClientScenario() {
         this(HttpClient.newHttpClient(), new ObjectMapper());
     }
 
-    TicTacToeClient(HttpClient http, ObjectMapper json) {
+    TicTacToeClientScenario(HttpClient http, ObjectMapper json) {
         this.http = http;
         this.json = json;
     }

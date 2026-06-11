@@ -2,8 +2,8 @@ package systems.zlink.samples.bingo.client;
 
 import java.net.URI;
 import java.time.Duration;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
-import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
+import systems.zlink.samples.bingo.client.configuration.SampleTimings;
+import systems.zlink.samples.bingo.client.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -18,7 +18,7 @@ public final class Program {
         ZLinkStreamConnector client1 = createClient();
         ZLinkStreamConnector client2 = createClient();
         try {
-            new BingoClientApp().run(client1, client2);
+            new BingoClientScenario().run(client1, client2);
         } finally {
             client1.close().await();
             client2.close().await();

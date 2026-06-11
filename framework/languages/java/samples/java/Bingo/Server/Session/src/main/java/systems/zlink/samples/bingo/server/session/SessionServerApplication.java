@@ -9,8 +9,8 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
 import systems.zlink.samples.bingo.server.session.sessions.handlers.AuthenticateSessionHandler;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
-import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
 
 

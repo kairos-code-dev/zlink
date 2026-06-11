@@ -9,9 +9,9 @@ import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ActorRefSnapshot
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes

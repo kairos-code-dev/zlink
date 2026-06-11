@@ -1,7 +1,7 @@
 package systems.zlink.samples.bingo.server.play.domain.bingo;
 
 import java.util.List;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class BingoRoomModels {

@@ -1,4 +1,4 @@
-package systems.zlink.samples.bingo.shared.configuration;
+package systems.zlink.samples.bingo.server.configuration;
 
 public final class SampleTopology {
     public static final String RegistryPubEndpoint =
@@ -23,7 +23,6 @@ public final class SampleTopology {
         property("playRouteEndpoint", "tcp://127.0.0.1:47113");
     public static final String StreamEndpoint =
         property("streamEndpoint", "tcp://127.0.0.1:47114");
-    public static final int SessionPort = 29100;
     public static final String SessionRouterRid = "1101";
     public static final String SessionPubRid = "1102";
     public static final String PlayRid = "2202";

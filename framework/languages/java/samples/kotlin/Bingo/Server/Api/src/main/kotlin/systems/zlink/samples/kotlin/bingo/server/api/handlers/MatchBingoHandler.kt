@@ -6,8 +6,8 @@ import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.channels.ZLinkRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq

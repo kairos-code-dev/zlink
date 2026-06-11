@@ -6,7 +6,7 @@ public final class Program {
 
     public static void main(String[] args) throws Exception {
         TicTacToeClientOptions clientOptions = TicTacToeClientArguments.parse(args);
-        new TicTacToeClient().run(clientOptions);
+        new TicTacToeClientScenario().run(clientOptions);
         System.out.println("tictactoe=completed");
     }
 }

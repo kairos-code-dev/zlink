@@ -14,7 +14,6 @@ fun sampleRootPath(): String {
 }
 
 dependencies {
-    implementation(sampleProject("Client"))
     implementation(sampleProject("Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink-framework-spring-boot-starter:0.1.0-SNAPSHOT")

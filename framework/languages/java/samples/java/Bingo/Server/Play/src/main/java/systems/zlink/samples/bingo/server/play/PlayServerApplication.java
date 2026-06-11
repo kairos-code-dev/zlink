@@ -18,8 +18,8 @@ import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpo
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
-import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 
 
 

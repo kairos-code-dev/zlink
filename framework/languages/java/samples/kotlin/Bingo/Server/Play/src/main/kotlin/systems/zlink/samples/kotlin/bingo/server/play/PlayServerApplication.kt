@@ -19,8 +19,8 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.Bingo
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.BingoRoomSpotCreatedHandler
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.handlers.BingoRoomDirectory
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 
 
 

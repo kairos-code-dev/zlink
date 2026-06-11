@@ -4,7 +4,6 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":Shared"))
     implementation("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     implementation("systems.zlink:zlink:6.0.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

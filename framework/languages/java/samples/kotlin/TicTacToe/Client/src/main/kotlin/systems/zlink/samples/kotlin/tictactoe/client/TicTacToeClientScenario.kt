@@ -28,7 +28,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.msgpack.ZLinkStreamMessagePack
 
-class TicTacToeClient {
+class TicTacToeClientScenario {
     private val http = HttpClient.newHttpClient()
     private val json = ObjectMapper().registerKotlinModule()
 

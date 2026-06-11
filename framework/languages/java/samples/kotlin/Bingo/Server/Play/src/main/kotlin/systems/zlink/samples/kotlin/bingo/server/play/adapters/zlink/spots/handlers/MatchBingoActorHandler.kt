@@ -8,8 +8,8 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.BingoEntrySpot
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq

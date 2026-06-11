@@ -6,3 +6,19 @@ The client opens only the Session stream endpoint. Each player authenticates,
 requests matching, receives game-start push after the second join, submits a
 3 x 3 card, and waits for server timer draw and game-ended notifications. The
 client never sends draw requests.
+
+The Java Bingo client and server roles use Protobuf payloads for STREAM
+messages. Shared contains only the message contracts used by those roles.
+The client verification flow lives in `BingoClientScenario`.
+
+Run the complete sample scenario on Linux or WSL:
+
+```bash
+./run_sample.sh
+```
+
+On Windows:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
+```

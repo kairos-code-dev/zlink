@@ -10,8 +10,8 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamCodec as FrameworkStreamCodec
 import systems.zlink.framework.streams.ZLinkStreamHeader
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq

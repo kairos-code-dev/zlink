@@ -1,6 +1,9 @@
 package systems.zlink.samples.kotlin.tictactoe.server.configuration
 
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.Properties
 
 data class SampleSettings(
     val apiBindUrl: String,
@@ -15,19 +18,6 @@ data class SampleSettings(
     val apiHttpPort: Int
         get() = URI.create(apiBindUrl).port
 
-    fun withEphemeralDefaults(): SampleSettings {
-        val apiPort = SamplePorts.reserve()
-        return copy(
-            apiBindUrl = "http://127.0.0.1:$apiPort",
-            apiPublicUrl = "http://127.0.0.1:$apiPort",
-            apiChannelEndpoint = "tcp://127.0.0.1:${SamplePorts.reserve()}",
-            playChannelEndpoint = "tcp://127.0.0.1:${SamplePorts.reserve()}",
-            playRouterEndpoint = "tcp://127.0.0.1:${SamplePorts.reserve()}",
-            playEndpoint = "tcp://127.0.0.1:${SamplePorts.reserve()}",
-            spotEndpoint = "tcp://127.0.0.1:${SamplePorts.reserve()}",
-        )
-    }
-
     companion object {
         fun createDefault(): SampleSettings =
             SampleSettings(
@@ -41,8 +31,12 @@ data class SampleSettings(
                 logDirectory = "logs/tictactoe",
             )
 
-        fun fromArgs(args: Array<String>): SampleSettings {
-            val defaults = createDefault()
+        fun load(args: Array<String>): SampleSettings {
+            val defaults = fromProperties(readOption(args, "--config"), createDefault())
+            return fromArgs(args, defaults)
+        }
+
+        private fun fromArgs(args: Array<String>, defaults: SampleSettings): SampleSettings {
             val apiBind = readOption(args, "--api-bind") ?: defaults.apiBindUrl
             return SampleSettings(
                 apiBindUrl = apiBind,
@@ -53,6 +47,24 @@ data class SampleSettings(
                 playEndpoint = readOption(args, "--play-endpoint") ?: defaults.playEndpoint,
                 spotEndpoint = readOption(args, "--spot-endpoint") ?: defaults.spotEndpoint,
                 logDirectory = readOption(args, "--log-dir") ?: defaults.logDirectory,
+            )
+        }
+
+        private fun fromProperties(path: String?, defaults: SampleSettings): SampleSettings {
+            if (path.isNullOrBlank()) {
+                return defaults
+            }
+            val properties = Properties()
+            Files.newInputStream(Path.of(path)).use(properties::load)
+            return SampleSettings(
+                apiBindUrl = properties.getProperty("sample.apiBindUrl", defaults.apiBindUrl),
+                apiPublicUrl = properties.getProperty("sample.apiPublicUrl", defaults.apiPublicUrl),
+                apiChannelEndpoint = properties.getProperty("sample.apiChannelEndpoint", defaults.apiChannelEndpoint),
+                playChannelEndpoint = properties.getProperty("sample.playChannelEndpoint", defaults.playChannelEndpoint),
+                playRouterEndpoint = properties.getProperty("sample.playRouterEndpoint", defaults.playRouterEndpoint),
+                playEndpoint = properties.getProperty("sample.playEndpoint", defaults.playEndpoint),
+                spotEndpoint = properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint),
+                logDirectory = properties.getProperty("sample.logDirectory", defaults.logDirectory),
             )
         }
 

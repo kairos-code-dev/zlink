@@ -6,7 +6,7 @@ import java.net.URI
 import java.time.Duration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.probe.configuration.SampleTopology
 
 fun main(args: Array<String>) = runBlocking {
     val timeout = Duration.ofSeconds((readOption(args, "--timeout-seconds") ?: "10").toLong())

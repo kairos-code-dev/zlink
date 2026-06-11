@@ -61,6 +61,7 @@ if (useLocalBindings) {
 include(
     ":java:Bingo:Client",
     ":java:Bingo:Server:Api",
+    ":java:Bingo:Server:Configuration",
     ":java:Bingo:Server:Play",
     ":java:Bingo:Server:Registry",
     ":java:Bingo:Server:Session",
@@ -70,6 +71,7 @@ include(
     ":java:TicTacToe:Shared",
     ":kotlin:Bingo:Client",
     ":kotlin:Bingo:Server:Api",
+    ":kotlin:Bingo:Server:Configuration",
     ":kotlin:Bingo:Server:Play",
     ":kotlin:Bingo:Server:Registry",
     ":kotlin:Bingo:Server:Session",

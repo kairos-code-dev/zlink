@@ -16,7 +16,8 @@ Individual sample directories do not keep `settings.gradle.kts` files. IntelliJ
 auto-detects every nested `settings.gradle.kts` as another Gradle root, which
 makes the same sample projects appear more than once when `framework/languages/java`
 is opened. Standalone command-line sample runs use each sample's
-`standalone.settings.gradle.kts` through `run_sample.sh` instead.
+`standalone.settings.gradle.kts` through `run_sample.sh` or `run_sample.ps1`
+instead.
 
 ```text
 samples/
@@ -57,9 +58,17 @@ Bingo/
   server/play/handlers/
   server/registry/
   server/session/sessions/handlers/
-  shared/configuration/
+  server/configuration/
+  client/configuration/
   shared/contracts/
 ```
+
+`shared/contracts` contains only message contracts. Server topology, endpoint
+names, packet names, and timing settings live under `server/configuration`.
+Client-only settings live under `client/configuration`.
+
+Bingo uses Protobuf payloads for Java and Kotlin STREAM traffic. TicTacToe uses
+MessagePack payloads for Java and Kotlin STREAM traffic.
 
 Java TicTacToe keeps only the common direct API/Play sample. Session gateway and
 reconnect variants are not maintained as separate Java TicTacToe samples.
@@ -69,6 +78,34 @@ Run all required samples:
 ```bash
 ./run_samples.sh
 ```
+
+On Windows:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_samples.ps1
+```
+
+`run_samples.sh` and `run_samples.ps1` delegate to each sample's runner. The
+sample runner starts the server roles as separate processes, waits for
+readiness, runs the probe or client scenario, and cleans up the processes.
+Application role code should not start the other sample roles for the test.
+
+Client files that express the request, push, and final-state checks as a scenario
+must be named `<Sample>ClientScenario` in both Java and Kotlin. `ClientApp`,
+`TestScenario`, and sample-local `self-check` names are not used for the client
+scenario flow.
+
+## Execution And Configuration
+
+Java and Kotlin samples use the Spring Boot configuration model for framework
+roles. Endpoint and topology values should come from `application.yml`,
+`application.properties`, command-line Spring properties, or environment values
+that Spring maps into the application context. `ZLinkFrameworkConfigurer` beans
+then read those configured values and apply them to the ZLink framework builder.
+
+`run_sample.sh` and `run_sample.ps1` may prepare temporary settings for the
+current run, but they should still start each role as a separate Spring process.
+Server role code must not start the other sample roles in-process.
 
 Check the IDE-importable Gradle project without running the samples:
 

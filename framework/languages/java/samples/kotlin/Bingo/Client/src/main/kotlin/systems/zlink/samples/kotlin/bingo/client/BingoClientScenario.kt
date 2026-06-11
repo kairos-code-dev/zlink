@@ -4,7 +4,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleNames
+import systems.zlink.samples.kotlin.bingo.client.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoGameEndedNotify
@@ -17,7 +17,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardRes
 
-class BingoClientApp {
+class BingoClientScenario {
     suspend fun run(
         client1: ZLinkKotlinStreamConnector,
         client2: ZLinkKotlinStreamConnector,

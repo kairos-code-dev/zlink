@@ -8,9 +8,9 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
-import systems.zlink.samples.bingo.shared.configuration.SampleTopology;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("play")

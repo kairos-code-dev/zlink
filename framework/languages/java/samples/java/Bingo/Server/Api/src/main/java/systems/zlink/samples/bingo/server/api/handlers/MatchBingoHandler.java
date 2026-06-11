@@ -5,8 +5,8 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 @ZLinkHandlerGroup("api")

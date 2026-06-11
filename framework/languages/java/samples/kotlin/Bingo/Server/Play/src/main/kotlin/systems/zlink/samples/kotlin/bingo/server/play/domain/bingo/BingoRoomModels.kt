@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.domain.bingo
 
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoPlayerState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 

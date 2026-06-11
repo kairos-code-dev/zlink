@@ -1,4 +1,4 @@
-package systems.zlink.samples.kotlin.bingo.shared.configuration
+package systems.zlink.samples.kotlin.bingo.server.configuration
 
 object SampleTopology {
     val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:47101")
@@ -12,7 +12,6 @@ object SampleTopology {
     val SessionRouteEndpoint: String = property("sessionRouteEndpoint", "tcp://127.0.0.1:47112")
     val PlayRouteEndpoint: String = property("playRouteEndpoint", "tcp://127.0.0.1:47113")
     val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
-    const val SessionPort: Int = 29100
     const val SessionRouterRid: String = "1101"
     const val SessionPubRid: String = "1102"
     const val PlayRid: String = "2202"

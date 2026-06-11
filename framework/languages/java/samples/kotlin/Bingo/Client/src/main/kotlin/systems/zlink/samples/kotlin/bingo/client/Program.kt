@@ -4,8 +4,8 @@ import java.net.URI
 import java.time.Duration
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.kotlin
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTimings
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.client.configuration.SampleTimings
+import systems.zlink.samples.kotlin.bingo.client.configuration.SampleTopology
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
@@ -15,7 +15,7 @@ suspend fun main() {
     val client1 = createClient()
     val client2 = createClient()
     try {
-        BingoClientApp().run(client1, client2)
+        BingoClientScenario().run(client1, client2)
     } finally {
         client1.close().await()
         client2.close().await()

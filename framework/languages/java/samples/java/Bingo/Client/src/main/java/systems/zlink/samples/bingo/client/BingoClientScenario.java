@@ -2,11 +2,11 @@ package systems.zlink.samples.bingo.client;
 
 import java.util.ArrayList;
 import java.util.List;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
+import systems.zlink.samples.bingo.client.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
-public final class BingoClientApp {
+public final class BingoClientScenario {
     public void run(
         ZLinkStreamConnector client1,
         ZLinkStreamConnector client2) throws Exception {

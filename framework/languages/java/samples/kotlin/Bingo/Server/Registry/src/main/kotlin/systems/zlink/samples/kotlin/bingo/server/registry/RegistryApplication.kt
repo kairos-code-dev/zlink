@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.registry.ZLinkEmbeddedRegistryOptions
-import systems.zlink.samples.kotlin.bingo.shared.configuration.SampleTopology
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 
 @SpringBootApplication(
     proxyBeanMethods = false,

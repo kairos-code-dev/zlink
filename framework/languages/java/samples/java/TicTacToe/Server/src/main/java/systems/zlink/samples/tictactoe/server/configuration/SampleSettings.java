@@ -1,5 +1,10 @@
 package systems.zlink.samples.tictactoe.server.configuration;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
+
 public record SampleSettings(
     String apiBindUrl,
     String apiPublicUrl,
@@ -21,8 +26,13 @@ public record SampleSettings(
             "logs/tictactoe");
     }
 
-    public static SampleSettings fromArgs(String[] args) {
+    public static SampleSettings load(String[] args) {
         SampleSettings defaults = createDefault();
+        SampleSettings configured = fromProperties(readOption(args, "--config", null), defaults);
+        return fromArgs(args, configured);
+    }
+
+    private static SampleSettings fromArgs(String[] args, SampleSettings defaults) {
         return new SampleSettings(
             readOption(args, "--api-bind", defaults.apiBindUrl()),
             readOption(args, "--api-url", readOption(args, "--api-bind", defaults.apiPublicUrl())),
@@ -34,17 +44,25 @@ public record SampleSettings(
             readOption(args, "--log-dir", defaults.logDirectory()));
     }
 
-    public SampleSettings withEphemeralDefaults() {
-        int apiPort = SamplePorts.reserve();
+    private static SampleSettings fromProperties(String path, SampleSettings defaults) {
+        if (path == null || path.isBlank()) {
+            return defaults;
+        }
+        Properties properties = new Properties();
+        try (var input = Files.newInputStream(Path.of(path))) {
+            properties.load(input);
+        } catch (IOException error) {
+            throw new IllegalArgumentException("Failed to read config file: " + path, error);
+        }
         return new SampleSettings(
-            "http://127.0.0.1:" + apiPort,
-            "http://127.0.0.1:" + apiPort,
-            "tcp://127.0.0.1:" + SamplePorts.reserve(),
-            "tcp://127.0.0.1:" + SamplePorts.reserve(),
-            "tcp://127.0.0.1:" + SamplePorts.reserve(),
-            "tcp://127.0.0.1:" + SamplePorts.reserve(),
-            "tcp://127.0.0.1:" + SamplePorts.reserve(),
-            logDirectory);
+            properties.getProperty("sample.apiBindUrl", defaults.apiBindUrl()),
+            properties.getProperty("sample.apiPublicUrl", defaults.apiPublicUrl()),
+            properties.getProperty("sample.apiChannelEndpoint", defaults.apiChannelEndpoint()),
+            properties.getProperty("sample.playChannelEndpoint", defaults.playChannelEndpoint()),
+            properties.getProperty("sample.playRouterEndpoint", defaults.playRouterEndpoint()),
+            properties.getProperty("sample.playEndpoint", defaults.playEndpoint()),
+            properties.getProperty("sample.spotEndpoint", defaults.spotEndpoint()),
+            properties.getProperty("sample.logDirectory", defaults.logDirectory()));
     }
 
     public int apiHttpPort() {

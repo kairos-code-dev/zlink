@@ -7,8 +7,8 @@ import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoEntrySpot;
-import systems.zlink.samples.bingo.shared.configuration.SampleNames;
-import systems.zlink.samples.bingo.shared.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
+import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class MatchBingoActorHandler

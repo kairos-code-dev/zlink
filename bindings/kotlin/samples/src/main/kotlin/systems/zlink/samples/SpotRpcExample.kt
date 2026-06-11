@@ -73,7 +73,7 @@ fun main() {
                         // 클라이언트 Spot이 서버 Spot으로 요청한다.
                         val reply = client.requestToSpot(
                             RoutingId.from("rpc-server-node"), RoutingId.from("rpc-server-spot")
-                        ).message(Message.from("ping")).timeout(Duration.ofSeconds(3)).submitAsync().toCompletableFuture().join()
+                        ).message(Message.from("ping")).timeout(Duration.ofSeconds(3)).submit().toCompletableFuture().join()
                         println("[spot/rpc] request \"ping\" -> reply \"${reply[0].toUtf8String()}\"")
                         reply.forEach(Message::close)
                     }

@@ -12,6 +12,6 @@ public interface ActorJoinSubmitOperation {
     ActorJoinSubmitOperation message(Message part);
     ActorJoinSubmitOperation timeout(Duration timeout);
     ActorJoinCallbackSubmitOperation flags(SendFlags flags);
-    CompletionStage<ActorJoinCompletion> submitAsync();
+    CompletionStage<ActorJoinCompletion> submit();
     boolean submit(ActorJoinHandler callback);
 }

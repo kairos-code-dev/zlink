@@ -54,10 +54,10 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     }
     public void setSendReadyHandler(SendReadyHandler handler) { super.setSendReadyHandler(handler); }
     public RequestOperation request() {
-        return MessageOperations.request(this::requestAsync, this::requestCallback);
+        return MessageOperations.request(this::requestStage, this::requestCallback);
     }
 
-    private CompletableFuture<List<Message>> requestAsync(List<Message> parts,
+    private CompletableFuture<List<Message>> requestStage(List<Message> parts,
                                                           SendFlags flags,
                                                           Duration timeout) {
         return InternalAccess.dealerRequestAsync(this, parts, flags, timeout);

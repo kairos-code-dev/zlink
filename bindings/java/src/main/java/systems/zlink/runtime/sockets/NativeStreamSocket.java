@@ -144,7 +144,7 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
 
     @Override public StreamSocketOptions options() { return options; }
 
-    private CompletableFuture<List<Message>> submitBindAsync(
+    private CompletableFuture<List<Message>> submitBindStage(
       RoutingId sessionRid, ActorRef actor, Duration timeout) {
         CompletableFuture<List<Message>> future = new CompletableFuture<>();
         submitBind(sessionRid, actor, timeout, (result, parts) -> {
@@ -164,7 +164,7 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
             timeout, callback);
     }
 
-    private CompletableFuture<List<Message>> submitUnbindAsync(
+    private CompletableFuture<List<Message>> submitUnbindStage(
       RoutingId sessionRid, String actorId, Duration timeout) {
         CompletableFuture<List<Message>> future = new CompletableFuture<>();
         submitUnbind(sessionRid, actorId, timeout, (result, parts) -> {
@@ -209,9 +209,9 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             markSubmitted();
-            return submitBindAsync(sessionRid, actor, timeout);
+            return submitBindStage(sessionRid, actor, timeout);
         }
 
         @Override
@@ -250,9 +250,9 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             markSubmitted();
-            return submitUnbindAsync(sessionRid, actorId, timeout);
+            return submitUnbindStage(sessionRid, actorId, timeout);
         }
 
         @Override

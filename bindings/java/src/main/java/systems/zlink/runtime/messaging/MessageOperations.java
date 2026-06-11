@@ -175,7 +175,7 @@ public final class MessageOperations {
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             markSubmitted();
             return asyncInvoker.submit(parts.asList(), flags, timeout);
         }

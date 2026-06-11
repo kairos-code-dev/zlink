@@ -142,7 +142,7 @@ final class SpotNodeActorOperations {
         }
 
         @Override
-        public CompletableFuture<ActorLookupResult> submitAsync() {
+        public CompletableFuture<ActorLookupResult> submit() {
             CompletableFuture<ActorLookupResult> future =
                 new CompletableFuture<>();
             submit(result -> {
@@ -205,7 +205,7 @@ final class SpotNodeActorOperations {
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             CompletableFuture<List<Message>> future = new CompletableFuture<>();
             submit((result, parts) -> {
                 if (result == RequestResult.OK) {

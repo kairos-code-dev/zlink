@@ -8,6 +8,6 @@ import java.util.concurrent.CompletionStage;
 /** Builds an actor join to an entry spot. */
 public interface ActorJoinEntrySpotOperation {
     ActorJoinEntrySpotOperation timeout(Duration timeout);
-    CompletionStage<ActorJoinEntrySpotCompletion> submitAsync();
+    CompletionStage<ActorJoinEntrySpotCompletion> submit();
     boolean submit(ActorJoinEntrySpotHandler callback);
 }

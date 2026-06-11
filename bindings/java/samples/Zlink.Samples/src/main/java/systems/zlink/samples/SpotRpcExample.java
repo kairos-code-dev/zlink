@@ -72,7 +72,7 @@ public final class SpotRpcExample {
                     RoutingId.from("rpc-server-node"), RoutingId.from("rpc-server-spot"))
                 .message(Message.from("ping"))
                 .timeout(Duration.ofSeconds(3))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             System.out.println(

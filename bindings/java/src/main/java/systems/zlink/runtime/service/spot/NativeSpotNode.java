@@ -462,7 +462,7 @@ public final class NativeSpotNode implements SpotNode {
     /** Builds an unchecked remote Actor ref for request APIs. */
     /**
      * Async remote actor lookup. The returned builder is staged: callers
-     * configure {@code timeout(...)} then submit via {@code submitAsync()} or
+     * configure {@code timeout(...)} then submit via {@code submit()} or
      * {@code submit(callback)}.
      */
     public ActorLookupOperation remoteActorGetRef(RoutingId targetNodeRid,

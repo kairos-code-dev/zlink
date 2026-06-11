@@ -51,7 +51,7 @@ fun main() {
                             }
                             stream.bindActor(sessionRid, actorRef)
                                 .timeout(Duration.ofSeconds(2))
-                                .submitAsync().toCompletableFuture().join().forEach(Message::close)
+                                .submit().toCompletableFuture().join().forEach(Message::close)
 
                             Message.from("join-first").use { request ->
                                 actor.join(spot).message(request).timeout(Duration.ofSeconds(2))
@@ -66,7 +66,7 @@ fun main() {
                                 stream.sendBoundActor(sessionRid, "single-player")
                                     .message(payload).submit()
                             }
-                            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                            actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close)
                             Message.from("between").use { payload ->
                                 stream.sendBoundActor(sessionRid, "single-player")
                                     .message(payload).submit()
@@ -83,7 +83,7 @@ fun main() {
                             check(payloads == listOf("before", "between")) {
                                 "queued payloads were not preserved"
                             }
-                            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                            actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close)
                             actor.close()
                         }
                         println("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"")

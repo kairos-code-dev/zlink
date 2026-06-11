@@ -154,37 +154,17 @@ Enum, flag, result 타입은 그 의미를 부여하는 개념과 함께 둔다.
 
 ## Native Wait Boundary
 
-Java 바인딩은 low-level socket recv API와 scalable dispatcher API를 구분한다.
+Java 바인딩은 low-level socket recv API와 poller 기반 수신 경계를 구분한다.
 
 - `socket.recv(received, RecvFlags.NONE)`은 native blocking recv다. 적은 수의 전용
   thread나 단순 테스트에서 직접 사용할 수 있다.
-- framework나 많은 client session을 처리하는 runtime은 blocking recv를 handler thread에
-  직접 올리지 않는다.
-- `ZlinkNativeDispatcher`는 `Poller`로 readiness를 기다린 뒤, ready socket에 대해
+- framework나 많은 client session을 처리하는 runtime은 blocking recv를 handler 실행 thread에
+  직접 올리지 않는다. runtime은 `Poller`로 readiness를 기다린 뒤 ready socket에 대해
   `RecvFlags.DONT_WAIT` recv를 수행한다.
-- dispatcher가 수신한 `Received`는 Java callback executor로 전달된다. application handler는
-  native wait thread가 아니라 callback executor 뒤에서 실행된다.
-
-```java
-try (ZlinkNativeDispatcher dispatcher = ZlinkNativeDispatcher.create(
-         ZlinkDispatchOptions.builder()
-             .runtimeThreadCount(1)
-             .pollTimeout(Duration.ofMillis(10))
-             .callbackExecutor(callbackExecutor)
-             .build())) {
-    dispatcher.register(socket, received -> {
-        try (received) {
-            // handle message
-        }
-        return CompletableFuture.completedFuture(null);
-    });
-
-    dispatcher.start();
-}
-```
-
-dispatcher의 목적은 native poll/recv 지식을 bindings 안에 가두는 것이다. framework는
-이미 Java object로 올라온 message를 받아 handler dispatch 정책을 적용한다.
+- application handler는 native wait thread가 아니라 framework가 설정한 handler executor 뒤에서
+  실행된다. virtual thread를 사용한다면 이 handler executor 경계에서 사용한다.
+- 별도 public dispatcher API는 제공하지 않는다. 기존 `Poller`, socket `recv(..., DONT_WAIT)`,
+  framework 내부 수신 루프로 충분하며, bindings public 계약에 framework 실행 정책을 섞지 않는다.
 
 ## Proposed Repository Layout
 

@@ -81,7 +81,7 @@ final class SpotActorJoinPlane {
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             CompletableFuture<List<Message>> future = new CompletableFuture<>();
             submit((result, parts) -> {
                 if (result == RequestResult.OK) {
@@ -165,7 +165,7 @@ final class SpotActorJoinPlane {
         }
 
         @Override
-        public CompletableFuture<ActorJoinCompletion> submitAsync() {
+        public CompletableFuture<ActorJoinCompletion> submit() {
             CompletableFuture<ActorJoinCompletion> future =
                 new CompletableFuture<>();
             submit((result, replyParts) -> {
@@ -269,7 +269,7 @@ final class SpotActorJoinPlane {
         }
 
         @Override
-        public CompletableFuture<ActorJoinEntrySpotCompletion> submitAsync() {
+        public CompletableFuture<ActorJoinEntrySpotCompletion> submit() {
             CompletableFuture<ActorJoinEntrySpotCompletion> future =
                 new CompletableFuture<>();
             submit(result -> {

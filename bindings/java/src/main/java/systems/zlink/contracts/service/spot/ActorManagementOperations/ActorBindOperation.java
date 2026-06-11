@@ -12,7 +12,7 @@ public interface ActorBindOperation {
     /** Sets the operation timeout, replacing any previous value. */
     ActorBindOperation timeout(Duration timeout);
     /** Submits the operation and asynchronously returns the reply parts. */
-    CompletionStage<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submit();
     /** Submits the operation; the result is delivered to {@code callback}. */
     boolean submit(ReplyHandler callback);
 }

@@ -185,7 +185,7 @@ goal 완료 증거:
 | Kotlin wrapper | wrapper API diff, Kotlin sample source scan, Kotlin compile/test |
 | Java sample cleanup | Java client scenario diff, sample release gate, Java sample compile |
 | Kotlin sample cleanup | Kotlin client scenario diff, 직접 `submit()` 검색 결과, Kotlin sample compile |
-| bindings dispatcher | dispatcher interface diff, native wait boundary test, blocking recv guide update |
+| bindings wait boundary | public dispatcher 제거 diff, native wait boundary test, blocking recv guide update |
 | Java handler execution | executor option diff, virtual thread handler test, shutdown/failure test |
 | Kotlin handler execution | coroutine dispatcher diff, cancellation test, scope ownership test |
 | 문서 반영 | spec/guide/internals/draft diff, 구현 전 API가 정식 spec에 없는지 검색 |
@@ -400,68 +400,30 @@ public interface ZLinkStreamWaitCall {
 - `framework/languages/java/zlink-stream-connector/src/main/java/.../ZLinkStreamWaitCall.java`
 - `framework/languages/java/zlink-framework-kotlin/src/main/kotlin/.../ZLinkConnectorExtensions.kt`
 
-### Phase 4. bindings/java dispatch boundary 추가
+### Phase 4. bindings/java native wait boundary 정리
 
 1. 현재 bindings/java의 blocking recv, poller, callback, handle ownership API를 점검한다.
-2. framework가 사용할 dispatch boundary API 후보를 두 가지 이상 비교한다.
-   - 후보 A: bindings가 `ZlinkPollDispatcher` 같은 dispatcher를 제공한다.
-   - 후보 B: bindings는 poller와 non-blocking recv helper만 제공하고 framework가 dispatcher를
-     구성한다.
-3. POSD 기준으로 후보 A를 우선 검토한다. native wait 지식이 framework로 새는 것을 줄일 수
-   있기 때문이다.
-4. dispatcher는 적은 수의 runtime thread에서 poll/recv를 수행하고, Java-side callback 또는
-   stage completion으로 message를 넘긴다.
+2. framework가 사용할 수신 경계는 기존 `Poller`와 `RecvFlags.DONT_WAIT` recv 조합으로 유지한다.
+3. bindings public API에 별도 dispatcher를 추가하지 않는다. `ZlinkNativeDispatcher` 형태의
+   public API는 framework 실행 정책과 bindings low-level 계약을 섞는 얕은 API라서 되돌렸다.
+4. framework는 적은 수의 runtime thread에서 poll/recv를 수행하고, Java-side dispatch queue 또는
+   handler executor로 message를 넘긴다.
 5. blocking recv API 문서에는 low-level API라는 점과 virtual thread 대량 사용 주의점을 적는다.
 
 완료 기준:
 
 - framework code가 native blocking recv를 handler 실행 thread에서 직접 호출하지 않는다.
-- bindings 문서가 low-level blocking API와 framework dispatch path를 구분한다.
-- dispatcher 또는 poller boundary에 대한 unit/contract test가 있다.
+- bindings 문서가 low-level blocking API와 framework 수신 경계를 구분한다.
+- framework 또는 bindings의 기존 poller/recv 경로에 대한 unit/contract test가 있다.
+- `ZlinkNativeDispatcher`, `ZlinkDispatchOptions`, `ZlinkReceiveHandler` 같은 public dispatcher
+  API가 남아 있지 않다.
 
-구현할 bindings API 초안:
-
-```java
-public final class ZlinkDispatchOptions {
-    public static Builder builder();
-
-    public int runtimeThreadCount();
-    public Duration pollTimeout();
-    public int maxBatchSize();
-    public Executor callbackExecutor();
-    public boolean failFastOnClosedHandle();
-}
-
-public interface ZlinkNativeDispatcher extends AutoCloseable {
-    ZlinkDispatcherRegistration register(
-        ZlinkSocket socket,
-        ZlinkReceiveHandler handler);
-
-    CompletionStage<Void> start();
-    CompletionStage<Void> stop();
-    boolean isRunning();
-}
-
-public interface ZlinkDispatcherRegistration extends AutoCloseable {
-    boolean isClosed();
-}
-
-@FunctionalInterface
-public interface ZlinkReceiveHandler {
-    CompletionStage<Void> handle(ZlinkReceivedMessage message);
-}
-```
-
-이름은 구현 전에 한 번 더 검토한다. 핵심은 API 이름이 아니라 책임이다. native poll/recv 지식은
-bindings dispatcher 안에 있어야 하고, framework handler는 이미 Java object로 올라온 message만
-받아야 한다.
-
-dispatcher 내부 동작:
+framework 내부 수신 경계:
 
 1. runtime thread가 poller wait를 호출한다.
 2. ready socket에 대해 `DONT_WAIT` recv를 반복한다.
 3. 수신 message를 Java object로 변환한다.
-4. `callbackExecutor` 또는 framework adapter callback으로 넘긴다.
+4. framework dispatch queue 또는 handler executor로 넘긴다.
 5. handle close, peer disconnect, timeout, native error를 명확한 Java exception 또는 terminal
    event로 변환한다.
 
@@ -743,12 +705,12 @@ bindings jar를 만드는 단계와 sample compile/smoke 단계는 필요하면 
 - Kotlin sample compile에서 `SomeClass::class.java` 반복 사용이 client scenario에 남지 않는다.
 - Kotlin sample source scan에서 client scenario의 직접 `submit()` 호출이 남지 않는다.
 
-### bindings/java dispatcher tests
+### bindings/java wait boundary tests
 
-- dispatcher가 poller ready socket에서 `DONT_WAIT` recv를 호출한다.
-- dispatcher가 여러 message를 batch로 읽고 callback 순서를 유지한다.
-- handler callback executor가 native wait thread와 분리된다.
-- socket close 중 dispatcher stop이 deadlock 없이 끝난다.
+- framework 수신 루프가 handler 실행 thread에서 blocking recv를 직접 호출하지 않는다.
+- poller ready socket에서 `DONT_WAIT` recv를 호출하는 기존 경로가 유지된다.
+- handler executor가 native wait thread와 분리된다.
+- socket close 중 runtime stop이 deadlock 없이 끝난다.
 - native recv error가 Java exception 또는 terminal event로 변환된다.
 - blocking recv API test는 유지하되 scalable framework path test와 분리한다.
 
@@ -859,7 +821,7 @@ goal 범위에 따라 아래 명령 중 필요한 것을 실행한다. 한 goal�
 | Java sample client | `../gradlew -p . :java:Bingo:Client:compileJava :java:TicTacToe:Client:compileJava` |
 | Kotlin sample client | `../gradlew -p . :kotlin:Bingo:Client:compileKotlin :kotlin:TicTacToe:Client:compileKotlin` |
 | sample release gate | `./gradlew :zlink-framework-testkit:contractTest --tests systems.zlink.framework.testkit.SampleReleaseGateContractTest` |
-| bindings dispatcher | bindings/java unit test와 새 dispatcher contract test |
+| bindings wait boundary | bindings/java unit test와 framework 수신 경계 test |
 | handler dispatcher | Java/Kotlin framework handler execution test |
 
 Gradle이 native bindings jar를 동시에 건드려 실패하면 병렬 실행 결과를 실패 원인으로 단정하지
@@ -897,7 +859,8 @@ goal 종료 직전에 아래를 확인한다.
 
 아래 결정은 구현 전에 두 가지 이상 대안을 비교한 뒤 확정한다.
 
-- bindings/java dispatcher API 이름과 위치
+- bindings/java public dispatcher API는 제거한 상태를 유지할지, 추후 실제 다중 소비자가 생길 때
+  다시 검토할지
 - Java framework 기본 handler executor를 virtual thread로 둘지, 명시 옵션으로만 둘지
 - Kotlin 기본 dispatcher와 scope ownership
 - blocking recv API misuse를 release gate, static check, guide 중 어디까지 강제할지

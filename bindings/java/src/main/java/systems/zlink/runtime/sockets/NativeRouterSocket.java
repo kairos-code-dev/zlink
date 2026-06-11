@@ -82,12 +82,12 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
 
     public RequestOperation request(RoutingId rid) {
         return MessageOperations.request(
-            (parts, flags, timeout) -> requestAsync(rid, parts, flags, timeout),
+            (parts, flags, timeout) -> requestStage(rid, parts, flags, timeout),
             (parts, callback, flags, timeout) ->
                 requestCallback(rid, parts, callback, flags, timeout));
     }
 
-    private CompletableFuture<List<Message>> requestAsync(RoutingId rid,
+    private CompletableFuture<List<Message>> requestStage(RoutingId rid,
                                                           List<Message> parts,
                                                           SendFlags flags,
                                                           Duration timeout) {

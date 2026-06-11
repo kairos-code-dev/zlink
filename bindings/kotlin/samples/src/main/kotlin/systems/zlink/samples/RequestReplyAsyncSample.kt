@@ -56,7 +56,7 @@ fun main() {
                             roundTrip = dealerSocket.request()
                                 .message(request)
                                 .timeout(Duration.ofSeconds(2))
-                                .submitAsync()
+                                .submit()
                                 .thenAccept { reply ->
                                     try {
                                         val value = reply[0].toUtf8String()

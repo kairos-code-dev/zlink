@@ -147,7 +147,7 @@ public class SocketContractTest {
                 List<Message> reply = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofSeconds(2))
-                    .submitAsync()
+                    .submit()
                     .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
                 try {
@@ -198,7 +198,7 @@ public class SocketContractTest {
                     .message(packet)
                     .message(payload)
                     .timeout(Duration.ofSeconds(2))
-                    .submitAsync()
+                    .submit()
                     .toCompletableFuture()
                     .get(2, TimeUnit.SECONDS);
                 try {
@@ -641,8 +641,11 @@ public class SocketContractTest {
         assertEquals(ActorJoinCallbackSubmitOperation.class,
             ActorJoinCallbackSubmitOperation.class.getMethod("flags", SendFlags.class)
                 .getReturnType());
-        assertFalse(hasPublicMethod(ActorJoinCallbackSubmitOperation.class,
-            "submitAsync"));
+        assertEquals(boolean.class,
+            ActorJoinCallbackSubmitOperation.class.getMethod(
+                "submit",
+                systems.zlink.contracts.service.spot.ActorJoinHandler.class)
+                .getReturnType());
 
         assertEquals(ActorJoinEntrySpotOperation.class,
             ActorJoinEntrySpotOperation.class.getMethod("timeout", Duration.class)
@@ -670,7 +673,7 @@ public class SocketContractTest {
                 future = dealerSocket.request()
                     .message(request)
                     .timeout(Duration.ofMillis(50))
-                    .submitAsync()
+                    .submit()
                     .toCompletableFuture();
             }
 

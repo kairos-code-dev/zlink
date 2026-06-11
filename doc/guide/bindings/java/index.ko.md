@@ -133,21 +133,30 @@ try (Message msg = new Message(256)) {
 
 직접 `recv(..., RecvFlags.NONE)`를 호출하면 현재 Java thread가 native recv에서
 대기합니다. 이 표면은 low-level socket API입니다. 많은 session이나 handler를 처리하는
-framework 경로에서는 이 호출을 handler thread에 직접 올리지 말고, `ZlinkNativeDispatcher`
-를 사용해 poller thread와 callback executor를 분리합니다.
+framework 경로에서는 이 호출을 handler thread에 직접 올리지 말고, `Poller`로 readiness를
+기다린 뒤 ready socket에서 `RecvFlags.DONT_WAIT` recv를 수행합니다. application handler는
+framework가 설정한 handler executor 뒤에서 실행합니다.
 
 ```java
-try (var dispatcher = ZlinkNativeDispatcher.create(
-         ZlinkDispatchOptions.builder()
-             .callbackExecutor(callbackExecutor)
-             .build())) {
-    dispatcher.register(socket, received -> {
-        try (received) {
-            handle(received);
+try (Poller poller = Zlink.createPoller()) {
+    poller.add(socket, 1L, PollEventFlags.POLLIN);
+    PollEvents events = new PollEvents(16);
+
+    int count = poller.wait(events, Duration.ofMillis(10));
+    for (int i = 0; i < count; i++) {
+        while (true) {
+            Received received = new Received();
+            if (!socket.recv(received, RecvFlags.DONT_WAIT)) {
+                received.close();
+                break;
+            }
+            handlerExecutor.execute(() -> {
+                try (received) {
+                    handle(received);
+                }
+            });
         }
-        return CompletableFuture.completedFuture(null);
-    });
-    dispatcher.start();
+    }
 }
 ```
 

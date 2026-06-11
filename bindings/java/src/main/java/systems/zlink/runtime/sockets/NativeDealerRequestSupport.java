@@ -37,7 +37,7 @@ public final class NativeDealerRequestSupport {
             public CompletableFuture<List<Message>> dealerRequestAsync(
                     DealerSocket socket, List<Message> parts, SendFlags flags,
                     Duration timeout) {
-                return NativeDealerRequestSupport.requestAsync(socket, parts,
+                return NativeDealerRequestSupport.requestStage(socket, parts,
                     flags, timeout);
             }
 
@@ -89,7 +89,7 @@ public final class NativeDealerRequestSupport {
             public CompletableFuture<List<Message>> routerRequestAsync(
                     RouterSocket socket, RoutingId routingId,
                     List<Message> parts, SendFlags flags, Duration timeout) {
-                return NativeRouterRequestSupport.requestAsync(socket,
+                return NativeRouterRequestSupport.requestStage(socket,
                     routingId, parts, flags, timeout);
             }
 
@@ -188,7 +188,7 @@ public final class NativeDealerRequestSupport {
     private NativeDealerRequestSupport() {
     }
 
-    public static CompletableFuture<List<Message>> requestAsync(
+    public static CompletableFuture<List<Message>> requestStage(
             DealerSocket socket,
             List<Message> parts,
             SendFlags flags,

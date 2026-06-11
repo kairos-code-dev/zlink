@@ -71,7 +71,7 @@ public final class ActorSinglePlayerQueueSample {
                 }
                 stream.bindActor(sessionRid, actorRef)
                   .timeout(Duration.ofSeconds(2))
-                  .submitAsync()
+                  .submit()
                   .toCompletableFuture()
                   .join()
                   .forEach(Message::close);
@@ -91,7 +91,7 @@ public final class ActorSinglePlayerQueueSample {
                       .message(payload)
                       .submit();
                 }
-                actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close);
+                actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close);
                 try (Message payload = Message.from("between")) {
                     stream.sendBoundActor(sessionRid, "single-player")
                       .message(payload)
@@ -113,7 +113,7 @@ public final class ActorSinglePlayerQueueSample {
                     throw new IllegalStateException(
                       "queued payloads were not preserved");
                 }
-                actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close);
+                actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close);
                 actor.close();
             }
             System.out.println("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");

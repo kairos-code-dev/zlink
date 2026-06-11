@@ -9,6 +9,6 @@ import java.util.concurrent.CompletionStage;
 /** Builds a remote actor lookup operation. */
 public interface ActorLookupOperation {
     ActorLookupOperation timeout(Duration timeout);
-    CompletionStage<ActorLookupResult> submitAsync();
+    CompletionStage<ActorLookupResult> submit();
     boolean submit(ActorLookupHandler callback);
 }

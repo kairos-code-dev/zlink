@@ -70,7 +70,7 @@ public final class ActorRoomServerSample {
                 }
                 stream.bindActor(sessionRid, actorRef)
                   .timeout(Duration.ofSeconds(2))
-                  .submitAsync()
+                  .submit()
                   .toCompletableFuture()
                   .join()
                   .forEach(Message::close);
@@ -100,7 +100,7 @@ public final class ActorRoomServerSample {
                 SampleSupport.waitUntil("actor payload",
                     () -> payloads.contains("move:north"));
 
-                actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close);
+                actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close);
                 actor.close();
             }
             System.out.println("[actor/room] stream payload: \"move:north\" -> actor: \"move:north\"");

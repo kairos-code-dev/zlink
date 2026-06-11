@@ -38,7 +38,7 @@ public final class SpotChannelExample {
             var replyFuture = room.requestToChannel(channel)
                 .message(Message.from("get-profile"))
                 .timeout(Duration.ofSeconds(5))
-                .submitAsync();
+                .submit();
 
             // API 서버(ROUTER)는 요청을 폴링으로 받아 응답한다.
             try (Received received = new Received()) {

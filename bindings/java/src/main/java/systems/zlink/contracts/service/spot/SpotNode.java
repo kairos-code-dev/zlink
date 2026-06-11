@@ -89,7 +89,7 @@ public interface SpotNode extends AutoCloseable {
 
     /**
      * Async remote actor lookup. The returned builder is staged: callers
-     * configure {@code timeout(...)} then submit via {@code submitAsync()} or
+     * configure {@code timeout(...)} then submit via {@code submit()} or
      * {@code submit(callback)}.
      */
     ActorLookupOperation remoteActorGetRef(RoutingId targetNodeRid,

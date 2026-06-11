@@ -26,7 +26,7 @@ fun main() {
                     stream.attachActorGateway(node)
                     val session = RoutingId.from("player-session")
                     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-                    stream.bindActor(session, player.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                    stream.bindActor(session, player.ref()).submit().toCompletableFuture().join().forEach(Message::close)
 
                     // dispatch 핸들러: join을 수락하고, STREAM이 relay한 메시지를 모은다.
                     room.setDispatchHandler { info ->
@@ -71,7 +71,7 @@ fun main() {
                         "messages were not processed in order: $processed"
                     }
 
-                    player.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                    player.leave(room).submit().toCompletableFuture().join().forEach(Message::close)
                     player.close()
                     println("[actor/sequential] processed in order: move -> attack -> loot")
                 }

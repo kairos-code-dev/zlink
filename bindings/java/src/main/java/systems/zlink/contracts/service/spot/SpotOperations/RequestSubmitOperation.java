@@ -30,7 +30,7 @@ public interface RequestSubmitOperation {
 
     /**
      * Sets the send flags and narrows to callback submission; the async
-     * {@link #submitAsync()} path is no longer reachable after this call.
+     * {@link #submit()} path is no longer reachable after this call.
      *
      * @param flags the send flags
      * @return the callback-submit stage
@@ -44,7 +44,7 @@ public interface RequestSubmitOperation {
      *
      * @return a future that completes with the reply message list
      */
-    CompletionStage<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submit();
 
     /**
      * Submits the request; the result and reply parts are delivered to

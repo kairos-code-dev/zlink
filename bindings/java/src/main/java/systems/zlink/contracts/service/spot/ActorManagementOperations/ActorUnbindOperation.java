@@ -10,6 +10,6 @@ import java.util.concurrent.CompletionStage;
 /** Builds an actor-from-session unbind operation. */
 public interface ActorUnbindOperation {
     ActorUnbindOperation timeout(Duration timeout);
-    CompletionStage<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submit();
     boolean submit(ReplyHandler callback);
 }

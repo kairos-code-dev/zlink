@@ -228,7 +228,7 @@ final class NativeActor implements Actor {
         }
 
         @Override
-        public CompletableFuture<ActorJoinCompletion> submitAsync() {
+        public CompletableFuture<ActorJoinCompletion> submit() {
             CompletableFuture<ActorJoinCompletion> future = new CompletableFuture<>();
             submit((result, replyParts) -> {
                 if (result.result() == RequestResult.OK) {
@@ -325,7 +325,7 @@ final class NativeActor implements Actor {
         }
 
         @Override
-        public CompletableFuture<List<Message>> submitAsync() {
+        public CompletableFuture<List<Message>> submit() {
             CompletableFuture<List<Message>> future = new CompletableFuture<>();
             submit((result, parts) -> {
                 if (result == RequestResult.OK) {

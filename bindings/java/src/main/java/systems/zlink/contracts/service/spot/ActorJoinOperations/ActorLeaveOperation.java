@@ -10,6 +10,6 @@ import java.util.concurrent.CompletionStage;
 /** Builds an actor leave operation. */
 public interface ActorLeaveOperation {
     ActorLeaveOperation timeout(Duration timeout);
-    CompletionStage<List<Message>> submitAsync();
+    CompletionStage<List<Message>> submit();
     boolean submit(ReplyHandler callback);
 }

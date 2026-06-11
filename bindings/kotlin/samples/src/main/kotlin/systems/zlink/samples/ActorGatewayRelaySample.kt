@@ -51,7 +51,7 @@ fun main() {
                             }
                             stream.bindActor(sessionRid, actorRef)
                                 .timeout(Duration.ofSeconds(2))
-                                .submitAsync().toCompletableFuture().join().forEach(Message::close)
+                                .submit().toCompletableFuture().join().forEach(Message::close)
 
                             Message.from("join-play").use { request ->
                                 actor.join(spot).message(request).timeout(Duration.ofSeconds(2))
@@ -70,7 +70,7 @@ fun main() {
 
                             check(payloads == listOf("client-input")) { "unexpected actor payload" }
 
-                            actor.leave(spot).submitAsync().toCompletableFuture().join().forEach(Message::close)
+                            actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close)
                             actor.close()
                         }
                         println("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"")

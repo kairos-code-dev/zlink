@@ -32,7 +32,7 @@ final class NativeRouterRequestSupport {
     private NativeRouterRequestSupport() {
     }
 
-    public static CompletableFuture<List<Message>> requestAsync(
+    public static CompletableFuture<List<Message>> requestStage(
             RouterSocket socket,
             RoutingId routingId,
             List<Message> parts,

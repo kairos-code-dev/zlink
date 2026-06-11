@@ -35,8 +35,8 @@ public final class ActorRoomExample {
 
             stream.attachActorGateway(node);
             RoutingId session = RoutingId.from("game-room-session");
-            stream.bindActor(session, player1.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close);
-            stream.bindActor(session, player2.ref()).submitAsync().toCompletableFuture().join().forEach(Message::close);
+            stream.bindActor(session, player1.ref()).submit().toCompletableFuture().join().forEach(Message::close);
+            stream.bindActor(session, player2.ref()).submit().toCompletableFuture().join().forEach(Message::close);
 
             // dispatch 핸들러: join 요청을 수락하고, 도착한 메시지를 모은다.
             room.setDispatchHandler(info -> {
@@ -68,8 +68,8 @@ public final class ActorRoomExample {
                 throw new IllegalStateException("messages were not routed per actor: " + received);
             }
 
-            player1.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close);
-            player2.leave(room).submitAsync().toCompletableFuture().join().forEach(Message::close);
+            player1.leave(room).submit().toCompletableFuture().join().forEach(Message::close);
+            player2.leave(room).submit().toCompletableFuture().join().forEach(Message::close);
             player1.close();
             player2.close();
             System.out.println("[actor/room] player-1: \"your-turn\", player-2: \"wait\"");

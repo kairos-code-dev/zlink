@@ -568,7 +568,7 @@ options.services().add_factory<clock_t>([](service_provider_t &services) {
 지원 lifetime은 `singleton`, `scoped`, `transient`로 둔다. `scoped`는 zlink core
 기능이 아니다. `.NET` framework가 `IServiceScope`를 core stream, spot, handler
 lifecycle에 맞춰 붙이는 것처럼, C++ framework가 자체 DI container에서 만드는
-framework-owned scope다. 사용자가 임의로 전역 scope를 만들고 lifetime을 해석하게 하지
+framework가 소유하는 scope다. 사용자가 임의로 전역 scope를 만들고 lifetime을 해석하게 하지
 않는다.
 
 금지 방향은 아래와 같다.
@@ -589,7 +589,7 @@ hosted service stop 순서, shutdown 중 resolve 금지 같은 규칙을 host와
 - `add_singleton<T>()`, `add_transient<T>()`는 기본 생성 가능한 타입만 자동 생성한다.
 - 생성자 의존성이 있는 타입은 `add_singleton<T, Dep...>()`,
   `add_scoped<T, Dep...>()`, `add_transient<T, Dep...>()`처럼 의존 타입을 명시해 등록한다.
-- `add_scoped<T>()`는 framework-owned scope 안에서만 resolve할 수 있다.
+- `add_scoped<T>()`는 framework가 소유하는 scope 안에서만 resolve할 수 있다.
 - 복잡한 외부 객체 생성이나 조건부 생성이 필요한 경우에만 `add_factory<T>()`를 사용한다.
 - handler owner에 의존성이 있으면 handler type이 `dependency_list_t<Dep...>`로 의존성을
   명시하고, handler options builder가 DI 생성자 주입 등록을 수행한다.
@@ -610,7 +610,7 @@ hosted service stop 순서, shutdown 중 resolve 금지 같은 규칙을 host와
 zlink core에는 아래 scope 개념이 없다. 이 경계는 모두 framework 계층이 core lifecycle
 event를 기준으로 만들어 붙이는 DI lifetime이다.
 
-framework-owned scope 경계는 아래와 같다.
+framework가 소유하는 scope 경계는 아래와 같다.
 
 | Scope | 생성 시점 | 종료 시점 | 용도 |
 |-------|-----------|-----------|------|

@@ -19,14 +19,14 @@ C++ Stream Connector는 `ZLink Framework for C++` 샘플이 아니다. 서버 fr
 
 C++ connector는 엔진별로 core 구현을 복제하지 않는다.
 [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)에 따라
-하나의 독립 core connector를 두고, coroutine, 예외 기반 호출, Unreal, Godot, Axmol 같은
+하나의 독립 기본 connector를 두고, coroutine, 예외 기반 호출, Unreal, Godot, Axmol 같은
 환경별 표면은 adapter나 plugin으로 분리한다.
 
 핵심 결정은 아래와 같다.
 
 | 영역 | 결정 |
 |------|------|
-| core connector | 예외와 coroutine에 의존하지 않는 독립 C++ 라이브러리 |
+| 기본 connector | 예외와 coroutine에 의존하지 않는 독립 C++ 라이브러리 |
 | server framework | 예외 기반 application API로 정리 |
 | coroutine | core에 직접 섞지 않고 선택 adapter로 제공 |
 | Unreal | Unreal plugin으로 제공하며 core API를 그대로 노출하지 않음 |
@@ -36,7 +36,7 @@ C++ connector는 엔진별로 core 구현을 복제하지 않는다.
 | Cocos2d-x | 업데이트 중단 제품으로 보고 지원하지 않음 |
 
 이 결정의 목적은 build option 조합을 사용자에게 떠넘기지 않는 것이다. 예외가 꺼진 client
-엔진에서도 core connector를 쓸 수 있어야 하고, 서버나 성능 테스트 client에서는 coroutine과
+엔진에서도 기본 connector를 쓸 수 있어야 하고, 서버나 성능 테스트 client에서는 coroutine과
 예외 기반 API를 선택해서 더 짧은 코드를 쓸 수 있어야 한다.
 
 ## 2. 위치
@@ -86,9 +86,9 @@ framework/languages/cpp/
 `framework/languages/cpp/CMakeLists.txt`는 개발 편의를 위해 이를 포함할 수 있지만,
 connector package의 기준은 `connector/` 자체다.
 
-`connector/` 아래에는 Unreal, Godot, Axmol 타입을 넣지 않는다. core connector는 특정 엔진
-header 없이 빌드되어야 한다. 엔진 adapter는 core connector를 링크하거나 source로 포함할 수
-있지만, core connector가 adapter를 알면 안 된다.
+`connector/` 아래에는 Unreal, Godot, Axmol 타입을 넣지 않는다. 기본 connector는 특정 엔진
+header 없이 빌드되어야 한다. 엔진 adapter는 기본 connector를 링크하거나 source로 포함할 수
+있지만, 기본 connector가 adapter를 알면 안 된다.
 
 서버 framework package는 connector package를 필요로 하지 않는다. connector package도
 서버 framework package를 필요로 하지 않는다. 양쪽은 STREAM header/payload wire 계약만
@@ -109,7 +109,7 @@ Asio socket receive loop는 `src/runtime/*`에 둔다.
 
 | 제품 | 지원 결정 | 이유 |
 |------|-----------|------|
-| 일반 C++ client/tool | 지원 | core connector의 기본 대상 |
+| 일반 C++ client/tool | 지원 | 기본 connector의 기본 대상 |
 | 서버 성능 테스트 client | 지원 | coroutine adapter를 사용하면 시나리오를 짧게 유지할 수 있음 |
 | Unreal Engine | 지원 | Unreal plugin과 delegate/Game Thread 표면이 필요함 |
 | Godot | 지원 | GDExtension 표면이 필요함 |
@@ -136,7 +136,7 @@ Cocos Creator는 TypeScript connector 문서에서 다룬다.
 | `zlink-godot-stream-connector` | GDExtension artifact | Godot signal/callback 표면 |
 | `zlink-axmol-connector` | CMake package 또는 source package | Axmol scheduler/main thread 표면 |
 
-core connector는 단독 설치가 가능해야 한다. Unreal, Godot, Axmol adapter는 core connector를
+기본 connector는 단독 설치가 가능해야 한다. Unreal, Godot, Axmol adapter는 기본 connector를
 내부 `ThirdParty`로 포함하거나 외부 package로 참조할 수 있다. 어느 쪽이든 adapter package
 사용자가 서버 framework package를 설치할 필요는 없어야 한다.
 
@@ -193,16 +193,16 @@ Boost include 경로를 제공하므로 Boost.Asio를 기본 구현 기반으로
 
 | 소유 범위 | 포함 기능 |
 |-----------|----------|
-| core connector | TCP, TLS, WebSocket, WebSocket over TLS transport |
-| core connector | connector 생성, 명시 connect, graceful close |
-| core connector | connection state event, reconnect, heartbeat |
-| core connector | packet send, typed send helper, typed request/reply helper |
-| core connector | callback completion, packet callback receive |
-| core connector | request timeout, pending request correlation |
-| core connector | manual dispatch mode, immediate dispatch mode |
-| core connector | metadata, payload compression flag 처리 |
-| core connector | max send payload size, max metadata size |
-| core connector | connector instance별 독립 실행 |
+| 기본 connector | TCP, TLS, WebSocket, WebSocket over TLS transport |
+| 기본 connector | connector 생성, 명시 connect, graceful close |
+| 기본 connector | connection state event, reconnect, heartbeat |
+| 기본 connector | packet send, typed send helper, typed request/reply helper |
+| 기본 connector | callback completion, packet callback receive |
+| 기본 connector | request timeout, pending request correlation |
+| 기본 connector | manual dispatch mode, immediate dispatch mode |
+| 기본 connector | metadata, payload compression flag 처리 |
+| 기본 connector | max send payload size, max metadata size |
+| 기본 connector | connector instance별 독립 실행 |
 | coroutine adapter | no-callback `async()`와 `co_await` 표면 |
 | throwing adapter | 성공 값을 바로 반환하고 실패를 예외로 바꾸는 표면 |
 | engine adapter | 엔진별 delegate, signal, main thread dispatch 표면 |
@@ -259,9 +259,9 @@ codec id는 STREAM header의 `codec` 필드에 기록한다. 압축은 codec이 
 수신 처리 순서는 `decompress -> codec decode -> typed payload`이고, 송신 처리 순서는
 `typed payload -> codec encode -> optional compress -> header flag 설정`이다.
 
-## 6. Core Connector 계약
+## 6. 기본 Connector 계약
 
-core connector는 client 엔진에서 예외와 coroutine이 꺼져 있어도 빌드되어야 한다. 따라서
+기본 connector는 client 엔진에서 예외와 coroutine이 꺼져 있어도 빌드되어야 한다. 따라서
 기본 public contract는 아래 원칙을 따른다.
 
 - 실패는 `result_t<T>`로 표현한다.
@@ -379,7 +379,7 @@ connector.codecs()
 
 ## 7. Coroutine Adapter
 
-coroutine adapter는 core connector 위의 선택 표면이다. 공통 의미는
+coroutine adapter는 기본 connector 위의 선택 표면이다. 공통 의미는
 [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따른다.
 서버 성능 테스트 client, CLI, tool처럼 C++20 coroutine을 안정적으로 켤 수 있는 환경에서
 사용한다.
@@ -395,7 +395,7 @@ auto auth = co_await coroutine_client
   .async();
 ```
 
-이 adapter는 core connector package의 필수 dependency가 아니다. 사용자가 adapter header나
+이 adapter는 기본 connector package의 필수 dependency가 아니다. 사용자가 adapter header나
 component를 선택했을 때만 `task_t<T>`와 no-callback `async()`가 보이게 한다. core
 `connector_t`의 call object는 `submit()`과 `submit(callback)`만 노출한다.
 auto codec helper도 같은 규칙을 따른다. core helper는
@@ -415,7 +415,7 @@ auto auth = client.request<auth_res_t>(auth_req_t{"player-1"}).submit();
 connector에서 알 수 있던 timeout, disconnected, validation failure 같은 정보가 사라지면
 안 된다.
 
-서버 framework는 장기적으로 예외 기반 application API로 정리한다. 단, client core connector
+서버 framework는 장기적으로 예외 기반 application API로 정리한다. 단, client 기본 connector
 자체를 예외 기반으로 바꾸지는 않는다.
 
 ## 9. Dispatch Mode
@@ -437,7 +437,7 @@ immediate mode도 제공한다. 이 모드에서는 connector가 내부 수신 �
 ## 10. Unreal Connector
 
 Unreal Connector는 일반 C++ connector와 별도 배포물이다. Unreal 프로젝트에서 바로 쓸 수
-있도록 Unreal 전용 함수와 타입을 제공한다. Unreal connector는 core connector API를 그대로
+있도록 Unreal 전용 함수와 타입을 제공한다. Unreal connector는 기본 connector API를 그대로
 노출하지 않는다. Unreal 사용자는 `std::function`, `result_t<T>`, worker thread callback을
 직접 다루지 않는 표면을 기대한다.
 
@@ -452,7 +452,7 @@ Unreal adapter는 아래 원칙을 따른다.
 - Tick 또는 subsystem update에서 manual dispatch를 호출할 수 있어야 한다.
 - `UObject` lifetime을 고려해서 completion target이 사라진 경우 호출하지 않는다.
 - 예외와 coroutine에 의존하지 않는다.
-- core connector runtime type을 Unreal public header에 직접 노출하지 않는다.
+- 기본 connector runtime type을 Unreal public header에 직접 노출하지 않는다.
 - PIE 종료, map unload, game instance shutdown에서 graceful close한다.
 
 예시 표면은 아래 방향으로 둔다.
@@ -505,7 +505,7 @@ background thread에서 `UObject`, `AActor`, `UWorld`를 직접 만지지 않는
 mode는 manual이며, `Dispatch()`를 game tick에서 호출하면 그 frame에 쌓인 packet과
 lifecycle event를 Game Thread에서 처리한다.
 
-Unreal plugin은 `.uplugin` 단위로 배포한다. 내부적으로 core connector를 `ThirdParty`로
+Unreal plugin은 `.uplugin` 단위로 배포한다. 내부적으로 기본 connector를 `ThirdParty`로
 포함할지, 설치된 CMake package를 참조할지는 배포 채널별로 결정한다. Unreal lifecycle 때문에
 transport를 Unreal `Sockets`/`Networking` 모듈로 바꾸는 구현도 허용할 수 있지만, public
 API와 STREAM wire 의미는 일반 C++ connector와 같아야 한다.
@@ -516,7 +516,7 @@ Protobuf는 Unreal plugin 안의 build option으로 포함할 수 있지만, Unr
 
 ## 11. Godot Connector
 
-Godot connector는 GDExtension adapter로 제공한다. core connector의 result/callback 표면을
+Godot connector는 GDExtension adapter로 제공한다. 기본 connector의 result/callback 표면을
 Godot signal이나 callable 표면으로 바꾼다.
 
 Godot adapter는 아래 원칙을 따른다.
@@ -524,7 +524,7 @@ Godot adapter는 아래 원칙을 따른다.
 - GDExtension public type으로 노출한다.
 - Godot main thread에서 signal을 emit할 수 있게 dispatch 경계를 둔다.
 - C++ exception에 의존하지 않는다.
-- core connector의 C++ template 표면을 Godot script 사용자에게 직접 노출하지 않는다.
+- 기본 connector의 C++ template 표면을 Godot script 사용자에게 직접 노출하지 않는다.
 
 ## 12. Axmol Connector
 
@@ -536,7 +536,7 @@ Axmol adapter는 아래 원칙을 따른다.
 - Axmol scheduler나 main thread dispatch 방식과 맞춘다.
 - 예외에 의존하지 않는다.
 - callback/event 중심 표면을 제공한다.
-- core connector를 CMake package나 source dependency로 참조한다.
+- 기본 connector를 CMake package나 source dependency로 참조한다.
 
 ## 13. 테스트
 
@@ -566,7 +566,7 @@ Axmol adapter는 아래 원칙을 따른다.
 - reconnect 실패 뒤 새 request는 queue에 쌓지 않고 disconnected 계열 오류로 실패한다.
 - heartbeat ping/pong과 heartbeat timeout을 검증한다.
 - compressed server packet은 typed callback 전에 복원된다.
-- core connector test는 예외와 coroutine adapter 없이 통과한다.
+- 기본 connector test는 예외와 coroutine adapter 없이 통과한다.
 
 Unreal Connector 테스트는 일반 C++ connector GoogleTest 회귀와 별도로 둔다. Unreal
 module compile test, Blueprint-callable API compile check, Game Thread dispatch smoke를
@@ -602,7 +602,7 @@ UnrealEditor-Cmd <TestProject>.uproject \
 구현은 아래 순서로 진행한다.
 
 1. `connector/`를 독립 CMake package로 분리한다.
-2. core connector public contract에서 `task_t` include와 모든 `*_async` member를 제거한다.
+2. 기본 connector public contract에서 `task_t` include와 모든 `*_async` member를 제거한다.
 3. `send_call_t`, `request_call_t`, `wait_call_t`는 callback 시작을 `submit(callback)`으로,
    coroutine 시작을 `async()`로 통일한다.
 4. codec helper도 core helper와 coroutine helper로 나눈다. core codec helper는
@@ -614,13 +614,13 @@ UnrealEditor-Cmd <TestProject>.uproject \
 7. 샘플과 테스트를 새 core 표면 또는 coroutine adapter 표면 중 하나로 명시적으로 옮긴다.
    게임 client 샘플은 core 표면을 기준으로 작성하고, 서버 성능 테스트 client나 CLI 성격의
    테스트만 coroutine adapter를 include한다.
-8. core connector contract test로 core public header가 coroutine header와 exception header에
+8. 기본 connector contract test로 core public header가 coroutine header와 exception header에
    의존하지 않는지 고정한다.
 9. 서버 framework call 표면을 예외 기반 awaitable API로 정리한다.
-10. Unreal plugin을 core connector 위 facade로 정리한다.
+10. Unreal plugin을 기본 connector 위 facade로 정리한다.
 11. Godot GDExtension adapter를 설계한다.
 12. Axmol adapter를 설계한다.
 13. Cocos Creator 문서에는 TypeScript connector 사용을 명시한다.
 
 호환성 shim은 두지 않는다. 각 단계는 해당 단계의 최종 표면으로 빌드하고 테스트해야 한다.
-특히 core connector test는 예외와 coroutine adapter 없이 통과해야 한다.
+특히 기본 connector test는 예외와 coroutine adapter 없이 통과해야 한다.

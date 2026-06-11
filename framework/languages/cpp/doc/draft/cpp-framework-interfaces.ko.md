@@ -531,13 +531,13 @@ public:
   `add_scoped<T, Dep1, Dep2>()`, `add_transient<T, Dep1, Dep2>()`처럼 의존 타입을 명시한다.
   framework는 `service_provider_t`에서 `Dep1`, `Dep2`를 resolve한 뒤 `T(Dep1 &, Dep2 &)`를
   호출한다.
-- `add_scoped<T>()`는 framework-owned scope 안에서만 resolve한다.
+- `add_scoped<T>()`는 framework가 소유하는 scope 안에서만 resolve한다.
 - 복잡한 외부 객체 생성이나 조건부 생성이 필요한 경우에만 `add_factory<T>()`를 사용한다.
 - handler owner는 service collection에 등록되어 있어야 한다.
 - 등록되지 않은 handler owner를 framework가 암묵적으로 생성하지 않는다.
 - `Boost.Ext.DI` 같은 외부 DI 라이브러리는 public dependency로 두지 않는다.
 
-`scoped` lifetime은 zlink core 기능이 아니라 framework-owned DI lifetime이다. `.NET`
+`scoped` lifetime은 zlink core 기능이 아니라 framework가 소유하는 DI lifetime이다. `.NET`
 framework가 `IServiceScope`를 만들어 handler dispatch, STREAM session, Spot activation
 수명에 붙이는 것처럼, C++ framework도 자체 DI container에서 같은 scope 경계를 만든다.
 channel handler는 dispatch마다 scope를 만들고, STREAM session은 session scope를 가지며,

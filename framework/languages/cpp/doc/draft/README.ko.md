@@ -25,7 +25,7 @@
 기능 기준은 현재 `.NET` framework다. `C++` framework는 같은 application model,
 messaging model, handler model, `STREAM`, `SPOT`, ActorGateway session relay,
 monitoring, graceful shutdown을 제공한다. 차이는 언어 표현과 ownership 모델뿐이다.
-`.NET`의 네트워크 `SubmitAsync()` 계열 호출은 C++20 `task_t<T>`를 돌려주는
+`.NET`의 네트워크 `Async()` 계열 호출은 C++20 `task_t<T>`를 돌려주는
 `async()`와 `co_await`로 투영한다. 서버 framework public API에는 thread를 block하는
 네트워크 `submit()` 표면을 두지 않는다. `.NET` DI scope는 C++ 자체 DI scope와 RAII lifetime으로
 투영한다.

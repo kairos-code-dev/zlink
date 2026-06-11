@@ -1163,7 +1163,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 - service descriptor registry와 scope state는 runtime 구현 파일로 숨겼다.
 - duplicate registration은 `request_protocol_error`로 실패하게 했다.
 - provider close 이후 resolve와 scope 생성은 `shutdown`으로 실패하게 했다.
-- scoped service는 root provider에서 직접 resolve할 수 없고, framework-owned scope 안에서만
+- scoped service는 root provider에서 직접 resolve할 수 없고, framework가 소유하는 scope 안에서만
   resolve되게 했다.
 - transient instance는 현재 provider/scope가 닫힐 때까지 scope state가 보관하게 고쳤다.
   이렇게 해야 `get_required<T>()`가 반환한 reference가 같은 표현식 직후 dangling이 되지
@@ -3166,7 +3166,7 @@ ctest --test-dir framework/languages/cpp/build -R test_cpp_framework_channel_mes
 
 ### 발견한 위험 신호
 
-- public route request가 request sequence만 반환하면 `.NET`의 `SubmitAsync<TReply>` 의미와
+- public route request가 request sequence만 반환하면 `.NET`의 `Async<TReply>` 의미와
   다르다.
 - reply completion을 public call object가 직접 알면 route backend, envelope decode,
   serializer registry 지식이 public 표면으로 새어 나온다.
@@ -3299,7 +3299,7 @@ registry로 변환한다.
 
 - public route client facade는 추가됐지만 request는 당시 remote `TReply` completion까지
   가지 않고 request sequence submission을 반환한다. native router socket adapter와 reply
-  completion 연결이 끝나면 `.NET`의 `ZLinkRouteRequestCall<TRequest>.SubmitAsync<TReply>`
+  completion 연결이 끝나면 `.NET`의 `ZLinkRouteRequestCall<TRequest>.Async<TReply>`
   의미로 확장한다.
 - native router socket과 discovery attach는 backend substrate 단계에서 initializer 뒤에
   연결한다.
@@ -4661,7 +4661,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
   런타임 자동 선택을 그대로 복제하면 언어 특성과 맞지 않는다.
 - 샘플 DTO에 sample-only `to_stream_payload`/`from_stream_payload` helper나 직접 JSON field
   parser가 들어가면 application code가 serializer를 알아야 한다. 이는 `.NET` 샘플의
-  `connector.Request(dto).SubmitAsync<T>()` 흐름과 다르고, codec 선택 지식이 샘플로
+  `connector.Request(dto).Async<T>()` 흐름과 다르고, codec 선택 지식이 샘플로
   새어 나오는 얕은 모듈이다.
 
 ### 비교한 대안

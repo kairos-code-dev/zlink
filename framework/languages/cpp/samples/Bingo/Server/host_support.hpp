@@ -3,15 +3,8 @@
 
 #include <zlink/framework.hpp>
 
-#include <cstdlib>
-
-namespace zlink::samples::tictactoe
+namespace zlink::samples::bingo
 {
-
-inline bool keep_running_requested () noexcept
-{
-    return std::getenv ("ZLINK_CPP_SAMPLE_KEEP_RUNNING") != nullptr;
-}
 
 class stop_after_start_service_t final : public zlink::framework::hosted_service_t
 {
@@ -33,4 +26,4 @@ class stop_after_start_service_t final : public zlink::framework::hosted_service
     zlink::framework::app_t &_app;
 };
 
-} // namespace zlink::samples::tictactoe
+} // namespace zlink::samples::bingo

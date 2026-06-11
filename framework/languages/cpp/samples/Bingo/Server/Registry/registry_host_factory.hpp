@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Shared/sample.hpp"
+#include "../Configuration/sample_configuration.hpp"
+#include "../Configuration/sample_topology.hpp"
+#include "../host_support.hpp"
 
 namespace zlink::samples::bingo
 {
@@ -12,6 +14,14 @@ class registry_host_factory_t
     static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
         auto app = zlink::framework::app_t::create ();
+        configure (app, topology, auto_stop);
+        return app;
+    }
+
+    static zlink::framework::app_t &configure (zlink::framework::app_t &app,
+                                               const sample_topology_t &topology,
+                                               bool auto_stop = true)
+    {
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }

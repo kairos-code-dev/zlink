@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../Shared/Configuration/sample_names.hpp"
-#include "../../../Shared/Configuration/sample_topology.hpp"
+#include "../../Configuration/sample_names.hpp"
+#include "../../Configuration/sample_topology.hpp"
 
 #include <zlink/framework.hpp>
 

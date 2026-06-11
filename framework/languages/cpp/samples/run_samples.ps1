@@ -1,0 +1,9 @@
+$ErrorActionPreference = "Stop"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+& (Join-Path $ScriptDir "TicTacToe/run_sample.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& (Join-Path $ScriptDir "Bingo/run_sample.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

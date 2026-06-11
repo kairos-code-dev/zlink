@@ -834,7 +834,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   add_executable(sample_cpp_framework_bingo_client
     samples/Bingo/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_bingo_client PRIVATE
-    zlink::framework
     zlink::stream_connector
     zlink::stream_connector_codecs)
   add_zlink_framework_sample(
@@ -852,7 +851,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   add_executable(sample_cpp_framework_tictactoe_client
     samples/TicTacToe/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_tictactoe_client PRIVATE
-    zlink::framework
     zlink::http_client
     zlink::stream_connector
     zlink::stream_connector_codecs)

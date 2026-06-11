@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Shared/sample.hpp"
+#include "../Configuration/sample_configuration.hpp"
+#include "../Configuration/sample_names.hpp"
+#include "../Configuration/sample_topology.hpp"
+#include "../../Shared/Contracts/messages.hpp"
+#include "../host_support.hpp"
 #include "Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
 #include "Adapters/ZLink/Spots/bingo_entry_spot.hpp"
@@ -17,6 +21,14 @@ class play_server_host_factory_t
     static zlink::framework::app_t build (const sample_topology_t &topology, bool auto_stop = true)
     {
         auto app = zlink::framework::app_t::create ();
+        configure (app, topology, auto_stop);
+        return app;
+    }
+
+    static zlink::framework::app_t &configure (zlink::framework::app_t &app,
+                                               const sample_topology_t &topology,
+                                               bool auto_stop = true)
+    {
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
@@ -32,7 +44,7 @@ class play_server_host_factory_t
               .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
             options.add_fanout_channel (sample_names_t::notification_channel)
-              .enable_publisher ("tcp://127.0.0.1:47120");
+              .enable_publisher (topology.notification_channel_endpoint);
             options.add_spot_mesh (sample_names_t::room_spot_discovery)
               .add_node (sample_names_t::room_spot_node)
               .enable_router (topology.play_spot_router_endpoint, topology.play_rid)

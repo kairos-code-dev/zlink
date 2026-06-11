@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../Shared/sample.hpp"
+#include "../Configuration/sample_names.hpp"
+#include "../Configuration/sample_topology.hpp"
+#include "../../Shared/Contracts/messages.hpp"
 #include "Handlers/authenticate_player_handler.hpp"
 #include "Handlers/match_bingo_handler.hpp"
 

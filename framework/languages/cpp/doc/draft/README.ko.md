@@ -193,10 +193,10 @@ host/runtime 표면으로만 구체화한다.
 |------|------|
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | draft 전체 내용을 goal 단위로 빠짐없이 구현하기 위한 실행 계획 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | 각 goal에서 수행한 POSD 기반 리팩토링 기록 |
-| [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` standalone host/runtime의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, 구현 순서 |
+| [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` zlink framework host의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, 구현 순서 |
 | [cpp-application-framework.ko.md](./cpp-application-framework.ko.md) | `.NET Core`를 주 벤치마크로 하고 `ASP.NET Core Minimal API`를 HTTP 기준으로 삼는 application framework 기능 축과 회귀 테스트 매트릭스 |
 | [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
-| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. standalone framework 정책에 맞춰 정렬해야 할 대상 |
+| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. zlink framework host 정책에 맞춰 정렬해야 할 대상 |
 
 ### 2.2 주제 문서
 
@@ -229,8 +229,8 @@ C++ framework의 전반 동작 리뷰 샘플은 `Bingo`와 `TicTacToe` 두 개�
 
 | 샘플 | 역할 | 포함 범위 |
 |------|------|----------|
-| `Bingo` | channel/SPOT/session stream 기반 기본 실시간 메시징 샘플 | `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/Actors`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`, `Server/Play/BingoRoomSpots/Handlers`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` Bingo packet 이름과 handler 흐름 |
-| `TicTacToe` | HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플 | `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Play/GameSpots`, `Server/Play/GameSpots/Handlers`, `Server/Play/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` TicTacToe의 `POST /games` HTTP 시작 흐름, packet 이름과 handler 흐름 |
+| `Bingo` | channel/SPOT/session stream 기반 기본 실시간 메시징 샘플 | `Server/Configuration`, `Client/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/Actors`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`, `Server/Play/BingoRoomSpots/Handlers`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` Bingo packet 이름과 handler 흐름 |
+| `TicTacToe` | HTTP 시작 요청, STREAM, ActorGateway 기반 actor/session relay 샘플 | `Server/Configuration`, `Client/Configuration`, `Shared/Contracts`, `Client`, `Server/Registry/*HostFactory`, `Server/Api/*HostFactory`, `Server/Api/Handlers`, `Server/Play/*HostFactory`, `Server/Play/EntrySpot`, `Server/Play/EntrySpot/Handlers`, `Server/Play/GameSpots`, `Server/Play/GameSpots/Handlers`, `Server/Play/Handlers`, `Server/Session/*HostFactory` 파일 분리, `.NET` TicTacToe의 `POST /games` HTTP 시작 흐름, packet 이름과 handler 흐름 |
 
 `Bingo`도 `.NET` Bingo와 같은 session stream 역할을 포함한다. `TicTacToe`는 `.NET`
 TicTacToe처럼 HTTP `POST /games`로 게임을 만들고, 응답으로 받은 STREAM endpoint에

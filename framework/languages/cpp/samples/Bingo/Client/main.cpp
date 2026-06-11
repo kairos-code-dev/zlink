@@ -2,13 +2,15 @@
 
 #include "bingo_client_scenario.hpp"
 
+#include "Configuration/sample_configuration.hpp"
+
 #include <zlink/stream_connector.hpp>
 
-int main ()
+int main (int argc, char **argv)
 {
     using namespace zlink::samples::bingo;
 
-    bingo_client_options_t options;
+    bingo_client_options_t options{load_sample_topology (argc, argv)};
     zlink::stream_connector::connector_options_t connector_options;
     connector_options.endpoint = options.stream_endpoint;
     connector_options.connect_timeout = options.connect_timeout;

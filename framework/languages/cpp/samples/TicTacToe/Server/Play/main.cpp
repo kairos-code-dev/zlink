@@ -4,8 +4,11 @@
 
 int main (int argc, char **argv)
 {
-    const zlink::samples::tictactoe::sample_topology_t topology;
-    const bool auto_stop = !zlink::samples::tictactoe::keep_running_requested ();
-    return zlink::samples::tictactoe::play_server_host_factory_t::build (topology, auto_stop)
-      .run (argc, argv);
+    using namespace zlink::samples::tictactoe;
+
+    auto app = zlink::framework::app_t::create ();
+    load_sample_configuration (app, argc, argv);
+    const auto topology = sample_topology_from_config (app);
+    play_server_host_factory_t::configure (app, topology, !sample_keep_running (app));
+    return app.run (argc, argv);
 }

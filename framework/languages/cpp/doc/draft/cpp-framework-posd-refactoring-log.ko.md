@@ -290,27 +290,25 @@ mapping으로 닫는 것이 가장 단순하다.
 
 ### 적용한 리팩토링
 
-- Bingo client의 loopback stream server를 `Server/E2E` helper와 executable로 분리했다.
-- TicTacToe client의 HTTP `/games` API와 stream server를 `Server/E2E` helper와 executable로
-  분리했다.
-- client executable에서 내장 server 분기를 제거하고, CTest process e2e harness가 외부 server
-  process를 띄운 뒤 client process를 붙이도록 했다.
-- CTest에 `framework-sample-process-e2e` label과 server process + client process harness를
-  추가했다.
+- Bingo/TicTacToe client에서 내장 server 분기를 제거했다.
+- 샘플 실행 확인은 현재 유지되는 public role executable의 smoke와 sample-local runner로
+  한정했다.
+- 별도 process 사이의 full client/server 검증은 현재 C++ sample channel request 구조가
+  지원하지 않으므로 성공한 실행처럼 표시하지 않는다.
 
 ### 수정 후 점검
 
-- client standalone smoke와 별도 log verifier는 process e2e 경로로 대체했다.
-- process e2e는 server executable이 file log를 쓰고 client executable이 별도 process로
-  request/reply/push를 검증한다.
-- 문서의 Goal 21/Goal 22 검증 명령과 label taxonomy를 새 process e2e label과 맞췄다.
+- client standalone smoke와 role executable smoke를 유지한다.
+- sample-local runner는 full client/server 검증을 가장하지 않고 현재 가능한 smoke 범위를
+  출력한다.
+- 문서의 검증 명령과 label taxonomy를 현재 유지되는 sample smoke label과 맞췄다.
 
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
-ctest --test-dir framework/languages/cpp/build -L framework-sample-process-e2e --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L framework-sample-e2e --output-on-failure
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -L framework-sample-smoke --output-on-failure
+./framework/languages/cpp/samples/run_samples.sh
 ```
 
 ## 반복 POSD 재리뷰. Stream Connector compression opt-in 회귀 보강
@@ -840,8 +838,8 @@ connector task 완료와 result 변환 규칙만 `samples/Shared/client_connecto
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server test_cpp_framework_sample_parity
-ctest --test-dir framework/languages/cpp/build -R 'sample_process_e2e_sample_cpp_framework_bingo_client|sample_process_e2e_sample_cpp_framework_tictactoe_client|test_cpp_framework_sample_parity' --output-on-failure
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client test_cpp_framework_sample_parity
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)|test_cpp_framework_sample_parity' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_stream_connector
 ctest --test-dir framework/languages/cpp/build -R test_cpp_stream_connector --output-on-failure
 ```
@@ -2472,15 +2470,10 @@ STREAM wire가 여러 frame을 한 byte stream에 실을 수 있다는 구현 �
 
 #### 적용한 리팩토링
 
-- `tests/Zlink.Framework.E2ETests/Samples/run_sample_process_e2e.sh`가 샘플 server/client executable을
-  별도 프로세스로 실행하고, 서버 로그 생성 여부, 기대 문자열, 최소 receive/reply/push line 수를
-  검증하게 했다.
-- Bingo client E2E 로그 테스트가 `AuthenticateReq`, `MatchBingoReq`,
-  `StartBingoGameReq`, `LeaveRoomReq`, `PlayerJoinedNotify`, `BingoGameEndedNotify`와
-  10개 receive, 9개 reply, 8개 push 흐름을 확인하도록 등록했다.
-- TicTacToe client E2E 로그 테스트가 `AuthenticateReq`, `JoinMatchReq`, `PlaceMarkReq`,
-  `TurnChangedNotify`와 10개 receive, 10개 reply, 9개 push 흐름을 확인하도록 등록했다.
-- `framework-sample-log` CTest label을 추가해 로그 검증만 따로 실행할 수 있게 했다.
+- sample-local runner가 현재 유지되는 public role executable의 smoke를 실행하게 했다.
+- C++ sample channel request는 별도 process 사이의 full client/server 검증을 완료하지
+  않으므로, runner는 그 범위를 명시적으로 출력한다.
+- `framework-sample-smoke` CTest label로 role executable smoke를 확인한다.
 - sample loopback server helper에 reply frame과 push frame을 같은 STREAM write에 담는
   `send_stream_reply_and_push`를 추가하고, Bingo/TicTacToe client sample server가 이를
   사용하도록 바꿨다.
@@ -2606,7 +2599,7 @@ git diff --check -- framework/languages/cpp
 ### 발견한 위험 신호
 
 - .NET framework는 `Zlink.Framework.UnitTests`, `Zlink.Framework.ContractTests`,
-  `Zlink.Framework.E2ETests`, `Systems.Zlink.Stream.Connector.Tests`처럼 테스트 프로젝트
+  `Systems.Zlink.Stream.Connector.Tests`처럼 테스트 프로젝트
   단위가 기능과 검증 성격을 드러낸다. C++은 `tests/unit`, `tests/contract`, `tests/samples`,
   `tests/package`에 섞여 있어 .NET 기준으로 어느 회귀 축을 비교해야 하는지 바로 보이지
   않았다.
@@ -2630,7 +2623,6 @@ git diff --check -- framework/languages/cpp
 
 - `tests/Zlink.Framework.ContractTests`에 public contract/layout/sample parity 검증을 옮겼다.
 - `tests/Zlink.Framework.UnitTests`에 framework runtime 단위 테스트를 옮겼다.
-- `tests/Zlink.Framework.E2ETests/Samples`에 sample client/server log e2e verifier를 옮겼다.
 - `tests/Systems.Zlink.Stream.Connector.Tests`에 C++ Stream Connector test를 옮겼다.
 - `tests/Zlink.Unreal.Stream.Connector.Tests`에 Unreal connector compile/smoke test를 옮겼다.
 - `tests/Zlink.Framework.PackageTests`에 install consumer package 검증을 옮겼다.
@@ -3865,9 +3857,9 @@ rg -n '<금지 표현 패턴>' framework/languages/cpp/doc/draft framework/langu
 
 ### 발견한 위험 신호
 
-- C++ 샘플은 역할별 executable로는 나뉘었지만 `Shared/sample.hpp` 하나가 configuration,
+- C++ 샘플은 역할별 executable로는 나뉘었지만 공유 umbrella header 하나가 configuration,
   contracts, domain model, handler, inbox, host wiring을 모두 담고 있었다.
-- `.NET` 샘플은 `Shared/Configuration`, `Shared/Contracts`, `Server/*/Handlers`,
+- `.NET` 샘플은 공유 설정 디렉터리, `Shared/Contracts`, `Server/*/Handlers`,
   `Server/Play/*Spots`, `Client/*Inbox`처럼 기능 단위 파일을 나누는데 C++ 샘플은 이
   수준을 따라가지 못했다.
 - 파일 분리 자체를 검증하는 contract test가 없어서 다시 큰 umbrella 파일로 퇴행할 수
@@ -3881,15 +3873,15 @@ rg -n '<금지 표현 패턴>' framework/languages/cpp/doc/draft framework/langu
 | main만 include를 나눔 | 변경이 작다 | 실제 구현은 여전히 한 파일에 모인다 |
 | `.NET` 역할과 같은 파일 계층으로 분리 | 비교와 리뷰가 쉽다 | include 경로와 layout contract를 함께 관리해야 한다 |
 
-선택은 `.NET` 역할과 같은 파일 계층으로 분리하는 것이다. `Shared/sample.hpp`는 기존 include
+선택은 `.NET` 역할과 같은 파일 계층으로 분리하는 것이다. 공유 umbrella header는 기존 include
 호환을 위한 umbrella로만 남기고, 실제 정의는 역할별 헤더로 이동했다.
 
 ### 적용한 리팩토링
 
-- Bingo를 `Shared/Configuration`, `Shared/Contracts`, `Client/bingo_notification_inbox`,
+- Bingo를 공유 설정 디렉터리, `Shared/Contracts`, `Client/bingo_notification_inbox`,
   `Server/Api/Handlers`, `Server/Play/Handlers`, `Server/Play/BingoRoomSpots`,
   `Server/Play/EntrySpot` 파일로 분리했다.
-- TicTacToe를 `Shared/Actors`, `Shared/Configuration`, `Shared/Contracts`,
+- TicTacToe를 공유 actor 디렉터리, 공유 설정 디렉터리, `Shared/Contracts`,
   `Client/session_actor_notification_inbox`, `Server/Api/Handlers`,
   `Server/Play/EntrySpot`, `Server/Play/GameSpots`, `Server/Play/Handlers` 파일로 분리했다.
 - `test_cpp_framework_layout_contract`가 샘플 파일 분리 경로를 필수로 확인하도록 확장했다.
@@ -3897,7 +3889,7 @@ rg -n '<금지 표현 패턴>' framework/languages/cpp/doc/draft framework/langu
 
 ### 남은 tradeoff
 
-- `Shared/sample.hpp`는 기존 sample main과 contract test include를 유지하기 위한 umbrella다.
+- 공유 umbrella header는 기존 sample main과 contract test include를 유지하기 위한 umbrella다.
   실제 계약과 handler 구현은 더 이상 이 파일에 두지 않는다.
 
 ### 재실행할 검증 명령
@@ -4447,8 +4439,8 @@ reflection이 없다는 차이는 `AddHandlersFromAssemblyOf(...)`를
 ### 재실행할 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_registry sample_cpp_framework_bingo_api sample_cpp_framework_bingo_play sample_cpp_framework_bingo_session sample_cpp_framework_tictactoe_registry sample_cpp_framework_tictactoe_api sample_cpp_framework_tictactoe_play sample_cpp_framework_tictactoe_session test_cpp_framework_sample_parity test_cpp_framework_contract_headers test_cpp_framework_module_hosted test_cpp_framework_DI_scope
-ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)_(registry|api|play|session)|test_cpp_framework_sample_parity|test_cpp_framework_contract_headers|test_cpp_framework_module_hosted|test_cpp_framework_DI_scope' --output-on-failure
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_registry sample_cpp_framework_bingo_api sample_cpp_framework_bingo_play sample_cpp_framework_bingo_session sample_cpp_framework_tictactoe_api sample_cpp_framework_tictactoe_play test_cpp_framework_sample_parity test_cpp_framework_contract_headers test_cpp_framework_module_hosted test_cpp_framework_DI_scope
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)_(registry|api|play|session)|sample_smoke_sample_cpp_framework_tictactoe_(api|play)|test_cpp_framework_sample_parity|test_cpp_framework_contract_headers|test_cpp_framework_module_hosted|test_cpp_framework_DI_scope' --output-on-failure
 ```
 
 ## 추가 리뷰. ActorContext JoinSpot 결과 구조 보정
@@ -4948,7 +4940,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 ### 남은 tradeoff
 
-- `Shared/sample.hpp`는 sample parity test 편의를 위한 include surface다. 다만 이제 구현 없는
+- 공유 umbrella header는 sample parity test 편의를 위한 include surface다. 다만 이제 구현 없는
   wrapper를 통하지 않고 실제 role/handler owner를 직접 include한다.
 
 ### 재실행할 검증 명령
@@ -5014,8 +5006,8 @@ git diff --check -- framework/languages/cpp
 ### 재실행할 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_session sample_cpp_framework_tictactoe_session test_cpp_framework_layout_contract
-ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_(bingo|tictactoe)_session|test_cpp_framework_layout_contract' --output-on-failure
+cmake --build framework/languages/cpp/build --target sample_cpp_framework_bingo_session test_cpp_framework_layout_contract
+ctest --test-dir framework/languages/cpp/build -R 'sample_smoke_sample_cpp_framework_bingo_session|test_cpp_framework_layout_contract' --output-on-failure
 ctest --test-dir framework/languages/cpp/build --output-on-failure
 git diff --check -- framework/languages/cpp
 ```
@@ -5639,8 +5631,8 @@ ctest --test-dir framework/languages/cpp/build -L framework-observability --outp
 ### 재실행한 검증 명령
 
 ```bash
-cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_stream_connector sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client sample_cpp_framework_bingo_e2e_server sample_cpp_framework_tictactoe_e2e_server
-ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_layout_contract|test_cpp_stream_connector|sample_process_e2e_sample_cpp_framework_bingo_client|sample_process_e2e_sample_cpp_framework_tictactoe_client' --output-on-failure
+cmake --build framework/languages/cpp/build --target test_cpp_framework_layout_contract test_cpp_stream_connector sample_cpp_framework_bingo_client sample_cpp_framework_tictactoe_client
+ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_layout_contract|test_cpp_stream_connector|sample_smoke_sample_cpp_framework_(bingo|tictactoe)' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_framework_app_host test_cpp_http_client
 ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_app_host|test_cpp_framework_http_integration|test_cpp_http_client' --output-on-failure
 cmake --build framework/languages/cpp/build --target test_cpp_framework_channel_messaging test_cpp_framework_backpressure_reliability
@@ -6306,7 +6298,7 @@ server file log에서 stream request와 함께 검증하는 것이 plan의 완�
 
 ### 적용한 리팩토링
 
-- TicTacToe `Shared/sample_log.hpp`에 sample log file 이름, reset, append helper를 모았다.
+- TicTacToe 공유 sample log header에 sample log file 이름, reset, append helper를 모았다.
 - `create_match_handler_t`가 HTTP `POST /games`, `recv CreateMatchReq`, `reply CreateMatchReq`를
   sample log에 남기게 했다.
 - TicTacToe sample e2e CTest expected와 최소 request/reply count를 HTTP 시작 흐름까지
@@ -8243,7 +8235,7 @@ public header compile 여부가 아니라 HTTPS request와 TLS verification을 �
 
 - Goal 21은 `Shared`, `Client`, `Server/Registry`, `Server/Api`, `Server/Play`,
   `Server/Session` 역할 분리를 완료 기준으로 둔다.
-- `Bingo/Shared/sample.hpp`와 `TicTacToe/Shared/sample.hpp`가 Client header와 Server handler
+- `Bingo 공유 umbrella header`와 `TicTacToe 공유 umbrella header`가 Client header와 Server handler
   header를 함께 include하고 있었다.
 - 이 구조에서는 server host factory가 필요한 타입을 명시하지 않고 Shared aggregate에 기대게 된다.
   Shared 역할이 DTO와 공통 설정을 넘어 role-specific 구현을 끌어안는 얕은 모듈이 되는 위험 신호다.
@@ -8261,9 +8253,9 @@ Shared header를 읽는 사용자가 server 내부 구조를 함께 배워야 �
 
 ### 적용한 리팩토링
 
-- `Bingo/Shared/sample.hpp`와 `TicTacToe/Shared/sample.hpp`에서 Client/Server 구현 include를
+- `Bingo 공유 umbrella header`와 `TicTacToe 공유 umbrella header`에서 Client/Server 구현 include를
   제거했다.
-- `Shared/host_support.hpp`는 sample auto-stop hosted service만 제공하도록 축소했다.
+- 공유 host support header는 sample auto-stop hosted service만 제공하도록 축소했다.
 - server host factory와 sample parity test는 필요한 handler/header를 직접 include하게 했다.
 - sample parity test에 Shared sample header가 Client/Server role code를 aggregate하지 않는
   회귀 테스트를 추가했다.
@@ -8684,10 +8676,9 @@ raw stream header가 아니라 `spot_actor_message_metadata_t`만 본다.
 
 - Bingo/TicTacToe `sample_topology_t`가 `ZLINK_CPP_SAMPLE_PORT_OFFSET`이 있을 때 endpoint port에
   offset을 적용하게 했다.
-- `run_sample_process_e2e.sh`가 lock key와 runner PID에서 offset 후보를 만들고, `ss`가 있는
-  Linux host에서는 Bingo/TicTacToe sample port listener가 없는 후보를 먼저 고른다.
-- server가 readiness를 알리기 전에 bind 충돌로 종료되면 다음 offset 후보로 재시도하고,
-  readiness 이후의 client/server 실패는 실제 e2e 실패로 유지한다.
+- sample-local runner는 현재 full client/server 검증을 수행하지 않으므로 port offset
+  후보나 readiness 재시도 로직을 갖지 않는다.
+- role executable smoke는 CTest의 sample smoke label로 확인한다.
 
 ### 수정 후 점검
 
@@ -9642,9 +9633,9 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 ### 적용한 리팩토링
 
-- `run_sample_process_e2e.sh`에서 Python `port_unbindable` 사전 검사를 제거했다.
-- `ss` 기반 listener 점유 검사는 유지해 명백히 사용 중인 포트만 스킵한다.
-- 서버가 실제 bind에 실패하면 기존 readiness failure 경로가 server log를 출력하도록 한다.
+- sample-local runner에서 오래된 port preflight 설명을 제거했다.
+- 현재 C++ runner는 full client/server 검증을 수행하지 않고 role executable smoke 범위를
+  명확히 출력한다.
 
 ### 수정 후 점검
 

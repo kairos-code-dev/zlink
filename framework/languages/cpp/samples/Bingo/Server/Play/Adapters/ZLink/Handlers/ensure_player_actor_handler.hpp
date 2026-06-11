@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../../../Shared/Configuration/sample_names.hpp"
+#include "../../../../Configuration/sample_names.hpp"
 #include "../../../../../Shared/Contracts/messages.hpp"
 
 namespace zlink::samples::bingo

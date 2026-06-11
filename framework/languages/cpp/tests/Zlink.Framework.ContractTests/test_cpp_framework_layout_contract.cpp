@@ -1602,6 +1602,11 @@ bool client_sample_does_not_include_server_implementation (const std::filesystem
                                      "Server/",
                                      "../Shared/E2E/",
                                      "Shared/E2E/",
+                                     "zlink/framework",
+                                     "framework::",
+                                     "app_t",
+                                     "config_builder_t",
+                                     "configuration_section_t",
                                      "zlink/Contracts/Sockets",
                                      "zlink/Contracts/Service",
                                      "zlink::context_t",
@@ -1631,6 +1636,43 @@ bool client_sample_does_not_include_server_implementation (const std::filesystem
                     ok = false;
                 }
             }
+        }
+    }
+    return ok;
+}
+
+bool sample_client_targets_do_not_link_framework (const std::filesystem::path &root)
+{
+    const auto path = root / "CMakeLists.txt";
+    std::ifstream input (path);
+    std::string text ((std::istreambuf_iterator<char> (input)),
+                      std::istreambuf_iterator<char> ());
+
+    bool ok = true;
+    const std::string targets[] = {"sample_cpp_framework_bingo_client",
+                                   "sample_cpp_framework_tictactoe_client"};
+    for (const auto &target : targets) {
+        std::istringstream lines (text);
+        std::string line;
+        std::string block;
+        bool found = false;
+        while (std::getline (lines, line)) {
+            if (!found && line.find ("target_link_libraries(" + target) == std::string::npos) {
+                continue;
+            }
+            found = true;
+            block += line;
+            block += '\n';
+            if (line.find (')') != std::string::npos) { break; }
+        }
+        if (!found) {
+            std::cerr << "missing client target link declaration: " << target << '\n';
+            ok = false;
+            continue;
+        }
+        if (block.find ("zlink::framework") != std::string::npos) {
+            std::cerr << "client target must not link zlink::framework: " << target << '\n';
+            ok = false;
         }
     }
     return ok;
@@ -1909,9 +1951,21 @@ int main ()
     ok &= require_exists (root
                           / "unreal-connector/Source/ZLinkStreamConnector/Private/"
                             "ZLinkStreamConnectorAutomationTests.cpp");
-    ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_names.hpp");
-    ok &= require_exists (root / "samples/Bingo/Shared/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_names.hpp");
+    ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/Bingo/Client/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/Bingo/run_sample.sh");
+    ok &= require_exists (root / "samples/Bingo/run_sample.ps1");
     ok &= require_exists (root / "samples/Bingo/Shared/Contracts/messages.hpp");
+    ok &= require_exists (root / "samples/Bingo/Shared/Contracts/bingo_messages.proto");
+    ok &= require_absent (root / "samples/Bingo/Shared" / "Configuration",
+                          "Bingo Shared must contain message contracts only");
+    ok &= require_absent (root / "samples/Bingo/Shared" / "sample.hpp",
+                          "Bingo sample umbrella belongs to server code, not Shared");
+    ok &= require_absent (root / "samples/Bingo/Shared" / "host_support.hpp",
+                          "Bingo host support belongs to server code, not Shared");
+    ok &= require_absent (root / "samples/Bingo/Server" / "sample.hpp",
+                          "Bingo server code should include role-local headers directly");
     ok &= require_absent (root / "samples/Bingo/Server/E2E",
                           "Bingo sample e2e must run the public sample server roles");
     ok &= require_absent (root / "samples/Bingo/Shared/E2E",
@@ -1968,9 +2022,25 @@ int main ()
                           "Bingo client scenario must not hide connector calls in a wrapper");
     ok &= require_absent (root / "samples/Bingo/Client/bingo_client_app.hpp",
                           "Bingo client scenario is kept in bingo_client_scenario.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_names.hpp");
-    ok &= require_exists (root / "samples/TicTacToe/Shared/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/Server/Configuration/sample_names.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/Server/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/Client/Configuration/sample_names.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/Client/Configuration/sample_topology.hpp");
+    ok &= require_exists (root / "samples/TicTacToe/run_sample.sh");
+    ok &= require_exists (root / "samples/TicTacToe/run_sample.ps1");
+    ok &= require_exists (root / "samples/run_samples.sh");
+    ok &= require_exists (root / "samples/run_samples.ps1");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+    ok &= require_absent (root / "samples/TicTacToe/Shared" / "Configuration",
+                          "TicTacToe Shared must contain message contracts only");
+    ok &= require_absent (root / "samples/TicTacToe/Shared" / "sample.hpp",
+                          "TicTacToe sample umbrella belongs to server code, not Shared");
+    ok &= require_absent (root / "samples/TicTacToe/Shared" / "host_support.hpp",
+                          "TicTacToe host support belongs to server code, not Shared");
+    ok &= require_absent (root / "samples/TicTacToe/Server" / "sample.hpp",
+                          "TicTacToe server code should include role-local headers directly");
+    ok &= require_absent (root / "samples/TicTacToe/Server" / "sample_log.hpp",
+                          "TicTacToe server logging should not need a separate helper header");
     ok &= require_absent (root / "samples/TicTacToe/Server/E2E",
                           "TicTacToe sample e2e must run the public sample server roles");
     ok &= require_absent (root / "samples/TicTacToe/Shared/E2E",
@@ -2034,9 +2104,10 @@ int main ()
 
     ok &= client_sample_uses_connector (root, "samples/Bingo/Client/main.cpp");
     ok &=
-      client_sample_uses_connector (root, "samples/TicTacToe/Client/main.cpp");
+      client_sample_uses_connector (root, "samples/TicTacToe/Client/tictactoe_client_scenario.hpp");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
+    ok &= sample_client_targets_do_not_link_framework (root);
     ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "socket_fd",
                                  "C++ connector runtime must not use raw fd state");
     ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "recv(",

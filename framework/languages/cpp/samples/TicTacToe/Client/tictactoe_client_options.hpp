@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../Shared/Configuration/sample_names.hpp"
-#include "../Shared/Configuration/sample_topology.hpp"
+#include "Configuration/sample_names.hpp"
+#include "Configuration/sample_topology.hpp"
 
 #include <chrono>
 #include <string>
@@ -12,9 +12,8 @@ namespace zlink::samples::tictactoe
 
 struct tictactoe_client_options_t
 {
-    tictactoe_client_options_t ()
+    explicit tictactoe_client_options_t (const sample_topology_t &topology = sample_topology_t{})
     {
-        sample_topology_t topology;
         api_http_endpoint = topology.api_http_endpoint;
     }
 

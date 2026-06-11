@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -19,16 +18,12 @@
 namespace zlink::samples::bingo
 {
 
-inline constexpr const char *bingo_client_log_file = "bingo-client.log";
-
 class bingo_client_scenario_t
 {
   public:
     bool run (stream_connector::connector_t &client1,
               stream_connector::connector_t &client2)
     {
-        std::ofstream log (bingo_client_log_file, std::ios::trunc);
-
         try {
             auto client1_connect = client1.connect ();
             auto client2_connect = client2.connect ();
@@ -106,13 +101,12 @@ class bingo_client_scenario_t
             ensure (client1_result.state.winners == std::vector<std::string>{client1_auth.actor_id});
             ensure (std::all_of (client1_result.state.players.begin (), client1_result.state.players.end (), [] (const bingo_player_state_t &player) { return player.card.size () == 9 && player.marks.size () == 9 && player.marks[4]; }));
 
-            log << "client game completed\n";
             (void) client1.close ();
             (void) client2.close ();
             return true;
         }
         catch (const std::exception &ex) {
-            log << "client verification failed " << ex.what () << '\n';
+            (void) ex;
             (void) client1.close ();
             (void) client2.close ();
             return false;

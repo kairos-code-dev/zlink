@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../../samples/Bingo/Shared/sample.hpp"
+#include "../../samples/Bingo/Server/Configuration/sample_names.hpp"
+#include "../../samples/Bingo/Server/Configuration/sample_topology.hpp"
+#include "../../samples/Bingo/Shared/Contracts/messages.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor_factory.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/allocate_bingo_room_handler.hpp"
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Handlers/ensure_player_actor_handler.hpp"
@@ -10,7 +12,9 @@
 #include "../../samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp"
 #include "../../samples/Bingo/Server/Play/Application/RoomAllocation/bingo_room_allocator.hpp"
 #include "../../samples/Bingo/Server/Api/Handlers/authenticate_player_handler.hpp"
-#include "../../samples/TicTacToe/Shared/sample.hpp"
+#include "../../samples/TicTacToe/Server/Configuration/sample_names.hpp"
+#include "../../samples/TicTacToe/Server/Configuration/sample_topology.hpp"
+#include "../../samples/TicTacToe/Shared/Contracts/messages.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Notifications/game_notification_publisher.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_contract_mapper.hpp"
 #include "../../samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp"
@@ -283,21 +287,19 @@ TEST (CppFrameworkSampleParity, PublicSampleNamesDoNotUseVariantSuffixes)
     }
 }
 
-TEST (CppFrameworkSampleParity, SharedSampleHeadersDoNotAggregateRoleCode)
+TEST (CppFrameworkSampleParity, SharedSampleDirectoryContainsOnlyContracts)
 {
     const auto samples_root = cpp_language_root () / "samples";
-    const std::vector<std::filesystem::path> shared_headers{
-      samples_root / "Bingo/Shared/sample.hpp", samples_root / "Bingo/Shared/host_support.hpp",
-      samples_root / "TicTacToe/Shared/sample.hpp",
-      samples_root / "TicTacToe/Shared/host_support.hpp"};
-    const std::vector<std::string> forbidden_patterns{"../Client/", "../Server/", "/Client/",
-                                                      "/Server/"};
-
-    for (const auto &path : shared_headers) {
-        const auto content = read_file (path);
-        for (const auto &pattern : forbidden_patterns) {
-            EXPECT_EQ (content.find (pattern), std::string::npos)
-              << path << " aggregates role-specific code via " << pattern;
+    for (const auto &sample : {"Bingo", "TicTacToe"}) {
+        const auto shared_root = samples_root / sample / "Shared";
+        ASSERT_TRUE (std::filesystem::is_directory (shared_root)) << shared_root;
+        for (const auto &entry : std::filesystem::recursive_directory_iterator (shared_root)) {
+            if (!entry.is_regular_file ()) {
+                continue;
+            }
+            const auto relative = std::filesystem::relative (entry.path (), shared_root);
+            EXPECT_TRUE (relative.generic_string ().rfind ("Contracts/", 0) == 0)
+              << entry.path () << " belongs in a role-specific sample directory";
         }
     }
 }
@@ -347,7 +349,7 @@ TEST (CppFrameworkSampleParity, JsonFieldAccessStaysInsideDtoSerializers)
     }
 }
 
-TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvidence)
+TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerScope)
 {
     const auto cpp_root = cpp_language_root ();
     const auto cmake = read_file (cpp_root / "CMakeLists.txt");
@@ -355,18 +357,15 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvid
     {
         std::string readme_path;
         std::vector<std::string> public_targets;
-        std::string log_file;
     };
     const std::vector<sample_readme_case_t> cases{
       {"samples/Bingo/README.ko.md",
        {"sample_cpp_framework_bingo_registry", "sample_cpp_framework_bingo_api",
         "sample_cpp_framework_bingo_play", "sample_cpp_framework_bingo_session",
-        "sample_cpp_framework_bingo_client"},
-       "bingo-client.log"},
+        "sample_cpp_framework_bingo_client"}},
       {"samples/TicTacToe/README.ko.md",
        {"sample_cpp_framework_tictactoe_api", "sample_cpp_framework_tictactoe_play",
-        "sample_cpp_framework_tictactoe_client"},
-       "tictactoe-client.log"}};
+        "sample_cpp_framework_tictactoe_client"}}};
 
     for (const auto &sample : cases) {
         const auto readme = read_file (cpp_root / sample.readme_path);
@@ -380,16 +379,16 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndLogEvid
         EXPECT_EQ (readme.find ("_e2e_server`"), std::string::npos)
           << sample.readme_path << " should not document internal e2e server "
           << "targets as public sample executables";
-        EXPECT_NE (readme.find (sample.log_file), std::string::npos)
-          << sample.readme_path << " does not document the server log file";
         EXPECT_NE (readme.find ("테스트 전용 fake 서버"), std::string::npos)
           << sample.readme_path << " does not document that fake servers stay out of samples";
         EXPECT_NE (readme.find ("client scenario"), std::string::npos)
           << sample.readme_path << " does not document client scenario evidence";
+        EXPECT_NE (readme.find ("full client/server"), std::string::npos)
+          << sample.readme_path << " does not document current runner scope";
     }
 
     const auto tictactoe_readme = read_file (cpp_root / "samples/TicTacToe/README.ko.md");
-    EXPECT_NE (tictactoe_readme.find ("HTTP client `POST /games`"), std::string::npos);
+    EXPECT_NE (tictactoe_readme.find ("HTTP `POST /games`"), std::string::npos);
     EXPECT_NE (tictactoe_readme.find ("`zlink::http_client`"), std::string::npos);
     EXPECT_NE (tictactoe_readme.find ("`POST /games`를 호출"), std::string::npos);
 }
@@ -429,6 +428,10 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
                std::string::npos);
     EXPECT_NE (api_factory.find (".add_message_pack"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_NE (client.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (api_factory.find (".add_protobuf"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".add_protobuf"), std::string::npos);
+    EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"),
                std::string::npos);
     EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
@@ -442,20 +445,24 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
                std::string::npos);
     EXPECT_FALSE (std::filesystem::exists (
       tictactoe_root / "Server/Play/Application/GameCreation/create_game_room_handler.hpp"));
-    EXPECT_NE (client_main.find ("#include <zlink/http_client.hpp>"), std::string::npos);
-    EXPECT_NE (client_main.find ("zlink::http_client::client_t::create ()"), std::string::npos);
-    EXPECT_NE (client_main.find (".base_url (options.api_http_endpoint)"), std::string::npos);
-    EXPECT_NE (client_main.find (".post (\"/games\")"), std::string::npos);
-    EXPECT_NE (client_main.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_EQ (client_main.find ("#include <zlink/http_client.hpp>"), std::string::npos);
+    EXPECT_EQ (client_main.find (".post (\"/games\")"), std::string::npos);
+    EXPECT_NE (client.find ("#include <zlink/http_client.hpp>"), std::string::npos);
+    EXPECT_NE (client.find ("zlink::http_client::client_t::create ()"), std::string::npos);
+    EXPECT_NE (client.find (".base_url (options.api_http_endpoint)"), std::string::npos);
+    EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
+    EXPECT_NE (client.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_NE (client.find ("connector_options.endpoint = room.play_endpoint"), std::string::npos);
     EXPECT_NE (client.find ("client1.request<authenticate_res_t>"), std::string::npos);
     EXPECT_NE (client.find ("client1.wait_for<game_state_notify_t>"), std::string::npos);
-    EXPECT_NE (client.find ("tictactoe-client.log"), std::string::npos);
-    EXPECT_NE (client.find ("client game completed"), std::string::npos);
+    EXPECT_EQ (client.find ("tictactoe-client.log"), std::string::npos);
+    EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
 {
     const auto bingo_root = cpp_language_root () / "samples/Bingo";
+    const auto api_framework = read_file (bingo_root / "Server/Api/api_server_framework.hpp");
     const auto play_factory = read_file (bingo_root / "Server/Play/play_server_host_factory.hpp");
     const auto session_factory =
       read_file (bingo_root / "Server/Session/session_server_host_factory.hpp");
@@ -472,8 +479,16 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
-    EXPECT_NE (client.find ("bingo-client.log"), std::string::npos);
-    EXPECT_NE (client.find ("client game completed"), std::string::npos);
+    EXPECT_NE (api_framework.find (".add_protobuf"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_protobuf"), std::string::npos);
+    EXPECT_NE (session_factory.find (".add_protobuf"), std::string::npos);
+    EXPECT_NE (client.find (".add_protobuf"), std::string::npos);
+    EXPECT_EQ (api_framework.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (session_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (client.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
+    EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
 }
 
 int main (int argc, char **argv)

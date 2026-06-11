@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../Shared/Configuration/sample_topology.hpp"
+#include "Configuration/sample_topology.hpp"
 
 #include <chrono>
 #include <string>
@@ -11,9 +11,8 @@ namespace zlink::samples::bingo
 
 struct bingo_client_options_t
 {
-    bingo_client_options_t ()
+    explicit bingo_client_options_t (const sample_topology_t &topology = sample_topology_t{})
     {
-        sample_topology_t topology;
         stream_endpoint = topology.stream_endpoint;
     }
 

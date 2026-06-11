@@ -4,20 +4,20 @@
 #include "tictactoe_client_options.hpp"
 #include "../Shared/Contracts/messages.hpp"
 
+#include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 
 #include <chrono>
-#include <fstream>
 #include <stdexcept>
 #include <string>
 
-#define ensure(condition) ensure ((condition), #condition)
-#define ensure_result(result) ensure_result ((result), #result)
+#define ensure(condition) require_condition ((condition), #condition)
+#define ensure_result(result) require_result ((result), #result)
 
 namespace zlink::samples::tictactoe
 {
 
-inline constexpr const char *tictactoe_client_log_file = "tictactoe-client.log";
+inline void register_tictactoe_client_codecs (stream_connector::connector_t &connector);
 
 class tictactoe_client_scenario_t
 {
@@ -27,8 +27,44 @@ class tictactoe_client_scenario_t
               const create_game_http_res_t &room,
               const tictactoe_client_options_t &options)
     {
-        std::ofstream log (tictactoe_client_log_file, std::ios::trunc);
+        return run_game (client1, client2, room, options);
+    }
 
+    bool run (const tictactoe_client_options_t &options)
+    {
+        try {
+            auto room = create_room (options);
+            if (room.play_endpoint.empty ()) {
+                throw std::runtime_error ("API returned an empty play endpoint.");
+            }
+
+            zlink::stream_connector::connector_options_t connector_options;
+            connector_options.endpoint = room.play_endpoint;
+            connector_options.connect_timeout = options.stream_timeout;
+            connector_options.request_timeout = options.stream_timeout;
+            connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+
+            auto client1 = zlink::stream_connector::connector_factory_t::create (
+              connector_options);
+            auto client2 = zlink::stream_connector::connector_factory_t::create (
+              connector_options);
+            register_tictactoe_client_codecs (client1);
+            register_tictactoe_client_codecs (client2);
+
+            return run_game (client1, client2, room, options);
+        }
+        catch (const std::exception &ex) {
+            (void) ex;
+            return false;
+        }
+    }
+
+  private:
+    static bool run_game (stream_connector::connector_t &client1,
+                          stream_connector::connector_t &client2,
+                          const create_game_http_res_t &room,
+                          const tictactoe_client_options_t &options)
+    {
         try {
             ensure (!room.room_id.empty ());
             ensure (room.room_id == "room-1");
@@ -108,30 +144,39 @@ class tictactoe_client_scenario_t
             ensure (client2_saw_winning_move.state.board == "XXXOO....");
             ensure (client2_saw_winning_move.state.status == "Won");
 
-            log << "client game completed\n";
             (void) client1.close ();
             (void) client2.close ();
             return true;
         }
         catch (const std::exception &ex) {
-            log << "client verification failed " << ex.what () << '\n';
+            (void) ex;
             (void) client1.close ();
             (void) client2.close ();
             return false;
         }
     }
 
-#undef ensure
-#undef ensure_result
+    static create_game_http_res_t create_room (const tictactoe_client_options_t &options)
+    {
+        auto http_client = zlink::http_client::client_t::create ()
+                             .base_url (options.api_http_endpoint)
+                             .json ()
+                             .build ();
+        auto created = http_client.post ("/games")
+                         .body (create_game_http_req_t{options.game_name})
+                         .submit<create_game_http_res_t> ()
+                         .result ();
+        if (!created) { throw std::runtime_error ("HTTP POST /games failed."); }
+        return created.value ().body;
+    }
 
-  private:
-    static void ensure (bool condition, const char *expression)
+    static void require_condition (bool condition, const char *expression)
     {
         if (!condition) { throw std::runtime_error (std::string ("Ensure failed: ") + expression); }
     }
 
     template <typename T>
-    static T ensure_result (stream_connector::result_t<T> result, const char *expression)
+    static T require_result (stream_connector::result_t<T> result, const char *expression)
     {
         if (!result) {
             const auto message =
@@ -152,9 +197,12 @@ class tictactoe_client_scenario_t
             })
             .timeout (std::chrono::milliseconds (25))
             .submit ();
-        ensure (!notify, "self join notify must not be delivered");
+        require_condition (!notify, "self join notify must not be delivered");
     }
 };
+
+#undef ensure
+#undef ensure_result
 
 inline void register_tictactoe_client_codecs (stream_connector::connector_t &connector)
 {

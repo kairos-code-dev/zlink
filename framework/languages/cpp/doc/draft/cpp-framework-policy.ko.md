@@ -16,7 +16,7 @@
 >
 > 이 문서는 `framework/doc/spec` 아래의 공통 framework 정책을 상위 기준으로 따른다.
 > 언어별 스펙은 공통 정책을 반드시 반영해야 하며, 이 문서는 그 공통 정책을 `C++`
-> 언어 특성과 standalone host/runtime 형태에 맞춰 구체화한다.
+> 언어 특성과 zlink framework host 형태에 맞춰 구체화한다.
 
 ## 1. 포지셔닝
 

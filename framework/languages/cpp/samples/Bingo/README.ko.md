@@ -44,4 +44,34 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 client 실행 파일은 Stream Connector public API로 request reply와 push notification을
 검증하는 시나리오를 담고 있다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
 각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
-client scenario는 `bingo-client.log`에 완료 여부를 남긴다.
+script 실행 결과는 서버 role smoke 결과와 client 실행 파일 존재 여부를 표준 출력으로
+보여 준다. 현재 C++ sample channel request 는 별도 process 사이의 full 실행이 아니라
+local framework runtime 안에서 완료되는 구조라서, full client/server 검증은 제공하지
+않는다. client scenario 는 public client 실행 파일 안에 남겨 두되, runner 가 성공한
+full e2e처럼 표시하지 않는다.
+
+## 실행과 설정
+
+서버 실행 파일은 `--config`로 받은 설정 파일을 `app.config()`로 읽고 `sample.topology`를
+`sample_topology_t`에 bind한 뒤 자기 role 만 실행한다. Registry, API, Play, Session 서버는
+모두 별도 process 로 실행한다. 서버 role 을 계속 실행하려면 설정 파일의
+`sample.host.keepRunning` 값을 `true`로 둔다.
+
+Client 실행 파일은 framework app을 만들지 않는다. Client는 stream connector만 사용하며,
+필요하면 `--stream-endpoint` 또는 `ZLINK_CPP_CLIENT_STREAM_ENDPOINT`로 접속 endpoint를
+받는다.
+
+Linux 또는 WSL에서는 아래 script 를 실행한다.
+
+```bash
+./framework/languages/cpp/samples/Bingo/run_sample.sh
+```
+
+Windows PowerShell에서는 아래 script 를 실행한다.
+
+```powershell
+.\framework\languages\cpp\samples\Bingo\run_sample.ps1
+```
+
+script 는 Registry, API, Play, Session 서버 실행 파일을 smoke 모드로 실행한다. full
+client/server self-check 는 현재 실행 파일 조합으로 완료되지 않으므로 실행하지 않는다.

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "../../../../../Shared/Configuration/sample_topology.hpp"
+#include "../../../../Configuration/sample_topology.hpp"
 #include "../../../../../Shared/Contracts/messages.hpp"
 #include "../../../Application/GameCreation/tictactoe_game_creator.hpp"
 

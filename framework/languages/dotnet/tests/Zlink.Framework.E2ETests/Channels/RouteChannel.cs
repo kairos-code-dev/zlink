@@ -63,7 +63,7 @@ public sealed class RouteChannelTests
                 async () => await client.Request("backend.discovery", rightRid, new SharedPacketRequest("discovery", 1))
                     .PacketName("SharedPacket")
                     .Timeout(TimeSpan.FromSeconds(1))
-                    .SubmitAsync<SharedPacketReply>(),
+                    .Async<SharedPacketReply>(),
                 static result => result.Value == "discovery",
                 attempts: 30,
                 delayMs: 100);
@@ -121,7 +121,7 @@ public sealed class RouteChannelTests
                 async () => await client.Request("backend", rightRid, new SharedPacketRequest("warmup", 1))
                     .PacketName("SharedPacket")
                     .Timeout(TimeSpan.FromSeconds(3))
-                    .SubmitAsync<SharedPacketReply>(),
+                    .Async<SharedPacketReply>(),
                 static result => result.Value == "warmup",
                 attempts: 30,
                 delayMs: 100);
@@ -129,11 +129,11 @@ public sealed class RouteChannelTests
             var slow = client.Request("backend", rightRid, new SharedPacketRequest("slow", 40))
                 .PacketName("SharedPacket")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .SubmitAsync<SharedPacketReply>();
+                .Async<SharedPacketReply>();
             var fast = client.Request("backend", rightRid, new SharedPacketRequest("fast", 1))
                 .PacketName("SharedPacket")
                 .Timeout(TimeSpan.FromSeconds(3))
-                .SubmitAsync<SharedPacketReply>();
+                .Async<SharedPacketReply>();
 
             var replies = await Task.WhenAll(slow.AsTask(), fast.AsTask());
 
@@ -186,7 +186,7 @@ public sealed class RouteChannelTests
             var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
                 async () => await client.Request("backend.group", rightRid, new SharedPacketRequest("group", 1))
                     .Timeout(TimeSpan.FromSeconds(3))
-                    .SubmitAsync<SharedPacketReply>(),
+                    .Async<SharedPacketReply>(),
                 static result => result.Value == "group",
                 attempts: 30,
                 delayMs: 100);

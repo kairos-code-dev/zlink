@@ -60,7 +60,7 @@ internal sealed class ChannelStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.Publish(channelName, topic, new TestHostPublishedEvent(value))
-                .SubmitAsync(stoppingToken);
+                .Async(stoppingToken);
 
             try
             {
@@ -86,7 +86,7 @@ internal sealed class ChannelClientStartupRequestHostedService(
             .RequestToChannel(channelName, new TestHostProfileRequest(value))
             .PacketName("TestHostProfileRequest")
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync<TestHostProfileReply>(cancellationToken);
+            .Async<TestHostProfileReply>(cancellationToken);
         sink.Append($"channel-client|{reply.Value}");
     }
 
@@ -107,7 +107,7 @@ internal sealed class SpotStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.PublishSpot(channelName, topic, new StartupStageEvent(value))
-                .SubmitAsync(stoppingToken);
+                .Async(stoppingToken);
 
             try
             {
@@ -263,15 +263,15 @@ internal sealed class StreamClientStartupRequestHostedService(
             Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
             RequestTimeout = TimeSpan.FromSeconds(5),
         });
-        await _connector.ConnectAsync(cancellationToken);
+        await _connector.Connect.Async(cancellationToken);
         var pending = _connector
             .Request(new ZlinkStreamEncodedPayload(
                 ZlinkStreamCodec.Json,
                 Encoding.UTF8.GetBytes($"\"{value}\"")))
             .PacketName("RawPing")
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync(cancellationToken);
-        await _connector.DispatchAsync(cancellationToken);
+            .Async(cancellationToken);
+        await _connector.Dispatch.Async(cancellationToken);
         var reply = await pending;
         sink.Append($"stream-client|{Encoding.UTF8.GetString(reply.Payload.Span)}");
     }
@@ -323,6 +323,6 @@ internal sealed class TestHostRawStreamSession(
         _ = header;
         recorder.RecordPayload(Encoding.UTF8.GetString(payload.AsReadOnlySpan()));
         return Context.Client.Reply("pong")
-            .SubmitAsync();
+            .Async();
     }
 }

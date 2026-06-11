@@ -57,19 +57,19 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     int ReceivedCount(string name);
 
     /// <summary>
-    /// Opens the stream connection.
+    /// Starts the stream connection lifecycle operation.
     /// </summary>
-    ValueTask ConnectAsync(CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Connect { get; }
 
     /// <summary>
-    /// Closes the stream connection.
+    /// Starts the stream close lifecycle operation.
     /// </summary>
-    ValueTask CloseAsync(CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Close { get; }
 
     /// <summary>
-    /// Dispatches one pending received message when manual dispatch mode is used.
+    /// Starts a manual dispatch lifecycle operation.
     /// </summary>
-    ValueTask DispatchAsync(CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Dispatch { get; }
 
     /// <summary>
     /// Starts a send operation for an encoded payload.

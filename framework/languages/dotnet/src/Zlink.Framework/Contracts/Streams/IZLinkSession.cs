@@ -83,7 +83,7 @@ public interface IZLinkSessionSendCall
 
     IZLinkSessionSendCall Compress();
 
-    ValueTask SubmitAsync();
+    ValueTask Async();
 }
 
 public interface IZLinkSessionReplyCall
@@ -92,5 +92,5 @@ public interface IZLinkSessionReplyCall
 
     IZLinkSessionReplyCall Compress();
 
-    ValueTask SubmitAsync();
+    ValueTask Async();
 }

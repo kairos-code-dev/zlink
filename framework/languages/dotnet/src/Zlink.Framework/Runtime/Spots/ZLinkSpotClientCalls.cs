@@ -58,7 +58,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public async ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
@@ -102,7 +102,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
         return this;
     }
 
-    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var remoteAddress = await ResolveRemoteAddressAsync(cancellationToken).ConfigureAwait(false);
         var timeout = _timeout ?? activation.DefaultTimeout;
@@ -160,7 +160,7 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -192,7 +192,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var timeout = _timeout ?? activation.DefaultTimeout;
         var header = ZLinkClientCallCodec.CreateEnvelope(

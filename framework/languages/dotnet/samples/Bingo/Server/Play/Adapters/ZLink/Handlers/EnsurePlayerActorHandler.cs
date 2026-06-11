@@ -36,7 +36,7 @@ internal sealed class EnsurePlayerActorHandler(
         }
 
         var joined = await actor.Context.JoinEntrySpot(topology.PlayRid)
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             ;
         return new EnsurePlayerActorRes
         {

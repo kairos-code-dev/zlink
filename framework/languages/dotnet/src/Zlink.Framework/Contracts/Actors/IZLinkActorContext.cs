@@ -30,7 +30,7 @@ public interface IZLinkActorJoinSpotCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ZLinkActorJoinResult> SubmitAsync(
+    ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -38,6 +38,6 @@ public interface IZLinkActorJoinEntrySpotCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 
-    ValueTask<ActorRef> SubmitAsync(
+    ValueTask<ActorRef> Async(
         CancellationToken cancellationToken = default);
 }

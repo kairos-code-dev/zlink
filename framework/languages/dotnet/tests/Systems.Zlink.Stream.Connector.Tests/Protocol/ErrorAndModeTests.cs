@@ -37,12 +37,12 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             RequestTimeout = TimeSpan.FromMilliseconds(50)
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new Ping("hello"))
                 .PacketName("ping")
-                .SubmitAsync<Pong>());
+                .Async<Pong>());
 
         Assert.Equal(ZlinkStreamErrorCode.RequestTimeout, exception.Error.Code);
         await server;
@@ -59,7 +59,7 @@ public sealed partial class StreamConnectorTests
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
                 .PacketName("h")
-                .SubmitAsync());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.Disconnected, exception.Error.Code);
     }
@@ -76,7 +76,7 @@ public sealed partial class StreamConnectorTests
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "bb"u8.ToArray()))
                 .PacketName("h")
-                .SubmitAsync());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }
@@ -93,7 +93,7 @@ public sealed partial class StreamConnectorTests
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "bb"u8.ToArray()))
                 .PacketName("h")
-                .SubmitAsync());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
     }
@@ -126,7 +126,7 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         };
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await DispatchUntilAsync(
             connector,
             () => errorReceived.Task.IsCompleted,

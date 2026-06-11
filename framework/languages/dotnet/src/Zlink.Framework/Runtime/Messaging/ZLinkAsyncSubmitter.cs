@@ -24,7 +24,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         registerReadyHandler(OnSendReady);
     }
 
-    public ValueTask SubmitAsync(
+    public ValueTask Async(
         Message message,
         Func<Message, bool> trySubmit,
         CancellationToken cancellationToken = default)
@@ -38,7 +38,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             cancellationToken);
     }
 
-    public ValueTask SubmitAsync(
+    public ValueTask Async(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         CancellationToken cancellationToken = default)

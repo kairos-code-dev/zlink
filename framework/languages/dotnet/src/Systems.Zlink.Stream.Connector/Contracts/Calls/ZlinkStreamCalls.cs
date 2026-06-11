@@ -1,5 +1,10 @@
 namespace Systems.Zlink.Stream.Connector.Contracts.Calls;
 
+public interface IZlinkStreamLifecycleCall
+{
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
 public interface IZlinkStreamSendCall
 {
     IZlinkStreamSendCall PacketName(string name);
@@ -10,7 +15,7 @@ public interface IZlinkStreamSendCall
 
     IZlinkStreamSendCall Compress();
 
-    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
+    ValueTask Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZlinkStreamRequestCall
@@ -25,7 +30,7 @@ public interface IZlinkStreamRequestCall
 
     IZlinkStreamRequestCall Compress();
 
-    ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default);
+    ValueTask<ZlinkStreamEncodedPayload> Async(CancellationToken cancellationToken = default);
 
     void Submit(Action<ZlinkStreamResult> callback);
 
@@ -38,6 +43,6 @@ public interface IZlinkStreamWaitCall
 
     IZlinkStreamWaitCall Where(Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate);
 
-    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> SubmitAsync(
+    ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> Async(
         CancellationToken cancellationToken = default);
 }

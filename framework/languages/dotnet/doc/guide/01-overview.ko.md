@@ -78,7 +78,7 @@ builder.Services.AddZLinkFramework(options =>
 // 클라이언트: IZLinkChannelClient 를 주입받아 builder + 종결자로 호출
 var reply = await client
     .RequestToChannel("price", new PriceRequest("AAPL"))
-    .SubmitAsync<PriceReply>(ct);
+    .Async<PriceReply>(ct);
 ```
 
 배선 코드가 사라지고 남는 것은 handler 와 한 줄짜리 channel 등록뿐이다.

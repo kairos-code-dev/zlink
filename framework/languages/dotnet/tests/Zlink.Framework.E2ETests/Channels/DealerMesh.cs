@@ -39,7 +39,7 @@ public sealed class DealerMeshTests
             async () => await client
                 .RequestToChannel("mesh", new MeshProfileRequest { UserId = "mesh-request" })
                 .Timeout(TimeSpan.FromMilliseconds(500))
-                .SubmitAsync<MeshProfileReply>(),
+                .Async<MeshProfileReply>(),
             static result => result.Name == "mesh:mesh-request");
 
         Assert.Equal("mesh:mesh-request", reply.Name);
@@ -49,7 +49,7 @@ public sealed class DealerMeshTests
             {
                 await client
                     .SendToChannel("mesh", new MeshProfileRequest { UserId = "mesh-send" })
-                    .SubmitAsync();
+                    .Async();
                 await Task.Yield();
                 return recorder.Commands.Count;
             },

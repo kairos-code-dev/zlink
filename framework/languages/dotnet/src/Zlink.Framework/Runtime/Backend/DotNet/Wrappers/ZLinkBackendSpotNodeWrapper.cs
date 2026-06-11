@@ -210,7 +210,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
     {
         await nativeSpotNode.DestroyActor(actor.ToNative())
             .Timeout(timeout)
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             .ConfigureAwait(false);
     }
 

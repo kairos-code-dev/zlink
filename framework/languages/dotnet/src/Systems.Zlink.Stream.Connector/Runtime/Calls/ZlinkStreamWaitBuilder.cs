@@ -30,7 +30,7 @@ internal sealed class ZlinkStreamWaitBuilder : IZlinkStreamWaitCall
         return this;
     }
 
-    public async ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> SubmitAsync(
+    public async ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> Async(
         CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();

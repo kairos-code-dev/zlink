@@ -64,7 +64,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             .GetOrCreateAsync(actorId, "player");
         var actorRef = await actor.Context.JoinEntrySpot(actorNodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
         sessionRecorder.SetActor(actorRef);
 
         try
@@ -148,7 +148,7 @@ public sealed class LocalSessionRelayTests : StreamTestSupport
             .GetOrCreateAsync(actorId, "player");
         await missingActor.Context.JoinEntrySpot(playRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
         var createdBeforeDispatch = actorRecorder.CreatedCount;
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>

@@ -41,11 +41,11 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
             .PacketName("h")
-            .SubmitAsync();
+            .Async();
 
         await server;
     }
@@ -107,7 +107,7 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await second.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -141,11 +141,11 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/"),
             Heartbeat = DisabledHeartbeat()
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "wb"u8.ToArray()))
             .PacketName("wh")
-            .SubmitAsync();
+            .Async();
 
         await server;
     }
@@ -176,11 +176,11 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             SkipServerCertificateValidation = true
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         await connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "tb"u8.ToArray()))
             .PacketName("th")
-            .SubmitAsync();
+            .Async();
 
         await server;
     }

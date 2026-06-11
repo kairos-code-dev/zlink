@@ -70,7 +70,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         Message message,
         CancellationToken cancellationToken)
     {
-        return ResolveSubmitter(channelName).SubmitAsync(
+        return ResolveSubmitter(channelName).Async(
             message,
             pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
@@ -81,7 +81,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return ResolveSubmitter(channelName).SubmitAsync(
+        return ResolveSubmitter(channelName).Async(
             parts,
             pending => nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait),
             cancellationToken);
@@ -146,7 +146,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         Message message,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return _submitter.Async(
             message,
             pending => nativeSpot.Publish(topic, pending, SendFlags.DontWait),
             cancellationToken);
@@ -157,7 +157,7 @@ internal sealed class ZLinkSpotOutboundTransport(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return _submitter.Async(
             parts,
             pending => nativeSpot.Publish(topic, pending, SendFlags.DontWait),
             cancellationToken);

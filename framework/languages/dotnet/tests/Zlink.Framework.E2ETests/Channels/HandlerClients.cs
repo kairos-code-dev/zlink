@@ -68,7 +68,7 @@ public sealed class HandlerClientsTests
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
             async () => await client
                 .RequestToChannel("api", new ForwardProfileRequest { UserId = "forwarded" })
-                .SubmitAsync<ProfileReply>(),
+                .Async<ProfileReply>(),
             static result => result.Name == "user:forwarded");
 
         Assert.Equal("user:forwarded", reply.Name);
@@ -139,7 +139,7 @@ public sealed class HandlerClientsTests
             {
                 var reply = await client
                     .RequestToChannel("api", new PublishProfileRequest { UserId = "published" })
-                    .SubmitAsync<PublishProfileReply>();
+                    .Async<PublishProfileReply>();
                 Assert.True(reply.Accepted);
                 await Task.Yield();
                 return recorder.Events.Count;

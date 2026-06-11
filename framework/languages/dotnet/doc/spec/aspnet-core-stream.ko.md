@@ -180,14 +180,14 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall Metadata(string key, string value);
     IZLinkSessionSendCall PacketName(string messageName);
     IZLinkSessionSendCall Compress();
-    ValueTask SubmitAsync();
+    ValueTask Async();
 }
 
 public interface IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall Metadata(string key, string value);
     IZLinkSessionReplyCall Compress();
-    ValueTask SubmitAsync();
+    ValueTask Async();
 }
 
 public interface IZLinkSessionContext

@@ -30,12 +30,12 @@ internal sealed class OpenConversationActorHandler
                     actor.ActorId,
                     actor.DisplayName,
                     message.Subject))
-            .SubmitAsync<OpenConversationApiRes>(cancellationToken);
+            .Async<OpenConversationApiRes>(cancellationToken);
         var conversationRid = RoutingId.FromHex(opened.ConversationId);
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
                 new JoinConversationReq(opened.ConversationId).Encode())
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
         Console.Error.WriteLine($"support entry open: completed conversation={opened.ConversationId} status={state.Status}");
         return new OpenConversationRes(opened.ConversationId, state);

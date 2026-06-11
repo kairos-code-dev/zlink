@@ -181,7 +181,7 @@ public sealed class GameChatSession(IZLinkSessionContext context, IZLinkActorMan
             var req = payload.Decode<AuthPlayerReq>();
             IZLinkActor actor = await actors.GetOrCreateAsync(req.PlayerId, "player", ct);
             _player = await context.Actors.BindAsync(actor, ct);
-            await context.Client.Reply(new AuthPlayerOk()).SubmitAsync();
+            await context.Client.Reply(new AuthPlayerOk()).Async();
             return;
         }
 
@@ -196,7 +196,7 @@ public sealed class PlayerActor(IZLinkActorContext context) : IZLinkActor
     public IZLinkActorContext Context { get; } = context;
 
     public ValueTask PushChatAsync(GameChatMessage message, CancellationToken ct)
-        => Context.BoundSession.Send(message).SubmitAsync(ct);
+        => Context.BoundSession.Send(message).Async(ct);
 }
 ```
 

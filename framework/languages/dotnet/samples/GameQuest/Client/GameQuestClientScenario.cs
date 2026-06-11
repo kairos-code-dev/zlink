@@ -15,11 +15,11 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         IZlinkStreamConnector apiBStream,
         CancellationToken cancellationToken = default)
     {
-        await apiAStream.ConnectAsync(cancellationToken);
-        var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice")).SubmitAsync<SubscribeQuestRes>(cancellationToken);
+        await apiAStream.Connect.Async(cancellationToken);
+        var subscribed = await apiAStream.Request(new SubscribeQuestReq("player-alice")).Async<SubscribeQuestRes>(cancellationToken);
         Ensure(subscribed.ActiveQuests.Length == 0);
 
-        var firstProgress = apiAStream.WaitFor<QuestProgressNotify>().SubmitAsync(cancellationToken);
+        var firstProgress = apiAStream.WaitFor<QuestProgressNotify>().Async(cancellationToken);
         var firstKill = await PostAsync<KillMonsterReq, KillMonsterRes>(
             topology.GameApiAHttpBaseUrl,
             "/combat/kill",
@@ -31,7 +31,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(firstProgressPush.Payload.Progress.QuestId == QuestIds.FirstHunt);
         Ensure(firstProgressPush.Payload.Progress.CurrentCount == 1);
 
-        var completeFirstHunt = apiAStream.WaitFor<QuestCompletedNotify>().SubmitAsync(cancellationToken);
+        var completeFirstHunt = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
         _ = await PostAsync<KillMonsterReq, KillMonsterRes>(
             topology.GameApiAHttpBaseUrl,
             "/combat/kill",
@@ -55,7 +55,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             cancellationToken);
         Ensure(duplicate.EventId == thirdKill.EventId);
 
-        var auctionComplete = apiAStream.WaitFor<QuestCompletedNotify>().SubmitAsync(cancellationToken);
+        var auctionComplete = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
         var auction = await PostAsync<UnlockFeatureReq, UnlockFeatureRes>(
             topology.GameApiAHttpBaseUrl,
             "/feature/unlock",
@@ -94,8 +94,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             cancellationToken);
         Ensure(offlineItem.EventId == "player-bob-herb-1");
 
-        await apiBStream.ConnectAsync(cancellationToken);
-        var bobSubscribed = await apiBStream.Request(new SubscribeQuestReq("player-bob")).SubmitAsync<SubscribeQuestRes>(cancellationToken);
+        await apiBStream.Connect.Async(cancellationToken);
+        var bobSubscribed = await apiBStream.Request(new SubscribeQuestReq("player-bob")).Async<SubscribeQuestRes>(cancellationToken);
         var bobProgress = bobSubscribed.ActiveQuests.Any(p =>
             p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 })
             ? bobSubscribed.ActiveQuests
@@ -105,7 +105,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
                 progress => progress is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 },
                 cancellationToken);
         Ensure(bobProgress.Any(p => p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 }));
-        var herbCompletedOnReconnectedStream = apiBStream.WaitFor<QuestCompletedNotify>().SubmitAsync(cancellationToken);
+        var herbCompletedOnReconnectedStream = apiBStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
         var onlineItem = await PostAsync<CollectItemReq, CollectItemRes>(
             topology.GameApiBHttpBaseUrl,
             "/inventory/collect",
@@ -137,7 +137,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             topology.GameApiBHttpBaseUrl,
             "/self-check/gameplay/kill-without-publish/player-alice",
             cancellationToken);
-        var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice")).SubmitAsync<SyncQuestProgressRes>(cancellationToken);
+        var sync = await apiAStream.Request(new SyncQuestProgressReq("player-alice")).Async<SyncQuestProgressRes>(cancellationToken);
         Ensure(sync.UpdatedQuests.Any(progress => progress.QuestId == QuestIds.FirstHunt && progress.CurrentCount >= 4));
         var reconciled = await WaitForProjectionAsync(
             topology.GameApiBHttpBaseUrl,
@@ -249,7 +249,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var response = await connector.Request(new GetQuestProgressReq(playerId)).SubmitAsync<GetQuestProgressRes>(cancellationToken);
+            var response = await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken);
             if (response.ActiveQuests.Any(predicate))
             {
                 return response.ActiveQuests;
@@ -258,14 +258,14 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             await Task.Delay(50, cancellationToken);
         }
 
-        return (await connector.Request(new GetQuestProgressReq(playerId)).SubmitAsync<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
+        return (await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
     }
 
     private static async ValueTask<QuestProgress[]> GetStreamProjectionAsync(
         IZlinkStreamConnector connector,
         string playerId,
         CancellationToken cancellationToken) =>
-        (await connector.Request(new GetQuestProgressReq(playerId)).SubmitAsync<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
+        (await connector.Request(new GetQuestProgressReq(playerId)).Async<GetQuestProgressRes>(cancellationToken)).ActiveQuests;
 
     private static void Ensure(
         bool condition,

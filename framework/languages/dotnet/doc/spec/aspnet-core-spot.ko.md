@@ -724,7 +724,7 @@ await spotPublisherClient
         {
             StageRid = stage.SpotRid.ToString()
         })
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 var spotInfo = await spotManager.GetAsync(stage.SpotRid, cancellationToken);
 ```
@@ -783,20 +783,20 @@ await spot.Context.Outbound
     .SendToChannel(
         "orders",
         new RoomNoticeMessage())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 var reply = await spot.Context.Outbound
     .RequestToChannel(
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .SubmitAsync<GetStageStateReply>(cancellationToken);
+    .Async<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
     .SendToSpot(
         stage.SpotRid,
         new StageNoticeMessage())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
@@ -851,19 +851,19 @@ var reply = await spot.Context.Outbound
         "orders",
         new GetStageStateRequest())
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .SubmitAsync<GetStageStateReply>(cancellationToken);
+    .Async<GetStageStateReply>(cancellationToken);
 
 await spot.Context.Outbound
     .SendToSpot(
         stage.SpotRid,
         new StageNoticeMessage())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 await spot.Context.Outbound
     .Publish(
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 `Stage wrapper` 같은 상위 계층이 별도의 directory 나 lookup 을 얹는 것은
@@ -883,7 +883,7 @@ await spotPublisherClient
         "game.stage",
         "stage.state.updated",
         new StageStateUpdatedEvent())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 이 인터페이스는 local spot 문맥이 없는 외부 노드에서도 target SPOT channel

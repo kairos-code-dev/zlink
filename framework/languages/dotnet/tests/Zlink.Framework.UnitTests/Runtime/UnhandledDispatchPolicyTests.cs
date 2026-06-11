@@ -191,7 +191,7 @@ public sealed class UnhandledDispatchPolicyTests
             .Message(requestParts[0])
             .Message(requestParts[1])
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync();
+            .Async();
         ZLinkMessageParts.DisposeAll(requestParts);
 
         using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));

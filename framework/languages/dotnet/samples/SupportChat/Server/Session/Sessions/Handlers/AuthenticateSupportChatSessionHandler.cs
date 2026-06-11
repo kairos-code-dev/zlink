@@ -24,7 +24,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticateUserReq(request.AccessToken))
-            .SubmitAsync<AuthenticateUserRes>(cancellationToken);
+            .Async<AuthenticateUserRes>(cancellationToken);
 
         if (!authenticated.Accepted
             || string.IsNullOrWhiteSpace(authenticated.ActorId)
@@ -40,7 +40,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
                     authenticated.ActorId,
                     authenticated.DisplayName,
                     authenticated.Role))
-            .SubmitAsync<EnsureSupportUserActorRes>(cancellationToken);
+            .Async<EnsureSupportUserActorRes>(cancellationToken);
 
         await context.Actors.BindAsync(
             ToActorRef(ensured.Actor),
@@ -50,7 +50,7 @@ internal sealed class AuthenticateSupportChatSessionHandler(IZLinkChannelClient 
                 authenticated.ActorId,
                 authenticated.DisplayName,
                 authenticated.Role))
-            .SubmitAsync();
+            .Async();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

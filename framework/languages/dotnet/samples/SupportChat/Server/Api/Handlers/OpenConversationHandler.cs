@@ -22,7 +22,7 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
                     request.CustomerActorId,
                     request.CustomerDisplayName,
                     request.Subject))
-            .SubmitAsync<AllocateConversationRes>(cancellationToken);
+            .Async<AllocateConversationRes>(cancellationToken);
         Console.Error.WriteLine($"support api open: allocated conversation={allocated.ConversationId} status={allocated.Status}");
 
         var assigned = await channels.RequestToChannel(
@@ -30,7 +30,7 @@ internal sealed class OpenConversationHandler(IZLinkChannelClient channels)
                 new AssignAgentReq(
                     allocated.ConversationId,
                     RequestedAgentActorId: null))
-            .SubmitAsync<AssignAgentRes>(cancellationToken);
+            .Async<AssignAgentRes>(cancellationToken);
         Console.Error.WriteLine($"support api open: assigned conversation={assigned.ConversationId} status={assigned.Status} agent={assigned.AgentActorId}");
 
         return new OpenConversationApiRes(

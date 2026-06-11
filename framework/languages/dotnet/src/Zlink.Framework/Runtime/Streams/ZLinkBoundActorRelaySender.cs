@@ -13,7 +13,7 @@ internal sealed class ZLinkBoundActorRelaySender(TimeSpan timeout)
         var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
         var bodyBytes = payload.ToArray();
 
-        await ZLinkRetryingSubmitter.SubmitAsync(
+        await ZLinkRetryingSubmitter.Async(
                 () =>
                 {
                     using var headerPart = Message.From(headerBytes);

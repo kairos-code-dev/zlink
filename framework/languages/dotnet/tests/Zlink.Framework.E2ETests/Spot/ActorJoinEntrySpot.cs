@@ -57,7 +57,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
 
         var join = await actor.Context.JoinEntrySpot(nodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal("join-entry-local-actor", join.ActorId);
         Assert.Equal(nodeRid, join.NodeRid);
@@ -126,14 +126,14 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
             EncodeJoin(new RegistryJoinRequest("idempotent-room")));
         _ = await actor.Context.JoinEntrySpot(nodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
 
         var joinedBefore = CountEvents(recorder, "entry-joined:join-entry-idempotent-actor");
         var leftBefore = CountEvents(recorder, "left:join-entry-idempotent-actor:");
 
         var second = await actor.Context.JoinEntrySpot(nodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal(nodeRid, second.NodeRid);
         Assert.Equal(joinedBefore, CountEvents(recorder, "entry-joined:join-entry-idempotent-actor"));
@@ -197,7 +197,7 @@ public sealed class ActorJoinEntrySpotTests : SpotTestSupport
 
         var join = await actor.Context.JoinEntrySpot(targetNodeRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
         var replyCanStillUseJoinResult = $"{join.ActorId}:{join.NodeRid.ToHex()}";
 
         Assert.Equal(

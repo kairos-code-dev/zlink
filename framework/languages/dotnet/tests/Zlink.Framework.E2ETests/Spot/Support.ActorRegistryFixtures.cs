@@ -75,7 +75,7 @@ public abstract partial class SpotTestSupport
                     global::Systems.Zlink.RoutingId.FromHex(spotRid),
                     new RegistryJoinRequest("entry-room").ToJson())
                 .Timeout(TimeSpan.FromSeconds(5))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
 
             actor.CurrentRoomId = reply.Reply.FromJson<RegistryJoinReply>().RoomId;
             recorder.Events.Enqueue($"entry:{actor.ActorId}:{spotRid}");
@@ -122,7 +122,7 @@ public abstract partial class SpotTestSupport
                     global::Systems.Zlink.RoutingId.FromHex(spotRid),
                     new RegistryJoinRequest("entry-room").ToJson())
                 .Timeout(TimeSpan.FromSeconds(5))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
 
             actor.CurrentRoomId = reply.Reply.FromJson<RegistryJoinReply>().RoomId;
             registryRecorder.Events.Enqueue($"entry-block-joined:{actor.ActorId}:{spotRid}");

@@ -77,7 +77,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             .GetOrCreateAsync(actorId, "player");
         var joined = await actor.Context.JoinEntrySpot(playRid)
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
 
         var sessionHost = await CreateHostAsync(sessionRouterEndpoint, services =>
         {
@@ -157,7 +157,7 @@ public sealed class RemoteSessionRelayTests : StreamTestSupport
             var boundSession = sessionActor.Context.BoundSession;
             await boundSession.Send(new GatewayPing("one-way-from-play"))
                 .PacketName("client.notify")
-                .SubmitAsync();
+                .Async();
             var clientPush = ReceiveFrame(network);
             Assert.Equal(ZlinkStreamMessageKind.Send, clientPush.Header.Kind);
             Assert.Equal("client.notify", clientPush.Header.Name);

@@ -52,6 +52,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         CancellationToken cancellationToken)
     {
         Task? waitTask;
+        ActiveConnectStart? activeConnectStart = null;
         ZlinkStreamConnectionStateChanged? change = null;
         lock (_gate)
         {
@@ -76,12 +77,14 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             else
             {
                 change = SetStateLocked(ZlinkStreamConnectionState.Connecting, null);
-                waitTask = ConnectOnceAsync(cancellationToken);
+                activeConnectStart = CreateActiveConnectTask(() => ConnectOnceAsync(cancellationToken));
+                waitTask = activeConnectStart.Value.Task;
                 _activeConnectTask = waitTask;
                 ObserveBackgroundTask(waitTask);
             }
         }
 
+        activeConnectStart?.Start();
         await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
         try
         {
@@ -174,10 +177,6 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             await TransitionToDisconnectedAsync(ex.Error, cancellationToken).ConfigureAwait(false);
             throw;
         }
-        finally
-        {
-            ClearActiveConnectTask(null);
-        }
     }
 
     private async Task ReconnectLoopAsync()
@@ -226,10 +225,6 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         }
         catch (OperationCanceledException) when (_closeCts.IsCancellationRequested)
         {
-        }
-        finally
-        {
-            ClearActiveConnectTask(null);
         }
     }
 
@@ -340,7 +335,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     {
         LifecycleSnapshot snapshot;
         ZlinkStreamConnectionStateChanged? change;
-        Task? reconnectTask = null;
+        ActiveConnectStart? reconnectStart = null;
         lock (_gate)
         {
             if (_state is ZlinkStreamConnectionState.Closed or ZlinkStreamConnectionState.Disconnected)
@@ -356,20 +351,19 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
             if (nextState == ZlinkStreamConnectionState.Reconnecting && _activeConnectTask is null)
             {
-                reconnectTask = ReconnectLoopAsync();
-                _activeConnectTask = reconnectTask;
-                ObserveBackgroundTask(reconnectTask);
+                reconnectStart = CreateActiveConnectTask(ReconnectLoopAsync);
+                _activeConnectTask = reconnectStart.Value.Task;
+                ObserveBackgroundTask(reconnectStart.Value.Task);
             }
         }
 
+        reconnectStart?.Start();
         snapshot.SessionCts?.Cancel();
         await CloseConnectionAsync(snapshot.Connection, cancellationToken).ConfigureAwait(false);
         snapshot.SessionCts?.Dispose();
         await NotifyStateChangedAsync(change, cancellationToken).ConfigureAwait(false);
         pending.FailAll(GetPendingDisconnectError(error));
         await callbacks.NotifyDisconnectedAsync(cancellationToken).ConfigureAwait(false);
-
-        _ = reconnectTask;
     }
 
     private async ValueTask TransitionToDisconnectedAsync(ZlinkStreamError error, CancellationToken cancellationToken)
@@ -451,16 +445,40 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         }
     }
 
-    private void ClearActiveConnectTask(int? taskId)
+    private ActiveConnectStart CreateActiveConnectTask(Func<Task> run)
     {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? activeTask = null;
+        activeTask = RunActiveConnectTaskAsync(started.Task, run, () => activeTask);
+        return new ActiveConnectStart(activeTask, () => started.SetResult());
+    }
+
+    private async Task RunActiveConnectTaskAsync(
+        Task started,
+        Func<Task> run,
+        Func<Task?> currentTask)
+    {
+        await started.ConfigureAwait(false);
+        try
+        {
+            await run().ConfigureAwait(false);
+        }
+        finally
+        {
+            ClearActiveConnectTask(currentTask());
+        }
+    }
+
+    private void ClearActiveConnectTask(Task? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
         lock (_gate)
         {
-            if (_activeConnectTask is null)
-            {
-                return;
-            }
-
-            if (taskId is null || _activeConnectTask.Id == taskId.Value)
+            if (ReferenceEquals(_activeConnectTask, task))
             {
                 _activeConnectTask = null;
             }
@@ -507,4 +525,6 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         CancellationTokenSource? SessionCts,
         Task? ReceiveTask,
         Task? HeartbeatTask);
+
+    private readonly record struct ActiveConnectStart(Task Task, Action Start);
 }

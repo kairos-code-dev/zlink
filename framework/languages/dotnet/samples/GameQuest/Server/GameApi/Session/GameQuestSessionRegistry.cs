@@ -60,7 +60,7 @@ internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry>
             {
                 await session.Client.Send(new QuestProgressNotify(request.PlayerId, session.SessionId, progress))
                     .PacketName(SampleNames.ProgressPacket)
-                    .SubmitAsync();
+                    .Async();
             }
 
             if (!string.IsNullOrWhiteSpace(request.CompletedQuestId))
@@ -68,7 +68,7 @@ internal sealed class GameQuestSessionRegistry(ILogger<GameQuestSessionRegistry>
                 var completed = request.Projection.First(progress => progress.QuestId == request.CompletedQuestId);
                 await session.Client.Send(new QuestCompletedNotify(request.PlayerId, session.SessionId, completed, RewardGranted: true))
                         .PacketName(SampleNames.CompletedPacket)
-                        .SubmitAsync();
+                        .Async();
             }
         }
         catch (ZlinkSubmitException error)

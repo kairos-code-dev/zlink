@@ -778,7 +778,7 @@ app.MapPost("/stage/publish", async (
                 ActorCount = request.UserCount,
                 ConnectedSessionCount = request.UserCount
             })
-        .SubmitAsync(cancellationToken);
+        .Async(cancellationToken);
 
     return Results.Accepted();
 });
@@ -1123,7 +1123,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
                 ActorCount = ActorCount,
                 ConnectedSessionCount = ConnectedSessionCount
             })
-        .SubmitAsync(cancellationToken);
+        .Async(cancellationToken);
     }
 
     public async ValueTask SweepInactiveActorsAsync(
@@ -1200,7 +1200,7 @@ public sealed class SampleActor : IZLinkActor
                 Y = Y
             })
             .PacketName("SampleActorSnapshot")
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     public ValueTask PushChatAsync(
@@ -1209,7 +1209,7 @@ public sealed class SampleActor : IZLinkActor
         => _context.BoundSession
             .Send(pushed)
             .PacketName("SampleRoomChatPushed")
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
     public void ClearStream()
     {
@@ -1251,7 +1251,7 @@ public sealed class SampleActor : IZLinkActor
     {
         var result = await _context
             .JoinSpot(room.Context.SpotRid, request.Encode())
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return result.Reply.Decode<SampleJoinRoomReply>();
     }
 
@@ -1372,7 +1372,7 @@ public sealed class SampleSession
                     AccountId = auth.AccountId,
                     CurrentRoomId = (actor.Spot as SampleSpot)?.RoomId ?? string.Empty
                 })
-                .SubmitAsync();
+                .Async();
             return;
         }
 
@@ -1396,7 +1396,7 @@ public sealed class SampleSession
 
             await Context
                 .Reply(joinReply)
-                .SubmitAsync();
+                .Async();
             return;
         }
 
@@ -1509,7 +1509,7 @@ packet 의 hot path[^hot-path] 까지 다시 끌고 들어오지 않는 편이 �
    room으로 갱신한다. 기존 room이 있으면 source room의 `ActorLeft` lifecycle 이
    호출된다.
 8. 그 뒤에 들어오는 `SampleHeartbeatCommand`, `SampleMoveActorCommand`,
-   `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `SubmitAsync(...)`를
+   `SampleSendRoomChatCommand` 같은 패킷은 framework 내부의 `Async(...)`를
    거쳐 actor가 속한 `Spot` 문맥으로 제출된다.
 9. 같은 `Spot` 실행 문맥 안에서 실제 처리는
    `IZLinkSpotContext.AddHandler(...)`로 등록한 actor packet handler가
@@ -1561,7 +1561,7 @@ framework 는 decode 된 header와 payload를 내부 dispatch 경로로 같은 `
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
         return new SampleGetStateReply
         {
@@ -1596,7 +1596,7 @@ public sealed class SampleReportStateHandler
                 {
                     SpotRid = spot.Context.SpotRid.ToString()
                 })
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 
@@ -1625,7 +1625,7 @@ public sealed class SampleStateUpdatedHandler
                     ConnectedSessionCount = message.ConnectedSessionCount
                 })
             .Timeout(TimeSpan.FromMilliseconds(200))
-            .SubmitAsync<SampleSyncStateReply>(cancellationToken);
+            .Async<SampleSyncStateReply>(cancellationToken);
     }
 }
 
@@ -1731,7 +1731,7 @@ server tick 수를 계산할 수 있다.
 - `Context.AddTimer<THandler>(...)` 는 spot lifecycle[^lifecycle] 안에서 timer
   를 등록한다.
 - 다른 channel 로의 호출은 attach 된 channel client 를 통해 전송한다.
-- **`RequestToChannel(...).SubmitAsync<TReply>(...)` 는 같은 spot execution context 안에서
+- **`RequestToChannel(...).Async<TReply>(...)` 는 같은 spot execution context 안에서
   완료된다.** 임의의 thread 에서 promise 를 직접 resolve 하지 않는다. 따라서
   continuation 도 spot state 에 별도의 lock 없이 접근할 수 있다.
 
@@ -1847,9 +1847,9 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 명시적 `spotRid`가 있고 없으면 만들고 있으면 가져오고 싶다
   - `IZLinkSpotManager.GetOrCreateAsync<StageSpot>(spotRid, request, ...)`
 - attach된 다른 channel로 send packet을 보내고 싶다
-  - `SendToChannel(...).SubmitAsync(...)`
+  - `SendToChannel(...).Async(...)`
 - attach된 다른 channel로 request packet을 보내고 싶다
-  - `RequestToChannel(...).Timeout(...).SubmitAsync<TReply>(...)`
+  - `RequestToChannel(...).Timeout(...).Async<TReply>(...)`
   - 다른 SPOT 인스턴스로 routed 호출을 보내고 싶다
   - SPOT callback 안에서는 `Context.Outbound.SendToSpot(...)` /
     `Context.Outbound.RequestToSpot(...)`처럼 `RoutingId`를 받는 표면을 사용한다.
@@ -1860,9 +1860,9 @@ protobuf 타입에 framework 용 marker interface[^marker-interface] 를 직접
 - 특정 `spotRid`가 어떤 이름으로 생성됐는지 다시 확인하고 싶다
   - `IZLinkSpotManager.GetAsync(spotRid)` 또는 `ListAsync()`
 - stage 안에서 fan-out 하고 싶다
-  - `Publish(topic, ...).SubmitAsync(...)`
+  - `Publish(topic, ...).Async(...)`
 - local spot 인스턴스가 없는 외부 노드에서 특정 SPOT channel로 publish하고 싶다
-  - `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...).SubmitAsync(...)`
+  - `IZLinkSpotPublisherClient.PublishSpot(channelName, topic, ...).Async(...)`
 - stage 안에서 heartbeat timeout sweep 같은 주기 작업을 돌리고 싶다
   - `SampleSpot.OnInitializeAsync()`에서 `Context.AddTimer<THandler>(...)`로 등록
 

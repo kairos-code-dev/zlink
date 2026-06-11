@@ -28,7 +28,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = _runtime.GetOrCreateClientBundle(_channelName);
@@ -41,7 +41,7 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
         var message = ZLinkEnvelopeCodec.EncodeParts(header, _message, _message?.GetType());
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
-            .SubmitAsync(
+            .Async(
                 message,
                 pending => dealer.Send(pending, SendFlags.DontWait),
                 cancellationToken);
@@ -70,7 +70,7 @@ internal sealed class ZLinkRequestCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         var bundle = runtime.GetOrCreateClientBundle(channelName);
         var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
@@ -152,7 +152,7 @@ internal sealed class ZLinkPublishCall(
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetOrCreatePublisherBundle(channelName);
@@ -166,7 +166,7 @@ internal sealed class ZLinkPublishCall(
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(header, message, message?.GetType());
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink publish submitter is not initialized."))
-            .SubmitAsync(
+            .Async(
                 envelopedMsg,
                 pending => publisher.Publish(topic, pending, SendFlags.DontWait),
                 cancellationToken);

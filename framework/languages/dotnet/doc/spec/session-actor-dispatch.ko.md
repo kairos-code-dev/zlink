@@ -28,7 +28,7 @@
 |----|-------------|
 | session → actor relay | `IZLinkSessionContext.Actors.BindAsync(...)`, `IZLinkSessionActor.RelayAsync(...)` |
 | spot actor handler | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>`, `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>`, `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>`, `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` |
-| actor → own client push | Spot actor handler 가 받은 actor 의 `Context.BoundSession.Send(msg).SubmitAsync(...)` |
+| actor → own client push | Spot actor handler 가 받은 actor 의 `Context.BoundSession.Send(msg).Async(...)` |
 | 다른 actor → client push | 먼저 대상 actor 에 메시지를 보내고, 대상 Spot actor handler 가 actor `Context.BoundSession` 으로 push |
 | route 해석 | session relay 는 logical actor id/type handle 을 사용하고, core ActorGateway 가 현재 actor 위치를 해석한다. actor → client push 방향은 framework/core가 가진 actor-session binding[^actor-session-binding]을 사용한다 |
 
@@ -1074,7 +1074,7 @@ public interface IZLinkBoundSessionSendCall
         string key,
         string value);
 
-    ValueTask SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 ```
@@ -1084,7 +1084,7 @@ public interface IZLinkBoundSessionSendCall
 ```csharp
 await Context.BoundSession
     .Send(new GameStateChangedMsg(gameId, board))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 기존에 사용하던 `SessionGateway` 라는 이름은 새 public API 에서 제거한다.
@@ -1096,7 +1096,7 @@ await Context.BoundSession
 - 다른 actor 의 client session 에 보내야 하는 application service 는 먼저 대상
   actor 로 메시지를 보내고, 대상 actor handler 가 자기 `BoundSession` 을 사용한다.
 
-`IZLinkBoundSession.Send(...).SubmitAsync(...)` 은 one-way push 다. 이 호출은
+`IZLinkBoundSession.Send(...).Async(...)` 은 one-way push 다. 이 호출은
 framework route send 제출이 끝났다는 의미일 뿐이다. 즉 client application
 handler 가 메시지를 처리 완료했다는 ack 는 아니다.
 
@@ -1357,7 +1357,7 @@ public sealed class TicTacToeSession(IZLinkSessionContext context) : IZLinkSessi
             authenticatedActors.Remember(request.ActorId, actor);
 
             await context.Client.Reply(new AuthRep(ok: true))
-                .SubmitAsync();
+                .Async();
             return;
         }
 
@@ -1401,7 +1401,7 @@ public sealed class JoinMatchHandler
         var matchSpotRid = RoutingId.From(request.MatchId);
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request.Encode())
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
     }
 }

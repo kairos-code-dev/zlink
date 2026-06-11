@@ -93,7 +93,7 @@ public sealed class TickPublishHandler
     : IZLinkSpotPacketHandler<SymbolBookSpot, Trade>
 {
     public ValueTask HandleAsync(SymbolBookSpot spot, Trade t, CancellationToken ct)
-        => spot.Context.Outbound.Publish($"md.{spot.Symbol}", t).SubmitAsync(ct);   // 시세 배포
+        => spot.Context.Outbound.Publish($"md.{spot.Symbol}", t).Async(ct);   // 시세 배포
 }
 ```
 
@@ -102,7 +102,7 @@ public sealed class TickPublishHandler
 var decision = await client
     .RequestToChannel("risk", new CheckLimit(order.AccountId, order.Notional))
     .Timeout(TimeSpan.FromMilliseconds(50))
-    .SubmitAsync<RiskDecision>(ct);
+    .Async<RiskDecision>(ct);
 ```
 
 ```csharp

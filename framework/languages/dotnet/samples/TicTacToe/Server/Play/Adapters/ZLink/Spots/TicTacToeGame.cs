@@ -149,7 +149,7 @@ sealed class TicTacToeGame(
             .ToArray();
         return SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
     }
 
     private ValueTask NotifyPlayerJoinedAsync(
@@ -170,7 +170,7 @@ sealed class TicTacToeGame(
             .ToArray();
         return SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken));
+            actor => actor.Context.BoundSession.Send(message).Async(cancellationToken));
     }
 
     private static async ValueTask SendSessionPushAsync(

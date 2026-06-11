@@ -47,7 +47,7 @@ public sealed class FiltersAndHttpTests
         var recorder = serverHost.Services.GetRequiredService<FilterOrderRecorder>();
 
         var reply = await ChannelMessagingTestSupport.ExecuteWithRetryAsync(
-            async () => await client.RequestToChannel("api", new GetFilterOrderRequest()).SubmitAsync<FilterOrderReply>(),
+            async () => await client.RequestToChannel("api", new GetFilterOrderRequest()).Async<FilterOrderReply>(),
             static result => result.Sequence.Count == 5);
 
         Assert.Equal(
@@ -97,7 +97,7 @@ public sealed class FiltersAndHttpTests
             {
                 var userId = context.Request.Query["userId"].ToString();
                 var reply = await client.RequestToChannel("api", new GetProfileRequest { UserId = userId })
-                    .SubmitAsync<ProfileReply>(cancellationToken);
+                    .Async<ProfileReply>(cancellationToken);
                 return Results.Text(reply.Name);
             }).RequestDelegate;
 

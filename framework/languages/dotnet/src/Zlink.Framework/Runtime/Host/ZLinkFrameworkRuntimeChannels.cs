@@ -178,7 +178,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             parts);
         await (bundle.Submitter
                 ?? throw new InvalidOperationException("ZLink routed SPOT egress submitter is not initialized."))
-            .SubmitAsync(
+            .Async(
                 relayParts,
                 pending => dealer.Send(pending, SendFlags.DontWait),
                 cancellationToken)

@@ -35,7 +35,7 @@ internal sealed class ConversationNotificationPublisher
                 SupportChatRoles.Agent,
                 state))
             .PacketName(SampleNames.ParticipantJoinedPacket)
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private async ValueTask PublishAsync(
@@ -65,7 +65,7 @@ internal sealed class ConversationNotificationPublisher
                             conversationEvent.State.ConversationId,
                             conversationEvent.State))
                         .PacketName(SampleNames.ConversationIdlePacket)
-                        .SubmitAsync(cancellationToken));
+                        .Async(cancellationToken));
                 break;
             case ConversationEventKind.Closed:
                 await PublishAllAsync(
@@ -75,7 +75,7 @@ internal sealed class ConversationNotificationPublisher
                             conversationEvent.State.ConversationId,
                             conversationEvent.State))
                         .PacketName(SampleNames.ConversationClosedPacket)
-                        .SubmitAsync(cancellationToken));
+                        .Async(cancellationToken));
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported conversation event {conversationEvent.Kind}.");
@@ -103,7 +103,7 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.Role,
                     conversationEvent.State))
                 .PacketName(SampleNames.ParticipantJoinedPacket)
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
         }
     }
 
@@ -122,7 +122,7 @@ internal sealed class ConversationNotificationPublisher
                 conversationEvent.State.ConversationId,
                 conversationEvent.State))
             .PacketName(SampleNames.ConversationAssignedPacket)
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private static async ValueTask PublishMessageAsync(
@@ -141,7 +141,7 @@ internal sealed class ConversationNotificationPublisher
                     message,
                     conversationEvent.State))
                 .PacketName(SampleNames.ChatMessagePacket)
-                .SubmitAsync(cancellationToken));
+                .Async(cancellationToken));
     }
 
     private static async ValueTask PublishTypingAsync(
@@ -164,7 +164,7 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.IsTyping.Value,
                     conversationEvent.State))
                 .PacketName(SampleNames.TypingChangedPacket)
-                .SubmitAsync(cancellationToken));
+                .Async(cancellationToken));
     }
 
     private static async ValueTask PublishAllAsync(

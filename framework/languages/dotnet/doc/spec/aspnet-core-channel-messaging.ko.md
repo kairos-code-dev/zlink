@@ -535,7 +535,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .SubmitAsync<GetAccountReply>(cancellationToken);
+            .Async<GetAccountReply>(cancellationToken);
 
         return new UserReply
         {
@@ -712,7 +712,7 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 두 client 모두 `IZLinkChannelClient` 와 같은 fluent builder 결을 따른다. 사용 패턴은 다음과
 같다.
 
-- 호출 chain 의 끝에서, `.SubmitAsync(...)` 또는 `.SubmitAsync<TReply>(...)` 로 마무리한다.
+- 호출 chain 의 끝에서, `.Async(...)` 또는 `.Async<TReply>(...)` 로 마무리한다.
 - `PacketName`, `Timeout` 같은 변형은, 그 사이에 이어 붙인다.
 
 두 인터페이스의 전체 정의는, [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의
@@ -763,7 +763,7 @@ app.MapPost("/profiles/refresh", async (
             "api.events",
             "profile.cache-refreshed",
             new ProfileCacheRefreshedEvent(request.AccountId))
-        .SubmitAsync(cancellationToken);
+        .Async(cancellationToken);
 
     return Results.Accepted();
 });
@@ -811,7 +811,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetProfileRequest { AccountId = request.AccountId })
-        .SubmitAsync<GetProfileReply>(cancellationToken);
+        .Async<GetProfileReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -830,12 +830,12 @@ app.MapPost("/profiles/get", async (
 var reply = await client
     .RequestToChannel("profile", new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .SubmitAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 
 await client
     .SendToChannel("profile", new RefreshProfileCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 ## 6. ASP.NET Core middleware, 서비스 AOP, handler pipeline
@@ -1022,7 +1022,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
 | `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler가 같은 DI container에서 `IZLinkChannelClient`를 받아 호출한다. |
-| `ZLinkAsyncSubmitterTests.SubmitAsync_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
+| `ZLinkAsyncSubmitterTests.Async_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---
 

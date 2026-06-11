@@ -20,7 +20,7 @@ internal static class CreateGameHttpHandler
         var reply = await client.RequestToChannel(
                 SampleChannels.Play,
                 new CreateGameReq(gameName))
-            .SubmitAsync<CreateGameRes>(cancellationToken);
+            .Async<CreateGameRes>(cancellationToken);
 
         logger.LogInformation(
             "play -> api: game created. roomId={RoomId}, endpoint={Endpoint}, game={GameName}",

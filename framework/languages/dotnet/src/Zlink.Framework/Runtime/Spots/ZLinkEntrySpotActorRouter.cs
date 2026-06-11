@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotActorRouter
 {
-    public async ValueTask<bool> TrySubmitAsync(
+    public async ValueTask<bool> TryAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,

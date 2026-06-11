@@ -47,7 +47,7 @@ public sealed class FanoutTests
                 await publisher.Publish(
                     "profile",
                     "profile.cache-invalidated",
-                    new ProfileInvalidated { UserId = "alice" }).SubmitAsync();
+                    new ProfileInvalidated { UserId = "alice" }).Async();
                 await Task.Yield();
                 return recorder.Events.Count;
             },

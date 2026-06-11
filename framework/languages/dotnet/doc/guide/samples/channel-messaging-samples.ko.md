@@ -347,7 +347,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .SubmitAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -430,7 +430,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .SubmitAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });
@@ -444,7 +444,7 @@ app.MapPost("/profiles/refresh-cache", async (
         .Send(
             "profile",
             new RefreshUserCacheCommand { AccountId = request.AccountId })
-        .SubmitAsync(cancellationToken);
+        .Async(cancellationToken);
 
     return Results.Accepted();
 });
@@ -475,7 +475,7 @@ public sealed class UserHandlers
             .Request(
                 "account",
                 new GetAccountRequest { AccountId = request.AccountId })
-            .SubmitAsync<GetAccountReply>(cancellationToken);
+            .Async<GetAccountReply>(cancellationToken);
 
         return new GetUserReply
         {
@@ -498,7 +498,7 @@ public sealed class UserHandlers
                 {
                     AccountId = command.AccountId
                 })
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 
@@ -670,7 +670,7 @@ await client
     .Send(
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 ```csharp
@@ -678,7 +678,7 @@ var reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .SubmitAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -687,7 +687,7 @@ var fastReply = await client
         "profile",
         new GetUserRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .SubmitAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -696,7 +696,7 @@ await client
         "profile",
         new RefreshUserCacheCommand { AccountId = accountId })
     .PacketName("profile.refresh-cache")
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 ### 6.1 framework client의 reply 처리 기준
@@ -717,7 +717,7 @@ GetUserReply reply = await client
     .Request(
         "profile",
         new GetUserRequest { AccountId = accountId })
-    .SubmitAsync<GetUserReply>(cancellationToken);
+    .Async<GetUserReply>(cancellationToken);
 ```
 
 ```csharp
@@ -726,7 +726,7 @@ await publisher
         "api.events",
         "user.cache-refreshed",
         new UserCacheRefreshedEvent { AccountId = accountId })
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 이 예시에서 두 문자열의 의미는 다음과 같다.
@@ -828,7 +828,7 @@ app.MapPost("/profiles/get", async (
         .Request(
             "profile",
             new GetUserRequest { AccountId = request.AccountId })
-        .SubmitAsync<GetUserReply>(cancellationToken);
+        .Async<GetUserReply>(cancellationToken);
 
     return Results.Ok(reply);
 });

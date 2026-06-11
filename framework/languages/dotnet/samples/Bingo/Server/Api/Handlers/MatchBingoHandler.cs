@@ -33,7 +33,7 @@ internal sealed class MatchBingoHandler(
                     Mode = request.Mode,
                     ActorId = request.ActorId,
                 })
-            .SubmitAsync<AllocateBingoRoomRes>(cancellationToken)
+            .Async<AllocateBingoRoomRes>(cancellationToken)
             ;
         logger.LogInformation("api match: allocated. actor={ActorId}, room={RoomId}", request.ActorId, allocated.RoomId);
 

@@ -84,7 +84,7 @@ internal sealed class GameplayActionService(
     {
         var stored = await store.GetOrAddGameplayEventAsync(candidate, cancellationToken);
         await fanout.Publish(SampleNames.FanoutChannel, SampleNames.GameplayTopic, stored)
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
             logger.LogInformation("gamequest api event published api={Api} player={PlayerId} event={EventId} type={EventType} fanout={Fanout}",
                 _apiName,
                 stored.PlayerId,

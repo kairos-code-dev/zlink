@@ -53,6 +53,9 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _receiveDispatcher,
             () => _lifecycle.Connection,
             _lifecycle.RecordInbound);
+        Connect = new ZlinkStreamLifecycleCall(ConnectCoreAsync);
+        Close = new ZlinkStreamLifecycleCall(CloseCoreAsync);
+        Dispatch = new ZlinkStreamLifecycleCall(DispatchCoreAsync);
     }
 
     public event Func<ZlinkStreamError, CancellationToken, ValueTask>? ErrorReceived
@@ -99,6 +102,12 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     public int PendingDispatchCount => _callbacks.PendingDispatchCount;
 
+    public IZlinkStreamLifecycleCall Connect { get; }
+
+    public IZlinkStreamLifecycleCall Close { get; }
+
+    public IZlinkStreamLifecycleCall Dispatch { get; }
+
     public int ReceivedCount(string name)
     {
         ThrowIfDisposed();
@@ -106,7 +115,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return _receivedMessages.Count(name);
     }
 
-    public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
+    private async ValueTask ConnectCoreAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.ConnectAsync(
                 _receiveLoop.RunAsync,
@@ -116,12 +125,12 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             .ConfigureAwait(false);
     }
 
-    public async ValueTask CloseAsync(CancellationToken cancellationToken = default)
+    private async ValueTask CloseCoreAsync(CancellationToken cancellationToken = default)
     {
         await _lifecycle.CloseAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask DispatchAsync(CancellationToken cancellationToken = default)
+    private async ValueTask DispatchCoreAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         await _callbacks.DispatchAsync(cancellationToken).ConfigureAwait(false);
@@ -276,7 +285,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             return;
         }
 
-        await CloseAsync().ConfigureAwait(false);
+        await Close.Async().ConfigureAwait(false);
         _lifetimeCts.Cancel();
         _sendGate.Dispose();
         _lifecycle.Dispose();

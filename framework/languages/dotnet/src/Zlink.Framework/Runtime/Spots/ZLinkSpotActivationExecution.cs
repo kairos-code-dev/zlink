@@ -103,7 +103,7 @@ internal sealed partial class ZLinkSpotActivation
         Message body,
         CancellationToken cancellationToken)
     {
-        await _actorDispatchSubmitter.SubmitAsync(
+        await _actorDispatchSubmitter.Async(
                 actor,
                 runtimeState,
                 header,

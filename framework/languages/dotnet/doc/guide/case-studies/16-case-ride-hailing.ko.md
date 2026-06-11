@@ -87,7 +87,7 @@ public sealed class DriverSession(
     {
         var loc = payload.Decode<DriverLocation>();
         await geo.UpdateAsync(loc, ct);                                   // Redis GEO — 유지
-        await feed.Publish("loc.events", "driver.location", loc).SubmitAsync(ct); // 라이브 fan-out
+        await feed.Publish("loc.events", "driver.location", loc).Async(ct); // 라이브 fan-out
     }
 
     public ValueTask OnConnectedAsync(CancellationToken ct) => ValueTask.CompletedTask;

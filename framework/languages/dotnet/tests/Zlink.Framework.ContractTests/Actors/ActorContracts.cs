@@ -23,11 +23,11 @@ public sealed class ActorContracts
         var actor = await manager.GetOrCreateAsync("player-1", "player");
         var joinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), Encode(new JoinRoom("room-1")))
-            .SubmitAsync();
+            .Async();
         var entryJoin = await actor.Context
             .JoinEntrySpot(RoutingId.From("play-node"))
             .Timeout(TimeSpan.FromSeconds(1))
-            .SubmitAsync();
+            .Async();
 
         actor.Configure();
 
@@ -109,7 +109,7 @@ public sealed class ActorContracts
     {
         public IZLinkActorJoinSpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<ZLinkActorJoinResult> SubmitAsync(
+        public ValueTask<ZLinkActorJoinResult> Async(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new ZLinkActorJoinResult(
                 true,
@@ -121,7 +121,7 @@ public sealed class ActorContracts
     {
         public IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<ActorRef> SubmitAsync(
+        public ValueTask<ActorRef> Async(
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(result);
     }

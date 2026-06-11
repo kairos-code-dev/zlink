@@ -15,7 +15,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
     {
         var owner = topology.ForOrderId(command.OrderId);
         var response = await routes.Request(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
-            .SubmitAsync<StartOrderWorkflowRes>(cancellationToken);
+            .Async<StartOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
 
@@ -25,7 +25,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
     {
         var owner = topology.ForOrderId(command.OrderId);
         var response = await routes.Request(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
-            .SubmitAsync<ContinueOrderWorkflowRes>(cancellationToken);
+            .Async<ContinueOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
 
@@ -35,7 +35,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
     {
         var owner = topology.ForOrderId(command.OrderId);
         var response = await routes.Request(SampleNames.OrderWorkflowRouteChannel, owner.RouteRid, command)
-            .SubmitAsync<RebuildOrderProjectionRes>(cancellationToken);
+            .Async<RebuildOrderProjectionRes>(cancellationToken);
         return response.State;
     }
 }

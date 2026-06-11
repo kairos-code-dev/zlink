@@ -74,11 +74,11 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 
 | 동작 | 실패 의미 |
 | ---- | --------- |
-| `Request(...).SubmitAsync<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
-| `Send(...).SubmitAsync(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
-| `Publish(...).SubmitAsync(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `Request(...).Async<TReply>(...)` | route-not-ready, reply timeout, serialization 실패, runtime stop 을 모두 예외로 본다 |
+| `Send(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
+| `Publish(...).Async(...)` | route-not-ready, send timeout, serialization 실패, runtime stop 을 예외로 본다 |
 
-`Send(...).SubmitAsync(...)` 과 `Publish(...).SubmitAsync(...)` 은 원격 peer 의 handler
+`Send(...).Async(...)` 과 `Publish(...).Async(...)` 은 원격 peer 의 handler
 처리가 끝나기를 기다리지 않는다. framework 가 메시지를 transport 에 넘길 수
 있게 될 때까지만 기다리는 비동기 submit 이다. 일시적인
 backpressure[^backpressure] 는 `false` 반환값으로 노출하지 않는다. 대신
@@ -93,9 +93,9 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 - runtime stop 이나 cancellation 이 들어오면, 대기 중이던 submit 을 깨워서
   완료 또는 실패로 정리해 줘야 한다.
 
-`Request(...).SubmitAsync<TReply>(...)` 은 두 단계로 나눠서 본다.
+`Request(...).Async<TReply>(...)` 은 두 단계로 나눠서 본다.
 
-- request packet 의 submit 자체는 `Send(...).SubmitAsync(...)` 과 같은 전송 경로를
+- request packet 의 submit 자체는 `Send(...).Async(...)` 과 같은 전송 경로를
   타고 `SendTimeout` 정책을 따른다.
 - 그 뒤의 reply 대기는 `Timeout(...)` 으로 정한 request timeout 정책을 따른다.
 
@@ -180,7 +180,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 | ------------- | --------- |
 | `HostTests.Host_Starts_And_Stops_FrameworkRuntimeContext` | host 의 시작·종료에 맞춰 framework runtime context 가 생성되고 정리된다. |
 | `HostTests.Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서가 유지된다. |
-| `ZLinkAsyncSubmitterTests.SubmitAsync_FailsPendingItemWhenSendTimeoutExpires` | pending submit 은 send timeout 정책에 따라 실패하고, caller thread 를 묶지 않는다. |
+| `ZLinkAsyncSubmitterTests.Async_FailsPendingItemWhenSendTimeoutExpires` | pending submit 은 send timeout 정책에 따라 실패하고, caller thread 를 묶지 않는다. |
 | `StreamConnectorTests.RequestTimeoutRemovesPendingRequest` | stream connector 의 request timeout 이 끝나면 pending request 가 정리된다. |
 | `TopologyTests.StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백으로 보고된다. |
 

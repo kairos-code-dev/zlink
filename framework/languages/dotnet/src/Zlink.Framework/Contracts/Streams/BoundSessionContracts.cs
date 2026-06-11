@@ -17,5 +17,5 @@ public interface IZLinkBoundSessionSendCall
         string key,
         string value);
 
-    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
+    ValueTask Async(CancellationToken cancellationToken = default);
 }

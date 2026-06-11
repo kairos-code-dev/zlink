@@ -232,7 +232,7 @@ internal sealed class FixtureSpotTimerHandler
     {
         _ = tick;
         await spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 

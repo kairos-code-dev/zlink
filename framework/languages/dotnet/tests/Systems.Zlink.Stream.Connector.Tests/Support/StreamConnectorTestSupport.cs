@@ -89,7 +89,7 @@ public sealed partial class StreamConnectorTests
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (!predicate())
         {
-            await connector.DispatchAsync();
+            await connector.Dispatch.Async();
             if (DateTimeOffset.UtcNow >= deadline)
             {
                 throw new TimeoutException("Connector dispatch timeout.");

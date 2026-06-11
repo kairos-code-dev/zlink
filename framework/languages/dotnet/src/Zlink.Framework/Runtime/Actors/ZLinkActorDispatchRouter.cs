@@ -19,7 +19,7 @@ internal sealed class ZLinkActorDispatchRouter(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor '{actorId}' is not active.");
 
-        await SubmitAsync(actor, header, payload, cancellationToken).ConfigureAwait(false);
+        await Async(actor, header, payload, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<ZLinkActorReply> SubmitForReplyAsync(
@@ -38,7 +38,7 @@ internal sealed class ZLinkActorDispatchRouter(
             .ConfigureAwait(false);
     }
 
-    public async ValueTask SubmitAsync(
+    public async ValueTask Async(
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message payload,

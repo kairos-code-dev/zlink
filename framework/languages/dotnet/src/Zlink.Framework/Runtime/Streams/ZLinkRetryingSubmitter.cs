@@ -4,7 +4,7 @@ internal static class ZLinkRetryingSubmitter
 {
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(25);
 
-    public static async ValueTask SubmitAsync(
+    public static async ValueTask Async(
         Func<bool> submit,
         TimeSpan timeout,
         string failureMessage,

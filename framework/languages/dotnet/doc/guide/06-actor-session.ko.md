@@ -78,8 +78,8 @@ user Spot handler 에서 받은 spot context 로 호출한다.
 |---------------------------|------|
 | `SpotRid?`, `IsJoined` | 현재 Spot join 상태 조회 |
 | `BoundSession` | 자기 client 로 push (§4) |
-| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.SubmitAsync(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
-| `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.SubmitAsync(ct)` 로 종결 |
+| `JoinSpot(spotRid, requestMessage)` | user Spot 으로 join. `.Async(ct)` 로 종결하며 `Accepted`와 reply `Message`를 받는다 |
+| `JoinEntrySpot(spotNodeRid)` | target SpotNode 의 Entry Spot 으로 이동. `.Async(ct)` 로 종결 |
 
 `spotRid`는 user Spot 의 `RoutingId`이고, `spotNodeRid`는 Entry Spot 을 가진
 SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
@@ -143,7 +143,7 @@ public sealed class JoinMatchHandler
         var joined = await actor.Context
             .JoinSpot(matchSpotRid, request.Encode())
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync(ct);
+            .Async(ct);
         if (!joined.Accepted)
         {
             return joined.Reply.Decode<JoinMatchSpotResult>().ToReply();
@@ -283,7 +283,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
             ct);
         await context.Actors.BindAsync(
             actor, ct);
-        await context.Client.Reply(new AuthRep(ok: true)).SubmitAsync();
+        await context.Client.Reply(new AuthRep(ok: true)).Async();
     }
 }
 ```
@@ -312,7 +312,7 @@ public sealed class JoinMatchActorHandler
         // 같은 actor 에 묶인 client 로 push
         await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
-            .SubmitAsync(ct);
+            .Async(ct);
 
         // 응답 frame의 metadata/compression 옵션. 응답 body는 반환값이다.
         context.Reply
@@ -338,13 +338,13 @@ public sealed class PlayerNotifyHandler
         ZLinkSpotActorSendContext context,
         GameStateNotify message,
         CancellationToken ct)
-        => actor.Context.BoundSession.Send(message).SubmitAsync(ct);
+        => actor.Context.BoundSession.Send(message).Async(ct);
 }
 ```
 
 - `IZLinkBoundSession` 의 표면은 **`Send<TMessage>(message)`** 와
   **`DisconnectAsync(...)`** 둘뿐이다. client 로의 push 는 단방향이며 별도의
-  `Request` 표면은 없다. `Send(...).SubmitAsync(...)` 은 fire-and-forget(route 위임
+  `Request` 표면은 없다. `Send(...).Async(...)` 은 fire-and-forget(route 위임
   완료이지 client app ack 이 아님)이다.
 - `DisconnectAsync(...)` 는 응용이 거는 것이라 session 의 `OnDisconnectedAsync` 를
   다시 일으키지 않는다(stream 만 닫고 binding 정리).

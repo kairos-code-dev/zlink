@@ -387,7 +387,7 @@ public sealed class ProfileForwardHandlers(IZLinkChannelClient client)
         _ = context;
         return await client
             .RequestToChannel("backend", new GetProfileRequest { UserId = request.UserId })
-            .SubmitAsync<ProfileReply>(cancellationToken)
+            .Async<ProfileReply>(cancellationToken)
             .ConfigureAwait(false);
     }
 }
@@ -407,7 +407,7 @@ public sealed class ProfilePublisherHandlers(IZLinkFanoutClient publisher)
                 "profile",
                 "profile.cache-invalidated",
                 new ProfileInvalidated { UserId = request.UserId })
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             .ConfigureAwait(false);
         return new PublishProfileReply { Accepted = true };
     }

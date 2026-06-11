@@ -181,7 +181,7 @@ public abstract partial class SpotTestSupport
                     "orders",
                     new EntrySpotOrderRequest(message.Value))
                 .Timeout(TimeSpan.FromSeconds(5))
-                .SubmitAsync<EntrySpotOrderReply>(cancellationToken)
+                .Async<EntrySpotOrderReply>(cancellationToken)
                 .ConfigureAwait(false);
 
             recorder.Events.Enqueue($"channel-reply:{reply.Value}");

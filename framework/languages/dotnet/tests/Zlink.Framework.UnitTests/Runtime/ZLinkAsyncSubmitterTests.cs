@@ -3,7 +3,7 @@ namespace Zlink.Framework.UnitTests;
 public sealed class ZLinkAsyncSubmitterTests
 {
     [Fact]
-    public async Task SubmitAsync_DrainsPendingItemFromReadyCallback()
+    public async Task Async_DrainsPendingItemFromReadyCallback()
     {
         Action? ready = null;
         var writable = false;
@@ -14,7 +14,7 @@ public sealed class ZLinkAsyncSubmitterTests
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
 
-        var task = submitter.SubmitAsync(
+        var task = submitter.Async(
             Message.From("payload"),
             _ =>
             {
@@ -33,7 +33,7 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
-    public async Task SubmitAsync_RetriesAfterQueueingToCloseReadyRace()
+    public async Task Async_RetriesAfterQueueingToCloseReadyRace()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
@@ -41,7 +41,7 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None);
         var submitted = 0;
 
-        await submitter.SubmitAsync(
+        await submitter.Async(
             Message.From("payload"),
             _ =>
             {
@@ -53,14 +53,14 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
-    public async Task SubmitAsync_FailsPendingItemWhenSendTimeoutExpires()
+    public async Task Async_FailsPendingItemWhenSendTimeoutExpires()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
             TimeSpan.FromMilliseconds(20),
             CancellationToken.None);
 
-        var task = submitter.SubmitAsync(
+        var task = submitter.Async(
             Message.From("payload"),
             _ => false);
 
@@ -68,7 +68,7 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
-    public async Task SubmitAsync_ThrowsWhenQueueIsFull()
+    public async Task Async_ThrowsWhenQueueIsFull()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
@@ -76,14 +76,14 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None,
             capacity: 1);
 
-        var first = submitter.SubmitAsync(
+        var first = submitter.Async(
             Message.From("first"),
             _ => false);
 
         Assert.False(first.IsCompleted);
 
         Assert.Throws<InvalidOperationException>(() =>
-            submitter.SubmitAsync(
+            submitter.Async(
                 Message.From("second"),
                 _ => false));
     }
@@ -96,7 +96,7 @@ public sealed class ZLinkAsyncSubmitterTests
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
 
-        var pending = submitter.SubmitAsync(
+        var pending = submitter.Async(
             Message.From("payload"),
             _ => false);
 

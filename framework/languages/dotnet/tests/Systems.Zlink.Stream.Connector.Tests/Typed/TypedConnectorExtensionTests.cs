@@ -22,7 +22,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
         Assert.Equal("json.send", connector.SendCall.Name);
@@ -36,7 +36,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(3))
             .Compress()
-            .SubmitAsync<JsonPayload>();
+            .Async<JsonPayload>();
 
         Assert.Equal("reply", reply.Text);
         Assert.Equal("json.request", connector.RequestCall.Name);
@@ -63,7 +63,7 @@ public sealed partial class StreamConnectorTests
         connector.RecordReceived("json.notify", StreamJson.ToJson(new JsonPayload("notify")));
         var notify = await JsonConnector.WaitFor<JsonPayload>(connector, "json.notify")
             .Timeout(TimeSpan.FromSeconds(1))
-            .SubmitAsync();
+            .Async();
         Assert.Equal("notify", notify.Payload.Text);
 
         connector.RecordReceived("json.filtered", StreamJson.ToJson(new JsonPayload("first")));
@@ -71,10 +71,10 @@ public sealed partial class StreamConnectorTests
         var filtered = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
             .Where(message => message.Payload.Text == "second")
             .Timeout(TimeSpan.FromSeconds(1))
-            .SubmitAsync();
+            .Async();
         var remaining = await JsonConnector.WaitFor<JsonPayload>(connector, "json.filtered")
             .Timeout(TimeSpan.FromSeconds(1))
-            .SubmitAsync();
+            .Async();
         Assert.Equal("second", filtered.Payload.Text);
         Assert.Equal("first", remaining.Payload.Text);
     }
@@ -89,7 +89,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
         Assert.Equal("packed.send", connector.SendCall.Name);
@@ -101,7 +101,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(2))
             .Compress()
-            .SubmitAsync<PackedConnectorPayload>();
+            .Async<PackedConnectorPayload>();
 
         Assert.Equal("reply", reply.Text);
         Assert.Equal("packed.request", connector.RequestCall.Name);
@@ -127,7 +127,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
             .Compress()
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
         Assert.Equal("proto.send", connector.SendCall.Name);
@@ -138,7 +138,7 @@ public sealed partial class StreamConnectorTests
             .Metadata("rk", "rv")
             .Timeout(TimeSpan.FromSeconds(4))
             .Compress()
-            .SubmitAsync<StringValue>();
+            .Async<StringValue>();
 
         Assert.Equal("reply", reply.Value);
         Assert.Equal("proto.request", connector.RequestCall.Name);
@@ -159,17 +159,17 @@ public sealed partial class StreamConnectorTests
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new JsonPayload("json"))
             .PacketName("auto.json")
-            .SubmitAsync();
+            .Async();
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new PackedConnectorPayload { Text = "packed" })
             .PacketName("auto.packed")
-            .SubmitAsync();
+            .Async();
         Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
 
         await ZlinkStreamAutoCodecExtensions.Send(connector, new StringValue { Value = "proto" })
             .PacketName("auto.proto")
-            .SubmitAsync();
+            .Async();
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
 
         JsonPayload? namedPayload = null;
@@ -243,14 +243,11 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamErrorCode.RemoteError,
                 "missing callback result"));
 
-        public ValueTask ConnectAsync(CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        public IZlinkStreamLifecycleCall Connect { get; } = new RecordingLifecycleCall();
 
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        public IZlinkStreamLifecycleCall Close { get; } = new RecordingLifecycleCall();
 
-        public ValueTask DispatchAsync(CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        public IZlinkStreamLifecycleCall Dispatch { get; } = new RecordingLifecycleCall();
 
         public IZlinkStreamSendCall Send(ZlinkStreamEncodedPayload payload)
             => SendCall = new RecordingSendCall(payload);
@@ -340,7 +337,7 @@ public sealed partial class StreamConnectorTests
                 return this;
             }
 
-            public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> SubmitAsync(
+            public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> Async(
                 CancellationToken cancellationToken = default)
                 => _connector.WaitForRecordedAsync(
                     _name,
@@ -382,6 +379,12 @@ public sealed partial class StreamConnectorTests
 
             public void Dispose() => _dispose();
         }
+
+        private sealed class RecordingLifecycleCall : IZlinkStreamLifecycleCall
+        {
+            public ValueTask Async(CancellationToken cancellationToken = default)
+                => ValueTask.CompletedTask;
+        }
     }
 
     private sealed class RecordingSendCall : IZlinkStreamSendCall
@@ -420,7 +423,7 @@ public sealed partial class StreamConnectorTests
             return this;
         }
 
-        public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+        public ValueTask Async(CancellationToken cancellationToken = default)
             => ValueTask.CompletedTask;
     }
 
@@ -475,7 +478,7 @@ public sealed partial class StreamConnectorTests
             return this;
         }
 
-        public ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default)
+        public ValueTask<ZlinkStreamEncodedPayload> Async(CancellationToken cancellationToken = default)
             => ValueTask.FromResult(Reply);
 
         public void Submit(Action<ZlinkStreamResult> callback)

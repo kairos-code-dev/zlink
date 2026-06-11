@@ -125,9 +125,9 @@ public sealed class DashboardBff(IZLinkChannelClient client)
     public async Task<Dashboard> LoadAsync(string userId, CancellationToken ct)
     {
         var p = client.RequestToChannel("profile", new GetProfile(userId))
-            .Timeout(TimeSpan.FromMilliseconds(200)).SubmitAsync<ProfileDto>(ct);
+            .Timeout(TimeSpan.FromMilliseconds(200)).Async<ProfileDto>(ct);
         var q = client.RequestToChannel("pricing", new Quote(userId))
-            .Timeout(TimeSpan.FromMilliseconds(200)).SubmitAsync<QuoteDto>(ct);
+            .Timeout(TimeSpan.FromMilliseconds(200)).Async<QuoteDto>(ct);
         await Task.WhenAll(p.AsTask(), q.AsTask());
         return new Dashboard(p.Result, q.Result);
     }

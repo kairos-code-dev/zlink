@@ -16,13 +16,13 @@ public sealed class ChannelContracts
         await client
             .SendToChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
-            .SubmitAsync();
+            .Async();
 
         var reply = await client
             .RequestToChannel("api", new AuthenticateRequest("player-1"))
             .PacketName("authenticate")
             .Timeout(TimeSpan.FromSeconds(3))
-            .SubmitAsync<AuthenticateReply>();
+            .Async<AuthenticateReply>();
 
         Assert.Equal("api", client.LastChannelName);
         Assert.Equal("authenticate", client.LastPacketName);
@@ -44,13 +44,13 @@ public sealed class ChannelContracts
         await client
             .Send("play-router", target, new RoomEvent("opened"))
             .PacketName("room.event")
-            .SubmitAsync();
+            .Async();
 
         var room = await client
             .Request("play-router", target, new AllocateRoom("alice"))
             .PacketName("room.allocate")
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<RoomAllocated>();
+            .Async<RoomAllocated>();
 
         Assert.Equal("play-router", client.RouterChannelId);
         Assert.Equal(target, client.TargetNodeRid);
@@ -68,7 +68,7 @@ public sealed class ChannelContracts
         await publisher
             .Publish("events", "room.opened", new RoomEvent("opened"))
             .PacketName("room.event")
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal(("events", "room.opened", "room.event"), publisher.LastPublish);
     }
@@ -92,19 +92,19 @@ public sealed class ChannelContracts
             .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
             .PacketName("orders.place")
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync<OrderPlaced>();
+            .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
         await orders
             .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .PacketName("inventory.reserve")
-            .SubmitAsync();
+            .Async();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
         await events
             .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
             .PacketName("order.status-changed")
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal("order-1042", placed.OrderId);          // unary RPC reply correlated by type
         Assert.Equal("inventory", orders.LastChannelName);    // last one-way send routed by channel name
@@ -206,7 +206,7 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private class ExampleRequestCall(Action<string> setPacketName, object? reply) : IZLinkRequestCall
@@ -219,7 +219,7 @@ public sealed class ChannelContracts
 
         public IZLinkRequestCall Timeout(TimeSpan timeout) => this;
 
-        public ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default) =>
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult((TReply)reply!);
     }
 
@@ -231,7 +231,7 @@ public sealed class ChannelContracts
             return this;
         }
 
-        public ValueTask SubmitAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask Async(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall

@@ -46,7 +46,7 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await packetWritten.Task.WaitAsync(TimeSpan.FromSeconds(15));
         await WaitUntilAsync(
             () => connector.PendingDispatchCount > 0,
@@ -54,7 +54,7 @@ public sealed partial class StreamConnectorTests
 
         Assert.False(receivedThread.Task.IsCompleted);
         var dispatchThread = Environment.CurrentManagedThreadId;
-        await connector.DispatchAsync();
+        await connector.Dispatch.Async();
 
         Assert.Equal(dispatchThread, await receivedThread.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(0, connector.PendingDispatchCount);
@@ -100,7 +100,7 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await packetWritten.Task.WaitAsync(TimeSpan.FromSeconds(15));
         await received.Task.WaitAsync(TimeSpan.FromSeconds(15));
 

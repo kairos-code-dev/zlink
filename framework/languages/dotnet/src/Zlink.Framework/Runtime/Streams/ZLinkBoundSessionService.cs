@@ -76,7 +76,7 @@ internal sealed class ZLinkBoundSessionService(
         byte[] frame,
         CancellationToken cancellationToken)
     {
-        await ZLinkRetryingSubmitter.SubmitAsync(
+        await ZLinkRetryingSubmitter.Async(
                 () =>
                 {
                     using var frameMessage = Message.From(frame);
@@ -179,7 +179,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public async ValueTask Async(CancellationToken cancellationToken = default)
     {
         await service.SendBoundSessionAsync(
                 actorId,

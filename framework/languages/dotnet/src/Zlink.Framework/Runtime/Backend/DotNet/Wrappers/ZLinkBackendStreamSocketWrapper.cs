@@ -63,7 +63,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
     {
         await nativeSocket.BindActor(sessionRid, actor.ToNative())
             .Timeout(timeout)
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -75,7 +75,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
     {
         await nativeSocket.UnbindActor(sessionRid, actorId)
             .Timeout(timeout)
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             .ConfigureAwait(false);
     }
 

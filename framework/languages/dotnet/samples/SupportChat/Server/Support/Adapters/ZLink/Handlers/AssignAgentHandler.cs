@@ -35,7 +35,7 @@ internal sealed class AssignAgentHandler(
         var joined = await actor.Context.JoinSpot(
                 conversationRid,
                 new JoinConversationReq(request.ConversationId).Encode())
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         var state = joined.Reply.Decode<JoinConversationRes>().State;
         Console.Error.WriteLine($"support assign: joined conversation={request.ConversationId} agent={actor.ActorId} status={state.Status}");
         return new AssignAgentRes(

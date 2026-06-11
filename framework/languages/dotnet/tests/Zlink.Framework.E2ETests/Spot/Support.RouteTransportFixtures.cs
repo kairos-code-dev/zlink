@@ -96,7 +96,7 @@ public abstract partial class SpotTestSupport
             CancellationToken cancellationToken)
         {
             await spot.Context.Outbound.SendToSpot(RoutingId.From("route-target"), new SpotRouteTargetCommand(message.Value))
-                .SubmitAsync(cancellationToken)
+                .Async(cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -113,7 +113,7 @@ public abstract partial class SpotTestSupport
             var reply = await spot.Context.Outbound
                 .RequestToSpot(RoutingId.From("route-target"), new SpotRouteTargetRequest(message.Value))
                 .Timeout(TimeSpan.FromMilliseconds(500))
-                .SubmitAsync<SpotRouteTargetReply>(cancellationToken)
+                .Async<SpotRouteTargetReply>(cancellationToken)
                 .ConfigureAwait(false);
             recorder.Replies.Enqueue(reply.Value);
         }

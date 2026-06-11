@@ -30,7 +30,7 @@
 - **비동기 이름 규칙.** 공통 의미는
   [비동기 실행과 coroutine 정책](../../../../doc/spec/async-execution-policy.ko.md)을
   따른다. `.NET`에서는 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하는
-  공개 호출 종결자가 `SubmitAsync(...)`로 끝난다. awaitable을 반환하지 않는
+  공개 호출 종결자가 `Async(...)`로 끝난다. awaitable을 반환하지 않는
   callback request 표면만 `Submit(callback)` 이름을 유지한다.
 
 각 절 끝의 `검증` 줄은 해당 표면을 단언하는 계약 테스트 메서드를 가리킨다.
@@ -47,20 +47,20 @@
 await client
     .SendToChannel("api", new AuthenticateRequest("player-1"))   // IZLinkSendCall
     .PacketName("authenticate")
-    .SubmitAsync();
+    .Async();
 
 var reply = await client
     .RequestToChannel("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
     .PacketName("authenticate")
     .Timeout(TimeSpan.FromSeconds(3))
-    .SubmitAsync<AuthenticateReply>();
+    .Async<AuthenticateReply>();
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkChannelClient` | `SendToChannel(channelName, msg)` / `RequestToChannel(channelName, req)` 의 기본 표면. client-server channel 호출의 뿌리 |
-| `IZLinkSendCall` | send 종결자. `PacketName(...)` 후 `SubmitAsync(ct)`. 응답을 기다리지 않으므로 `Timeout` 없음 |
-| `IZLinkRequestCall` | request 종결자. `PacketName(...)` · `Timeout(...)` 후 `SubmitAsync<TReply>(ct)`. reply 타입은 종결자에서 지정 |
+| `IZLinkSendCall` | send 종결자. `PacketName(...)` 후 `Async(ct)`. 응답을 기다리지 않으므로 `Timeout` 없음 |
+| `IZLinkRequestCall` | request 종결자. `PacketName(...)` · `Timeout(...)` 후 `Async<TReply>(ct)`. reply 타입은 종결자에서 지정 |
 
 검증: `ChannelContracts.Channel_client_sends_and_requests_by_channel_name`.
 
@@ -72,20 +72,20 @@ var target = RoutingId.From("play-node-1");
 await client
     .Send("play-router", target, new RoomEvent("opened")) // IZLinkSendCall
     .PacketName("room.event")
-    .SubmitAsync();
+    .Async();
 
 var room = await client
     .Request("play-router", target, new AllocateRoom("alice")) // IZLinkRequestCall
     .PacketName("room.allocate")
     .Timeout(TimeSpan.FromSeconds(2))
-    .SubmitAsync<RoomAllocated>();
+    .Async<RoomAllocated>();
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkRouteClient` | router channel 이름 + target `RoutingId` 로 특정 노드를 직접 지정하는 client. `Send(...)` / `Request(...)` |
 | `IZLinkSendCall` | route send 종결자(`PacketName` → `Submit`) |
-| `IZLinkRequestCall` | route request 종결자(`PacketName` · `Timeout` → `SubmitAsync<TReply>`) |
+| `IZLinkRequestCall` | route request 종결자(`PacketName` · `Timeout` → `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
 | `IZLinkRouteRequestHandler<TRequest, TReply>` | route mesh channel 의 요청 수신 handler. `HandleAsync(req, ZLinkRouteRequestContext, ct) → ValueTask<TReply>` |
 
@@ -97,7 +97,7 @@ var room = await client
 await publisher
     .Publish("events", "room.opened", new RoomEvent("opened")) // IZLinkPublishCall
     .PacketName("room.event")
-    .SubmitAsync();
+    .Async();
 ```
 
 | 인터페이스 | 역할 |
@@ -168,25 +168,25 @@ var placed = await orders
     .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .PacketName("orders.place")
     .Timeout(TimeSpan.FromSeconds(2))
-    .SubmitAsync<OrderPlaced>();
+    .Async<OrderPlaced>();
 
 // gRPC unary returning Empty -> one-way send (응답 안 기다림)
 await orders
     .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
     .PacketName("inventory.reserve")
-    .SubmitAsync();
+    .Async();
 
 // gRPC server-streaming / 상태 피드 -> pub/sub fan-out
 await events
     .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
     .PacketName("order.status-changed")
-    .SubmitAsync();
+    .Async();
 ```
 
 | gRPC 패턴 | ZLink 대체 | 표면 / 챕터 |
 |-----------|------------|-------------|
-| Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).SubmitAsync<TReply>` ([04](./04-channel-messaging.ko.md)) |
-| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).SubmitAsync` ([04](./04-channel-messaging.ko.md)) |
+| Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([04](./04-channel-messaging.ko.md)) |
+| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Async` ([04](./04-channel-messaging.ko.md)) |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([04](./04-channel-messaging.ko.md)) |
 | Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([07](./07-stream.ko.md), §5) |
 | Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([08](./08-registry.ko.md), §6) |
@@ -423,11 +423,11 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
     public async ValueTask OnInitializeAsync(CancellationToken ct)
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        await Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).SubmitAsync(ct);
-        await Context.Outbound.RequestToSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).SubmitAsync<JoinedRoom>(ct);
-        await Context.Outbound.Publish("room.events", new RoomEvent("opened")).SubmitAsync(ct);
-        await Context.Outbound.SendToChannel("api", new RoomEvent("opened")).SubmitAsync(ct);
-        await Context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).SubmitAsync<JoinedRoom>(ct);
+        await Context.Outbound.SendToSpot(RoutingId.From("room-2"), new RoomEvent("opened")).Async(ct);
+        await Context.Outbound.RequestToSpot(RoutingId.From("room-2"), new JoinRoom("room-2")).Async<JoinedRoom>(ct);
+        await Context.Outbound.Publish("room.events", new RoomEvent("opened")).Async(ct);
+        await Context.Outbound.SendToChannel("api", new RoomEvent("opened")).Async(ct);
+        await Context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>(ct);
     }
 }
 ```
@@ -449,16 +449,16 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
 ```csharp
 // 현재 노드의 spot API
-await localClient.SendToSpot(spotRid, new RoomEvent("opened")).SubmitAsync();            // IZLinkSpotOutbound
-var reply = await localClient.RequestToSpot(spotRid, new JoinRoom("room-1")).SubmitAsync<JoinedRoom>();
+await localClient.SendToSpot(spotRid, new RoomEvent("opened")).Async();            // IZLinkSpotOutbound
+var reply = await localClient.RequestToSpot(spotRid, new JoinRoom("room-1")).Async<JoinedRoom>();
 
 // current Spot callback 안에서 outbound 호출
 await spot.Context.Outbound
     .RequestToSpot(remoteAddress.SpotRid, new JoinRoom("room-1"))
-    .SubmitAsync<JoinedRoom>();
+    .Async<JoinedRoom>();
 
 // local spot 없는 노드에서 publish
-await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).SubmitAsync(); // IZLinkSpotPublisherClient
+await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Async(); // IZLinkSpotPublisherClient
 ```
 
 | 인터페이스 | 역할 |
@@ -513,7 +513,7 @@ public sealed class RoomRequestHandler
 var actor = await manager.GetOrCreateAsync("player-1", "player"); // IZLinkActorManager
 var joinReply = await actor.Context
     .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1").Encode()) // IZLinkActorContext
-    .SubmitAsync();
+    .Async();
 if (!joinReply.Accepted)
 {
     return;
@@ -526,7 +526,7 @@ actor.Configure();
 |------------|------|
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
 | `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
-| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `SubmitAsync`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
+| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 
@@ -585,9 +585,9 @@ public sealed class ClientHeaderSession(IZLinkSessionContext context) : IZLinkSe
         }
 
         await context.Client.Send(new PlayerJoined("player-1"))      // IZLinkSessionSendCall
-            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().SubmitAsync();
+            .PacketName("player.joined").Metadata("trace-id", "abc").Compress().Async();
         await context.Client.Reply(new AuthenticateReply("player-1")) // IZLinkSessionReplyCall
-            .Metadata("trace-id", "abc").Compress().SubmitAsync();
+            .Metadata("trace-id", "abc").Compress().Async();
         await context.CloseAsync();                             // Lifecycle
     }
 
@@ -629,7 +629,7 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 
 ```csharp
 await boundSession.Send(new PlayerJoined("player-1"))    // IZLinkBoundSessionSendCall
-    .PacketName("player.joined").Metadata("trace-id", "abc").SubmitAsync();
+    .PacketName("player.joined").Metadata("trace-id", "abc").Async();
 await boundSession.DisconnectAsync();
 
 // 전달 가능한 metadata key 정책

@@ -29,7 +29,7 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
                     DisplayName = actor.DisplayName,
                     Mode = message.Mode,
                 })
-            .SubmitAsync<MatchBingoApiRes>(cancellationToken)
+            .Async<MatchBingoApiRes>(cancellationToken)
             ;
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
@@ -42,7 +42,7 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
                     ActorId = actor.ActorId,
                     DisplayName = actor.DisplayName,
                 }.ToProto())
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             ;
         logger.LogInformation("match: actor joined room. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 

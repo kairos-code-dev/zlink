@@ -53,7 +53,7 @@ public sealed partial class StreamConnectorTests
             }
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await server.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -92,7 +92,7 @@ public sealed partial class StreamConnectorTests
             Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await server.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -128,7 +128,7 @@ public sealed partial class StreamConnectorTests
                 MaxAttempts = 3
             }
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await secondConnected.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await WaitUntilAsync(
             () => connector.State == ZlinkStreamConnectionState.Connected,
@@ -163,13 +163,13 @@ public sealed partial class StreamConnectorTests
             }
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
                 .PacketName("h")
                 .Timeout(TimeSpan.FromSeconds(5))
-                .SubmitAsync());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.Disconnected, exception.Error.Code);
         Assert.Contains("Heartbeat", exception.Error.Message, StringComparison.Ordinal);
@@ -212,11 +212,11 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         };
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
         await reconnecting.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var waitingConnect = connector.ConnectAsync().AsTask();
+        var waitingConnect = connector.Connect.Async().AsTask();
 
-        await connector.CloseAsync();
+        await connector.Close.Async();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await waitingConnect);
         await server.WaitAsync(TimeSpan.FromSeconds(5));

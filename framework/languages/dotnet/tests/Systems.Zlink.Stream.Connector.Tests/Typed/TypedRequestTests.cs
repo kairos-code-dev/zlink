@@ -53,13 +53,13 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var reply = await connector
             .Request(new Ping("hello"))
             .PacketName("ping")
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync<Pong>();
+            .Async<Pong>();
 
         Assert.Equal("pong", reply.Text);
         await server;
@@ -97,7 +97,7 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var completed = new TaskCompletionSource<ZlinkStreamResult<Pong>>(TaskCreationOptions.RunContinuationsAsynchronously);
         connector.Request(new Ping("hello"))
@@ -131,9 +131,9 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             Heartbeat = DisabledHeartbeat()
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
-        await connector.Send(new NamedPacket("name")).SubmitAsync();
+        await connector.Send(new NamedPacket("name")).Async();
         await server;
     }
 
@@ -154,13 +154,13 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             Heartbeat = DisabledHeartbeat()
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var exception = await Assert.ThrowsAsync<ZlinkStreamException>(async () =>
             await connector.Send(new Ping("hello"))
                 .PacketName("ping")
                 .Metadata("traceId", new string('x', 1014))
-                .SubmitAsync());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await server;
@@ -196,15 +196,15 @@ public sealed partial class StreamConnectorTests
             Heartbeat = DisabledHeartbeat(),
             Compression = ZlinkStreamCompression.Lz4
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         await connector.Send(new Ping("plain"))
             .PacketName("plain")
-            .SubmitAsync();
+            .Async();
         await connector.Send(new Ping("compressed"))
             .PacketName("compressed")
             .Compress()
-            .SubmitAsync();
+            .Async();
         await server;
     }
 

@@ -219,7 +219,7 @@ handler 가 같은 `Spot` state 를 동시에 만지고 있는가" 를 매번 �
 하지만 wrapper 문서에서 못 박아야 하는 최소 의미는 다음 정도다.
 
 - join 된 actor 의 packet 은 `Spot` 실행 문맥 바깥에서 직접 처리하지 않는다.
-- framework 내부의 `SubmitAsync(...)` 는 `Spot` 이 소유한 직렬 실행 규칙 안에서
+- framework 내부의 `Async(...)` 는 `Spot` 이 소유한 직렬 실행 규칙 안에서
   만 수행된다. 그 안에서 최종적으로 actor packet handler 가 호출된다.
 - stream packet 은 framework 가 header와 payload를 보존한 actor dispatch로
   정규화한 뒤, 같은 actor dispatch 경로를 그대로 탄다.

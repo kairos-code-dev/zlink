@@ -51,11 +51,11 @@ public sealed partial class StreamConnectorTests
             Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
             Heartbeat = DisabledHeartbeat()
         });
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         await connector.Send(new PackedPing { Text = "hello" })
             .PacketName("packed")
-            .SubmitAsync();
+            .Async();
         await server;
     }
 
@@ -97,7 +97,7 @@ public sealed partial class StreamConnectorTests
             return ValueTask.CompletedTask;
         });
 
-        await connector.ConnectAsync();
+        await connector.Connect.Async();
 
         var reply = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal("compressed", reply.Text);

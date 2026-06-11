@@ -154,7 +154,7 @@ internal sealed partial class ZLinkActorSessionManager(
         Message payload,
         CancellationToken cancellationToken = default)
     {
-        await DispatchRouter.SubmitAsync(actor, header, payload, cancellationToken)
+        await DispatchRouter.Async(actor, header, payload, cancellationToken)
             .ConfigureAwait(false);
     }
 

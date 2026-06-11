@@ -137,7 +137,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         Message body,
         CancellationToken cancellationToken)
     {
-        return await _entrySpotActors.TrySubmitAsync(
+        return await _entrySpotActors.TryAsync(
                 state,
                 actor,
                 runtimeState,

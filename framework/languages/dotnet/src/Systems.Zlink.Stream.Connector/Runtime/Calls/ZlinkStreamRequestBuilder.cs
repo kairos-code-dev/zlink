@@ -43,7 +43,7 @@ internal sealed class ZlinkStreamRequestBuilder : IZlinkStreamRequestCall
         return this;
     }
 
-    public async ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<ZlinkStreamEncodedPayload> Async(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         return await _connector.RequestEncodedAsync(

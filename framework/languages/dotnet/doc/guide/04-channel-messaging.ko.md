@@ -73,7 +73,7 @@ public sealed class PlaceOrderHandler
 var placed = await client
     .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .Timeout(TimeSpan.FromSeconds(2))    // reply 대기 상한
-    .SubmitAsync<OrderPlaced>(ct);
+    .Async<OrderPlaced>(ct);
 ```
 
 이 호출 표면(`Request`/`Send`/`Publish` + 종결자)은
@@ -185,7 +185,7 @@ public sealed class UserHandlers
         await _publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 ```
@@ -261,7 +261,7 @@ public sealed class PriceService(IZLinkChannelClient client)
         var reply = await client
             .RequestToChannel("price", new PriceRequest(symbol))
             .Timeout(TimeSpan.FromMilliseconds(200))   // reply 대기 시간
-            .SubmitAsync<PriceReply>(ct);
+            .Async<PriceReply>(ct);
         return reply.Price;
     }
 
@@ -269,11 +269,11 @@ public sealed class PriceService(IZLinkChannelClient client)
         => client
             .SendToChannel("profile", new RefreshCacheCommand(accountId))
             .PacketName("profile.refresh-cache")        // 선택: packet 이름 override
-            .SubmitAsync(ct);
+            .Async(ct);
 }
 ```
 
-- reply 타입은 메시지가 아니라 **`.SubmitAsync<TReply>(...)`** 에서 지정한다.
+- reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
 - `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
 - channel 이나 client capability 가 없으면 socket 을 만들지 않고
   `ZLinkConfigurationException` 으로 실패한다(`IZLinkChannelClient` 자체는 항상 DI 에
@@ -288,7 +288,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
         => publisher
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
-            .SubmitAsync(ct);
+            .Async(ct);
 }
 ```
 
@@ -298,7 +298,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
   최적화).
 - `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
-> `SubmitAsync(...)`/`SubmitAsync<T>(...)` 의 완료는 transport 위임까지만 보장한다.
+> `Async(...)`/`Async<T>(...)` 의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §7).
 
 ## 5. filter — 공통 처리
@@ -412,7 +412,7 @@ app.MapPost("/users/{id}", async (
 {
     var account = await client
         .RequestToChannel("account", new GetAccountRequest(id))
-        .SubmitAsync<GetAccountReply>(ct);
+        .Async<GetAccountReply>(ct);
     return Results.Ok(account);
 });
 
@@ -432,7 +432,7 @@ public sealed class UserHandlers(IZLinkFanoutClient publisher)
         => publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .SubmitAsync(ct);
+            .Async(ct);
 }
 
 [ZLinkHandlerGroup("api.events")]

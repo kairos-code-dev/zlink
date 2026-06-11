@@ -16,7 +16,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = ZLinkSpotPublishEnvelope.EncodeParts(
@@ -51,7 +51,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var bundle = runtime.GetSpotPublisherBundle(channelName);
@@ -62,7 +62,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
             message);
         return (bundle.Submitter
                 ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
-            .SubmitAsync(
+            .Async(
                 parts,
                 pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
                 cancellationToken);

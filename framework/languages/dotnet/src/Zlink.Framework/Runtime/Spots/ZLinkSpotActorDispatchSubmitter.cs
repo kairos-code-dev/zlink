@@ -7,7 +7,7 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
     ZLinkSpotSerialExecutor serial,
     ZLinkSpotActivationDispatcher dispatcher)
 {
-    public async ValueTask SubmitAsync(
+    public async ValueTask Async(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,

@@ -88,12 +88,12 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
-                await channels.SendToChannel("play", new ForwardInputCommand(input)).SubmitAsync(ct);
+                await channels.SendToChannel("play", new ForwardInputCommand(input)).Async(ct);
                 break;
 
             case "Ping":
                 var ping = payload.Decode<Ping>();
-                await context.Client.Reply(new Pong(ping.Sequence)).SubmitAsync();
+                await context.Client.Reply(new Pong(ping.Sequence)).Async();
                 break;
         }
     }
@@ -104,7 +104,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Send(msg).SubmitAsync()` / `Reply(msg).SubmitAsync()` | client 로 push / 요청에 응답 |
+| `Send(msg).Async()` / `Reply(msg).Async()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -149,8 +149,8 @@ public sealed class ClientHeaderSession(
 
 ### 연결과 dispatch
 
-connector 는 만들고(연결 안 함) → 핸들러/이벤트 등록 → `ConnectAsync()` →
-`DispatchAsync()` 펌프 순서로 쓴다.
+connector 는 만들고(연결 안 함) → 핸들러/이벤트 등록 → `Connect.Async()` →
+`Dispatch.Async()` 펌프 순서로 쓴다.
 
 ```csharp
 using Systems.Zlink.Stream.Connector;
@@ -171,19 +171,19 @@ connector.On<GameStateNotify>("GameStateNotify", (msg, ct) =>
 });
 connector.Disconnected += (ct) => { ShowReconnecting(); return ValueTask.CompletedTask; };
 
-await connector.ConnectAsync(cancellationToken);
+await connector.Connect.Async(cancellationToken);
 
 // 게임 루프/메인 스레드에서 주기적으로 콜백 실행
 while (running)
 {
-    await connector.DispatchAsync(cancellationToken);
+    await connector.Dispatch.Async(cancellationToken);
     await Task.Delay(16, cancellationToken);
 }
 ```
 
 - URI scheme 으로 transport 가 추론된다: `tcp://`, `tls://`, `ws://`, `wss://`.
 - `DispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 응용이
-  `DispatchAsync()` 를 부른 스레드에서 실행한다. UI 스레드/게임 루프가 있는 client
+  `Dispatch.Async()` 를 부른 스레드에서 실행한다. UI 스레드/게임 루프가 있는 client
   는 반드시 `Manual` 을 쓴다. `Immediate` 는 내부 worker 에서 바로 실행한다.
 - 네트워크 수신 루프는 느린 콜백에 막히지 않는다. 패킷을 읽어 콜백 work item 만
   큐에 넣고 다음 읽기로 넘어간다.
@@ -194,20 +194,20 @@ while (running)
 // 단방향 send
 await connector
     .Send(new ChatMessage("hello"))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 // 요청-응답
 var reply = await connector
     .Request(new GetProfileRequest(accountId))
     .PacketName("profile.get")
     .Timeout(TimeSpan.FromMilliseconds(200))
-    .SubmitAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 
 // 큰 payload 명시 압축 (LZ4)
 await connector
     .Send(new UploadReplayChunk(bytes))
     .Compress()
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 - 기본 packet 이름은 namespace 없는 CLR 타입 이름. `[ZlinkStreamPacketName("...")]`
@@ -234,7 +234,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 ### Unity
 
 별도 Unity connector 패키지는 없다. Unity 는 `Systems.Zlink.Stream.Connector` core
-를 그대로 쓰고 `MonoBehaviour.Update()` 에서 `DispatchAsync()` 를 호출한다. 그러면
+를 그대로 쓰고 `MonoBehaviour.Update()` 에서 `Dispatch.Async()` 를 호출한다. 그러면
 수신 handler 와 lifecycle 이벤트가 Unity 메인 스레드에서 돈다.
 
 비동기 실행과 coroutine adapter의 의미는
@@ -258,7 +258,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 ## 4. 자주 막히는 곳
 
-- **콜백이 안 불린다(client)** → `DispatchMode.Manual` 인데 `DispatchAsync()` 를
+- **콜백이 안 불린다(client)** → `DispatchMode.Manual` 인데 `Dispatch.Async()` 를
   주기적으로 안 부르고 있다.
 - **`FrameTooLarge`** → `MaxSendPayloadSize`(기본 64KB) 초과. 압축 전 원본 크기로
   검사한다.

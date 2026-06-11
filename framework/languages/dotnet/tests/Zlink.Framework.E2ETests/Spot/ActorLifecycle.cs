@@ -76,7 +76,7 @@ public sealed class ActorLifecycleTests : SpotTestSupport
                 first.SpotRid,
                 EncodeJoin(new JoinStageRequest("room-context")))
             .Timeout(TimeSpan.FromSeconds(5))
-            .SubmitAsync();
+            .Async();
         contextActor.CurrentRoomId = DecodeJoin<JoinStageReply>(contextJoin.Reply).RoomId;
 
         Assert.Equal(first.SpotRid, contextActor.Spot?.Context.SpotRid);

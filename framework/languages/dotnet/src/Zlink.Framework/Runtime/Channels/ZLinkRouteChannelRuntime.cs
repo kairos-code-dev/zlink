@@ -141,7 +141,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return _submitter.Async(
             parts,
             pending => _router.SendToSpot(
                 targetNodeRid,
@@ -196,7 +196,7 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
-        return _submitter.SubmitAsync(
+        return _submitter.Async(
             parts,
             pending => _router.Send(targetNodeRid, pending, SendFlags.DontWait),
             cancellationToken);

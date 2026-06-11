@@ -58,9 +58,9 @@ handler · client · DI/lifecycle**.
 
 | 공통 모델 | handler 인터페이스 | attribute | outbound 호출 |
 |-----------|--------------------|-----------|----------------|
-| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestToChannel(...).SubmitAsync<TRes>(ct)` |
-| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendToChannel(...).SubmitAsync(ct)` |
-| publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.PublishSpot(...).SubmitAsync(ct)` |
+| request-response | `IZLinkRequestHandler<TReq,TRes>` | `[ZLinkRequest]` | `client.RequestToChannel(...).Async<TRes>(ct)` |
+| command(단방향 send) | `IZLinkSendHandler<TMsg>` | `[ZLinkSend]` | `client.SendToChannel(...).Async(ct)` |
+| publish-subscribe | `IZLinkPublishHandler<TEvt>` | `[ZLinkPublish]` | `publisher.PublishSpot(...).Async(ct)` |
 | SPOT 내부/외부 | `IZLinkSpot*Handler<...>` | (Spot 등록) | `IZLinkSpotOutbound` |
 | STREAM session | `IZLinkSession` | (stream 등록) | `IZLinkSessionContext` / `IZLinkBoundSession` |
 
@@ -165,7 +165,7 @@ send/publish 의 public 호출은 기본 async submit 이다. blocking/nonblocki
 public 동사나 builder 옵션으로 나누지 않으며, backpressure 는 framework 내부의
 nonblocking send + pending queue + ready notification 으로 처리한다.
 
-- `SubmitAsync(...)` / `SubmitAsync<T>(...)` 의 완료는 **transport 위임까지**만
+- `Async(...)` / `Async<T>(...)` 의 완료는 **transport 위임까지**만
   보장한다. remote handler 완료나 subscriber 수신을 보장하지 않는다.
 - `Request(...).Timeout(...)` 은 **reply 대기 시간**만 정한다. submit 단계의
   backpressure 대기 한계는 channel/socket 의 `SendTimeout`(기본 200ms)을 따른다.

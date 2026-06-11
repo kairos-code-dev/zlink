@@ -104,10 +104,10 @@ sealed class PlaySession(
         var reply = await channels.RequestToChannel(
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(authenticate.AccessToken))
-            .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
+            .Async<AuthenticatePlayerRes>(cancellationToken);
 
         await Context.Client.Reply(new AuthenticateRes(reply.ActorId))
-            .SubmitAsync();
+            .Async();
 
         logger.LogInformation(
             "api -> play stream: authenticate accepted. sessionId={SessionId}, player={ActorId}",
@@ -142,7 +142,7 @@ sealed class PlaySession(
                 Context.SessionId,
                 actorId);
             await playerActor.Context.JoinEntrySpot(RoutingId.From(SampleTypes.PlaySpotNodeId))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
 
             logger.LogInformation(
                 "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",

@@ -276,7 +276,7 @@ sequenceDiagram
     Note over FW: bind는 session relay만 연결
 
     Note over FW: 3. user Spot join (선택, bind와 독립)
-    Act->>FW: Context.JoinSpot(spotRid, requestMessage).SubmitAsync()
+    Act->>FW: Context.JoinSpot(spotRid, requestMessage).Async()
     FW->>Spot: actor join 요청
     Spot-->>FW: accept + reply
     FW-->>Act: Accepted + reply Message 반환
@@ -319,7 +319,7 @@ Entry 단계와 user Spot 단계는 같은 actor 객체를 보더라도 의미�
   reply하거나, 실패한 경우 fail 응답을 보내고 disconnect한다.
 - **target Spot 선택** -- 클라이언트의 요청 packet에서 어느 game room이나
   stage로 들어갈지 결정한 뒤 해당 user Spot 의 `RoutingId`를 얻고
-  `Context.JoinSpot(spotRid, requestMessage).SubmitAsync(...)`을 호출한다.
+  `Context.JoinSpot(spotRid, requestMessage).Async(...)`을 호출한다.
   `gameId`, `matchId`, `roomId` 같은 domain 값은 application 이 먼저
   `RoutingId`로 변환하거나 registry 에서 조회한다.
 - **session 초기 상태 설정** -- session metadata, profile lookup 같은 초기
@@ -474,7 +474,7 @@ internal sealed class JoinMatchHandler(GameNotificationPublisher notifications)
         var result = await actor.Context
             .JoinSpot(matchSpotRid, request.Encode())
             .Timeout(TimeSpan.FromSeconds(2))
-            .SubmitAsync(cancellationToken)
+            .Async(cancellationToken)
             .ConfigureAwait(false);
         var reply = result.Reply.Decode<JoinMatchSpotResult>();
 
@@ -585,8 +585,8 @@ public interface IZLinkActorContext
 | `SpotRid` / `IsJoined` | user Spot에 join한 경우 그 spot의 domain 이름, routing id, join 상태. Entry Spot에 있을 때는 `IsJoined`가 false이고 `SpotRid`는 없다 |
 | `BoundSession` | actor 에 bind 된 STREAM session 으로 push 하거나 disconnect |
 | `GetSpot()` / `GetSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
-| `JoinSpot(spotRid, requestMessage).SubmitAsync(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
-| `JoinEntrySpot(spotNodeRid).SubmitAsync(...)` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
+| `JoinSpot(spotRid, requestMessage).Async(...)` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). request와 reply는 `Message`이며 JSON, Protobuf, MessagePack 같은 codec 확장 함수는 application 이 선택한다. `Accepted == true` 이 성공이다. STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(`RoutingId`) |
+| `JoinEntrySpot(spotNodeRid).Async(...)` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
 
 actor request 에 대한 reply 는 actor context 의 별도 `Reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor
@@ -676,7 +676,7 @@ var matchSpotRid = RoutingId.From(matchId);
 var result = await actor.Context
     .JoinSpot(matchSpotRid, new JoinMatchReq(...).Encode())
     .Timeout(TimeSpan.FromSeconds(2))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 var reply = result.Reply.Decode<JoinMatchSpotResult>();
 ```
@@ -915,7 +915,7 @@ public sealed class JoinMatchHandler
     {
         await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(...))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
         context.Reply
             .Metadata("trace-id", "reply-trace")

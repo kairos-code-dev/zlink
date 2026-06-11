@@ -93,10 +93,10 @@ public sealed class ZlinkStreamJsonWaitBuilder<TPayload>
         return this;
     }
 
-    public async ValueTask<ZlinkStreamMessage<TPayload>> SubmitAsync(
+    public async ValueTask<ZlinkStreamMessage<TPayload>> Async(
         CancellationToken cancellationToken = default)
     {
-        var message = await _inner.SubmitAsync(cancellationToken).ConfigureAwait(false);
+        var message = await _inner.Async(cancellationToken).ConfigureAwait(false);
         return new ZlinkStreamMessage<TPayload>(
             message.Name,
             message.Metadata,
@@ -137,8 +137,8 @@ public sealed class ZlinkStreamJsonSendBuilder
         return this;
     }
 
-    public ValueTask SubmitAsync(CancellationToken cancellationToken = default)
-        => _inner.SubmitAsync(cancellationToken);
+    public ValueTask Async(CancellationToken cancellationToken = default)
+        => _inner.Async(cancellationToken);
 }
 
 public sealed class ZlinkStreamJsonRequestBuilder
@@ -180,9 +180,9 @@ public sealed class ZlinkStreamJsonRequestBuilder
         return this;
     }
 
-    public async ValueTask<TReply> SubmitAsync<TReply>(CancellationToken cancellationToken = default)
+    public async ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
-        var reply = await _inner.SubmitAsync(cancellationToken).ConfigureAwait(false);
+        var reply = await _inner.Async(cancellationToken).ConfigureAwait(false);
         return reply.FromJson<TReply>();
     }
 

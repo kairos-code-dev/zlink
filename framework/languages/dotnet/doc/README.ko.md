@@ -182,7 +182,7 @@
 | [session-actor-dispatch.ko.md](./spec/session-actor-dispatch.ko.md) | session actor dispatch 의 .NET 시그니처와 등록 코드(`IZLinkBoundSession`, `ZLinkFrameworkException`, builder 시그니처, tic-tac-toe sample). cross-binding 정책은 [policy/session-gateway-usability.ko.md](../../../doc/spec/session-actor-dispatch.ko.md) 에서 다룬다. |
 | [aspnet-core-stream.ko.md](./spec/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
-| [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `DispatchAsync()`를 호출하는 사용법 |
+| [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `Dispatch.Async()`를 호출하는 사용법 |
 | [stream-open-items.ko.md](./draft/stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping 의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./spec/aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](./spec/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |

@@ -34,14 +34,14 @@ internal sealed class EnsureSupportUserActorHandler(
         directory.AddOrUpdate(supportActor);
 
         var joined = await actor.Context.JoinEntrySpot(topology.SupportEntryRid)
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         if (!string.IsNullOrWhiteSpace(supportActor.ConversationId))
         {
             var conversationRid = RoutingId.FromHex(supportActor.ConversationId);
             await actor.Context.JoinSpot(
                     conversationRid,
                     new JoinConversationReq(supportActor.ConversationId).Encode())
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
         }
 
         return new EnsureSupportUserActorRes(

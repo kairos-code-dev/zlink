@@ -180,13 +180,13 @@ metadata 는 route, trace id, locale 같은 작은 key-value 를 담는 용도�
 
 수신 packet 자체를 내부 bounded queue 에 쌓거나 임의로 drop 하지 않는다. receive loop는
 packet을 읽은 뒤 사용자 callback work item만 dispatch queue에 넣고 다음 read를 계속한다.
-사용자 callback이 느리면 `DispatchAsync()`를 호출하는 application loop가 늦어질 뿐,
+사용자 callback이 느리면 `Dispatch.Async()`를 호출하는 application loop가 늦어질 뿐,
 network receive loop를 막지 않는다.
 
 사용자 callback 실행은 별도의 dispatch queue로 분리한다. 기본값인
 `DispatchMode = Manual`에서는 receive loop, reconnect loop, request callback task가
 사용자 handler를 직접 호출하지 않고 queue에 넣는다. 사용자는 자신이 원하는 thread에서
-`DispatchAsync()`를 호출해 `On(...)` handler, lifecycle event, error event, request
+`Dispatch.Async()`를 호출해 `On(...)` handler, lifecycle event, error event, request
 callback을 실행한다. `PendingDispatchCount`는 아직 실행되지 않은 callback 수다.
 
 `DispatchMode = Immediate`는 기존 방식처럼 내부 worker 흐름에서 callback을 바로 실행한다.
@@ -459,10 +459,10 @@ public enum ZlinkStreamConnectionState
 ```
 
 `IsConnected`는 `Connected` 상태에서만 `true`다.
-`CloseAsync()`와 `DisposeAsync()` 뒤 상태는 `Closed`이며, 같은 connector 객체를 다시
+`Close.Async()`와 `DisposeAsync()` 뒤 상태는 `Closed`이며, 같은 connector 객체를 다시
 연결하지 않는다.
 
-`ConnectAsync()`는 상태별로 아래처럼 동작한다.
+`Connect.Async()`는 상태별로 아래처럼 동작한다.
 
 | 현재 상태 | 동작 |
 |-----------|------|
@@ -503,14 +503,11 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
     int PendingDispatchCount { get; }
 
-    ValueTask ConnectAsync(
-        CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Connect { get; }
 
-    ValueTask CloseAsync(
-        CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Close { get; }
 
-    ValueTask DispatchAsync(
-        CancellationToken cancellationToken = default);
+    IZlinkStreamLifecycleCall Dispatch { get; }
 
     IZlinkStreamSendCall Send(
         ZlinkStreamEncodedPayload payload);
@@ -536,14 +533,14 @@ public static class ZlinkStreamConnectorFactory
 ```
 
 `Create()`는 객체만 만들고 네트워크 연결을 열지 않는다.
-호출자는 handler와 event callback을 등록한 뒤 `ConnectAsync()`를 호출한다.
+호출자는 handler와 event callback을 등록한 뒤 `Connect.Async()`를 호출한다.
 
 connector 는 이 문서에서 정의한 helper header 만 decode 한다. 수신한 packet 은
 `On(...)` 에 등록해 둔 이름별 handler 로 전달한다. helper header decode 가 실패하면,
 오류만 `ErrorReceived` 로 전달한다. packet payload 를 raw 상태 그대로 사용자에게
 넘겨주지는 않는다.
 
-`Send(...).SubmitAsync(...)` 은 응답을 기다리지 않는 submit API 다.
+`Send(...).Async(...)` 은 응답을 기다리지 않는 submit API 다.
 
 submit 시점의 동작은 두 갈래로 나뉜다.
 
@@ -585,7 +582,7 @@ public interface IZlinkStreamSendCall
 
     IZlinkStreamSendCall Compress();
 
-    ValueTask SubmitAsync(CancellationToken cancellationToken = default);
+    ValueTask Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZlinkStreamRequestCall
@@ -600,7 +597,7 @@ public interface IZlinkStreamRequestCall
 
     IZlinkStreamRequestCall Compress();
 
-    ValueTask<ZlinkStreamEncodedPayload> SubmitAsync(
+    ValueTask<ZlinkStreamEncodedPayload> Async(
         CancellationToken cancellationToken = default);
 
     void Submit(
@@ -619,7 +616,7 @@ var reply = await client
     .Request(new GetProfileRequest { AccountId = accountId })
     .Timeout(TimeSpan.FromMilliseconds(200))
     .Metadata("traceId", traceId)
-    .SubmitAsync<GetProfileReply>(cancellationToken);
+    .Async<GetProfileReply>(cancellationToken);
 ```
 
 packet 이름을 따로 명시하지 않으면, 기본 이름은 namespace 를 뺀 payload 의 CLR 타입
@@ -629,13 +626,13 @@ packet 이름을 따로 명시하지 않으면, 기본 이름은 namespace 를 �
 ```csharp
 client
     .Send(new ChatMessage { Text = "hello" })
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 client
     .Send(new ChatMessage { Text = "hello" })
     .PacketName("chat.message")
     .Metadata("traceId", traceId)
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 client 에서 server 로 보내는 방향의 압축은, 명시적으로 호출했을 때만 적용한다.
@@ -644,7 +641,7 @@ client 에서 server 로 보내는 방향의 압축은, 명시적으로 호출�
 client
     .Send(new UploadReplayChunk { Bytes = chunk })
     .Compress()
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
 `.Compress()` 의 동작은 다음과 같다.
@@ -885,13 +882,13 @@ using Systems.Zlink.Stream.Connector.Codecs;
 
 client
     .Send(new ChatMessage("hello"))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 var reply = await client
     .Request(new ChatRequest("hello"))
     .PacketName("chat.request")
     .Timeout(TimeSpan.FromSeconds(1))
-    .SubmitAsync<ChatReply>(cancellationToken);
+    .Async<ChatReply>(cancellationToken);
 ```
 
 전체 흐름은 다음과 같다.
@@ -930,7 +927,7 @@ client → server 방향은 명시적으로 호출했을 때만 압축한다.
 이 절에서는 Unity에서 별도 connector package 없이 core connector를 사용하는 기준만 정리한다.
 
 Unity용 별도 connector package는 두지 않는다. Unity도 `Systems.Zlink.Stream.Connector`
-core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `DispatchAsync()`를 호출한다. 그러면
+core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출한다. 그러면
 수신 handler와 lifecycle event가 Unity main thread에서 실행된다.
 
 비동기 실행과 coroutine adapter의 의미는
@@ -952,9 +949,9 @@ Unity 사용 예제와 lifecycle 처리 방식은
 `.NET` 구현의 완료 기준은 다음과 같다.
 
 - `tcp://`, `tls://`, `ws://`, `wss://` endpoint에 모두 연결할 수 있다.
-- `Send(...).SubmitAsync(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
+- `Send(...).Async(...)`로 보낸 packet을 framework STREAM 서버가 정상적으로 받는다.
 - 서버가 helper header로 만든 packet을 client가 typed handler로 받는다.
-- callback request와 `Request(...).SubmitAsync<TReply>(...)`이 각각 정상 동작한다.
+- callback request와 `Request(...).Async<TReply>(...)`이 각각 정상 동작한다.
 - request timeout, close 중 pending request 실패, disconnected 상태에서의 send 동작을
   테스트한다.
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
@@ -962,7 +959,7 @@ Unity 사용 예제와 lifecycle 처리 방식은
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
 - server-to-client 방향에서 압축된 payload를 typed API가 자동으로 해제한다.
 - client-to-server 방향의 압축은 `.Compress()`를 호출한 packet에만 적용된다.
-- manual dispatch에서 callback이 `DispatchAsync()` 호출 thread에서 실행되는지 테스트한다.
+- manual dispatch에서 callback이 `Dispatch.Async()` 호출 thread에서 실행되는지 테스트한다.
 - immediate dispatch에서 별도 pump 호출 없이 callback이 실행되는지 테스트한다.
 
 ## 19. 구현 순서
@@ -1010,7 +1007,7 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 | `StreamConnectorTests.SendPayloadLimitIsEnforcedBeforeTransportWrite` | send payload 크기 제한이 transport write 전에 적용된다. |
 | `StreamConnectorTests.RequestPayloadLimitIsEnforcedBeforeTransportWrite` | request payload 크기 제한이 pending request 전송 전에 적용된다. |
 | `StreamConnectorTests.TypedCallbackDecompressesServerPacket` | 압축된 server packet을 typed callback에서 정상 복원한다. |
-| `StreamConnectorTests.ManualDispatchRunsHandlerOnDispatchCaller` | 기본 manual dispatch에서 callback이 `DispatchAsync()` 호출 thread에서 실행된다. |
+| `StreamConnectorTests.ManualDispatchRunsHandlerOnDispatchCaller` | 기본 manual dispatch에서 callback이 `Dispatch.Async()` 호출 thread에서 실행된다. |
 | `StreamConnectorTests.ImmediateDispatchRunsHandlerWithoutManualDispatch` | immediate dispatch에서는 별도 pump 없이 callback이 실행된다. |
 
 [^public-contract]: public contract는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

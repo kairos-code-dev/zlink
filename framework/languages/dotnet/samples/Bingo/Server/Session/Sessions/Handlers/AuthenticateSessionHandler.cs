@@ -24,7 +24,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
         var authenticated = await channels.RequestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticatePlayerReq { AccessToken = request.AccessToken })
-            .SubmitAsync<AuthenticatePlayerRes>(cancellationToken);
+            .Async<AuthenticatePlayerRes>(cancellationToken);
 
         if (!authenticated.Accepted
             || string.IsNullOrWhiteSpace(authenticated.ActorId)
@@ -40,7 +40,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
                     ActorId = authenticated.ActorId,
                     DisplayName = authenticated.DisplayName,
                 })
-            .SubmitAsync<EnsurePlayerActorRes>(cancellationToken) ;
+            .Async<EnsurePlayerActorRes>(cancellationToken) ;
 
         await context.Actors.BindAsync(
                 ToActorRef(ensured.Actor),
@@ -51,7 +51,7 @@ internal sealed class AuthenticateBingoSessionHandler(IZLinkChannelClient channe
                 ActorId = ensured.ActorId,
                 DisplayName = authenticated.DisplayName,
             })
-            .SubmitAsync();
+            .Async();
     }
 
     private static ActorRef ToActorRef(ActorRefSnapshot snapshot)

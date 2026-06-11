@@ -279,7 +279,7 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 | `Host_Starts_EmbeddedRegistry_Before_FrameworkRuntime` | embedded Registry 와 framework runtime 사이의 시작 순서(registry 먼저)가 유지된다. |
 | `runtime task runner observes detached task exceptions without unhandled rejection` | detached runtime task 예외가 unhandled rejection 으로 새지 않고 runtime error sink 로 보고된다. |
 | `framework runtime state aborts listener tasks before disposing backend context` | shutdown 시 listener task 가 stop signal 을 먼저 보고 종료한 뒤 backend context 가 정리된다. |
-| `SubmitAsync_FailsPendingItemWhenSendTimeoutExpires` | pending submit 은 send timeout 정책에 따라 reject 되고, event loop 를 묶지 않는다. |
+| `pending submit fails when send timeout expires` | pending submit 은 send timeout 정책에 따라 reject 되고, event loop 를 묶지 않는다. |
 | `RequestTimeoutRemovesPendingRequest` | stream connector 의 request timeout 이 끝나면 pending request 가 정리된다. |
 | `StreamRawSession_OnError_Reports_TransportError_For_RemoteDisconnect` | remote disconnect 는 stream session 의 transport error 콜백(`onError`)으로 보고된다. |
 

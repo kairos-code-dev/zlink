@@ -362,7 +362,7 @@ framework 의 **유일한** backend 의존은 .NET
   옮기지 않는다. 비동기 실행의 공통 의미는
   [framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)을 따르고,
   Node에서는 `Promise<T>` 반환 타입과 `await` 사용이 비동기 계약이다.
-  예: `SubmitAsync<T>` → `submit<T>()`, `HandleAsync` → `handle()`.
+  예: `Async<T>` → `submit<T>()`, `HandleAsync` → `handle()`.
 - 서버와 client 의 socket, stream, channel, registry, actor, Spot lifecycle
   함수는 동기 쌍을 따로 두지 않고 `Promise` 기반 함수만 제공한다.
 - `out bool created` 같은 out 파라미터는 **반환 객체**로 옮긴다

@@ -28,7 +28,7 @@ framework 가 나온다. 개념·의미론·동작은 dotnet 과 동일하고, �
 - `ValueTask` / `ValueTask<T>` → `Promise<void>` / `Promise<T>`
 - `CancellationToken cancellationToken` → 생략 또는 `signal?: AbortSignal`
 - `HandleAsync` → `handle` (메서드는 camelCase)
-- `SubmitAsync`, `StartAsync`, `StopAsync` 처럼 비동기성을 드러내는 suffix 는
+- `Async`, `StartAsync`, `StopAsync` 처럼 비동기성을 드러내는 suffix 는
   Node public API 에 붙이지 않는다. Node 는 `Promise<T>` 반환 타입과 `await` 로
   비동기 계약을 표현한다.
 - `record` / `readonly record struct` → TS `interface` 또는 `type`
@@ -983,7 +983,7 @@ export interface ZLinkActorManager {
 }
 ```
 
-> 코드 기준(중요): dotnet `IZLinkActorJoinSpotCall.SubmitAsync<TReply>` 는 bare `TReply`
+> 코드 기준(중요): dotnet `IZLinkActorJoinSpotCall.Async<TReply>` 는 bare `TReply`
 > 가 아니라 `ZLinkActorJoinResult<TReply>`(resultCode + ActorRef + reply)를 반환한다.
 > `IZLinkActorContext` 는 generic `GetSpot<TSpot>()` 오버로드와 `JoinEntrySpot(...)` 을
 > 가진다. C# overload 가 TS 에서 generic method overload 로 표현되지 않는 부분은
@@ -1204,7 +1204,7 @@ export interface ZLinkChannelClient {
 }
 ```
 
-> 코드 기준: dotnet `IZLinkSendCall.Submit` / `IZLinkRequestCall.SubmitAsync<TReply>` 는
+> 코드 기준: dotnet `IZLinkSendCall.Async` / `IZLinkRequestCall.Async<TReply>` 는
 > 빌더가 돌려주는 별도 call 객체의 메서드다. 기존 draft 의 `send(channel, msg, opts):
 > Promise<boolean>` 평면 API 가 아니라 builder 표면을 따른다. submit 반환은 `boolean` 이
 > 아니라 `void` / `TReply` 다(backpressure 는 내부 queue 로 처리, no-wait 표면 없음).

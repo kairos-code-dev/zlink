@@ -35,7 +35,7 @@
 - 메서드·필드·함수: `camelCase` (`HandleAsync` → `handle`, `SendToChannel` → `sendToChannel`)
 - dotnet / C++ 의 coroutine 계열 이름에 붙는 `Async` suffix 는 Node public API 로
   옮기지 않는다. Node 는 `Promise<T>` 반환 타입과 `await` 사용으로 비동기 계약을
-  표현한다. 예: `SubmitAsync<T>` → `submit<T>()`, `StartAsync` → `start()`.
+  표현한다. 예: `Async<T>` → `submit<T>()`, `StartAsync` → `start()`.
 - 클래스·인터페이스·decorator·enum 타입: `PascalCase`
 - **서버 framework public 타입은 `ZLink` prefix(대문자 `L`)** 를 쓴다.
   예: `ZLinkRequestHandler`, `ZLinkRequestContext`, `@ZLinkRequest`, `ZLinkModule`.
@@ -149,7 +149,7 @@ provider token 으로 주입 가능하게 등록한다.
 | dotnet | node | 규칙 |
 |------|------|------|
 | `ValueTask` / `ValueTask<T>` / `Task<T>` | `Promise<void>` / `Promise<T>` | async submit 기본 |
-| `SubmitAsync<T>` / `HandleAsync` / `StartAsync` | `submit<T>()` / `handle()` / `start()` | async suffix 를 이름으로 옮기지 않음 |
+| `Async<T>` / `HandleAsync` / `StartAsync` | `submit<T>()` / `handle()` / `start()` | async suffix 를 이름으로 옮기지 않음 |
 | `CancellationToken cancellationToken` | `signal?: AbortSignal` (선택 인자) 또는 생략 | handler 시그니처를 짧게 유지 |
 | attribute `[ZLinkRequest]` | `zlinkHandlers(...).request(Handler, 'Packet').providers()` provider group | §4.1 |
 | `[ZLinkPacket("name")]` (class) | class decorator `@ZLinkPacket('name')` | packet key 지정 |

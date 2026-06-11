@@ -733,8 +733,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 | `ZLinkChannelClient` | `clientServerChannels[name].server/client`, `dealerMeshChannels[name]` | `channelName` | 1:1 request / send (DEALER 측) |
 | `ZLinkFanoutClient` | `fanoutChannels[name].publisher/subscriber` | `channelName + topic` | event publish (PUB 측) |
 
-> **호출 표면(중요).** dotnet 의 fluent builder + terminator 결
-> (`.RequestToChannel(...).SubmitAsync<T>(ct)`) 을 node 에서도 유지한다.
+> **호출 표면(중요).** dotnet 의 fluent builder + terminator 흐름
+> (`.RequestToChannel(...).Async<T>(ct)`) 을 node 에서도 유지한다.
 > 즉 `client.requestToChannel(...).timeout(...).submit<T>()`,
 > `client.sendToChannel(...).packetName(...).submit()`,
 > `publisher.publish(...).packetName(...).submit()` 형태다. `packetName` /
@@ -745,8 +745,8 @@ channel 타입별로 별도의 client 인터페이스를 둔다. 한 앱에서 �
 
 | dotnet (fluent) | node (fluent) |
 | --- | --- |
-| `client.RequestToChannel(ch, req).SubmitAsync<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
-| `client.RequestToChannel(ch, req).Timeout(t).SubmitAsync<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
+| `client.RequestToChannel(ch, req).Async<T>(ct)` | `await client.requestToChannel(ch, req).submit<T>()` |
+| `client.RequestToChannel(ch, req).Timeout(t).Async<T>(ct)` | `await client.requestToChannel(ch, req).timeout(timeoutMs).submit<T>()` |
 | `client.SendToChannel(ch, msg).PacketName(n).Submit(ct)` | `await client.sendToChannel(ch, msg).packetName(n).submit()` |
 | `publisher.Publish(ch, topic, evt).Submit(ct)` | `await publisher.publishToChannel(ch, topic, evt).submit()` |
 
@@ -1124,7 +1124,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | `ClientServer.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
 | `ClientServer.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
 | `FiltersAndHttp.HttpHandler_Uses_SameContainer_ToResolve_ZLinkChannelClient` | HTTP controller가 같은 DI container에서 `ZLinkChannelClient`를 받아 호출한다. |
-| `ZLinkAsyncSubmitter.SubmitAsync_DrainsPendingItemFromReadyCallback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
+| `channel runtime drains backpressured requests from send-ready callback` | async submitter가 ready callback에서 pending item을 비우고 중복 전송하지 않는다. |
 
 ---
 

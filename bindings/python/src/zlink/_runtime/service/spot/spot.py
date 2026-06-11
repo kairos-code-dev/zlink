@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import asyncio
 import ctypes
 import errno
 import threading
@@ -566,32 +565,10 @@ class Spot(SpotActorJoinMixin):
         )
         return RequestOp(
             self,
-            lambda parts, *, timeout=0: self._request_to_channel_async(
-                channel_bytes, parts, timeout=timeout
-            ),
             lambda parts, callback, *, flags=0, timeout=0: self._request_to_channel_callback(
                 channel_bytes, parts, callback, flags=flags, timeout=timeout
             ),
         )
-
-    def _request_to_channel_async(self, channel_bytes, payload, *, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._request_pending[handle] = pending
-            try:
-                self._start_channel_request(
-                    channel_bytes, payload, 0, timeout, handle
-                )
-            except Exception:
-                self._request_pending.pop(handle, None)
-                self._request_progress_targets.pop(handle, None)
-                raise
-            self._request_progress.ensure_running()
-            return await pending.future
-
-        return _run()
 
     def _request_to_channel_callback(self, channel_bytes, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -636,32 +613,10 @@ class Spot(SpotActorJoinMixin):
     def request_to_spot(self, dest_node_rid, dest_spot_rid):
         return RequestOp(
             self,
-            lambda parts, *, timeout=0: self._request_to_spot_async(
-                dest_node_rid, dest_spot_rid, parts, timeout=timeout
-            ),
             lambda parts, callback, *, flags=0, timeout=0: self._request_to_spot_callback(
                 dest_node_rid, dest_spot_rid, parts, callback, flags=flags, timeout=timeout
             ),
         )
-
-    def _request_to_spot_async(self, dest_node_rid, dest_spot_rid, parts, *, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._request_pending[handle] = pending
-            try:
-                self._start_spot_request(
-                    dest_node_rid, dest_spot_rid, parts, 0, timeout, handle
-                )
-            except Exception:
-                self._request_pending.pop(handle, None)
-                self._request_progress_targets.pop(handle, None)
-                raise
-            self._request_progress.ensure_running()
-            return await pending.future
-
-        return _run()
 
     def _request_to_spot_callback(self, dest_node_rid, dest_spot_rid, parts, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -687,12 +642,6 @@ class Spot(SpotActorJoinMixin):
     def request_to_router(self, peer_rid):
         return RequestOp(
             self,
-            lambda parts, *, timeout=0: self._request_async(
-                lib().zlink_spot_request_router_part,
-                (peer_rid,),
-                parts,
-                timeout=timeout,
-            ),
             lambda parts, callback, *, flags=0, timeout=0: self._request_callback(
                 lib().zlink_spot_request_router_part,
                 (peer_rid,),
@@ -864,23 +813,6 @@ class Spot(SpotActorJoinMixin):
         if self._request_reply_handler is None:
             self._request_reply_handler = _REPLY_HANDLER(self._on_reply)
         return self._request_reply_handler
-
-    def _request_async(self, native_func, routing_ids, payload, *, flags=0, timeout=0):
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            handle = id(pending)
-            self._request_pending[handle] = pending
-            try:
-                self._start_request(native_func, routing_ids, payload, flags, timeout, handle)
-            except Exception:
-                self._request_pending.pop(handle, None)
-                self._request_progress_targets.pop(handle, None)
-                raise
-            self._request_progress.ensure_running()
-            return await pending.future
-
-        return _run()
 
     def _request_callback(self, native_func, routing_ids, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)

@@ -1,4 +1,5 @@
-import asyncio
+import queue
+import threading
 
 import zlink
 
@@ -10,7 +11,7 @@ REQUEST_PAYLOAD = b"spot-ping"
 REPLY_PAYLOAD = b"spot-pong"
 
 
-async def main():
+def main():
     _, endpoint = tcp_endpoint()
 
     with zlink.create_context() as ctx:
@@ -25,7 +26,7 @@ async def main():
                             requester_dealer,
                         )
 
-                        async def respond():
+                        def respond():
                             received = zlink.create_received()
                             if not responder_router.recv_into(received):
                                 raise AssertionError("expected spot request")
@@ -39,25 +40,30 @@ async def main():
                                     received.request_seq,
                                 ).message(REPLY_PAYLOAD).submit()
 
-                        responder_task = asyncio.create_task(respond())
-                        reply = await (
+                        responder_thread = threading.Thread(target=respond)
+                        responder_thread.start()
+                        reply_queue = queue.Queue()
+                        (
                             requester.request_to_channel(CHANNEL_NAME)
                             .message(REQUEST_PAYLOAD)
                             .timeout(2.0)
-                            .submit_async()
+                            .submit(lambda result, parts: reply_queue.put((result, parts)))
                         )
+                        result, reply = reply_queue.get(timeout=2.0)
+                        if result != zlink.RequestResult.OK:
+                            raise AssertionError(f"spot request failed: {result!r}")
                         try:
                             if [part.to_bytes() for part in reply] != [REPLY_PAYLOAD]:
                                 raise AssertionError("unexpected spot reply payload")
                         finally:
                             for part in reply:
                                 part.close()
-                        await responder_task
+                        responder_thread.join(timeout=2.0)
 
                         print(
-                            '[spot/request/async] request: "spot-ping" -> reply: "spot-pong"'
+                            '[spot/request/callback] request: "spot-ping" -> reply: "spot-pong"'
                         )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

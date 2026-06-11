@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import asyncio
-
 from ...handles.native_support import SubmitError, SubmitResult
 from .request_progress import (
     PendingActorJoin as _PendingActorJoin,
@@ -64,31 +62,6 @@ class ActorJoinOp:
         )
         self._submitted = True
         return op
-
-    def submit_async(self):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        if not self._parts:
-            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
-        self._submitted = True
-        parts = self._parts
-        timeout = self._timeout
-
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingActorJoin(loop=loop)
-            self._node._submit_actor_join(
-                self._actor_ref,
-                self._dest_node_rid,
-                self._dest_spot_rid,
-                parts,
-                pending,
-                flags=0,
-                timeout=timeout,
-            )
-            return await pending.future
-
-        return _run()
 
     def submit(self, callback):
         if self._submitted:
@@ -199,24 +172,6 @@ class ActorJoinEntrySpotOp:
         self._timeout = timeout
         return self
 
-    def submit_async(self):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        self._submitted = True
-
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingActorJoinEntrySpot(loop=loop)
-            self._node._submit_actor_join_entry_spot(
-                self._actor_ref,
-                self._dest_node_rid,
-                pending,
-                timeout=self._timeout,
-            )
-            return await pending.future
-
-        return _run()
-
     def submit(self, callback):
         if self._submitted:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
@@ -281,20 +236,6 @@ class _ActorRequestOp:
     def _submit_native(self, pending, timeout):
         raise NotImplementedError
 
-    def submit_async(self):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        self._submitted = True
-        timeout = self._timeout
-
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingRequest(loop=loop)
-            self._submit_native(pending, timeout)
-            return await pending.future
-
-        return _run()
-
     def submit(self, callback):
         if self._submitted:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
@@ -346,22 +287,6 @@ class ActorLookupOp:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         self._timeout = timeout
         return self
-
-    def submit_async(self):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        self._submitted = True
-        timeout = self._timeout
-
-        async def _run():
-            loop = asyncio.get_running_loop()
-            pending = _PendingActorLookup(loop=loop)
-            self._node._submit_actor_lookup(
-                self._target_node_rid, self._actor_id, pending, timeout
-            )
-            return await pending.future
-
-        return _run()
 
     def submit(self, callback):
         if self._submitted:

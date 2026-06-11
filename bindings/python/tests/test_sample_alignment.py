@@ -5,7 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = ROOT / "samples"
 CANONICAL_SAMPLES = [
-    "request_reply_async_sample.py",
+    "request_reply_callback_sample.py",
     "pair_recv_sample.py",
     "dealer_router_recv_sample.py",
     "pubsub_recv_sample.py",
@@ -13,7 +13,7 @@ CANONICAL_SAMPLES = [
     "stream_packet_callback_sample.py",
     "monitor_recv_sample.py",
     "spot_recv_sample.py",
-    "spot_request_async_sample.py",
+    "spot_request_callback_sample.py",
     "discovery_registry_sample.py",
     "registry_query_sample.py",
 ]
@@ -44,8 +44,6 @@ class SampleAlignmentTests(unittest.TestCase):
         self.assertIn("CANONICAL_SAMPLES", runner)
         self.assertNotIn("pair_callback_sample.py", runner)
         self.assertNotIn("pubsub_callback_sample.py", runner)
-        self.assertNotIn("request_reply_callback_sample.py", runner)
-        self.assertNotIn("spot_callback_sample.py", runner)
         self.assertIn(
             'print(f"Summary: {passed}/{len(CANONICAL_SAMPLES)} samples passed")',
             runner,

@@ -465,23 +465,6 @@ impl RequestOpReadyRuntime for RequestOp<Ready> {
         })
     }
 
-    /// Async submit — produces the reply.
-    /// # Errors: ZlinkError (SubmitError on submit, RequestError on completion)
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        request_op_submit_callback_owned(self, SendFlags::NONE, move |result| {
-            let _ = tx.send(result);
-        })?;
-        rx.recv()
-            .unwrap_or_else(|_| {
-                Err(RequestError::new(
-                    crate::error::RequestResult::ProtocolError,
-                    libc::EINVAL,
-                ))
-            })
-            .map_err(ZlinkError::from)
-    }
-
     /// Callback submit.
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>

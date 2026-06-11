@@ -1,4 +1,4 @@
-import asyncio
+import queue
 import socket
 import threading
 import time
@@ -463,37 +463,39 @@ class CoreApiAlignmentTests(unittest.TestCase):
     def test_request_reply_canonical_roundtrip(self):
         ctx = zlink.create_context()
 
-        async def scenario():
-            with zlink.create_router_socket(ctx) as router_socket:
-                self.assertTrue(hasattr(router_socket, "request"))
-                self.assertFalse(hasattr(router_socket, "request_callback"))
-                self.assertTrue(hasattr(router_socket, "reply"))
-                self.assertTrue(hasattr(router_socket, "send_to_spot"))
-                self.assertTrue(hasattr(router_socket, "request_to_spot"))
-                self.assertFalse(hasattr(router_socket, "request_to_spot_callback"))
-                self.assertTrue(hasattr(router_socket, "reply_to_spot"))
-                self.assertFalse(hasattr(router_socket, "recv_spot"))
-                self.assertFalse(hasattr(router_socket, "on_spot_receive"))
-                with zlink.create_dealer_socket(ctx) as dealer_socket:
-                    endpoint = "inproc://py-canonical-request-reply"
-                    router_socket.bind(endpoint)
-                    dealer_socket.connect(endpoint)
+        with zlink.create_router_socket(ctx) as router_socket:
+            self.assertTrue(hasattr(router_socket, "request"))
+            self.assertFalse(hasattr(router_socket, "request_callback"))
+            self.assertTrue(hasattr(router_socket, "reply"))
+            self.assertTrue(hasattr(router_socket, "send_to_spot"))
+            self.assertTrue(hasattr(router_socket, "request_to_spot"))
+            self.assertFalse(hasattr(router_socket, "request_to_spot_callback"))
+            self.assertTrue(hasattr(router_socket, "reply_to_spot"))
+            self.assertFalse(hasattr(router_socket, "recv_spot"))
+            self.assertFalse(hasattr(router_socket, "on_spot_receive"))
+            with zlink.create_dealer_socket(ctx) as dealer_socket:
+                endpoint = "inproc://py-canonical-request-reply"
+                router_socket.bind(endpoint)
+                dealer_socket.connect(endpoint)
 
-                    def responder():
-                        received = zlink.create_received()
-                        self.assertTrue(router_socket.recv_into(received))
-                        with received:
-                            received.reply().message(b"pong").submit()
+                def responder():
+                    received = zlink.create_received()
+                    self.assertTrue(router_socket.recv_into(received))
+                    with received:
+                        received.reply().message(b"pong").submit()
 
-                    threading.Thread(target=responder, daemon=True).start()
-                    reply = await dealer_socket.request().message(b"ping").timeout(2.0).submit_async()
-                    try:
-                        self.assertEqual([part.to_bytes() for part in reply], [b"pong"])
-                    finally:
-                        for part in reply:
-                            part.close()
-
-        asyncio.run(scenario())
+                reply_queue = queue.Queue()
+                threading.Thread(target=responder, daemon=True).start()
+                dealer_socket.request().message(b"ping").timeout(2.0).submit(
+                    lambda result, parts: reply_queue.put((result, parts))
+                )
+                result, reply = reply_queue.get(timeout=2.0)
+                self.assertEqual(result, zlink.RequestResult.OK)
+                try:
+                    self.assertEqual([part.to_bytes() for part in reply], [b"pong"])
+                finally:
+                    for part in reply:
+                        part.close()
 
     def test_spot_surface_and_pubsub_roundtrip(self):
         ctx = zlink.create_context()

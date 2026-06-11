@@ -151,7 +151,6 @@ add_library(zlink_cpp STATIC
   src/Runtime/Eventing/poller.cpp
   src/Runtime/Eventing/monitor.cpp
   src/Runtime/Eventing/timers.cpp
-  src/Runtime/Messaging/async_wait_scheduler.cpp
   src/Runtime/Messaging/message.cpp
   src/Runtime/Messaging/received.cpp
   src/Runtime/Options/dealer_socket_options.cpp
@@ -351,14 +350,12 @@ if(ZLINK_CPP_BUILD_SAMPLES)
   endfunction()
 
   set(ZLINK_CPP_SAMPLE_SOURCES
-    request_reply_coroutine_sample.cpp
     pair_recv_sample.cpp
     pubsub_recv_sample.cpp
     dealer_router_recv_sample.cpp
     stream_recv_sample.cpp
     stream_packet_callback_sample.cpp
     spot_recv_sample.cpp
-    spot_request_coroutine_sample.cpp
     monitor_recv_sample.cpp
     discovery_registry_sample.cpp
     registry_query_sample.cpp

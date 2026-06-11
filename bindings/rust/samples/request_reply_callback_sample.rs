@@ -1,41 +1,13 @@
-//! Request/reply async sample -- demonstrates direct dealer/router request surfaces.
+//! Request/reply callback sample -- demonstrates direct dealer/router request surfaces.
 
 #[path = "sample_support.rs"]
 mod sample_support;
 
-use std::future::Future;
-use std::pin::pin;
 use std::sync::mpsc;
-use std::task::{Context as TaskContext, Poll, RawWaker, RawWakerVTable, Waker};
 use std::thread;
 use std::time::Duration;
 
 use zlink::{Context, Message, RoutingId, SocketMonitor};
-
-fn noop_waker() -> Waker {
-    unsafe fn clone(_: *const ()) -> RawWaker {
-        RawWaker::new(std::ptr::null(), &VTABLE)
-    }
-    unsafe fn wake(_: *const ()) {}
-    unsafe fn wake_by_ref(_: *const ()) {}
-    unsafe fn drop(_: *const ()) {}
-
-    static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-    let raw = RawWaker::new(std::ptr::null(), &VTABLE);
-    unsafe { Waker::from_raw(raw) }
-}
-
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = noop_waker();
-    let mut context = TaskContext::from_waker(&waker);
-    let mut future = pin!(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(value) => return value,
-            Poll::Pending => thread::yield_now(),
-        }
-    }
-}
 
 fn main() {
     // --8<-- [start:doc]
@@ -80,19 +52,24 @@ fn main() {
         request_done_tx.send(()).expect("request done send failed");
     });
 
-    let reply = block_on(
-        dealer_socket
-            .request()
-            .message(Message::try_from(b"ping").expect("request message failed"))
-            .timeout(Duration::from_secs(2))
-            .submit_async(),
-    )
-    .expect("dealer request failed");
+    let (reply_tx, reply_rx) = mpsc::channel();
+    dealer_socket
+        .request()
+        .message(Message::try_from(b"ping").expect("request message failed"))
+        .timeout(Duration::from_secs(2))
+        .submit(move |result| {
+            let _ = reply_tx.send(result);
+        })
+        .expect("dealer request submit failed");
+    let reply = reply_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("reply callback timed out")
+        .expect("dealer request failed");
     assert_eq!(reply[0].as_str().unwrap_or("?"), "pong");
     request_done_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("request handler timed out");
 
-    println!("[dealer-router/request-reply/async] send: \"ping\" -> recv: \"pong\"");
+    println!("[dealer-router/request-reply/callback] send: \"ping\" -> recv: \"pong\"");
     // --8<-- [end:doc]
 }

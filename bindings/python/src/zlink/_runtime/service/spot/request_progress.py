@@ -5,29 +5,14 @@ import threading
 import time
 
 from ...._native.ffi import ZlinkPollerEvent, lib
-from ...handles.native_support import (
-    RequestError,
-    RequestResult,
-    _report_unhandled_callback_exception,
-)
+from ...handles.native_support import RequestResult, _report_unhandled_callback_exception
 
 
 class PendingRequest:
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
+    def __init__(self, *, callback=None):
         self.callback = callback
 
     def resolve(self, result, received, errnum=0):
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, received)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception,
-                    RequestError(result, errnum),
-                )
-            return
         if self.callback is None:
             return
         try:
@@ -39,23 +24,11 @@ class PendingRequest:
 class PendingActorJoin:
     """Pending state for ActorJoinOp: surfaces (ActorJoinResult, list[Message])."""
 
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
+    def __init__(self, *, callback=None):
         self.callback = callback
 
     def resolve(self, join_result, messages, errnum=0):
         result = join_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_result, (join_result, messages)
-                )
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
         if self.callback is None:
             return
         try:
@@ -67,21 +40,10 @@ class PendingActorJoin:
 class PendingActorJoinEntrySpot:
     """Pending state for ActorJoinEntrySpotOp."""
 
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
+    def __init__(self, *, callback=None):
         self.callback = callback
 
     def resolve(self, join_result, errnum=0):
-        result = join_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, join_result)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
         if self.callback is None:
             return
         try:
@@ -93,21 +55,10 @@ class PendingActorJoinEntrySpot:
 class PendingActorLookup:
     """Pending state for ActorLookupOp: surfaces ActorLookupResult."""
 
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
+    def __init__(self, *, callback=None):
         self.callback = callback
 
     def resolve(self, lookup_result, errnum=0):
-        result = lookup_result.result
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, lookup_result)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception, RequestError(result, errnum)
-                )
-            return
         if self.callback is None:
             return
         try:

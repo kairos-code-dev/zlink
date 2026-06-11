@@ -44,8 +44,8 @@ name = "spot_pubsub_example"
 path = "samples/spot_pubsub_example.rs"
 
 [[example]]
-name = "request_reply_async_sample"
-path = "samples/request_reply_async_sample.rs"
+name = "request_reply_callback_sample"
+path = "samples/request_reply_callback_sample.rs"
 
 [[example]]
 name = "pair_recv_sample"
@@ -72,8 +72,8 @@ name = "spot_recv_sample"
 path = "samples/spot_recv_sample.rs"
 
 [[example]]
-name = "spot_request_async_sample"
-path = "samples/spot_request_async_sample.rs"
+name = "spot_request_callback_sample"
+path = "samples/spot_request_callback_sample.rs"
 
 [[example]]
 name = "monitor_recv_sample"

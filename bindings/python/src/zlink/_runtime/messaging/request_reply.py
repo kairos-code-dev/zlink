@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import asyncio
 import ctypes
 import errno
 import queue
@@ -117,22 +116,10 @@ def _message_list_from_parts(parts_ptr, part_count):
 
 
 class _PendingRequest:
-    def __init__(self, *, loop=None, callback=None):
-        self.loop = loop
-        self.future = loop.create_future() if loop is not None else None
+    def __init__(self, *, callback=None):
         self.callback = callback
 
     def resolve(self, result, received, errnum=0):
-        if self.future is not None:
-            if result == RequestResult.OK:
-                self.loop.call_soon_threadsafe(self.future.set_result, received)
-            else:
-                self.loop.call_soon_threadsafe(
-                    self.future.set_exception,
-                    RequestError(result, errnum),
-                )
-            return
-
         if self.callback is None:
             return
 

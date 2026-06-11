@@ -250,22 +250,6 @@ impl ActorJoinEntrySpotOpRuntime for ActorJoinEntrySpotOp<Empty> {
         wrap_actor_join_entry_spot_op(op)
     }
 
-    /// Submit and await completion (async).
-    /// # Errors: ZlinkError
-    async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        self.submit(move |result| {
-            let _ = tx.send(result);
-        })
-        .map_err(ZlinkError::from)?;
-        rx.recv().map_err(|_| {
-            ZlinkError::from(RequestError::new(
-                crate::error::RequestResult::ProtocolError,
-                libc::EINVAL,
-            ))
-        })
-    }
-
     /// Submit with a completion callback.
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
@@ -328,22 +312,6 @@ impl ActorJoinOpReadyRuntime for ActorJoinOp<Ready> {
         let mut op = take_actor_join_op(self);
         op.flags = flags;
         wrap_actor_join_op(op)
-    }
-
-    /// Submit and await completion (async). Returns `(ActorJoinResult, parts)`.
-    /// # Errors: ZlinkError
-    async fn submit_async(self) -> Result<(ActorJoinResult, Vec<Message>), ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        self.submit(move |result, parts| {
-            let _ = tx.send((result, parts));
-        })
-        .map_err(ZlinkError::from)?;
-        rx.recv().map_err(|_| {
-            ZlinkError::from(RequestError::new(
-                crate::error::RequestResult::ProtocolError,
-                libc::EINVAL,
-            ))
-        })
     }
 
     /// Submit with a completion callback.
@@ -512,10 +480,6 @@ impl ActorReplyOpTimeoutRuntime for ActorLeaveOp<Empty> {
 }
 
 impl ActorReplyOpRuntime for ActorLeaveOp<Empty> {
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(take_actor_reply_op(self)).await
-    }
-
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
@@ -534,10 +498,6 @@ impl ActorReplyOpTimeoutRuntime for ActorDestroyOp<Empty> {
 }
 
 impl ActorReplyOpRuntime for ActorDestroyOp<Empty> {
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(take_actor_reply_op(self)).await
-    }
-
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
@@ -556,10 +516,6 @@ impl ActorReplyOpTimeoutRuntime for ActorBindOp<Empty> {
 }
 
 impl ActorReplyOpRuntime for ActorBindOp<Empty> {
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(take_actor_reply_op(self)).await
-    }
-
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
@@ -578,10 +534,6 @@ impl ActorReplyOpTimeoutRuntime for ActorUnbindOp<Empty> {
 }
 
 impl ActorReplyOpRuntime for ActorUnbindOp<Empty> {
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        actor_reply_op_submit_async(take_actor_reply_op(self)).await
-    }
-
     /// # Errors: SubmitError
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
@@ -591,45 +543,11 @@ impl ActorReplyOpRuntime for ActorUnbindOp<Empty> {
     }
 }
 
-async fn actor_reply_op_submit_async(
-    inner: NativeActorReplyOp,
-) -> Result<Vec<Message>, ZlinkError> {
-    let (tx, rx) = mpsc::channel();
-    inner
-        .submit_callback(move |result| {
-            let _ = tx.send(result);
-        })
-        .map_err(ZlinkError::from)?;
-    rx.recv()
-        .unwrap_or_else(|_| {
-            Err(RequestError::new(
-                crate::error::RequestResult::ProtocolError,
-                libc::EINVAL,
-            ))
-        })
-        .map_err(ZlinkError::from)
-}
-
 impl ActorLookupOpRuntime for ActorLookupOp<Empty> {
     fn timeout(self, timeout: Duration) -> Self {
         let mut op = take_actor_lookup_op(self);
         op.timeout = timeout;
         wrap_actor_lookup_op(op)
-    }
-
-    /// # Errors: ZlinkError
-    async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError> {
-        let (tx, rx) = mpsc::channel();
-        self.submit(move |result| {
-            let _ = tx.send(result);
-        })
-        .map_err(ZlinkError::from)?;
-        rx.recv().map_err(|_| {
-            ZlinkError::from(RequestError::new(
-                crate::error::RequestResult::ProtocolError,
-                libc::EINVAL,
-            ))
-        })
     }
 
     /// # Errors: SubmitError

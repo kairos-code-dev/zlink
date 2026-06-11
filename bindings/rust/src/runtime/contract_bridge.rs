@@ -12,7 +12,6 @@ use crate::actor_models::{
 use crate::actor_received::ActorReceived;
 use crate::error::{
     CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError, SubmitError,
-    ZlinkError,
 };
 use crate::flags::{RecvFlags, RidDuplicatePolicy, SendFlags, SubmitRetryMode};
 use crate::message::{Message, RoutingId};
@@ -310,7 +309,6 @@ pub(crate) trait RequestOpReadyRuntime {
     fn message(self, message: Message) -> Self;
     fn timeout(self, timeout: Duration) -> Self;
     fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady>;
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
@@ -337,7 +335,6 @@ pub(crate) trait ReplyOpReadyRuntime {
 
 pub(crate) trait ActorJoinEntrySpotOpRuntime {
     fn timeout(self, timeout: Duration) -> Self;
-    async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError>;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorJoinEntrySpotResult) + Send + 'static;
@@ -351,7 +348,6 @@ pub(crate) trait ActorJoinOpReadyRuntime {
     fn message(self, message: Message) -> Self;
     fn timeout(self, timeout: Duration) -> Self;
     fn flags(self, flags: SendFlags) -> Self;
-    async fn submit_async(self) -> Result<(ActorJoinResult, Vec<Message>), ZlinkError>;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorJoinResult, Vec<Message>) + Send + 'static;
@@ -363,7 +359,6 @@ pub(crate) trait ActorJoinReplyOpRuntime {
 }
 
 pub(crate) trait ActorReplyOpRuntime {
-    async fn submit_async(self) -> Result<Vec<Message>, ZlinkError>;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static;
@@ -375,7 +370,6 @@ pub(crate) trait ActorReplyOpTimeoutRuntime: ActorReplyOpRuntime {
 
 pub(crate) trait ActorLookupOpRuntime {
     fn timeout(self, timeout: Duration) -> Self;
-    async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError>;
     fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
         F: FnOnce(ActorLookupResult) + Send + 'static;

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::actor_models::{ActorJoinEntrySpotResult, ActorJoinResult, ActorLookupResult};
-use crate::error::{RequestError, SubmitError, ZlinkError};
+use crate::error::{RequestError, SubmitError};
 use crate::flags::SendFlags;
 use crate::message::Message;
 use crate::runtime_bridge::{
@@ -151,16 +151,9 @@ impl RequestOp<Ready> {
         <Self as RequestOpReadyContract>::timeout(self, timeout)
     }
 
-    /// Sets the send flags and narrows the builder to callback submission;
-    /// [`submit_async`](Self::submit_async) is no longer reachable afterward.
+    /// Sets the send flags applied at submit time.
     pub fn flags(self, flags: SendFlags) -> RequestOp<CallbackReady> {
         <Self as RequestOpReadyContract>::flags(self, flags)
-    }
-
-    /// Submits the request and asynchronously returns the reply parts, which the
-    /// caller owns.
-    pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-        <Self as RequestOpReadyContract>::submit_async(self).await
     }
 
     /// Submits the request; the reply (or error) is delivered later to
@@ -232,11 +225,6 @@ impl ActorJoinEntrySpotOp<Empty> {
         <Self as ActorJoinEntrySpotOpContract>::timeout(self, timeout)
     }
 
-    /// Submits the operation and asynchronously returns its result.
-    pub async fn submit_async(self) -> Result<ActorJoinEntrySpotResult, ZlinkError> {
-        <Self as ActorJoinEntrySpotOpContract>::submit_async(self).await
-    }
-
     /// Submits the operation; the result is delivered later to `callback`.
     pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
     where
@@ -271,12 +259,6 @@ impl ActorJoinOp<Ready> {
         <Self as ActorJoinOpReadyContract>::flags(self, flags)
     }
 
-    /// Submits the join and asynchronously returns its result and reply parts,
-    /// which the caller owns.
-    pub async fn submit_async(self) -> Result<(ActorJoinResult, Vec<Message>), ZlinkError> {
-        <Self as ActorJoinOpReadyContract>::submit_async(self).await
-    }
-
     /// Submits the join; the result and reply parts are delivered later to
     /// `callback`, which owns the parts.
     pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
@@ -309,12 +291,6 @@ macro_rules! impl_actor_reply_wrapper {
                 <Self as ActorReplyOpTimeoutContract>::timeout(self, timeout)
             }
 
-            /// Submits the operation and asynchronously returns the reply parts,
-            /// which the caller owns.
-            pub async fn submit_async(self) -> Result<Vec<Message>, ZlinkError> {
-                <Self as ActorReplyOpContract>::submit_async(self).await
-            }
-
             /// Submits the operation; the reply (or error) is delivered later to
             /// `callback`, which owns the reply parts.
             pub fn submit<F>(self, callback: F) -> Result<(), SubmitError>
@@ -336,11 +312,6 @@ impl ActorLookupOp<Empty> {
     /// Sets how long the lookup waits for completion before timing out.
     pub fn timeout(self, timeout: Duration) -> Self {
         <Self as ActorLookupOpContract>::timeout(self, timeout)
-    }
-
-    /// Submits the lookup and asynchronously returns its result.
-    pub async fn submit_async(self) -> Result<ActorLookupResult, ZlinkError> {
-        <Self as ActorLookupOpContract>::submit_async(self).await
     }
 
     /// Submits the lookup; the result is delivered later to `callback`.

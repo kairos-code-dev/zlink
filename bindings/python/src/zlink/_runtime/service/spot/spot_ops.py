@@ -148,12 +148,11 @@ class PublishOp:
 
 
 class RequestOp:
-    """Fluent builder for Spot request operations (async or callback)."""
-    __slots__ = ('_spot', '_op_async_fn', '_op_cb_fn', '_parts', '_timeout', '_submitted')
+    """Fluent builder for Spot request callback operations."""
+    __slots__ = ('_spot', '_op_cb_fn', '_parts', '_timeout', '_submitted')
 
-    def __init__(self, spot, op_async_fn, op_cb_fn):
+    def __init__(self, spot, op_cb_fn):
         self._spot = spot
-        self._op_async_fn = op_async_fn
         self._op_cb_fn = op_cb_fn
         self._parts = []
         self._timeout = 0
@@ -183,15 +182,6 @@ class RequestOp:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         self._submitted = True
         return RequestCallbackOp(self._spot, self._op_cb_fn, self._parts, self._timeout, int(flags))
-
-    def submit_async(self):
-        """Submit as async coroutine. Returns awaitable list[Message]."""
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        if not self._parts:
-            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
-        self._submitted = True
-        return self._op_async_fn(self._parts, timeout=self._timeout)
 
     def submit(self, callback):
         """Submit with callback. Returns True/False for backpressure."""

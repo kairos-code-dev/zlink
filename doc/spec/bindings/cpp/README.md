@@ -254,11 +254,13 @@ Do not copy a Java or .NET interface-heavy layout into C++; C++ uses installed
 headers, RAII classes, concrete values, and opaque implementation state as its
 natural boundary.
 
-C++20 is the minimum supported language level. The `std::coroutine_handle`
-based `co_await` surface is part of the public contract, not an optional
-feature. Do not add compatibility macros, alternate include paths, or public API
-shrinkage for C++17 or compiler/library combinations that do not provide
-standard C++20 coroutine support.
+C++20 is the minimum supported language level for the bindings library. The
+bindings library may expose `async_result_t<T>` completion objects and callback
+submit, but it does not own coroutine awaiters, the framework handler executor,
+or the framework dispatcher. Framework coroutines wrap the bindings completion
+object or callback completion at the framework execution boundary. The shared
+async execution surface policy is defined in
+[bindings async execution surface policy](../async-coroutine-policy.ko.md).
 
 ## Repository Layout
 
@@ -868,8 +870,9 @@ Moving C++ off header-only means the binding has an additional compiled
 artifact. The completed binding therefore maintains these build rules:
 
 - The C++ binding builds the library target `zlink_cpp`.
-- The C++ binding is built as C++20. Do not add C++17-era compatibility
-  wrappers, alternate headers, or macro paths to preserve old compiler support.
+- The C++ binding is built as C++20. Do not add framework executor parameters,
+  framework dispatcher parameters, or alternate operation-start names solely for
+  coroutine support.
 - `zlink_cpp` links against the core native `zlink` library and has a version
   compatibility rule with that core library.
 - Linux, macOS, and Windows packages build the C++ library for each supported
@@ -944,8 +947,8 @@ artifact. The completed binding therefore maintains these build rules:
   because it has no API-level peer routing id.
 - Do not add operation-start overload families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
-  the builder absorb the variation. Terminal builder methods use `submit(...)`
-  for callback/result-based start and `async()` for coroutine awaitables.
+  the builder absorb the variation. Terminal builder method names follow
+  [bindings async execution surface policy](../async-coroutine-policy.ko.md).
 - Do not keep canonical-name bypasses such as `on_send_ready(...)`,
   `on_packet(...)`, `on_event(...)`, or operation aliases. Call sites use the
   canonical public contract instead of layered aliases.

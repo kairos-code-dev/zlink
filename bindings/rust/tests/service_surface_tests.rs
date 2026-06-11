@@ -1,9 +1,5 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
-use std::future::Future;
-use std::pin::pin;
-use std::task::{Context as TaskContext, Poll, Waker};
-
 use zlink::{
     ActorReceived, AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket,
     PollEvent, PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient,
@@ -16,16 +12,6 @@ fn reserve_tcp_port() -> u16 {
     let port = listener.local_addr().unwrap().port();
     drop(listener);
     port
-}
-
-fn block_on_ready<F: Future>(future: F) -> F::Output {
-    let waker = Waker::noop();
-    let mut future = pin!(future);
-    let mut cx = TaskContext::from_waker(waker);
-    match future.as_mut().poll(&mut cx) {
-        Poll::Ready(output) => output,
-        Poll::Pending => panic!("future unexpectedly pending"),
-    }
 }
 
 #[test]
@@ -92,12 +78,11 @@ fn spot_callback_surfaces_exist() {
         .message(Message::try_from(b"payload").unwrap())
         .flags(SendFlags::DONT_WAIT)
         .submit();
-    let _ = block_on_ready(
-        spot.request_to_channel("svc-surface")
-            .message(Message::try_from(b"payload").unwrap())
-            .timeout(std::time::Duration::from_millis(1))
-            .submit_async(),
-    );
+    let _ = spot
+        .request_to_channel("svc-surface")
+        .message(Message::try_from(b"payload").unwrap())
+        .timeout(std::time::Duration::from_millis(1))
+        .submit(|_result| {});
     let _ = spot
         .request_to_channel("svc-surface")
         .message(Message::try_from(b"payload").unwrap())

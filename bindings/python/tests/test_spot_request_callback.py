@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-import asyncio
+import queue
 import socket
 import threading
 import time
@@ -32,7 +32,7 @@ def _wait_spot_peer_connected(node, timeout_s=5.0):
     raise TimeoutError("spot peer did not connect within 5s")
 
 
-class SpotRequestAsyncTests(unittest.TestCase):
+class SpotRequestCallbackTests(unittest.TestCase):
     def setUp(self):
         self.ctx = zlink.create_context()
 
@@ -40,7 +40,7 @@ class SpotRequestAsyncTests(unittest.TestCase):
         if hasattr(self, "ctx") and self.ctx is not None:
             self.ctx.close()
 
-    def test_request_to_spot_async_completes_via_dispatch_receive(self):
+    def test_request_to_spot_callback_completes_via_dispatch_receive(self):
         pub_endpoint = _tcp_endpoint()
         router_endpoint = _tcp_endpoint()
         requester_node = zlink.create_spot_node(self.ctx)
@@ -71,23 +71,20 @@ class SpotRequestAsyncTests(unittest.TestCase):
             requester_node.connect_router_channel_peer("api", router_endpoint)
             _wait_spot_peer_connected(requester_node)
 
-            async def issue_request():
-                reply = await (
-                    requester.request_to_spot(
-                        responder_node.routing_id,
-                        responder.routing_id,
-                    )
-                    .message(b"spot-ping")
-                    .timeout(2.0)
-                    .submit_async()
-                )
-                try:
-                    self.assertEqual([part.to_bytes() for part in reply], [b"spot-pong"])
-                finally:
-                    for part in reply:
-                        part.close()
-
-            asyncio.run(issue_request())
+            reply_queue = queue.Queue()
+            requester.request_to_spot(
+                responder_node.routing_id,
+                responder.routing_id,
+            ).message(b"spot-ping").timeout(2.0).submit(
+                lambda result, parts: reply_queue.put((result, parts))
+            )
+            result, reply = reply_queue.get(timeout=2.0)
+            self.assertEqual(result, zlink.RequestResult.OK)
+            try:
+                self.assertEqual([part.to_bytes() for part in reply], [b"spot-pong"])
+            finally:
+                for part in reply:
+                    part.close()
             self.assertTrue(handled.wait(2.0), "routed dispatch receive did not fire")
         finally:
             responder.close()

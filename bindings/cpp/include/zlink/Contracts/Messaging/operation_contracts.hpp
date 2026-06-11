@@ -5,10 +5,7 @@
 #include "request_result.hpp"
 #include "../Sockets/results.hpp"
 
-#include <atomic>
 #include <chrono>
-#include <coroutine>
-#include <exception>
 #include <functional>
 #include <future>
 #include <memory>
@@ -17,11 +14,6 @@
 
 namespace zlink
 {
-
-namespace detail
-{
-[[nodiscard]] bool schedule_async_wait (std::function<void ()> task_) noexcept;
-} // namespace detail
 
 template <typename T> class async_result_t
 {
@@ -105,55 +97,13 @@ template <typename T> class async_result_t
         return _state->future.get ();
     }
 
-    [[nodiscard]] bool await_ready () const
-    {
-        return wait_for (std::chrono::milliseconds (0)) == std::future_status::ready;
-    }
-
-    void await_suspend (std::coroutine_handle<> continuation_)
-    {
-        std::shared_ptr<shared_state_t> state = _state;
-        state->waiter_started.store (true);
-        auto task = [state, continuation_] () mutable {
-            complete_awaited_state (*state);
-            continuation_.resume ();
-        };
-        try {
-            if (detail::schedule_async_wait (std::move (task)))
-                return;
-        }
-        catch (...) {
-            state->error = std::current_exception ();
-            continuation_.resume ();
-            return;
-        }
-
-        complete_awaited_state (*state);
-        continuation_.resume ();
-    }
-
-    [[nodiscard]] T await_resume ()
-    {
-        if (!_state->waiter_started.load ())
-            return _state->future.get ();
-        if (_state->error)
-            std::rethrow_exception (_state->error);
-        return std::move (*_state->value);
-    }
-
   private:
     struct shared_state_t
     {
-        explicit shared_state_t (std::future<T> future_) :
-            future (std::move (future_)), waiter_started (false)
-        {
-        }
+        explicit shared_state_t (std::future<T> future_) : future (std::move (future_)) {}
 
         std::future<T> future;
         std::function<void ()> progress;
-        std::atomic<bool> waiter_started;
-        std::unique_ptr<T> value;
-        std::exception_ptr error;
     };
 
     static std::chrono::milliseconds progress_slice () { return std::chrono::milliseconds (1); }
@@ -169,17 +119,6 @@ template <typename T> class async_result_t
                != std::future_status::ready) {
             state_.progress ();
             (void) state_.future.wait_for (progress_slice ());
-        }
-    }
-
-    static void complete_awaited_state (shared_state_t &state_)
-    {
-        try {
-            wait_until_ready (state_);
-            state_.value = std::make_unique<T> (state_.future.get ());
-        }
-        catch (...) {
-            state_.error = std::current_exception ();
         }
     }
 

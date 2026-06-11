@@ -46,11 +46,6 @@ class RequestOp(_FluentMessageOp, Protocol):
         """Set how long the request waits for a reply before timing out."""
         ...
 
-    def submit_async(self):
-        """Submit the request and asynchronously return the reply parts, which
-        the caller owns."""
-        ...
-
     def submit(self, callback):
         """Submit the request; the reply is delivered later to ``callback``,
         which owns the reply parts."""
@@ -87,11 +82,6 @@ class ActorJoinOp(_FluentMessageOp, Protocol):
         """Set how long the operation waits for completion before timing out."""
         ...
 
-    def submit_async(self):
-        """Submit and asynchronously return the join result and reply parts,
-        which the caller owns."""
-        ...
-
     def submit(self, callback):
         """Submit; the result and reply parts are delivered later to
         ``callback``."""
@@ -119,10 +109,6 @@ class ActorJoinEntrySpotOp(Protocol):
         """Set how long the operation waits for completion before timing out."""
         ...
 
-    def submit_async(self):
-        """Submit and asynchronously return the result."""
-        ...
-
     def submit(self, callback):
         """Submit; the result is delivered later to ``callback``."""
         ...
@@ -146,11 +132,6 @@ class ActorLeaveOp(Protocol):
         """Set how long the operation waits for completion before timing out."""
         ...
 
-    def submit_async(self):
-        """Submit and asynchronously return the reply parts, which the caller
-        owns."""
-        ...
-
     def submit(self, callback):
         """Submit; the reply is delivered later to ``callback``."""
         ...
@@ -169,10 +150,6 @@ class ActorLookupOp(Protocol):
 
     def timeout(self, timeout):
         """Set how long the lookup waits for completion before timing out."""
-        ...
-
-    def submit_async(self):
-        """Submit and asynchronously return the lookup result."""
         ...
 
     def submit(self, callback):

@@ -2,7 +2,6 @@
 
 #include "support.hpp"
 
-#include <coroutine>
 #include <cstdlib>
 #include <functional>
 #include <future>
@@ -92,30 +91,6 @@ template <typename Fn> void expect_runtime_error (Fn fn_)
         threw = true;
     }
     assert (threw);
-}
-
-struct int_await_task_t
-{
-    struct promise_type
-    {
-        std::promise<int> result;
-
-        int_await_task_t get_return_object () { return int_await_task_t{result.get_future ()}; }
-
-        std::suspend_never initial_suspend () noexcept { return {}; }
-        std::suspend_never final_suspend () noexcept { return {}; }
-
-        void return_value (int value_) { result.set_value (value_); }
-
-        void unhandled_exception () { result.set_exception (std::current_exception ()); }
-    };
-
-    std::future<int> result;
-};
-
-int_await_task_t await_async_result (zlink::async_result_t<int> result_)
-{
-    co_return co_await result_;
 }
 
 void test_pair_recv_nonblocking_returns_empty_without_data ()
@@ -274,7 +249,7 @@ void test_routing_id_copy_assignment_preserves_short_value ()
     assert (routing_id == short_id);
 }
 
-void test_async_result_await_pumps_progress ()
+void test_async_result_wait_pumps_progress ()
 {
     std::promise<int> promise;
     std::future<int> future = promise.get_future ();
@@ -285,9 +260,8 @@ void test_async_result_await_pumps_progress ()
             promise.set_value (42);
     });
 
-    int_await_task_t task = await_async_result (std::move (result));
-    assert (task.result.wait_for (std::chrono::seconds (1)) == std::future_status::ready);
-    assert (task.result.get () == 42);
+    assert (result.wait_for (std::chrono::seconds (1)) == std::future_status::ready);
+    assert (result.get () == 42);
     assert (progress_calls >= 3);
 }
 
@@ -308,6 +282,6 @@ int main ()
     test_routing_id_rejects_oversize_input ();
     test_routing_id_rejects_null_pointer_for_non_empty_bytes ();
     test_routing_id_copy_assignment_preserves_short_value ();
-    test_async_result_await_pumps_progress ();
+    test_async_result_wait_pumps_progress ();
     std::quick_exit (0);
 }

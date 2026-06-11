@@ -433,8 +433,8 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
   `copy_from`, `from_bytes`는 공개 계약의 일부가 아니다.
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation-start
   메서드 패밀리를 추가하지 않는다. operation 이름은 하나로 유지하고 변이는
-  빌더가 흡수하도록 둔다. async 표면도 operation 시작점 이름을 늘리지 않고
-  builder terminator 또는 Python `async def` 표면으로 표현한다.
+  빌더가 흡수하도록 둔다. request 완료는 `submit(callback)`으로 전달하고,
+  Python coroutine 표면은 framework가 별도로 제공한다.
 
 ## 공개 패키지 형태
 

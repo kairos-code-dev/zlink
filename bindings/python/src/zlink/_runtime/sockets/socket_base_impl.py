@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import asyncio
 import errno
 
 from ...contracts.sockets.codes import SocketType
@@ -329,24 +328,10 @@ class DealerSocket(
 
         return RequestOp(
             self,
-            lambda parts, timeout=0: self._request_async_payload(parts, timeout=timeout),
             lambda parts, callback, flags=0, timeout=0: self._request_callback(
                 parts, callback, flags=flags, timeout=timeout
             ),
         )
-
-    async def _request_async_payload(self, payload, *, timeout=0):
-        loop = asyncio.get_running_loop()
-        pending = _PendingRequest(loop=loop)
-        handle = id(pending)
-        self._pending_requests[handle] = pending
-        try:
-            self._start_request(payload, 0, timeout, handle)
-        except Exception:
-            self._pending_requests.pop(handle, None)
-            raise
-        self._request_progress.ensure_running()
-        return await pending.future
 
     def close(self):
         self._cancel_pending_requests(RequestResult.TERMINATED)
@@ -401,12 +386,7 @@ class DealerSocket(
     def _cancel_pending_requests(self, result):
         for handle, pending in list(self._pending_requests.items()):
             self._pending_requests.pop(handle, None)
-            if pending.future is not None and not pending.future.done():
-                pending.loop.call_soon_threadsafe(
-                    pending.future.set_exception,
-                    RequestError(result, getattr(errno, "ETERM", 156)),
-                )
-            elif pending.callback is not None:
+            if pending.callback is not None:
                 try:
                     pending.callback(result, [])
                 except Exception:
@@ -448,26 +428,10 @@ class RouterSocket(
 
         return RequestOp(
             self,
-            lambda parts, timeout=0: self._request_async_payload(
-                peer_rid, parts, timeout=timeout
-            ),
             lambda parts, callback, flags=0, timeout=0: self._request_callback(
                 peer_rid, parts, callback, flags=flags, timeout=timeout
             ),
         )
-
-    async def _request_async_payload(self, peer_rid, payload, *, timeout=0):
-        loop = asyncio.get_running_loop()
-        pending = _PendingRequest(loop=loop)
-        handle = id(pending)
-        self._pending_requests[handle] = pending
-        try:
-            self._start_request(peer_rid, payload, 0, timeout, handle)
-        except Exception:
-            self._pending_requests.pop(handle, None)
-            raise
-        self._request_progress.ensure_running()
-        return await pending.future
 
     def reply(self, routing_id, request_seq):
         from ..service.spot import ReplyOp
@@ -781,9 +745,6 @@ class RouterSocket(
 
         return RequestOp(
             self,
-            lambda parts, timeout=0: self._request_to_spot_async_payload(
-                dest_node_rid, dest_spot_rid, parts, timeout=timeout
-            ),
             lambda parts, callback, flags=0, timeout=0: self._request_to_spot_callback_payload(
                 dest_node_rid,
                 dest_spot_rid,
@@ -793,35 +754,6 @@ class RouterSocket(
                 timeout=timeout,
             ),
         )
-
-    async def _request_to_spot_async_payload(self, dest_node_rid, dest_spot_rid, payload, *, timeout=0):
-        native_parts = _spot_clone_payload(payload)
-        native_node = _copy_routing_id(dest_node_rid)
-        native_spot = _copy_routing_id(dest_spot_rid)
-        reply_handler = self._ensure_spot_reply_handler()
-
-        pending = _PendingRequest(loop=asyncio.get_running_loop())
-        handle = id(pending)
-        self._spot_request_pending[handle] = pending
-        rc, err = _submit_parts(
-            native_parts,
-            lambda part_ptr, part_flag: lib().zlink_router_request_spot_part(
-                self._handle,
-                ctypes.byref(native_node),
-                ctypes.byref(native_spot),
-                part_ptr,
-                reply_handler,
-                ctypes.c_void_p(handle),
-                0,
-                part_flag,
-                _spot_timeout_to_ms(timeout),
-            ),
-        )
-        if rc != 0:
-            self._spot_request_pending.pop(handle, None)
-            _raise_result_error(SubmitError, SubmitResult, rc, err)
-        self._request_progress.ensure_running()
-        return await pending.future
 
     def _request_to_spot_callback_payload(self, dest_node_rid, dest_spot_rid, payload, callback, *, flags=0, timeout=0):
         native_parts = _spot_clone_payload(payload)
@@ -894,12 +826,7 @@ class RouterSocket(
     def _cancel_pending_requests(self, result):
         for handle, pending in list(self._pending_requests.items()):
             self._pending_requests.pop(handle, None)
-            if pending.future is not None and not pending.future.done():
-                pending.loop.call_soon_threadsafe(
-                    pending.future.set_exception,
-                    RequestError(result, getattr(errno, "ETERM", 156)),
-                )
-            elif pending.callback is not None:
+            if pending.callback is not None:
                 try:
                     pending.callback(result, [])
                 except Exception:
@@ -908,12 +835,7 @@ class RouterSocket(
     def _cancel_spot_pending_requests(self, result):
         for handle, pending in list(self._spot_request_pending.items()):
             self._spot_request_pending.pop(handle, None)
-            if pending.future is not None and not pending.future.done():
-                pending.loop.call_soon_threadsafe(
-                    pending.future.set_exception,
-                    RequestError(result, getattr(errno, "ETERM", 156)),
-                )
-            elif pending.callback is not None:
+            if pending.callback is not None:
                 try:
                     pending.callback(result, [])
                 except Exception:

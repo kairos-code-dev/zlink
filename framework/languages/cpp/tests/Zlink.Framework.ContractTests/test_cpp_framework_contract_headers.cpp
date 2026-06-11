@@ -40,9 +40,7 @@
 #include <zlink/http_client/contracts/client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
-#include <zlink/stream_connector/codecs/coroutine_auto_codec.hpp>
-#include <zlink/stream_connector/coroutine.hpp>
-#include <zlink/stream_connector/coroutine/task.hpp>
+#include <zlink/stream_connector_throwing.hpp>
 #include <zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp>
 #include <zlink/stream_connector/contracts/codec_registry.hpp>
 #include <zlink/stream_connector/contracts/connector.hpp>
@@ -56,6 +54,9 @@
 #include <zlink/stream_connector/contracts/zlink_stream_interfaces.hpp>
 #include <zlink/stream_connector/contracts/zlink_stream_models.hpp>
 #include <zlink/stream_connector/version.hpp>
+#include <zlink/stream_e2e_client.hpp>
+#include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
+#include <zlink/stream_e2e_client/task.hpp>
 
 #include <future>
 #include <functional>
@@ -67,6 +68,10 @@
 static_assert (zlink::framework::version_major == 0);
 static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
+static_assert (std::is_same_v<
+               decltype (zlink::stream_e2e_client::use (
+                 std::declval<zlink::stream_connector::connector_t &> ())),
+               zlink::stream_e2e_client::coroutine_connector_t>);
 static_assert (!std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().async ()),

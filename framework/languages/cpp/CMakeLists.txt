@@ -8,9 +8,16 @@ find_package(Threads REQUIRED)
 
 option(ZLINK_FRAMEWORK_CPP_BUILD_TESTS "Build C++ framework tests" ON)
 option(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES "Build C++ framework samples" ON)
+option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK "Install C++ framework and HTTP client package artifacts" ON)
+option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT "Build Stream Connector e2e client helpers" ON)
+option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL "Build Unreal Stream Connector source adapter" ON)
+option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT "Build Godot Stream Connector source adapter" ON)
+option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL "Build Axmol Stream Connector source adapter" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK "Enable Stream Connector MessagePack helpers" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF "Enable Stream Connector Protobuf helpers" ON)
 option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 "Enable Stream Connector LZ4 compression" ON)
+option(ZLINK_STREAM_CONNECTOR_WITH_TLS "Enable Stream Connector TLS transport" ON)
+option(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET "Enable Stream Connector WebSocket transport" ON)
 option(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE "Enable C++ framework gcov coverage instrumentation" OFF)
 set(ZLINK_FRAMEWORK_CPP_COVERAGE_THRESHOLD 80 CACHE STRING
   "Minimum C++ framework runtime line coverage percentage")
@@ -45,6 +52,14 @@ elseif(WIN32)
 endif()
 
 if(NOT TARGET zlink::cpp)
+  if(NOT DEFINED ZLINK_CPP_CODEC_MESSAGEPACK)
+    set(ZLINK_CPP_CODEC_MESSAGEPACK ${ZLINK_STREAM_CONNECTOR_WITH_MESSAGEPACK}
+      CACHE BOOL "Build and install the C++ MessagePack codec target")
+  endif()
+  if(NOT DEFINED ZLINK_CPP_CODEC_PROTOBUF)
+    set(ZLINK_CPP_CODEC_PROTOBUF ${ZLINK_STREAM_CONNECTOR_WITH_PROTOBUF}
+      CACHE BOOL "Build and install the C++ Protobuf codec target")
+  endif()
   set(ZLINK_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(ZLINK_CPP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   add_subdirectory(
@@ -201,31 +216,31 @@ if(OpenSSL_FOUND AND ZLINK_OPENSSL_EXECUTABLE)
 endif()
 
 add_library(zlink_stream_connector STATIC
-  connector/src/runtime/calls/zlink_stream_calls.cpp
-  connector/src/runtime/connector_lifecycle.cpp
-  connector/src/runtime/connector_runtime.cpp
-  connector/src/runtime/heartbeat_monitor.cpp
-  connector/src/runtime/protocol/compression/lz4_compression_codec.cpp
-  connector/src/runtime/protocol/framing/frame_codec.cpp
-  connector/src/runtime/protocol/framing.cpp
-  connector/src/runtime/protocol/header_codec.cpp
-  connector/src/runtime/protocol/metadata_codec.cpp
-  connector/src/runtime/protocol/packet_name_resolver.cpp
-  connector/src/runtime/transport/stream_connection.cpp
-  connector/src/runtime/transport/stream_transport_factory.cpp
-  connector/src/runtime/transport/websocket_connection.cpp)
+  connector/core/src/runtime/calls/zlink_stream_calls.cpp
+  connector/core/src/runtime/connector_lifecycle.cpp
+  connector/core/src/runtime/connector_runtime.cpp
+  connector/core/src/runtime/heartbeat_monitor.cpp
+  connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp
+  connector/core/src/runtime/protocol/framing/frame_codec.cpp
+  connector/core/src/runtime/protocol/framing.cpp
+  connector/core/src/runtime/protocol/header_codec.cpp
+  connector/core/src/runtime/protocol/metadata_codec.cpp
+  connector/core/src/runtime/protocol/packet_name_resolver.cpp
+  connector/core/src/runtime/transport/stream_connection.cpp
+  connector/core/src/runtime/transport/stream_transport_factory.cpp
+  connector/core/src/runtime/transport/websocket_connection.cpp)
 add_library(zlink::stream_connector ALIAS zlink_stream_connector)
 set_target_properties(zlink_stream_connector PROPERTIES
   EXPORT_NAME stream_connector)
 target_compile_features(zlink_stream_connector PUBLIC cxx_std_20)
 target_include_directories(zlink_stream_connector PUBLIC
-  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/include>
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_include_directories(zlink_stream_connector PRIVATE
-  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)
+  ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
 target_link_libraries(zlink_stream_connector PUBLIC zlink::cpp)
 target_link_libraries(zlink_stream_connector PRIVATE Threads::Threads)
-if(OpenSSL_FOUND)
+if(ZLINK_STREAM_CONNECTOR_WITH_TLS AND OpenSSL_FOUND)
   target_compile_definitions(zlink_stream_connector PRIVATE
     ZLINK_STREAM_CONNECTOR_WITH_OPENSSL)
   target_link_libraries(zlink_stream_connector PRIVATE
@@ -235,6 +250,10 @@ if(OpenSSL_FOUND)
     "find_dependency(OpenSSL)")
 else()
   set(ZLINK_STREAM_CONNECTOR_EXPORT_OPENSSL_DEPENDENCY "")
+endif()
+if(ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET)
+  target_compile_definitions(zlink_stream_connector PRIVATE
+    ZLINK_STREAM_CONNECTOR_WITH_WEBSOCKET)
 endif()
 if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
   find_path(ZLINK_LZ4_INCLUDE_DIR lz4.h)
@@ -300,29 +319,81 @@ if(ZLINK_STREAM_CONNECTOR_PROTOBUF_ENABLED)
     zlink::cpp_codec_protobuf)
 endif()
 
-add_library(zlink_unreal_stream_connector STATIC
-  unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp)
-set_target_properties(zlink_unreal_stream_connector PROPERTIES
-  EXPORT_NAME unreal_stream_connector)
-target_compile_features(zlink_unreal_stream_connector PUBLIC cxx_std_20)
-target_include_directories(zlink_unreal_stream_connector PUBLIC
-  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/unreal-connector/Source/ZLinkStreamConnector/Public>
-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector>)
-if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
-  if(ZLINK_LZ4_INCLUDE_DIR AND ZLINK_LZ4_LIBRARY)
-    target_include_directories(zlink_unreal_stream_connector PRIVATE
-      ${ZLINK_LZ4_INCLUDE_DIR})
-    target_link_libraries(zlink_unreal_stream_connector PRIVATE
-      ${ZLINK_LZ4_LIBRARY})
-  else()
-    target_sources(zlink_unreal_stream_connector PRIVATE
-      ${zlink_lz4_SOURCE_DIR}/lib/lz4.c)
-    target_include_directories(zlink_unreal_stream_connector PRIVATE
-      ${zlink_lz4_SOURCE_DIR}/lib)
-  endif()
+if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
+  add_library(zlink_stream_e2e_client INTERFACE)
+  add_library(zlink::stream_e2e_client ALIAS zlink_stream_e2e_client)
+  set_target_properties(zlink_stream_e2e_client PROPERTIES
+    EXPORT_NAME stream_e2e_client)
+  target_compile_features(zlink_stream_e2e_client INTERFACE cxx_std_20)
+  target_include_directories(zlink_stream_e2e_client INTERFACE
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/e2e-client/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+  target_link_libraries(zlink_stream_e2e_client INTERFACE
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
 endif()
-target_compile_definitions(zlink_unreal_stream_connector PRIVATE
-  $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_UNREAL_STREAM_CONNECTOR_WITH_LZ4>)
+
+add_library(zlink_stream_connector_throwing INTERFACE)
+add_library(zlink::stream_connector_throwing ALIAS zlink_stream_connector_throwing)
+set_target_properties(zlink_stream_connector_throwing PROPERTIES
+  EXPORT_NAME stream_connector_throwing)
+target_compile_features(zlink_stream_connector_throwing INTERFACE cxx_std_20)
+target_include_directories(zlink_stream_connector_throwing INTERFACE
+  $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/throwing-adapter/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(zlink_stream_connector_throwing INTERFACE
+  zlink::stream_connector)
+
+if(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL)
+  add_library(zlink_unreal_stream_connector STATIC
+    connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp)
+  set_target_properties(zlink_unreal_stream_connector PROPERTIES
+    EXPORT_NAME unreal_stream_connector)
+  target_compile_features(zlink_unreal_stream_connector PUBLIC cxx_std_20)
+  target_include_directories(zlink_unreal_stream_connector PUBLIC
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/engines/unreal/Source/ZLinkStreamConnector/Public>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector>)
+  target_link_libraries(zlink_unreal_stream_connector PRIVATE
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
+  if(ZLINK_STREAM_CONNECTOR_WITH_LZ4)
+    if(ZLINK_LZ4_INCLUDE_DIR AND ZLINK_LZ4_LIBRARY)
+      target_include_directories(zlink_unreal_stream_connector PRIVATE
+        ${ZLINK_LZ4_INCLUDE_DIR})
+      target_link_libraries(zlink_unreal_stream_connector PRIVATE
+        ${ZLINK_LZ4_LIBRARY})
+    else()
+      target_sources(zlink_unreal_stream_connector PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib/lz4.c)
+      target_include_directories(zlink_unreal_stream_connector PRIVATE
+        ${zlink_lz4_SOURCE_DIR}/lib)
+    endif()
+  endif()
+  target_compile_definitions(zlink_unreal_stream_connector PRIVATE
+    $<$<BOOL:${ZLINK_STREAM_CONNECTOR_WITH_LZ4}>:ZLINK_UNREAL_STREAM_CONNECTOR_WITH_LZ4>)
+endif()
+
+if(ZLINK_STREAM_CONNECTOR_BUILD_GODOT)
+  add_library(zlink_godot_stream_connector STATIC
+    connector/engines/godot/src/zlink_godot_stream_connector.cpp)
+  target_compile_features(zlink_godot_stream_connector PUBLIC cxx_std_20)
+  target_include_directories(zlink_godot_stream_connector PUBLIC
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/engines/godot/include>)
+  target_link_libraries(zlink_godot_stream_connector PRIVATE
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
+endif()
+
+if(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL)
+  add_library(zlink_axmol_stream_connector STATIC
+    connector/engines/axmol/src/zlink_axmol_stream_connector.cpp)
+  target_compile_features(zlink_axmol_stream_connector PUBLIC cxx_std_20)
+  target_include_directories(zlink_axmol_stream_connector PUBLIC
+    $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/connector/engines/axmol/include>)
+  target_link_libraries(zlink_axmol_stream_connector PRIVATE
+    zlink::stream_connector
+    zlink::stream_connector_codecs)
+endif()
 
 function(zlink_enable_coverage target_name)
   if(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)
@@ -339,7 +410,15 @@ endfunction()
 zlink_enable_coverage(zlink_framework)
 zlink_enable_coverage(zlink_http_client)
 zlink_enable_coverage(zlink_stream_connector)
-zlink_enable_coverage(zlink_unreal_stream_connector)
+if(TARGET zlink_unreal_stream_connector)
+  zlink_enable_coverage(zlink_unreal_stream_connector)
+endif()
+if(TARGET zlink_godot_stream_connector)
+  zlink_enable_coverage(zlink_godot_stream_connector)
+endif()
+if(TARGET zlink_axmol_stream_connector)
+  zlink_enable_coverage(zlink_axmol_stream_connector)
+endif()
 
 function(add_zlink_framework_extension target_name alias_name)
   add_library(${target_name} INTERFACE)
@@ -388,45 +467,71 @@ add_zlink_framework_extension(
   zlink_framework_extension_custom_transport
   zlink::framework_extension_custom_transport)
 
-install(TARGETS
-  zlink_framework
-  zlink_http_client
-  zlink_framework_extension_metrics
-  zlink_framework_extension_tracing
-  zlink_framework_extension_kafka_bridge
-  zlink_framework_extension_grpc_bridge
-  zlink_framework_extension_http_gateway
-  zlink_framework_extension_advanced_retry
-  zlink_framework_extension_dead_letter_storage
-  zlink_framework_extension_flatbuffers
-  zlink_framework_extension_yaml_config
-  zlink_framework_extension_custom_codec
-  zlink_framework_extension_custom_transport
-  EXPORT zlink_framework_cppTargets)
+if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(TARGETS
+    zlink_framework
+    zlink_http_client
+    zlink_framework_extension_metrics
+    zlink_framework_extension_tracing
+    zlink_framework_extension_kafka_bridge
+    zlink_framework_extension_grpc_bridge
+    zlink_framework_extension_http_gateway
+    zlink_framework_extension_advanced_retry
+    zlink_framework_extension_dead_letter_storage
+    zlink_framework_extension_flatbuffers
+    zlink_framework_extension_yaml_config
+    zlink_framework_extension_custom_codec
+    zlink_framework_extension_custom_transport
+    EXPORT zlink_framework_cppTargets)
+endif()
 install(TARGETS
   zlink_stream_connector
   zlink_stream_connector_codecs
-  zlink_unreal_stream_connector
+  zlink_stream_connector_throwing
   EXPORT zlink_stream_connector_cppTargets)
-install(DIRECTORY framework/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.hpp")
-install(DIRECTORY http-client/include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.hpp")
+if(TARGET zlink_unreal_stream_connector)
+  install(TARGETS
+    zlink_unreal_stream_connector
+    EXPORT zlink_stream_connector_cppTargets)
+endif()
+if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
+  install(TARGETS
+    zlink_stream_e2e_client
+    EXPORT zlink_stream_connector_cppTargets)
+endif()
+if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(DIRECTORY framework/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+  install(DIRECTORY http-client/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+endif()
 install(DIRECTORY
   ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/bindings/cpp/codecs/zlink-codec-json/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp")
-install(DIRECTORY extensions/include/
+if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(DIRECTORY extensions/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+endif()
+install(DIRECTORY connector/core/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp")
-install(DIRECTORY connector/include/
+if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)
+  install(DIRECTORY connector/e2e-client/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp")
+endif()
+install(DIRECTORY connector/throwing-adapter/include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp")
-install(DIRECTORY unreal-connector/Source/ZLinkStreamConnector/Public/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector
-  FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+if(TARGET zlink_unreal_stream_connector)
+  install(DIRECTORY connector/engines/unreal/Source/ZLinkStreamConnector/Public/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ZLinkStreamConnector
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+endif()
 if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}")
   if(WIN32)
     install(FILES "${ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME}"
@@ -445,9 +550,11 @@ if(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME AND EXISTS "${ZLINK_FRAMEWORK_CPP_NATIVE_R
       DESTINATION ${CMAKE_INSTALL_LIBDIR})
   endif()
 endif()
-install(EXPORT zlink_framework_cppTargets
-  NAMESPACE zlink::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(EXPORT zlink_framework_cppTargets
+    NAMESPACE zlink::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+endif()
 install(EXPORT zlink_stream_connector_cppTargets
   NAMESPACE zlink::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp)
@@ -460,9 +567,11 @@ configure_package_config_file(
   "${CMAKE_CURRENT_LIST_DIR}/cmake/zlink_stream_connector_cppConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/zlink_stream_connector_cppConfig.cmake"
   INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp)
-install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/zlink_framework_cppConfig.cmake"
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/zlink_framework_cppConfig.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_framework_cpp)
+endif()
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/zlink_stream_connector_cppConfig.cmake"
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/zlink_stream_connector_cpp)
@@ -513,7 +622,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     target_link_libraries(${target_name} PRIVATE zlink::stream_connector)
     target_link_zlink_test_harness(${target_name})
     target_include_directories(${target_name} PRIVATE
-      ${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)
+      ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
     add_test(NAME ${target_name} COMMAND ${target_name})
     set_tests_properties(${target_name} PROPERTIES
       LABELS "${labels}"
@@ -539,6 +648,9 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     zlink::framework_extension_metrics
     zlink::http_client
     zlink::stream_connector
+    zlink::stream_connector_codecs
+    zlink::stream_e2e_client
+    zlink::stream_connector_throwing
     GTest::gtest
     GTest::gmock)
   add_test(NAME test_cpp_framework_contract_headers
@@ -762,7 +874,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
     "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed")
   target_link_libraries(test_cpp_stream_connector PRIVATE
-    zlink::stream_connector_codecs)
+    zlink::stream_connector_codecs
+    zlink::stream_e2e_client)
   if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
     target_compile_definitions(test_cpp_stream_connector PRIVATE
       ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
@@ -772,6 +885,26 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       OpenSSL::SSL
       OpenSSL::Crypto)
   endif()
+  add_executable(sample_stream_connector_core_client
+    connector/core/samples/core_client_smoke.cpp)
+  target_link_libraries(sample_stream_connector_core_client PRIVATE
+    zlink::stream_connector)
+  add_test(NAME sample_stream_connector_core_client
+    COMMAND sample_stream_connector_core_client)
+  set_tests_properties(sample_stream_connector_core_client PROPERTIES
+    LABELS "connector-e2e;connector-contract"
+    TIMEOUT 30)
+
+  add_executable(sample_stream_e2e_client
+    connector/e2e-client/samples/e2e_client_smoke.cpp)
+  target_link_libraries(sample_stream_e2e_client PRIVATE
+    zlink::stream_e2e_client)
+  add_test(NAME sample_stream_e2e_client
+    COMMAND sample_stream_e2e_client)
+  set_tests_properties(sample_stream_e2e_client PROPERTIES
+    LABELS "connector-e2e"
+    TIMEOUT 30)
+
   add_zlink_http_client_test(
     test_cpp_http_client
     http-client/tests/test_cpp_http_client.cpp
@@ -796,7 +929,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     GTest::gmock)
   add_test(NAME test_unreal_stream_connector COMMAND test_unreal_stream_connector)
   set_tests_properties(test_unreal_stream_connector PROPERTIES
-    LABELS "unreal-connector-contract;unreal-connector-compile;unreal-connector-smoke"
+    LABELS "connector-unreal-contract;connector-unreal-compile;connector-unreal-smoke"
     TIMEOUT 30)
 endif()
 

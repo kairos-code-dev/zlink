@@ -47,9 +47,9 @@ set(required_labels
   connector-transport
   connector-typed
   connector-package
-  unreal-connector-contract
-  unreal-connector-compile
-  unreal-connector-smoke
+  connector-unreal-contract
+  connector-unreal-compile
+  connector-unreal-smoke
   parity)
 
 set(known_labels
@@ -91,7 +91,7 @@ if(NOT print_labels_result EQUAL 0)
 endif()
 
 string(REGEX MATCHALL
-  "(^|\n)  (http-client-[A-Za-z0-9_-]+|connector-[A-Za-z0-9_-]+|unreal-connector-[A-Za-z0-9_-]+|framework-sample-[A-Za-z0-9_-]+)"
+  "(^|\n)  (http-client-[A-Za-z0-9_-]+|connector-[A-Za-z0-9_-]+|connector-unreal-[A-Za-z0-9_-]+|framework-sample-[A-Za-z0-9_-]+)"
   wildcard_label_lines
   "${print_labels_output}")
 foreach(label_line IN LISTS wildcard_label_lines)

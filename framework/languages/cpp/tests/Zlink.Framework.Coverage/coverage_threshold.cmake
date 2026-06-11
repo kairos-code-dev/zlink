@@ -65,7 +65,7 @@ foreach(report IN LISTS gcov_reports)
   endforeach()
 
   if(NOT source_path MATCHES
-      "^${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/(framework/src|http-client/src|connector/src|unreal-connector/Source)/.*\\.(cpp|hpp)$")
+      "^${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/(framework/src|http-client/src|connector/core/src|connector/engines/unreal/Source)/.*\\.(cpp|hpp)$")
     continue()
   endif()
 

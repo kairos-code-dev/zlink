@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <zlink/stream_connector.hpp>
-#include <zlink/stream_connector/coroutine.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
-#include <zlink/stream_connector/codecs/coroutine_auto_codec.hpp>
+#include <zlink/stream_e2e_client.hpp>
+#include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
 
@@ -74,16 +74,16 @@ static_assert (
 static_assert (!has_core_async_terminator<zlink::stream_connector::wait_call_t<auto_payload_t>>);
 static_assert (
   std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::coroutine_connector_t &> ()
+    decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
                 .wait_for<auto_payload_t> ()
                 .async ()),
-    zlink::stream_connector::task_t<auto_payload_t>>);
+    zlink::stream_e2e_client::task_t<auto_payload_t>>);
 static_assert (std::is_same_v<
-               decltype (zlink::stream_connector::codecs::request<auto_payload_t> (
-                            std::declval<zlink::stream_connector::coroutine_connector_t &> (),
+               decltype (zlink::stream_e2e_client::codecs::request<auto_payload_t> (
+                            std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
                             std::declval<auto_payload_t> ())
                            .async ()),
-               zlink::stream_connector::task_t<auto_payload_t>>);
+               zlink::stream_e2e_client::task_t<auto_payload_t>>);
 
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
 {
@@ -105,14 +105,14 @@ void from_stream_payload (const zlink::message_t &payload, auto_payload_t &messa
     message = payload.parse_json<auto_payload_t> ();
 }
 
-zlink::stream_connector::task_t<void>
-send_with_coroutine_submit (zlink::stream_connector::coroutine_connector_t &connector)
+zlink::stream_e2e_client::task_t<void>
+send_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &connector)
 {
     co_await connector.send (login_request_t{}).packet_name ("coroutine.send").async ();
 }
 
-zlink::stream_connector::task_t<login_reply_t>
-request_with_coroutine_submit (zlink::stream_connector::coroutine_connector_t &connector)
+zlink::stream_e2e_client::task_t<login_reply_t>
+request_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &connector)
 {
     auto reply = co_await connector.request<login_reply_t> (login_request_t{})
                    .packet_name ("coroutine.request")
@@ -853,7 +853,7 @@ int main ()
     if (!coroutine_connector.connect ()) {
         return 73;
     }
-    auto coroutine_adapter = zlink::stream_connector::coroutine (coroutine_connector);
+    auto coroutine_adapter = zlink::stream_e2e_client::use (coroutine_connector);
     auto coroutine_send = send_with_coroutine_submit (coroutine_adapter).result ();
     if (!coroutine_send) {
         return 74;

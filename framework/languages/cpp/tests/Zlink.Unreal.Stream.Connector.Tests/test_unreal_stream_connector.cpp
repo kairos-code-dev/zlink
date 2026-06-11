@@ -8,13 +8,14 @@ int main ()
 {
     UZLinkStreamConnector connector;
     connector.Connect ("tcp://127.0.0.1:9400");
-    if (!connector.IsConnected ()
-        || connector.LastState () != EZLinkStreamConnectionState::Connected) {
+    connector.Dispatch ();
+    if (connector.IsConnected ()
+        || connector.LastState () != EZLinkStreamConnectionState::Disconnected) {
         return 1;
     }
     if (connector.OnConnectionStateChanged.NumBroadcasts () == 0
         || connector.OnConnectionStateChanged.LastBroadcastValue ()
-             != EZLinkStreamConnectionState::Connected) {
+             != EZLinkStreamConnectionState::Disconnected) {
         return 6;
     }
 
@@ -39,6 +40,7 @@ int main ()
     }
 
     connector.ShutdownForPie ();
+    connector.Dispatch ();
     if (connector.IsConnected () || connector.LastState () != EZLinkStreamConnectionState::Closed) {
         return 3;
     }
@@ -49,12 +51,14 @@ int main ()
 
     connector.Connect ("tcp://127.0.0.1:9401");
     connector.ShutdownForMapUnload ();
+    connector.Dispatch ();
     if (connector.LastState () != EZLinkStreamConnectionState::Closed) {
         return 4;
     }
 
     connector.Connect ("tcp://127.0.0.1:9402");
     connector.ShutdownForGameInstanceShutdown ();
+    connector.Dispatch ();
     if (connector.LastState () != EZLinkStreamConnectionState::Closed) {
         return 5;
     }

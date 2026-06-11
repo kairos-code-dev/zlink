@@ -104,6 +104,8 @@ endforeach()
 foreach(required_target IN ITEMS
     "zlink::stream_connector"
     "zlink::stream_connector_codecs"
+    "zlink::stream_e2e_client"
+    "zlink::stream_connector_throwing"
     "zlink::unreal_stream_connector")
   if(NOT connector_targets_text MATCHES "${required_target}")
     message(FATAL_ERROR "stream connector package export lacks ${required_target}")
@@ -134,6 +136,8 @@ target_link_libraries(consumer PRIVATE
   zlink::http_client
   zlink::stream_connector
   zlink::stream_connector_codecs
+  zlink::stream_e2e_client
+  zlink::stream_connector_throwing
   zlink::unreal_stream_connector)
 ]=])
 
@@ -143,6 +147,9 @@ file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
+#include <zlink/stream_connector_throwing.hpp>
+#include <zlink/stream_e2e_client.hpp>
+#include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 #include <ZLinkStreamConnector/ZLinkStreamConnector.h>
 
 #include <nlohmann/json.hpp>
@@ -174,6 +181,15 @@ main ()
   }
   auto packet =
     zlink::stream_connector::codecs::encode_packet (login_request_t {});
+  auto connector =
+    zlink::stream_connector::connector_factory_t::create (
+      zlink::stream_connector::connector_options_t{});
+  auto e2e_client = zlink::stream_e2e_client::use (connector);
+  (void) e2e_client;
+  auto throwing_connector =
+    zlink::stream_connector_throwing::create (
+      zlink::stream_connector::connector_options_t{});
+  (void) throwing_connector;
   UZLinkStreamConnector unreal_connector;
   unreal_connector.Tick (0.0F);
   return packet.name == login_request_t::packet_name ? 0 : 1;

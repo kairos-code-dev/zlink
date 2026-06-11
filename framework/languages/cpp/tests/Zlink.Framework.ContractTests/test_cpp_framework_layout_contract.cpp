@@ -233,13 +233,13 @@ bool non_empty_directories_do_not_keep_gitkeep (const std::filesystem::path &roo
     const std::filesystem::path roots[] = {
       root / "framework/include",
       root / "framework/src/runtime",
-      root / "connector/include",
-      root / "connector/src/runtime",
+      root / "connector/core/include",
+      root / "connector/core/src/runtime",
       root / "http-client/include",
       root / "http-client/src/runtime",
       root / "extensions/include",
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public",
-      root / "unreal-connector/Source/ZLinkStreamConnector/Private"};
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private"};
 
     for (const auto &scan_root : roots) {
         if (!std::filesystem::exists (scan_root)) {
@@ -332,8 +332,8 @@ bool implementation_plan_expands_label_wildcards (const std::filesystem::path &r
       "| `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, "
       "`connector-contract`, "
       "`connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |",
-      "| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, "
-      "`unreal-connector-smoke` |",
+      "| `connector-unreal-*` | `connector-unreal-contract`, `connector-unreal-compile`, "
+      "`connector-unreal-smoke` |",
       "| `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, "
       "`framework-sample-api`, "
       "`framework-sample-bingo`, `framework-sample-play`, "
@@ -374,9 +374,9 @@ bool implementation_plan_goal20_covers_connector_labels (const std::filesystem::
       "ctest --test-dir framework/languages/cpp/build -L connector-transport",
       "ctest --test-dir framework/languages/cpp/build -L connector-typed",
       "ctest --test-dir framework/languages/cpp/build -L connector-package",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke"};
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-contract",
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-compile",
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke"};
     for (const auto &command : commands) {
         if (goal.find (command) == std::string::npos) {
             std::cerr << "Goal 20 verification commands lack: " << command << '\n';
@@ -1345,11 +1345,11 @@ bool implementation_plan_goal22_covers_final_label_axes (const std::filesystem::
       "ctest --test-dir framework/languages/cpp/build -L connector-typed --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L connector-package --output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract "
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-contract "
       "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile "
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-compile "
       "--output-on-failure",
-      "ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke "
+      "ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke "
       "--output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure",
       "ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure",
@@ -1738,7 +1738,7 @@ bool http_client_public_surface_declares_general_client_features (
 bool stream_connector_public_surface_hides_runtime_internals (const std::filesystem::path &root)
 {
     bool ok = true;
-    const auto include_root = root / "connector/include";
+    const auto include_root = root / "connector/core/include";
     const std::string forbidden[] = {
       "connector_state_t",      "connector_runtime_t",    "pending_request_t", "pending_requests",
       "transport_connection_t", "stream_connection_t",    "frame_codec_t",     "header_codec_t",
@@ -1910,35 +1910,35 @@ int main ()
     ok &= require_exists (root / "framework/src/runtime/configuration/builders");
     ok &= require_exists (
       root / "framework/src/runtime/configuration/builders/configuration_builder.cpp");
-    ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts");
-    ok &= require_exists (root / "connector/include/zlink/stream_connector/contracts/calls");
+    ok &= require_exists (root / "connector/core/include/zlink/stream_connector/contracts");
+    ok &= require_exists (root / "connector/core/include/zlink/stream_connector/contracts/calls");
     ok &= require_exists (
-      root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
+      root / "connector/core/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp");
     ok &= require_exists (
       root
-      / "connector/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
+      / "connector/core/include/zlink/stream_connector/contracts/zlink_stream_connector_options.hpp");
     ok &= require_exists (
-      root / "connector/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
-    ok &= require_exists (root / "connector/src/runtime");
-    ok &= require_exists (root / "connector/src/runtime/calls");
-    ok &= require_exists (root / "connector/src/runtime/protocol");
-    ok &= require_exists (root / "connector/src/runtime/protocol/compression");
-    ok &= require_exists (root / "connector/src/runtime/protocol/framing");
-    ok &= require_exists (root / "connector/src/runtime/transport");
-    ok &= require_exists (root / "connector/src/runtime/connector_lifecycle.cpp");
-    ok &= require_exists (root / "connector/src/runtime/heartbeat_monitor.cpp");
-    ok &= require_exists (root / "connector/src/runtime/calls/zlink_stream_calls.cpp");
+      root / "connector/core/include/zlink/stream_connector/contracts/zlink_stream_models.hpp");
+    ok &= require_exists (root / "connector/core/src/runtime");
+    ok &= require_exists (root / "connector/core/src/runtime/calls");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/compression");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/framing");
+    ok &= require_exists (root / "connector/core/src/runtime/transport");
+    ok &= require_exists (root / "connector/core/src/runtime/connector_lifecycle.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/heartbeat_monitor.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/calls/zlink_stream_calls.cpp");
     ok &= require_exists (root
-                          / "connector/src/runtime/protocol/compression/lz4_compression_codec.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/framing/frame_codec.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/framing.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/header_codec.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/metadata_codec.cpp");
-    ok &= require_exists (root / "connector/src/runtime/protocol/packet_name_resolver.cpp");
-    ok &= require_exists (root / "connector/src/runtime/transport/stream_connection.cpp");
-    ok &= require_exists (root / "connector/src/runtime/transport/stream_transport_factory.cpp");
-    ok &= require_exists (root / "connector/src/runtime/transport/websocket_connection.cpp");
-    ok &= require_exists (root / "connector/src/runtime/backend/contracts");
+                          / "connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/framing/frame_codec.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/framing.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/header_codec.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/metadata_codec.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/protocol/packet_name_resolver.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/transport/stream_connection.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/transport/stream_transport_factory.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/transport/websocket_connection.cpp");
+    ok &= require_exists (root / "connector/core/src/runtime/backend/contracts");
     ok &= require_exists (root / "http-client/include/zlink/http_client.hpp");
     ok &= require_exists (root / "http-client/include/zlink/http_client/contracts/client.hpp");
     ok &= require_exists (root / "http-client/src/runtime");
@@ -1958,11 +1958,18 @@ int main ()
       root / "tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp");
     ok &= require_exists (
       root / "tests/Zlink.Unreal.Stream.Connector.Tests/test_unreal_stream_connector.cpp");
-    ok &= require_exists (root / "unreal-connector/Source/ZLinkStreamConnector/Public");
-    ok &= require_exists (root / "unreal-connector/Source/ZLinkStreamConnector/Private");
+    const auto old_unreal_connector_dir = std::string ("unreal") + "-connector";
+    ok &= require_absent (root / old_unreal_connector_dir,
+                          "Unreal connector belongs under connector/engines/unreal");
+    ok &= require_exists (root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public");
+    ok &= require_exists (root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private");
     ok &= require_exists (root
-                          / "unreal-connector/Source/ZLinkStreamConnector/Private/"
+                          / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
                             "ZLinkStreamConnectorAutomationTests.cpp");
+    ok &= require_exists (
+      root
+      / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
+        "ZLinkStreamConnectorTests.Build.cs");
     ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_names.hpp");
     ok &= require_exists (root / "samples/Bingo/Server/Configuration/sample_topology.hpp");
     ok &= require_exists (root / "samples/Bingo/Client/Configuration/sample_topology.hpp");
@@ -2120,9 +2127,9 @@ int main ()
     ok &= client_sample_does_not_include_server_implementation (root, "samples/Bingo/Client");
     ok &= client_sample_does_not_include_server_implementation (root, "samples/TicTacToe/Client");
     ok &= sample_client_targets_do_not_link_framework (root);
-    ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "socket_fd",
+    ok &= file_does_not_contain (root / "connector/core/src/runtime/connector_runtime.hpp", "socket_fd",
                                  "C++ connector runtime must not use raw fd state");
-    ok &= file_does_not_contain (root / "connector/src/runtime/connector_runtime.hpp", "recv(",
+    ok &= file_does_not_contain (root / "connector/core/src/runtime/connector_runtime.hpp", "recv(",
                                  "C++ connector runtime must not expose raw recv state");
     ok &= file_contains (root / "framework/src/runtime/handlers/handler_registry.cpp",
                          "runtime::handler_coroutine_executor ().submit");
@@ -2147,52 +2154,104 @@ int main ()
       root / "framework/src/runtime/channels/route_handler_invoker.cpp", ".result(",
       "route handler dispatch must await task_t instead of blocking with result()");
     ok &= file_does_not_contain (
-      root / "connector/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp",
+      root / "connector/core/include/zlink/stream_connector/contracts/calls/zlink_stream_calls.hpp",
       ".result", "connector callback submit must observe task completion instead of blocking");
     ok &= file_does_not_contain (
-      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp", ".result",
+      root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp", ".result",
       "connector auto codec callback submit must observe task completion instead of blocking");
     ok &= file_does_not_contain (
-      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp", "on_completed ([&",
+      root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp", "on_completed ([&",
       "connector auto codec must not depend on immediate callback completion");
     ok &= file_does_not_contain (
-      root / "connector/include/zlink/stream_connector/codecs/auto_codec.hpp",
+      root / "connector/core/include/zlink/stream_connector/codecs/auto_codec.hpp",
       "std::optional<result_t", "connector auto codec must let task_t own result storage details");
     ok &= file_does_not_contain (
-      root / "connector/src/runtime/connector_runtime.cpp", ".result",
+      root / "connector/core/include/zlink/stream_connector.hpp", "stream_e2e_client",
+      "core connector umbrella must not include the e2e client surface");
+    ok &= file_does_not_contain (
+      root / "connector/core/include/zlink/stream_connector.hpp", "<coroutine>",
+      "core connector umbrella must not include coroutine support");
+    ok &= file_does_not_contain (
+      root / "connector/core/include/zlink/stream_connector.hpp", "task_t",
+      "core connector umbrella must not expose e2e task_t");
+    ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink_stream_e2e_client INTERFACE)");
+    ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink::stream_e2e_client ALIAS zlink_stream_e2e_client)");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "option(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "option(ZLINK_STREAM_CONNECTOR_BUILD_UNREAL");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "option(ZLINK_STREAM_CONNECTOR_BUILD_GODOT");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "option(ZLINK_STREAM_CONNECTOR_BUILD_AXMOL");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "if(ZLINK_STREAM_CONNECTOR_BUILD_E2E_CLIENT)");
+    ok &= file_contains (root / "CMakeLists.txt", "add_library(zlink_stream_connector_throwing INTERFACE)");
+    ok &= require_exists (
+      root / "connector/throwing-adapter/include/zlink/stream_connector_throwing.hpp");
+    ok &= file_does_not_contain (
+      root / "connector/core/include/zlink/stream_connector.hpp",
+      "stream_connector_throwing",
+      "core connector umbrella must not include the throwing adapter surface");
+    ok &= file_does_not_contain (
+      root / "connector/core/src/runtime/connector_runtime.cpp", ".result",
       "connector send callback submit must observe task completion instead of blocking");
     ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
-      "zlink/stream_connector", "Unreal connector must not wrap the general C++ connector runtime");
-    ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
       "zlink/stream_connector",
       "Unreal public API must not include the general C++ connector surface");
     ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "task_t",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "task_t",
       "Unreal public API must not expose connector coroutine task_t");
     ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
       "<coroutine>", "Unreal public API must not include coroutine support");
     ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h",
       "co_await", "Unreal public API must not expose coroutine await syntax");
     ok &= file_does_not_contain (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "submit",
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h", "submit",
       "Unreal public API must use delegates instead of connector submit calls");
     ok &= file_does_not_contain (
       root / "CMakeLists.txt",
       "target_link_libraries(zlink_unreal_stream_connector PUBLIC zlink::stream_connector)",
-      "Unreal connector target must not publicly wrap the general C++ connector");
-    ok &= file_does_not_contain (
-      root / "CMakeLists.txt",
-      "target_link_libraries(zlink_unreal_stream_connector PRIVATE zlink::stream_connector)",
-      "Unreal connector target must not privately wrap the general C++ connector");
+      "Unreal connector target must not expose the general C++ connector publicly");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "target_link_libraries(zlink_unreal_stream_connector PRIVATE\n"
+                         "    zlink::stream_connector\n"
+                         "    zlink::stream_connector_codecs)");
     ok &= file_does_not_contain (
       root / "CMakeLists.txt",
       "target_include_directories(zlink_unreal_stream_connector PRIVATE\n  "
-      "${ZLINK_FRAMEWORK_CPP_DIR}/connector/src)",
+      "${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)",
       "Unreal connector target must not include general connector runtime internals");
+    ok &= file_contains (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "#include <zlink/stream_connector.hpp>");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "enum class frame_",
+      "Unreal adapter must not define its own STREAM frame enums");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "encode_frame",
+      "Unreal adapter must delegate frame encoding to the core connector");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "decode_frame",
+      "Unreal adapter must delegate frame decoding to the core connector");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "connector/core/src/runtime",
+      "Unreal adapter must not include core connector runtime internals");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Sockets\"",
+      "Unreal adapter must not use Unreal socket APIs when wrapping the non-Unreal core");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Networking\"",
+      "Unreal adapter must not use Unreal networking APIs when wrapping the non-Unreal core");
     ok &= file_does_not_contain (
       root / "CMakeLists.txt", "ZLINK_STREAM_CONNECTOR_WITH_JSON",
       "Stream connector JSON helper is always included and must not expose a fake option");
@@ -2234,20 +2293,172 @@ int main ()
     ok &= file_contains (
       root / "CMakeLists.txt",
       "option(ZLINK_STREAM_CONNECTOR_WITH_LZ4 \"Enable Stream Connector LZ4 compression\" ON)");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Sockets\"",
+      "Unreal plugin must not depend on Unreal socket APIs when core owns transport");
+    ok &= file_does_not_contain (
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
+      "\"Networking\"",
+      "Unreal plugin must not depend on Unreal networking APIs when core owns transport");
     ok &= file_contains (
-      root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
-      "\"Sockets\"");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "TWeakObjectPtr<UZLinkStreamConnector>");
     ok &= file_contains (
-      root / "unreal-connector/Source/ZLinkStreamConnector/ZLinkStreamConnector.Build.cs",
-      "\"Networking\"");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp",
+      "DetachOwner");
+    ok &= require_absent (
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnector/Private/"
+          "ZLinkStreamConnectorAutomationTests.cpp",
+      "Unreal Automation Tests must live in the Rider/Editor-visible test module");
+    ok &= file_contains (root / "connector/engines/unreal/ZLinkStreamConnector.uplugin",
+                         "\"Name\": \"ZLinkStreamConnectorTests\"");
+    ok &= file_contains (root / "connector/engines/unreal/ZLinkStreamConnector.uplugin",
+                         "\"Type\": \"DeveloperTool\"");
+    ok &= file_contains (
+      root
+        / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/"
+          "ZLinkStreamConnectorTests.Build.cs",
+      "\"ZLinkStreamConnector\"");
     ok &= file_contains (root
-                           / "unreal-connector/Source/ZLinkStreamConnector/Private/"
+                           / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
                              "ZLinkStreamConnectorAutomationTests.cpp",
                          "IMPLEMENT_SIMPLE_AUTOMATION_TEST");
-    ok &= file_contains (root
-                           / "unreal-connector/Source/ZLinkStreamConnector/Private/"
-                             "ZLinkStreamConnectorAutomationTests.cpp",
-                         "FSocket");
+    ok &= file_does_not_contain (root
+                                   / "connector/engines/unreal/Source/ZLinkStreamConnectorTests/Private/"
+                                     "ZLinkStreamConnectorAutomationTests.cpp",
+                                 "FSocket",
+                                 "Unreal Automation Test must not reimplement STREAM loopback protocol");
+    ok &= require_exists (root / "connector/engines/godot/CMakeLists.txt");
+    ok &= require_exists (
+      root / "connector/engines/godot/include/zlink_godot_stream_connector.hpp");
+    ok &= require_exists (
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp");
+    ok &= file_does_not_contain (
+      root / "connector/engines/godot/include/zlink_godot_stream_connector.hpp",
+      "zlink/stream_connector",
+      "Godot public API must not expose the general C++ connector surface");
+    ok &= file_contains (
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+      "#include <zlink/stream_connector.hpp>");
+    ok &= file_does_not_contain (
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+      "enum class frame_",
+      "Godot adapter must not define its own STREAM frame enums");
+    ok &= file_contains (
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+      "main_thread_dispatcher");
+    ok &= file_contains (
+      root / "connector/engines/godot/src/zlink_godot_stream_connector.cpp",
+      "emit_request");
+    ok &= require_exists (
+      root / "connector/engines/godot/extension/zlink_stream_connector.gdextension");
+    ok &= require_exists (
+      root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd");
+    ok &= file_contains (
+      root / "connector/engines/godot/tests/zlink_stream_connector_tests.gd",
+      "engine-required");
+    ok &= require_exists (root / "connector/engines/axmol/CMakeLists.txt");
+    ok &= require_exists (
+      root / "connector/engines/axmol/include/zlink_axmol_stream_connector.hpp");
+    ok &= require_exists (
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp");
+    ok &= file_does_not_contain (
+      root / "connector/engines/axmol/include/zlink_axmol_stream_connector.hpp",
+      "zlink/stream_connector",
+      "Axmol public API must not expose the general C++ connector surface");
+    ok &= file_contains (
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+      "#include <zlink/stream_connector.hpp>");
+    ok &= file_does_not_contain (
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+      "enum class frame_",
+      "Axmol adapter must not define its own STREAM frame enums");
+    ok &= file_contains (
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+      "axmol_thread_dispatcher");
+    ok &= file_contains (
+      root / "connector/engines/axmol/src/zlink_axmol_stream_connector.cpp",
+      "emit_request");
+    ok &= require_exists (root / "connector/engines/axmol/tests/test_app.cpp");
+    ok &= file_contains (root / "connector/engines/axmol/tests/test_app.cpp",
+                         "engine-required");
+    ok &= require_exists (root / "connector/core/packaging/vcpkg/vcpkg.json");
+    ok &= require_exists (root / "connector/core/packaging/vcpkg/portfile.cmake");
+    ok &= require_exists (root / "connector/core/packaging/conan/conanfile.py");
+    ok &= require_exists (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json");
+    ok &= require_exists (root / "connector/e2e-client/packaging/vcpkg/portfile.cmake");
+    ok &= require_exists (root / "connector/e2e-client/packaging/conan/conanfile.py");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"name\": \"zlink-stream-connector\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"boost-beast\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"vcpkg-cmake\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"msgpack-cxx\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"protobuf\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"openssl\"");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                         "\"lz4\"");
+    ok &= file_contains (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
+                         "\"name\": \"zlink-stream-e2e-client\"");
+    ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
+                         "name = \"zlink-stream-connector\"");
+    ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
+                         "name = \"zlink-stream-e2e-client\"");
+    ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
+                         "version = \"0.1.0\"");
+    ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
+                         "version = \"0.1.0\"");
+    ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
+                         "\"shared\": [True, False]");
+    ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
+                         "package_type = \"header-library\"");
+    ok &= file_contains (root / "connector/e2e-client/packaging/conan/conanfile.py",
+                         "requires = \"zlink-stream-connector/0.1.0\"");
+    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/conan/conanfile.py",
+                                 "CMake(self).install()",
+                                 "e2e Conan package must not reinstall the core connector package");
+    ok &= file_contains (root / "CMakeLists.txt",
+                         "option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK");
+    ok &= file_contains (root / "connector/core/packaging/conan/conanfile.py",
+                         "ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
+                         "-DZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK=OFF");
+    ok &= file_contains (root / "connector/e2e-client/packaging/vcpkg/portfile.cmake",
+                         "zlink_stream_e2e_clientConfig.cmake");
+    ok &= file_contains (root / "connector/e2e-client/packaging/vcpkg/portfile.cmake",
+                         "find_dependency(zlink_stream_connector_cpp CONFIG)");
+    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/portfile.cmake",
+                                 "vcpkg_cmake_install",
+                                 "e2e vcpkg package must not reinstall the core connector package");
+    ok &= file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                                 "unreal",
+                                 "engine adapters must not be part of the core vcpkg package");
+    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
+                                 "unreal",
+                                 "engine adapters must not be part of the e2e vcpkg package");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
+                         "-DZLINK_STREAM_CONNECTOR_BUILD_UNREAL=OFF");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
+                         "-DZLINK_STREAM_CONNECTOR_BUILD_GODOT=OFF");
+    ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
+                         "-DZLINK_STREAM_CONNECTOR_BUILD_AXMOL=OFF");
+    ok &= file_contains (root / "connector/doc/draft/cpp-stream-connector.ko.md",
+                         "Cocos Creator는 TypeScript connector 문서에서 다룬다.");
+    ok &= file_does_not_contain (root / "CMakeLists.txt",
+                                 "cocos-connector",
+                                 "C++ connector package names must not use ambiguous cocos-connector");
+    ok &= file_does_not_contain (root / "connector/core/packaging/vcpkg/vcpkg.json",
+                                 "cocos-connector",
+                                 "core vcpkg package must not use ambiguous cocos-connector");
+    ok &= file_does_not_contain (root / "connector/e2e-client/packaging/vcpkg/vcpkg.json",
+                                 "cocos-connector",
+                                 "e2e vcpkg package must not use ambiguous cocos-connector");
     ok &= http_client_public_surface_declares_general_client_features (root);
     ok &= stream_connector_public_surface_hides_runtime_internals (root);
     ok &= http_hosting_public_surface_excludes_non_goal_features (root);
@@ -2272,21 +2483,27 @@ int main ()
       "HTTP hosting must reuse listener TLS context instead of creating it per connection");
 
     ok &= public_headers_do_not_include_runtime (root / "framework/include");
-    ok &= public_headers_do_not_include_runtime (root / "connector/include");
+    ok &= public_headers_do_not_include_runtime (root / "connector/core/include");
     ok &= public_headers_do_not_include_runtime (root / "http-client/include");
     ok &= public_headers_do_not_include_runtime (root / "extensions/include");
     ok &= public_headers_do_not_include_runtime (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public");
+    ok &= public_headers_do_not_include_runtime (root / "connector/engines/godot/include");
+    ok &= public_headers_do_not_include_runtime (root / "connector/engines/axmol/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "framework/include");
-    ok &= public_headers_do_not_expose_runtime_dependencies (root / "connector/include");
+    ok &= public_headers_do_not_expose_runtime_dependencies (root / "connector/core/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "http-client/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (root / "extensions/include");
     ok &= public_headers_do_not_expose_runtime_dependencies (
-      root / "unreal-connector/Source/ZLinkStreamConnector/Public");
+      root / "connector/engines/unreal/Source/ZLinkStreamConnector/Public");
+    ok &= public_headers_do_not_expose_runtime_dependencies (
+      root / "connector/engines/godot/include");
+    ok &= public_headers_do_not_expose_runtime_dependencies (
+      root / "connector/engines/axmol/include");
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
-    ok &= contract_headers_have_compile_coverage (root, "connector/include", "");
+    ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");
     ok &= contract_headers_have_compile_coverage (root, "http-client/include", "");
     ok &= contract_headers_have_compile_coverage (root, "extensions/include", "");
     ok &= draft_tracking_table_matches_files (root);

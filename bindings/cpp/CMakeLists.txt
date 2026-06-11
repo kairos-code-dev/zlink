@@ -14,6 +14,9 @@ option(
   "Prefer core/build runtime over the bundled C++ native runtime"
   OFF
 )
+option(ZLINK_CPP_CODEC_JSON "Build and install the C++ JSON codec target" ON)
+option(ZLINK_CPP_CODEC_MESSAGEPACK "Build and install the C++ MessagePack codec target" ON)
+option(ZLINK_CPP_CODEC_PROTOBUF "Build and install the C++ Protobuf codec target" ON)
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
@@ -231,34 +234,40 @@ function(add_zlink_cpp_codec_target codec_name include_dir)
     FILES_MATCHING PATTERN "*.hpp")
 endfunction()
 
-find_package(nlohmann_json QUIET)
-if(nlohmann_json_FOUND)
+if(ZLINK_CPP_CODEC_JSON)
+  find_package(nlohmann_json QUIET)
+endif()
+if(ZLINK_CPP_CODEC_JSON AND nlohmann_json_FOUND)
   add_zlink_cpp_codec_target(
     json
     ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-json/include
     nlohmann_json::nlohmann_json)
 endif()
 
-find_package(msgpack-cxx QUIET CONFIG)
-if(TARGET msgpack-cxx)
+if(ZLINK_CPP_CODEC_MESSAGEPACK)
+  find_package(msgpack-cxx QUIET CONFIG)
+endif()
+if(ZLINK_CPP_CODEC_MESSAGEPACK AND TARGET msgpack-cxx)
   add_zlink_cpp_codec_target(
     messagepack
     ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
     msgpack-cxx)
-elseif(TARGET msgpack-cxx::msgpack-cxx)
+elseif(ZLINK_CPP_CODEC_MESSAGEPACK AND TARGET msgpack-cxx::msgpack-cxx)
   add_zlink_cpp_codec_target(
     messagepack
     ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-messagepack/include
     msgpack-cxx::msgpack-cxx)
 endif()
 
-find_package(Protobuf QUIET)
-if(TARGET protobuf::libprotobuf)
+if(ZLINK_CPP_CODEC_PROTOBUF)
+  find_package(Protobuf QUIET)
+endif()
+if(ZLINK_CPP_CODEC_PROTOBUF AND TARGET protobuf::libprotobuf)
   add_zlink_cpp_codec_target(
     protobuf
     ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include
     protobuf::libprotobuf)
-elseif(TARGET protobuf::protobuf)
+elseif(ZLINK_CPP_CODEC_PROTOBUF AND TARGET protobuf::protobuf)
   add_zlink_cpp_codec_target(
     protobuf
     ${CMAKE_CURRENT_LIST_DIR}/codecs/zlink-codec-protobuf/include

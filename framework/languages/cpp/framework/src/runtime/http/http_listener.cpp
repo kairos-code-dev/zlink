@@ -18,8 +18,10 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -103,6 +105,7 @@ class http_host_service_t::listener_t
         }
         beast::error_code ignored;
         _acceptor.close (ignored);
+        close_open_connections ();
         wait_for_workers ();
     }
 
@@ -136,6 +139,46 @@ class http_host_service_t::listener_t
         }
         _io_workers.join ();
     }
+
+    // Keep-alive clients hold connections open between requests, and the
+    // worker's synchronous read cannot be cancelled by a timer. Stop must
+    // shut the open sockets down so blocked workers unblock and join.
+    void close_open_connections () noexcept
+    {
+        const std::lock_guard<std::mutex> lock (_sockets_mutex);
+        for (auto *socket : _sockets) {
+            beast::error_code ignored;
+            socket->shutdown (tcp::socket::shutdown_both, ignored);
+        }
+    }
+
+    class connection_registration_t
+    {
+      public:
+        connection_registration_t (listener_t &listener, tcp::socket &socket) :
+            _listener (listener), _socket (socket)
+        {
+            const std::lock_guard<std::mutex> lock (_listener._sockets_mutex);
+            _listener._sockets.insert (&_socket);
+            if (_listener._stop->load (std::memory_order_acquire)) {
+                beast::error_code ignored;
+                _socket.shutdown (tcp::socket::shutdown_both, ignored);
+            }
+        }
+
+        ~connection_registration_t ()
+        {
+            const std::lock_guard<std::mutex> lock (_listener._sockets_mutex);
+            _listener._sockets.erase (&_socket);
+        }
+
+        connection_registration_t (const connection_registration_t &) = delete;
+        connection_registration_t &operator= (const connection_registration_t &) = delete;
+
+      private:
+        listener_t &_listener;
+        tcp::socket &_socket;
+    };
 
     void reject_overloaded (tcp::socket socket)
     {
@@ -211,6 +254,7 @@ class http_host_service_t::listener_t
     void handle_http (tcp::socket socket)
     {
         beast::tcp_stream stream (std::move (socket));
+        connection_registration_t registration (*this, stream.socket ());
         beast::error_code ec;
         serve_requests (stream);
         stream.socket ().shutdown (tcp::socket::shutdown_send, ec);
@@ -223,6 +267,7 @@ class http_host_service_t::listener_t
             return;
         }
         asio::ssl::stream<tcp::socket> stream (std::move (socket), *_tls_context);
+        connection_registration_t registration (*this, stream.next_layer ());
         beast::error_code ec;
         stream.handshake (asio::ssl::stream_base::server, ec);
         if (ec) {
@@ -242,6 +287,8 @@ class http_host_service_t::listener_t
     std::atomic_bool *_stop;
     std::atomic_size_t _active_connections;
     std::atomic_bool _workers_stopped{false};
+    std::mutex _sockets_mutex;
+    std::unordered_set<tcp::socket *> _sockets;
     parsed_http_endpoint_t _parsed;
     asio::io_context _io;
     asio::thread_pool _io_workers;

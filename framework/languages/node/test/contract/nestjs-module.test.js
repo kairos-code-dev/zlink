@@ -3,7 +3,7 @@ const test = require('node:test');
 const { Inject, Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 const {
   providerTokens,

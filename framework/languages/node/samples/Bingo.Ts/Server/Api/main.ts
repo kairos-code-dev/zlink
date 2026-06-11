@@ -7,26 +7,28 @@ const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { createRegistryClient } = require('../discovery-support');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { MatchBingoHandler } = require('./Handlers/match-bingo-handler');
-const { SampleNames } = require('../../Shared/Configuration/sample-names');
+const { SampleNames } = require('../Configuration/sample-names');
+const { loadSampleConfig } = require('../Configuration/sample-config');
 const { PacketNames } = require('../../Shared/Contracts/messages');
 
 async function bootstrap(): Promise<void> {
-  const registry = await createRegistryClient(process.env.BINGO_REGISTRY_ENDPOINT);
+  const config = loadSampleConfig();
+  const registry = await createRegistryClient(config.registryEndpoint);
   const play = await registry.resolve(SampleNames.playService);
 
   class BingoApiModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot(
-        zlinkFramework()
+      ZLinkModule.forRootFactory({
+        useFactory: () => zlinkFramework()
           .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .server(process.env.BINGO_API_ENDPOINT)
+            .server(config.apiEndpoint)
             .handlerGroup('api'))
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
             .client(play.endpoint))
           .build()
-      )
+      })
     ],
     providers: [
       ...zlinkHandlers('api')
@@ -40,11 +42,11 @@ async function bootstrap(): Promise<void> {
     logger: false,
     abortOnError: false
   });
-  await registry.register(SampleNames.apiService, process.env.BINGO_API_ENDPOINT);
+  await registry.register(SampleNames.apiService, config.apiEndpoint);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: process.env.BINGO_API_ENDPOINT,
+    endpoint: config.apiEndpoint,
     channelName: 'bingo.api'
   })}\n`);
 

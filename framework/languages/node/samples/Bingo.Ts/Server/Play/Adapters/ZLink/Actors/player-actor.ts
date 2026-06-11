@@ -1,9 +1,9 @@
 class PlayerActor {
   [key: string]: any;
-  constructor(actorId: string, displayName: string, boundSession: any) {
+  constructor(actorId: string, displayName: string, actorRef: unknown) {
     this.actorId = actorId;
     this.displayName = displayName;
-    this.boundSession = boundSession;
+    this.actorRef = actorRef;
   }
 }
 

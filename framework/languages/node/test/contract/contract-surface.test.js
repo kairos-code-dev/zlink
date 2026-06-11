@@ -36,6 +36,28 @@ test('framework runtime exports decorator factories and enums from the catalog',
   assert.deepEqual(missing.sort(), []);
 });
 
+test('framework public root does not expose direct runtime start hosts', () => {
+  const framework = require('../../packages/framework/dist');
+  const hiddenNames = [
+    'ZLinkFrameworkRuntimeHost',
+    'ZLinkRegistryRuntime',
+    'ZLinkStreamBindingRuntime'
+  ];
+
+  const exposed = hiddenNames.filter((name) => name in framework);
+
+  assert.deepEqual(exposed, []);
+});
+
+test('framework package exports only the public root contract', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(workspaceRoot, 'packages', 'framework', 'package.json'), 'utf8'));
+
+  assert.deepEqual(Object.keys(packageJson.exports).sort(), ['.']);
+  assert.equal(packageJson.exports['.'].default, './dist/index.js');
+  assert.equal(packageJson.exports['.'].types, './dist/index.d.ts');
+});
+
 test('spot actor lifecycle handler registration API is not public', () => {
   const declarations = readTree(declarationsRoot);
   const workspaceText = [

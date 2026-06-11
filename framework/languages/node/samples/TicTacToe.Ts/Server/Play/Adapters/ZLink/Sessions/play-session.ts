@@ -10,7 +10,7 @@ const {
   joinGameInternalReq,
   placeMarkReq
 } = require('../../../../../Shared/Contracts/messages');
-const { SampleNames, SampleTimings } = require('../../../../../Shared/Configuration/sample-settings');
+const { SampleNames, SampleTimings } = require('../../../../Configuration/sample-settings');
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,

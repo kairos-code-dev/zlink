@@ -5,7 +5,7 @@ const {
   createGameHttpRes,
   createGameReq
 } = require('../../../Shared/Contracts/messages');
-const { SampleNames, SampleTimings } = require('../../../Shared/Configuration/sample-settings');
+const { SampleNames, SampleTimings } = require('../../Configuration/sample-settings');
 import type {
   CreateGameHttpRes,
   CreateGameReq,

@@ -4,7 +4,8 @@ const { Inject, Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, zlinkFramework, zlinkHandlers } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { SampleNames } = require('../../Shared/Configuration/sample-names');
+const { SampleNames } = require('../Configuration/sample-names');
+const { loadSampleConfig } = require('../Configuration/sample-config');
 const {
   PacketNames,
   registerServiceRes,
@@ -66,28 +67,29 @@ class ResolveServiceHandler {
 Inject(BingoServiceRegistry)(RegisterServiceHandler, undefined, 0);
 Inject(BingoServiceRegistry)(ResolveServiceHandler, undefined, 0);
 
-class BingoRegistryModule {}
-
-Module({
-  imports: [
-    ZLinkModule.forRoot(
-      zlinkFramework()
-        .clientServerChannel(SampleNames.registryChannel, (channel) => channel
-          .server(process.env.BINGO_REGISTRY_ENDPOINT)
-          .handlerGroup('registry'))
-        .build()
-    )
-  ],
-  providers: [
-    BingoServiceRegistry,
-    ...zlinkHandlers('registry')
-      .request(RegisterServiceHandler, PacketNames.registerServiceReq)
-      .request(ResolveServiceHandler, PacketNames.resolveServiceReq)
-      .providers()
-  ]
-})(BingoRegistryModule);
-
 async function bootstrap(): Promise<void> {
+  const config = loadSampleConfig();
+  class BingoRegistryModule {}
+
+  Module({
+    imports: [
+      ZLinkModule.forRootFactory({
+        useFactory: () => zlinkFramework()
+          .clientServerChannel(SampleNames.registryChannel, (channel) => channel
+            .server(config.registryEndpoint)
+            .handlerGroup('registry'))
+          .build()
+      })
+    ],
+    providers: [
+      BingoServiceRegistry,
+      ...zlinkHandlers('registry')
+        .request(RegisterServiceHandler, PacketNames.registerServiceReq)
+        .request(ResolveServiceHandler, PacketNames.resolveServiceReq)
+        .providers()
+    ]
+  })(BingoRegistryModule);
+
   const app = await NestFactory.createApplicationContext(BingoRegistryModule, {
     logger: false,
     abortOnError: false
@@ -95,7 +97,7 @@ async function bootstrap(): Promise<void> {
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: process.env.BINGO_REGISTRY_ENDPOINT,
+    endpoint: config.registryEndpoint,
     channelName: SampleNames.registryChannel
   })}\n`);
 

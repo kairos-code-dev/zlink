@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 
 test('runtime task runner observes detached task exceptions without unhandled rejection', async () => {
   const abortController = new AbortController();

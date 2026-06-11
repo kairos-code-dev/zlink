@@ -6,16 +6,27 @@ NestJS Bingo sample 은 이 TypeScript sample 을 기준으로 제공한다.
 
 ## 실행
 
+Linux 또는 WSL:
+
 ```bash
 cd framework/languages/node/samples/Bingo.Ts
-npm run build
-npm run start
+./run_sample.sh
+```
+
+Windows PowerShell:
+
+```powershell
+cd framework\languages\node\samples\Bingo.Ts
+.\run_sample.ps1
 ```
 
 ## Topology
 
+- `run_sample.sh`, `run_sample.ps1`: Registry, Play, API, Session 서버 process 를 시작하고 readiness 를
+  확인한 뒤 client self-check 를 실행한다.
 - `Client/`: 두 client 를 만들고 각 client 가 Session stream 연결 하나만 유지한다.
   요청 직후 response 를 확인하고, push 순서가 중요한 곳은 notify promise 를 먼저 만든다.
+  Client 코드는 서버 process 를 직접 시작하지 않는다.
 - `Server/Api/`: Registry 에서 Play service endpoint 를 조회한 뒤 API channel 과
   matching handler 를 제공한다.
 - `Server/Session/`: stream endpoint 를 열고 인증 후 현재 session 을 Play actor 에 bind한다.
@@ -29,11 +40,18 @@ npm run start
 - `Server/Registry/`: API/Play service endpoint 를 등록하고 service name 으로 조회할 수
   있게 한다. Session 과 API 는 peer endpoint 를 직접 들고 있지 않고 Registry 를 통해
   연결 대상을 찾는다.
-- `Shared/`: TypeScript sample names 와 message helper 구성을 제공한다.
+- `Server/Configuration/`: 서버 role 의 channel 이름, 서비스 이름, timeout, 실행 endpoint 설정을 둔다.
+- `Client/Configuration/`: client self-check 실행 설정을 둔다.
+- `Client/bingo-client-scenario.ts`: 인증, matching, card 제출, draw push, final state 검증을
+  순서대로 표현하는 client scenario 를 둔다.
+- `Shared/Contracts/`: client 와 server 가 함께 쓰는 Protobuf message DTO, `.proto`, codec 만 둔다.
+
+샘플 코드는 framework runtime 내부 파일을 직접 import하지 않는다. NestJS provider token,
+framework builder, channel client, stream connector처럼 공개된 API만 사용한다.
 
 ## Success Condition
 
-- TypeScript entrypoint 가 TypeScript Registry, Session, Play, API process 를 시작한다.
+- runner 가 TypeScript Registry, Play, API, Session process 를 시작한다.
 - Play 와 API 는 Registry 에 service endpoint 를 등록하고, Session 과 API 는 Registry 조회로
   필요한 peer endpoint 를 찾는다.
 - 두 client 가 Session stream endpoint 에만 연결한다.
@@ -44,5 +62,5 @@ npm run start
 
 ## 회귀 테스트
 
-`run_samples.sh` 와 `sample-regression.test.js` 에서 TypeScript 샘플 build/run 여부를
+`run_samples.sh`, `run_samples.ps1`, `sample-regression.test.js` 에서 TypeScript 샘플 build/run 여부를
 확인한다.

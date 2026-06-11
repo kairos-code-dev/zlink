@@ -7,7 +7,8 @@ const connector = require('../../../../../packages/stream-connector/dist');
 const msgpack = require('../../../../../packages/stream-connector-msgpack/dist');
 const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { SampleNames } = require('../../Shared/Configuration/sample-settings');
+const { SampleNames } = require('../Configuration/sample-settings');
+const { loadSampleConfig } = require('../Configuration/sample-config');
 const { PlayActorFactory } = require('./Adapters/ZLink/Actors/play-actor-factory');
 const { PlayEntrySpot } = require('./Adapters/ZLink/Spots/play-entry-spot');
 const { PlayActorJoinGameHandler } = require('./Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler');
@@ -38,20 +39,21 @@ type DispatchSession = {
 };
 
 async function main(): Promise<void> {
+  const config = loadSampleConfig();
   class TicTacToePlayModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot(
-        zlinkFramework()
+      ZLinkModule.forRootFactory({
+        useFactory: () => zlinkFramework()
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .server(process.env.TICTACTOE_PLAY_ENDPOINT)
+            .server(config.playEndpoint)
             .handlerGroup('play'))
           .build()
-      )
+      })
     ],
     providers: [
-      { provide: PLAY_STREAM_ENDPOINT, useValue: process.env.TICTACTOE_PLAY_STREAM_ENDPOINT },
+      { provide: PLAY_STREAM_ENDPOINT, useValue: config.playStreamEndpoint },
       TicTacToeGameCreator,
       PlayActorFactory,
       PlayActorJoinGameHandler,
@@ -86,11 +88,11 @@ async function main(): Promise<void> {
       }
     });
   });
-  await listen(streamServer, process.env.TICTACTOE_PLAY_STREAM_ENDPOINT);
+  await listen(streamServer, config.playStreamEndpoint);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: process.env.TICTACTOE_PLAY_ENDPOINT,
-    streamEndpoint: process.env.TICTACTOE_PLAY_STREAM_ENDPOINT
+    endpoint: config.playEndpoint,
+    streamEndpoint: config.playStreamEndpoint
   })}\n`);
   await waitForShutdown();
   await new Promise<void>((resolve, reject) => streamServer.close((error) => error ? reject(error) : resolve()));

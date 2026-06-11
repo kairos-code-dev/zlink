@@ -7,7 +7,8 @@ const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
 const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
-const { SampleNames } = require('../../Shared/Configuration/sample-settings');
+const { SampleNames } = require('../Configuration/sample-settings');
+const { loadSampleConfig } = require('../Configuration/sample-config');
 
 type HttpEndpoint = {
   host: string;
@@ -15,19 +16,20 @@ type HttpEndpoint = {
 };
 
 async function main(): Promise<void> {
+  const config = loadSampleConfig();
   class TicTacToeApiModule {}
 
   Module({
     imports: [
-      ZLinkModule.forRoot(
-        zlinkFramework()
+      ZLinkModule.forRootFactory({
+        useFactory: () => zlinkFramework()
           .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .server(process.env.TICTACTOE_API_ENDPOINT)
+            .server(config.apiEndpoint)
             .handlerGroup('api'))
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(process.env.TICTACTOE_PLAY_ENDPOINT))
+            .client(config.playEndpoint))
           .build()
-      )
+      })
     ],
     providers: [
       CreateGameHttpHandler,
@@ -56,11 +58,11 @@ async function main(): Promise<void> {
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }
   });
-  await listen(server, process.env.TICTACTOE_API_HTTP_ENDPOINT);
+  await listen(server, config.apiHttpEndpoint);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: process.env.TICTACTOE_API_ENDPOINT,
-    httpEndpoint: process.env.TICTACTOE_API_HTTP_ENDPOINT
+    endpoint: config.apiEndpoint,
+    httpEndpoint: config.apiHttpEndpoint
   })}\n`);
   await waitForShutdown();
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

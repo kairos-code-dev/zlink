@@ -5,7 +5,7 @@ const {
   allocateBingoRoomReq,
   matchBingoApiRes
 } = require('../../../Shared/Contracts/messages');
-const { SampleNames, SampleTimings } = require('../../../Shared/Configuration/sample-names');
+const { SampleNames, SampleTimings } = require('../../Configuration/sample-names');
 import type {
   AllocateBingoRoomRes,
   MatchBingoApiRes,

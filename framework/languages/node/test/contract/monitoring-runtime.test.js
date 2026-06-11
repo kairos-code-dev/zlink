@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 
 test('socket monitoring source maps backend raw events into framework typed events', async () => {
   const events = [];

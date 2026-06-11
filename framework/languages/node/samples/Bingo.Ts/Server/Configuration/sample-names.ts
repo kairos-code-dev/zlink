@@ -1,4 +1,4 @@
-const { PacketNames } = require('../Contracts/messages');
+const { PacketNames } = require('../../Shared/Contracts/messages');
 
 const SampleNames = {
   apiChannel: 'bingo.api',

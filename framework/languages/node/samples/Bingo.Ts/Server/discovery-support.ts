@@ -3,7 +3,7 @@ require('reflect-metadata');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkFramework } = require('../../../../packages/nestjs/dist');
-const { SampleNames, SampleTimings } = require('../Shared/Configuration/sample-names');
+const { SampleNames, SampleTimings } = require('./Configuration/sample-names');
 const {
   PacketNames,
   registerServiceReq,

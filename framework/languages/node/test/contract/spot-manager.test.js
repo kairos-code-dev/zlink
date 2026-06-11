@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 const connector = require('../../packages/stream-connector/dist');
 const json = require('../../packages/stream-connector-json/dist');
 const msgpack = require('../../packages/stream-connector-msgpack/dist');

@@ -3,6 +3,7 @@ const { PlayActorFactory } = require('../Actors/play-actor-factory');
 const { PlayEntrySpot } = require('../Spots/play-entry-spot');
 const { PlayActorPlaceMarkHandler } = require('../Spots/Handlers/play-actor-place-mark-handler');
 const { PlaySession } = require('./play-session');
+const { loadSampleConfig } = require('../../../../Configuration/sample-config');
 
 class PlaySessionFactory {
   [key: string]: any;
@@ -14,7 +15,7 @@ class PlaySessionFactory {
 
   create(transport: any): any {
     return new PlaySession({
-      apiEndpoint: process.env.TICTACTOE_API_ENDPOINT,
+      apiEndpoint: loadSampleConfig().apiEndpoint,
       actorFactory: this.actorFactory,
       entrySpot: this.entrySpot,
       placeMarkHandler: this.placeMarkHandler

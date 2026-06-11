@@ -8,7 +8,7 @@ const {
   exposeZLinkHandlers,
   invokeZLinkHandlerFilters,
   scanZLinkHandlerTypes
-} = require('../../packages/framework/dist');
+} = require('../../packages/framework/dist/internal');
 
 test('handler scan does not expose handlers unless policy selects them', () => {
   class PublicHandler {}

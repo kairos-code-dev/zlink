@@ -9,7 +9,8 @@ const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { createChannelClient, createRegistryClient } = require('../discovery-support');
 const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate-session-handler');
 const { BingoSession } = require('./Sessions/bingo-session');
-const { SampleNames, SampleTimings } = require('../../Shared/Configuration/sample-names');
+const { SampleNames, SampleTimings } = require('../Configuration/sample-names');
+const { loadSampleConfig } = require('../Configuration/sample-config');
 const { PacketNames, bingoNotificationsReq, withPlayerIdentity } = require('../../Shared/Contracts/messages');
 const { fromBingoProto, toBingoProto } = require('../../Shared/Contracts/protobuf-codec');
 
@@ -40,7 +41,8 @@ type SessionContext = {
 };
 
 async function bootstrap(): Promise<void> {
-  const registry = await createRegistryClient(process.env.BINGO_REGISTRY_ENDPOINT);
+  const config = loadSampleConfig();
+  const registry = await createRegistryClient(config.registryEndpoint);
   const api = await registry.resolve(SampleNames.apiService);
   const play = await registry.resolve(SampleNames.playService);
   const notifications = await registry.resolve(SampleNames.notificationService);
@@ -50,14 +52,14 @@ async function bootstrap(): Promise<void> {
 
   Module({
     imports: [
-      ZLinkModule.forRoot(
-        zlinkFramework()
+      ZLinkModule.forRootFactory({
+        useFactory: () => zlinkFramework()
           .clientServerChannel(SampleNames.apiChannel, (channel) => channel
             .client(api.endpoint))
           .clientServerChannel(SampleNames.playChannel, (channel) => channel
             .client(play.endpoint))
           .build()
-      )
+      })
     ],
     providers: [
       AuthenticateSessionHandler
@@ -103,10 +105,10 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  await listen(streamServer, process.env.BINGO_SESSION_ENDPOINT);
+  await listen(streamServer, config.sessionEndpoint);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: process.env.BINGO_SESSION_ENDPOINT,
+    endpoint: config.sessionEndpoint,
     stream: BingoSession.name
   })}\n`);
 

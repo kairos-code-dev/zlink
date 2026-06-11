@@ -1,4 +1,6 @@
-const { SampleNames } = require('../../../../../Shared/Configuration/sample-names');
+const { SampleNames } = require('../../../../Configuration/sample-names');
+const { Inject } = require('@nestjs/common');
+const { BingoNotificationDeliveryLog } = require('../../../notification-delivery-log');
 import type {
   NumberDrawnNotify,
   PlayerJoinedNotify,
@@ -6,13 +8,7 @@ import type {
 } from '../../../../../Shared/Contracts/messages';
 
 type BingoActorWithSession = {
-  boundSession: {
-    send(payload: unknown): {
-      packetName(packetName: string): {
-        submit(): Promise<void>;
-      };
-    };
-  };
+  actorId: string;
 };
 
 type BingoNotificationEvent = {
@@ -23,12 +19,13 @@ type BingoNotificationEvent = {
 
 class BingoNotificationPublisher {
   [key: string]: any;
+  constructor(deliveryLog: unknown) {
+    this.deliveryLog = deliveryLog;
+  }
+
   async publish(events: BingoNotificationEvent[]): Promise<void> {
     for (const event of events) {
-      await event.actor.boundSession
-        .send(event.payload)
-        .packetName(event.packetName)
-        .submit();
+      this.deliveryLog.append(event.actor.actorId, event.packetName, event.payload);
     }
   }
 
@@ -48,5 +45,7 @@ class BingoNotificationPublisher {
     return { actor, packetName: SampleNames.gameEndedPacket, payload };
   }
 }
+
+Inject(BingoNotificationDeliveryLog)(BingoNotificationPublisher, undefined, 0);
 
 export { BingoNotificationPublisher };

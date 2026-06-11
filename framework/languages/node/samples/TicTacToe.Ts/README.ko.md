@@ -8,16 +8,26 @@ Node framework 의 기본 TicTacToe NestJS sample 은 이 TypeScript sample 을 
 
 ## 실행
 
+Linux 또는 WSL:
+
 ```bash
 cd framework/languages/node/samples/TicTacToe.Ts
-npm run build
-npm run start
+./run_sample.sh
+```
+
+Windows PowerShell:
+
+```powershell
+cd framework\languages\node\samples\TicTacToe.Ts
+.\run_sample.ps1
 ```
 
 ## Topology
 
-- `Client/`: API 서버와 Play 서버 process 를 시작한다. HTTP `/games` 로 room 을
-  만든 뒤 두 stream connector 를 Play stream endpoint 에 연결한다.
+- `run_sample.sh`, `run_sample.ps1`: API 서버와 Play 서버 process 를 시작하고 readiness 를 확인한 뒤
+  client self-check 를 실행한다.
+- `Client/`: HTTP `/games` 로 room 을 만든 뒤 두 stream connector 를 Play stream
+  endpoint 에 연결한다. Client 코드는 서버 process 를 직접 시작하지 않는다.
 - `Server/Api/`: HTTP `/games` 요청을 받고 Play channel 의 `CreateGame` request 로
   room 생성을 위임한다. Play stream session 이 보내는 `AuthenticatePlayerReq` 도
   API channel handler 로 처리한다.
@@ -25,11 +35,17 @@ npm run start
   board cell 검증, turn 검증, winner/draw 판정을 맡는 순수 게임 규칙을 둔다.
 - `Server/Play/Application/GameCreation/`: 명시적인 `RoomId` 를 만들고 room 을 보관한다.
 - `Server/Play/Adapters/ZLink/`: actor, stream session, Entry Spot, room handler 를 연결한다.
-- `Shared/`: packet 이름, channel 이름, timeout 같은 샘플 계약을 공유한다.
+- `Server/Configuration/`: 서버 role 의 channel 이름, timeout, 실행 endpoint 설정을 둔다.
+- `Client/Configuration/`: client self-check 실행 설정을 둔다.
+- `Client/tictactoe-client-scenario.ts`: HTTP 생성, 응답 Play endpoint로 stream connector
+  생성, stream 인증, join, move, push 검증을 순서대로 표현하는 client scenario 를 둔다.
+- `Shared/Contracts/`: client 와 server 가 함께 쓰는 MessagePack message DTO 와 codec helper 만 둔다.
 
 ## Success Condition
 
 - client 가 HTTP `/games` 로 room 을 만들고 Play stream endpoint 를 받는다.
+- client 는 Play stream endpoint 를 설정으로 미리 받지 않는다. API 응답의
+  `playEndpoint` 로 두 connector 를 만든다.
 - `p1`, `p2` 가 각각 stream connector 로 연결한 뒤 `AuthenticateReq` 를 보낸다.
 - 두 actor 가 같은 `RoomId` 에 `JoinGameReq` 로 참가하고 mark 는 `X`, `O` 로 배정된다.
 - 첫 actor join 때 self-join notify 를 보내지 않는다. 두 번째 join 때 기존 member 에게
@@ -39,10 +55,9 @@ npm run start
 - 최종 status 는 `.NET` 샘플과 같은 `Won` 이고 winner 는 `p1` 이다.
 - move 요청 client 는 `PlaceMarkRes` 로 결과를 받고 상대 client 는 `GameStateNotify` 로
   같은 state 를 받는다.
-- client 는 Server process 의 관찰 가능한 `ready` 이벤트를 받은 뒤 self-check 를
-  진행한다.
+- runner 는 서버 endpoint 가 열릴 때까지 기다린 뒤 client self-check 를 진행한다.
 
 ## 회귀 테스트
 
-`run_samples.sh` 와 `sample-regression.test.js` 에서 실행, public API 사용, HTTP/stream
+`run_samples.sh`, `run_samples.ps1`, `sample-regression.test.js` 에서 실행, public API 사용, HTTP/stream
 흐름, packet 이름, gateway 변형 샘플 부재를 확인한다.

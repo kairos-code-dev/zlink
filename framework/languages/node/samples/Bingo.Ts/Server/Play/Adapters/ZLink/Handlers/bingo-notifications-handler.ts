@@ -1,5 +1,5 @@
 const { Inject } = require('@nestjs/common');
-const { SampleBoundSessionRuntime } = require('../../../bound-session-runtime');
+const { BingoNotificationDeliveryLog } = require('../../../notification-delivery-log');
 import type {
   BingoNotificationsReq,
   PlayerIdentity
@@ -12,10 +12,10 @@ class BingoNotificationsHandler {
     this.boundSessions = boundSessions;
   }
   async handle(request: BingoNotificationsReq & PlayerIdentity): Promise<unknown> {
-    return await this.boundSessions.waitForDelivered(request.actorId, request.afterSeq);
+    return await this.boundSessions.waitFor(request.actorId, request.afterSeq);
   }
 }
 
-Inject(SampleBoundSessionRuntime)(BingoNotificationsHandler, undefined, 0);
+Inject(BingoNotificationDeliveryLog)(BingoNotificationsHandler, undefined, 0);
 
 export { BingoNotificationsHandler };

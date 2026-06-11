@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
 const connector = require('../../packages/stream-connector/dist');
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 const backend = require('../../packages/framework/dist/runtime/backend');
 
 test('stream session node runtime dispatches framed packets through one session context', async () => {

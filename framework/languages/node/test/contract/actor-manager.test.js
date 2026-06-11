@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const zlink = require('../../../../../bindings/node/dist');
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 
 test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantics', async () => {
   const events = [];

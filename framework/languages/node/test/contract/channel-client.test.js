@@ -4,7 +4,7 @@ const test = require('node:test');
 const { once } = require('node:events');
 
 const zlink = require('../../../../../bindings/node/dist');
-const framework = require('../../packages/framework/dist');
+const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 const { resolveModuleProviders } = require('./helpers/nestjs-test-utils');
 

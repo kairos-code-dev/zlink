@@ -1,6 +1,6 @@
 const { Inject } = require('@nestjs/common');
 const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../../packages/nestjs/dist');
-const { SampleNames, SampleTimings } = require('../../../../Shared/Configuration/sample-names');
+const { SampleNames, SampleTimings } = require('../../../Configuration/sample-names');
 const {
   PacketNames,
   authenticateReq,

@@ -28,7 +28,7 @@
   않는다.
 - Kotlin `suspend fun`에 Java와 같은 ZLink annotation을 붙인 handler도 같은 계약으로
   본다. Spring bean scanner는 Kotlin suspend method를 별도 수동 등록 없이 발견해야
-  하며, framework-owned coroutine adapter를 통해 Java `CompletionStage` handler로
+  하며, framework가 소유하는 coroutine adapter를 통해 Java `CompletionStage` handler로
   실행해야 한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
@@ -160,7 +160,7 @@ public interface ZLinkRouteRequestHandler<TRequest, TReply> {
 ```
 
 Kotlin adapter는 `suspend` handler를 위 Java handler interface로 변환한다. adapter는
-framework-owned `CoroutineScope`에서 handler를 실행하고 `CompletionStage`를 반환해야
+framework가 소유하는 `CoroutineScope`에서 handler를 실행하고 `CompletionStage`를 반환해야
 한다. `runBlocking`으로 현재 dispatch thread를 막거나, Java core의 serial execution
 queue를 우회하는 별도 coroutine queue를 만들지 않는다.
 

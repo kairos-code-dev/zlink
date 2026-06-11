@@ -25,7 +25,7 @@ framework는 새로운 wire 의미를 만들지 않는다. `.NET`과 같은 chan
 > 필요하면 Kotlin coroutine wrapper처럼 별도 thin wrapper에서 다룬다.
 > Java public API에는 `submitAwait` 같은 blocking/parking helper를 두지 않는다.
 > Kotlin wrapper는 Java runtime을 다시 구현하지 않는다. `suspend` handler는
-> framework-owned coroutine에서 실행하고 결과를 `CompletionStage<T>`로 돌려주며,
+> framework가 소유하는 coroutine에서 실행하고 결과를 `CompletionStage<T>`로 돌려주며,
 > ordering, timeout, cancellation, exception mapping은 Java core 정책을 따른다.
 
 ## 2. 패키지와 네이밍

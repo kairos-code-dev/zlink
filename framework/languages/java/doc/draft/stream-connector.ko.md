@@ -199,7 +199,7 @@ request timeout이 끝나면 pending request를 제거한다. response가 늦게
 
 ## 8. Typed codec helper
 
-core connector는 `ZLinkStreamEncodedPayload`만 이해한다. JSON, MessagePack,
+기본 connector는 `ZLinkStreamEncodedPayload`만 이해한다. JSON, MessagePack,
 Protobuf, auto codec 모듈은 `.NET` connector extension과 같은 방식으로 typed helper를
 제공한다.
 
@@ -229,7 +229,7 @@ public final class ZLinkStreamJson {
 auto codec helper는 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
 수 없으면 configuration error로 실패한다. typed helper가 만드는 packet name도 core
 connector의 name resolver를 그대로 사용한다.
-첫 구현의 typed helper는 core connector smoke와 같은 `String`, `byte[]`, `Message`
+첫 구현의 typed helper는 기본 connector smoke와 같은 `String`, `byte[]`, `Message`
 payload를 지원한다. 복합 DTO 직렬화는 JSON/MessagePack/Protobuf 라이브러리 선택과
 schema 정책이 닫힌 뒤 확장한다.
 

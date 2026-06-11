@@ -224,7 +224,7 @@ revert 여부 판단부터 시작한다.
   않는다.
 - Kotlin은 Java runtime 위의 thin wrapper로만 구현한다.
 - Kotlin `suspend fun` annotation handler는 thin wrapper 원칙의 예외가 아니다. Spring
-  scanner가 Kotlin suspend method를 발견하고 framework-owned coroutine adapter로 Java
+  scanner가 Kotlin suspend method를 발견하고 framework가 소유하는 coroutine adapter로 Java
   `CompletionStage` handler에 연결해야 하며, 이 경로가 없으면 Kotlin 지원은 부분
   완료다.
 - 각 phase는 §1.2의 audit, implementation, verification, review 순서로만 닫는다.
@@ -271,7 +271,7 @@ revert 여부 판단부터 시작한다.
 | Phase 6 | actor state와 dispatch queue 결합 | actor identity/state, mailbox, Spot location resolver를 분리 | actor 이동 후 dispatch 위치가 명확 |
 | Phase 7 | session relay를 route packet으로 흉내 냄 | ActorGateway와 session context를 깊은 모듈로 유지 | application route store 없음 |
 | Phase 8 | connector callback, transport, codec 혼합 | transport, frame codec, pending request, dispatch queue를 분리 | connector core가 server framework를 모름 |
-| Phase 9 | Kotlin wrapper가 새 의미를 만듦, Kotlin suspend annotation handler가 수동 adapter에만 머묾 | Java API를 호출하는 extension으로 제한하고, Spring scanner에서 발견한 suspend method를 framework-owned coroutine adapter로만 실행 | Java와 validation/lifecycle 의미 동일, Kotlin suspend annotation handler가 Java annotation handler와 같은 duplicate validation과 dispatch gate 통과 |
+| Phase 9 | Kotlin wrapper가 새 의미를 만듦, Kotlin suspend annotation handler가 수동 adapter에만 머묾 | Java API를 호출하는 extension으로 제한하고, Spring scanner에서 발견한 suspend method를 framework가 소유하는 coroutine adapter로만 실행 | Java와 validation/lifecycle 의미 동일, Kotlin suspend annotation handler가 Java annotation handler와 같은 duplicate validation과 dispatch gate 통과 |
 | Phase 10 | sample이 readiness 우회를 숨김 | 실제 public API와 observable readiness로 self-check | sleep 기반 masking 없음 |
 | Phase 11 | guide/spec/internals 내용 혼합 | 독자별 문서 책임을 분리 | 구현된 계약만 spec으로 승격 |
 
@@ -717,7 +717,7 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 - Kotlin compile
 - coroutine request/send/publish smoke 통과
 - connector Flow smoke 통과
-- framework-owned `CoroutineScope` cancellation test 통과
+- framework가 소유하는 `CoroutineScope` cancellation test 통과
 - Spring annotation scanner가 Kotlin `suspend fun` channel handler를 발견하고
   request/send/publish dispatch까지 실행하는 integration test 통과
 - Spring annotation scanner가 Kotlin `suspend fun` Spot actor request/send/join/lifecycle
@@ -737,8 +737,8 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 | 항목 | `.NET`/Java 기준 | Kotlin 구현 | 검증 | 판정 |
 |------|------------------|-------------|------|------|
 | `CompletionStage` suspend wrapper | Java framework/connector async public API는 `CompletionStage`를 반환 | `ZLinkConnectorExtensions.kt`, `ZLinkFrameworkExtensions.kt`가 `await()`로 Java stage를 suspend 함수로 감쌈 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`suspendWrapperPreservesConnectorSemantics`, `frameworkSubmitAndRequestWrappersAwaitCompletionStage`) | 완료 |
-| framework-owned coroutine runtime | suspend handler는 Java handler interface로 돌아가며 `CompletionStage`로 완료 | `ZLinkCoroutineRuntime`이 `SupervisorJob` + dispatcher 소유 scope에서 `scope.future(dispatcher)`로 handler stage를 생성함 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeMapsSuspendHandlerToCompletionStage`, `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage`, `closingCoroutineRuntimeCancelsInFlightHandler`) | 완료 |
-| Kotlin suspend annotation discovery | Java annotation handler처럼 Spring bean scanner가 annotated method를 찾아 runtime catalog에 등록해야 함 | `ZLinkHandlerScanner`가 Kotlin compiler의 `Continuation` parameter를 handler parameter에서 제외하고, Spring bean scanner가 같은 catalog에 등록함. Kotlin provider가 있으면 method invoker는 framework-owned coroutine context에서 suspend handler를 실행함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers`, `springLifecycleDiscoversKotlinSuspendAnnotationBeanType`, `kotlinSuspendAnnotationRunsInsideFrameworkCoroutineContext`) | 완료 |
+| framework가 소유하는 coroutine runtime | suspend handler는 Java handler interface로 돌아가며 `CompletionStage`로 완료 | `ZLinkCoroutineRuntime`이 `SupervisorJob` + dispatcher 소유 scope에서 `scope.future(dispatcher)`로 handler stage를 생성함 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeMapsSuspendHandlerToCompletionStage`, `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage`, `closingCoroutineRuntimeCancelsInFlightHandler`) | 완료 |
+| Kotlin suspend annotation discovery | Java annotation handler처럼 Spring bean scanner가 annotated method를 찾아 runtime catalog에 등록해야 함 | `ZLinkHandlerScanner`가 Kotlin compiler의 `Continuation` parameter를 handler parameter에서 제외하고, Spring bean scanner가 같은 catalog에 등록함. Kotlin provider가 있으면 method invoker는 framework가 소유하는 coroutine context에서 suspend handler를 실행함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers`, `springLifecycleDiscoversKotlinSuspendAnnotationBeanType`, `kotlinSuspendAnnotationRunsInsideFrameworkCoroutineContext`) | 완료 |
 | Kotlin suspend Spot/actor annotation dispatch | Java Spot actor annotation handler처럼 actor request/send/join/lifecycle이 같은 method handler invoker로 실행되어야 함 | Spot actor suspend method도 logical parameter와 reply type을 Java method handler와 같은 registration에 보존하고 `ZLinkHandlerMethodInvoker`로 실행함. timer는 annotation 표면이 아니라 `ZLinkSpotTimerHandler` interface wrapper 표면으로 유지함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers`, `kotlinSuspendSpotActorMethodRunsThroughMethodInvoker`) | 완료 |
 | duplicate validation parity | Java handler와 Kotlin suspend handler가 같은 mapping을 등록하면 기존 duplicate validation으로 거부해야 함 | Kotlin suspend handler가 Java handler와 같은 channel packet key를 사용하므로 duplicate registration validation에서 startup 실패함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision`) | 완료 |
 | exception/cancellation mapping | Java handler failure policy는 exceptional `CompletionStage`를 받음 | suspend wrapper handler와 suspend annotation handler exception/cancellation이 Java stage exceptional/cancel completion으로 전달됨 | `./gradlew :zlink-framework-kotlin:test --stacktrace` (`coroutineRuntimeCompletesStageExceptionallyWhenHandlerThrows`, `closingCoroutineRuntimeCancelsInFlightHandler`, `kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally`, `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally`) | 완료 |
@@ -883,7 +883,7 @@ sample gate는 아래를 자동 확인해야 한다.
 Kotlin/JVM 표면 제약: `CompletionStage`→`suspend`, monitoring stream→`Flow`,
 Java builder를 호출하는 thin DSL만 둔다. Kotlin 전용 runtime 의미를 만들지 않는다.
 Java public API에는 blocking/parking helper를 추가하지 않는다.
-Kotlin handler 실행은 framework-owned coroutine adapter에서만 이루어지고, Java core의
+Kotlin handler 실행은 framework가 소유하는 coroutine adapter에서만 이루어지고, Java core의
 serial execution queue와 lifecycle을 우회하지 않는다.
 
 ## 17. 권장 구현 순서 요약 (phase 1:1 매핑)
@@ -1053,7 +1053,7 @@ framework/languages/dotnet 의 ZLink framework와 동일한 아키텍처, 기능
   adapter, samples/shared 역할을 루트 package나 임의 폴더에 섞지 마.
 - Java는 CompletionStage 기반 비동기 표면을 기본으로 하고, Kotlin은 suspend/Flow
   wrapper만 제공해. Kotlin `suspend fun` annotation handler는 Spring scanner가 자동
-  발견하고 framework-owned coroutine adapter로 실행해야 해. Java public API에
+  발견하고 framework가 소유하는 coroutine adapter로 실행해야 해. Java public API에
   blocking helper를 추가하지 마.
 - framework는 bindings/java public API만 호출해야 해. 필요한 binding 기능이 없으면
   bindings/java에 public API를 추가하고 테스트해.

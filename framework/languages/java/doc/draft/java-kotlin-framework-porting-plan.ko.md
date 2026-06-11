@@ -417,7 +417,7 @@ bind/accept/close 실패는 session callback이 아니라 monitoring event로 �
   request timeout을 지원한다.
 - Kotlin 모듈은 Java API 위의 coroutine/DSL wrapper로 동작하며 별도 runtime 의미를
   만들지 않는다.
-- Kotlin `suspend` handler는 framework-owned `CoroutineScope`에서 실행되고,
+- Kotlin `suspend` handler는 framework가 소유하는 `CoroutineScope`에서 실행되고,
   shutdown/cancellation/exception/serial ordering이 Java core와 같은 의미로 test된다.
 - `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo` sample이 실제
   connector와 framework public API만 사용해 self-check를 통과한다.

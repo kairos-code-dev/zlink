@@ -31,6 +31,7 @@ public contract와 runtime 구현은 아래처럼 나눈다.
 | facade header | `http-client/include/zlink/http_client.hpp` | public |
 | contract header | `http-client/include/zlink/http_client/contracts/*` | public |
 | runtime 구현 | `http-client/src/runtime/*` | private |
+| 회귀 테스트 | `http-client/tests/*` | private |
 | CMake target | `zlink::http_client` | public target |
 
 public header에는 `Boost.Beast`, `Boost.Asio`, OpenSSL, socket, resolver, request parser,

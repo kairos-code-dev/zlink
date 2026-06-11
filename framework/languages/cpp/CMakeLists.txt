@@ -774,7 +774,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   endif()
   add_zlink_http_client_test(
     test_cpp_http_client
-    tests/Zlink.HttpClient.Tests/test_cpp_http_client.cpp
+    http-client/tests/test_cpp_http_client.cpp
     "http-client-contract;http-client-unit;http-client-e2e;http-client-regression")
   if(ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
     target_compile_definitions(test_cpp_http_client PRIVATE

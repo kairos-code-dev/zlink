@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ STREAM](./cpp-stream.ko.md) | [다음: Draft -- ZLink Framework C++ SPOT Samples](./spot-samples.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md) | [다음: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
 
-# Draft -- ZLink Framework C++ Interface Alignment
+# Spec -- ZLink Framework C++ Interface Alignment
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, 기존 `C++` adapter interface catalog를 standalone
@@ -21,7 +21,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 
 새 `C++` framework의 canonical 표면은 아래 문서에 둔다.
 
-- [C++ 정책](./cpp-framework-policy.ko.md)
+- [C++ 정책](../internals/cpp-framework-policy.ko.md)
 - [Framework 인터페이스](./cpp-framework-interfaces.ko.md)
 
 따라서 이 문서는 별도의 API 계약을 추가하지 않는다. 기존 문서나 샘플에 남아 있던

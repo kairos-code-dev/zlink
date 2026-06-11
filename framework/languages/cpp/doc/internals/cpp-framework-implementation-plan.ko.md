@@ -1,15 +1,15 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For C++](./README.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For C++](../README.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](./cpp-http-client.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md)
 
 # Draft -- ZLink Framework C++ Implementation Plan
 
 > 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `framework/languages/cpp/doc/draft` 아래 C++ framework
+> 현재 공개 계약이 아니며, `framework/languages/cpp/doc` 아래 C++ framework
 > 초안 전체를 빠짐없이 구현하기 위한 실행 계획이다.
 
 ## 1. 목적
@@ -65,7 +65,7 @@
 - CAPI dispatch callback과 CAPI timer event는 framework runtime 내부에서 typed handler로
   사상한다.
 - public contract header는 runtime 구현 header를 include하지 않는다.
-- runtime 세부는 `framework/src/runtime/*`, `connector/src/runtime/*`,
+- runtime 세부는 `framework/src/runtime/*`, `connector/core/src/runtime/*`,
   `http-client/src/runtime/*`, Unreal `Private/`에 둔다.
 - `contracts/detail/*`은 type trait, concept check, facade forwarding만 가진다.
 - public facade가 상태를 가지면 PIMPL 또는 type-erased state를 사용한다.
@@ -86,9 +86,10 @@
 | 산출물 | 위치 | target | 역할 |
 |--------|------|--------|------|
 | C++ framework | `framework/languages/cpp/framework` | `zlink::framework` | server application host/runtime |
-| C++ Stream Connector | `framework/languages/cpp/connector` | `zlink::stream_connector` | client-side STREAM connector |
+| C++ Stream Connector core | `framework/languages/cpp/connector/core` | `zlink::stream_connector` | client-side STREAM connector core |
+| Stream E2E Client | `framework/languages/cpp/connector/e2e-client` | `zlink::stream_e2e_client` | server e2e/smoke/perf scenario client |
 | ZLink HTTP Client | `framework/languages/cpp/http-client` | `zlink::http_client` | client-side HTTP/JSON connector |
-| Unreal Stream Connector | `framework/languages/cpp/unreal-connector` | Unreal module/plugin | Unreal 전용 client connector |
+| Unreal Stream Connector | `framework/languages/cpp/connector/engines/unreal` | Unreal module/plugin | Unreal 전용 client connector |
 | framework extensions | `framework/languages/cpp/extensions` | extension targets | bridge, config, codec, observability 확장 |
 | framework samples | `framework/languages/cpp/samples` | sample executables | `Bingo`, `TicTacToe` 리뷰 샘플 |
 | framework tests | `framework/languages/cpp/tests/Zlink.Framework.*Tests` | CTest labels | `.NET` test project 분류에 맞춘 contract, unit, e2e, package |
@@ -99,11 +100,11 @@
 
 | `.NET` 기준 | C++ framework 기준 | C++ connector 기준 | HTTP client 기준 | 공개 여부 |
 |-------------|--------------------|---------------------|------------------|-----------|
-| `Contracts/*` | `framework/include/zlink/framework/contracts/*` | `connector/include/zlink/stream_connector/contracts/*` | `http-client/include/zlink/http_client/contracts/*` | public |
-| `Runtime/*` | `framework/src/runtime/*` | `connector/src/runtime/*` | `http-client/src/runtime/*` | private implementation |
-| `Runtime/Backend/Contracts` | `framework/src/runtime/backend/contracts` | `connector/src/runtime/backend/contracts` | 현재 없음 | private backend contract. HTTP client는 현재 별도 backend adapter가 없으므로 placeholder 디렉터리를 만들지 않는다 |
+| `Contracts/*` | `framework/include/zlink/framework/contracts/*` | `connector/core/include/zlink/stream_connector/contracts/*` | `http-client/include/zlink/http_client/contracts/*` | public |
+| `Runtime/*` | `framework/src/runtime/*` | `connector/core/src/runtime/*` | `http-client/src/runtime/*` | private implementation |
+| `Runtime/Backend/Contracts` | `framework/src/runtime/backend/contracts` | `connector/core/src/runtime/backend/contracts` | 현재 없음 | private backend contract. HTTP client는 현재 별도 backend adapter가 없으므로 placeholder 디렉터리를 만들지 않는다 |
 | project facade | `zlink/framework.hpp`, `zlink/framework/*.hpp` | `zlink/stream_connector.hpp` | `zlink/http_client.hpp` | public |
-| implementation glue | `framework/src/runtime/*` | `connector/src/runtime/*` | `http-client/src/runtime/*` | private |
+| implementation glue | `framework/src/runtime/*` | `connector/core/src/runtime/*` | `http-client/src/runtime/*` | private |
 
 Unreal Connector는 Unreal 관례에 따라 `Source/ZLinkStreamConnector/Public`과
 `Source/ZLinkStreamConnector/Private`를 사용한다. `Public`은 Unreal 전용 contract와
@@ -334,11 +335,12 @@ tradeoff라고 판단하더라도, public 복잡성이 늘지 않는 이유와 �
 - `framework/include/zlink/framework/contracts/*`
 - `framework/src/runtime/*`
 - `zlink::framework` CMake target
-- `framework/languages/cpp/connector`
+- `framework/languages/cpp/connector/core`
+- `framework/languages/cpp/connector/e2e-client`
 - `zlink::stream_connector` CMake target
 - `framework/languages/cpp/http-client`
 - `zlink::http_client` CMake target
-- `framework/languages/cpp/unreal-connector`
+- `framework/languages/cpp/connector/engines/unreal`
 - `framework/languages/cpp/samples/Bingo`
 - `framework/languages/cpp/samples/TicTacToe`
 - `framework/languages/cpp/tests`
@@ -1411,15 +1413,16 @@ ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1 \
 - WebSocket over TLS binary transport
 - unsupported transport와 endpoint scheme mismatch validation
 - typed send/request/on
-- coroutine submit
-- coroutine submit
+- `zlink::stream_e2e_client` server e2e/smoke/perf helper
+- e2e client `async()` terminator
 - reconnect, heartbeat, pending request correlation
 - JSON 기본 ON
 - MessagePack/Protobuf 선택
 - LZ4 build feature 기본 ON, packet 압축은 opt-in
 - Unreal plugin/module packaging
 - Unreal `Public/` / `Private` 분리
-- Unreal `Sockets`/`Networking` 기반 transport
+- Unreal public API와 Game Thread dispatch adapter
+- Unreal private 구현의 기본 connector 위임
 - Blueprint callable connect/close/send/request
 - Game Thread callback dispatch
 - Unreal Automation Test
@@ -1429,8 +1432,10 @@ ZLINK_FRAMEWORK_HTTP_PERF_REQUIRED=1 \
 - connector는 framework sample이나 framework target이 아니다.
 - 일반 C++ connector는 Asio를 내부 구현으로 사용하며, TCP/TLS/WebSocket/WebSocket over TLS가
   같은 packet API로 동작한다.
-- Unreal connector는 일반 C++ connector wrapper가 아니라 Unreal network library 기반으로
-  구현한다.
+- Unreal connector는 public header에 일반 C++ connector type을 노출하지 않는다.
+- Unreal connector private 구현은 기본 connector를 소유하고 send/request/dispatch/lifecycle을
+  위임한다. STREAM frame, reconnect, heartbeat, pending request correlation을 Unreal adapter에
+  다시 구현하지 않는다.
 - Unreal public API에는 coroutine 표면을 두지 않는다.
 - connector public header는 receive loop, transport connection, pending request table,
   frame sender 구현 타입을 노출하지 않는다.
@@ -1446,9 +1451,9 @@ ctest --test-dir framework/languages/cpp/build -L connector-protocol
 ctest --test-dir framework/languages/cpp/build -L connector-transport
 ctest --test-dir framework/languages/cpp/build -L connector-typed
 ctest --test-dir framework/languages/cpp/build -L connector-package
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-contract
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-compile
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke
 ```
 
 ### Goal 21. Review Samples
@@ -1570,9 +1575,9 @@ ctest --test-dir framework/languages/cpp/build -L connector-transport --output-o
 ctest --test-dir framework/languages/cpp/build -L connector-typed --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-e2e --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L connector-package --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-contract --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-contract --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-compile --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-package --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-tooling --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-extension --output-on-failure
@@ -1595,26 +1600,26 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | 참고 문서 | 관련 goal |
 |-----------|-----------|
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | Goal 1-22 실행 계획 |
-| [README.ko.md](./README.ko.md) | Goal 1-22 |
+| [cpp-framework-overview.ko.md](./cpp-framework-overview.ko.md) | Goal 1-22 |
+| [cpp-stream-connector.ko.md](../../connector/doc/draft/cpp-stream-connector.ko.md) | Goal 14-16 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | Goal 1-22 |
-| [cpp-application-framework.ko.md](./cpp-application-framework.ko.md) | Goal 6, Goal 19, Goal 21, Goal 22 |
-| [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | Goal 1-19, Goal 22 |
-| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | Goal 8-14 |
-| [cpp-channel-messaging.ko.md](./cpp-channel-messaging.ko.md) | Goal 9, Goal 10 |
+| [cpp-application-framework.ko.md](../spec/cpp-application-framework.ko.md) | Goal 6, Goal 19, Goal 21, Goal 22 |
+| [cpp-framework-interfaces.ko.md](../spec/cpp-framework-interfaces.ko.md) | Goal 1-19, Goal 22 |
+| [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md) | Goal 8-14 |
+| [cpp-channel-messaging.ko.md](../spec/cpp-channel-messaging.ko.md) | Goal 9, Goal 10 |
 | [channel-messaging-samples.ko.md](./channel-messaging-samples.ko.md) | Goal 9, Goal 21 |
-| [cpp-spot.ko.md](./cpp-spot.ko.md) | Goal 11, Goal 12, Goal 14 |
+| [cpp-spot.ko.md](../spec/cpp-spot.ko.md) | Goal 11, Goal 12, Goal 14 |
 | [spot-samples.ko.md](./spot-samples.ko.md) | Goal 11, Goal 12, Goal 14, Goal 21 |
-| [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | Goal 11, Goal 12, Goal 17 |
-| [cpp-stream.ko.md](./cpp-stream.ko.md) | Goal 13, Goal 14 |
+| [stage-wrapper-on-spot.ko.md](../spec/stage-wrapper-on-spot.ko.md) | Goal 11, Goal 12, Goal 17 |
+| [cpp-stream.ko.md](../spec/cpp-stream.ko.md) | Goal 13, Goal 14 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | Goal 13 |
 | [stream-samples.ko.md](./stream-samples.ko.md) | Goal 13, Goal 14, Goal 21 |
-| [actor-gateway-session-relay.ko.md](./actor-gateway-session-relay.ko.md) | Goal 14, Goal 21 |
-| [cpp-registry.ko.md](./cpp-registry.ko.md) | Goal 11, Goal 14, Goal 15 |
-| [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | Goal 12, Goal 16 |
-| [cpp-http-client.ko.md](./cpp-http-client.ko.md) | Goal 18, Goal 19, Goal 21 |
-| [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | Goal 19, Goal 21 |
-| [cpp-embedded-http-server.ko.md](./cpp-embedded-http-server.ko.md) | Goal 19, Goal 21 |
-| [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | Goal 20 |
+| [actor-gateway-session-relay.ko.md](../spec/actor-gateway-session-relay.ko.md) | Goal 14, Goal 21 |
+| [cpp-registry.ko.md](../spec/cpp-registry.ko.md) | Goal 11, Goal 14, Goal 15 |
+| [cpp-monitoring.ko.md](../spec/cpp-monitoring.ko.md) | Goal 12, Goal 16 |
+| [cpp-http-client.ko.md](../../http-client/doc/draft/cpp-http-client.ko.md) | Goal 18, Goal 19, Goal 21 |
+| [cpp-http-hosting.ko.md](../spec/cpp-http-hosting.ko.md) | Goal 19, Goal 21 |
+| [cpp-embedded-http-server.ko.md](../spec/cpp-embedded-http-server.ko.md) | Goal 19, Goal 21 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | Goal 1-22 POSD 기록 |
 
 ## 7. 기능 축 추적표
@@ -1640,7 +1645,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | module/hosted service | Goal 17 | `framework-integration` |
 | ZLink HTTP client | Goal 18 | `http-client-*` |
 | HTTP hosting | Goal 19 | `framework-http`, `framework-http-e2e`, `framework-http-perf` |
-| C++/Unreal connector | Goal 20 | `connector-*`, `unreal-connector-*` |
+| C++/Unreal connector | Goal 20 | `connector-*`, `connector-unreal-*` |
 | samples | Goal 21 | `framework-sample-*` |
 | package/extensions/final audit | Goal 22 | `framework-package`, `framework-extension` |
 | POSD 리팩토링 | Goal 1-22 | POSD 기록, `framework-regression` |
@@ -1652,7 +1657,7 @@ concrete label을 선택한다.
 |----------------|----------------|
 | `http-client-*` | `http-client-contract`, `http-client-unit`, `http-client-e2e`, `http-client-https`, `http-client-regression` |
 | `connector-*` | `connector-unit`, `connector-integration`, `connector-e2e`, `connector-contract`, `connector-protocol`, `connector-transport`, `connector-typed`, `connector-package` |
-| `unreal-connector-*` | `unreal-connector-contract`, `unreal-connector-compile`, `unreal-connector-smoke` |
+| `connector-unreal-*` | `connector-unreal-contract`, `connector-unreal-compile`, `connector-unreal-smoke` |
 | `framework-sample-*` | `framework-sample-smoke`, `framework-sample-parity`, `framework-sample-api`, `framework-sample-bingo`, `framework-sample-play`, `framework-sample-registry`, `framework-sample-session`, `framework-sample-tictactoe` |
 
 ## 8. Goal 실행용 문구

@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](./cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](./actor-gateway-session-relay.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](./cpp-stream-connector.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](./cpp-monitoring.ko.md) | [Registry](./cpp-registry.ko.md)
+[Framework Adapter 정책](../../../../doc/spec/README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md) | [POSD 기록](./cpp-framework-posd-refactoring-log.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [ActorGateway relay](../spec/actor-gateway-session-relay.ko.md) | [Stage wrapper](../spec/stage-wrapper-on-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [STREAM decisions](./stream-open-items.ko.md) | [STREAM Connector](../../connector/doc/draft/cpp-stream-connector.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md) | [Embedded HTTP Server](../spec/cpp-embedded-http-server.ko.md) | [STREAM 샘플](./stream-samples.ko.md) | [Monitoring](../spec/cpp-monitoring.ko.md) | [Registry](../spec/cpp-registry.ko.md)
 
 # Draft -- ZLink Framework For C++
 
@@ -82,10 +82,11 @@ goal 구현을 시작하지 않는다. C++에는 assembly `internal`이 없으�
 | framework facade | `framework/include/zlink/framework/*.hpp`, `zlink/framework.hpp` | 설치 public header | include 편의, 새 runtime 계약 금지 |
 | framework runtime | `framework/src/runtime/*` | private build input | `.NET Runtime/*` 대응 |
 | framework runtime backend contract | `framework/src/runtime/backend/contracts/*` | private build input | `.NET Runtime/Backend/Contracts/*` 대응 |
-| connector contract | `connector/include/zlink/stream_connector/contracts/*` | 설치 public header | `.NET Stream Connector Contracts/*` 대응 |
-| connector runtime | `connector/src/runtime/*` | private build input | connector receive/reconnect/codec 구현 |
-| Unreal connector public | `unreal-connector/Source/ZLinkStreamConnector/Public/*` | Unreal public header | Unreal 타입과 Blueprint/Game Thread 표면 |
-| Unreal connector private | `unreal-connector/Source/ZLinkStreamConnector/Private/*` | Unreal private implementation | transport, codec, thread dispatch |
+| connector contract | `connector/core/include/zlink/stream_connector/contracts/*` | 설치 public header | `.NET Stream Connector Contracts/*` 대응 |
+| connector runtime | `connector/core/src/runtime/*` | private build input | connector receive/reconnect/codec 구현 |
+| Unreal connector public | `connector/engines/unreal/Source/ZLinkStreamConnector/Public/*` | Unreal public header | Unreal 타입과 Blueprint/Game Thread 표면 |
+| stream e2e client | `connector/e2e-client/*` | 선택 package | 서버 e2e/smoke/perf scenario helper |
+| Unreal connector private | `connector/engines/unreal/Source/ZLinkStreamConnector/Private/*` | Unreal private implementation | 기본 connector 호출, Game Thread dispatch |
 
 `.NET`의 현재 폴더 구조는 아래 C++ 구조와 1:1 의미로 맞춘다. C++는 언어 관례 때문에
 파일명과 타입 이름은 다르게 쓸 수 있지만, 어느 쪽이 사용자가 보는 계약이고 어느 쪽이
@@ -138,7 +139,7 @@ Stream Connector는 C++ framework 샘플이나 framework package가 아니다. C
 Stream Connector는 별도 public header, 별도 CMake target, 별도 배포 단위를 가지는
 client-side library로 둔다. Unreal용 connector도 별도 Unreal plugin 배포 단위로 두고,
 Unreal 전용 함수와 타입을 제공한다. 자세한 내용은
-[STREAM Connector](./cpp-stream-connector.ko.md)를 따른다.
+[STREAM Connector](../../connector/doc/draft/cpp-stream-connector.ko.md)를 따른다.
 
 codec 구조는 binding, framework, connector가 같은 원칙을 따른다. base C++ binding은
 raw `message_t`와 protocol enum만 제공하고 JSON, MessagePack, Protobuf dependency를
@@ -194,26 +195,26 @@ host/runtime 표면으로만 구체화한다.
 | [cpp-framework-implementation-plan.ko.md](./cpp-framework-implementation-plan.ko.md) | draft 전체 내용을 goal 단위로 빠짐없이 구현하기 위한 실행 계획 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | 각 goal에서 수행한 POSD 기반 리팩토링 기록 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | `C++` zlink framework host의 제품 포지셔닝, 권장 모듈 구조, 라이브러리 정책, 구현 순서 |
-| [cpp-application-framework.ko.md](./cpp-application-framework.ko.md) | `.NET Core`를 주 벤치마크로 하고 `ASP.NET Core Minimal API`를 HTTP 기준으로 삼는 application framework 기능 축과 회귀 테스트 매트릭스 |
-| [cpp-framework-interfaces.ko.md](./cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
-| [handler-interfaces.ko.md](./handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. zlink framework host 정책에 맞춰 정렬해야 할 대상 |
+| [cpp-application-framework.ko.md](../spec/cpp-application-framework.ko.md) | `.NET Core`를 주 벤치마크로 하고 `ASP.NET Core Minimal API`를 HTTP 기준으로 삼는 application framework 기능 축과 회귀 테스트 매트릭스 |
+| [cpp-framework-interfaces.ko.md](../spec/cpp-framework-interfaces.ko.md) | C++ binding public API를 기반으로 한 framework public interface 설계 |
+| [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md) | 기존 `C++` adapter 세부 인터페이스 초안. zlink framework host 정책에 맞춰 정렬해야 할 대상 |
 
 ### 2.2 주제 문서
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [cpp-channel-messaging.ko.md](./cpp-channel-messaging.ko.md) | app host, channel 등록, handler dispatch, outbound client |
-| [cpp-spot.ko.md](./cpp-spot.ko.md) | `SPOT` runtime, publish/subscribe, spot-to-spot |
-| [actor-gateway-session-relay.ko.md](./actor-gateway-session-relay.ko.md) | STREAM session과 actor를 ActorGateway로 bind/relay하는 C++ standalone runtime 초안 |
-| [cpp-stream.ko.md](./cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
+| [cpp-channel-messaging.ko.md](../spec/cpp-channel-messaging.ko.md) | app host, channel 등록, handler dispatch, outbound client |
+| [cpp-spot.ko.md](../spec/cpp-spot.ko.md) | `SPOT` runtime, publish/subscribe, spot-to-spot |
+| [actor-gateway-session-relay.ko.md](../spec/actor-gateway-session-relay.ko.md) | STREAM session과 actor를 ActorGateway로 bind/relay하는 C++ standalone runtime 초안 |
+| [cpp-stream.ko.md](../spec/cpp-stream.ko.md) | framework Header 기반 packet stream과 handler 통합 |
 | [stream-open-items.ko.md](./stream-open-items.ko.md) | STREAM 결정 기록 |
-| [cpp-stream-connector.ko.md](./cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리, 배포 단위, Unreal/Godot/Axmol adapter 기준 |
-| [cpp-http-client.ko.md](./cpp-http-client.ko.md) | C++ framework 샘플과 HTTP e2e에서 쓰는 fluent HTTP/JSON client |
-| [cpp-http-hosting.ko.md](./cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
-| [cpp-embedded-http-server.ko.md](./cpp-embedded-http-server.ko.md) | 내장 HTTP 웹서버 runtime 개발 기준 |
-| [cpp-monitoring.ko.md](./cpp-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
-| [stage-wrapper-on-spot.ko.md](./stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |
-| [cpp-registry.ko.md](./cpp-registry.ko.md) | embedded registry, query, topology 조회 |
+| [cpp-stream-connector.ko.md](../../connector/doc/draft/cpp-stream-connector.ko.md) | C++용 Stream Connector 별도 라이브러리, 배포 단위, Unreal/Godot/Axmol adapter 기준 |
+| [cpp-http-client.ko.md](../../http-client/doc/draft/cpp-http-client.ko.md) | C++ framework 샘플과 HTTP e2e에서 쓰는 fluent HTTP/JSON client |
+| [cpp-http-hosting.ko.md](../spec/cpp-http-hosting.ko.md) | ASP.NET Core Minimal API에 대응하는 HTTP hosting과 zlink request 연동 |
+| [cpp-embedded-http-server.ko.md](../spec/cpp-embedded-http-server.ko.md) | 내장 HTTP 웹서버 runtime 개발 기준 |
+| [cpp-monitoring.ko.md](../spec/cpp-monitoring.ko.md) | runtime monitoring 등록, typed event, 운영 샘플 |
+| [stage-wrapper-on-spot.ko.md](../spec/stage-wrapper-on-spot.ko.md) | stage 같은 상위 모델을 `SPOT` 위에 감쌀 때의 조건 |
+| [cpp-registry.ko.md](../spec/cpp-registry.ko.md) | embedded registry, query, topology 조회 |
 
 ### 2.3 샘플 문서
 

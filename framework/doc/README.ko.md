@@ -61,7 +61,7 @@ Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와 Play 
 | `Java` | 초안 | [languages/java/doc/draft/README.ko.md](../languages/java/doc/draft/README.ko.md) |
 | `Node.js` | 초안 | [languages/node/doc/draft/README.ko.md](../languages/node/doc/draft/README.ko.md) |
 | `Python` | 초안 | [languages/python/doc/draft/README.ko.md](../languages/python/doc/draft/README.ko.md) |
-| `C++` | 초안 | [languages/cpp/doc/draft/README.ko.md](../languages/cpp/doc/draft/README.ko.md) |
+| `C++` | 정식 | [languages/cpp/doc/README.ko.md](../languages/cpp/doc/README.ko.md) |
 | `Go` | 초안 | [languages/go/doc/draft/README.ko.md](../languages/go/doc/draft/README.ko.md) |
 | `Rust` | 초안 | [languages/rust/doc/draft/README.ko.md](../languages/rust/doc/draft/README.ko.md) |
 

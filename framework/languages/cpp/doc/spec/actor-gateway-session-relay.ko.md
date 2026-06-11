@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT](./cpp-spot.ko.md) | [다음: Draft -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Registry](./cpp-registry.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [Registry](./cpp-registry.ko.md)
 
-# Draft -- ZLink Framework C++ ActorGateway Session Relay
+# Spec -- ZLink Framework C++ ActorGateway Session Relay
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `.NET` framework의 ActorGateway session relay와 같은

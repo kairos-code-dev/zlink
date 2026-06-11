@@ -4,7 +4,7 @@
 
 [스펙 목차](./README.ko.md)
 
-[문서 묶음](../README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/draft/README.ko.md)
+[문서 묶음](../README.ko.md) | [개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework Use Case Validation
 

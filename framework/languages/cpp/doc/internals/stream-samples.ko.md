@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](./cpp-stream-connector.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](../../connector/doc/draft/cpp-stream-connector.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [STREAM](./cpp-stream.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [STREAM](../spec/cpp-stream.ko.md)
 
 # Draft -- ZLink Framework C++ STREAM Samples
 

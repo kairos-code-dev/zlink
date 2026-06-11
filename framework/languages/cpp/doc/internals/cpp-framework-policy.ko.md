@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Interface Design](./cpp-framework-interfaces.ko.md) | [다음: Draft -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Design](../spec/cpp-framework-interfaces.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](../spec/cpp-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md)
 
 # Draft -- ZLink Framework C++ Policy
 
@@ -203,7 +203,10 @@ framework/languages/cpp/
 |   |   |   +-- streams/
 |   |   |   +-- timers/
 +-- connector/
-+-- unreal-connector/
+|   +-- core/
+|   +-- e2e-client/
+|   +-- engines/
+|       +-- unreal/
 +-- tests/
 +-- samples/
 +-- CMakeLists.txt
@@ -325,7 +328,7 @@ header와 target include directory가 곧 공개 계약이 되므로, CMake와 �
 - runtime unit test는 private header를 include할 수 있다. contract/layout test는 public
   header만 include한다.
 - connector target도 같은 규칙을 따른다. `zlink::stream_connector` public include
-  directory는 `connector/include`이고, `connector/src/runtime/*`는 private이다.
+  directory는 `connector/core/include`이고, `connector/core/src/runtime/*`는 private이다.
 - Unreal Connector의 `Public/` header는 Unreal 사용자 표면만 노출한다. 일반 C++
   connector runtime class나 framework runtime class를 public member로 두지 않는다.
 
@@ -401,12 +404,13 @@ header, umbrella header, sample code, extension public header에서 include하�
 backend seam을 외부 확장점으로 열어야 할 때도 먼저 별도 `contracts/*` 타입을 만들고,
 backend 내부 타입을 그대로 public으로 올리지 않는다.
 
-Unreal Connector도 별도 배포 단위다. 일반 C++ connector public API를 그대로 노출하는
-wrapper가 아니라, Unreal plugin/module, Unreal 타입, Game Thread dispatch, Blueprint
-호출 표면을 가진 connector로 둔다. wire protocol과 codec 의미는 C++ Stream Connector와
-같게 유지한다. Unreal의 물리 구조는 Unreal 관례에 맞춰 `Public/`과 `Private/`를 쓰되,
-`Public/`은 connector contract와 Unreal type adapter만 담고, `Private/`는 transport,
-codec registry, thread dispatch 구현을 담는다.
+Unreal Connector도 별도 배포 단위다. 일반 C++ connector public API를 그대로 노출하지 않고,
+Unreal plugin/module, Unreal 타입, Game Thread dispatch, Blueprint 호출 표면을 가진 adapter로
+둔다. private 구현은 기본 C++ Stream Connector를 소유해서 connect, send, request, dispatch,
+close를 위임한다. wire protocol, codec, reconnect, heartbeat, pending request correlation은
+기본 connector runtime의 책임이다. Unreal의 물리 구조는 Unreal 관례에 맞춰 `Public/`과
+`Private/`를 쓰되, `Public/`은 Unreal type adapter만 담고, `Private/`는 기본 connector 호출과
+thread dispatch 구현을 담는다.
 
 ## 3.0 Language Baseline
 
@@ -435,9 +439,10 @@ C++ server framework의 네트워크 public API는 `.NET` framework와 같은 �
 close, shutdown drain처럼 I/O 완료 조건을 가진 함수는 blocking 동기 API를 제공하지 않는다.
 
 이 정책은 server framework에만 적용한다. C++ Stream Connector core는 게임 client와 엔진
-환경을 위해 no-exception/no-coroutine 계약을 따르고, 필요한 coroutine 표면을 별도 adapter로
-분리한다. server framework는 framework runtime과 coroutine scheduler를 소유하므로, 네트워크
-API를 `task_t<T>` 기반 awaitable 표면으로 통일한다.
+환경을 위해 no-exception/no-coroutine 계약을 따른다. 서버 e2e, smoke, perf scenario에서만
+필요한 awaitable 표면은 `stream_e2e_client` package로 분리한다. server framework는 framework
+runtime과 coroutine scheduler를 소유하므로, 네트워크 API를 `task_t<T>` 기반 awaitable 표면으로
+통일한다.
 
 서버 public API의 이름 규칙은 아래와 같다.
 
@@ -1337,7 +1342,7 @@ result, event model로 표현한다. 이 기준을 지키면 C++ public API는 `
 계약을 제공하면서도 C++20의 RAII, template, coroutine 사용성을 유지할 수 있다.
 
 C++ Stream Connector 패키징은 별도 문서인
-[STREAM Connector](./cpp-stream-connector.ko.md)를 따른다. framework sample이나
+[STREAM Connector](../../connector/doc/draft/cpp-stream-connector.ko.md)를 따른다. framework sample이나
 framework target에 connector public API를 섞지 않는다.
 Unreal Connector도 같은 문서에서 다루며 framework target에 포함하지 않는다.
 

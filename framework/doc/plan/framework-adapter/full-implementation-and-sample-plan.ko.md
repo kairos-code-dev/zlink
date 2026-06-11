@@ -43,7 +43,7 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
    - [session-gateway.ko.md](../../spec/archive/session-gateway.ko.md)
 2. `.NET` framework 상세
    - [README.ko.md](../../../languages/dotnet/doc/README.ko.md)
-   - [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+   - [handler-interfaces.ko.md](../../../languages/cpp/doc/spec/handler-interfaces.ko.md)
    - [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
    - [behavior-matrix.ko.md](../../../languages/dotnet/doc/internals/behavior-matrix.ko.md)
    - [regression-test-matrix.ko.md](../../../languages/dotnet/doc/internals/regression-test-matrix.ko.md)
@@ -51,15 +51,15 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
    - [implementation-scope-and-nongoals.ko.md](../../../languages/dotnet/doc/internals/implementation-scope-and-nongoals.ko.md)
 3. channel, monitoring, registry, SPOT, STREAM, connector
    - [aspnet-core-channel-messaging.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-channel-messaging.ko.md)
-   - [channel-messaging-samples.ko.md](../../../languages/dotnet/doc/guide/samples/channel-messaging-samples.ko.md)
+   - [channel-messaging-samples.ko.md](../../../languages/cpp/doc/internals/channel-messaging-samples.ko.md)
    - [aspnet-core-monitoring.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-monitoring.ko.md)
    - [aspnet-core-registry.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-registry.ko.md)
    - [aspnet-core-spot.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-spot.ko.md)
-   - [spot-samples.ko.md](../../../languages/dotnet/doc/guide/samples/spot-samples.ko.md)
-   - [stage-wrapper-on-spot.ko.md](../../../languages/dotnet/doc/spec/stage-wrapper-on-spot.ko.md)
+   - [spot-samples.ko.md](../../../languages/cpp/doc/internals/spot-samples.ko.md)
+   - [stage-wrapper-on-spot.ko.md](../../../languages/cpp/doc/spec/stage-wrapper-on-spot.ko.md)
    - [aspnet-core-stream.ko.md](../../../languages/dotnet/doc/spec/aspnet-core-stream.ko.md)
-   - [stream-open-items.ko.md](../../../languages/dotnet/doc/draft/stream-open-items.ko.md)
-   - [stream-samples.ko.md](../../../languages/dotnet/doc/guide/samples/stream-samples.ko.md)
+   - [stream-open-items.ko.md](../../../languages/cpp/doc/internals/stream-open-items.ko.md)
+   - [stream-samples.ko.md](../../../languages/cpp/doc/internals/stream-samples.ko.md)
    - [streaming-client.ko.md](../../../languages/dotnet/doc/guide/samples/streaming-client.ko.md)
    - [unity-stream-connector.ko.md](../../../../doc/guide/unity-stream-connector.ko.md)
 4. sample spec
@@ -135,7 +135,7 @@ TicTacToe sample이다. 다른 언어 binding 초안은 같은 개념을 확인�
 이 순서의 API 근거는 아래 draft 문서를 우선해서 확인한다.
 
 - send/publish call builder:
-  [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md),
+  [handler-interfaces.ko.md](../../../languages/cpp/doc/spec/handler-interfaces.ko.md),
   [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
 - async submit 의미:
   [framework-api.ko.md](../../spec/framework-api.ko.md),
@@ -268,7 +268,7 @@ find framework/samples -name "*.csproj" 2>/dev/null | sort
 
 근거 draft:
 
-- [handler-interfaces.ko.md](../../../languages/dotnet/doc/spec/handler-interfaces.ko.md)
+- [handler-interfaces.ko.md](../../../languages/cpp/doc/spec/handler-interfaces.ko.md)
 - [lifecycle-and-failure-semantics.ko.md](../../../languages/dotnet/doc/internals/lifecycle-and-failure-semantics.ko.md)
 - [framework-api.ko.md](../../spec/framework-api.ko.md)
 

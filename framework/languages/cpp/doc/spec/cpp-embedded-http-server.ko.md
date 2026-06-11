@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ HTTP Hosting](./cpp-http-hosting.ko.md) | [다음: Draft -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](./cpp-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [HTTP Client](./cpp-http-client.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md)
 
-# Draft -- ZLink Framework C++ Embedded HTTP Server
+# Spec -- ZLink Framework C++ Embedded HTTP Server
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` framework 안에서 제공할 내장 HTTP 웹서버 runtime의

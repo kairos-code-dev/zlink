@@ -1,0 +1,77 @@
+[← 목차](./README.ko.md)
+
+# 13. 샘플 지도
+
+`samples/`의 두 샘플이 이 가이드 전체 기능의 동작 정본이다. 기능을 처음 붙일
+때는 해당 샘플의 같은 자리를 먼저 본다.
+
+## 1. 실행
+
+```bash
+# 전체 샘플 일괄 (빌드 후)
+framework/languages/cpp/samples/run_samples.sh
+
+# 개별 샘플 — 서버들 + 클라이언트 시나리오를 한 번에
+framework/languages/cpp/samples/TicTacToe/run_sample.sh
+framework/languages/cpp/samples/Bingo/run_sample.sh
+```
+
+각 샘플은 `Server/Configuration/`의 topology를 [4장](./04-configuration.ko.md)
+방식(CLI/env/JSON)으로 덮어쓸 수 있다.
+
+## 2. TicTacToe — 기본 토폴로지
+
+가장 작은 완전체. Api + Play 2개 서버와 stream 클라이언트.
+
+```text
+Client ──HTTP POST /games──▶ Api ──channel──▶ Play (spot: 게임 룸)
+   └────────stream(접속/플레이)──────────────▶ Play
+```
+
+| 위치 | 보여주는 것 | 장 |
+|------|-------------|-----|
+| `Server/Api/main.cpp` + `api_server_host_factory.hpp` | app 조립, HTTP `map_post`, 채널 client/server, codec 등록 | [2](./02-getting-started.ko.md)·[5](./05-channel-messaging.ko.md)·[9](./09-http-hosting.ko.md) |
+| `Server/Api/Handlers/create_game_http_handler.hpp` | 코루틴 핸들러 + `dependency_types` DI + `channel_client_t.request` | [3](./03-concepts.ko.md)·[5 §3](./05-channel-messaging.ko.md) |
+| `Server/Play/play_server_host_factory.hpp` | spot mesh + route mesh + stream node + actor gateway 전체 선언 | [5 §5](./05-channel-messaging.ko.md)·[6](./06-spot.ko.md)·[8](./08-stream.ko.md) |
+| `Server/Play/Adapters/ZLink/Sessions/play_session.hpp` | stream session — 인증 → actor 바인딩 → relay | [7](./07-actor-session.ko.md)·[8 §3](./08-stream.ko.md) |
+| `Server/Play/Adapters/ZLink/Actors/player_actor.hpp` | actor struct + factory | [7 §2](./07-actor-session.ko.md) |
+| `Server/Configuration/` | `bind<T>` topology, 부트스트랩 로딩 순서 | [4](./04-configuration.ko.md) |
+| `Client/` | stream connector 사용, http_client로 게임 생성 | [8 §4](./08-stream.ko.md) |
+
+## 3. Bingo — registry 포함 확장 토폴로지
+
+4개 서버(Api · Play · Session · Registry). discovery로 endpoint 결합을
+끊고, fanout 알림과 protobuf codec을 쓴다.
+
+```text
+            ┌────────── Registry (discovery) ──────────┐
+Client ──▶ Api ──channel(discovery)──▶ Play (entry spot + room spot)
+   └──stream──▶ Session ──actor gateway──▶ Play
+                            Play ──fanout notify──▶ 구독자
+```
+
+| 위치 | 보여주는 것 | 장 |
+|------|-------------|-----|
+| `Server/Registry/registry_host_factory.hpp` | `enable_registry(pub, router)` 한 줄 registry 서버 | [10 §2](./10-registry.ko.md) |
+| `Server/Play/play_server_host_factory.hpp` | `use_discovery().add_registry_endpoint`, `enable_client()`(무인자 discovery), fanout publisher, protobuf codec, spot mesh + `attach_channel_client` | [5](./05-channel-messaging.ko.md)·[6](./06-spot.ko.md)·[10](./10-registry.ko.md) |
+| `Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp` | entry spot — 매칭/룸 배정 | [6 §4](./06-spot.ko.md) |
+| `Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp` | room spot — `add_actor_packet`, join 수락, 도메인 결합 | [6 §3](./06-spot.ko.md) |
+| `Server/Session/` | 세션 전담 서버 분리 — 인증과 actor 바인딩 | [7](./07-actor-session.ko.md) |
+| `Server/Api/Handlers/match_bingo_handler.hpp` | 매칭 요청 → entry spot 위임 | [6 §4](./06-spot.ko.md) |
+
+## 4. 무엇을 어디서 베낄까
+
+| 하고 싶은 것 | 베낄 자리 |
+|--------------|-----------|
+| 새 서버 프로세스 추가 | TicTacToe `Server/Api/main.cpp` + host factory 패턴 |
+| HTTP 입구 + 내부 채널 위임 | TicTacToe `create_game_http_handler` |
+| 게임 룸(상태 + 입퇴장 + 알림) | Bingo `bingo_room_spot` |
+| 매칭/룸 배정 | Bingo `bingo_entry_spot` |
+| 클라이언트 접속·인증·plays | TicTacToe `play_session` + `Client/` |
+| endpoint 하드코딩 제거 | Bingo의 discovery 구성 |
+| 멀티 서버 기동 스크립트 | 각 샘플 `run_sample.sh` |
+
+샘플 구조와 동작은 회귀 테스트(`test_cpp_framework_sample_parity`)가 고정하므로,
+가이드·샘플·코드가 어긋나면 테스트가 먼저 알려 준다.
+
+[← 목차](./README.ko.md)

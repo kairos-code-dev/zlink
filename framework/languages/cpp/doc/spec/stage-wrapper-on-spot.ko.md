@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT Samples](./spot-samples.ko.md) | [다음: Draft -- C++ STREAM Decisions](./stream-open-items.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md) | [다음: Draft -- C++ STREAM Decisions](../internals/stream-open-items.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [SPOT](./cpp-spot.ko.md)
+[C++ 묶음](../README.ko.md) | [SPOT](./cpp-spot.ko.md)
 
-# Draft -- C++ Stage Wrapper On SPOT
+# Spec -- C++ Stage Wrapper On SPOT
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, stage 같은 상위 모델을 `SPOT` 위에 감쌀 때 필요한

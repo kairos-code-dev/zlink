@@ -1,14 +1,14 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](./cpp-stream-connector.ko.md) | [다음: Draft -- ZLink Framework C++ HTTP Hosting](./cpp-http-hosting.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](../../../connector/doc/draft/cpp-stream-connector.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../doc/spec/cpp-http-hosting.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[스펙 목차](../../../../doc/spec/draft/README.ko.md)
+[스펙 목차](../../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
+[C++ 묶음](../../../doc/README.ko.md) | [C++ 정책](../../../doc/internals/cpp-framework-policy.ko.md) | [Application Framework](../../../doc/spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../doc/spec/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../doc/spec/cpp-http-hosting.ko.md)
 
 # Draft -- ZLink HTTP Client For C++
 
-> 사용법 중심 문서는 [사용자 가이드](../../http-client/doc/README.ko.md)를 본다.
+> 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
 > 이 문서는 **draft 계약**이다.
 > `zlink::http_client` 산출물의 현재 구현 범위와 다음 구현 범위를 함께 정리한다.
 > 정식 spec으로 승격하기 전까지는 `core/include/zlink.h` 기준 공개 계약이 아니다.

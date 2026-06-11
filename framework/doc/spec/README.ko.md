@@ -4,7 +4,7 @@
 
 [Framework 문서](../README.ko.md) | [공통 스펙 초안](./draft/README.ko.md)
 
-[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [비동기 실행](./async-execution-policy.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [공통 샘플](./sample/README.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/draft/README.ko.md)
+[개요](./overview.ko.md) | [use cases](./use-cases/README.ko.md) | [상호작용 모델](./interaction-model.ko.md) | [메시지 모델](./message-model.ko.md) | [channel topology](./channel-topology.ko.md) | [framework API](./framework-api.ko.md) | [비동기 실행](./async-execution-policy.ko.md) | [Actor 모델](./actor-model.ko.md) | [Session Actor Dispatch 사용성](./session-actor-dispatch.ko.md) | [공통 샘플](./sample/README.ko.md) | [Session Gateway 보관본](./archive/session-gateway.ko.md) | [검증](./usecase-validation.ko.md) | [.NET](../../languages/dotnet/doc/README.ko.md) | [.NET Session Actor Dispatch](../../languages/dotnet/doc/spec/session-actor-dispatch.ko.md) | [Java](../../languages/java/doc/draft/README.ko.md) | [Node.js](../../languages/node/doc/draft/README.ko.md) | [Python](../../languages/python/doc/draft/README.ko.md) | [Go](../../languages/go/doc/draft/README.ko.md) | [Rust](../../languages/rust/doc/draft/README.ko.md) | [C++](../../languages/cpp/doc/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -57,7 +57,7 @@
 | 15 | [Python 문서](../../languages/python/doc/draft/README.ko.md) | `Python`과 `FastAPI` 전용 문서 진입점. |
 | 16 | [Go 문서](../../languages/go/doc/draft/README.ko.md) | `Go`와 `net/http` 계열 전용 문서 진입점. |
 | 17 | [Rust 문서](../../languages/rust/doc/draft/README.ko.md) | `Rust`와 `Axum` 전용 문서 진입점. |
-| 18 | [C++ 문서](../../languages/cpp/doc/draft/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
+| 18 | [C++ 문서](../../languages/cpp/doc/README.ko.md) | `C++` zlink framework host 전용 문서 진입점. |
 | 19 | [Use case 검증](./usecase-validation.ko.md) | 각 use case를 현재 스펙이 얼마나 설명하는지 점검하는 체크리스트. |
 
 개요(1)로 전체 그림을 잡고, use case(2)로 무엇을 해결하려는지 본 뒤,

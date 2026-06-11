@@ -31,7 +31,7 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 | `basic_auth(user, pw)` / `bearer_token(tok)` | `Authorization` 헤더 ([9장](./09-authentication-tls.ko.md)) | 없음 |
 | `trust_certificate_file(path)` | 추가로 신뢰할 server certificate ([9장](./09-authentication-tls.ko.md)) | 시스템 CA |
 | `client_certificate_file(cert, key)` | mTLS client certificate ([9장](./09-authentication-tls.ko.md)) | 없음 |
-| `follow_redirects(max = 5)` | redirect 자동 추적 ([10장](./10-redirects-retries-cookies.ko.md)) | off |
+| `follow_redirects(max = 5)` | redirect 자동 추적 — 무인자 호출 시 한도 5회 ([10장](./10-redirects-retries-cookies.ko.md)) | off (호출 시 활성) |
 | `retry(attempts)` | retriable transport 실패 재시도 ([10장](./10-redirects-retries-cookies.ko.md)) | off |
 | `cookies()` | in-memory cookie jar ([10장](./10-redirects-retries-cookies.ko.md)) | off |
 | `proxy(url)` / `proxy_basic_auth(user, pw)` | HTTP proxy ([11장](./11-proxy.ko.md)) | 없음 |

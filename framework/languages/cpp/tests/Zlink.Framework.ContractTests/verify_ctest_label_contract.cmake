@@ -157,7 +157,7 @@ endif()
 get_filename_component(zlink_repo_root
   "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/../../.." ABSOLUTE)
 set(implementation_plan
-  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/draft/cpp-framework-implementation-plan.ko.md")
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/internals/cpp-framework-implementation-plan.ko.md")
 file(STRINGS "${implementation_plan}" plan_ctest_commands
   REGEX "^ctest --test-dir ")
 foreach(plan_command IN LISTS plan_ctest_commands)

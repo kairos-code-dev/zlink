@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md)
+[C++ 묶음](../README.ko.md) | [구현 계획](./cpp-framework-implementation-plan.ko.md)
 
 # Draft -- ZLink Framework C++ POSD Refactoring Log
 
@@ -938,7 +938,7 @@ contract/runtime 분리는 contract header owner를 새로 만들고 facade head
   정리했다.
 - connector version contract를 `zlink/stream_connector/contracts/version.hpp`로 분리하고
   기존 `zlink/stream_connector/version.hpp`는 facade wrapper로 유지했다.
-- `framework/src/runtime`, `connector/src/runtime`, Unreal `Private/` 경계를 물리적으로
+- `framework/src/runtime`, `connector/core/src/runtime`, Unreal `Private/` 경계를 물리적으로
   추가했다.
 - public include가 `src/runtime/*`를 참조하지 않는지 확인하는
   `test_cpp_framework_layout_contract`를 추가했다.
@@ -2223,8 +2223,8 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | 확인 항목 | 결정 |
 |-----------|------|
 | `.NET` 대응 확인 | `.NET` `Systems.Zlink.Stream.Connector/Contracts/*`와 `Runtime/*`의 connector/call/options/model과 receive loop/pending request/frame sender 분리를 기준으로 삼았다. |
-| contract owner | `connector/include/zlink/stream_connector/contracts/connector.hpp`가 connector options, state/error enum, metadata, packet, result/task, call object, codec registry, connector facade를 소유한다. |
-| runtime owner | `connector/src/runtime/connector_runtime.*`가 connection state storage, dispatch queue, pending request table, sent frame log, packet handler table, state/error callbacks를 소유한다. |
+| contract owner | `connector/core/include/zlink/stream_connector/contracts/connector.hpp`가 connector options, state/error enum, metadata, packet, result/task, call object, codec registry, connector facade를 소유한다. |
+| runtime owner | `connector/core/src/runtime/connector_runtime.*`가 connection state storage, dispatch queue, pending request table, sent frame log, packet handler table, state/error callbacks를 소유한다. |
 | public dependency | connector public header는 server framework를 include하지 않고, payload boundary로 C++ binding `message_t`만 사용한다. MessagePack, Protobuf, LZ4 dependency는 기본 public dependency가 아니다. |
 | native leakage | public connector contract에는 receive loop, transport connection, pending request table, frame sender, heartbeat scheduler, compression worker 타입이 없다. |
 | detail 사용 | template request call은 opaque state와 type-erased submit forwarding만 갖고, pending table과 dispatch 구현은 runtime owner에 있다. |
@@ -2255,7 +2255,7 @@ server framework target을 의존하지 않고 C++ binding payload boundary만 �
 
 ### 적용한 리팩토링
 
-- `connector/include/zlink/stream_connector/contracts/connector.hpp`와 umbrella
+- `connector/core/include/zlink/stream_connector/contracts/connector.hpp`와 umbrella
   `zlink/stream_connector.hpp`를 추가했다.
 - `connector_t`, `connector_factory_t`, `connector_options_t`, `codec_registry_t`,
   `send_call_t`, `request_call_t<T>`, connector `result_t<T>`, `task_t<T>`를 public
@@ -2263,7 +2263,7 @@ server framework target을 의존하지 않고 C++ binding payload boundary만 �
 - transport, codec, compression, dispatch mode, message kind, header flags, error code,
   connection state enum과 metadata/packet/state changed model을 추가했다.
 - `zlink_stream_connector`를 `INTERFACE`에서 별도 static library로 바꾸고
-  `connector/src/runtime/connector_runtime.cpp`를 private runtime 구현으로 연결했다.
+  `connector/core/src/runtime/connector_runtime.cpp`를 private runtime 구현으로 연결했다.
 - `connector_runtime.*`에 connection state, state/error/disconnected callback, pending request
   correlation, manual dispatch queue, immediate dispatch, sent packet storage, codec feature
   flag validation을 배치했다.
@@ -2299,12 +2299,12 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 | 확인 항목 | 결정 |
 |-----------|------|
-| `.NET` 대응 확인 | 일반 C++ connector contract/runtime 분리와 Unreal plugin public/private 분리를 함께 기준으로 삼았다. Unreal public API는 일반 connector wrapper가 아니라 Unreal 타입과 thread model 표면이다. |
-| contract owner | `unreal-connector/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h`가 `UZLinkStreamConnector`, Unreal-facing state enum, packet value type, Blueprint-callable method를 소유한다. |
-| runtime owner | `unreal-connector/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp`가 Unreal `Sockets`/`Networking` 기반 connection, Game Thread dispatch forwarding, lifecycle shutdown mapping을 소유한다. |
+| `.NET` 대응 확인 | 일반 C++ connector contract/runtime 분리와 Unreal plugin public/private 분리를 함께 기준으로 삼았다. Unreal public API는 일반 connector type을 노출하지 않고 Unreal 타입과 thread model 표면만 제공한다. |
+| contract owner | `connector/engines/unreal/Source/ZLinkStreamConnector/Public/ZLinkStreamConnector.h`가 `UZLinkStreamConnector`, Unreal-facing state enum, packet value type, Blueprint-callable method를 소유한다. |
+| runtime owner | `connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp`가 기본 C++ connector 호출, Game Thread dispatch forwarding, lifecycle shutdown mapping을 소유한다. |
 | public dependency | Unreal public header는 일반 C++ connector runtime header를 include하지 않는다. Unreal 엔진이 없는 CTest compile에서는 shim 타입으로 public API shape만 검증한다. |
 | native leakage | public API는 `FString`, `FName`, `TArray<uint8>`, `TMap<FString,FString>` 기반 표면만 노출하고 receive loop, pending request table, frame sender, thread queue를 노출하지 않는다. |
-| detail 사용 | 일반 C++ connector runtime include는 Unreal 구현에 두지 않는다. Unreal connector는 wire 의미만 공유하고 transport는 Unreal networking API로 구현한다. |
+| detail 사용 | 일반 C++ connector의 public header만 Unreal private 구현에서 include한다. `connector/core/src/runtime/*` private header와 자체 STREAM frame 구현은 Unreal adapter에 두지 않는다. |
 | state hiding | `UZLinkStreamConnector`는 opaque private runtime을 `unique_ptr`로 소유한다. |
 | validation | `test_unreal_stream_connector`가 Engine 없는 compile smoke를 담당하고, `ZLink.StreamConnector.Loopback` Unreal Automation Test가 실제 `FSocket` loopback send/request/push를 확인한다. |
 
@@ -2322,15 +2322,16 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 일반 C++ connector API를 Unreal public header에 그대로 노출 | 중복 API가 줄어든다 | Unreal 타입, Blueprint, Game Thread 모델과 맞지 않는다 |
-| Unreal 전용 facade를 제공하고 Private에서 Unreal runtime 구현 | Unreal 사용성에 맞고 transport 구현을 숨길 수 있다 | public/private adapter 코드가 필요하다 |
+| Unreal 전용 facade를 제공하고 Private에서 기본 connector 호출 | Unreal 사용성에 맞고 core 구현 복제를 피한다 | public/private adapter 코드가 필요하다 |
 | private runtime raw pointer 소유 | 구현이 짧다 | ownership, destructor, shutdown 책임이 명확하지 않다 |
 | private runtime `unique_ptr` 소유 | RAII로 lifetime이 닫힌다 | public header에 `<memory>`와 전방 선언이 필요하다 |
 | immediate callback 실행 | callback path가 단순하다 | Game Thread 실행 보장이 약해진다 |
 | `Dispatch()`/`Tick()` manual dispatch 표면 제공 | Game Thread에서 명시적으로 callback을 처리할 수 있다 | 사용자가 frame loop에서 dispatch를 호출해야 한다 |
 
-선택은 Unreal 전용 public facade와 `Private/` runtime adapter다. public header는 Unreal 타입과
-Blueprint-callable method만 제공하고, 일반 connector runtime과 transport/codec/thread
-dispatch 구현은 Private에 숨긴다.
+현재 기준의 선택은 Unreal 전용 public facade와 `Private/` adapter다. public header는 Unreal
+타입과 Blueprint-callable method만 제공하고, 기본 connector 호출과 Game Thread dispatch 구현은
+Private에 숨긴다. STREAM frame, reconnect, heartbeat, pending request correlation은 기본
+connector core에 둔다.
 
 ### 적용한 리팩토링
 
@@ -2342,8 +2343,8 @@ dispatch 구현은 Private에 숨긴다.
   타입과 macro fallback을 두었다.
 - `Connect`, `Close`, `SendJson`, `RequestJson`, `Dispatch`, `Tick`, `ShutdownForPie`,
   `ShutdownForMapUnload`, `ShutdownForGameInstanceShutdown` 표면을 추가했다.
-- `Private/ZLinkStreamConnector.cpp`에서 Unreal `Sockets` 기반 runtime을 소유하고, public
-  header에는 일반 connector runtime 타입을 노출하지 않았다.
+- `Private/ZLinkStreamConnector.cpp`는 기본 connector public API를 호출하는 adapter가 되어야
+  한다. 과거 Unreal `Sockets` 기반 runtime 구현은 현재 기준에서 제거 대상이다.
 - POSD 리팩토링으로 private runtime 소유권을 raw pointer에서 `std::unique_ptr`로 바꾸었다.
 - CMake smoke용 `zlink_unreal_stream_connector` target과 `test_unreal_stream_connector`를
   추가해 Unreal public header compile과 lifecycle smoke를 CTest에 등록했다.
@@ -2362,8 +2363,8 @@ dispatch 구현은 Private에 숨긴다.
 ```bash
 cmake -S framework/languages/cpp -B framework/languages/cpp/build
 cmake --build framework/languages/cpp/build --target test_unreal_stream_connector
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-compile --output-on-failure
-ctest --test-dir framework/languages/cpp/build -L unreal-connector-smoke --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-compile --output-on-failure
+ctest --test-dir framework/languages/cpp/build -L connector-unreal-smoke --output-on-failure
 ctest --test-dir framework/languages/cpp/build -L framework-contract --output-on-failure
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
@@ -2867,7 +2868,7 @@ git diff --check -- framework/languages/cpp
 ```bash
 cmake --build framework/languages/cpp/build
 ctest --test-dir framework/languages/cpp/build --output-on-failure
-rg -n "gtest|gmock|spdlog|fmt::|boost|kafka|grpc|yaml|flatbuffers|src/runtime|connector/src/runtime|Private/" framework/languages/cpp/framework/include framework/languages/cpp/connector/include framework/languages/cpp/unreal-connector/Source/ZLinkStreamConnector/Public
+rg -n "gtest|gmock|spdlog|fmt::|boost|kafka|grpc|yaml|flatbuffers|src/runtime|connector/core/src/runtime|Private/" framework/languages/cpp/framework/include framework/languages/cpp/connector/core/include framework/languages/cpp/connector/engines/unreal/Source/ZLinkStreamConnector/Public
 find framework/languages/cpp/framework/include/zlink/framework/contracts/detail -type f -maxdepth 1 -print -exec sed -n '1,220p' {} \;
 git diff --check -- framework/languages/cpp bindings/cpp
 ```
@@ -2969,7 +2970,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 
 - `contracts/assembly/assembly.hpp`, `framework/assembly.hpp`, `src/runtime/host/assembly.cpp`,
   `src/runtime/backend/contracts/backend_runtime_contract.hpp`,
-  `connector/src/runtime/backend/contracts/connector_backend_contract.hpp`를 추가했다.
+  `connector/core/src/runtime/backend/contracts/connector_backend_contract.hpp`를 추가했다.
 - framework package와 stream connector package의 install/export config를 분리하고,
   installed consumer가 `zlink::framework`, `zlink::stream_connector`,
   `zlink::framework_extension_*` target을 그대로 사용할 수 있게 `EXPORT_NAME`과 config
@@ -4629,7 +4630,7 @@ compile test를 결합해 같은 목적을 달성한다.
 - `test_cpp_framework_layout_contract.cpp`가 public contract header tree를 스캔하고, 각
   header가 contract header compile test에 직접 include되어 있지 않으면 실패하게 했다.
 - 이 검증은 `framework/include/zlink/framework/contracts`와
-  `connector/include/zlink/stream_connector/contracts` 양쪽에 적용된다.
+  `connector/core/include/zlink/stream_connector/contracts` 양쪽에 적용된다.
 
 ### 재실행한 검증 명령
 
@@ -5085,7 +5086,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 | CMake coverage build와 `gcov` 기반 threshold script를 둠 | 기본 toolchain만으로 CTest gate를 만들 수 있다 | HTML 보고서는 별도 도구가 있을 때 추가해야 한다 |
 
 선택은 CMake coverage build와 `gcov` 기반 threshold script다. coverage 대상은
-`framework/src`, `http-client/src`, `connector/src`, Unreal connector private source로
+`framework/src`, `http-client/src`, `connector/core/src`, Unreal connector private source로
 제한하고, 테스트와 샘플은 계산에서 제외한다.
 
 ### 적용한 리팩토링
@@ -5902,7 +5903,7 @@ HTTP hosting, API handler DI 경계가 한 테스트에서 검증되고, process
   dispatch를 이미 검증한다. 문제는 테스트 부재가 아니라 테스트 의미가 `connector-unit`,
   `connector-integration`, `connector-e2e`에만 접혀 있어 final audit에서 문서 요구사항을 직접
   증명할 수 없다는 점이다.
-- Unreal connector test도 public compile/smoke 계약을 확인하지만 `unreal-connector-contract`
+- Unreal connector test도 public compile/smoke 계약을 확인하지만 `connector-unreal-contract`
   label이 없어 plan의 Unreal public API compile 계약을 라벨로 선택할 수 없었다.
 
 ### 비교한 대안
@@ -5921,16 +5922,16 @@ transport, typed 흐름을 함께 지나므로, 라벨을 추가하는 편이 �
 
 - `test_cpp_stream_connector` label에 `connector-contract`, `connector-protocol`,
   `connector-transport`, `connector-typed`를 추가했다.
-- `test_unreal_stream_connector` label에 `unreal-connector-contract`를 추가했다.
+- `test_unreal_stream_connector` label에 `connector-unreal-contract`를 추가했다.
 
 ### 수정 후 점검
 
 - `ctest --test-dir framework/languages/cpp/build -N -L connector-contract`는
   `test_cpp_stream_connector`를 포함해야 한다. CTest label 선택은 정규식이므로
-  `unreal-connector-contract`도 같은 명령에 함께 선택될 수 있다.
+  `connector-unreal-contract`도 같은 명령에 함께 선택될 수 있다.
 - `connector-protocol`, `connector-transport`, `connector-typed` label도 같은 connector
   회귀 테스트를 선택해야 한다.
-- `unreal-connector-contract` label은 Unreal connector compile/smoke 테스트를 선택해야 한다.
+- `connector-unreal-contract` label은 Unreal connector compile/smoke 테스트를 선택해야 한다.
 - 이번 보정 뒤 connector label taxonomy에서 남은 즉시 수정 이슈는 0개다.
 
 ## 추가 리뷰. TicTacToe HTTP 문서 예시와 구현 계약 정렬
@@ -6557,12 +6558,18 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
 
 ## 추가 리뷰. Unreal Stream Connector general connector dependency 제거
 
+> 이 절의 결론은 이후 `cpp-stream-connector.ko.md`의 adapter 기준 보강으로 대체되었다.
+> Unreal public API가 일반 C++ connector type을 노출하면 안 된다는 판단은 유지한다.
+> 그러나 Unreal private 구현까지 기본 connector를 사용하지 말아야 한다는 판단은 폐기한다.
+> 현재 기준은 Unreal adapter가 기본 connector를 private dependency로 소유하고, Unreal
+> public API와 Game Thread dispatch만 adapter에서 책임지는 것이다.
+
 ### 발견한 위험 신호
 
 - Goal 20은 Unreal connector가 일반 C++ connector wrapper가 아니라 Unreal network library 기반
   구현이어야 한다고 적는다.
 - Unreal private source는 자체 frame codec과 Unreal `Sockets` 경로를 사용하지만, CMake target은
-  `zlink::stream_connector`를 public link하고 `connector/src`를 private include로 열어 두었다.
+  `zlink::stream_connector`를 public link하고 `connector/core/src`를 private include로 열어 두었다.
 - 구현은 독립인데 build graph가 일반 connector runtime을 끌고 오면, 나중에 wrapper 의존성이
   조용히 생겨도 public surface gate가 놓칠 수 있다.
 
@@ -6574,21 +6581,28 @@ push와 relay 모두 같은 state를 확인해야 cleanup 의미가 한 곳에 �
 | link를 PRIVATE로 낮춤 | public 전이는 줄어든다 | 일반 connector runtime 의존성 자체는 남는다 |
 | 일반 connector link와 runtime include를 제거 | Unreal connector가 자체 Unreal transport만 의존한다 | 필요한 공유 코드가 생기면 별도 protocol contract로 분리해야 한다 |
 
-선택은 세 번째 방식이다. Unreal connector private 구현은 이미 자체 frame/metadata/LZ4 경로를
-가지므로 일반 connector target에 의존하지 않아도 된다. 의존성을 제거해야 정보 은닉과 배포
-경계가 문서 기준과 일치한다.
+당시 선택은 세 번째 방식이었다. 이후 Stream Connector draft를 재정리하면서 이 선택은
+잘못된 방향으로 판정했다. 자체 frame/metadata/LZ4 경로를 Unreal adapter에 두면 기본 connector
+구현을 엔진별로 복제하게 된다. 정보 은닉 기준에서 숨겨야 할 것은 기본 connector type을 Unreal
+public header에 노출하지 않는 것이지, private 구현에서 기본 connector를 의존하지 않는 것이
+아니다.
 
 ### 적용한 리팩토링
 
 - `zlink_unreal_stream_connector` target에서 `zlink::stream_connector` link를 제거했다.
-- 같은 target의 `connector/src` private include도 제거했다.
+- 같은 target의 `connector/core/src` private include도 제거했다.
 - layout contract가 Unreal connector target이 일반 connector target이나 runtime include를 다시
   참조하지 않는지 검사하게 했다.
 
-### 수정 후 점검
+### 현재 기준
 
-- Unreal connector는 build graph에서도 일반 C++ connector wrapper가 아니다.
-- Unreal public/private 코드는 Unreal plugin 표면과 자체 private runtime 경계만 유지한다.
+- Unreal public header는 Unreal type과 delegate만 노출한다.
+- Unreal private source는 `zlink::stream_connector` public API를 사용해 connect, send, request,
+  dispatch, close를 위임한다.
+- Unreal adapter는 `connector/core/src/runtime/*` private header나 자체 STREAM frame codec을 소유하지
+  않는다.
+- CMake 검증 target은 `zlink::stream_connector`와 `zlink::stream_connector_codecs`를 `PRIVATE`
+  dependency로 링크한다.
 
 ## 추가 리뷰. TicTacToe client server handler include 제거
 
@@ -6790,7 +6804,7 @@ heading 형식으로 남아 있으면 완료 audit의 기준이 흐려진다.
 
 ### 발견한 위험 신호
 
-- 실행 계획의 기능 축 추적표는 `http-client-*`, `connector-*`, `unreal-connector-*`,
+- 실행 계획의 기능 축 추적표는 `http-client-*`, `connector-*`, `connector-unreal-*`,
   `framework-sample-*`처럼 wildcard label을 사용한다.
 - 실제 CTest gate는 concrete label을 검사하지만, plan 안에서 wildcard가 어떤 concrete label을
   뜻하는지 한곳에 고정하지 않았다.
@@ -6811,7 +6825,7 @@ contract와 같은 concrete label 집합을 보여 주는 역할로 나누는 �
 ### 적용한 리팩토링
 
 - 실행 계획의 기능 축 추적표 아래에 wildcard label 확장표를 추가했다.
-- layout contract가 `http-client-*`, `connector-*`, `unreal-connector-*`,
+- layout contract가 `http-client-*`, `connector-*`, `connector-unreal-*`,
   `framework-sample-*` 확장 행을 검사하게 했다.
 
 ### 수정 후 점검
@@ -6857,7 +6871,7 @@ non-empty contract로 고정하는 편이 오해가 적다.
 ### 발견한 위험 신호
 
 - `required_labels`는 concrete label을 직접 나열하므로 현재 목록은 정확하지만, 새
-  `http-client-*`, `connector-*`, `unreal-connector-*`, `framework-sample-*` label이
+  `http-client-*`, `connector-*`, `connector-unreal-*`, `framework-sample-*` label이
   추가되어도 누락을 자동으로 발견하지 못했다.
 - 실행 계획의 wildcard 확장표가 prefix 전체를 뜻한다면, CTest에 실제로 존재하는 prefix label도
   모두 non-empty contract에 들어와야 한다.
@@ -6877,7 +6891,7 @@ non-empty contract로 고정하는 편이 오해가 적다.
 ### 적용한 리팩토링
 
 - label contract가 `ctest --print-labels` 출력을 읽게 했다.
-- `http-client-*`, `connector-*`, `unreal-connector-*`, `framework-sample-*` prefix label이
+- `http-client-*`, `connector-*`, `connector-unreal-*`, `framework-sample-*` prefix label이
   `required_labels`에 없으면 실패하게 했다.
 
 ### 수정 후 점검
@@ -7958,7 +7972,7 @@ core로 닫고, MVC/Razor/WebSocket 계열은 별도 goal이나 extension owner�
 | public header는 opaque handle만 보관하고 runtime `.cpp`에서 내부 상태로 복원한다 | 호출자 표면에서 구현 타입명을 숨기고 기존 fluent API를 유지한다 | runtime 구현에서 handle 복원 helper가 필요하다 |
 
 선택은 세 번째 방식이다. connector 상태 공유는 구현 세부 사항이므로 public header에는 의미 없는
-opaque handle로만 남기고, 실제 상태 타입과 runtime helper는 `connector/src/runtime` 안에서만
+opaque handle로만 남기고, 실제 상태 타입과 runtime helper는 `connector/core/src/runtime` 안에서만
 다룬다.
 
 ### 적용한 리팩토링
@@ -8309,7 +8323,7 @@ HTTP client와 Stream Connector의 역할 분담을 바로 드러내야 한다.
 
 - Goal 1과 Goal 22는 framework, connector, HTTP client, Unreal connector가 실제 산출물과
   public/runtime 경계로 분리되어야 한다고 둔다.
-- 실제 파일이 들어찬 `framework/include`, `framework/src/runtime`, `connector/src/runtime`,
+- 실제 파일이 들어찬 `framework/include`, `framework/src/runtime`, `connector/core/src/runtime`,
   Unreal `Private` 하위 디렉터리에 `.gitkeep` placeholder가 계속 남아 있었다.
 - 비어 있지 않은 디렉터리에 placeholder 파일이 남으면 현재 구조가 실제 구현 소유자인지,
   빈 디렉터리를 맞추기 위한 자리표시자인지 구분이 흐려진다. 이는 산출물 경계 감사에서 잡음이 된다.

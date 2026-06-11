@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md) | [다음: Draft -- ZLink Framework C++ SPOT](./cpp-spot.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md) | [다음: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md)
+[C++ 묶음](../README.ko.md)
 
-# Draft -- ZLink Framework C++ Registry
+# Spec -- ZLink Framework C++ Registry
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` runtime에서 Registry를 어떤 표면으로 통합할지

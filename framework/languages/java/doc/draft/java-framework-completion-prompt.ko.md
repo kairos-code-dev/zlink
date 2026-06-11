@@ -6,7 +6,7 @@
 
 아래 프롬프트는 Java/Kotlin framework 포팅 작업을 끝까지 수행할 때 사용한다.
 대상 문서는 [implementation-execution-plan](./implementation-execution-plan.ko.md),
-[handler-interfaces](./handler-interfaces.ko.md),
+[handler-interfaces](../../../cpp/doc/spec/handler-interfaces.ko.md),
 [sample-implementation-plan](./sample-implementation-plan.ko.md),
 [regression-test-matrix](./internals/regression-test-matrix.ko.md)이다.
 

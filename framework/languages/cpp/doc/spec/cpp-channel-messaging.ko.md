@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: Draft -- ZLink Framework C++ Interface Design](./cpp-framework-interfaces.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging Samples](../internals/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](./cpp-framework-interfaces.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel 샘플](./channel-messaging-samples.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [channel 샘플](../internals/channel-messaging-samples.ko.md)
 
-# Draft -- ZLink Framework C++ Channel Messaging
+# Spec -- ZLink Framework C++ Channel Messaging
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` host/runtime에서 channel messaging을 어떤 표면으로

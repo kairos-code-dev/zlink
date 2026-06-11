@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Interface Alignment](./handler-interfaces.ko.md) | [다음: Draft -- C++ Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Alignment](../spec/handler-interfaces.ko.md) | [다음: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT](./cpp-spot.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [SPOT](../spec/cpp-spot.ko.md)
 
 # Draft -- ZLink Framework C++ SPOT Samples
 

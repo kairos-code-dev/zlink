@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Registry](./cpp-registry.ko.md) | [다음: Draft -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](./cpp-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT 샘플](./spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [SPOT 샘플](../internals/spot-samples.ko.md) | [Stage wrapper](./stage-wrapper-on-spot.ko.md)
 
-# Draft -- ZLink Framework C++ SPOT
+# Spec -- ZLink Framework C++ SPOT
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` host/runtime에서 `SPOT`을 어떤 표면으로 통합할지

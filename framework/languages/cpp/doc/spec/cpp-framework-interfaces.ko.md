@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging](./cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](./cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 
-# Draft -- ZLink Framework C++ Interface Design
+# Spec -- ZLink Framework C++ Interface Design
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` framework의 전반적인 public interface 방향을

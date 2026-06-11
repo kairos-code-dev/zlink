@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md) | [다음: Draft -- ZLink Framework C++ Registry](./cpp-registry.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](./cpp-registry.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Registry](./cpp-registry.ko.md)
+[C++ 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [Registry](./cpp-registry.ko.md)
 
-# Draft -- ZLink Framework C++ Monitoring
+# Spec -- ZLink Framework C++ Monitoring
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` runtime에서 socket, discovery, registry, spot

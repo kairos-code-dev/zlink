@@ -1,12 +1,12 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink HTTP Client For C++](./cpp-http-client.ko.md) | [다음: Draft -- ZLink Framework C++ Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink HTTP Client For C++](../../http-client/doc/draft/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](./README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](./cpp-http-client.ko.md) | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
 
-# Draft -- ZLink Framework C++ HTTP Hosting
+# Spec -- ZLink Framework C++ HTTP Hosting
 
 > 이 문서는 **구현 전 초안**이다.
 > 현재 공개 계약이 아니며, `C++` framework가 ASP.NET Core Minimal API 기반 HTTP hosting을

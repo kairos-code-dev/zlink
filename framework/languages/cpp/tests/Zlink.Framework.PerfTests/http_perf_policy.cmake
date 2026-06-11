@@ -3,9 +3,9 @@ if(NOT DEFINED ZLINK_FRAMEWORK_CPP_SOURCE_DIR)
 endif()
 
 set(implementation_plan
-  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/draft/cpp-framework-implementation-plan.ko.md")
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/internals/cpp-framework-implementation-plan.ko.md")
 set(embedded_http_server_plan
-  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/draft/cpp-embedded-http-server.ko.md")
+  "${ZLINK_FRAMEWORK_CPP_SOURCE_DIR}/doc/spec/cpp-embedded-http-server.ko.md")
 
 foreach(path IN ITEMS
     "${implementation_plan}"

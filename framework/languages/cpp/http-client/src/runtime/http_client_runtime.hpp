@@ -4,9 +4,15 @@
 #include <zlink/http_client/contracts/client.hpp>
 
 #include <chrono>
+#include <functional>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace zlink::http_client::detail
 {
@@ -18,6 +24,13 @@ struct http_client_options_t
     std::chrono::milliseconds timeout{3000};
     std::map<std::string, std::string> headers;
     std::optional<std::string> trust_certificate_file;
+    std::optional<std::pair<std::string, std::string>> client_certificate;
+    int follow_redirects = 0;
+    int retry_attempts = 0;
+    bool cookies = false;
+    std::optional<std::string> proxy;
+    std::optional<std::string> proxy_authorization;
+    bool compression = false;
 };
 
 struct http_request_t
@@ -25,18 +38,46 @@ struct http_request_t
     http_method_t method;
     std::string path;
     std::optional<std::string> body;
+    std::function<std::optional<std::string> ()> body_provider;
     std::map<std::string, std::string> headers;
+    std::optional<std::chrono::milliseconds> timeout;
+    std::function<void (std::string_view)> sink;
 };
+
+struct cookie_t
+{
+    std::string host;
+    std::string name;
+    std::string value;
+    std::string path;
+    bool secure = false;
+};
+
+class cookie_jar_t
+{
+  public:
+    void store (const std::string &host, const std::string &set_cookie_header);
+    std::string header_for (const std::string &host, const std::string &path, bool secure) const;
+
+  private:
+    mutable std::mutex _mutex;
+    std::vector<cookie_t> _cookies;
+};
+
+class connection_pool_t;
 
 class http_client_runtime_t
 {
   public:
     explicit http_client_runtime_t (http_client_options_t options);
+    ~http_client_runtime_t ();
 
     zlink::framework::result_t<raw_http_response_t> execute (const http_request_t &request) const;
 
   private:
     http_client_options_t _options;
+    mutable cookie_jar_t _cookie_jar;
+    std::unique_ptr<connection_pool_t> _connection_pool;
 };
 
 } // namespace zlink::http_client::detail

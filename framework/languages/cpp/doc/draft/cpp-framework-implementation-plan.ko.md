@@ -987,9 +987,9 @@ framework core target의 기본 의존성이 아니다.
 - public 호출은 zlink 스타일 call object를 만들고 `co_await submit<T>()`로 실행한다.
 - JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리하고, application sample code가
   `nlohmann::json::parse`로 field를 직접 꺼내지 않는다.
-- retry, redirect, cookie, proxy, multipart, streaming download는 C++ framework가 필요로 하는
-  HTTP client 제품 범위가 아니다. Goal 18은 framework sample과 HTTP handler e2e에 필요한
-  typed JSON request/response, timeout, status mapping, HTTPS/TLS verification만 완료 범위로 삼는다.
+- retry, redirect, cookie, proxy, multipart, streaming download는 일반 HTTP client 기능으로
+  지원 범위에 포함한다. typed JSON 경로는 그 위의 편의 계층이며, `PATCH`/`HEAD`/`OPTIONS`,
+  query 파라미터, raw/form/multipart body, gzip 압축 해제까지 fluent builder로 제공한다.
 - TicTacToe client sample은 이 HTTP client로 `POST /games`를 호출한다.
 - HTTP client 회귀 테스트는 HTTP와 HTTPS 모두에서 typed JSON request/response, timeout,
   status mapping, TLS verification 실패, test certificate trust 성공을 고정한다.

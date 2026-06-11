@@ -14,10 +14,10 @@
 
 ## 1. 목적
 
-`zlink::http_client`는 C++ 샘플과 테스트에서 HTTP/JSON request를 보내기 위한 별도
-client-side 산출물이다. C++ HTTP client 구현은 보통 낮은 수준 타입과 설정이 많으므로,
-샘플마다 별도 wrapper를 만들지 않고 zlink의 call object와 fluent builder 스타일로
-복잡성을 흡수한다.
+`zlink::http_client`는 C++에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
+JSON 전용 client가 아니라 일반 HTTP client이며, zlink의 call object와 fluent builder
+스타일로 낮은 수준 타입과 설정의 복잡성을 흡수한다. typed JSON 경로
+(`body(dto)`/`submit<T>()`/`fetch<T>()`)는 그 위에 얹은 편의 계층이다.
 
 이 client는 framework HTTP hosting을 검증하는 소비자다. `zlink::framework` core target의
 기본 의존성이 아니며, framework public header가 이 client를 include하지 않는다.
@@ -41,9 +41,22 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 - `zlink/http_client.hpp`
 - `zlink/http_client/contracts/client.hpp`
 - `zlink::http_client` CMake target
-- `client_t::create().base_url(...).json().timeout(...).trust_certificate_file(...).build()`
-- `get`, `post`, `put`, `delete_` request builder
-- typed JSON `body(...)`, `submit<T>()`, `submit_raw()`
+- `client_t::create(base_url)` 또는 `create().base_url(...)` +
+  `.json().timeout(...).default_header(...).trust_certificate_file(...)`
+  `.follow_redirects(...).retry(...).cookies().proxy(...).compression().build()`
+- 인증: `basic_auth(user, password)`, `bearer_token(token)`,
+  `proxy_basic_auth(user, password)`, mTLS `client_certificate_file(cert, key)`
+- 단발 request용 `build()` 생략 shortcut: `client_t::create(url).post(...)`
+- `get`, `post`, `put`, `delete_`, `patch`, `head`, `options` request builder
+- `query(name, value)`: percent-encoding된 query 파라미터
+- request 단위 `timeout(duration)` override
+- body 소스(상호 배타): typed JSON `body(dto)`, raw `body(content, content_type)`,
+  chunked streaming `body_stream(provider, content_type)`,
+  `form(name, value)`(x-www-form-urlencoded), `multipart(...)`/`multipart_file(...)`
+- `submit<T>()`, `submit_raw()`, blocking `fetch<T>()`(typed body 직접 반환, 실패 시 throw)
+- `download(sink)`: 응답 body를 버퍼링 없이 chunk 단위로 streaming
+- connection keep-alive pool: 같은 origin(+proxy) 연결을 재사용하고, 죽은 pooled 연결은
+  fresh 연결로 1회 자동 재시도한다
 
 ## 3. Public API Shape
 
@@ -66,27 +79,84 @@ typed submit은 내부에서 raw submit 결과를 `.result()`로 기다리지 �
 await한다. 이 규칙은 샘플 handler가 HTTP client를 사용할 때 runtime thread를 막지 않도록
 하기 위한 것이다.
 
-초기 범위는 아래로 제한한다.
+같은 client를 여러 request에 재사용할 때는 위처럼 `build()`로 client를 한 번 만들어
+보관한다. `build()`가 runtime(connection pool)을 생성하는 지점이기 때문이다.
 
-- `GET`, `POST`, `PUT`, `DELETE`
-- typed JSON request body
-- typed JSON response
-- timeout
-- default header
+request가 한 번뿐인 경우에는 `build()`를 생략하고 builder에서 곧바로
+`get`/`post`/`put`/`delete_`를 호출할 수 있다.
+
+```cpp
+auto created = zlink::http_client::client_t::create()
+  .base_url(topology.api_http_endpoint)
+  .json()
+  .post("/games")
+  .body(create_match_req_t { .owner_actor_id = actor_id })
+  .submit<create_match_res_t>()
+  .result();
+```
+
+이 shortcut은 builder가 임시 객체여도 안전하다. `request_builder_t`가 client를 (raw
+pointer가 아니라) 값으로 보유하므로, on-demand로 만든 client와 그 runtime이 request가
+끝날 때까지 유지된다.
+
+`submit<T>()`의 결과는 `result_t<http_response_t<T>>`다. 즉 성공/실패 래퍼와 HTTP 봉투
+(`status`/`headers`/`body`)를 거쳐 `.value().body`로 typed DTO에 닿는다. typed body만
+바로 필요한 경우에는 `fetch<T>()`를 쓴다. `fetch<T>()`는 result와 봉투를 풀어 DTO를 직접
+반환하고 실패는 예외로 던진다.
+
+```cpp
+auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
+  .json()
+  .post("/games")
+  .body(create_match_req_t { .owner_actor_id = actor_id })
+  .fetch<create_match_res_t>();   // create_match_res_t (실패 시 예외)
+```
+
+`fetch<T>()`는 결과를 blocking으로 기다린다. 따라서 테스트와 client 시나리오처럼 blocking이
+허용되는 곳에서 쓴다. runtime/handler 코드는 runtime thread를 막지 않도록 `submit<T>()`를
+`co_await`한다.
+
+일반 HTTP client 기능은 아래 범위를 지원한다.
+
+- `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`
+- query 파라미터 (`query(name, value)`, percent-encoding 자동)
+- request body: typed JSON DTO, raw(임의 content-type), chunked streaming
+  (`body_stream`), form-urlencoded, multipart/form-data
+  (한 request에 body 소스는 하나만 허용)
+- 응답: raw(`submit_raw`), typed JSON(`submit<T>`/`fetch<T>`), streaming(`download(sink)`)
+- timeout(client 기본 + request 단위 override), default header, request header
+- 인증: HTTP Basic(`basic_auth`), Bearer(`bearer_token`),
+  proxy Basic(`proxy_basic_auth`), mTLS client certificate(`client_certificate_file`)
+- connection keep-alive pool: 같은 origin(+proxy)의 idle 연결을 재사용한다. 서버가
+  연결을 닫았으면(stale) fresh 연결로 1회 자동 재시도한다. `body_stream` request는
+  provider를 되감을 수 없으므로 항상 fresh 연결을 쓴다.
+- redirect 자동 추적: `follow_redirects(max)`. `301/302`의 `POST`와 `303`은 `GET`으로
+  바뀌고 body를 버린다. `307/308`은 method와 body를 보존한다. 절대 URL과 절대 경로
+  Location을 지원하며, 한도를 넘으면 `request_failed`로 닫힌다.
+- retry: `retry(attempts)`. retriable한 transport 실패(연결 끊김, timeout)만 재시도하고
+  HTTP status 실패는 재시도하지 않는다. 되감을 수 없는 `body_stream`/`download`
+  request는 자동 retry에서 제외한다.
+- cookie jar: `cookies()`. `Set-Cookie`의 `Path`, `Secure`, `Max-Age`(0 이하 = 삭제)를
+  반영하는 in-memory jar. `Domain`, `Expires` 등 나머지 속성은 무시한다.
+- proxy: `proxy("http://host:port")`. http target은 absolute-form으로 전달하고,
+  https target은 `CONNECT` tunnel을 연 뒤 TLS handshake를 수행한다.
+  `proxy_basic_auth`는 absolute-form request와 `CONNECT`에 `Proxy-Authorization`을 싣는다.
+- 압축: `compression()`. `Accept-Encoding: gzip, deflate`를 보내고 gzip/deflate 응답
+  body를 투명하게 해제한다(Boost.Beast zlib 사용, trailer checksum은 검증하지 않는다).
+  `download(sink)` streaming 경로에는 적용되지 않는다.
+- HTTP와 HTTPS endpoint, TLS server certificate verification, hostname verification,
+  test certificate trust option
 - HTTP status mapping
-- HTTP와 HTTPS endpoint
-- TLS server certificate verification
-- hostname verification
-- test certificate trust option
+
+HTTP/2와 non-blocking async 실행은 범위 밖이다. 전자는 Boost.Beast가 지원하지 않고,
+후자는 task 실행 모델 변경이 필요하므로 별도 설계로 다룬다.
 
 `base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
-request path, request header name은 call을 보내기 전에 검증한다. URL scheme이 `http://` 또는
+`follow_redirects(...)`, `retry(...)`, `proxy(...)`, request path, request header name,
+query/form/multipart field name은 call을 보내기 전에 검증한다. URL scheme이 `http://` 또는
 `https://`가 아니거나 timeout이 0 이하인 경우, 또는 이름이 비어 있는 경우에는
 `framework_error_kind_t::request_protocol_error`로 설정 오류를 알린다. 이 오류는 transport
 실패와 구분되어야 하므로 `request_failed`로 뭉개지 않는다.
-
-retry, redirect, cookie, proxy, multipart, streaming download는 초기 범위에 넣지 않는다.
-필요하면 별도 extension point로 설계한다.
 
 ## 4. JSON 계약
 
@@ -134,6 +204,28 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - JSON request/response: typed DTO request를 JSON으로 보내고 reply DTO를 읽는다
 - coroutine submit: `co_await submit<T>()`가 typed response를 반환하고 내부 raw submit을
   blocking wait로 기다리지 않는다
+- build 생략 shortcut: builder가 임시여도 `build()` 없이 `post(...)` 등으로 보낸 request가
+  use-after-free 없이 완료된다
+- typed body fetch: `fetch<T>()`가 typed DTO를 직접 반환하고 실패 status를 예외로 던진다
+- method coverage: `PATCH`, `OPTIONS`가 전달되고 `HEAD`는 body 없이 status/header를 받는다
+- query encoding: `query(...)`가 percent-encoding된 query string으로 전달된다
+- body 소스: raw content-type, form-urlencoded, multipart 인코딩이 wire에 그대로 실리고,
+  복수 body 소스는 `request_protocol_error`로 거부된다
+- redirect: 추적 on/off, 절대 URL Location, `POST`→`GET` 변환, redirect 한도 초과 실패
+- retry: 응답 없이 끊긴 연결이 재시도로 복구된다
+- cookie: `Set-Cookie`가 jar에 저장되어 후속 request에 실리고 `Path` scope를 벗어나면
+  보내지 않는다
+- proxy: http absolute-form 전달과 https `CONNECT` tunnel이 origin까지 도달한다
+- proxy auth: 인증 없는 request는 `407`로 거부되고 `proxy_basic_auth`로 통과한다
+- 압축: `compression()`이 gzip/deflate 응답을 평문으로 해제하고 `Content-Encoding`
+  헤더를 제거한다
+- streaming download: `download(sink)`가 body를 chunk로 전달하고, redirect 중간 응답
+  body는 sink로 새지 않는다
+- streaming upload: `body_stream(provider)`가 chunked transfer-encoding으로 전달된다
+- 인증: `basic_auth`/`bearer_token`이 `Authorization` 헤더로 실리고, mTLS 서버는
+  `client_certificate_file` 설정 시에만 handshake가 성공한다
+- keep-alive: 같은 client의 연속 request가 단일 connection을 재사용한다
+- request timeout override: request 단위 `timeout(...)`이 client 기본값을 덮어쓴다
 - HTTP status mapping: `400`, `404`, `500` 응답이 client result/error kind로 고정된다
 - timeout: 응답 지연은 timeout error로 닫힌다
 - fluent input validation: 잘못된 base URL, path, header name, timeout은

@@ -8,6 +8,8 @@
 #endif
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/zlib/deflate_stream.hpp>
+#include <boost/beast/zlib/error.hpp>
 #ifdef ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
 #include <boost/beast/ssl.hpp>
 #endif
@@ -17,10 +19,14 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -63,11 +69,117 @@ void from_json (const nlohmann::json &json, header_echo_reply_t &value)
     value.overrideHeader = json.at ("overrideHeader").get<std::string> ();
 }
 
+std::string gzip_compress (const std::string &payload)
+{
+    beast::zlib::deflate_stream deflater;
+    beast::zlib::z_params zs;
+    zs.next_in = payload.data ();
+    zs.avail_in = payload.size ();
+
+    std::string out ("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff", 10);
+    char chunk[16384];
+    for (;;) {
+        zs.next_out = chunk;
+        zs.avail_out = sizeof chunk;
+        beast::error_code ec;
+        deflater.write (zs, beast::zlib::Flush::finish, ec);
+        out.append (chunk, sizeof chunk - zs.avail_out);
+        if (ec == beast::zlib::error::end_of_stream) {
+            break;
+        }
+        if (ec) {
+            throw std::runtime_error ("test gzip compression failed");
+        }
+    }
+    out.append (8, '\0'); // CRC32 + ISIZE trailer is not validated by the client
+    return out;
+}
+
+std::string big_download_body ()
+{
+    return std::string (200000, 'x') + "END";
+}
+
 http::response<http::string_body> make_response (const http::request<http::string_body> &request)
 {
-    const auto target = std::string (request.target ());
+    const auto full_target = std::string (request.target ());
+    const auto target = full_target.substr (0, full_target.find ('?'));
     http::response<http::string_body> response{http::status::ok, request.version ()};
     response.set (http::field::content_type, "application/json");
+
+    if (target == "/echo-target") {
+        response.body () = nlohmann::json{{"target", full_target}}.dump ();
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/echo-content-type") {
+        response.body () =
+          nlohmann::json{{"contentType", std::string (request[http::field::content_type])},
+                         {"requestBody", request.body ()}}
+            .dump ();
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/echo-auth") {
+        response.body () =
+          nlohmann::json{{"authorization", std::string (request[http::field::authorization])}}
+            .dump ();
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/deflate") {
+        response.set (http::field::content_encoding, "deflate");
+        // zlib wrapper: 0x78 0x9C header + raw deflate + unvalidated trailer
+        auto compressed = gzip_compress ("hello deflate payload");
+        response.body () = std::string ("\x78\x9c") + compressed.substr (10);
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/echo-cookie") {
+        response.body () =
+          nlohmann::json{{"cookie", std::string (request[http::field::cookie])}}.dump ();
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/set-cookie") {
+        response.insert (http::field::set_cookie, "session=abc123; Path=/; Max-Age=300");
+        response.insert (http::field::set_cookie, "theme=dark; Path=/games");
+        response.body () = R"({"ok":true})";
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/redirect-once") {
+        response.result (http::status::found);
+        response.set (http::field::location, "/games");
+        response.body () = R"({"redirect":true})";
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/redirect-absolute") {
+        response.result (http::status::found);
+        response.set (http::field::location,
+                      "http://" + std::string (request[http::field::host]) + "/games");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/redirect-loop") {
+        response.result (http::status::found);
+        response.set (http::field::location, "/redirect-loop");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/gzip") {
+        response.set (http::field::content_encoding, "gzip");
+        response.body () = gzip_compress ("hello gzip payload");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/big") {
+        response.set (http::field::content_type, "application/octet-stream");
+        response.body () = big_download_body ();
+        response.prepare_payload ();
+        return response;
+    }
 
     if (target == "/missing") {
         response.result (http::status::not_found);
@@ -98,6 +210,11 @@ http::response<http::string_body> make_response (const http::request<http::strin
     }
 
     response.prepare_payload ();
+    if (request.method () == http::verb::head) {
+        const auto size = response.body ().size ();
+        response.body ().clear ();
+        response.content_length (size);
+    }
     return response;
 }
 
@@ -125,9 +242,15 @@ class loopback_http_server_t
         if (_thread.joinable ()) {
             _thread.join ();
         }
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
     }
 
     std::string base_url () const { return "http://127.0.0.1:" + std::to_string (_port); }
+    int connections () const { return _connections; }
 
   private:
     void run ()
@@ -139,42 +262,232 @@ class loopback_http_server_t
             if (ec) {
                 continue;
             }
-            handle (std::move (socket));
+            ++_connections;
+            auto shared_socket = std::make_shared<tcp::socket> (std::move (socket));
+            _workers.emplace_back ([this, shared_socket] { handle (*shared_socket); });
         }
     }
 
-    void handle (tcp::socket socket)
+    void handle (tcp::socket &socket)
     {
         beast::flat_buffer buffer;
-        http::request<http::string_body> request;
-        beast::error_code ec;
-        http::read (socket, buffer, request, ec);
-        if (ec) {
-            return;
-        }
+        for (;;) {
+            http::request<http::string_body> request;
+            beast::error_code ec;
+            http::read (socket, buffer, request, ec);
+            if (ec) {
+                return;
+            }
 
-        auto response = make_response (request);
-        http::write (socket, response, ec);
-        socket.shutdown (tcp::socket::shutdown_send, ec);
+            if (request.target () == "/flaky" && ++_flaky_hits == 1) {
+                socket.shutdown (tcp::socket::shutdown_both, ec); // drop without a response
+                return;
+            }
+
+            auto response = make_response (request);
+            http::write (socket, response, ec);
+            if (ec || !response.keep_alive () || request.need_eof ()) {
+                socket.shutdown (tcp::socket::shutdown_send, ec);
+                return;
+            }
+        }
     }
 
     asio::io_context _io;
     tcp::acceptor _acceptor;
     std::uint16_t _port = 0;
     std::atomic_bool _stop{false};
+    std::atomic<int> _flaky_hits{0};
+    std::atomic<int> _connections{0};
     std::thread _thread;
+    std::vector<std::thread> _workers;
+};
+
+class loopback_proxy_t
+{
+  public:
+    explicit loopback_proxy_t (std::optional<std::string> required_authorization = std::nullopt) :
+        _required_authorization (std::move (required_authorization)),
+        _acceptor (_io, tcp::endpoint (asio::ip::make_address ("127.0.0.1"), 0))
+    {
+        _port = _acceptor.local_endpoint ().port ();
+        _thread = std::thread ([this] { run (); });
+    }
+
+    ~loopback_proxy_t ()
+    {
+        _stop = true;
+        beast::error_code ignored;
+        _acceptor.close (ignored);
+        try {
+            tcp::socket wakeup (_io);
+            wakeup.connect (tcp::endpoint (asio::ip::make_address ("127.0.0.1"), _port), ignored);
+        }
+        catch (...) {
+        }
+        if (_thread.joinable ()) {
+            _thread.join ();
+        }
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+    }
+
+    std::string url () const { return "http://127.0.0.1:" + std::to_string (_port); }
+    int forwarded_requests () const { return _forwarded; }
+    int connect_tunnels () const { return _tunnels; }
+    int rejected_requests () const { return _rejected; }
+
+  private:
+    void run ()
+    {
+        while (!_stop) {
+            beast::error_code ec;
+            tcp::socket socket (_io);
+            _acceptor.accept (socket, ec);
+            if (ec) {
+                continue;
+            }
+            auto shared_socket = std::make_shared<tcp::socket> (std::move (socket));
+            _workers.emplace_back ([this, shared_socket] {
+                try {
+                    handle (std::move (*shared_socket));
+                }
+                catch (...) {
+                }
+            });
+        }
+    }
+
+    static std::pair<std::string, std::string> split_authority (const std::string &authority)
+    {
+        const auto colon = authority.rfind (':');
+        return {authority.substr (0, colon), authority.substr (colon + 1)};
+    }
+
+    void handle (tcp::socket client)
+    {
+        beast::flat_buffer buffer;
+        http::request<http::string_body> request;
+        beast::error_code ec;
+        http::read (client, buffer, request, ec);
+        if (ec) {
+            return;
+        }
+
+        if (_required_authorization
+            && std::string (request[http::field::proxy_authorization])
+                 != *_required_authorization) {
+            ++_rejected;
+            http::response<http::string_body> denied{http::status::proxy_authentication_required,
+                                                     request.version ()};
+            denied.prepare_payload ();
+            http::write (client, denied, ec);
+            client.shutdown (tcp::socket::shutdown_send, ec);
+            return;
+        }
+
+        if (request.method () == http::verb::connect) {
+            tunnel (std::move (client), buffer, request);
+            return;
+        }
+
+        // absolute-form: http://host:port/path
+        auto target = std::string (request.target ());
+        if (target.rfind ("http://", 0) != 0) {
+            return;
+        }
+        target = target.substr (7);
+        const auto slash = target.find ('/');
+        const auto [host, port] = split_authority (target.substr (0, slash));
+        const auto origin_form = target.substr (slash);
+
+        tcp::socket upstream (_io);
+        tcp::resolver resolver (_io);
+        asio::connect (upstream, resolver.resolve (host, port));
+        request.target (origin_form);
+        http::write (upstream, request);
+
+        beast::flat_buffer upstream_buffer;
+        http::response<http::string_body> response;
+        http::read (upstream, upstream_buffer, response);
+        ++_forwarded;
+        http::write (client, response, ec);
+        client.shutdown (tcp::socket::shutdown_send, ec);
+    }
+
+    void tunnel (tcp::socket client,
+                 beast::flat_buffer &buffer,
+                 const http::request<http::string_body> &request)
+    {
+        const auto [host, port] = split_authority (std::string (request.target ()));
+        tcp::socket upstream (_io);
+        tcp::resolver resolver (_io);
+        asio::connect (upstream, resolver.resolve (host, port));
+
+        beast::error_code ec;
+        asio::write (client, asio::buffer (std::string ("HTTP/1.1 200 OK\r\n\r\n")), ec);
+        if (ec) {
+            return;
+        }
+        ++_tunnels;
+
+        // Bytes already read past the CONNECT header belong to the tunnel.
+        if (buffer.size () > 0) {
+            asio::write (upstream, buffer.data (), ec);
+        }
+
+        const auto pump = [] (tcp::socket &from, tcp::socket &to) {
+            char chunk[8192];
+            beast::error_code pump_ec;
+            for (;;) {
+                const auto count = from.read_some (asio::buffer (chunk), pump_ec);
+                if (pump_ec) {
+                    break;
+                }
+                asio::write (to, asio::buffer (chunk, count), pump_ec);
+                if (pump_ec) {
+                    break;
+                }
+            }
+            beast::error_code ignored;
+            to.shutdown (tcp::socket::shutdown_send, ignored);
+        };
+
+        std::thread downstream ([&] { pump (upstream, client); });
+        pump (client, upstream);
+        downstream.join ();
+    }
+
+    std::optional<std::string> _required_authorization;
+    asio::io_context _io;
+    tcp::acceptor _acceptor;
+    std::uint16_t _port = 0;
+    std::atomic_bool _stop{false};
+    std::atomic<int> _forwarded{0};
+    std::atomic<int> _tunnels{0};
+    std::atomic<int> _rejected{0};
+    std::thread _thread;
+    std::vector<std::thread> _workers;
 };
 
 #ifdef ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
 class loopback_https_server_t
 {
   public:
-    loopback_https_server_t () :
+    explicit loopback_https_server_t (bool require_client_certificate = false) :
         _context (asio::ssl::context::tls_server),
         _acceptor (_io, tcp::endpoint (asio::ip::make_address ("127.0.0.1"), 0))
     {
         _context.use_certificate_chain_file (ZLINK_HTTP_CLIENT_TEST_CERT);
         _context.use_private_key_file (ZLINK_HTTP_CLIENT_TEST_KEY, asio::ssl::context::pem);
+        if (require_client_certificate) {
+            _context.load_verify_file (ZLINK_HTTP_CLIENT_TEST_CERT);
+            _context.set_verify_mode (asio::ssl::verify_peer
+                                      | asio::ssl::verify_fail_if_no_peer_cert);
+        }
         _port = _acceptor.local_endpoint ().port ();
         _thread = std::thread ([this] { run (); });
     }
@@ -192,6 +505,11 @@ class loopback_https_server_t
         }
         if (_thread.joinable ()) {
             _thread.join ();
+        }
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
         }
     }
 
@@ -212,13 +530,14 @@ class loopback_https_server_t
             if (ec) {
                 continue;
             }
-            handle (std::move (socket));
+            auto shared_socket = std::make_shared<tcp::socket> (std::move (socket));
+            _workers.emplace_back ([this, shared_socket] { handle (*shared_socket); });
         }
     }
 
-    void handle (tcp::socket socket)
+    void handle (tcp::socket &socket)
     {
-        asio::ssl::stream<tcp::socket> stream (std::move (socket), _context);
+        asio::ssl::stream<tcp::socket &> stream (socket, _context);
         beast::error_code ec;
         stream.handshake (asio::ssl::stream_base::server, ec);
         if (ec) {
@@ -226,15 +545,20 @@ class loopback_https_server_t
         }
 
         beast::flat_buffer buffer;
-        http::request<http::string_body> request;
-        http::read (stream, buffer, request, ec);
-        if (ec) {
-            return;
-        }
+        for (;;) {
+            http::request<http::string_body> request;
+            http::read (stream, buffer, request, ec);
+            if (ec) {
+                return;
+            }
 
-        auto response = make_response (request);
-        http::write (stream, response, ec);
-        stream.shutdown (ec);
+            auto response = make_response (request);
+            http::write (stream, response, ec);
+            if (ec || !response.keep_alive () || request.need_eof ()) {
+                stream.shutdown (ec);
+                return;
+            }
+        }
     }
 
     asio::io_context _io;
@@ -243,6 +567,7 @@ class loopback_https_server_t
     std::uint16_t _port = 0;
     std::atomic_bool _stop{false};
     std::thread _thread;
+    std::vector<std::thread> _workers;
 };
 #endif
 
@@ -341,6 +666,56 @@ TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
     EXPECT_EQ (result.value ().status, 200);
     EXPECT_EQ (result.value ().body.method, "POST");
     EXPECT_EQ (result.value ().body.name, "match-1");
+}
+
+TEST (ZLinkHttpClient, BuilderRequestShortcutOmitsExplicitBuild)
+{
+    loopback_http_server_t server;
+
+    // The builder is a temporary and `build()` is never called explicitly.
+    // The request must keep the on-demand client (and its runtime) alive for
+    // the whole request, otherwise this would be a use-after-free.
+    auto result = zlink::http_client::client_t::create ()
+                    .base_url (server.base_url ())
+                    .json ()
+                    .timeout (std::chrono::milliseconds (500))
+                    .post ("/games")
+                    .body (create_game_request_t{.name = "shorthand"})
+                    .submit<create_game_reply_t> ()
+                    .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+    EXPECT_EQ (result.value ().body.method, "POST");
+    EXPECT_EQ (result.value ().body.name, "shorthand");
+}
+
+TEST (ZLinkHttpClient, FetchReturnsTypedBodyDirectly)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    create_game_reply_t body = client.post ("/games")
+                                 .body (create_game_request_t{.name = "fetch"})
+                                 .fetch<create_game_reply_t> ();
+
+    EXPECT_EQ (body.method, "POST");
+    EXPECT_EQ (body.name, "fetch");
+}
+
+TEST (ZLinkHttpClient, FetchThrowsOnFailureStatus)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    bool threw = false;
+    try {
+        (void) client.get ("/bad-request").fetch<create_game_reply_t> ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        threw = error.kind () == zlink::framework::framework_error_kind_t::request_failed;
+    }
+    EXPECT_TRUE (threw);
 }
 
 TEST (ZLinkHttpClient, SupportsCoroutineSubmit)
@@ -442,6 +817,451 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
     ASSERT_FALSE (timeout);
     EXPECT_EQ (timeout.error_kind (), zlink::framework::framework_error_kind_t::timeout);
 }
+
+TEST (ZLinkHttpClient, SupportsPatchHeadAndOptionsMethods)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    EXPECT_EQ (
+      client.patch ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      "PATCH");
+    EXPECT_EQ (
+      client.options ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
+      "OPTIONS");
+
+    const auto head = client.head ("/games").submit_raw ().result ();
+    ASSERT_TRUE (head) << head.error ()->what ();
+    EXPECT_EQ (head.value ().status, 200);
+    EXPECT_TRUE (head.value ().body.empty ());
+}
+
+TEST (ZLinkHttpClient, EncodesQueryParameters)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    const auto result = client.get ("/echo-target")
+                          .query ("name", "hello world")
+                          .query ("tag", "a&b")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("target").get<std::string> (),
+               "/echo-target?name=hello%20world&tag=a%26b");
+}
+
+TEST (ZLinkHttpClient, SendsRawBodyWithContentType)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    const auto result = client.post ("/echo-content-type")
+                          .body ("<game name=\"match-1\"/>", "application/xml")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("contentType").get<std::string> (), "application/xml");
+    EXPECT_EQ (echoed.at ("requestBody").get<std::string> (), "<game name=\"match-1\"/>");
+}
+
+TEST (ZLinkHttpClient, SendsFormUrlencodedBody)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    const auto result = client.post ("/echo-content-type")
+                          .form ("user", "kim lee")
+                          .form ("role", "admin&ops")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("contentType").get<std::string> (),
+               "application/x-www-form-urlencoded");
+    EXPECT_EQ (echoed.at ("requestBody").get<std::string> (), "user=kim%20lee&role=admin%26ops");
+}
+
+TEST (ZLinkHttpClient, SendsMultipartBody)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    const auto result = client.post ("/echo-content-type")
+                          .multipart ("name", "avatar")
+                          .multipart_file ("file", "avatar.png", "PNGDATA", "image/png")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    const auto content_type = echoed.at ("contentType").get<std::string> ();
+    const auto body = echoed.at ("requestBody").get<std::string> ();
+    EXPECT_EQ (content_type.rfind ("multipart/form-data; boundary=zlink-boundary-", 0), 0U);
+    EXPECT_NE (body.find ("Content-Disposition: form-data; name=\"name\""), std::string::npos);
+    EXPECT_NE (body.find ("Content-Disposition: form-data; name=\"file\"; "
+                          "filename=\"avatar.png\""),
+               std::string::npos);
+    EXPECT_NE (body.find ("Content-Type: image/png"), std::string::npos);
+    EXPECT_NE (body.find ("PNGDATA"), std::string::npos);
+}
+
+TEST (ZLinkHttpClient, RejectsMultipleBodySources)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    EXPECT_TRUE (throws_protocol_error (
+      [&client] {
+          (void) client.post ("/games")
+            .body (create_game_request_t{.name = "match-1"})
+            .form ("user", "kim")
+            .submit_raw ();
+      },
+      "single body source"));
+}
+
+TEST (ZLinkHttpClient, FollowsRedirectsWhenEnabled)
+{
+    loopback_http_server_t server;
+
+    auto following = zlink::http_client::client_t::create (server.base_url ())
+                       .json ()
+                       .follow_redirects ()
+                       .build ();
+    const auto followed =
+      following.get ("/redirect-once").submit<create_game_reply_t> ().result ();
+    ASSERT_TRUE (followed) << followed.error ()->what ();
+    EXPECT_EQ (followed.value ().status, 200);
+    EXPECT_EQ (followed.value ().body.method, "GET");
+
+    auto direct = make_json_client (server.base_url ());
+    const auto raw = direct.get ("/redirect-once").submit_raw ().result ();
+    ASSERT_TRUE (raw) << raw.error ()->what ();
+    EXPECT_EQ (raw.value ().status, 302);
+}
+
+TEST (ZLinkHttpClient, FollowsAbsoluteRedirectLocations)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .follow_redirects ()
+                    .build ();
+
+    const auto result = client.get ("/redirect-absolute").submit<create_game_reply_t> ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+}
+
+TEST (ZLinkHttpClient, RedirectTransformsPostIntoGet)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .follow_redirects ()
+                    .build ();
+
+    const auto result = client.post ("/redirect-once")
+                          .body (create_game_request_t{.name = "match-1"})
+                          .submit<create_game_reply_t> ()
+                          .result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body.method, "GET");
+}
+
+TEST (ZLinkHttpClient, StopsAtTheRedirectLimit)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .follow_redirects (3)
+                    .build ();
+
+    const auto result = client.get ("/redirect-loop").submit_raw ().result ();
+    ASSERT_FALSE (result);
+    EXPECT_NE (std::string (result.error ()->what ()).find ("redirect limit"),
+               std::string::npos);
+}
+
+TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .retry (2)
+                    .build ();
+
+    // The first /flaky connection is dropped without a response; the retry
+    // must succeed against the recovered server.
+    const auto result = client.get ("/flaky").submit<create_game_reply_t> ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+}
+
+TEST (ZLinkHttpClient, StoresAndSendsCookies)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .cookies ()
+                    .build ();
+
+    ASSERT_TRUE (client.get ("/set-cookie").submit_raw ().result ());
+
+    const auto echoed = client.get ("/echo-cookie").submit_raw ().result ();
+    ASSERT_TRUE (echoed) << echoed.error ()->what ();
+    const auto cookie =
+      nlohmann::json::parse (echoed.value ().body).at ("cookie").get<std::string> ();
+    EXPECT_NE (cookie.find ("session=abc123"), std::string::npos);
+    // theme is scoped to Path=/games and must not be sent for /echo-cookie.
+    EXPECT_EQ (cookie.find ("theme=dark"), std::string::npos);
+
+    auto without_jar = make_json_client (server.base_url ());
+    const auto plain = without_jar.get ("/echo-cookie").submit_raw ().result ();
+    ASSERT_TRUE (plain);
+    EXPECT_EQ (nlohmann::json::parse (plain.value ().body).at ("cookie").get<std::string> (),
+               "");
+}
+
+TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
+{
+    loopback_http_server_t server;
+    loopback_proxy_t proxy;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .proxy (proxy.url ())
+                    .build ();
+
+    const auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+    EXPECT_GT (proxy.forwarded_requests (), 0);
+}
+
+TEST (ZLinkHttpClient, DecompressesGzipResponses)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .compression ()
+                    .build ();
+
+    const auto result = client.get ("/gzip").submit_raw ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body, "hello gzip payload");
+    EXPECT_EQ (result.value ().headers.count ("Content-Encoding"), 0U);
+}
+
+TEST (ZLinkHttpClient, DownloadStreamsResponseBody)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url (), std::chrono::milliseconds (2000));
+
+    std::string received;
+    int chunks = 0;
+    const auto result = client.get ("/big")
+                          .download ([&] (std::string_view chunk) {
+                              received.append (chunk);
+                              ++chunks;
+                          })
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+    EXPECT_TRUE (result.value ().body.empty ());
+    EXPECT_GT (chunks, 1);
+    EXPECT_EQ (received, big_download_body ());
+}
+
+TEST (ZLinkHttpClient, DownloadFollowsRedirectsWithoutLeakingIntermediateBodies)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .follow_redirects ()
+                    .build ();
+
+    std::string received;
+    const auto result = client.get ("/redirect-once")
+                          .download ([&] (std::string_view chunk) { received.append (chunk); })
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+    EXPECT_EQ (nlohmann::json::parse (received).at ("method").get<std::string> (), "GET");
+}
+
+TEST (ZLinkHttpClient, SendsBasicAuthAndBearerToken)
+{
+    loopback_http_server_t server;
+
+    const auto basic = zlink::http_client::client_t::create (server.base_url ())
+                         .json ()
+                         .basic_auth ("user", "pass")
+                         .get ("/echo-auth")
+                         .submit_raw ()
+                         .result ();
+    ASSERT_TRUE (basic) << basic.error ()->what ();
+    EXPECT_EQ (nlohmann::json::parse (basic.value ().body).at ("authorization"),
+               "Basic dXNlcjpwYXNz");
+
+    const auto bearer = zlink::http_client::client_t::create (server.base_url ())
+                          .json ()
+                          .bearer_token ("token-123")
+                          .get ("/echo-auth")
+                          .submit_raw ()
+                          .result ();
+    ASSERT_TRUE (bearer) << bearer.error ()->what ();
+    EXPECT_EQ (nlohmann::json::parse (bearer.value ().body).at ("authorization"),
+               "Bearer token-123");
+}
+
+TEST (ZLinkHttpClient, PerRequestTimeoutOverridesClientTimeout)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url (), std::chrono::milliseconds (2000));
+
+    const auto timed_out = client.get ("/slow")
+                             .timeout (std::chrono::milliseconds (100))
+                             .submit_raw ()
+                             .result ();
+    ASSERT_FALSE (timed_out);
+    EXPECT_EQ (timed_out.error ()->kind (), zlink::framework::framework_error_kind_t::timeout);
+
+    // The same client without the override completes within its own timeout.
+    const auto completed = client.get ("/slow").submit_raw ().result ();
+    ASSERT_TRUE (completed) << completed.error ()->what ();
+    EXPECT_EQ (completed.value ().status, 200);
+}
+
+TEST (ZLinkHttpClient, ReusesKeptAliveConnections)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+
+    EXPECT_EQ (server.connections (), 1);
+}
+
+TEST (ZLinkHttpClient, UploadsStreamedRequestBody)
+{
+    loopback_http_server_t server;
+    auto client = make_json_client (server.base_url ());
+
+    std::vector<std::string> chunks{"chunk-one|", "chunk-two|", "chunk-three"};
+    std::size_t next = 0;
+    const auto result = client.post ("/echo-content-type")
+                          .body_stream (
+                            [&] () -> std::optional<std::string> {
+                                if (next >= chunks.size ()) {
+                                    return std::nullopt;
+                                }
+                                return chunks[next++];
+                            },
+                            "application/octet-stream")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    const auto echoed = nlohmann::json::parse (result.value ().body);
+    EXPECT_EQ (echoed.at ("contentType").get<std::string> (), "application/octet-stream");
+    EXPECT_EQ (echoed.at ("requestBody").get<std::string> (),
+               "chunk-one|chunk-two|chunk-three");
+}
+
+TEST (ZLinkHttpClient, DecompressesDeflateResponses)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .compression ()
+                    .build ();
+
+    const auto result = client.get ("/deflate").submit_raw ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body, "hello deflate payload");
+    EXPECT_EQ (result.value ().headers.count ("Content-Encoding"), 0U);
+}
+
+TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)
+{
+    loopback_http_server_t server;
+    loopback_proxy_t proxy (std::string ("Basic cHJveHk6c2VjcmV0")); // proxy:secret
+
+    const auto denied = zlink::http_client::client_t::create (server.base_url ())
+                          .json ()
+                          .proxy (proxy.url ())
+                          .get ("/games")
+                          .submit_raw ()
+                          .result ();
+    ASSERT_TRUE (denied);
+    EXPECT_EQ (denied.value ().status, 407);
+
+    const auto allowed = zlink::http_client::client_t::create (server.base_url ())
+                           .json ()
+                           .proxy (proxy.url ())
+                           .proxy_basic_auth ("proxy", "secret")
+                           .get ("/games")
+                           .submit_raw ()
+                           .result ();
+    ASSERT_TRUE (allowed) << allowed.error ()->what ();
+    EXPECT_EQ (allowed.value ().status, 200);
+    EXPECT_GT (proxy.rejected_requests (), 0);
+    EXPECT_GT (proxy.forwarded_requests (), 0);
+}
+
+#ifdef ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
+TEST (ZLinkHttpClient, PresentsClientCertificateForMutualTls)
+{
+    loopback_https_server_t server (/*require_client_certificate=*/true);
+
+    const auto with_certificate =
+      zlink::http_client::client_t::create (server.base_url ())
+        .json ()
+        .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
+        .client_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT, ZLINK_HTTP_CLIENT_TEST_KEY)
+        .get ("/games")
+        .submit_raw ()
+        .result ();
+    ASSERT_TRUE (with_certificate) << with_certificate.error ()->what ();
+    EXPECT_EQ (with_certificate.value ().status, 200);
+
+    const auto without_certificate = zlink::http_client::client_t::create (server.base_url ())
+                                       .json ()
+                                       .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
+                                       .get ("/games")
+                                       .submit_raw ()
+                                       .result ();
+    EXPECT_FALSE (without_certificate);
+}
+#endif
+
+#ifdef ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
+TEST (ZLinkHttpClient, TunnelsHttpsThroughProxyConnect)
+{
+    loopback_https_server_t server;
+    loopback_proxy_t proxy;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
+                    .proxy (proxy.url ())
+                    .build ();
+
+    const auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().status, 200);
+    EXPECT_GT (proxy.connect_tunnels (), 0);
+}
+#endif
 
 #ifdef ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL
 TEST (ZLinkHttpClient, SupportsHttpsWithExplicitTrust)

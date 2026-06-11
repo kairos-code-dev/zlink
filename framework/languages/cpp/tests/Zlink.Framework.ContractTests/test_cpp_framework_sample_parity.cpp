@@ -448,8 +448,9 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_EQ (client_main.find ("#include <zlink/http_client.hpp>"), std::string::npos);
     EXPECT_EQ (client_main.find (".post (\"/games\")"), std::string::npos);
     EXPECT_NE (client.find ("#include <zlink/http_client.hpp>"), std::string::npos);
-    EXPECT_NE (client.find ("zlink::http_client::client_t::create ()"), std::string::npos);
-    EXPECT_NE (client.find (".base_url (options.api_http_endpoint)"), std::string::npos);
+    EXPECT_NE (client.find (
+                 "zlink::http_client::client_t::create (options.api_http_endpoint)"),
+               std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
     EXPECT_NE (client.find (".submit<create_game_http_res_t> ()"), std::string::npos);
     EXPECT_NE (client.find ("connector_options.endpoint = room.play_endpoint"), std::string::npos);

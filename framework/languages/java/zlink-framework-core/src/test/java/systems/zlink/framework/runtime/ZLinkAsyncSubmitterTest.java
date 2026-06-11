@@ -24,7 +24,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ZLinkAsyncSubmitterTest {
     @Test
-    void submitAsync_drainsPendingItemFromReadyCallback() throws InterruptedException {
+    void submit_drainsPendingItemFromReadyCallback() throws InterruptedException {
         BlockingPublishBackend backend = new BlockingPublishBackend();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addFanoutChannel("events", channel ->
@@ -34,7 +34,7 @@ final class ZLinkAsyncSubmitterTest {
             var submitted = runtime.fanout()
                 .publish("events", "topic", "payload")
                 .packetName("Event")
-                .submitAsync();
+                .submit();
 
             assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
             assertFalse(submitted.toCompletableFuture().isDone());
@@ -44,7 +44,7 @@ final class ZLinkAsyncSubmitterTest {
     }
 
     @Test
-    void submitAsync_failsPendingItemWhenSendTimeoutExpires() {
+    void submit_failsPendingItemWhenSendTimeoutExpires() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultTimeout(Duration.ofMillis(20));
         options.addClientServerChannel("profile", channel ->
@@ -57,7 +57,7 @@ final class ZLinkAsyncSubmitterTest {
                 () -> runtime.client()
                     .requestToChannel("profile", "hello")
                     .packetName("Echo")
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join());
 
@@ -66,7 +66,7 @@ final class ZLinkAsyncSubmitterTest {
     }
 
     @Test
-    void disposeAsync_failsPendingItems() {
+    void close_failsPendingItems() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultTimeout(Duration.ofSeconds(5));
         options.addClientServerChannel("profile", channel ->
@@ -77,7 +77,7 @@ final class ZLinkAsyncSubmitterTest {
         var pending = runtime.client()
             .requestToChannel("profile", "hello")
             .packetName("Echo")
-            .submitAsync(String.class)
+            .submit(String.class)
             .toCompletableFuture();
 
         runtime.close();

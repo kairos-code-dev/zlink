@@ -66,7 +66,7 @@ final class NodesAndServicesTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -150,7 +150,7 @@ final class NodesAndServicesTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));

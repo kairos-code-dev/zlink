@@ -1405,7 +1405,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> publishParts = parts(packetName, payload);
                 try {
@@ -1436,7 +1436,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 try {
                     client.send(parts(packetName, payload), SendFlags.NONE);
@@ -1480,7 +1480,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);
@@ -1530,7 +1530,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> sendParts = parts(packetName, payload);
                 try {
@@ -1578,7 +1578,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             trackPendingRequest(result, timeout);
             List<Message> requestParts = parts(packetName, payload);

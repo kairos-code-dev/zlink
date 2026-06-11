@@ -77,7 +77,7 @@ public final class ProfileController {
         return client.requestToChannel(
             "profile",
             new GetProfileRequest(request.accountId())
-        ).submitAsync(GetProfileReply.class);
+        ).submit(GetProfileReply.class);
     }
 }
 ```
@@ -100,7 +100,7 @@ public final class UserHandlers {
         return client.requestToChannel(
             "account",
             new GetAccountRequest(request.accountId())
-        ).submitAsync(GetAccountReply.class).thenApply(account -> new GetUserReply(
+        ).submit(GetAccountReply.class).thenApply(account -> new GetUserReply(
             request.accountId(),
             account.nickname()
         ));
@@ -116,7 +116,7 @@ var reply = client.requestToChannel(
     new GetProfileRequest(accountId)
 ).timeout(Duration.ofMillis(200))
  .packetName("profile.get")
- .submitAsync(GetProfileReply.class);
+ .submit(GetProfileReply.class);
 ```
 
 기본은 payload 타입 이름이고, `packetName`은 정말 필요할 때만 override한다.
@@ -129,7 +129,7 @@ CompletionStage<Void> submitted = fanoutClient.publish(
     "profile.cache-refreshed",
     new ProfileCacheRefreshed(accountId)
 ).packetName("profile.cache-refreshed")
- .submitAsync();
+ .submit();
 ```
 
 ## 7. Routed channel 호출
@@ -140,7 +140,7 @@ routeClient.request(
     targetNodeRid,
     new InspectRoomRequest(roomId)
 ).timeout(Duration.ofSeconds(1))
- .submitAsync(InspectRoomReply.class);
+ .submit(InspectRoomReply.class);
 ```
 
 routed channel은 target node를 직접 지정하는 application route 용도다. session actor

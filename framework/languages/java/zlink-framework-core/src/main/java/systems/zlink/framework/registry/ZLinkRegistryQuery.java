@@ -4,21 +4,21 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkRegistryQuery {
-    CompletionStage<ZLinkRegistryStatus> statusAsync();
+    CompletionStage<ZLinkRegistryStatus> status();
 
-    default CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync() {
-        return serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter.all());
+    default CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary() {
+        return serviceSummary(ZLinkRegistryServiceSummaryFilter.all());
     }
 
-    CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
+    CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
         ZLinkRegistryServiceSummaryFilter filter);
 
-    default CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync() {
-        return topologyAsync(ZLinkRegistryTopologyFilter.all());
+    default CompletionStage<List<ZLinkRegistryTopologyEntry>> topology() {
+        return topology(ZLinkRegistryTopologyFilter.all());
     }
 
-    CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter);
 
-    CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName);
+    CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName);
 }

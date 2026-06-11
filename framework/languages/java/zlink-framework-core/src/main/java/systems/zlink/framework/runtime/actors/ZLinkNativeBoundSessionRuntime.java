@@ -86,7 +86,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     }
 
     @Override
-    public CompletionStage<Void> disconnectAsync() {
+    public CompletionStage<Void> disconnect() {
         return CompletableFuture.runAsync(() -> spotNode.closeActorBoundSession(actorRef, timeout))
             .thenRun(() -> actorRuntime.clearSessionBinding(actor, bindingToken));
     }
@@ -132,7 +132,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             byte[] frameBytes;
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(

@@ -41,11 +41,11 @@ public interface ZLinkStreamConnector extends AutoCloseable {
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
 
-    CompletionStage<Void> connectAsync();
-    CompletionStage<Void> disconnectAsync();
-    CompletionStage<Void> reconnectAsync();
-    CompletionStage<Void> closeAsync();
-    CompletionStage<Void> dispatchAsync();
+    ZLinkStreamLifecycleCall connect();
+    ZLinkStreamLifecycleCall disconnect();
+    ZLinkStreamLifecycleCall reconnect();
+    ZLinkStreamLifecycleCall close();
+    ZLinkStreamLifecycleCall dispatch();
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
@@ -177,7 +177,7 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(ZLinkStreamMetadata metadata);
     ZLinkStreamSendCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkStreamRequestCall {
@@ -186,7 +186,7 @@ public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall metadata(ZLinkStreamMetadata metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
-    CompletionStage<ZLinkStreamEncodedPayload> submitAsync();
+    CompletionStage<ZLinkStreamEncodedPayload> submit();
     AutoCloseable submit(Consumer<ZLinkStreamResult<ZLinkStreamEncodedPayload>> callback);
 }
 ```
@@ -256,7 +256,7 @@ public enum ZLinkStreamDispatchMode {
 
 기본값은 `MANUAL`이다. receive loop, reconnect loop, request callback task가 사용자
 handler를 직접 호출하지 않고 dispatch queue에 넣는다. application은 자신이 원하는
-thread에서 `dispatchAsync()`를 호출한다.
+thread에서 `dispatch().submit()` 또는 `dispatch().await()`를 호출한다.
 
 `IMMEDIATE`는 내부 worker 흐름에서 callback을 바로 실행한다. UI thread나 game loop가
 있는 client sample은 `MANUAL`을 유지한다.
@@ -286,7 +286,8 @@ DISCONNECTED -> CONNECTING
 
 heartbeat timeout이나 transport disconnect가 발생하면 reconnect가 켜져 있을 때
 `RECONNECTING`으로 이동한다. `maxAttempts`를 넘으면 `DISCONNECTED`가 된다.
-`closeAsync()` 이후에는 `CLOSED`이고, 새 `connectAsync()`는 실패한다.
+`close().submit()` 또는 `close().await()` 이후에는 `CLOSED`이고, 새
+`connect().submit()`은 실패한다.
 
 ## 11. Error Code
 
@@ -329,7 +330,8 @@ fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들지 않는다.
 `messages(...)`와 `errors()`는 Java connector의 `on(...)`, `onErrorReceived(...)`
 handler를 `callbackFlow`로 감싼다. 따라서 manual dispatch mode에서는 Java와 마찬가지로
-`dispatchAsync()`가 호출되어야 collector가 메시지나 error event를 받는다.
+`dispatch().submit()` 또는 `dispatch().await()`가 호출되어야 collector가 메시지나
+error event를 받는다.
 
 ## 13. 검증 기준
 

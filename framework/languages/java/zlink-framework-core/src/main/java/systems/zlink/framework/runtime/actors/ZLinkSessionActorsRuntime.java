@@ -118,12 +118,12 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     @Override
-    public CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor) {
+    public CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor) {
         return bindManagedAsync(actor);
     }
 
     @Override
-    public CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor) {
+    public CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor) {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
@@ -142,7 +142,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkBackendActorRef ref) {
         return awaitRouteReady(ref)
             .thenCompose(ignored -> stream.bindActor(sessionRid, ref)
-                .submitAsync(Duration.ofSeconds(30)))
+                .submit(Duration.ofSeconds(30)))
             .thenApply(ignored -> {
                 ZLinkSessionActor actor = new BoundActor(
                     stream,
@@ -168,7 +168,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         CompletionStage<Void> nativeBinding = nativeActorGatewayAttached
             ? awaitRouteReady(ref)
                 .thenCompose(ignored -> stream.bindActor(sessionRid, ref)
-                    .submitAsync(Duration.ofSeconds(30)))
+                    .submit(Duration.ofSeconds(30)))
             : CompletableFuture.completedFuture(null);
         return nativeBinding
             .thenApply(ignored -> {
@@ -267,7 +267,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         }
 
         @Override
-        public CompletionStage<Void> relayAsync(
+        public CompletionStage<Void> relay(
             ZLinkStreamHeader header,
             Message payload) {
             if (header == null) {
@@ -411,7 +411,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
 
         private void retryAfterNativeBinding(Runnable attempt) {
             stream.bindActor(sessionRid, ref)
-                .submitAsync(Duration.ofSeconds(2))
+                .submit(Duration.ofSeconds(2))
                 .whenComplete((ignored, error) ->
                     RELAY_RETRY_EXECUTOR.schedule(attempt, 10, TimeUnit.MILLISECONDS));
         }
@@ -426,7 +426,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         return;
                     }
                     stream.bindActor(sessionRid, ref)
-                        .submitAsync(Duration.ofSeconds(2))
+                        .submit(Duration.ofSeconds(2))
                         .whenComplete((ignored, error) -> {
                             if (error == null || isAlreadyBound(error)) {
                                 result.complete(null);
@@ -446,9 +446,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         }
 
         @Override
-        public CompletionStage<Void> notifyDisconnectedAsync() {
+        public CompletionStage<Void> notifyDisconnected() {
             return stream.unbindActor(sessionRid, ref.actorId())
-                .submitAsync(Duration.ofSeconds(30))
+                .submit(Duration.ofSeconds(30))
                 .thenCompose(ignored -> managedActor
                     .map(actor -> actors.clearSessionBinding(actor, bindingToken)
                         ? actors.notifyDisconnected(actor)

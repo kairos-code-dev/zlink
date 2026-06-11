@@ -10,9 +10,5 @@ public interface ZLinkRequestCall {
 
     ZLinkRequestCall timeout(Duration timeout);
 
-    default <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
-        return submitAsync(replyType);
-    }
-
-    <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }

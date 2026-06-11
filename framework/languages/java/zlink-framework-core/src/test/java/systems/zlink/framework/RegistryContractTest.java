@@ -31,19 +31,19 @@ import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 final class RegistryContractTest {
     @Test
     void registryQueryUsesTypedSnapshotContracts() throws Exception {
-        Method status = ZLinkRegistryQuery.class.getMethod("statusAsync");
+        Method status = ZLinkRegistryQuery.class.getMethod("status");
         Method serviceSummary = ZLinkRegistryQuery.class.getMethod(
-            "serviceSummaryAsync",
+            "serviceSummary",
             ZLinkRegistryServiceSummaryFilter.class);
         Method serviceSummaryAll = ZLinkRegistryQuery.class.getMethod(
-            "serviceSummaryAsync");
+            "serviceSummary");
         Method topology = ZLinkRegistryQuery.class.getMethod(
-            "topologyAsync",
+            "topology",
             ZLinkRegistryTopologyFilter.class);
         Method topologyAll = ZLinkRegistryQuery.class.getMethod(
-            "topologyAsync");
+            "topology");
         Method memberPeers = ZLinkRegistryQuery.class.getMethod(
-            "memberPeersAsync",
+            "memberPeers",
             String.class);
 
         assertEquals(CompletionStage.class, status.getReturnType());
@@ -216,14 +216,14 @@ final class RegistryContractTest {
     @Test
     void registryQueryClientOnlyExposesRemoteTopologyQuery() throws Exception {
         Method topology = ZLinkRegistryQueryClient.class.getMethod(
-            "topologyAsync",
+            "topology",
             ZLinkRegistryTopologyFilter.class);
         Method topologyAll = ZLinkRegistryQueryClient.class.getMethod(
-            "topologyAsync");
+            "topology");
 
         assertEquals(CompletionStage.class, topology.getReturnType());
         assertEquals(CompletionStage.class, topologyAll.getReturnType());
-        assertEquals(List.of("close", "topologyAsync", "topologyAsync"),
+        assertEquals(List.of("close", "topology", "topology"),
             java.util.Arrays.stream(ZLinkRegistryQueryClient.class.getMethods())
                 .filter(method -> method.getDeclaringClass() == ZLinkRegistryQueryClient.class)
                 .map(Method::getName)

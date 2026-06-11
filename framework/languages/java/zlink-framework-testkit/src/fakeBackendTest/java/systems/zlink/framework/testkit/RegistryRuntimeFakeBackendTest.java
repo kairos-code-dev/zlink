@@ -28,21 +28,21 @@ final class RegistryRuntimeFakeBackendTest {
                  backendFactory,
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
             assertEquals(RegistryState.ACTIVE,
-                runtime.statusAsync().toCompletableFuture().join().state());
+                runtime.status().toCompletableFuture().join().state());
             assertEquals("profile",
-                runtime.serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter.all())
+                runtime.serviceSummary(ZLinkRegistryServiceSummaryFilter.all())
                     .toCompletableFuture()
                     .join()
                     .get(0)
                     .channelName());
             assertEquals("inproc://profile-server",
-                runtime.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
+                runtime.topology(ZLinkRegistryTopologyFilter.channel("profile"))
                     .toCompletableFuture()
                     .join()
                     .get(0)
                     .endpoint());
             assertEquals("inproc://profile-member",
-                runtime.memberPeersAsync("profile")
+                runtime.memberPeers("profile")
                     .toCompletableFuture()
                     .join()
                     .get(0)
@@ -77,7 +77,7 @@ final class RegistryRuntimeFakeBackendTest {
                      backendFactory,
                      new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
             assertEquals("tcp://127.0.0.1:7100",
-                client.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
+                client.topology(ZLinkRegistryTopologyFilter.channel("profile"))
                     .toCompletableFuture()
                     .join()
                     .get(0)

@@ -18,52 +18,52 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType) {
-        return lifecycle.spotManager().createAsync(spotType);
+        return lifecycle.spotManager().create(spotType);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         Message request) {
-        return lifecycle.spotManager().createAsync(spotType, request);
+        return lifecycle.spotManager().create(spotType, request);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
-        return lifecycle.spotManager().createAsync(spotType, spotRid);
+        return lifecycle.spotManager().create(spotType, spotRid);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
-        return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid);
+        return lifecycle.spotManager().getOrCreate(spotType, spotRid);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid,
         Message request) {
-        return lifecycle.spotManager().getOrCreateAsync(spotType, spotRid, request);
+        return lifecycle.spotManager().getOrCreate(spotType, spotRid, request);
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid) {
-        return lifecycle.spotManager().findAsync(spotRid);
+    public CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid) {
+        return lifecycle.spotManager().find(spotRid);
     }
 
     @Override
-    public CompletionStage<List<ZLinkSpotInfo>> listAsync() {
-        return lifecycle.spotManager().listAsync();
+    public CompletionStage<List<ZLinkSpotInfo>> list() {
+        return lifecycle.spotManager().list();
     }
 
     @Override
-    public CompletionStage<Boolean> closeAsync(RoutingId spotRid) {
-        return lifecycle.spotManager().closeAsync(spotRid);
+    public CompletionStage<Boolean> close(RoutingId spotRid) {
+        return lifecycle.spotManager().close(spotRid);
     }
 }

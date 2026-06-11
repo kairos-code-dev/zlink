@@ -30,18 +30,18 @@ final class JsonSessionActorsRuntimeIntegrationTest {
             SessionActorsRuntimeIntegrationTest.uniqueActorId("json-player");
         try (ZLinkFrameworkRuntime runtime = startLocalJsonRuntime()) {
             var actor = runtime.actorManager()
-                .createAsync(actorId, "player")
+                .create(actorId, "player")
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor bound = runtime.sessionActors(
                     "local-json",
                     RoutingId.from("json-session"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
             try (Message payload = Message.from("{\"value\":\"json-hello\"}")) {
-                bound.relayAsync(
+                bound.relay(
                         new ZLinkStreamHeader(
                             ZLinkStreamMessageKind.SEND,
                             ZLinkStreamCodec.JSON,

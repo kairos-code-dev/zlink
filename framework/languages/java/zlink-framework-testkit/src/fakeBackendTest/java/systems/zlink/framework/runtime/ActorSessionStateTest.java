@@ -29,33 +29,33 @@ final class ActorSessionStateTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backend)) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor staleBinding = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor currentBinding = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-2"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
-            staleBinding.notifyDisconnectedAsync().toCompletableFuture().join();
+            staleBinding.notifyDisconnected().toCompletableFuture().join();
             assertTrue(DisconnectedHandler.disconnectCount == 0);
             actor.context()
                 .boundSession()
                 .send("push")
                 .packetName("Push")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
-            currentBinding.notifyDisconnectedAsync().toCompletableFuture().join();
+            currentBinding.notifyDisconnected().toCompletableFuture().join();
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> actor.context().boundSession());

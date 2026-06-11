@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -87,6 +88,7 @@ final class StreamSessionTest {
         try (ZLinkFrameworkRuntime ignored =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             backendFactory.dispatchStreamPacket("Join", "hello");
+            awaitCondition(() -> GameSession.dispatches.size() == 1);
             assertEquals(1, GameSession.connectedCount);
             assertEquals(List.of("Join:hello"), GameSession.dispatches);
             assertEquals(0, GameSession.disconnectedCount);
@@ -111,6 +113,7 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamPacket("First", "one");
             backendFactory.dispatchStreamPacket("Second", "two");
 
+            awaitCondition(() -> GameSession.dispatches.size() == 2);
             assertEquals(List.of("First:one", "Second:two"), GameSession.dispatches);
             assertEquals(1, GameSession.connectedCount);
             assertEquals(0, GameSession.disconnectedCount);
@@ -136,6 +139,7 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamPacket("Join", "hello");
             backendFactory.dispatchStreamTransportError(222, "remote-disconnect");
 
+            awaitCondition(() -> GameSession.errors.size() == 1);
             assertEquals(List.of("TRANSPORT_ERROR:222:remote-disconnect"), GameSession.errors);
             assertEquals(1, GameSession.disconnectedCount);
         }
@@ -184,6 +188,7 @@ final class StreamSessionTest {
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             backendFactory.dispatchStreamRequest("Join", "hello", 42);
 
+            awaitCondition(() -> ContextSession.sessionId != null);
             assertEquals("gateway:fake-session", ContextSession.sessionId);
             awaitCondition(() -> ContextSession.boundCount == 1);
             assertEquals(1, ContextSession.boundCount, backendFactory.calls().toString());
@@ -216,6 +221,7 @@ final class StreamSessionTest {
             ContextSession.actorNodeRid = RoutingId.from("session-node");
             backendFactory.dispatchStreamRequest("Join", "hello", 42);
 
+            awaitCondition(() -> ContextSession.sessionId != null);
             assertEquals("gateway:fake-session", ContextSession.sessionId);
             awaitCondition(() -> ContextSession.boundCount == 1);
             assertEquals(1, ContextSession.boundCount, backendFactory.calls().toString());
@@ -243,6 +249,8 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamRequest("Authenticate", "player-1", 77);
             backendFactory.dispatchStreamPacket("Move", "cell-4");
 
+            awaitCondition(() -> DispatcherSession.handled.size() == 1
+                && DispatcherSession.relays.size() == 1);
             assertEquals(List.of("handler:player-1"), DispatcherSession.handled);
             assertEquals(List.of("relay:Move:cell-4"), DispatcherSession.relays);
         }
@@ -295,6 +303,7 @@ final class StreamSessionTest {
                 92,
                 0x04);
 
+            awaitCondition(() -> GameSession.dispatches.size() == 1);
             assertEquals(List.of("Compressed:compressed"), GameSession.dispatches);
         }
     }
@@ -314,6 +323,7 @@ final class StreamSessionTest {
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             backendFactory.dispatchStreamPacket("Notify", "hello");
 
+            awaitCondition(() -> ReplyOnlySession.errorMessage != null);
             assertEquals(
                 "Reply is only available while handling a request packet.",
                 ReplyOnlySession.errorMessage);
@@ -353,8 +363,8 @@ final class StreamSessionTest {
     public static final class GameSession implements ZLinkSession {
         static int connectedCount;
         static int disconnectedCount;
-        static List<String> dispatches = new java.util.ArrayList<>();
-        static List<String> errors = new java.util.ArrayList<>();
+        static List<String> dispatches = new CopyOnWriteArrayList<>();
+        static List<String> errors = new CopyOnWriteArrayList<>();
         private final ZLinkSessionContext context;
 
         public GameSession(ZLinkSessionContext context) {
@@ -364,8 +374,8 @@ final class StreamSessionTest {
         static void reset() {
             connectedCount = 0;
             disconnectedCount = 0;
-            dispatches = new java.util.ArrayList<>();
-            errors = new java.util.ArrayList<>();
+            dispatches = new CopyOnWriteArrayList<>();
+            errors = new CopyOnWriteArrayList<>();
         }
 
         @Override
@@ -444,7 +454,7 @@ final class StreamSessionTest {
             ZLinkStreamHeader header,
             Message payload) {
             return context.actors()
-                .bindAsync(new ZLinkActorRef(
+                .bind(new ZLinkActorRef(
                     actorNodeRid,
                     "player-1",
                     1))
@@ -453,17 +463,17 @@ final class StreamSessionTest {
                     return context.client()
                         .send("payload")
                         .packetName("Notify")
-                        .submitAsync();
+                        .submit();
                 })
                 .thenCompose(ignored -> context.client()
                     .reply("reply")
-                    .submitAsync());
+                    .submit());
         }
     }
 
     public static final class DispatcherSession implements ZLinkSession {
-        static List<String> handled = new java.util.ArrayList<>();
-        static List<String> relays = new java.util.ArrayList<>();
+        static List<String> handled = new CopyOnWriteArrayList<>();
+        static List<String> relays = new CopyOnWriteArrayList<>();
         private final ZLinkSessionContext context;
         private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
 
@@ -475,8 +485,8 @@ final class StreamSessionTest {
         }
 
         static void reset() {
-            handled = new java.util.ArrayList<>();
-            relays = new java.util.ArrayList<>();
+            handled = new CopyOnWriteArrayList<>();
+            relays = new CopyOnWriteArrayList<>();
         }
 
         @Override
@@ -530,7 +540,7 @@ final class StreamSessionTest {
             DispatcherSession.handled.add("handler:" + payload.toUtf8String());
             return context.client()
                 .reply("authenticated")
-                .submitAsync();
+                .submit();
         }
     }
 
@@ -572,7 +582,7 @@ final class StreamSessionTest {
             Message payload) {
             return context.client()
                 .reply("reply")
-                .submitAsync()
+                .submit()
                 .whenComplete((ignored, error) -> {
                     if (error != null) {
                         errorMessage = error.getMessage();
@@ -642,12 +652,12 @@ final class StreamSessionTest {
                 .packetName("Notify")
                 .metadata("trace", "send-trace")
                 .compress()
-                .submitAsync()
+                .submit()
                 .thenCompose(ignored -> context.client()
                     .reply("reply")
                     .metadata("trace", "reply-trace")
                     .compress()
-                    .submitAsync());
+                    .submit());
         }
     }
 }

@@ -34,7 +34,7 @@ final class RemoteActorGatewayTest {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bindAsync(new ZLinkActorRef(
+                .bind(new ZLinkActorRef(
                     RoutingId.from("play-node"),
                     "player-1",
                     1))
@@ -87,7 +87,7 @@ final class RemoteActorGatewayTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));

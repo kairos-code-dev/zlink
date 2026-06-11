@@ -1,24 +1,11 @@
 package systems.zlink.framework.kotlin
 
 import kotlinx.coroutines.future.await
-import systems.zlink.framework.actors.ZLinkActor
-import systems.zlink.framework.actors.ZLinkActorManager
-import systems.zlink.framework.actors.ZLinkActorRef
+import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.registry.ZLinkRegistryQuery
-import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryEntry
-import systems.zlink.framework.registry.ZLinkRegistryStatus
-import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry
-import systems.zlink.framework.spots.ZLinkSpotCreateResult
-import systems.zlink.framework.spots.ZLinkSpotInfo
-import systems.zlink.framework.spots.ZLinkSpotManager
-import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.streams.ZLinkSessionActors
-import java.util.Optional
-import systems.zlink.contracts.core.RoutingId
 
 suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TReply =
     submit(replyType).await()
@@ -61,42 +48,3 @@ suspend inline fun <reified TReply, TMessage> ZLinkRouteClient.request(
     message: TMessage,
 ): TReply =
     requestTo(channelName, target, message).awaitReply()
-
-suspend fun ZLinkActorManager.create(actorId: String, actorType: String): ZLinkActor =
-    createAsync(actorId, actorType).await()
-
-suspend fun ZLinkActorManager.find(actorId: String): Optional<ZLinkActor> =
-    findAsync(actorId).await()
-
-suspend fun ZLinkActorManager.getOrCreate(actorId: String, actorType: String): ZLinkActor =
-    getOrCreateAsync(actorId, actorType).await()
-
-suspend fun ZLinkSessionActors.bind(actor: ZLinkActor) =
-    bindAsync(actor).await()
-
-suspend fun ZLinkSessionActors.bind(actor: ZLinkActorRef) =
-    bindAsync(actor).await()
-
-suspend fun ZLinkSpotManager.create(spotType: Class<out ZLinkSpot>): ZLinkSpotCreateResult =
-    createAsync(spotType).await()
-
-suspend fun ZLinkSpotManager.create(spotType: Class<out ZLinkSpot>, spotRid: RoutingId): ZLinkSpotCreateResult =
-    createAsync(spotType, spotRid).await()
-
-suspend fun ZLinkSpotManager.getOrCreate(spotType: Class<out ZLinkSpot>, spotRid: RoutingId): ZLinkSpotCreateResult =
-    getOrCreateAsync(spotType, spotRid).await()
-
-suspend fun ZLinkSpotManager.find(spotRid: RoutingId): Optional<ZLinkSpotInfo> =
-    findAsync(spotRid).await()
-
-suspend fun ZLinkSpotManager.list(): List<ZLinkSpotInfo> =
-    listAsync().await()
-
-suspend fun ZLinkRegistryQuery.status(): ZLinkRegistryStatus =
-    statusAsync().await()
-
-suspend fun ZLinkRegistryQuery.serviceSummary(): List<ZLinkRegistryServiceSummaryEntry> =
-    serviceSummaryAsync(null).await()
-
-suspend fun ZLinkRegistryQuery.topology(): List<ZLinkRegistryTopologyEntry> =
-    topologyAsync(null).await()

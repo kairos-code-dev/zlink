@@ -41,7 +41,7 @@ public void configure(ZLinkFrameworkOptions framework) {
 @Component
 public final class PlayerActorFactory implements ZLinkActorFactory {
     @Override
-    public CompletionStage<ZLinkActor> createAsync(
+    public CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context) {
         return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
@@ -57,10 +57,10 @@ handler에서 받은 spot context로 호출한다.
 |--------------------------|------|
 | `spotRid()`, `isJoined()` | 현재 Spot join 상태 조회 |
 | `boundSession()` | 자기 client로 push (§4) |
-| `joinSpot(spotRid, request)` | user Spot으로 join. `.submitAsync(...)`로 종결 |
+| `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...)`로 종결 |
 | `joinEntrySpot(spotNodeRid)` | target SpotNode의 Entry Spot으로 이동 |
 
-`joinSpot(...).submitAsync(replyType)`는 backend actor join 요청을 보내고, join reply를
+`joinSpot(...).submit(replyType)`는 backend actor join 요청을 보내고, join reply를
 `replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
 `spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. Java
 framework는 이 호출에 blocking helper를 제공하지 않는다.
@@ -123,9 +123,9 @@ sequenceDiagram
   participant S as Session 서버
   participant P as Play 서버(actor)
   C->>S: STREAM 연결 + auth
-  S->>S: bindAsync(actor)
+  S->>S: bind(actor)
   C->>S: PlaceMarkReq
-  S->>P: actor.relayAsync(header, payload)
+  S->>P: actor.relay(header, payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: boundSession().send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -133,9 +133,9 @@ sequenceDiagram
 
 ### Session 서버: 인증과 relay
 
-session 콜백에서 인증 후 `bindAsync(...)`로 actor handle을 잡고, 이후 packet은
-`ZLinkSessionActor.relayAsync(...)`로 actor에 넘긴다. `payload`는 framework runtime이
-callback 동안 빌려준 값이다. `relayAsync(...)`는 caller payload를 소비하지 않으므로
+session 콜백에서 인증 후 `bind(...)`로 actor handle을 잡고, 이후 packet은
+`ZLinkSessionActor.relay(...)`로 actor에 넘긴다. `payload`는 framework runtime이
+callback 동안 빌려준 값이다. `relay(...)`는 caller payload를 소비하지 않으므로
 그대로 넘긴다. callback 뒤에도 payload를 보관해야 할 때만 별도 copy를 만든다.
 
 ```java
@@ -162,12 +162,12 @@ public final class TicTacToeSession implements ZLinkSession {
         Message payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
-            return actors.getOrCreateAsync(req.actorId(), "player")
-                .thenCompose(actor -> context.actors().bindAsync(actor))
-                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submitAsync());
+            return actors.getOrCreate(req.actorId(), "player")
+                .thenCompose(actor -> context.actors().bind(actor))
+                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit());
         }
         return context.actors().bound().stream().findFirst()
-            .map(actor -> actor.relayAsync(header, payload))
+            .map(actor -> actor.relay(header, payload))
             .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"));
     }
 }
@@ -182,11 +182,11 @@ Spot actor handler는 stream을 직접 들지 않는다. 자기 client로 보내
 context.boundSession()
     .send(new MatchFound(roomId))
     .packetName("MatchFound")
-    .submitAsync();
+    .submit();
 ```
 
-`ZLinkBoundSession`의 표면은 **`send(message)`** 와 **`disconnectAsync()`** 둘뿐이다.
-client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submitAsync()`는
+`ZLinkBoundSession`의 표면은 **`send(message)`** 와 **`disconnect()`** 둘뿐이다.
+client로의 push는 단방향이며 별도 request 표면은 없다. `send(...).submit()`는
 fire-and-forget(route 위임 완료이지 client app ack이 아님)이다. 다른 actor의
 client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해당 actor가 자기
 `boundSession()`으로 push한다.
@@ -194,7 +194,7 @@ client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해�
 ## 5. 등록 골격
 
 session relay는 application route mesh channel로 흐르지 않는다. STREAM session이
-쓸 local SpotNode를 `attachActorGateway(...)`로 지정하면, `bindAsync(...)`가
+쓸 local SpotNode를 `attachActorGateway(...)`로 지정하면, `bind(...)`가
 local actor ref 또는 Play 서버가 발급한 remote actor locator를 core ActorGateway
 경로에 bind한다.
 
@@ -212,7 +212,7 @@ local actor ref 또는 Play 서버가 발급한 remote actor locator를 core Act
 - 같은 actor id가 새 session에 다시 bind되면 actor 인스턴스와 Spot membership은
   유지하고 binding token만 갱신한다.
 - session disconnect는 bound actor 전체에 자동 전파되지 않는다. 필요한 actor에게만
-  `ZLinkSessionActor.notifyDisconnectedAsync()`를 호출한다.
+  `ZLinkSessionActor.notifyDisconnected()`를 호출한다.
 - actor 위치 조회용 public resolver는 없다. actor<->session binding은 framework
   내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteAddresses(...)` 또는 custom
   `addSpotRemoteAddressResolver(...)`로 public이다.

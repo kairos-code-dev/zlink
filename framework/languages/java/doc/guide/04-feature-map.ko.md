@@ -20,10 +20,10 @@
 | 서버 간 one-way send | 낮음 | 응답 없는 작업 위임/통지 | `ZLinkClient.sendToChannel` | [05](./05-channel-messaging.ko.md) |
 | event fanout (pub/sub) | 낮음 | domain event를 여러 구독자에게 전파 | `ZLinkFanoutClient.publish` | [05](./05-channel-messaging.ko.md) |
 | target node 지정 route | 중간 | application이 target `RoutingId`를 직접 알 때 | `ZLinkRouteClient.request` | [05](./05-channel-messaging.ko.md) |
-| room/stage/zone 생성 | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | `ZLinkSpotManager.createAsync` | [06](./06-spot.ko.md) |
+| room/stage/zone 생성 | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | `ZLinkSpotManager.create` | [06](./06-spot.ko.md) |
 | Spot 내부 timer | 중간 | 주기 tick, heartbeat, 정리 작업 | `ZLinkTimer` | [06](./06-spot.ko.md) |
-| actor 생성/재사용 | 높음 | session과 묶인 상태 보유 객체로 packet dispatch | `ZLinkActorManager.getOrCreateAsync` | [07](./07-actor-session.ko.md) |
-| client session binding | 높음 | STREAM session을 actor에 묶기 | `context.actors().bindAsync` | [07](./07-actor-session.ko.md) |
+| actor 생성/재사용 | 높음 | session과 묶인 상태 보유 객체로 packet dispatch | `ZLinkActorManager.getOrCreate` | [07](./07-actor-session.ko.md) |
+| client session binding | 높음 | STREAM session을 actor에 묶기 | `context.actors().bind` | [07](./07-actor-session.ko.md) |
 | actor에서 client push | 높음 | actor가 자기 client로 one-way push | `ZLinkBoundSession.send` | [07](./07-actor-session.ko.md) |
 | 외부 client STREAM (서버) | 중간 | 외부 client(TCP/WS)를 framework로 받기 | `ZLinkSession` | [08](./08-stream.ko.md) |
 | Stream Connector (client) | 중간 | client 측에서 STREAM 서버에 접속 | `ZLinkStreamConnector` | [08](./08-stream.ko.md) |

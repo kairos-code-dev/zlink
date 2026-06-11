@@ -28,7 +28,7 @@ final class ZLinkFrameworkFacadeTest {
             String reply = framework.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -51,7 +51,7 @@ final class ZLinkFrameworkFacadeTest {
             String reply = framework.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 

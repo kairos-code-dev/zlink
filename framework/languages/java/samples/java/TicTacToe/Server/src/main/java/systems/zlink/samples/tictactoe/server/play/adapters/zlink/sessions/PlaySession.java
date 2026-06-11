@@ -46,7 +46,7 @@ public final class PlaySession implements ZLinkSession {
         return handlers.tryHandleAsync(context, header, payload)
             .thenCompose(handled -> handled
                 ? CompletableFuture.completedFuture(null)
-                : requireActor(header.packetName()).relayAsync(header, payload));
+                : requireActor(header.packetName()).relay(header, payload));
     }
 
     private ZLinkSessionActor requireActor(String packetName) {

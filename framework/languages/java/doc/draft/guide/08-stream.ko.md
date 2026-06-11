@@ -66,9 +66,9 @@ public final class GameSession implements ZLinkSession {
             case "ClientInput":
                 ClientInput input = payload.decode(ClientInput.class);
                 return channels.sendToChannel("play", new ForwardInputCommand(input))
-                    .submitAsync();
+                    .submit();
             case "Ping":
-                return context.client().reply(new Pong()).submitAsync();
+                return context.client().reply(new Pong()).submit();
             default:
                 return CompletableFuture.completedFuture(null);
         }
@@ -80,9 +80,9 @@ public final class GameSession implements ZLinkSession {
 
 | 표면 | 용도 |
 |------|------|
-| `client().send(msg).submitAsync()` / `client().reply(msg).submitAsync()` | client로 push / 요청에 응답 |
-| `actors().bound()` / `actors().bindAsync(...)` / `actors().find(...)` | actor로 relay([07-actor-session](./07-actor-session.ko.md)) |
-| `closeAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+| `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
+| `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([07-actor-session](./07-actor-session.ko.md)) |
+| `close()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
 `ZLinkClient`를 함께 주입받아 `sendToChannel(...)` 또는 `requestToChannel(...)`을
@@ -103,9 +103,10 @@ public final class GameSession implements ZLinkSession {
 
 ## 2. client 측 — Stream Connector
 
-connector는 만들고(연결 안 함) -> 핸들러/이벤트 등록 -> `connectAsync()` ->
-`dispatchAsync()` 펌프 순서로 쓴다. UI 스레드/게임 루프가 있는 client는 수신
-콜백을 `dispatchAsync()`를 부른 스레드에서 실행하도록 manual dispatch를 쓴다.
+connector는 만들고(연결 안 함) -> 핸들러/이벤트 등록 -> `connect().submit()` 또는
+`connect().await()` -> `dispatch().submit()` 또는 `dispatch().await()` 펌프 순서로
+쓴다. UI 스레드/게임 루프가 있는 client는 수신 콜백을 `dispatch()`를 부른 스레드에서
+실행하도록 manual dispatch를 쓴다.
 
 ```java
 ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(options);
@@ -115,12 +116,12 @@ connector.on("GameStateNotify", (msg, ctx) -> {
     return CompletableFuture.completedFuture(null);
 });
 
-connector.connectAsync()
-    .thenCompose(ignored -> connector.send(payload).submitAsync());
+connector.connect().submit()
+    .thenCompose(ignored -> connector.send(payload).submit());
 
 // 게임 루프/메인 스레드에서 주기적으로 콜백 실행
 while (running) {
-    connector.dispatchAsync().whenComplete((ignored, error) -> {
+    connector.dispatch().submit().whenComplete((ignored, error) -> {
         if (error != null) {
             reportDispatchError(error);
         }
@@ -139,8 +140,8 @@ reconnect, codec helper를 제공한다.
 
 ## 3. 자주 막히는 곳
 
-- **콜백이 안 불린다(client)** -> manual dispatch인데 `dispatchAsync()`를 주기적으로
-  안 부르고 있다.
+- **콜백이 안 불린다(client)** -> manual dispatch인데 `dispatch().submit()` 또는
+  `dispatch().await()`를 주기적으로 안 부르고 있다.
 - **한 stream node에 session 둘** -> startup 예외. node 하나에 session 하나다.
 - **session 콜백에서 actor 상태 직접 접근** -> 하지 않는다. session은 actor
   dispatch/spot 호출만 제출한다([07-actor-session](./07-actor-session.ko.md)).

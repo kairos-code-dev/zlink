@@ -69,7 +69,7 @@ public final class AuthenticateSessionHandler
                     .timeout(SampleTimings.RequestTimeout)
                     .submit(Messages.EnsurePlayerActorRes.class)
                     .thenCompose(ensured -> context.actors()
-                        .bindAsync(new ZLinkActorRef(
+                        .bind(new ZLinkActorRef(
                             RoutingId.from(ensured.actor().nodeRid()),
                             ensured.actor().actorId(),
                             ensured.actor().generation()))

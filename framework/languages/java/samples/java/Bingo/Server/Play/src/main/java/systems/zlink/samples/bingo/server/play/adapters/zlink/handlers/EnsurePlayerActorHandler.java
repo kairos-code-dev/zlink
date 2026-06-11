@@ -28,7 +28,7 @@ public final class EnsurePlayerActorHandler
     public CompletionStage<Messages.EnsurePlayerActorRes> handleAsync(
         Messages.EnsurePlayerActorReq request,
         ZLinkRequestContext context) {
-        return actors.getOrCreateAsync(request.actorId(), SampleNames.PlayerActorType)
+        return actors.getOrCreate(request.actorId(), SampleNames.PlayerActorType)
             .thenCompose(actor -> {
                 if (actor instanceof PlayerActor player) {
                     player.setDisplayName(request.displayName());

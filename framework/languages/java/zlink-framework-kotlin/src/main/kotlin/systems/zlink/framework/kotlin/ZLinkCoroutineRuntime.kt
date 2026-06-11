@@ -227,15 +227,15 @@ class ZLinkCoroutineRuntime : AutoCloseable {
 abstract class ZLinkCoroutineActorFactory(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkActorFactory {
-    final override fun createAsync(
+    final override fun create(
         actorId: String,
         context: ZLinkActorContext,
     ): CompletionStage<ZLinkActor> =
         coroutines.completionStage {
-            create(actorId, context)
+            createActor(actorId, context)
         }
 
-    protected abstract suspend fun create(
+    protected abstract suspend fun createActor(
         actorId: String,
         context: ZLinkActorContext,
     ): ZLinkActor

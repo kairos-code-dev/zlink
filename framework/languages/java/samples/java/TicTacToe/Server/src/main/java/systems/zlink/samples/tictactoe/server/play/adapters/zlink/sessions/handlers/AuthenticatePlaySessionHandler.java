@@ -55,10 +55,10 @@ public final class AuthenticatePlaySessionHandler
                 new AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleNames.RequestTimeout)
             .submit(AuthenticatePlayerRes.class)
-            .thenCompose(authenticated -> actors.getOrCreateAsync(
+            .thenCompose(authenticated -> actors.getOrCreate(
                 authenticated.actorId(),
                 SampleNames.PlayActor))
-            .thenCompose(context.actors()::bindAsync)
+            .thenCompose(context.actors()::bind)
             .thenCompose(bound -> context.client()
                 .reply(new AuthenticateRes(bound.actorId()))
                 .submit());

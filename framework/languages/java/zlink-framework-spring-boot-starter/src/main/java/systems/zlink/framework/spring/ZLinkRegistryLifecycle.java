@@ -81,25 +81,25 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegist
     }
 
     @Override
-    public CompletionStage<ZLinkRegistryStatus> statusAsync() {
-        return requireRuntime().statusAsync();
+    public CompletionStage<ZLinkRegistryStatus> status() {
+        return requireRuntime().status();
     }
 
     @Override
-    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
+    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
         ZLinkRegistryServiceSummaryFilter filter) {
-        return requireRuntime().serviceSummaryAsync(filter);
+        return requireRuntime().serviceSummary(filter);
     }
 
     @Override
-    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter) {
-        return requireRuntime().topologyAsync(filter);
+        return requireRuntime().topology(filter);
     }
 
     @Override
-    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
-        return requireRuntime().memberPeersAsync(channelName);
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName) {
+        return requireRuntime().memberPeers(channelName);
     }
 
     ZLinkBackendRegistry monitoringRegistrySource() {

@@ -9,7 +9,7 @@ public interface ZLinkSessionActor {
 
     ZLinkActorRef ref();
 
-    CompletionStage<Void> relayAsync(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> relay(ZLinkStreamHeader header, Message payload);
 
-    CompletionStage<Void> notifyDisconnectedAsync();
+    CompletionStage<Void> notifyDisconnected();
 }

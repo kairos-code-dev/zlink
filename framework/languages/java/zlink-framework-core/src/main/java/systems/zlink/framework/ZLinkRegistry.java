@@ -36,25 +36,25 @@ public final class ZLinkRegistry implements ZLinkRegistryQuery, AutoCloseable {
     }
 
     @Override
-    public CompletionStage<ZLinkRegistryStatus> statusAsync() {
-        return runtime.statusAsync();
+    public CompletionStage<ZLinkRegistryStatus> status() {
+        return runtime.status();
     }
 
     @Override
     public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>>
-        serviceSummaryAsync(ZLinkRegistryServiceSummaryFilter filter) {
-        return runtime.serviceSummaryAsync(filter);
+        serviceSummary(ZLinkRegistryServiceSummaryFilter filter) {
+        return runtime.serviceSummary(filter);
     }
 
     @Override
     public CompletionStage<List<ZLinkRegistryTopologyEntry>>
-        topologyAsync(ZLinkRegistryTopologyFilter filter) {
-        return runtime.topologyAsync(filter);
+        topology(ZLinkRegistryTopologyFilter filter) {
+        return runtime.topology(filter);
     }
 
     @Override
-    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
-        return runtime.memberPeersAsync(channelName);
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName) {
+        return runtime.memberPeers(channelName);
     }
 
     @Override

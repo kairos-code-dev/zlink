@@ -24,7 +24,7 @@ class BingoSession(
             return
         }
         val actor = requireSingleBoundActor(header.packetName())
-        actor.relayAsync(header, payload).await()
+        actor.relay(header, payload).await()
     }
 
     private fun requireSingleBoundActor(packetName: String): ZLinkSessionActor =

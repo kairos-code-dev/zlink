@@ -161,7 +161,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             ZLinkStreamHeaderCodec.decodeOrPlain(header.toByteArray());
         Message payloadCopy = Message.from(decodePayload(streamHeader, payload));
         state.queue().enqueue(() ->
-            executeHandler(() -> state.context().dispatchAsync(streamHeader, payloadCopy, state.session())));
+            executeHandler(() -> state.context().dispatchStage(streamHeader, payloadCopy, state.session())));
     }
 
     private void reportTransportError(
@@ -325,11 +325,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> closeAsync() {
+        public CompletionStage<Void> close() {
             return CompletableFuture.completedFuture(null);
         }
 
-        CompletionStage<Void> dispatchAsync(
+        CompletionStage<Void> dispatchStage(
             ZLinkStreamHeader header,
             Message payload,
             ZLinkSession session) {
@@ -442,7 +442,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             EncodedStreamPayload encoded = encodePayload(payload, compressed);
             ZLinkStreamHeader header = new ZLinkStreamHeader(
                 ZLinkStreamMessageKind.SEND,
@@ -486,7 +486,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
             if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
                 payload.close();

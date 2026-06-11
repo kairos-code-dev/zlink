@@ -49,18 +49,18 @@ final class SessionActorsRuntimeIntegrationTest {
         new LinkedBlockingQueue<>();
 
     @Test
-    void bindAsyncUsesStreamActorGatewayBindingPath() {
+    void bindUsesStreamActorGatewayBindingPath() {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
                 "gateway",
                 RoutingId.from("session-1"));
             ZLinkSessionActor bound = sessionActors
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
@@ -70,23 +70,23 @@ final class SessionActorsRuntimeIntegrationTest {
     }
 
     @Test
-    void bindAsyncCanRelayLocalManagedActorWithoutActorGatewayAttach() throws Exception {
+    void bindCanRelayLocalManagedActorWithoutActorGatewayAttach() throws Exception {
         actorRelayRequests.clear();
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startLocalManagedStreamRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor bound = runtime.sessionActors(
                     "local",
                     RoutingId.from("session-1"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
             try (Message payload = Message.from("hello")) {
-                bound.relayAsync(
+                bound.relay(
                         new ZLinkStreamHeader(
                             "ActorNotify",
                             java.util.Map.of(),
@@ -107,14 +107,14 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
             ZLinkActorRef joined = actor.context()
                 .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -128,14 +128,14 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startBoundGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
             ZLinkActorRef joined = actor.context()
                 .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -152,7 +152,7 @@ final class SessionActorsRuntimeIntegrationTest {
                 .requestToChannel("play", "player-1")
                 .packetName("Ensure")
                 .timeout(Duration.ofSeconds(2))
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -188,20 +188,20 @@ final class SessionActorsRuntimeIntegrationTest {
                  sessionPub,
                  streamEndpoint)) {
             ZLinkActor actor = play.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkActorRef joined = actor.context()
                 .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
             ZLinkSessionActor bound = session.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bindAsync(joined)
+                .bind(joined)
                 .toCompletableFuture()
                 .join();
 
@@ -214,20 +214,20 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkActorRef actorRef = actor.context()
                 .joinEntrySpot(RoutingId.from("play-node"))
                 .timeout(Duration.ofSeconds(2))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActorsRuntime sessionActors = runtime.sessionActors(
                 "gateway",
                 RoutingId.from("session-1"));
             ZLinkSessionActor bound = sessionActors
-                .bindAsync(actorRef)
+                .bind(actorRef)
                 .toCompletableFuture()
                 .join();
 
@@ -241,11 +241,11 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startGatewayRuntime()) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             runtime.sessionActors("gateway", RoutingId.from("session-1"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
@@ -253,7 +253,7 @@ final class SessionActorsRuntimeIntegrationTest {
                     .boundSession()
                     .send("push")
                     .packetName("Push")
-                    .submitAsync()
+                    .submit()
                     .toCompletableFuture()
                     .join());
         }
@@ -453,7 +453,7 @@ final class SessionActorsRuntimeIntegrationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
@@ -537,7 +537,7 @@ final class SessionActorsRuntimeIntegrationTest {
         long deadline = System.nanoTime() + unit.toNanos(timeout);
         while (true) {
             try (Message payload = Message.from(payloadBytes)) {
-                bound.relayAsync(header, payload).toCompletableFuture().join();
+                bound.relay(header, payload).toCompletableFuture().join();
             }
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0) {
@@ -566,11 +566,11 @@ final class SessionActorsRuntimeIntegrationTest {
 
         @ZLinkRequest(packetName = "Ensure")
         public CompletionStage<String> handleAsync(String actorId) {
-            return actors.getOrCreateAsync(actorId, "player")
+            return actors.getOrCreate(actorId, "player")
                 .thenCompose(actor -> actor.context()
                     .joinEntrySpot(RoutingId.from("play-node"))
                     .timeout(Duration.ofSeconds(2))
-                    .submitAsync())
+                    .submit())
                 .thenApply(joined -> joined.actorId());
         }
     }

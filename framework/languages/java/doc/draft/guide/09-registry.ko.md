@@ -71,12 +71,12 @@ public final class TopologyController {
 
     @GetMapping("/admin/topology")
     public CompletionStage<List<RegistryTopologyEntry>> topology() {
-        return registry.topologyAsync();
+        return registry.topology();
     }
 
     @GetMapping("/health")
     public CompletionStage<ResponseEntity<RegistryStatus>> health() {
-        return registry.statusAsync().thenApply(status ->
+        return registry.status().thenApply(status ->
             status.isActive()
                 ? ResponseEntity.ok(status)
                 : ResponseEntity.status(503).build());

@@ -35,17 +35,17 @@ final class EmbeddedRegistryTest {
                  options,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
-            var status = runtime.statusAsync()
+            var status = runtime.status()
                 .toCompletableFuture()
                 .join();
             assertEquals(7, status.registryId());
             assertEquals(routerEndpoint, status.bindEndpoint());
             assertTrue(status.topologyEntryCount() >= 0);
-            assertTrue(runtime.serviceSummaryAsync()
+            assertTrue(runtime.serviceSummary()
                 .toCompletableFuture()
                 .join()
                 .isEmpty());
-            assertTrue(runtime.topologyAsync()
+            assertTrue(runtime.topology()
                 .toCompletableFuture()
                 .join()
                 .isEmpty());
@@ -69,11 +69,11 @@ final class EmbeddedRegistryTest {
                      routerEndpoint,
                      new ZLinkJavaBackendAdapterFactory(),
                      new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
-            assertTrue(client.topologyAsync()
+            assertTrue(client.topology()
                 .toCompletableFuture()
                 .join()
                 .isEmpty());
-            assertTrue(client.topologyAsync(ZLinkRegistryTopologyFilter.channel("profile"))
+            assertTrue(client.topology(ZLinkRegistryTopologyFilter.channel("profile"))
                 .toCompletableFuture()
                 .join()
                 .isEmpty());

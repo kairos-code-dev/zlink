@@ -25,12 +25,12 @@ options.addSpotMesh("game.stage", mesh -> {
 ## 3. 생성과 조회
 
 ```java
-spotManager.getOrCreateAsync(GameRoomSpot.class, roomRid);
+spotManager.getOrCreate(GameRoomSpot.class, roomRid);
 ```
 
-`getOrCreateAsync(spotType, spotRid)`는 같은 `spotRid`가 이미 있으면 그 Spot을
+`getOrCreate(spotType, spotRid)`는 같은 `spotRid`가 이미 있으면 그 Spot을
 재사용하고, 없으면 새로 만든다. 새 Spot의 시작 payload가 필요하면 별도
-`createAsync(spotType, spotRid)`로 만들고 lifecycle callback에서 받는다.
+`create(spotType, spotRid)`로 만들고 lifecycle callback에서 받는다.
 
 Spot factory는 Spot type 기준으로 등록한다. 같은 Spot type 중복 등록은 startup
 validation 오류다.

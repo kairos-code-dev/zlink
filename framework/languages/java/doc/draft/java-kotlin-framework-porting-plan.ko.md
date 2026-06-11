@@ -152,10 +152,10 @@ Java로 옮긴다. dispatch 기준은 local `ROUTER(server)` ingress다. outboun
 
 구현할 표면은 아래와 같다.
 
-- `ZLinkClient.sendToChannel(...).submitAsync()`
-- `ZLinkClient.requestToChannel(...).timeout(...).submitAsync(...)`
-- `ZLinkFanoutClient.publish(...).submitAsync()`
-- `ZLinkRouteClient.send(...).submitAsync()`, `request(...).submitAsync(...)`
+- `ZLinkClient.sendToChannel(...).submit()`
+- `ZLinkClient.requestToChannel(...).timeout(...).submit(...)`
+- `ZLinkFanoutClient.publish(...).submit()`
+- `ZLinkRouteClient.send(...).submit()`, `request(...).submit(...)`
 - `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` (annotation은 `Mapping` 접미사
   없이, publish는 `Event`가 아니다 — 함정표 §10 참조)
 - handler interface 기반 자동 등록
@@ -284,7 +284,7 @@ Kotlin DSL은 Java builder를 호출하는 thin wrapper다. Java와 다른 설�
   blocking 파일 I/O 같은 작업은 사용자가 별도 dispatcher를 명시해야 한다. zlink
   request 자체는 `CompletionStage.await()`로 suspend되므로 dispatcher thread를
   오래 점유하지 않는다.
-- `suspend` request/send/publish helper는 Java builder의 `submitAsync()`를 호출한 뒤
+- `suspend` request/send/publish helper는 Java builder의 `submit()`를 호출한 뒤
   `kotlinx-coroutines-jdk8`의 `await()`로 변환한다. Java public API에
   `submitAwait` 같은 blocking/parking helper를 추가하지 않는다.
 - `suspend` handler 등록은 Java handler interface로 변환한다. 변환된 handler는

@@ -23,7 +23,7 @@ class PlaySession(
         if (handlers.tryHandleAsync(context, header, payload).await()) {
             return
         }
-        requireActor(header.packetName()).relayAsync(header, payload).await()
+        requireActor(header.packetName()).relay(header, payload).await()
     }
 
     private fun requireActor(packetName: String): ZLinkSessionActor =

@@ -166,7 +166,7 @@ final class StreamSessionTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
@@ -243,7 +243,7 @@ final class StreamSessionTest {
                 return CompletableFuture.failedFuture(
                     new IllegalArgumentException("unexpected packet: " + header.packetName()));
             }
-            return context.client().reply("pong").submitAsync();
+            return context.client().reply("pong").submit();
         }
     }
 
@@ -284,14 +284,14 @@ final class StreamSessionTest {
             Message payload) {
             if ("Bind".equals(header.packetName())) {
                 String actorId = new String(payload.toByteArray(), StandardCharsets.UTF_8);
-                return actors.getOrCreateAsync(actorId, "player")
+                return actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> actor.context()
                         .joinEntrySpot(RoutingId.from("play-node"))
-                        .submitAsync()
-                        .thenCompose(ignored -> context.actors().bindAsync(actor)))
-                    .thenCompose(ignored -> context.client().reply("bound").submitAsync());
+                        .submit()
+                        .thenCompose(ignored -> context.actors().bind(actor)))
+                    .thenCompose(ignored -> context.client().reply("bound").submit());
             }
-            return context.actors().bound().get(0).relayAsync(header, payload);
+            return context.actors().bound().get(0).relay(header, payload);
         }
     }
 

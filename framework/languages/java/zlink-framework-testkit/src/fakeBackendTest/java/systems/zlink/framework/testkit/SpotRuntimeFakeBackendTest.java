@@ -69,33 +69,33 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .createAsync(GameSpot.class, rid)
+                .create(GameSpot.class, rid)
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
-                .getOrCreateAsync(GameSpot.class, rid)
+                .getOrCreate(GameSpot.class, rid)
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals(Optional.of(rid), runtime.spotManager()
-                .findAsync(rid)
+                .find(rid)
                 .toCompletableFuture()
                 .join()
                 .map(info -> info.spotRid()));
             assertEquals(List.of(rid), runtime.spotManager()
-                .listAsync()
+                .list()
                 .toCompletableFuture()
                 .join()
                 .stream()
                 .map(info -> info.spotRid())
                 .toList());
             assertEquals(true, runtime.spotManager()
-                .closeAsync(rid)
+                .close(rid)
                 .toCompletableFuture()
                 .join());
             assertEquals(false, runtime.spotManager()
-                .closeAsync(rid)
+                .close(rid)
                 .toCompletableFuture()
                 .join());
         }
@@ -137,14 +137,14 @@ final class SpotRuntimeFakeBackendTest {
              ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .getOrCreateAsync(PayloadSpot.class, rid, first)
+                .getOrCreate(PayloadSpot.class, rid, first)
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals("first", PayloadSpot.lastCreatePayload.get());
 
             assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
-                .getOrCreateAsync(PayloadSpot.class, rid, second)
+                .getOrCreate(PayloadSpot.class, rid, second)
                 .toCompletableFuture()
                 .join()
                 .state());
@@ -163,20 +163,20 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToChannel("play-events", "hello")
                 .packetName("Greeting")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             OutboundSpot.context.outbound()
                 .requestToChannel("play-rpc", "ping")
                 .packetName("Ping")
-                .submitAsync(String.class);
+                .submit(String.class);
         }
 
         assertEquals(
@@ -214,13 +214,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(HandlerSpot.class, RoutingId.from("handler-spot"))
+                .create(HandlerSpot.class, RoutingId.from("handler-spot"))
                 .toCompletableFuture()
                 .join();
 
             backendFactory.dispatchSpotRoute("String", "hello");
             backendFactory.dispatchSpotRequest("SpotQuery", "ping", 7);
             backendFactory.dispatchSpotSubscription("stage.events", "String", "opened");
+            awaitCondition(() -> HandlerSpot.dispatches.size() == 3);
         }
 
         assertEquals(
@@ -244,7 +245,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(SerialSpot.class, RoutingId.from("serial-spot"))
+                .create(SerialSpot.class, RoutingId.from("serial-spot"))
                 .toCompletableFuture()
                 .join();
 
@@ -288,7 +289,7 @@ final class SpotRuntimeFakeBackendTest {
                  new SerialJoinSerializer(),
                  handlerFactory)) {
             runtime.spotManager()
-                .createAsync(SerialSpot.class, RoutingId.from("serial-spot"))
+                .create(SerialSpot.class, RoutingId.from("serial-spot"))
                 .toCompletableFuture()
                 .join();
 
@@ -324,14 +325,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToSpot(RoutingId.from("target-spot"), "hello")
                 .packetName("Greeting")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             assertEquals(
@@ -339,7 +340,7 @@ final class SpotRuntimeFakeBackendTest {
                 OutboundSpot.context.outbound()
                     .requestToSpot(RoutingId.from("target-spot"), "ping")
                     .packetName("Ping")
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join());
         }
@@ -376,20 +377,20 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToSpot(RoutingId.from("target-spot"), new SpotGreeting("hello"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
                     .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join());
         }
@@ -477,14 +478,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToSpot(RoutingId.from("target-spot"), "hello")
                 .packetName("Greeting")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -523,7 +524,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
@@ -532,7 +533,7 @@ final class SpotRuntimeFakeBackendTest {
                 OutboundSpot.context.outbound()
                     .requestToSpot(RoutingId.from("target-spot"), "ping")
                     .packetName("Ping")
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join());
         }
@@ -567,7 +568,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
@@ -576,7 +577,7 @@ final class SpotRuntimeFakeBackendTest {
                 () -> OutboundSpot.context.outbound()
                     .sendToSpot(RoutingId.from("target-spot"), "hello")
                     .packetName("Ping")
-                    .submitAsync()
+                    .submit()
                     .toCompletableFuture()
                     .join());
         }
@@ -604,14 +605,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToSpot(RoutingId.from("target-spot"), "hello")
                 .packetName("Ping")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -644,14 +645,14 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
             OutboundSpot.context.outbound()
                 .sendToSpot(RoutingId.from("target-spot"), "hello")
                 .packetName("Ping")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -691,7 +692,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
 
@@ -714,7 +715,7 @@ final class SpotRuntimeFakeBackendTest {
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             AmbientOutboundSpot.outbound = runtime.spotOutbound();
             runtime.spotManager()
-                .createAsync(AmbientOutboundSpot.class, RoutingId.from("game-3"))
+                .create(AmbientOutboundSpot.class, RoutingId.from("game-3"))
                 .toCompletableFuture()
                 .join();
         }
@@ -742,7 +743,7 @@ final class SpotRuntimeFakeBackendTest {
             runtime.spotPublisherClient()
                 .publishSpot("game.stage", "stage.events", "opened")
                 .packetName("StageOpened")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -1025,9 +1026,11 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime ignored =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             assertEquals(1, LifecycleEntrySpot.configureCount.get());
+            awaitCondition(() -> LifecycleEntrySpot.initializeCount.get() == 1);
             assertEquals(1, LifecycleEntrySpot.initializeCount.get());
         }
 
+        awaitCondition(() -> LifecycleEntrySpot.closingCount.get() == 1);
         assertEquals(1, LifecycleEntrySpot.closingCount.get());
         assertEquals(
             List.of(
@@ -1116,7 +1119,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -1147,7 +1150,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -1185,7 +1188,7 @@ final class SpotRuntimeFakeBackendTest {
                  new InterfaceActorSerializer(),
                  ZLinkHandlerFactory.reflection())) {
             runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -1220,7 +1223,7 @@ final class SpotRuntimeFakeBackendTest {
                  new InterfaceActorSerializer(),
                  ZLinkHandlerFactory.reflection())) {
             runtime.spotManager()
-                .createAsync(InterfaceUserSpot.class, RoutingId.from("interface-spot"))
+                .create(InterfaceUserSpot.class, RoutingId.from("interface-spot"))
                 .toCompletableFuture()
                 .join();
 
@@ -1254,7 +1257,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, RoutingId.from("game-2"))
+                .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
                 .join();
             backendFactory.dispatchEntrySpotActorJoinReadable(
@@ -1262,7 +1265,7 @@ final class SpotRuntimeFakeBackendTest {
                 "String",
                 "join-request");
             ZLinkActor actor = runtime.actorManager()
-                .findAsync("player-1")
+                .find("player-1")
                 .toCompletableFuture()
                 .join()
                 .orElseThrow();
@@ -1320,11 +1323,11 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(OutboundSpot.class, spotRid)
+                .create(OutboundSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -1394,6 +1397,16 @@ final class SpotRuntimeFakeBackendTest {
         }
     }
 
+    private static void awaitCondition(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+    }
+
     private static void awaitFuture(CompletableFuture<Void> future, List<String> calls) {
         try {
             future.get(1, TimeUnit.SECONDS);
@@ -1427,7 +1440,7 @@ final class SpotRuntimeFakeBackendTest {
     }
 
     public static final class HandlerSpot implements ZLinkSpot {
-        static final List<String> dispatches = new java.util.ArrayList<>();
+        static final List<String> dispatches = new CopyOnWriteArrayList<>();
         private final ZLinkSpotContext context;
 
         public HandlerSpot(ZLinkSpotContext context) {
@@ -1618,7 +1631,7 @@ final class SpotRuntimeFakeBackendTest {
             return outbound
                 .sendToChannel("play-events", "hello")
                 .packetName("Greeting")
-                .submitAsync()
+                .submit()
                 .thenApply(ignored -> ZLinkSpotCreateResponse.accept());
         }
     }
@@ -1824,7 +1837,7 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));

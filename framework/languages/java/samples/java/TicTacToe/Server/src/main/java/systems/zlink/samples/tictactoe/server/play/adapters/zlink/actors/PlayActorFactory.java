@@ -8,7 +8,7 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 
 public final class PlayActorFactory implements ZLinkActorFactory {
     @Override
-    public CompletionStage<ZLinkActor> createAsync(
+    public CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context) {
         return CompletableFuture.completedFuture(new PlayActor(actorId, context));

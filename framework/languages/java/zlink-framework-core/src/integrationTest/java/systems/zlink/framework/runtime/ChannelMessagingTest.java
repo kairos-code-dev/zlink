@@ -79,7 +79,7 @@ final class ChannelMessagingTest {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -108,7 +108,7 @@ final class ChannelMessagingTest {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -173,7 +173,7 @@ final class ChannelMessagingTest {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("String")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -203,13 +203,13 @@ final class ChannelMessagingTest {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("AnnotatedEcho")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.client()
                 .sendToChannel("profile", "changed")
                 .packetName("ProfileChanged")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -499,12 +499,12 @@ final class ChannelMessagingTest {
                 .requestTo("route", targetRid, "slow:40")
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
-                .submitAsync(String.class);
+                .submit(String.class);
             CompletionStage<String> fast = source.route()
                 .requestTo("route", targetRid, "fast:1")
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
-                .submitAsync(String.class);
+                .submit(String.class);
 
             assertEquals("slow", slow.toCompletableFuture().join());
             assertEquals("fast", fast.toCompletableFuture().join());
@@ -568,7 +568,7 @@ final class ChannelMessagingTest {
                     .requestToChannel("profile", "hello")
                     .packetName("Echo")
                     .timeout(Duration.ofMillis(100))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join();
             } catch (RuntimeException ex) {
@@ -585,7 +585,7 @@ final class ChannelMessagingTest {
             publisher.fanout()
                 .publish("events", "score", "home:1")
                 .packetName("ScoreChanged")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             Thread.onSpinWait();
@@ -598,7 +598,7 @@ final class ChannelMessagingTest {
             runtime.client()
                 .sendToChannel("profile", "changed")
                 .packetName("ProfileChanged")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             Thread.onSpinWait();
@@ -614,7 +614,7 @@ final class ChannelMessagingTest {
                     .requestTo("route", targetRid, "hello")
                     .packetName("Echo")
                     .timeout(Duration.ofMillis(100))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join();
             } catch (RuntimeException ex) {
@@ -634,7 +634,7 @@ final class ChannelMessagingTest {
                     .requestTo("route", targetRid, "hello")
                     .packetName("String")
                     .timeout(Duration.ofMillis(100))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join();
             } catch (RuntimeException ex) {
@@ -657,7 +657,7 @@ final class ChannelMessagingTest {
                     .requestTo("route", targetRid, message)
                     .packetName("SharedPacket")
                     .timeout(Duration.ofMillis(100))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join();
             } catch (RuntimeException ex) {
@@ -674,7 +674,7 @@ final class ChannelMessagingTest {
             source.route()
                 .sendTo("route", targetRid, "ping")
                 .packetName("Notice")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             Thread.onSpinWait();

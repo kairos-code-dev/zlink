@@ -33,7 +33,7 @@ public final class RouteSession implements ZLinkSession {
         Message payload) {
         return context.client()
             .reply(new Pong())
-            .submitAsync();
+            .submit();
     }
 }
 ```
@@ -62,9 +62,9 @@ public final class ActorRelaySession implements ZLinkSession {
     public CompletionStage<Void> onDispatchAsync(
         ZLinkStreamHeader header,
         Message payload) {
-        return actorManager.getOrCreateAsync("player-42", "player")
-            .thenCompose(actor -> context.actors().bindAsync(actor))
-            .thenCompose(bound -> bound.relayAsync(header, payload));
+        return actorManager.getOrCreate("player-42", "player")
+            .thenCompose(actor -> context.actors().bind(actor))
+            .thenCompose(bound -> bound.relay(header, payload));
     }
 }
 ```

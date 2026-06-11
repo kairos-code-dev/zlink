@@ -106,7 +106,7 @@ public final class UserHandlers {
         return client.requestToChannel(
             "account",
             new GetAccountRequest(request.accountId())
-        ).submitAsync(GetAccountReply.class).thenApply(account -> new GetUserReply(
+        ).submit(GetAccountReply.class).thenApply(account -> new GetUserReply(
             request.accountId(),
             account.nickname()
         ));

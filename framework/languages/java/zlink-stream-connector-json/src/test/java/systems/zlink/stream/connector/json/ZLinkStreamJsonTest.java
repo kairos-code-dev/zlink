@@ -63,14 +63,12 @@ final class ZLinkStreamJsonTest {
 
     @Test
     void typedWaitResolvesPayload() throws Exception {
-        FakeConnector connector = new FakeConnector(options());
+        FakeConnector connector = new FakeConnector(optionsWithCodec());
 
         CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
-            ZLinkStreamJson.waitForAsync(
-                connector,
-                "custom.packet",
-                AnnotatedPayload.class,
-                Duration.ofSeconds(1));
+            connector.waitFor("custom.packet")
+                .timeout(Duration.ofSeconds(1))
+                .submit(AnnotatedPayload.class);
 
         connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
             "custom.packet",
@@ -82,13 +80,11 @@ final class ZLinkStreamJsonTest {
 
     @Test
     void typedWaitUsesConnectorRequestTimeoutByDefault() throws Exception {
-        FakeConnector connector = new FakeConnector(options());
+        FakeConnector connector = new FakeConnector(optionsWithCodec());
 
         CompletionStage<systems.zlink.stream.connector.ZLinkStreamMessage<AnnotatedPayload>> pending =
-            ZLinkStreamJson.waitForAsync(
-                connector,
-                "custom.packet",
-                AnnotatedPayload.class);
+            connector.waitFor("custom.packet")
+                .submit(AnnotatedPayload.class);
 
         connector.handler.handleAsync(new systems.zlink.stream.connector.ZLinkStreamMessage<>(
             "custom.packet",

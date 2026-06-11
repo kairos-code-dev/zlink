@@ -89,10 +89,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall connect() {
-        return new DefaultZLinkStreamLifecycleCall(this::connectInternalAsync);
+        return new DefaultZLinkStreamLifecycleCall(this::connectInternalStage);
     }
 
-    private CompletionStage<Void> connectInternalAsync() {
+    private CompletionStage<Void> connectInternalStage() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -100,15 +100,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return CompletableFuture.completedFuture(null);
         }
 
-        return connectOnceAsync();
+        return connectOnceStage();
     }
 
-    private CompletionStage<Void> connectOnceAsync() {
+    private CompletionStage<Void> connectOnceStage() {
         if (isWebSocketEndpoint()) {
-            return connectWebSocketAsync();
+            return connectWebSocketStage();
         }
         if (isTlsEndpoint()) {
-            return ZLinkTlsTransportConnection.connectAsync(
+            return ZLinkTlsTransportConnection.connectStage(
                 options.endpoint(),
                 options.connectTimeout(),
                 options.skipServerCertificateValidation()).thenAccept(this::activateConnection);
@@ -170,10 +170,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall disconnect() {
-        return new DefaultZLinkStreamLifecycleCall(this::disconnectInternalAsync);
+        return new DefaultZLinkStreamLifecycleCall(this::disconnectInternalStage);
     }
 
-    private CompletionStage<Void> disconnectInternalAsync() {
+    private CompletionStage<Void> disconnectInternalStage() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -193,10 +193,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall reconnect() {
-        return new DefaultZLinkStreamLifecycleCall(this::reconnectInternalAsync);
+        return new DefaultZLinkStreamLifecycleCall(this::reconnectInternalStage);
     }
 
-    private CompletionStage<Void> reconnectInternalAsync() {
+    private CompletionStage<Void> reconnectInternalStage() {
         if (state == ZLinkStreamConnectionState.CLOSED) {
             throw new IllegalStateException("connector is closed");
         }
@@ -208,15 +208,15 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                 new IllegalStateException("reconnect attempts are disabled"));
         }
         transitionTo(ZLinkStreamConnectionState.RECONNECTING);
-        return reconnectAttemptAsync(1, options.reconnectInitialDelay());
+        return reconnectAttemptStage(1, options.reconnectInitialDelay());
     }
 
     @Override
     public ZLinkStreamLifecycleCall close() {
-        return new DefaultZLinkStreamLifecycleCall(this::closeInternalAsync);
+        return new DefaultZLinkStreamLifecycleCall(this::closeInternalStage);
     }
 
-    private CompletionStage<Void> closeInternalAsync() {
+    private CompletionStage<Void> closeInternalStage() {
         boolean wasConnected = isConnected();
         ZLinkStreamTransportConnection current = connection;
         connection = null;
@@ -233,10 +233,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     @Override
     public ZLinkStreamLifecycleCall dispatch() {
-        return new DefaultZLinkStreamLifecycleCall(this::dispatchInternalAsync);
+        return new DefaultZLinkStreamLifecycleCall(this::dispatchInternalStage);
     }
 
-    private CompletionStage<Void> dispatchInternalAsync() {
+    private CompletionStage<Void> dispatchInternalStage() {
         dispatchQueue.drain();
         return CompletableFuture.completedFuture(null);
     }
@@ -462,17 +462,17 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             : ZLinkStreamConnectionState.DISCONNECTED);
         notifyDisconnected();
         if (state == ZLinkStreamConnectionState.RECONNECTING) {
-            reconnectAttemptAsync(1, options.reconnectInitialDelay());
+            reconnectAttemptStage(1, options.reconnectInitialDelay());
         }
     }
 
-    private CompletionStage<Void> connectWebSocketAsync() {
+    private CompletionStage<Void> connectWebSocketStage() {
         HttpClient.Builder clientBuilder = HttpClient.newBuilder()
             .connectTimeout(options.connectTimeout());
         if (options.skipServerCertificateValidation()) {
             clientBuilder.sslContext(insecureSslContext());
         }
-        return ZLinkWebSocketTransportConnection.connectAsync(
+        return ZLinkWebSocketTransportConnection.connectStage(
             clientBuilder.build(),
             options.endpoint()).thenAccept(ws -> {
                 if (state == ZLinkStreamConnectionState.CLOSED) {
@@ -513,14 +513,14 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
     }
 
-    private CompletableFuture<Void> reconnectAttemptAsync(int attempt, Duration delay) {
+    private CompletableFuture<Void> reconnectAttemptStage(int attempt, Duration delay) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         TIMEOUTS.schedule(() -> {
             if (state == ZLinkStreamConnectionState.CLOSED) {
                 result.completeExceptionally(new IllegalStateException("connector is closed"));
                 return;
             }
-            connectOnceAsync().whenComplete((ignored, ex) -> {
+            connectOnceStage().whenComplete((ignored, ex) -> {
                 if (ex == null) {
                     result.complete(null);
                     return;
@@ -530,7 +530,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     result.completeExceptionally(ex);
                     return;
                 }
-                reconnectAttemptAsync(attempt + 1, nextReconnectDelay(delay))
+                reconnectAttemptStage(attempt + 1, nextReconnectDelay(delay))
                     .whenComplete((retryIgnored, retryEx) -> {
                         if (retryEx == null) {
                             result.complete(null);

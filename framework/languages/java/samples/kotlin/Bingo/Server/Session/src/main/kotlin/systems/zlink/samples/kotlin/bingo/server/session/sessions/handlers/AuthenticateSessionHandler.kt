@@ -69,7 +69,7 @@ class AuthenticateSessionHandler(
             .submit(EnsurePlayerActorRes::class.java)
             .await()
         context.actors()
-            .bindAsync(
+            .bind(
                 ZLinkActorRef(
                     RoutingId.from(ensured.actor.nodeRid),
                     ensured.actor.actorId,

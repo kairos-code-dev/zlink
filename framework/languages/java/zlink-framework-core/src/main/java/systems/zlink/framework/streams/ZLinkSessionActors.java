@@ -9,9 +9,9 @@ import systems.zlink.framework.actors.ZLinkActorRef;
 public interface ZLinkSessionActors {
     List<ZLinkSessionActor> bound();
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }

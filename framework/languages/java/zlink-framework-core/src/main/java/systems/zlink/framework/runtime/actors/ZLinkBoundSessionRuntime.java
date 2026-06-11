@@ -69,9 +69,9 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     }
 
     @Override
-    public CompletionStage<Void> disconnectAsync() {
+    public CompletionStage<Void> disconnect() {
         return stream.unbindActor(sessionRid, actorId)
-            .submitAsync(DEFAULT_TIMEOUT)
+            .submit(DEFAULT_TIMEOUT)
             .thenRun(() -> actorRuntime.clearSessionBinding(actor, bindingToken));
     }
 
@@ -116,7 +116,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             try {
                 ZLinkStreamHeader header = new ZLinkStreamHeader(
                     ZLinkStreamMessageKind.SEND,

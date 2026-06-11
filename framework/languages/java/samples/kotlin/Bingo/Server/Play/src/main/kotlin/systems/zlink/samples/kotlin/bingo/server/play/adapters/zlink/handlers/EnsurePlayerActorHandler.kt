@@ -25,7 +25,7 @@ class EnsurePlayerActorHandler(
         request: EnsurePlayerActorReq,
         context: ZLinkRequestContext,
     ) = coroutines.completionStage {
-        val actor = actors.getOrCreateAsync(request.actorId, SampleNames.PlayerActorType).await()
+        val actor = actors.getOrCreate(request.actorId, SampleNames.PlayerActorType).await()
         if (actor is PlayerActor) {
             actor.setDisplayName(request.displayName)
         }

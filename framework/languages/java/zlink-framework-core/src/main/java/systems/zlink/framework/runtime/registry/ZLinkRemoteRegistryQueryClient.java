@@ -45,7 +45,7 @@ public final class ZLinkRemoteRegistryQueryClient implements ZLinkRegistryQueryC
     }
 
     @Override
-    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter) {
         ZLinkRegistryTopologyFilter resolved =
             filter == null ? ZLinkRegistryTopologyFilter.all() : filter;

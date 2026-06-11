@@ -81,9 +81,9 @@ public final class GameStreamSession implements ZLinkSession {
     public CompletionStage<Void> onDispatchAsync(
         ZLinkStreamHeader header,
         Message payload) {
-        return actors.getOrCreateAsync("player-42", "player")
-            .thenCompose(actor -> context.actors().bindAsync(actor))
-            .thenCompose(bound -> bound.relayAsync(header, payload));
+        return actors.getOrCreate("player-42", "player")
+            .thenCompose(actor -> context.actors().bind(actor))
+            .thenCompose(bound -> bound.relay(header, payload));
     }
 }
 ```

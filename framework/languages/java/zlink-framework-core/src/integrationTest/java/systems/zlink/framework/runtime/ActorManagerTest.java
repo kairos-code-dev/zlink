@@ -35,15 +35,15 @@ final class ActorManagerTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
             ZLinkActor created = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkActor reused = runtime.actorManager()
-                .getOrCreateAsync("player-1", "player")
+                .getOrCreate("player-1", "player")
                 .toCompletableFuture()
                 .join();
             Optional<ZLinkActor> found = runtime.actorManager()
-                .findAsync("player-1")
+                .find("player-1")
                 .toCompletableFuture()
                 .join();
 
@@ -75,7 +75,7 @@ final class ActorManagerTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));

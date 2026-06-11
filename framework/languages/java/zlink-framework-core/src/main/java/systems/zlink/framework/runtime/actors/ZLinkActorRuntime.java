@@ -93,7 +93,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<ZLinkActor> createAsync(String actorId, String actorType) {
+    public CompletionStage<ZLinkActor> create(String actorId, String actorType) {
         requireActorId(actorId);
         Class<? extends ZLinkActorFactory> factoryType = requireFactory(actorType);
         if (actors.containsKey(actorId)) {
@@ -102,7 +102,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         ZLinkBackendActorRef actorRef = spotNode.createActor(actorId);
         DefaultActorContext context = new DefaultActorContext(actorRef);
         return createFactory(factoryType)
-            .createAsync(actorId, context)
+            .create(actorId, context)
             .thenApply(actor -> {
                 actors.put(actorId, actor);
                 actorTypes.put(actorId, actorType);
@@ -112,7 +112,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkActor>> findAsync(String actorId) {
+    public CompletionStage<Optional<ZLinkActor>> find(String actorId) {
         requireActorId(actorId);
         if (!actors.containsKey(actorId)) {
             spotNode.actorLookup(actorId);
@@ -121,13 +121,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType) {
+    public CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType) {
         requireActorId(actorId);
         ZLinkActor actor = actors.get(actorId);
         if (actor != null) {
             return CompletableFuture.completedFuture(actor);
         }
-        return createAsync(actorId, actorType);
+        return create(actorId, actorType);
     }
 
     private Class<? extends ZLinkActorFactory> requireFactory(String actorType) {
@@ -190,7 +190,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         Message payload) {
         ZLinkActorEntrySpotRoutePackets.JoinRequest request =
             ZLinkActorEntrySpotRoutePackets.decodeJoinRequest(payload);
-        return getOrCreateAsync(request.actorId(), request.actorType())
+        return getOrCreate(request.actorId(), request.actorType())
             .thenApply(actor -> {
                 ZLinkBackendActorRef actorRef = refFor(actor);
                 return ZLinkActorEntrySpotRoutePackets.encodeJoinReply(
@@ -238,7 +238,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             return CompletableFuture.completedFuture(Optional.empty());
         }
         String actorType = factories.keySet().iterator().next();
-        return createAsync(actorId, actorType)
+        return create(actorId, actorType)
             .thenApply(actor -> expectedActorType.isInstance(actor)
                 ? Optional.of(actor)
                 : Optional.empty());
@@ -434,7 +434,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public CompletionStage<ZLinkActorRef> submitAsync() {
+        public CompletionStage<ZLinkActorRef> submit() {
             return spotNode.joinActorEntrySpot(
                     context.actorRef,
                     spotNodeRid,
@@ -482,7 +482,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+        public <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
             Class<TReply> replyType) {
             if (replyType == null) {
                 throw new ZLinkConfigurationException("replyType is required");

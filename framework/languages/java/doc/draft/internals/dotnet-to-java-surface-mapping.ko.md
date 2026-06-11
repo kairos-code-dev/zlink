@@ -65,8 +65,8 @@ prefix(대문자 `L`)는 그대로 유지한다.
 |--------|------|
 | `IZLinkChannelClient.RequestToChannel(...)` | `ZLinkClient.requestToChannel(...)` |
 | `IZLinkFanoutClient.Publish(...)` | `ZLinkFanoutClient.publish(...)` |
-| `IZLinkActorManager.GetOrCreateAsync(...)` | `ZLinkActorManager.getOrCreateAsync(...)` |
-| `IZLinkSpotManager.CreateAsync(...)` | `ZLinkSpotManager.createAsync(...)` |
+| `IZLinkActorManager.GetOrCreateAsync(...)` | `ZLinkActorManager.getOrCreate(...)` |
+| `IZLinkSpotManager.CreateAsync(...)` | `ZLinkSpotManager.create(...)` |
 | `IZLinkSpotOutbound` | `ZLinkSpotOutbound` |
 
 ### 2.3 annotation 매핑

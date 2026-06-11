@@ -349,7 +349,7 @@ public interface ZLinkSessionContext {
 
     ZLinkSessionActors actors();
 
-    CompletionStage<Void> closeAsync();
+    CompletionStage<Void> close();
 }
 
 public interface ZLinkSessionClient {
@@ -361,9 +361,9 @@ public interface ZLinkSessionClient {
 public interface ZLinkSessionActors {
     List<ZLinkSessionActor> bound();
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
@@ -400,8 +400,8 @@ public interface ZLinkSessionReplyCall {
 public interface ZLinkSessionActor {
     String actorId();
     ZLinkActorRef ref();
-    CompletionStage<Void> relayAsync(ZLinkStreamHeader header, Message payload);
-    CompletionStage<Void> notifyDisconnectedAsync();
+    CompletionStage<Void> relay(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> notifyDisconnected();
 }
 
 public interface ZLinkActor {
@@ -412,15 +412,15 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> createAsync(
+    CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context);
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActor> createAsync(String actorId, String actorType);
-    CompletionStage<Optional<ZLinkActor>> findAsync(String actorId);
-    CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType);
+    CompletionStage<ZLinkActor> create(String actorId, String actorType);
+    CompletionStage<Optional<ZLinkActor>> find(String actorId);
+    CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType);
 }
 
 public interface ZLinkActorContext {
@@ -872,20 +872,20 @@ public record ZLinkSpotInfo(
 }
 
 public interface ZLinkSpotManager {
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType);
 
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
-    CompletionStage<List<ZLinkSpotInfo>> listAsync();
-    CompletionStage<Boolean> closeAsync(RoutingId spotRid);
+    CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid);
+    CompletionStage<List<ZLinkSpotInfo>> list();
+    CompletionStage<Boolean> close(RoutingId spotRid);
 }
 
 public interface ZLinkSpot {

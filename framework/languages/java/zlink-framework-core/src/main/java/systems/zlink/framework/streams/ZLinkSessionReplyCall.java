@@ -7,9 +7,5 @@ public interface ZLinkSessionReplyCall {
 
     ZLinkSessionReplyCall compress();
 
-    default CompletionStage<Void> submit() {
-        return submitAsync();
-    }
-
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }

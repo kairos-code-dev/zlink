@@ -128,7 +128,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkRouteClient route = context.getBean(ZLinkRouteClient.class);
 
             assertThrows(ZLinkConfigurationException.class, () ->
-                fanout.publish("missing", "topic", "payload").submitAsync());
+                fanout.publish("missing", "topic", "payload").submit());
             assertThrows(ZLinkConfigurationException.class, () ->
                 route.requestTo("missing", RoutingId.from("target"), "payload"));
         }
@@ -217,11 +217,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
             context.refresh();
 
             context.getBean(ZLinkSpotManager.class)
-                .createAsync(InjectedGameSpot.class)
+                .create(InjectedGameSpot.class)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = context.getBean(ZLinkActorManager.class)
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
@@ -244,7 +244,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                  ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
             ZLinkConfigurationException error = assertThrows(ZLinkConfigurationException.class, () ->
                 runtime.spotManager()
-                    .createAsync(PrivateConstructorSpot.class)
+                    .create(PrivateConstructorSpot.class)
                     .toCompletableFuture());
 
             assertTrue(error.getMessage().contains("failed to create spot"));
@@ -267,7 +267,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.getBean(ZLinkSpotPublisherClient.class);
             publisher.publishSpot("game.stage", "stage.events", "opened")
                 .packetName("StageOpened")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -332,7 +332,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ProfileReply reply = context.getBean(ZLinkClient.class)
                 .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("GetProfile")
-                .submitAsync(ProfileReply.class)
+                .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
 
@@ -359,7 +359,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ProfileReply reply = context.getBean(ZLinkClient.class)
                 .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("DecorateProfile")
-                .submitAsync(ProfileReply.class)
+                .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
 
@@ -382,7 +382,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ProfileReply reply = context.getBean(ZLinkClient.class)
                 .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("DecorateProfileSet")
-                .submitAsync(ProfileReply.class)
+                .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
 
@@ -405,7 +405,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ProfileReply reply = context.getBean(ZLinkClient.class)
                 .requestToChannel("profile", new ProfileRequest("42"))
                 .packetName("FilteredProfile")
-                .submitAsync(ProfileReply.class)
+                .submit(ProfileReply.class)
                 .toCompletableFuture()
                 .join();
 
@@ -444,7 +444,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     .requestTo("route", targetRid, "hello")
                     .packetName("SpringRoute")
                     .timeout(Duration.ofSeconds(3))
-                    .submitAsync(String.class)
+                    .submit(String.class)
                     .toCompletableFuture()
                     .join();
 
@@ -555,7 +555,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkFrameworkLifecycle frameworkLifecycle =
                 context.getBean(ZLinkFrameworkLifecycle.class);
             ZLinkRegistryQuery query = context.getBean(ZLinkRegistryQuery.class);
-            ZLinkRegistryStatus status = query.statusAsync()
+            ZLinkRegistryStatus status = query.status()
                 .toCompletableFuture()
                 .join();
 
@@ -1025,7 +1025,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
@@ -1040,7 +1040,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new InjectedPlayerActor(

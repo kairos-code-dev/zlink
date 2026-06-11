@@ -29,9 +29,9 @@ public final class CreateGameHandler {
     }
 
     @ZLinkRequest(packetName = "CreateGameReq")
-    public CompletionStage<CreateGameRes> createAsync(CreateGameReq request) {
+    public CompletionStage<CreateGameRes> create(CreateGameReq request) {
         TicTacToeGameCreator.GameRoom room = gameCreator.nextRoom(request.gameName());
-        return spots.getObject().createAsync(TicTacToeGame.class, RoutingId.from(room.roomId()))
+        return spots.getObject().create(TicTacToeGame.class, RoutingId.from(room.roomId()))
             .thenApply(created -> new CreateGameRes(
                 room.roomId(),
                 settings.playEndpoint(),

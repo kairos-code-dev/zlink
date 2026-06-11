@@ -4,11 +4,11 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkRegistryQueryClient extends AutoCloseable {
-    default CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync() {
-        return topologyAsync(ZLinkRegistryTopologyFilter.all());
+    default CompletionStage<List<ZLinkRegistryTopologyEntry>> topology() {
+        return topology(ZLinkRegistryTopologyFilter.all());
     }
 
-    CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter);
 
     @Override

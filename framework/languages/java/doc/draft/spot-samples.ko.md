@@ -55,9 +55,9 @@ public final class StageBootstrap {
     }
 
     public CompletionStage<Void> warmupAsync() {
-        return spotManager.createAsync(StageSpot.class)
-            .thenCompose(created -> spotManager.findAsync(created.spotRid())
-                .thenCompose(info -> spotManager.listAsync()
+        return spotManager.create(StageSpot.class)
+            .thenCompose(created -> spotManager.find(created.spotRid())
+                .thenCompose(info -> spotManager.list()
                     .thenAccept(all -> {
                         // 운영 코드에서는 created.spotRid()를 다시 조회할 수 있어야 한다.
                     })));
@@ -109,7 +109,7 @@ public final class StageHandlers {
         return spot.context().outbound().requestToChannel(
             "profile",
             new GetProfileRequest(request.accountId())
-        ).submitAsync(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
+        ).submit(GetProfileReply.class).thenApply(profile -> new GetStageStateReply(
             spot.context().spotRid(),
             profile.nickname()
         ));
@@ -146,7 +146,7 @@ public final class StagePublishController {
             "game.stage",
             "stage.state.updated",
             new StageStateUpdated(request.stageRid(), request.userCount())
-        ).submitAsync().thenApply(submitted -> ResponseEntity.accepted().build());
+        ).submit().thenApply(submitted -> ResponseEntity.accepted().build());
     }
 }
 ```

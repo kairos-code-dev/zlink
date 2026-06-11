@@ -13,17 +13,17 @@ final class ZLinkFrameworkActorManagerBean implements ZLinkActorManager {
     }
 
     @Override
-    public CompletionStage<ZLinkActor> createAsync(String actorId, String actorType) {
-        return lifecycle.actorManager().createAsync(actorId, actorType);
+    public CompletionStage<ZLinkActor> create(String actorId, String actorType) {
+        return lifecycle.actorManager().create(actorId, actorType);
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkActor>> findAsync(String actorId) {
-        return lifecycle.actorManager().findAsync(actorId);
+    public CompletionStage<Optional<ZLinkActor>> find(String actorId) {
+        return lifecycle.actorManager().find(actorId);
     }
 
     @Override
-    public CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType) {
-        return lifecycle.actorManager().getOrCreateAsync(actorId, actorType);
+    public CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType) {
+        return lifecycle.actorManager().getOrCreate(actorId, actorType);
     }
 }

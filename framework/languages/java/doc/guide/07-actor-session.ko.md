@@ -37,7 +37,7 @@ public void configure(ZLinkFrameworkOptions framework) {
 @Component
 public final class PlayerActorFactory implements ZLinkActorFactory {
     @Override
-    public CompletionStage<ZLinkActor> createAsync(
+    public CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context) {
         return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
@@ -119,9 +119,9 @@ sequenceDiagram
   participant S as Session 서버
   participant P as Play 서버(actor)
   C->>S: STREAM 연결 + auth
-  S->>S: bindAsync(actor)
+  S->>S: bind(actor)
   C->>S: PlaceMarkReq
-  S->>P: actor.relayAsync(header, payload)
+  S->>P: actor.relay(header, payload)
   P->>P: actor handler 실행 (room 상태 변경)
   P-->>S: boundSession().send(TurnChangedNotify)
   S-->>C: STREAM push
@@ -129,9 +129,9 @@ sequenceDiagram
 
 ### Session 서버: 인증과 relay
 
-session 콜백에서 인증 후 `bindAsync(...)`로 actor handle을 잡고, 이후 packet은
-`ZLinkSessionActor.relayAsync(...)`로 actor에 넘긴다. `payload`는 framework runtime이
-callback 동안 빌려준 값이다. `relayAsync(...)`는 caller payload를 소비하지 않으므로
+session 콜백에서 인증 후 `bind(...)`로 actor handle을 잡고, 이후 packet은
+`ZLinkSessionActor.relay(...)`로 actor에 넘긴다. `payload`는 framework runtime이
+callback 동안 빌려준 값이다. `relay(...)`는 caller payload를 소비하지 않으므로
 그대로 넘긴다. callback 뒤에도 payload를 보관해야 할 때만 별도 copy를 만든다.
 
 ```java
@@ -158,12 +158,12 @@ public final class TicTacToeSession implements ZLinkSession {
         Message payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
-            return actors.getOrCreateAsync(req.actorId(), "player")
-                .thenCompose(actor -> context.actors().bindAsync(actor))
+            return actors.getOrCreate(req.actorId(), "player")
+                .thenCompose(actor -> context.actors().bind(actor))
                 .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit());
         }
         return context.actors().bound().stream().findFirst()
-            .map(actor -> actor.relayAsync(header, payload))
+            .map(actor -> actor.relay(header, payload))
             .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"));
     }
 }
@@ -193,7 +193,7 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
 만든 local managed actor instance를 bind하는 direct stream 역할은 attach 없이
 framework 내부 dispatch 경로를 사용한다. remote actor ref를 bind해야 하는 session
 gateway 역할에서는 STREAM session이 쓸 local SpotNode를 `attachActorGateway(...)`로
-지정하면, `bindAsync(...)`가 remote actor locator를 core ActorGateway 경로에 bind한다.
+지정하면, `bind(...)`가 remote actor locator를 core ActorGateway 경로에 bind한다.
 
 - **Session 서버**: `addSpotMesh`로 session-node(router)를 두고,
   `addStreamNode(...).attachActorGateway("session-node")`로 relay 대상을 지정한다.
@@ -209,7 +209,7 @@ gateway 역할에서는 STREAM session이 쓸 local SpotNode를 `attachActorGate
 - 같은 actor id가 새 session에 다시 bind되면 actor 인스턴스와 Spot membership은
   유지하고 binding token만 갱신한다.
 - session disconnect는 bound actor 전체에 자동 전파되지 않는다. 필요한 actor에게만
-  `ZLinkSessionActor.notifyDisconnectedAsync()`를 호출한다.
+  `ZLinkSessionActor.notifyDisconnected()`를 호출한다.
 - actor 위치 조회용 public resolver는 없다. actor<->session binding은 framework
   내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteAddresses(...)` 또는 custom
   `addSpotRemoteAddressResolver(...)`로 public이다.

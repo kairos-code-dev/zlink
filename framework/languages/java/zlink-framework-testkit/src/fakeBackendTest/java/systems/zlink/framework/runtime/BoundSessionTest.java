@@ -27,11 +27,11 @@ final class BoundSessionTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(RemoteActorGatewayTest.options(), backend)) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             runtime.sessionActors("gateway", RoutingId.from("session-1"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
@@ -39,7 +39,7 @@ final class BoundSessionTest {
                 .boundSession()
                 .send("push")
                 .packetName("Push")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
         }
@@ -56,17 +56,17 @@ final class BoundSessionTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(RemoteActorGatewayTest.options(), backend)) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             runtime.sessionActors("gateway", RoutingId.from("session-1"))
-                .bindAsync(actor)
+                .bind(actor)
                 .toCompletableFuture()
                 .join();
 
             actor.context()
                 .boundSession()
-                .disconnectAsync()
+                .disconnect()
                 .toCompletableFuture()
                 .join();
 
@@ -87,7 +87,7 @@ final class BoundSessionTest {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))
-                .bindAsync(new ZLinkActorRef(
+                .bind(new ZLinkActorRef(
                     RoutingId.from("play-node"),
                     "player-1",
                     1))
@@ -95,7 +95,7 @@ final class BoundSessionTest {
                 .join();
 
             try (Message payload = Message.from("place")) {
-                actor.relayAsync(
+                actor.relay(
                         new ZLinkStreamHeader("PlaceMark", Map.of(), Optional.empty()),
                         payload)
                     .toCompletableFuture()

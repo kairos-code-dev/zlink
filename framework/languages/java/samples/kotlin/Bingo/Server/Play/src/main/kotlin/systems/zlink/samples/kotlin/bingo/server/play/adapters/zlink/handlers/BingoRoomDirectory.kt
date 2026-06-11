@@ -59,7 +59,7 @@ class BingoRoomDirectory(
 
         val settingsPart = Message.from(json.writeValueAsBytes(settings))
         return try {
-            spots.getOrCreateAsync(BingoRoomSpot::class.java, RoutingId.from(roomId), settingsPart)
+            spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(roomId), settingsPart)
                 .await()
             roomId
         } finally {

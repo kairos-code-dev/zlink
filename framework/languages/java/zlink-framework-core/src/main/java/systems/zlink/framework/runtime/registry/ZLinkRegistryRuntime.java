@@ -56,7 +56,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     @Override
-    public CompletionStage<ZLinkRegistryStatus> statusAsync() {
+    public CompletionStage<ZLinkRegistryStatus> status() {
         ZLinkBackendRegistryStatus status = registry.status();
         return CompletableFuture.completedFuture(
             new ZLinkRegistryStatus(
@@ -72,7 +72,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     @Override
-    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
+    public CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
         ZLinkRegistryServiceSummaryFilter filter) {
         return CompletableFuture.completedFuture(
             registry.serviceSummary(toBackendFilter(filter)).stream()
@@ -90,7 +90,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     @Override
-    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    public CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         ZLinkRegistryTopologyFilter filter) {
         return CompletableFuture.completedFuture(
             registry.topology(toBackendFilter(filter)).stream()
@@ -112,7 +112,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     }
 
     @Override
-    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName) {
+    public CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName) {
         if (channelName == null || channelName.isBlank()) {
             throw new IllegalArgumentException("channelName is required");
         }

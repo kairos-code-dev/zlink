@@ -77,8 +77,8 @@ public final class GameSession implements ZLinkSession {
 | 표면 | 용도 |
 |------|------|
 | `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
-| `actors().bound()` / `actors().bindAsync(...)` / `actors().find(...)` | actor로 relay([07-actor-session](./07-actor-session.ko.md)) |
-| `closeAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
+| `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([07-actor-session](./07-actor-session.ko.md)) |
+| `close()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
 `ZLinkClient`를 함께 주입받아 `sendToChannel(...)` 또는 `requestToChannel(...)`을

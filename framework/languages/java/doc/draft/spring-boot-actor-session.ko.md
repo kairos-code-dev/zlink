@@ -71,15 +71,15 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> createAsync(
+    CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context);
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActor> createAsync(String actorId, String actorType);
-    CompletionStage<Optional<ZLinkActor>> findAsync(String actorId);
-    CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType);
+    CompletionStage<ZLinkActor> create(String actorId, String actorType);
+    CompletionStage<Optional<ZLinkActor>> find(String actorId);
+    CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType);
 }
 ```
 
@@ -92,9 +92,9 @@ actorType으로 다시 쓰면 설정 또는 런타임 오류로 실패해야 한
 public interface ZLinkSessionActors {
     List<ZLinkSessionActor> bound();
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
@@ -103,11 +103,11 @@ public interface ZLinkSessionActor {
     String actorId();
     ZLinkActorRef ref();
 
-    CompletionStage<Void> relayAsync(
+    CompletionStage<Void> relay(
         ZLinkStreamHeader header,
         Message payload);
 
-    CompletionStage<Void> notifyDisconnectedAsync();
+    CompletionStage<Void> notifyDisconnected();
 }
 ```
 
@@ -139,12 +139,12 @@ public interface ZLinkActorContext {
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submitAsync();
+    CompletionStage<ZLinkActorRef> submit();
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
 }
 
@@ -156,7 +156,7 @@ public record ZLinkActorJoinResult<TReply>(
 
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
-    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> disconnect();
 }
 ```
 
@@ -169,7 +169,7 @@ public interface ZLinkBoundSession {
 `ZLinkBoundSession`은 server-to-client request API를 제공하지 않는다. client
 request에 대한 응답은 actor request handler의 반환값과 원래 request correlation으로
 처리한다.
-`disconnectAsync()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
+`disconnect()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
 actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
 `@ZLinkSpotActorDisconnected` handler를 대신 실행하지 않는다.
 
@@ -182,11 +182,11 @@ actor가 join한 SPOT의 실행 문맥 상태가 필요하면 `context.getSpot()
 MatchSpot spot = actor.context().getSpot(MatchSpot.class);
 ```
 
-session actor의 `notifyDisconnectedAsync()`는 backend actor binding을 해제한 뒤,
+session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 뒤,
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
 실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
 session과 `@ZLinkSpotActorDisconnected` handler를 건드리지 않는다.
-`relayAsync(header, payload)`는 session이 받은 actor packet을 bound actor route로
+`relay(header, payload)`는 session이 받은 actor packet을 bound actor route로
 전달한다. framework는 payload copy를 만들어 전송하므로 호출자가 넘긴 `Message`의
 소유권은 호출자에게 남아 있다.
 
@@ -229,7 +229,7 @@ public interface ZLinkSpotActorSendHandler<
 - session callback에서 받은 payload는 callback 동안 빌려온 값이다. relay할 수는
   있지만 임의로 dispose하거나 ownership을 이동하지 않는다.
 - client close는 session binding cleanup만 수행한다. actor disconnect callback이
-  필요하면 application이 `notifyDisconnectedAsync()`를 호출한다.
+  필요하면 application이 `notifyDisconnected()`를 호출한다.
 - remote actor로 relay할 때 Java framework는 backend stream의 bound actor send를
   사용한다.
 - route mesh channel은 application Spot route egress용이다. session actor relay

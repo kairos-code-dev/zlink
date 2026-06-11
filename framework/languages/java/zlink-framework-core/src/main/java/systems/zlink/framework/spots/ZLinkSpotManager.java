@@ -7,33 +7,29 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 
 public interface ZLinkSpotManager {
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType);
 
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         Message request);
 
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid,
         Message request);
 
-    CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
+    CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid);
 
-    CompletionStage<List<ZLinkSpotInfo>> listAsync();
+    CompletionStage<List<ZLinkSpotInfo>> list();
 
-    default CompletionStage<Boolean> close(RoutingId spotRid) {
-        return closeAsync(spotRid);
-    }
-
-    CompletionStage<Boolean> closeAsync(RoutingId spotRid);
+    CompletionStage<Boolean> close(RoutingId spotRid);
 }

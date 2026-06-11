@@ -39,7 +39,7 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
     private ZLinkTlsTransportConnection() {
     }
 
-    static CompletionStage<ZLinkTlsTransportConnection> connectAsync(
+    static CompletionStage<ZLinkTlsTransportConnection> connectStage(
         URI endpoint,
         Duration connectTimeout,
         boolean skipServerCertificateValidation) {

@@ -340,11 +340,11 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void attachActorGateway(ZLinkBackendSpotNode node) { socket.attachActorGateway(((JavaSpotNode) node).spotNode()); }
         @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
             ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()));
-            return timeout -> toVoid(operation.timeout(timeout).submitAsync());
+            return timeout -> toVoid(operation.timeout(timeout).submit());
         }
         @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
             ActorUnbindOperation operation = socket.unbindActor(sessionRid, actorId);
-            return timeout -> toVoid(operation.timeout(timeout).submitAsync());
+            return timeout -> toVoid(operation.timeout(timeout).submit());
         }
         @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
             return submit(socket.sendBoundActor(sessionRid, actorId), parts, flags);
@@ -486,7 +486,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                 operation = operation.message(part);
             }
             return operation.timeout(timeout)
-                .submitAsync()
+                .submit()
                 .thenApply(JavaSpotNode::fromActorJoinCompletion);
         }
         @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Duration timeout) {
@@ -494,7 +494,7 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                     new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()),
                     targetNodeRid)
                 .timeout(timeout)
-                .submitAsync()
+                .submit()
                 .thenApply(completion -> {
                     var result = completion.result();
                     return new ZLinkBackendActorJoinEntrySpotResult(

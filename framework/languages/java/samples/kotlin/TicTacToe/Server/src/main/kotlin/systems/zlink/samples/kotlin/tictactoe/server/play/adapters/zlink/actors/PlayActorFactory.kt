@@ -8,7 +8,7 @@ import systems.zlink.framework.kotlin.ZLinkCoroutineRuntime
 class PlayActorFactory(
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineActorFactory(coroutines) {
-    override suspend fun create(
+    override suspend fun createActor(
         actorId: String,
         context: ZLinkActorContext,
     ): ZLinkActor =

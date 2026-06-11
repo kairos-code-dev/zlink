@@ -49,7 +49,7 @@ public final class BingoSession implements ZLinkSession {
                     return CompletableFuture.completedFuture(null);
                 }
                 ZLinkSessionActor actor = requireSingleBoundActor(header.packetName());
-                return actor.relayAsync(header, payload);
+                return actor.relay(header, payload);
             });
     }
 

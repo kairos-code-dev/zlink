@@ -29,13 +29,13 @@ final class ChannelRuntimeFakeBackendTest {
             runtime.client()
                 .sendToChannel("profile", "hello")
                 .packetName("Greeting")
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             String reply = runtime.client()
                 .requestToChannel("profile", "question")
                 .packetName("Question")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -72,22 +72,22 @@ final class ChannelRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.client()
                 .sendToChannel("profile", new ProfileGreeting("hello"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             runtime.client()
                 .requestToChannel("profile", new ProfileQuestion("question"))
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.route()
                 .sendTo("route", RoutingId.from("peer"), new ProfileGreeting("hello"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             runtime.route()
                 .requestTo("route", RoutingId.from("peer"), new ProfileQuestion("question"))
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
         }

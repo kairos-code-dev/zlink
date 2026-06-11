@@ -17,5 +17,5 @@ public interface ZLinkSessionContext {
 
     ZLinkSessionActors actors();
 
-    CompletionStage<Void> closeAsync();
+    CompletionStage<Void> close();
 }

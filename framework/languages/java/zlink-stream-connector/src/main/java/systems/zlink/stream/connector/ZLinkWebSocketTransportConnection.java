@@ -22,7 +22,7 @@ final class ZLinkWebSocketTransportConnection
     private ZLinkWebSocketTransportConnection() {
     }
 
-    static CompletionStage<ZLinkWebSocketTransportConnection> connectAsync(
+    static CompletionStage<ZLinkWebSocketTransportConnection> connectStage(
         HttpClient client,
         URI endpoint) {
         ZLinkWebSocketTransportConnection connection = new ZLinkWebSocketTransportConnection();

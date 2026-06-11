@@ -450,7 +450,6 @@ final class SampleReleaseGateContractTest {
                 && clientProgramSource.contains("new TicTacToeClient().run(clientOptions)")
                 && !clientProgramSource.contains("awaitSample(")
                 && !clientSource.contains("ZLinkStreamMessagePack.on")
-                && !clientSource.contains("ZLinkStreamMessagePack.waitForAsync")
                 && !clientSource.contains("ConcurrentLinkedQueue")
                 && !clientSource.contains("stateNotifications")
                 && !clientSource.contains("playerJoinedNotifications")
@@ -527,9 +526,9 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/play/domain/tictactoe/TicTacToeMatch.java");
         assertTrue(playAuthHandlerSource.contains("ZLinkStreamMessagePack.decode")
                 && playAuthHandlerSource.contains("new AuthenticatePlayerReq(request.accessToken())")
-                && playAuthHandlerSource.contains("context.actors()::bindAsync")
+                && playAuthHandlerSource.contains("context.actors()::bind")
                 && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
-                && playSessionSource.contains("requireActor(header.packetName()).relayAsync(header, payload)")
+                && playSessionSource.contains("requireActor(header.packetName()).relay(header, payload)")
                 && !playSessionSource.contains("joinEntrySpot(")
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"\\\\|\")"),
@@ -814,7 +813,6 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains(".where { message -> message.payload().state.lastMoveCell == 0 }")
                 && clientSource.contains(".where { message -> message.payload().state.status == \"Won\" }")
                 && !clientSource.contains("ZLinkStreamMessagePack.on")
-                && !clientSource.contains("ZLinkStreamMessagePack.waitForAsync")
                 && !clientSource.contains("ConcurrentLinkedQueue")
                 && !clientSource.contains("stateNotifications")
                 && !clientSource.contains("playerJoinedNotifications")
@@ -882,9 +880,9 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/handlers/TicTacToeGameTimerHandler.kt");
         assertTrue(playAuthHandlerSource.contains("ZLinkStreamMessagePack.decode")
                 && playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
-                && playAuthHandlerSource.contains("context.actors().bindAsync(playActor).await()")
+                && playAuthHandlerSource.contains("context.actors().bind(playActor).await()")
                 && playSessionSource.contains("handlers.tryHandleAsync(context, header, payload)")
-                && playSessionSource.contains("requireActor(header.packetName()).relayAsync(header, payload)")
+                && playSessionSource.contains("requireActor(header.packetName()).relay(header, payload)")
                 && !playSessionSource.contains("joinEntrySpot(")
                 && !playSessionSource.contains("joinSpot(RoutingId.fromHex")
                 && !playSessionSource.contains("split(\"|\")"),

@@ -449,13 +449,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType) {
-        return createAsync(spotType, new Message());
+        return create(spotType, new Message());
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         Message request) {
         requireRegistered(spotType);
@@ -483,7 +483,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> createAsync(
+    public CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
         requireRegistered(spotType);
@@ -514,14 +514,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid) {
-        return getOrCreateAsync(spotType, spotRid, new Message());
+        return getOrCreate(spotType, spotRid, new Message());
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid,
         Message request) {
@@ -563,7 +563,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid) {
+    public CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid) {
         requireRoutingId(spotRid);
         return CompletableFuture.completedFuture(
             spots.containsKey(spotRid)
@@ -572,13 +572,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     }
 
     @Override
-    public CompletionStage<List<ZLinkSpotInfo>> listAsync() {
+    public CompletionStage<List<ZLinkSpotInfo>> list() {
         return CompletableFuture.completedFuture(
             spots.keySet().stream().map(ZLinkSpotInfo::new).toList());
     }
 
     @Override
-    public CompletionStage<Boolean> closeAsync(RoutingId spotRid) {
+    public CompletionStage<Boolean> close(RoutingId spotRid) {
         requireRoutingId(spotRid);
         if (actorRuntime != null && actorRuntime.hasActorsInSpot(spotRid)) {
             return CompletableFuture.completedFuture(false);
@@ -1597,7 +1597,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Boolean> closeAsync() {
+        public CompletionStage<Boolean> close() {
             return CompletableFuture.completedFuture(false);
         }
 
@@ -2227,8 +2227,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Boolean> closeAsync() {
-            return ZLinkSpotRuntime.this.closeAsync(backendSpot.routingId());
+        public CompletionStage<Boolean> close() {
+            return ZLinkSpotRuntime.this.close(backendSpot.routingId());
         }
 
         @Override
@@ -2698,7 +2698,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             List<Message> spotParts = parts(packetName, payload);
             try {
                 return channels.sendToSpotViaEgressChannel(
@@ -2762,7 +2762,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             List<Message> spotParts = parts(packetName, payload);
             try {
                 return channels.requestToSpotViaEgressChannel(
@@ -2879,7 +2879,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
@@ -2938,7 +2938,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
@@ -3001,7 +3001,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             List<Message> requestParts = parts(packetName, payload);
             try {
@@ -3046,7 +3046,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {
@@ -3094,7 +3094,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType) {
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletableFuture<TReply> result = new CompletableFuture<>();
             List<Message> requestParts = parts(packetName, payload);
             result.whenComplete((ignored, error) -> requestParts.forEach(Message::close));
@@ -3274,7 +3274,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> submitAsync() {
+        public CompletionStage<Void> submit() {
             return CompletableFuture.runAsync(() -> {
                 List<Message> parts = parts(packetName, payload);
                 try {

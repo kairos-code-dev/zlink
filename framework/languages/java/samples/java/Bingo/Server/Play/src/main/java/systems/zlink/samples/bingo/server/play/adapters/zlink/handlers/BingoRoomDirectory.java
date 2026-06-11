@@ -63,7 +63,7 @@ public final class BingoRoomDirectory {
         }
 
         Message settingsPart = serialize(settings);
-        return spots.getOrCreateAsync(BingoRoomSpot.class, RoutingId.from(roomId), settingsPart)
+        return spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(roomId), settingsPart)
             .thenApply(ignored -> roomId)
             .whenComplete((ignored, error) -> settingsPart.close());
     }

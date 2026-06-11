@@ -7,9 +7,5 @@ public interface ZLinkBoundSessionSendCall {
 
     ZLinkBoundSessionSendCall metadata(String key, String value);
 
-    default CompletionStage<Void> submit() {
-        return submitAsync();
-    }
-
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }

@@ -239,7 +239,7 @@ public interface ZLinkSessionContext {
 
     ZLinkSessionActors actors();
 
-    CompletionStage<Void> closeAsync();
+    CompletionStage<Void> close();
 }
 
 public interface ZLinkSessionClient {
@@ -251,9 +251,9 @@ public interface ZLinkSessionClient {
 public interface ZLinkSessionActors {
     List<ZLinkSessionActor> bound();
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActor actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActor actor);
 
-    CompletionStage<ZLinkSessionActor> bindAsync(ZLinkActorRef actor);
+    CompletionStage<ZLinkSessionActor> bind(ZLinkActorRef actor);
 
     Optional<ZLinkSessionActor> find(String actorId);
 }
@@ -278,20 +278,20 @@ public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall metadata(String key, String value);
     ZLinkSessionSendCall packetName(String messageName);
     ZLinkSessionSendCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkSessionReplyCall {
     ZLinkSessionReplyCall metadata(String key, String value);
     ZLinkSessionReplyCall compress();
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkSessionActor {
     String actorId();
     ZLinkActorRef ref();
-    CompletionStage<Void> relayAsync(ZLinkStreamHeader header, Message payload);
-    CompletionStage<Void> notifyDisconnectedAsync();
+    CompletionStage<Void> relay(ZLinkStreamHeader header, Message payload);
+    CompletionStage<Void> notifyDisconnected();
 }
 
 public interface ZLinkActor {
@@ -302,15 +302,15 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> createAsync(
+    CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context);
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ZLinkActor> createAsync(String actorId, String actorType);
-    CompletionStage<Optional<ZLinkActor>> findAsync(String actorId);
-    CompletionStage<ZLinkActor> getOrCreateAsync(String actorId, String actorType);
+    CompletionStage<ZLinkActor> create(String actorId, String actorType);
+    CompletionStage<Optional<ZLinkActor>> find(String actorId);
+    CompletionStage<ZLinkActor> getOrCreate(String actorId, String actorType);
 }
 
 public interface ZLinkActorContext {
@@ -325,12 +325,12 @@ public interface ZLinkActorContext {
 
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorRef> submitAsync();
+    CompletionStage<ZLinkActorRef> submit();
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submitAsync(
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
 }
 
@@ -342,13 +342,13 @@ public record ZLinkActorJoinResult<TReply>(
 
 public interface ZLinkBoundSession {
     <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
-    CompletionStage<Void> disconnectAsync();
+    CompletionStage<Void> disconnect();
 }
 
 public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 ```
 
@@ -639,13 +639,13 @@ public interface ZLinkClient {
 
 public interface ZLinkSendCall {
     ZLinkSendCall packetName(String messageName);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkRequestCall {
     ZLinkRequestCall packetName(String messageName);
     ZLinkRequestCall timeout(Duration timeout);
-    <TReply> CompletionStage<TReply> submitAsync(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
 
 public interface ZLinkSpotOutbound {
@@ -742,7 +742,7 @@ public interface ZLinkFanoutClient {
 
 public interface ZLinkPublishCall {
     ZLinkPublishCall packetName(String messageName);
-    CompletionStage<Void> submitAsync();
+    CompletionStage<Void> submit();
 }
 
 public record ZLinkSpotCreateResult(
@@ -762,20 +762,20 @@ public record ZLinkSpotInfo(
 }
 
 public interface ZLinkSpotManager {
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType);
 
-    CompletionStage<ZLinkSpotCreateResult> createAsync(
+    CompletionStage<ZLinkSpotCreateResult> create(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<ZLinkSpotCreateResult> getOrCreateAsync(
+    CompletionStage<ZLinkSpotCreateResult> getOrCreate(
         Class<? extends ZLinkSpot> spotType,
         RoutingId spotRid);
 
-    CompletionStage<Optional<ZLinkSpotInfo>> findAsync(RoutingId spotRid);
-    CompletionStage<List<ZLinkSpotInfo>> listAsync();
-    CompletionStage<Boolean> closeAsync(RoutingId spotRid);
+    CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid);
+    CompletionStage<List<ZLinkSpotInfo>> list();
+    CompletionStage<Boolean> close(RoutingId spotRid);
 }
 
 public interface ZLinkSpot {
@@ -925,11 +925,11 @@ public interface ZLinkStreamConnector extends AutoCloseable {
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
 
-    CompletionStage<Void> connectAsync();
-    CompletionStage<Void> disconnectAsync();
-    CompletionStage<Void> reconnectAsync();
-    CompletionStage<Void> closeAsync();
-    CompletionStage<Void> dispatchAsync();
+    ZLinkStreamLifecycleCall connect();
+    ZLinkStreamLifecycleCall disconnect();
+    ZLinkStreamLifecycleCall reconnect();
+    ZLinkStreamLifecycleCall close();
+    ZLinkStreamLifecycleCall dispatch();
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);

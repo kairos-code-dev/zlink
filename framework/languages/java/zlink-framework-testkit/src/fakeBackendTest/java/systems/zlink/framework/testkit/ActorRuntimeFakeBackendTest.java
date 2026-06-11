@@ -39,15 +39,15 @@ final class ActorRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             ZLinkActor created = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
             ZLinkActor reused = runtime.actorManager()
-                .getOrCreateAsync("player-1", "player")
+                .getOrCreate("player-1", "player")
                 .toCompletableFuture()
                 .join();
             Optional<ZLinkActor> found = runtime.actorManager()
-                .findAsync("player-1")
+                .find("player-1")
                 .toCompletableFuture()
                 .join();
 
@@ -86,13 +86,13 @@ final class ActorRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
             var joined = actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
 
@@ -118,17 +118,17 @@ final class ActorRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, backendFactory)) {
             runtime.spotManager()
-                .createAsync(GameSpot.class, spotRid)
+                .create(GameSpot.class, spotRid)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = runtime.actorManager()
-                .createAsync("player-1", "player")
+                .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
 
             var joined = actor.context()
                 .joinSpot(spotRid, "join-request")
-                .submitAsync(String.class)
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
 
@@ -141,7 +141,7 @@ final class ActorRuntimeFakeBackendTest {
 
             actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"))
-                .submitAsync()
+                .submit()
                 .toCompletableFuture()
                 .join();
             assertThrows(
@@ -215,7 +215,7 @@ final class ActorRuntimeFakeBackendTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> createAsync(
+        public CompletionStage<ZLinkActor> create(
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));

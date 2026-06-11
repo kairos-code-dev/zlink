@@ -271,40 +271,18 @@ public final class ZLinkStreamJson {
         String name,
         Class<TPayload> payloadType,
         ZLinkStreamMessageHandler<TPayload> handler);
-
-    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
-        ZLinkStreamConnector connector,
-        Class<TPayload> payloadType,
-        Duration timeout);
-
-    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
-        ZLinkStreamConnector connector,
-        Class<TPayload> payloadType,
-        Predicate<ZLinkStreamMessage<TPayload>> predicate,
-        Duration timeout);
-
-    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
-        ZLinkStreamConnector connector,
-        String name,
-        Class<TPayload> payloadType,
-        Duration timeout);
-
-    public static <TPayload> CompletionStage<ZLinkStreamMessage<TPayload>> waitForAsync(
-        ZLinkStreamConnector connector,
-        String name,
-        Class<TPayload> payloadType,
-        Predicate<ZLinkStreamMessage<TPayload>> predicate,
-        Duration timeout);
 }
 ```
 
 auto codec helper는 payload type이나 annotation을 보고 codec을 고른다. codec을 고를
 수 없으면 configuration error로 실패한다. typed helper가 만드는 packet name도 core
 connector의 name resolver를 그대로 사용한다.
-typed `waitForAsync(...)`는 core connector의 wait helper를 사용하고, predicate에는
-decode된 payload를 담은 `ZLinkStreamMessage<TPayload>`를 넘긴다. sample client는 server
-push를 기다릴 때 이 helper를 사용해 packet name, timeout, payload 조건을 한 곳에서
-표현한다.
+server push를 기다릴 때는 codec helper가 아니라 core connector의 wait builder를
+사용한다. payload 조건이 필요하면
+`connector.waitFor(name).where(payloadType, predicate).submit(payloadType)`처럼
+core wait builder의 `where`를 사용한다. sample client는 server push를 기다릴 때
+connector member `waitFor(...).where(...).submit(...)` 또는 Kotlin wrapper
+`waitFor<T>(...).where { ... }.await()` 형태를 사용한다.
 첫 구현의 typed helper는 core connector smoke와 같은 `String`, `byte[]`, `Message`
 payload를 지원한다. 복합 DTO 직렬화는 JSON/MessagePack/Protobuf 라이브러리 선택과
 schema 정책이 닫힌 뒤 확장한다.

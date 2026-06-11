@@ -77,21 +77,21 @@ public class RegistryQueryClientConfig {
 
 ```java
 public interface ZLinkRegistryQuery {
-    CompletionStage<ZLinkRegistryStatus> statusAsync();
-    CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummaryAsync(
+    CompletionStage<ZLinkRegistryStatus> status();
+    CompletionStage<List<ZLinkRegistryServiceSummaryEntry>> serviceSummary(
         @Nullable ZLinkRegistryServiceSummaryFilter filter);
-    CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         @Nullable ZLinkRegistryTopologyFilter filter);
-    CompletionStage<List<ZLinkMemberPeerEntry>> memberPeersAsync(String channelName);
+    CompletionStage<List<ZLinkMemberPeerEntry>> memberPeers(String channelName);
 }
 
 public interface ZLinkRegistryQueryClient extends AutoCloseable {
-    CompletionStage<List<ZLinkRegistryTopologyEntry>> topologyAsync(
+    CompletionStage<List<ZLinkRegistryTopologyEntry>> topology(
         @Nullable ZLinkRegistryTopologyFilter filter);
 }
 ```
 
-remote query client(`ZLinkRegistryQueryClient`)는 `topologyAsync(...)` 하나만 노출한다.
+remote query client(`ZLinkRegistryQueryClient`)는 `topology(...)` 하나만 노출한다.
 status, service summary, member peer 조회는 in-process `ZLinkRegistryQuery` 전용이다.
 
 query client는 hidden retry를 하지 않는다. 연결 실패와 timeout은 호출자가 관찰할 수

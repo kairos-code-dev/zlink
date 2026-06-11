@@ -1,5 +1,6 @@
 using System.Text.Json;
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 
 namespace GameQuest.GameApi.Adapters.Store;
 

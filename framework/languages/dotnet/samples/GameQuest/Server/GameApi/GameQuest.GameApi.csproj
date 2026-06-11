@@ -7,7 +7,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup>
+    <ItemGroup>
+    <ProjectReference Include="../Configuration/GameQuest.Server.Configuration.csproj" />
     <ProjectReference Include="../../Shared/GameQuest.Shared.csproj" />
     <ProjectReference Include="../../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj" />

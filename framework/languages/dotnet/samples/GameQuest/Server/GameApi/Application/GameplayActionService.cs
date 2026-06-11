@@ -1,6 +1,7 @@
 using GameQuest.GameApi.Adapters.Store;
 using GameQuest.GameApi.Domain;
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using Zlink.Framework.Contracts.Channels;
 
 namespace GameQuest.GameApi.Application;

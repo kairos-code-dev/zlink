@@ -1,4 +1,4 @@
-using SupportChat.Shared.Configuration;
+using SupportChat.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace SupportChat.Client;
@@ -33,8 +33,8 @@ internal static class Program
         return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(streamEndpoint),
-            ConnectTimeout = SampleTimings.ConnectTimeout,
-            RequestTimeout = SampleTimings.RequestTimeout,
+            ConnectTimeout = SampleNames.ConnectTimeout,
+            RequestTimeout = SampleNames.RequestTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
         });
     }

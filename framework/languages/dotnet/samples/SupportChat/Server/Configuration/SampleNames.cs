@@ -1,6 +1,6 @@
 using SupportChat.Shared.Contracts;
 
-namespace SupportChat.Shared.Configuration;
+namespace SupportChat.Server.Configuration;
 
 public static class SampleNames
 {

@@ -1,6 +1,6 @@
 using Bingo.Shared.Contracts;
 
-namespace Bingo.Shared.Configuration;
+namespace Bingo.Server.Configuration;
 
 public static class SampleNames
 {

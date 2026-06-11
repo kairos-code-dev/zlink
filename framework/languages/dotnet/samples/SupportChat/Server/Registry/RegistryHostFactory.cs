@@ -1,4 +1,4 @@
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 

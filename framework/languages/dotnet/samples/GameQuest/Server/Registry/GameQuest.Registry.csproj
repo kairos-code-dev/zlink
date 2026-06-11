@@ -10,9 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <ProjectReference Include="../../Shared/GameQuest.Shared.csproj" />
+    <ProjectReference Include="../Configuration/GameQuest.Server.Configuration.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
-    <ProjectReference Include="../../../../../../../bindings/dotnet/codecs/Zlink.Codecs.Json/Zlink.Codecs.Json.csproj" />
   </ItemGroup>
 </Project>

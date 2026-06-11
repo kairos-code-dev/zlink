@@ -1,6 +1,6 @@
 using Systems.Zlink;
 
-namespace ShoppingMallCheckout.Shared.Configuration;
+namespace ShoppingMallCheckout.Server.Configuration;
 
 public static class SampleNames
 {

@@ -2,7 +2,7 @@ using Systems.Zlink;
 using Systems.Zlink.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
 

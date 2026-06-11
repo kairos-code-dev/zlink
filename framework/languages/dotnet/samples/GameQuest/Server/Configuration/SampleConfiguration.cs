@@ -1,6 +1,7 @@
+using GameQuest.Shared;
 using Systems.Zlink;
 
-namespace GameQuest.Shared;
+namespace GameQuest.Server.Configuration;
 
 public static class SampleNames
 {

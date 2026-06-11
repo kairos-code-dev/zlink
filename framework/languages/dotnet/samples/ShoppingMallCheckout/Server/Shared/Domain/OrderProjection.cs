@@ -1,4 +1,4 @@
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 
 namespace ShoppingMallCheckout.Server.Shared.Domain;

@@ -3,7 +3,7 @@ using SupportChat.Server.Support.Adapters.ZLink.Notifications;
 using SupportChat.Server.Support.Adapters.ZLink.Spots;
 using SupportChat.Server.Support.Adapters.ZLink;
 using SupportChat.Server.Support.Application.ConversationAssignment;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;

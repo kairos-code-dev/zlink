@@ -1,5 +1,5 @@
 using ShoppingMallCheckout.Server.CommerceApi.Ports.Outbound;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;
 

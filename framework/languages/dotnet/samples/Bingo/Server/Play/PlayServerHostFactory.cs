@@ -2,7 +2,7 @@ using Bingo.Server.Play.Adapters.ZLink.Actors;
 using Bingo.Server.Play.Adapters.ZLink.Notifications;
 using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Server.Play.Adapters.ZLink.Spots;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;

@@ -1,5 +1,6 @@
 using GameQuest.Client;
 using GameQuest.Shared;
+using GameQuest.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
 

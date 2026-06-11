@@ -4,7 +4,7 @@ using SupportChat.Server.Support.Adapters.ZLink.Actors;
 using SupportChat.Server.Support.Adapters.ZLink.Notifications;
 using SupportChat.Server.Support.Adapters.ZLink.Spots.Handlers;
 using SupportChat.Server.Support.Domain.SupportChat;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Spots;

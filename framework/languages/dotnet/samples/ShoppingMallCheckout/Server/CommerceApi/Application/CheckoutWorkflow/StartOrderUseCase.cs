@@ -1,6 +1,6 @@
 using ShoppingMallCheckout.Server.CommerceApi.Ports.Outbound;
 using ShoppingMallCheckout.Server.Shared.Ports.Outbound;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 
 namespace ShoppingMallCheckout.Server.CommerceApi.Application.CheckoutWorkflow;

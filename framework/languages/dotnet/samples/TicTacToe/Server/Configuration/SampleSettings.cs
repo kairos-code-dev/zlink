@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace TicTacToe.Server.Configuration;
 
 sealed record SampleSettings(
@@ -10,7 +12,43 @@ sealed record SampleSettings(
     string SpotEndpoint,
     string LogDirectory)
 {
-    public static SampleSettings FromArgs(string[] args)
+    public static SampleSettings Load(string[] args)
+    {
+        var defaults = CreateDefault();
+        var configPath = ReadOption(args, "--config");
+        var builder = new ConfigurationBuilder();
+        if (!string.IsNullOrWhiteSpace(configPath))
+        {
+            builder.AddJsonFile(configPath, optional: false);
+        }
+
+        builder.AddEnvironmentVariables("TICTACTOE_");
+        var section = builder.Build().GetSection("Sample");
+        var configured = new SampleSettings(
+            section[nameof(ApiBindUrl)] ?? defaults.ApiBindUrl,
+            section[nameof(ApiPublicUrl)] ?? defaults.ApiPublicUrl,
+            section[nameof(ApiChannelEndpoint)] ?? defaults.ApiChannelEndpoint,
+            section[nameof(PlayChannelEndpoint)] ?? defaults.PlayChannelEndpoint,
+            section[nameof(PlayRouterEndpoint)] ?? defaults.PlayRouterEndpoint,
+            section[nameof(PlayEndpoint)] ?? defaults.PlayEndpoint,
+            section[nameof(SpotEndpoint)] ?? defaults.SpotEndpoint,
+            section[nameof(LogDirectory)] ?? defaults.LogDirectory);
+
+        return ApplyArgs(configured, args);
+    }
+
+    private static SampleSettings CreateDefault()
+        => new(
+            "http://127.0.0.1:18080",
+            "http://127.0.0.1:18080",
+            "tcp://127.0.0.1:18081",
+            "tcp://127.0.0.1:18082",
+            "tcp://127.0.0.1:18085",
+            "tcp://127.0.0.1:18083",
+            "tcp://127.0.0.1:18084",
+            Path.Combine("logs", "tictactoe"));
+
+    private static SampleSettings ApplyArgs(SampleSettings defaults, string[] args)
     {
         string? apiBind = null;
         string? apiUrl = null;
@@ -64,28 +102,29 @@ sealed record SampleSettings(
         }
 
         return new SampleSettings(
-            apiBind ?? "http://127.0.0.1:18080",
-            apiUrl ?? apiBind ?? "http://127.0.0.1:18080",
-            apiChannel ?? "tcp://127.0.0.1:18081",
-            playChannel ?? "tcp://127.0.0.1:18082",
-            playRouter ?? "tcp://127.0.0.1:18085",
-            play ?? "tcp://127.0.0.1:18083",
-            spot ?? "tcp://127.0.0.1:18084",
-            logDirectory ?? Path.Combine("logs", "tictactoe"));
+            apiBind ?? defaults.ApiBindUrl,
+            apiUrl ?? apiBind ?? defaults.ApiPublicUrl,
+            apiChannel ?? defaults.ApiChannelEndpoint,
+            playChannel ?? defaults.PlayChannelEndpoint,
+            playRouter ?? defaults.PlayRouterEndpoint,
+            play ?? defaults.PlayEndpoint,
+            spot ?? defaults.SpotEndpoint,
+            logDirectory ?? defaults.LogDirectory);
     }
 
-    public SampleSettings WithEphemeralDefaults()
+    private static string? ReadOption(string[] args, string name)
     {
-        var apiPort = SamplePorts.Reserve();
-        return this with
+        var index = Array.IndexOf(args, name);
+        if (index < 0)
         {
-            ApiBindUrl = $"http://127.0.0.1:{apiPort}",
-            ApiPublicUrl = $"http://127.0.0.1:{apiPort}",
-            ApiChannelEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
-            PlayChannelEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
-            PlayRouterEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
-            PlayEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
-            SpotEndpoint = $"tcp://127.0.0.1:{SamplePorts.Reserve()}",
-        };
+            return null;
+        }
+
+        if (index + 1 >= args.Length)
+        {
+            throw new ArgumentException($"Missing value for '{name}'.");
+        }
+
+        return args[index + 1];
     }
 }

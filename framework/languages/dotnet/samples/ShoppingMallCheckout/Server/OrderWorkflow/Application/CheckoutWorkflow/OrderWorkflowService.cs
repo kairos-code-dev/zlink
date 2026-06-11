@@ -1,7 +1,7 @@
 using ShoppingMallCheckout.Server.OrderWorkflow.Domain.ShoppingMallCheckout;
 using ShoppingMallCheckout.Server.Shared.Domain;
 using ShoppingMallCheckout.Server.Shared.Ports.Outbound;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 
 namespace ShoppingMallCheckout.Server.OrderWorkflow.Application.CheckoutWorkflow;

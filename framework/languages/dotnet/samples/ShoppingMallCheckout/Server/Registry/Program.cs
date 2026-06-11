@@ -1,4 +1,4 @@
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 

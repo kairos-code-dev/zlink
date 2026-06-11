@@ -1,5 +1,5 @@
 using SupportChat.Server.Support.Application.ConversationAssignment;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Handlers;
 

@@ -1,5 +1,5 @@
 using Bingo.Server.Play;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 
 internal static class Program

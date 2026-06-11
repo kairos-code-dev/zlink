@@ -1,6 +1,6 @@
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;

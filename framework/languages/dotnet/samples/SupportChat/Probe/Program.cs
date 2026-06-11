@@ -1,4 +1,4 @@
-using SupportChat.Shared.Configuration;
+using SupportChat.Probe.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

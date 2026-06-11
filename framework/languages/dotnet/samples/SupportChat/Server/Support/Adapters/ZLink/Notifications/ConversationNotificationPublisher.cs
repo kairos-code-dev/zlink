@@ -1,6 +1,6 @@
 using SupportChat.Server.Support.Adapters.ZLink.Actors;
 using SupportChat.Server.Support.Domain.SupportChat;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using SupportChat.Shared.Contracts;
 
 namespace SupportChat.Server.Support.Adapters.ZLink.Notifications;

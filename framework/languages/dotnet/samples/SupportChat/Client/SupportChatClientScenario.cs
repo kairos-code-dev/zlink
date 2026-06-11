@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using SupportChat.Shared.Configuration;
+using SupportChat.Client.Configuration;
 using SupportChat.Shared.Contracts;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
@@ -79,7 +79,7 @@ internal sealed class SupportChatClientScenario
         Ensure(followUpForCustomerPush.Payload.Message.SenderActorId == agentAuth.ActorId);
         Ensure(followUpForCustomerPush.Payload.State.LastMessageSeq == 3UL);
 
-        var idleTimeout = SampleTimings.IdleTimeout + SampleTimings.CloseGraceTimeout + SampleTimings.RequestTimeout;
+        var idleTimeout = SampleNames.IdleTimeout + SampleNames.CloseGraceTimeout + SampleNames.RequestTimeout;
         var idleForCustomer = reconnectingCustomer.WaitFor<ConversationIdleNotify>().Timeout(idleTimeout).Async(cancellationToken);
         var idleForAgent = agent.WaitFor<ConversationIdleNotify>().Timeout(idleTimeout).Async(cancellationToken);
         var idleForCustomerPush = await idleForCustomer;

@@ -8,7 +8,7 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Contracts.Timers;
 using Bingo.Server.Api;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 
 internal static class Program

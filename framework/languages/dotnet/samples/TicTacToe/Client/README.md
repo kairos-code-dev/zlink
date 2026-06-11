@@ -5,11 +5,17 @@ This is the standalone sample client for `TicTacToe`.
 Start the play and API roles first:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api
+framework/languages/dotnet/samples/TicTacToe/run_sample.sh
 ```
 
-Then run the client:
+On Windows PowerShell:
+
+```powershell
+.\framework\languages\dotnet\samples\TicTacToe\run_sample.ps1
+```
+
+The runner starts the play and API roles, waits for their endpoints, runs this
+client, and stops the servers. To run the client against already running roles:
 
 ```bash
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client

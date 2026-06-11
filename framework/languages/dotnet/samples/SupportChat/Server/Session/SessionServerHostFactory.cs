@@ -1,5 +1,5 @@
 using SupportChat.Server.Session.Sessions;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;

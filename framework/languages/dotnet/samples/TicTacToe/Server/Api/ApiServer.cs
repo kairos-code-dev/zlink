@@ -1,5 +1,6 @@
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
+using Systems.Zlink.Codecs.MessagePack;
 using Zlink.Framework.AspNetCore;
 
 namespace TicTacToe.Server.Api;

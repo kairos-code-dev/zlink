@@ -2,6 +2,7 @@ using GameQuest.QuestMission.Adapters.Store;
 using GameQuest.QuestMission.Adapters.ZLink.Spots;
 using GameQuest.QuestMission.Domain;
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using Systems.Zlink;
 using Systems.Zlink.Codecs.Json;
 using Zlink.Framework.Contracts.Spots;

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.MessagePack;
@@ -8,15 +9,31 @@ namespace TicTacToe.Client;
 public sealed class TicTacToeClientScenario
 {
     public async ValueTask RunAsync(
-        CreateGameHttpRes room,
-        IZlinkStreamConnector client1,
-        IZlinkStreamConnector client2,
         TicTacToeClientOptions options,
         CancellationToken cancellationToken = default)
     {
+        using var api = new HttpClient
+        {
+            BaseAddress = options.ApiUrl,
+            Timeout = options.HttpTimeout,
+        };
+
+        using var createGameResponse = await api.PostAsJsonAsync(
+            "/games",
+            new CreateGameHttpReq(options.GameName),
+            cancellationToken);
+        createGameResponse.EnsureSuccessStatusCode();
+
+        var room = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>(
+            cancellationToken)
+                   ?? throw new InvalidOperationException("API returned an empty room response.");
+
         Ensure(!string.IsNullOrWhiteSpace(room.RoomId));
         Ensure(!string.IsNullOrWhiteSpace(room.PlayEndpoint));
         Ensure(room.GameName == options.GameName);
+
+        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
+        await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
 
         // Client 1 connects, authenticates as player X, and joins the empty room.
         await client1.Connect.Async(cancellationToken);

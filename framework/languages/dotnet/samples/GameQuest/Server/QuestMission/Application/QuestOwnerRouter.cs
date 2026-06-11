@@ -1,4 +1,5 @@
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 
 namespace GameQuest.QuestMission.Application;
 

@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../Shared/ShoppingMallCheckout.Shared.csproj" />
+    <ProjectReference Include="../Configuration/ShoppingMall.Server.Configuration.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
   </ItemGroup>
 </Project>

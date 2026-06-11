@@ -1,7 +1,5 @@
-using System.Net.Http.Json;
 using Systems.Zlink.Stream.Connector;
 using Systems.Zlink.Stream.Connector.Contracts;
-using TicTacToe.Shared.Contracts;
 
 namespace TicTacToe.Client;
 
@@ -10,28 +8,7 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         var options = TicTacToeClientArguments.Parse(args);
-        using var api = new HttpClient
-        {
-            BaseAddress = options.ApiUrl,
-            Timeout = options.HttpTimeout,
-        };
-
-        using var createGameResponse = await api.PostAsJsonAsync(
-            "/games",
-            new CreateGameHttpReq(options.GameName));
-        createGameResponse.EnsureSuccessStatusCode();
-
-        var room = await createGameResponse.Content.ReadFromJsonAsync<CreateGameHttpRes>()
-                   ?? throw new InvalidOperationException("API returned an empty room response.");
-        
-        await using var client1 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
-        await using var client2 = TicTacToeClientConnections.CreateStreamClient(room.PlayEndpoint, options);
-
-        await new TicTacToeClientScenario().RunAsync(
-            room,
-            client1,
-            client2,
-            options);
+        await new TicTacToeClientScenario().RunAsync(options);
         Console.WriteLine("tictactoe=completed");
     }
 }

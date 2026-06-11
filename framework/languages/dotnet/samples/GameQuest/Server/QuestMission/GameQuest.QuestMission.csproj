@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Configuration/GameQuest.Server.Configuration.csproj" />
     <ProjectReference Include="../../Shared/GameQuest.Shared.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj" />
     <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />

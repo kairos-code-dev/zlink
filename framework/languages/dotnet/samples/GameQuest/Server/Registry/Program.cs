@@ -1,4 +1,4 @@
-using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 

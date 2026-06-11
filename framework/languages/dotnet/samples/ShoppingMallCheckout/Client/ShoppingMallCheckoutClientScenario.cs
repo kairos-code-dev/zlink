@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Net.Http.Json;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Client.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 
 namespace ShoppingMallCheckout.Client;

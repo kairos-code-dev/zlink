@@ -1,5 +1,5 @@
 using ShoppingMallCheckout.Client;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Client.Configuration;
 
 namespace ShoppingMallCheckout.Client;
 

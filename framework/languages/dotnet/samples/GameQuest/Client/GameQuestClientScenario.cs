@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Net.Http.Json;
 using GameQuest.Shared;
+using GameQuest.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Json;
 

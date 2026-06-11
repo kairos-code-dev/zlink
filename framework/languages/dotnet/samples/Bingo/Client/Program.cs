@@ -1,4 +1,4 @@
-using Bingo.Shared.Configuration;
+using Bingo.Client.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace Bingo.Client;

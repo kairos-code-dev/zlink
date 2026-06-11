@@ -1,5 +1,6 @@
 using GameQuest.QuestMission.Application;
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace GameQuest.QuestMission.Adapters.ZLink;

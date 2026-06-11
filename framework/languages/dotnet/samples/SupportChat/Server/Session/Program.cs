@@ -1,5 +1,5 @@
 using SupportChat.Server.Session;
-using SupportChat.Shared.Configuration;
+using SupportChat.Server.Configuration;
 using Microsoft.Extensions.Hosting;
 
 internal static class Program

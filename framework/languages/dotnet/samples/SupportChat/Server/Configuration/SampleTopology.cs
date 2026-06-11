@@ -1,6 +1,6 @@
 using Systems.Zlink;
 
-namespace SupportChat.Shared.Configuration;
+namespace SupportChat.Server.Configuration;
 
 public sealed record SampleTopology(
     string RegistryPubEndpoint,

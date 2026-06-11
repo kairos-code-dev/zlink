@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="Shared/ShoppingMallCheckout.Shared.csproj" />
     <ProjectReference Include="Client/ShoppingMallCheckout.Client.csproj" />
+    <ProjectReference Include="Server/Configuration/ShoppingMall.Server.Configuration.csproj" />
     <ProjectReference Include="Server/Registry/ShoppingMall.Registry.csproj" />
     <ProjectReference Include="Server/Shared/ShoppingMall.Server.Shared.csproj" />
     <ProjectReference Include="Server/CommerceApi/ShoppingMall.CommerceApi.csproj" />

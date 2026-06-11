@@ -1,5 +1,5 @@
 using ShoppingMallCheckout.Server.Shared.Domain;
-using ShoppingMallCheckout.Shared.Configuration;
+using ShoppingMallCheckout.Server.Configuration;
 using ShoppingMallCheckout.Shared.Contracts;
 
 namespace ShoppingMallCheckout.Server.OrderWorkflow.Domain.ShoppingMallCheckout;

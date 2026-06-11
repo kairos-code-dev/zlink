@@ -1,5 +1,5 @@
 using Bingo.Server.Play.Domain.Bingo;
-using Bingo.Shared.Configuration;
+using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 
 namespace Bingo.Server.Play.Adapters.ZLink.Notifications;

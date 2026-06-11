@@ -42,6 +42,67 @@ public sealed class RegressionTests
         AssertSessionPayloadPolicy(sampleRoot);
     }
 
+    [Fact]
+    public void Bingo_Uses_Protobuf_And_TicTacToe_Uses_MessagePack_Sample_Payloads()
+    {
+        AssertSampleUsesProtobufPayloads(ResolveSampleRoot("Bingo"));
+        AssertSampleUsesMessagePackPayloads(ResolveSampleRoot("TicTacToe"));
+    }
+
+    private static void AssertSampleUsesProtobufPayloads(string sampleRoot)
+    {
+        var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
+        var projectFiles = Directory
+            .EnumerateFiles(sampleRoot, "*.csproj", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+        var protoFiles = Directory
+            .EnumerateFiles(sampleRoot, "*.proto", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+        var allText = string.Join(
+            Environment.NewLine,
+            sourceFiles.Concat(projectFiles).Concat(protoFiles).Select(File.ReadAllText));
+
+        Assert.NotEmpty(protoFiles);
+        Assert.Contains("AddProtobuf", allText, StringComparison.Ordinal);
+        Assert.Contains("Stream.Connector.Protobuf", allText, StringComparison.Ordinal);
+        Assert.Contains("Zlink.Codecs.Protobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("MessagePack", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("MsgPack", allText, StringComparison.Ordinal);
+    }
+
+    private static void AssertSampleUsesMessagePackPayloads(string sampleRoot)
+    {
+        var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();
+        var projectFiles = Directory
+            .EnumerateFiles(sampleRoot, "*.csproj", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+        var protoFiles = Directory
+            .EnumerateFiles(sampleRoot, "*.proto", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+        var allText = string.Join(
+            Environment.NewLine,
+            sourceFiles.Concat(projectFiles).Select(File.ReadAllText));
+
+        Assert.Empty(protoFiles);
+        Assert.Contains("MessagePackObject", allText, StringComparison.Ordinal);
+        Assert.Contains("AddMessagePack", allText, StringComparison.Ordinal);
+        Assert.Contains("Stream.Connector.MessagePack", allText, StringComparison.Ordinal);
+        Assert.Contains("Zlink.Codecs.MessagePack", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Google.Protobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Grpc.Tools", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddProtobuf", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("FromProto", allText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToProto", allText, StringComparison.Ordinal);
+    }
+
     private static void AssertNoSampleRouteStore(string sampleRoot)
     {
         var sourceFiles = EnumerateSourceFiles(sampleRoot).ToArray();

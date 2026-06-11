@@ -1,4 +1,4 @@
-using Bingo.Shared.Configuration;
+using Bingo.Probe.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

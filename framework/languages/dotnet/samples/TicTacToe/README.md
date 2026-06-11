@@ -18,9 +18,8 @@ This sample maps a two-player tic-tac-toe flow onto `Zlink.Framework`:
 Packet type names use `Req` for request packets, `Res` for response packets,
 and `Notify` for server push packets.
 
-TicTacToe is the MessagePack game sample. Its STREAM, channel, actor, and room
-Spot payloads use MessagePack to show compact binary packets for a small
-real-time game.
+TicTacToe uses MessagePack payloads for STREAM, channel, actor, and room Spot
+messages.
 
 The sample is grouped by its own solution:
 
@@ -28,27 +27,37 @@ The sample is grouped by its own solution:
 dotnet build framework/languages/dotnet/samples/TicTacToe/TicTacToe.sln
 ```
 
-Run the all-in-one server smoke path:
+Run the sample smoke path:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server
+framework/languages/dotnet/samples/TicTacToe/run_sample.sh
+```
+
+On Windows PowerShell:
+
+```powershell
+.\framework\languages\dotnet\samples\TicTacToe\run_sample.ps1
 ```
 
 The standalone client lives in [`Client`](./Client). Use it when you want to
-read or run just the client side of the flow.
+read or run just the client side of the flow. `Program` reads the client options
+and runs `TicTacToeClientScenario`; the scenario calls HTTP `POST /games`, reads
+the returned Play endpoint, creates the two stream connectors, and then verifies
+authentication, joins, moves, and pushes.
 The request, response, and push DTOs live in [`Shared`](./Shared) so the
 server and client use the same protocol contract. The reusable client flow lives
-in [`Client`](./Client); the server smoke path references it only to run the
-all-in-one sample.
+in [`Client`](./Client); the sample runner starts the server roles and then
+runs that client as the self-check.
 
 The server executable also supports separate roles:
 
 ```bash
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play
-dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- play --config ./appsettings.json
+dotnet run --project framework/languages/dotnet/samples/TicTacToe/Server -- api --config ./appsettings.json
 dotnet run --project framework/languages/dotnet/samples/TicTacToe/Client
 ```
 
-Use `--api-url`, `--api-bind`, `--api-channel-endpoint`,
-`--play-channel-endpoint`, `--play-endpoint`, and `--spot-endpoint` to override
-the default local endpoints.
+The server reads `Sample` settings from the config file through
+`Microsoft.Extensions.Configuration`. The runner writes a temporary
+`appsettings.json`, starts the `play` and `api` roles with `--config`, waits for
+their endpoints, and then runs the standalone client.

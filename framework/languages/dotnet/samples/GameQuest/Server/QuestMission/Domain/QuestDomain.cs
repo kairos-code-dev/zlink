@@ -1,4 +1,5 @@
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using System.Text.Json;
 
 namespace GameQuest.QuestMission.Domain;

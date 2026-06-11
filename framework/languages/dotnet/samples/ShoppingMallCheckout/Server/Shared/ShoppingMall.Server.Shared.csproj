@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Configuration/ShoppingMall.Server.Configuration.csproj" />
     <ProjectReference Include="../../Shared/ShoppingMallCheckout.Shared.csproj" />
   </ItemGroup>
 </Project>

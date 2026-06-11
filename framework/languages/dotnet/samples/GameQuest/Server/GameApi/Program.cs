@@ -5,6 +5,7 @@ using GameQuest.GameApi.Adapters.Store;
 using GameQuest.GameApi.Application;
 using GameQuest.GameApi.Session;
 using GameQuest.Shared;
+using GameQuest.Server.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Zlink.Framework.AspNetCore;
 

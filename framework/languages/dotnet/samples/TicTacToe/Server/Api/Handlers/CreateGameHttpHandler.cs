@@ -13,7 +13,9 @@ internal static class CreateGameHttpHandler
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("Game.Api.CreateGame");
-        var gameName = request.GameName ?? SampleDefaults.GameName;
+        var gameName = !string.IsNullOrWhiteSpace(request.GameName)
+            ? request.GameName
+            : SampleDefaults.GameName;
         logger.LogInformation("client -> api: create game requested. game={GameName}", gameName);
         logger.LogInformation("api -> play: requesting CreateGameReq. game={GameName}", gameName);
 

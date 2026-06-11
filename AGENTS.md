@@ -47,7 +47,17 @@
 - 내부 작성자만 아는 줄임말, 압축 표현, 맥락 없는 단정형 문장을 피한다.
 - 규칙이나 제한 사항은 왜 필요한지 짧게라도 함께 적는다.
 
-### 4. 구현 전 spec 초안 작성 규칙
+### 4. 압축 영어 표현 금지
+
+- `canonical caller-provided storage recv`처럼 영어 명사를 여러 개 이어 붙인 압축 표현을 쓰지 않는다.
+- 이런 표현은 영어로 성립하더라도 독자가 바로 이해하기 어렵고, 의미가 내부 구현자에게만 분명해질 수 있다.
+- 문서와 코드 주석에서는 동작을 문장으로 풀어 쓴다.
+  - 나쁜 예: `Canonical caller-provided storage recv.`
+  - 좋은 예: `Receives a message into the Received object supplied by the caller.`
+  - 한국어 문서에서는 `호출자가 넘긴 Received 객체에 수신 결과를 채운다.`처럼 쓴다.
+- `canonical`, `storage`, `surface`, `path`, `shape` 같은 단어는 의미가 꼭 필요할 때만 쓰고, 가능하면 무엇을 보장하는지 구체적으로 설명한다.
+
+### 5. 구현 전 spec 초안 작성 규칙
 
 - 아직 구현되지 않은 API 계약이나 동작은 기존 정식 spec 문서에 바로 넣지 않는다.
 - 구현 전 설계는 `doc/spec/draft/` 아래의 **별도 draft 문서**로 작성한다.

@@ -33,7 +33,7 @@ final class ActorManagerTest {
         options.addActorFactory("player", PlayerActorFactory.class);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             ZLinkActor created = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()

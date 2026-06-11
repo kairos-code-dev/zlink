@@ -1,5 +1,9 @@
 package systems.zlink.framework.spring;
 
+import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
+
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;

@@ -25,7 +25,7 @@ final class BoundSessionTest {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(RemoteActorGatewayTest.options(), backend)) {
+                 RuntimeTestSupport.startFramework(RemoteActorGatewayTest.options(), backend)) {
             ZLinkActor actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -54,7 +54,7 @@ final class BoundSessionTest {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(RemoteActorGatewayTest.options(), backend)) {
+                 RuntimeTestSupport.startFramework(RemoteActorGatewayTest.options(), backend)) {
             ZLinkActor actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -83,7 +83,7 @@ final class BoundSessionTest {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(RemoteActorGatewayTest.options(), backend)) {
+                 RuntimeTestSupport.startFramework(RemoteActorGatewayTest.options(), backend)) {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))

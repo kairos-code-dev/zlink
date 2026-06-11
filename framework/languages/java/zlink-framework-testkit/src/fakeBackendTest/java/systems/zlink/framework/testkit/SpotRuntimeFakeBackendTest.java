@@ -67,7 +67,7 @@ final class SpotRuntimeFakeBackendTest {
         RoutingId rid = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .create(GameSpot.class, rid)
                 .toCompletableFuture()
@@ -135,7 +135,7 @@ final class SpotRuntimeFakeBackendTest {
         try (Message first = Message.from("first".getBytes(StandardCharsets.UTF_8));
              Message second = Message.from("second".getBytes(StandardCharsets.UTF_8));
              ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .getOrCreate(PayloadSpot.class, rid, first)
                 .toCompletableFuture()
@@ -161,7 +161,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -212,7 +212,7 @@ final class SpotRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(HandlerSpot.class, RoutingId.from("handler-spot"))
                 .toCompletableFuture()
@@ -243,7 +243,7 @@ final class SpotRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(SerialSpot.class, RoutingId.from("serial-spot"))
                 .toCompletableFuture()
@@ -283,7 +283,7 @@ final class SpotRuntimeFakeBackendTest {
             return reflection.create(handlerType);
         };
 
-        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+        try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.newFrameworkRuntime(
                  options,
                  backendFactory,
                  new SerialJoinSerializer(),
@@ -323,7 +323,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -375,7 +375,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -431,7 +431,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkRegistrySpotRemoteAddressResolver resolver =
                 new ZLinkRegistrySpotRemoteAddressResolver(
                     runtime,
@@ -476,7 +476,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -522,7 +522,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -566,7 +566,7 @@ final class SpotRuntimeFakeBackendTest {
             }));
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -603,7 +603,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -643,7 +643,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -690,7 +690,7 @@ final class SpotRuntimeFakeBackendTest {
             }));
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new FakeZLinkBackendAdapterFactory())) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -712,7 +712,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             AmbientOutboundSpot.outbound = runtime.spotOutbound();
             runtime.spotManager()
                 .create(AmbientOutboundSpot.class, RoutingId.from("game-3"))
@@ -739,7 +739,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotPublisherClient()
                 .publishSpot("game.stage", "stage.events", "opened")
                 .packetName("StageOpened")
@@ -788,7 +788,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -822,7 +822,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -854,7 +854,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -903,7 +903,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -942,7 +942,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -985,7 +985,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -1024,7 +1024,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             assertEquals(1, LifecycleEntrySpot.configureCount.get());
             awaitCondition(() -> LifecycleEntrySpot.initializeCount.get() == 1);
             assertEquals(1, LifecycleEntrySpot.initializeCount.get());
@@ -1065,7 +1065,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchEntrySpotActorJoinReadable("player-1");
         }
 
@@ -1089,7 +1089,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchEntrySpotActorJoinReadable(
                 "player-1",
                 "String",
@@ -1117,7 +1117,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -1148,7 +1148,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -1182,7 +1182,7 @@ final class SpotRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+        try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.newFrameworkRuntime(
                  options,
                  backendFactory,
                  new InterfaceActorSerializer(),
@@ -1217,7 +1217,7 @@ final class SpotRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime runtime = new ZLinkFrameworkRuntime(
+        try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.newFrameworkRuntime(
                  options,
                  backendFactory,
                  new InterfaceActorSerializer(),
@@ -1255,7 +1255,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, RoutingId.from("game-2"))
                 .toCompletableFuture()
@@ -1292,7 +1292,7 @@ final class SpotRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchEntrySpotActorJoinReadable(
                 "player-1",
                 "String",
@@ -1321,7 +1321,7 @@ final class SpotRuntimeFakeBackendTest {
         RoutingId spotRid = RoutingId.from("game-joined");
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(OutboundSpot.class, spotRid)
                 .toCompletableFuture()
@@ -1348,7 +1348,7 @@ final class SpotRuntimeFakeBackendTest {
             }));
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(
+                 RuntimeTestSupport.startFramework(
                      options,
                      new FakeZLinkBackendAdapterFactory())) {
             assertThrows(

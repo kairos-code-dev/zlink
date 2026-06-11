@@ -1,7 +1,6 @@
-package systems.zlink.framework.runtime;
+package systems.zlink.framework.runtime.host;
 
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 import systems.zlink.framework.runtime.backend.*;
 

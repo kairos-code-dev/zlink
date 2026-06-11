@@ -167,8 +167,8 @@ Bingo sample은 Session, Api, Play, Registry 역할을 나누어 gateway 구조�
 
 direct sample은 아래를 보여 준다.
 
-- standalone 실행에서는 Spring Boot starter public facade로 API role과 Play role을
-  시작한다. 이 경로도 framework/connector public API만 사용하며, sample-local HTTP
+- 샘플 실행에서는 Spring Boot host lifetime 안에서 API role과 Play role을 시작한다.
+  이 경로도 framework/connector public API만 사용하며, sample-local HTTP
   server나 handler 직접 호출로 우회하지 않는다.
 - standalone `Client` role은 API role의 `/games` HTTP endpoint로 `CreateGameHttpReq`를
   보내고, API role은 Play server channel로 `CreateGameReq`를 전달한다.

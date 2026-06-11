@@ -25,6 +25,9 @@ flowchart LR
 ## 2. Embedded registry
 
 embedded registry를 등록하면 `ZLinkRegistryQuery` bean도 함께 등록한다.
+Registry server의 시작과 종료는 Spring host lifetime이 맡는다. application이 registry
+runtime을 직접 만들거나 `start` 함수로 시작하는 방법은 public contract로 노출하지
+않는다.
 
 ```java
 @Bean

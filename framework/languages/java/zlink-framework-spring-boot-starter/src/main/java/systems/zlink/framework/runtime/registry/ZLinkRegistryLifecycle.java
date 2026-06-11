@@ -1,4 +1,4 @@
-package systems.zlink.framework.spring;
+package systems.zlink.framework.runtime.registry;
 
 import java.util.List;
 import java.util.Objects;
@@ -15,9 +15,9 @@ import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRegistry;
-import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
-public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegistryQuery {
+public final class ZLinkRegistryLifecycle
+    implements SmartLifecycle, ZLinkRegistryQuery {
     public static final int PHASE = -100;
 
     private final ZLinkEmbeddedRegistryOptions options;
@@ -49,9 +49,11 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegist
             return;
         }
         try {
-            runtime.close();
+            if (runtime != null) {
+                runtime.close();
+                runtime = null;
+            }
         } finally {
-            runtime = null;
             running = false;
         }
     }
@@ -102,14 +104,15 @@ public final class ZLinkRegistryLifecycle implements SmartLifecycle, ZLinkRegist
         return requireRuntime().memberPeers(channelName);
     }
 
-    ZLinkBackendRegistry monitoringRegistrySource() {
+    public ZLinkBackendRegistry monitoringRegistrySource() {
         return requireRuntime().monitoringRegistrySource();
     }
 
-    private synchronized ZLinkRegistryRuntime requireRuntime() {
-        if (!running || runtime == null) {
+    private ZLinkRegistryRuntime requireRuntime() {
+        if (runtime == null) {
             throw new ZLinkConfigurationException("ZLink registry runtime is not running");
         }
         return runtime;
     }
+
 }

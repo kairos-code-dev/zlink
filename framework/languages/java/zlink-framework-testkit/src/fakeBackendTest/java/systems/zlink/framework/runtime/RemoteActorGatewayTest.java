@@ -30,7 +30,7 @@ final class RemoteActorGatewayTest {
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options(), backend)) {
+                 RuntimeTestSupport.startFramework(options(), backend)) {
             ZLinkSessionActor actor = runtime.sessionActors(
                     "gateway",
                     RoutingId.from("session-1"))

@@ -1,5 +1,7 @@
 package systems.zlink.framework.spring;
 
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;

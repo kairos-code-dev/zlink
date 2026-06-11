@@ -82,7 +82,7 @@ final class JsonSessionActorsRuntimeIntegrationTest {
             stream.registerSession(SessionActorsRuntimeIntegrationTest.GameSession.class);
         });
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     public record JsonRelaySend(String value) {

@@ -1,4 +1,4 @@
-package systems.zlink.framework.spring;
+package systems.zlink.framework.runtime.host;
 
 import java.util.Map;
 import java.util.Objects;
@@ -17,7 +17,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -59,9 +58,11 @@ public final class ZLinkFrameworkLifecycle
             return;
         }
         try {
-            runtime.close();
+            if (runtime != null) {
+                runtime.close();
+                runtime = null;
+            }
         } finally {
-            runtime = null;
             running = false;
         }
     }
@@ -124,19 +125,19 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().route().requestTo(channelName, target, message);
     }
 
-    ZLinkSpotManager spotManager() {
+    public ZLinkSpotManager spotManager() {
         return requireRuntime().spotManager();
     }
 
-    ZLinkSpotOutbound spotOutbound() {
+    public ZLinkSpotOutbound spotOutbound() {
         return requireRuntime().spotOutbound();
     }
 
-    ZLinkSpotPublisherClient spotPublisherClient() {
+    public ZLinkSpotPublisherClient spotPublisherClient() {
         return requireRuntime().spotPublisherClient();
     }
 
-    ZLinkSpotRemoteAddress resolveRegistrySpotRemoteAddress(
+    public ZLinkSpotRemoteAddress resolveRegistrySpotRemoteAddress(
         String namespaceName,
         String configuredRouterChannelId,
         RoutingId spotRid) {
@@ -146,22 +147,23 @@ public final class ZLinkFrameworkLifecycle
             spotRid);
     }
 
-    ZLinkActorManager actorManager() {
+    public ZLinkActorManager actorManager() {
         return requireRuntime().actorManager();
     }
 
-    Map<String, ZLinkBackendSocket> monitoringSocketSources() {
+    public Map<String, ZLinkBackendSocket> monitoringSocketSources() {
         return requireRuntime().monitoringSocketSources();
     }
 
-    Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
+    public Map<String, ZLinkBackendSpotNode> monitoringSpotSources() {
         return requireRuntime().monitoringSpotSources();
     }
 
-    private synchronized ZLinkFrameworkRuntime requireRuntime() {
-        if (!running || runtime == null) {
+    private ZLinkFrameworkRuntime requireRuntime() {
+        if (runtime == null) {
             throw new ZLinkConfigurationException("ZLink framework runtime is not running");
         }
         return runtime;
     }
+
 }

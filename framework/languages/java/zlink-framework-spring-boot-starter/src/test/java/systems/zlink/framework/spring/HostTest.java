@@ -1,5 +1,9 @@
 package systems.zlink.framework.spring;
 
+import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
+
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;

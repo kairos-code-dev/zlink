@@ -40,10 +40,10 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface
-import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext
@@ -250,8 +250,13 @@ final class KotlinSuspendAnnotationHandlerTest {
             )
         }
 
+        val lifecycle = ZLinkFrameworkLifecycle(
+            options,
+            FakeZLinkBackendAdapterFactory(),
+            ZLinkHandlerFactory.reflection(),
+        )
         val failure = assertThrows<ZLinkConfigurationException> {
-            ZLinkFrameworkRuntime.start(options, FakeZLinkBackendAdapterFactory()).close()
+            lifecycle.start()
         }
 
         assertTrue(failure.message!!.contains("duplicate client/server request handler packet name"))

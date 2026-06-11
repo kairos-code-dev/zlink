@@ -33,14 +33,14 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
     private final ZLinkStreamRuntime streams;
     private final ZLinkFrameworkRegistration registration;
 
-    public ZLinkFrameworkRuntime(
+    ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkMessageSerializer serializer) {
         this(options, backendFactory, serializer, ZLinkHandlerFactory.reflection());
     }
 
-    public ZLinkFrameworkRuntime(
+    ZLinkFrameworkRuntime(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkMessageSerializer serializer,
@@ -107,13 +107,13 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 spots);
     }
 
-    public static ZLinkFrameworkRuntime start(
+    static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory) {
         return new ZLinkFrameworkRuntime(options, backendFactory, serializerFor(options));
     }
 
-    public static ZLinkFrameworkRuntime start(
+    static ZLinkFrameworkRuntime start(
         DefaultZLinkFrameworkOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkHandlerFactory handlerFactory) {

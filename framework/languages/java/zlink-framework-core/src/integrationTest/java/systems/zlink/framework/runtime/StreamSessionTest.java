@@ -52,7 +52,7 @@ final class StreamSessionTest {
         });
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
         }
     }
 
@@ -68,7 +68,7 @@ final class StreamSessionTest {
         });
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
              Socket client = new Socket("127.0.0.1", port)) {
             client.setSoTimeout(3000);
             client.getOutputStream().write(frame(requestHeader(7L, "Ping"), bytes("ping")));
@@ -110,7 +110,7 @@ final class StreamSessionTest {
         });
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
              Socket client = new Socket("127.0.0.1", port)) {
             client.setSoTimeout(3000);
 

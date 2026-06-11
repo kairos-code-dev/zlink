@@ -25,7 +25,7 @@ final class ChannelRuntimeFakeBackendTest {
                     endpoints.connect("inproc://profile-server"))));
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backendFactory)) {
+        try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
                 .sendToChannel("profile", "hello")
                 .packetName("Greeting")
@@ -69,7 +69,7 @@ final class ChannelRuntimeFakeBackendTest {
         });
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backendFactory)) {
+        try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
                 .sendToChannel("profile", new ProfileGreeting("hello"))
                 .submit()
@@ -128,7 +128,7 @@ final class ChannelRuntimeFakeBackendTest {
         });
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
-        try (ZLinkFrameworkRuntime ignored = ZLinkFrameworkRuntime.start(options, backendFactory)) {
+        try (ZLinkFrameworkRuntime ignored = RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(

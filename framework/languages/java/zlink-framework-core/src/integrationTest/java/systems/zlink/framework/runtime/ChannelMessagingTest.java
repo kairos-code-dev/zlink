@@ -75,7 +75,7 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
@@ -104,7 +104,7 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("Echo")
@@ -141,7 +141,7 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             sendUntilDelivered(runtime);
 
             assertTrue(latch.await(1, TimeUnit.SECONDS), "client/server send was not delivered");
@@ -169,7 +169,7 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("String")
@@ -199,7 +199,7 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
                 .requestToChannel("profile", "hello")
                 .packetName("AnnotatedEcho")
@@ -246,9 +246,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
-                 ZLinkFrameworkRuntime.start(publisherOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime subscriber =
-                 ZLinkFrameworkRuntime.start(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
             publishUntilDelivered(ignoredPublisher);
 
             assertTrue(latch.await(1, TimeUnit.SECONDS), "annotated publish was not delivered");
@@ -282,14 +282,14 @@ final class ChannelMessagingTest {
         clientOptions.useDiscovery(discovery -> discovery.addRegistryEndpoint(registryRouter));
         clientOptions.addClientServerChannel("profile", channel -> channel.enableClient());
 
-        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
                  registryOptions,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
              ZLinkFrameworkRuntime ignoredServer =
-                 ZLinkFrameworkRuntime.start(serverOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(serverOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime client =
-                 ZLinkFrameworkRuntime.start(clientOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("hello", awaitDiscoveryReply(client));
         }
     }
@@ -315,14 +315,14 @@ final class ChannelMessagingTest {
             channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
         });
 
-        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
                  registryOptions,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
              ZLinkFrameworkRuntime client =
-                 ZLinkFrameworkRuntime.start(clientOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(clientOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime ignoredServer =
-                 ZLinkFrameworkRuntime.start(serverOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(serverOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("hello", awaitDiscoveryReply(client));
         }
     }
@@ -347,9 +347,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime ignoredPublisher =
-                 ZLinkFrameworkRuntime.start(publisherOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(publisherOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime subscriber =
-                 ZLinkFrameworkRuntime.start(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(subscriberOptions, new ZLinkJavaBackendAdapterFactory())) {
             publishUntilDelivered(ignoredPublisher);
 
             assertTrue(latch.await(1, TimeUnit.SECONDS), "fanout publish was not delivered");
@@ -388,9 +388,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime ignoredSource =
-                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime target =
-                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(ignoredSource, targetRid));
             assertEquals("route", ROUTE_REQUEST_CHANNEL.get());
         } finally {
@@ -422,9 +422,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime source =
-                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime ignoredTarget =
-                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("scanned-route:hello", awaitScannedRouteReply(source, targetRid));
         }
     }
@@ -455,9 +455,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime source =
-                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
             ZLinkFrameworkRuntime ignoredTarget =
-                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(source, targetRid));
             assertNull(FILTER_REQUEST.get());
             assertNull(FILTER_PACKET.get());
@@ -490,9 +490,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime source =
-                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime ignoredTarget =
-                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("warmup", awaitSharedRouteReply(source, targetRid, "warmup:1"));
 
             CompletionStage<String> slow = source.route()
@@ -540,9 +540,9 @@ final class ChannelMessagingTest {
         });
 
         try (ZLinkFrameworkRuntime source =
-                 ZLinkFrameworkRuntime.start(sourceOptions, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(sourceOptions, new ZLinkJavaBackendAdapterFactory());
              ZLinkFrameworkRuntime ignoredTarget =
-                 ZLinkFrameworkRuntime.start(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             routeSendUntilDelivered(source, targetRid);
 
             assertTrue(latch.await(1, TimeUnit.SECONDS), "route mesh send was not delivered");

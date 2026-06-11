@@ -31,6 +31,11 @@ Spring Boot starter는 이 option bean이 있으면 embedded registry lifecycle 
 등록한다. option bean이 없으면 registry server를 만들지 않는다. 이 등록만으로는
 framework lifecycle이나 channel client bean을 만들지 않는다. Framework runtime은
 별도로 `@EnableZLinkFramework`를 붙인 설정에서 켠다.
+Registry server의 시작과 종료도 Spring host lifetime이 맡는다. application이 registry
+runtime을 직접 만들거나 `start` 함수로 시작하는 public facade는 두지 않는다.
+application은 같은 프로세스 registry를 조회할 때도 runtime 객체가 아니라
+`ZLinkRegistryQuery` bean을 사용한다. registry runtime 구현은 Spring lifecycle bean
+뒤에 숨기며, public constructor나 public `start` 함수로 노출하지 않는다.
 
 필수 option은 아래와 같다.
 

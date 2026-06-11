@@ -37,7 +37,7 @@ final class ActorRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActor created = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -84,7 +84,7 @@ final class ActorRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActor actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
@@ -116,7 +116,7 @@ final class ActorRuntimeFakeBackendTest {
         RoutingId spotRid = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
                 .create(GameSpot.class, spotRid)
                 .toCompletableFuture()
@@ -167,7 +167,7 @@ final class ActorRuntimeFakeBackendTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActorRuntime actors = (ZLinkActorRuntime) runtime.actorManager();
             Message request = ZLinkActorEntrySpotRoutePackets.encodeJoinRequest(
                 "player-remote",

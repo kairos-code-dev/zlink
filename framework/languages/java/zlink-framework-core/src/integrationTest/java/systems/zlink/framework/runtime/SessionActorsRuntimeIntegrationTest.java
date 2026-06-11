@@ -174,7 +174,7 @@ final class SessionActorsRuntimeIntegrationTest {
         registryOptions.setPubEndpoint(registryPub);
         registryOptions.setRouterEndpoint(registryRouter);
 
-        try (ZLinkRegistryRuntime ignoredRegistry = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime ignoredRegistry = RuntimeTestSupport.startRegistry(
                  registryOptions,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));
@@ -276,7 +276,7 @@ final class SessionActorsRuntimeIntegrationTest {
             stream.registerSession(GameSession.class);
         });
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     private static ZLinkFrameworkRuntime startLocalManagedStreamRuntime() {
@@ -296,7 +296,7 @@ final class SessionActorsRuntimeIntegrationTest {
             stream.registerSession(GameSession.class);
         });
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     private static ZLinkFrameworkRuntime startBoundGatewayRuntime() {
@@ -316,7 +316,7 @@ final class SessionActorsRuntimeIntegrationTest {
             }));
         options.addActorFactory("player", PlayerActorFactory.class);
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     private static ZLinkFrameworkRuntime startChannelJoinRuntime() {
@@ -338,7 +338,7 @@ final class SessionActorsRuntimeIntegrationTest {
             }));
         options.addActorFactory("player", PlayerActorFactory.class);
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     private static ZLinkFrameworkRuntime startDiscoveredPlayRuntime(
@@ -384,7 +384,7 @@ final class SessionActorsRuntimeIntegrationTest {
             }));
         options.addActorFactory("player", PlayerActorFactory.class);
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     static ZLinkFrameworkRuntime startDiscoveredSessionRuntime(
@@ -422,7 +422,7 @@ final class SessionActorsRuntimeIntegrationTest {
             stream.registerSession(GameSession.class);
         });
 
-        return ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+        return RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
     }
 
     static String tcpEndpoint() throws Exception {

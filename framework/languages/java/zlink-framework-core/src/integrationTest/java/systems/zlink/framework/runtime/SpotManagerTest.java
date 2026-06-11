@@ -47,7 +47,7 @@ final class SpotManagerTest {
         RoutingId spotRid = RoutingId.from("game-1-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .create(GameSpot.class, spotRid)
                 .toCompletableFuture()
@@ -87,7 +87,7 @@ final class SpotManagerTest {
         RoutingId spotRid = RoutingId.from("game-once-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .getOrCreate(GameSpot.class, spotRid)
                 .toCompletableFuture()
@@ -118,7 +118,7 @@ final class SpotManagerTest {
         RoutingId spotRid = RoutingId.from("game-concurrent-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             CompletionStage<ZLinkSpotCreateResult> first = runtime.spotManager()
                 .getOrCreate(SlowCreateSpot.class, spotRid, Message.from("first"));
             assertTrue(SlowCreateSpot.createStarted.await(3, TimeUnit.SECONDS));
@@ -160,7 +160,7 @@ final class SpotManagerTest {
         RoutingId spotRid = RoutingId.from("timer-room-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
                 .create(PublishingSpot.class, spotRid)
                 .toCompletableFuture()
@@ -198,7 +198,7 @@ final class SpotManagerTest {
                 node.addSpotFactory(RejectingSpot.class);
             }));
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory());
              Message request = Message.from("closed")) {
             var rejected = runtime.spotManager()
                 .create(RejectingSpot.class, request)

@@ -23,7 +23,7 @@ final class RegistryRuntimeFakeBackendTest {
         options.setRouterEndpoint("tcp://127.0.0.1:5552");
         options.addPeer("tcp://127.0.0.1:5553");
 
-        try (ZLinkRegistryRuntime runtime = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime runtime = RuntimeTestSupport.startRegistry(
                  options,
                  backendFactory,
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {

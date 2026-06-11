@@ -21,9 +21,10 @@ dependencies {
 
 버전과 artifact id는 구현 시점의 빌드 정책에 맞춰 확정한다.
 
-Spring Boot 앱이 아니면 `ZLinkFramework.start(...)` public facade로 같은 option
-builder를 넘겨 framework host를 시작한다. sample runner는 이 경로를 사용해
-channel request와 Spot manager가 실제 runtime을 통과하는지 확인한다.
+Java framework는 Spring Boot host lifetime 안에서 시작하고 종료한다.
+application은 `@EnableZLinkFramework`와 Spring bean 등록으로 channel, handler,
+Spot, stream 구성을 넘긴다. runtime을 직접 만들거나 `start` 함수로 시작하는 방법은
+public contract로 노출하지 않는다.
 
 ## 2. 토폴로지
 

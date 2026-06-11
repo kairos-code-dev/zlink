@@ -46,7 +46,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
         assertEquals(
@@ -86,7 +86,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamPacket("Join", "hello");
             awaitCondition(() -> GameSession.dispatches.size() == 1);
             assertEquals(1, GameSession.connectedCount);
@@ -109,7 +109,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamPacket("First", "one");
             backendFactory.dispatchStreamPacket("Second", "two");
 
@@ -132,7 +132,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamTransportError(111, "before-session");
             assertEquals(List.of(), GameSession.errors);
 
@@ -158,7 +158,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> backendFactory.dispatchStreamPacket("Join", "hello"));
@@ -185,7 +185,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest("Join", "hello", 42);
 
             awaitCondition(() -> ContextSession.sessionId != null);
@@ -217,7 +217,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             ContextSession.actorNodeRid = RoutingId.from("session-node");
             backendFactory.dispatchStreamRequest("Join", "hello", 42);
 
@@ -245,7 +245,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest("Authenticate", "player-1", 77);
             backendFactory.dispatchStreamPacket("Move", "cell-4");
 
@@ -270,7 +270,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest("Compress", "hello", 91);
         }
 
@@ -296,7 +296,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamRequest(
                 "Compressed",
                 Message.from(hex("00636F6D70726573736564")),
@@ -320,7 +320,7 @@ final class StreamSessionTest {
             new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime ignored =
-                 ZLinkFrameworkRuntime.start(options, backendFactory)) {
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
             backendFactory.dispatchStreamPacket("Notify", "hello");
 
             awaitCondition(() -> ReplyOnlySession.errorMessage != null);

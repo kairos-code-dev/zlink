@@ -105,7 +105,7 @@ Kotlin handler의 결과를 `CompletionStage` completion으로만 관찰한다.
 | client | `ZLinkFanoutClient` | pub/sub fanout publisher |
 | client | `ZLinkRouteClient` | route mesh channel target 호출 |
 | client | `ZLinkSpotPublisherClient` | 외부 노드용 `SPOT` publish client |
-| host | `ZLinkFramework` | Spring Boot 밖에서 framework host를 시작하고 session actor binding을 노출하는 public facade |
+| host | Spring host lifetime | Spring Boot `SmartLifecycle` 안에서 framework runtime을 시작하고 종료한다 |
 | management | `ZLinkSpotManager` | Spot type 기준 생성, `spotRid` 기준 조회/삭제 |
 | timer | `ZLinkTimer` | `SPOT` lifecycle timer handle |
 | filter | `ZLinkHandlerFilter` | handler 전후 공통 처리 |
@@ -114,17 +114,18 @@ Kotlin handler의 결과를 `CompletionStage` completion으로만 관찰한다.
 
 ## 2. Context
 
-Spring Boot 밖에서 framework를 직접 시작하면 `ZLinkFramework` facade가 channel, Spot,
-actor, session actor binding의 public entry point가 된다.
+Java framework는 Spring Boot host lifetime 안에서 시작하고 종료한다. channel, Spot,
+actor, session actor binding은 Spring bean으로 주입받는다. runtime을 직접 만들거나
+시작하는 방법은 public contract로 노출하지 않는다.
 
 ```java
-public final class ZLinkFramework implements AutoCloseable {
-    ZLinkClient client();
-    ZLinkFanoutClient fanout();
-    ZLinkRouteClient route();
-    ZLinkSpotManager spotManager();
-    ZLinkActorManager actorManager();
-    ZLinkSessionActors sessionActors(String streamNodeName, RoutingId sessionRid);
+@Configuration
+@EnableZLinkFramework
+public class ZLinkApplicationConfig implements ZLinkFrameworkConfigurer {
+    @Override
+    public void configure(ZLinkFrameworkOptions options) {
+        options.addClientServerChannel("api", channel -> channel.enableClient());
+    }
 }
 ```
 

@@ -1,5 +1,7 @@
 package systems.zlink.framework.spring;
 
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 

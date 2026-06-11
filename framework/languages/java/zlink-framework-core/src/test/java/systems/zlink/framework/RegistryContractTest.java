@@ -1,9 +1,13 @@
 package systems.zlink.framework;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
@@ -27,8 +31,33 @@ import systems.zlink.framework.registry.ZLinkRegistryServiceSummaryFilter;
 import systems.zlink.framework.registry.ZLinkRegistryStatus;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyEntry;
 import systems.zlink.framework.registry.ZLinkRegistryTopologyFilter;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
+import systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime;
 
 final class RegistryContractTest {
+    @Test
+    void frameworkRootDoesNotExposeDirectRuntimeStartFacades() {
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName("systems.zlink.framework.ZLinkFramework"));
+        assertThrows(
+            ClassNotFoundException.class,
+            () -> Class.forName("systems.zlink.framework.ZLinkRegistry"));
+    }
+
+    @Test
+    void runtimeTypesDoNotExposePublicDirectStartMembers() {
+        assertEquals(0, ZLinkFrameworkRuntime.class.getConstructors().length);
+        assertFalse(Arrays.stream(ZLinkFrameworkRuntime.class.getMethods())
+            .anyMatch(method -> method.getName().equals("start")
+                && Modifier.isPublic(method.getModifiers())));
+
+        assertEquals(0, ZLinkRegistryRuntime.class.getConstructors().length);
+        assertFalse(Arrays.stream(ZLinkRegistryRuntime.class.getMethods())
+            .anyMatch(method -> method.getName().equals("start")
+                && Modifier.isPublic(method.getModifiers())));
+    }
+
     @Test
     void registryQueryUsesTypedSnapshotContracts() throws Exception {
         Method status = ZLinkRegistryQuery.class.getMethod("status");

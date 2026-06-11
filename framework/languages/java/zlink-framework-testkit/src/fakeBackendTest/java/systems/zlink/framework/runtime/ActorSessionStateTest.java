@@ -27,7 +27,7 @@ final class ActorSessionStateTest {
         options.addHandlersFromPackageOf(ActorSessionStateTest.class);
 
         try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, backend)) {
+                 RuntimeTestSupport.startFramework(options, backend)) {
             ZLinkActor actor = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()

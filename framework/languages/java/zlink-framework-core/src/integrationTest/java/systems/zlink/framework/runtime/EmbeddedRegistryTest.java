@@ -31,7 +31,7 @@ final class EmbeddedRegistryTest {
         options.setPubEndpoint(pubEndpoint);
         options.setRouterEndpoint(routerEndpoint);
 
-        try (ZLinkRegistryRuntime runtime = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime runtime = RuntimeTestSupport.startRegistry(
                  options,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)))) {
@@ -60,7 +60,7 @@ final class EmbeddedRegistryTest {
         String routerEndpoint = tcpEndpoint();
         options.setRouterEndpoint(routerEndpoint);
 
-        try (ZLinkRegistryRuntime ignored = new ZLinkRegistryRuntime(
+        try (ZLinkRegistryRuntime ignored = RuntimeTestSupport.startRegistry(
                  options,
                  new ZLinkJavaBackendAdapterFactory(),
                  new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)));

@@ -76,10 +76,16 @@ final class SampleReleaseGateContractTest {
             "missing aggregate sample runner");
         assertTrue(Files.isExecutable(samplesRoot.resolve("run_samples.sh")),
             "aggregate sample runner must be executable");
+        assertTrue(Files.isRegularFile(samplesRoot.resolve("run_samples.ps1")),
+            "missing aggregate PowerShell sample runner");
         String aggregateRunner = Files.readString(samplesRoot.resolve("run_samples.sh"));
         assertTrue(aggregateRunner.contains("ZLINK_LIBRARY_PATH")
                 && aggregateRunner.contains("core/build/lib/libzlink.so"),
             "aggregate sample runner must use the local core runtime when it is available");
+        String aggregatePowerShellRunner = Files.readString(samplesRoot.resolve("run_samples.ps1"));
+        assertTrue(aggregatePowerShellRunner.contains("ZLINK_LIBRARY_PATH")
+                && aggregatePowerShellRunner.contains("core/build/lib/libzlink.so"),
+            "aggregate PowerShell sample runner must use the local core runtime when it is available");
 
         for (String language : REQUIRED_LANGUAGES) {
             Path languageRoot = samplesRoot.resolve(language);
@@ -99,13 +105,21 @@ final class SampleReleaseGateContractTest {
                     "missing run_sample.sh for " + sampleName);
                 assertTrue(Files.isExecutable(sampleRoot.resolve("run_sample.sh")),
                     "run_sample.sh must be executable for " + sampleName);
+                assertTrue(Files.isRegularFile(sampleRoot.resolve("run_sample.ps1")),
+                    "missing run_sample.ps1 for " + sampleName);
                 String runner = Files.readString(sampleRoot.resolve("run_sample.sh"));
                 assertTrue(runner.contains("--settings-file standalone.settings.gradle.kts"),
                     "run_sample.sh must use standalone settings for " + sampleName);
+                String powerShellRunner = Files.readString(sampleRoot.resolve("run_sample.ps1"));
+                assertTrue(powerShellRunner.contains("--settings-file")
+                        && powerShellRunner.contains("standalone.settings.gradle.kts"),
+                    "run_sample.ps1 must use standalone settings for " + sampleName);
             }
 
             assertDotNetProjectLayout(languageRoot.resolve("TicTacToe"), DOTNET_DIRECT_SAMPLE_PROJECTS);
             assertDotNetProjectLayout(languageRoot.resolve("Bingo"), DOTNET_BINGO_SAMPLE_PROJECTS);
+            assertSharedProjectContainsOnlyContracts(languageRoot.resolve("TicTacToe"));
+            assertSharedProjectContainsOnlyContracts(languageRoot.resolve("Bingo"));
         }
     }
 
@@ -115,12 +129,17 @@ final class SampleReleaseGateContractTest {
             for (String sample : List.of("TicTacToe", "Bingo")) {
                 Path sampleRoot = samplesRoot().resolve(language).resolve(sample);
                 String script = Files.readString(sampleRoot.resolve("run_sample.sh"));
+                String powerShellScript = Files.readString(sampleRoot.resolve("run_sample.ps1"));
                 assertFalse(script.matches("(?s).*\\n\\s*gradle\\s+run\\s+--quiet\\s*\\n?.*"),
                     language + "/" + sample + " must start the same role entry points as the .NET sample");
                 assertTrue(script.contains(":Client:run")
                         || script.contains("Client/build/install")
                         || script.contains("/Client/"),
                     language + "/" + sample + " runner must execute a distinct Client role");
+                assertTrue(powerShellScript.contains(":Client:run")
+                        || powerShellScript.contains("Client/build/install")
+                        || powerShellScript.contains("/Client/"),
+                    language + "/" + sample + " PowerShell runner must execute a distinct Client role");
                 if (!sample.equals("TicTacToe")) {
                     assertTrue(script.contains(":Server:Registry:run")
                             || script.contains("Server/Registry/build/install")
@@ -138,6 +157,22 @@ final class SampleReleaseGateContractTest {
                             || script.contains("Server/Session/build/install")
                             || script.contains("/Server/Session/"),
                         language + "/" + sample + " runner must execute a distinct Session role");
+                    assertTrue(powerShellScript.contains(":Server:Registry:run")
+                            || powerShellScript.contains("Server/Registry/build/install")
+                            || powerShellScript.contains("/Server/Registry/"),
+                        language + "/" + sample + " PowerShell runner must execute a distinct Registry role");
+                    assertTrue(powerShellScript.contains(":Server:Api:run")
+                            || powerShellScript.contains("Server/Api/build/install")
+                            || powerShellScript.contains("/Server/Api/"),
+                        language + "/" + sample + " PowerShell runner must execute a distinct Api role");
+                    assertTrue(powerShellScript.contains(":Server:Play:run")
+                            || powerShellScript.contains("Server/Play/build/install")
+                            || powerShellScript.contains("/Server/Play/"),
+                        language + "/" + sample + " PowerShell runner must execute a distinct Play role");
+                    assertTrue(powerShellScript.contains(":Server:Session:run")
+                            || powerShellScript.contains("Server/Session/build/install")
+                            || powerShellScript.contains("/Server/Session/"),
+                        language + "/" + sample + " PowerShell runner must execute a distinct Session role");
                 }
             }
         }
@@ -229,7 +264,7 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/tictactoe/shared"));
         assertSampleFilesExist("java", "TicTacToe", "Client/src/main/java", List.of(
             "systems/zlink/samples/tictactoe/client/TicTacToeClientArguments.java",
-            "systems/zlink/samples/tictactoe/client/TicTacToeClient.java",
+            "systems/zlink/samples/tictactoe/client/TicTacToeClientScenario.java",
             "systems/zlink/samples/tictactoe/client/TicTacToeClientOptions.java",
             "systems/zlink/samples/tictactoe/client/TicTacToeSampleDefaults.java"));
         assertTrue(sampleFileContains("java", "TicTacToe", "Client/src/main/java",
@@ -243,10 +278,8 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/tictactoe/server/api/ApiServerApplication.java",
             "systems/zlink/samples/tictactoe/server/api/handlers/AuthenticatePlayerHandler.java",
             "systems/zlink/samples/tictactoe/server/api/handlers/CreateGameHttpHandler.java",
-            "systems/zlink/samples/tictactoe/server/TicTacToeServerApplicationGroup.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleLogging.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleNames.java",
-            "systems/zlink/samples/tictactoe/server/configuration/SamplePorts.java",
             "systems/zlink/samples/tictactoe/server/configuration/SampleSettings.java",
             "systems/zlink/samples/tictactoe/server/play/PlayServer.java",
             "systems/zlink/samples/tictactoe/server/play/PlayServerApplication.java",
@@ -295,7 +328,7 @@ final class SampleReleaseGateContractTest {
         String clientSource = sampleJavaSource(
             "TicTacToe",
             "Client/src/main/java",
-            "systems/zlink/samples/tictactoe/client/TicTacToeClient.java");
+            "systems/zlink/samples/tictactoe/client/TicTacToeClientScenario.java");
         String clientProgramSource = sampleJavaSource(
             "TicTacToe",
             "Client/src/main/java",
@@ -347,13 +380,13 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(serverProgramSource.contains("case \"api\" -> ApiServerApplication.run(settings)")
                 && serverProgramSource.contains("case \"play\" -> PlayServerApplication.run(settings)")
-                && serverProgramSource.contains("case \"all\" -> runAll(settings)")
-                && serverProgramSource.contains("case \"client\" -> runClient(settings)")
-                && serverProgramSource.contains("SampleSettings.fromArgs(args)")
-                && serverProgramSource.contains("TicTacToeServerApplicationGroup.run(effectiveSettings)")
+                && serverProgramSource.contains("SampleSettings.load(args)")
+                && !serverProgramSource.contains("case \"all\"")
+                && !serverProgramSource.contains("case \"client\"")
+                && !serverProgramSource.contains("TicTacToeServerApplicationGroup")
                 && !serverProgramSource.contains("case \"server\"")
-                && serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
-            "TicTacToe Java Server Program must expose .NET-style all/play/api/client modes");
+                && !serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
+            "TicTacToe Java Server Program must expose only role modes; run_sample.sh owns orchestration");
         assertFalse(serverProgramSource.contains("CountDownLatch")
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "TicTacToe Java Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
@@ -372,14 +405,16 @@ final class SampleReleaseGateContractTest {
                 && playHostFactorySource.contains("setKeepAlive(true)")
                 && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "TicTacToe direct Api and Play framework hosts must enable MessagePack codecs and expose HTTP create-game with shared settings");
-        assertTrue(settingsSource.contains("withEphemeralDefaults()")
-                && settingsSource.contains("SamplePorts.reserve()")
+        assertTrue(settingsSource.contains("--config")
+                && settingsSource.contains("sample.apiBindUrl")
                 && settingsSource.contains("--api-bind")
                 && settingsSource.contains("--api-url")
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
                 && settingsSource.contains("--play-router-endpoint")
                 && settingsSource.contains("--play-endpoint")
+                && !settingsSource.contains("withEphemeralDefaults")
+                && !settingsSource.contains("SamplePorts.reserve")
                 && !settingsSource.contains("static SampleSettings current")
                 && !settingsSource.contains("current()")
                 && !settingsSource.contains("setCurrent"),
@@ -415,6 +450,7 @@ final class SampleReleaseGateContractTest {
         assertTrue(clientSource.contains("ZLinkStreamConnectorFactory.create"),
             "TicTacToe Client role must use the public stream connector for play requests");
         assertTrue(clientSource.contains("new AuthenticateReq(options.xActorId())")
+                && clientSource.contains("public final class TicTacToeClientScenario")
                 && clientSource.contains("new JoinGameReq(game.roomId())")
                 && clientSource.contains("new PlaceMarkReq(3)")
                 && clientSource.contains("new PlaceMarkReq(4)")
@@ -447,7 +483,7 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("hostSawGuestJoin")
                 && clientSource.contains("hostSawGameStart")
                 && clientSource.contains("guestSawHostWin")
-                && clientProgramSource.contains("new TicTacToeClient().run(clientOptions)")
+                && clientProgramSource.contains("new TicTacToeClientScenario().run(clientOptions)")
                 && !clientProgramSource.contains("awaitSample(")
                 && !clientSource.contains("ZLinkStreamMessagePack.on")
                 && !clientSource.contains("ConcurrentLinkedQueue")
@@ -616,7 +652,7 @@ final class SampleReleaseGateContractTest {
                 "systems/zlink/samples/kotlin/tictactoe/shared"));
         assertSampleFilesExist("kotlin", "TicTacToe", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientArguments.kt",
-            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClient.kt",
+            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientScenario.kt",
             "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientOptions.kt",
             "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeSampleDefaults.kt"));
         assertTrue(sampleFileContains("kotlin", "TicTacToe", "Client",
@@ -627,10 +663,8 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServerApplication.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/AuthenticatePlayerHandler.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/CreateGameHttpHandler.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/TicTacToeServerApplicationGroup.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleLogging.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleNames.kt",
-            "systems/zlink/samples/kotlin/tictactoe/server/configuration/SamplePorts.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/configuration/SampleSettings.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt",
             "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServerApplication.kt",
@@ -665,7 +699,7 @@ final class SampleReleaseGateContractTest {
         String clientSource = sampleKotlinSource(
             "TicTacToe",
             "Client/src/main/kotlin",
-            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClient.kt");
+            "systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientScenario.kt");
         String clientProgramSource = sampleKotlinSource(
             "TicTacToe",
             "Client/src/main/kotlin",
@@ -721,13 +755,13 @@ final class SampleReleaseGateContractTest {
 
         assertTrue(serverProgramSource.contains("\"api\" -> ApiServerApplication.run(settings)")
                 && serverProgramSource.contains("\"play\" -> PlayServerApplication.run(settings)")
-                && serverProgramSource.contains("\"all\" -> runAll(settings)")
-                && serverProgramSource.contains("\"client\" -> runClient(settings)")
-                && serverProgramSource.contains("SampleSettings.fromArgs(args)")
-                && serverProgramSource.contains("TicTacToeServerApplicationGroup.run(effectiveSettings)")
+                && serverProgramSource.contains("SampleSettings.load(args)")
+                && !serverProgramSource.contains("\"all\"")
+                && !serverProgramSource.contains("\"client\"")
+                && !serverProgramSource.contains("TicTacToeServerApplicationGroup")
                 && !serverProgramSource.contains("\"server\"")
-                && serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
-            "Kotlin TicTacToe Server Program must expose .NET-style all/play/api/client modes");
+                && !serverBuildSource.contains("implementation(sampleProject(\"Client\"))"),
+            "Kotlin TicTacToe Server Program must expose only role modes; run_sample.sh owns orchestration");
         assertFalse(serverProgramSource.contains("CountDownLatch")
                 || serverProgramSource.contains("ZLinkFramework.start"),
             "Kotlin TicTacToe Server roles must rely on Spring lifecycle keep-alive instead of direct framework execution");
@@ -746,14 +780,16 @@ final class SampleReleaseGateContractTest {
                 && playHostFactorySource.contains("setKeepAlive(true)")
                 && playHostFactorySource.contains("PlayServer.configure(settings)"),
             "Kotlin TicTacToe direct Api and Play framework hosts must enable MessagePack codecs and expose HTTP create-game with shared settings");
-        assertTrue(settingsSource.contains("withEphemeralDefaults()")
-                && settingsSource.contains("SamplePorts.reserve()")
+        assertTrue(settingsSource.contains("--config")
+                && settingsSource.contains("sample.apiBindUrl")
                 && settingsSource.contains("--api-bind")
                 && settingsSource.contains("--api-url")
                 && settingsSource.contains("--api-channel-endpoint")
                 && settingsSource.contains("--play-channel-endpoint")
                 && settingsSource.contains("--play-router-endpoint")
                 && settingsSource.contains("--play-endpoint")
+                && !settingsSource.contains("withEphemeralDefaults")
+                && !settingsSource.contains("SamplePorts.reserve")
                 && !settingsSource.contains("currentValue")
                 && !settingsSource.contains("fun current")
                 && !settingsSource.contains("setCurrent"),
@@ -804,6 +840,7 @@ final class SampleReleaseGateContractTest {
                 && !clientSource.contains("game.gameId"),
             "Kotlin TicTacToe stream client path must use connector member request contracts and assert the .NET winning scenario");
         assertTrue(clientSource.contains("hostStream.waitFor<PlayerJoinedNotify>()")
+                && clientSource.contains("class TicTacToeClientScenario")
                 && clientSource.contains("hostStream.waitFor<GameStateNotify>()")
                 && clientSource.contains("guestStream.waitFor<GameStateNotify>()")
                 && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
@@ -816,7 +853,7 @@ final class SampleReleaseGateContractTest {
                 && !clientSource.contains("ConcurrentLinkedQueue")
                 && !clientSource.contains("stateNotifications")
                 && !clientSource.contains("playerJoinedNotifications")
-                && clientProgramSource.contains("TicTacToeClient().run(clientOptions)")
+                && clientProgramSource.contains("TicTacToeClientScenario().run(clientOptions)")
                 && !clientProgramSource.contains("writeTo(System.out)"),
             "Kotlin TicTacToe direct client must subscribe to typed stream notifications without returning a result DTO");
         assertFalse(clientSource.contains("systems.zlink.samples.kotlin.tictactoe.server."),
@@ -961,7 +998,7 @@ final class SampleReleaseGateContractTest {
         assertNoSampleSourcesUnder("java", "Bingo", "src/main/java");
         assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
             "systems/zlink/samples/bingo/client/Program.java",
-            "systems/zlink/samples/bingo/client/BingoClientApp.java"));
+            "systems/zlink/samples/bingo/client/BingoClientScenario.java"));
         assertSampleFilesExist("java", "Bingo", "Probe/src/main/java", List.of(
             "systems/zlink/samples/bingo/probe/Program.java"));
         assertSampleFilesExist("java", "Bingo", "Server/Api/src/main/java", List.of(
@@ -996,9 +1033,15 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/bingo/server/session/SessionServerApplication.java",
             "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java",
             "systems/zlink/samples/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.java"));
+        assertSampleFilesExist("java", "Bingo", "Server/Configuration/src/main/java", List.of(
+            "systems/zlink/samples/bingo/server/configuration/SampleNames.java",
+            "systems/zlink/samples/bingo/server/configuration/SampleTopology.java",
+            "systems/zlink/samples/bingo/server/configuration/SampleTimings.java"));
+        assertSampleFilesExist("java", "Bingo", "Client/src/main/java", List.of(
+            "systems/zlink/samples/bingo/client/configuration/SampleNames.java",
+            "systems/zlink/samples/bingo/client/configuration/SampleTopology.java",
+            "systems/zlink/samples/bingo/client/configuration/SampleTimings.java"));
         assertSampleFilesExist("java", "Bingo", "Shared/src/main/java", List.of(
-            "systems/zlink/samples/bingo/shared/configuration/SampleNames.java",
-            "systems/zlink/samples/bingo/shared/configuration/SampleTopology.java",
             "systems/zlink/samples/bingo/shared/contracts/Messages.java"));
 
         String rootBuildSource = sampleFile(
@@ -1013,7 +1056,7 @@ final class SampleReleaseGateContractTest {
         String clientAppSource = sampleJavaSource(
             "Bingo",
             "Client/src/main/java",
-            "systems/zlink/samples/bingo/client/BingoClientApp.java");
+            "systems/zlink/samples/bingo/client/BingoClientScenario.java");
         String roomSource = sampleJavaSource(
             "Bingo",
             "Server/Play/src/main/java",
@@ -1068,8 +1111,11 @@ final class SampleReleaseGateContractTest {
             "Bingo root project must not expose an aggregate in-process runner");
         assertTrue(clientProgramSource.contains("ZLinkStreamConnector client1 = createClient()")
                 && clientProgramSource.contains("ZLinkStreamConnector client2 = createClient()")
-                && clientProgramSource.contains("new BingoClientApp().run(client1, client2)"),
+                && clientProgramSource.contains("new BingoClientScenario().run(client1, client2)"),
             "Bingo client Program must create two configured connectors and pass them into the scenario app");
+        assertTrue(clientAppSource.contains("public final class BingoClientScenario")
+                && !clientAppSource.contains("BingoClientApp"),
+            "Bingo client flow must use ClientScenario naming");
         assertTrue(clientProgramSource.contains("client1.close().await()")
                 && clientProgramSource.contains("client2.close().await()"),
             "Bingo client Program must close connectors through lifecycle call builders");
@@ -1154,7 +1200,7 @@ final class SampleReleaseGateContractTest {
         assertNoSampleSourcesUnder("kotlin", "Bingo", "src/main/kotlin");
         assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/client/Program.kt",
-            "systems/zlink/samples/kotlin/bingo/client/BingoClientApp.kt"));
+            "systems/zlink/samples/kotlin/bingo/client/BingoClientScenario.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Probe/src/main/kotlin", List.of(
             "systems/zlink/samples/kotlin/bingo/probe/Program.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Server/Api/src/main/kotlin", List.of(
@@ -1187,9 +1233,15 @@ final class SampleReleaseGateContractTest {
             "systems/zlink/samples/kotlin/bingo/server/session/SessionServerApplication.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt",
             "systems/zlink/samples/kotlin/bingo/server/session/sessions/handlers/AuthenticateSessionHandler.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Server/Configuration/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/server/configuration/SampleNames.kt",
+            "systems/zlink/samples/kotlin/bingo/server/configuration/SampleTopology.kt",
+            "systems/zlink/samples/kotlin/bingo/server/configuration/SampleTimings.kt"));
+        assertSampleFilesExist("kotlin", "Bingo", "Client/src/main/kotlin", List.of(
+            "systems/zlink/samples/kotlin/bingo/client/configuration/SampleNames.kt",
+            "systems/zlink/samples/kotlin/bingo/client/configuration/SampleTopology.kt",
+            "systems/zlink/samples/kotlin/bingo/client/configuration/SampleTimings.kt"));
         assertSampleFilesExist("kotlin", "Bingo", "Shared/src/main/kotlin", List.of(
-            "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleNames.kt",
-            "systems/zlink/samples/kotlin/bingo/shared/configuration/SampleTopology.kt",
             "systems/zlink/samples/kotlin/bingo/shared/contracts/Messages.kt"));
 
         String rootBuildSource = sampleFile(
@@ -1204,7 +1256,7 @@ final class SampleReleaseGateContractTest {
         String clientAppSource = sampleKotlinSource(
             "Bingo",
             "Client/src/main/kotlin",
-            "systems/zlink/samples/kotlin/bingo/client/BingoClientApp.kt");
+            "systems/zlink/samples/kotlin/bingo/client/BingoClientScenario.kt");
         String roomSource = sampleKotlinSource(
             "Bingo",
             "Server/Play/src/main/kotlin",
@@ -1259,8 +1311,11 @@ final class SampleReleaseGateContractTest {
             "Kotlin Bingo root project must not expose an aggregate in-process runner");
         assertTrue(clientProgramSource.contains("val client1 = createClient()")
                 && clientProgramSource.contains("val client2 = createClient()")
-                && clientProgramSource.contains("BingoClientApp().run(client1, client2)"),
+                && clientProgramSource.contains("BingoClientScenario().run(client1, client2)"),
             "Kotlin Bingo client Program must create two configured connectors and pass them into the scenario app");
+        assertTrue(clientAppSource.contains("class BingoClientScenario")
+                && !clientAppSource.contains("BingoClientApp"),
+            "Kotlin Bingo client flow must use ClientScenario naming");
         assertTrue(clientProgramSource.contains(".kotlin()")
                 && clientProgramSource.contains("client1.close().await()")
                 && clientProgramSource.contains("client2.close().await()"),
@@ -1410,6 +1465,21 @@ final class SampleReleaseGateContractTest {
                 "missing .NET-parity project folder " + projectRoot);
             assertTrue(Files.isRegularFile(projectRoot.resolve("build.gradle.kts")),
                 "missing Gradle project for .NET-parity folder " + projectRoot);
+        }
+    }
+
+    private static void assertSharedProjectContainsOnlyContracts(Path sampleRoot) throws IOException {
+        Path sharedSourceRoot = sampleRoot.resolve("Shared/src/main");
+        try (Stream<Path> files = Files.walk(sharedSourceRoot)) {
+            List<Path> nonContractSources = files
+                .filter(Files::isRegularFile)
+                .filter(SampleReleaseGateContractTest::isSampleSource)
+                .filter(path -> !path.toString().replace('\\', '/').contains("/contracts/"))
+                .toList();
+
+            assertTrue(nonContractSources.isEmpty(),
+                sampleRoot.getFileName() + " Shared project must contain only message contracts: "
+                    + nonContractSources);
         }
     }
 

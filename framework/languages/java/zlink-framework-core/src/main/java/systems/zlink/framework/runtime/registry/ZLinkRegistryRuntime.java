@@ -26,7 +26,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
     private final ZLinkBackendContext context;
     private final ZLinkBackendRegistry registry;
 
-    public ZLinkRegistryRuntime(
+    ZLinkRegistryRuntime(
         ZLinkEmbeddedRegistryOptions options,
         ZLinkBackendAdapterFactory backendFactory,
         ZLinkBackendAdapterOptions adapterOptions) {
@@ -46,7 +46,7 @@ public final class ZLinkRegistryRuntime implements ZLinkRegistryQuery, AutoClose
         }
     }
 
-    public static ZLinkRegistryRuntime start(
+    static ZLinkRegistryRuntime start(
         ZLinkEmbeddedRegistryOptions options,
         ZLinkBackendAdapterFactory backendFactory) {
         return new ZLinkRegistryRuntime(

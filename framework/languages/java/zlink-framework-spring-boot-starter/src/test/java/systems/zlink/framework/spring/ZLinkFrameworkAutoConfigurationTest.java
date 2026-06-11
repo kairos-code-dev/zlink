@@ -1,5 +1,9 @@
 package systems.zlink.framework.spring;
 
+import systems.zlink.framework.runtime.registry.ZLinkRegistryLifecycle;
+
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -56,7 +60,6 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -232,18 +235,19 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
-    void directRuntimeFailsWhenSpotCannotBeConstructed() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addSpotMesh("game", mesh ->
-            mesh.addNode("play", node -> {
-                node.enableRouter();
-                node.addSpotFactory(PrivateConstructorSpot.class);
-            }));
+    void springLifecycleFailsWhenSpotCannotBeConstructed() {
+        try (AnnotationConfigApplicationContext context =
+                 new AnnotationConfigApplicationContext()) {
+            context.registerBean(
+                ZLinkBackendAdapterFactory.class,
+                FakeZLinkBackendAdapterFactory::new);
+            context.register(
+                PrivateConstructorSpotConfig.class,
+                ZLinkFrameworkAutoConfiguration.class);
+            context.refresh();
 
-        try (ZLinkFrameworkRuntime runtime =
-                 ZLinkFrameworkRuntime.start(options, new FakeZLinkBackendAdapterFactory())) {
             ZLinkConfigurationException error = assertThrows(ZLinkConfigurationException.class, () ->
-                runtime.spotManager()
+                context.getBean(ZLinkSpotManager.class)
                     .create(PrivateConstructorSpot.class)
                     .toCompletableFuture());
 
@@ -420,13 +424,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         RoutingId sourceRid = RoutingId.from("spring-route-source");
         RoutingId targetRid = RoutingId.from("spring-route-target");
 
-        DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        sourceOptions.addRouteMeshChannel("route", channel -> {
-            channel.bind(sourceEndpoint);
-            channel.configureRouting(route -> route.setRoutingId(sourceRid));
-            channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
-        });
-
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
             context.registerBean(RouteMeshEndpoints.class, () ->
@@ -436,11 +433,24 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            try (ZLinkFrameworkRuntime source =
-                     ZLinkFrameworkRuntime.start(
-                         sourceOptions,
-                         new ZLinkJavaBackendAdapterFactory())) {
-                String reply = source.route()
+            try (AnnotationConfigApplicationContext sourceContext =
+                     new AnnotationConfigApplicationContext()) {
+                sourceContext.registerBean(
+                    ZLinkBackendAdapterFactory.class,
+                    ZLinkJavaBackendAdapterFactory::new);
+                sourceContext.registerBean(
+                    ZLinkFrameworkConfigurer.class,
+                    () -> options -> options.addRouteMeshChannel("route", channel -> {
+                        channel.bind(sourceEndpoint);
+                        channel.configureRouting(route -> route.setRoutingId(sourceRid));
+                        channel.useManualConnections(endpoints -> endpoints.connect(targetEndpoint));
+                    }));
+                sourceContext.register(
+                    SourceRouteMeshConfig.class,
+                    ZLinkFrameworkAutoConfiguration.class);
+                sourceContext.refresh();
+
+                String reply = sourceContext.getBean(ZLinkRouteClient.class)
                     .requestTo("route", targetRid, "hello")
                     .packetName("SpringRoute")
                     .timeout(Duration.ofSeconds(3))
@@ -748,6 +758,19 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Configuration
     @EnableZLinkFramework
+    static class PrivateConstructorSpotConfig {
+        @Bean
+        ZLinkFrameworkConfigurer privateConstructorSpotConfigurer() {
+            return options -> options.addSpotMesh("game", mesh ->
+                mesh.addNode("play", node -> {
+                    node.enableRouter();
+                    node.addSpotFactory(PrivateConstructorSpot.class);
+                }));
+        }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
     static class InjectedSpotAndActorConfig {
         @Bean
         HandlerDependency handlerDependency() {
@@ -926,6 +949,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     "SpringRoute");
             });
         }
+    }
+
+    @Configuration
+    @EnableZLinkFramework
+    static class SourceRouteMeshConfig {
     }
 
     public static final class GameSpot implements ZLinkSpot {

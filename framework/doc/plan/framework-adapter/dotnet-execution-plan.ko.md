@@ -435,7 +435,7 @@ SPOT은 channel 위에 덧붙는 기능이 아니라 별도 lifecycle과 실행 
 
 - monitoring event kind, optional diagnostic, polling diff semantics를 리뷰한다.
 - source naming이나 runtime event ownership이 섞이면 POSD 기반 리팩토링으로
-  framework-owned event 모델을 다시 닫는다.
+  framework가 소유하는 event 모델을 다시 닫는다.
 - registry/query/monitoring 테스트를 통과시킨다.
 - 운영 문서와 테스트를 함께 정리한 상태로 커밋/푸시한다.
 
@@ -595,7 +595,7 @@ framework 설계 blocker로 보지 않는다. 완료 판정의 직접 gate는
 2. 샘플 문서가 실제 API와 어긋나면
    - 샘플을 즉시 같이 고친다.
 3. backend leakage가 보이면
-   - public API를 늘리기 전에 adapter layer나 framework-owned type으로 흡수한다.
+   - public API를 늘리기 전에 adapter layer나 framework가 소유하는 type으로 흡수한다.
 
 즉 "코드는 먼저 두고 문서는 나중에" 방식으로 진행하지 않는다.
 

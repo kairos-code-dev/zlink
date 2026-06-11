@@ -727,7 +727,7 @@ bindings jar를 만드는 단계와 sample compile/smoke 단계는 필요하면 
 
 - suspend handler가 configured dispatcher에서 실행된다.
 - handler coroutine cancellation이 response timeout 또는 disconnect와 충돌하지 않는다.
-- framework-owned scope shutdown이 모든 child job을 정리한다.
+- framework가 소유하는 scope shutdown이 모든 child job을 정리한다.
 - user-owned scope를 넘긴 경우 framework가 외부 scope 자체를 cancel하지 않는다.
 
 ### Sample release tests

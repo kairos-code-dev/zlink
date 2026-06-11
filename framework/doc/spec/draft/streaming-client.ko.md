@@ -180,13 +180,13 @@ connector core는 사용자 callback을 network receive loop에서 직접 호출
 callback을 실행하고 싶은 서버형 프로그램이나 테스트는 `DispatchMode = Immediate`를
 선택할 수 있다.
 
-Unity 같은 runtime은 별도 connector를 만들지 않고 같은 core connector를 사용한다. Unity
+Unity 같은 runtime은 별도 connector를 만들지 않고 같은 기본 connector를 사용한다. Unity
 사용자는 `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출하면 사용자 callback이 Unity
 main thread에서 실행된다.
 
 ### 5.7 Codec extension
 
-core connector는 byte packet을 최저 레벨 API로 제공한다. 아래 codec helper는 선택
+기본 connector는 byte packet을 최저 레벨 API로 제공한다. 아래 codec helper는 선택
 extension 또는 별도 package로 둔다.
 
 - JSON

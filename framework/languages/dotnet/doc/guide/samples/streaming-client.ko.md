@@ -924,7 +924,7 @@ client → server 방향은 명시적으로 호출했을 때만 압축한다.
 
 ## 17. Unity 사용
 
-이 절에서는 Unity에서 별도 connector package 없이 core connector를 사용하는 기준만 정리한다.
+이 절에서는 Unity에서 별도 connector package 없이 기본 connector를 사용하는 기준만 정리한다.
 
 Unity용 별도 connector package는 두지 않는다. Unity도 `Systems.Zlink.Stream.Connector`
 core를 그대로 사용하고, `MonoBehaviour.Update()`에서 `Dispatch.Async()`를 호출한다. 그러면

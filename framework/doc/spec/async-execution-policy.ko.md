@@ -9,6 +9,10 @@
 이 문서는 언어별 framework 문서가 따르는 공통 비동기 실행 정책과 언어별 표면
 투영 규칙을 정리한다. 공통 의미는 이 문서가 소유한다. 언어별 문서는 여기서 정한
 의미를 자기 언어의 관용구, 대표 framework, client connector 표면으로 구체화한다.
+bindings 라이브러리의 비동기 완료 표면은
+[`doc/spec/bindings/async-coroutine-policy.ko.md`](../../../doc/spec/bindings/async-coroutine-policy.ko.md)
+를 따른다. framework는 bindings가 제공하는 완료 경계를 감싸서 coroutine, virtual
+thread, event loop, handler dispatcher에 연결한다.
 
 ## 1. 공통 의미
 
@@ -46,8 +50,8 @@ framework public API는 각 언어의 표준 비동기 표현을 사용하되, f
   드러낸다. `Async` suffix를 C#에서 그대로 옮기지 않는다.
 - C++ framework는 C++20 coroutine과 `task_t<T>` 같은 awaitable 표면을 사용할 수 있다.
   Coroutine 표면의 terminator는 `async()`로 둔다. `submit(...)`은 coroutine을 쓰지
-  않는 callback/result 기반 시작 표면이다. engine adapter나 no-coroutine core connector처럼
-  대상 runtime이 다르면 coroutine 표면은 선택 adapter로 분리한다.
+  않는 callback/result 기반 시작 표면이다. engine adapter나 no-coroutine connector처럼
+  대상 runtime이 다르면 coroutine 표면은 framework가 소유하는 adapter로 분리한다.
 - Python, Go, Rust 같은 다른 언어도 같은 의미를 각 언어의 async 표면으로 투영한다.
 
 callback 기반 completion API는 awaitable 값을 반환하지 않으므로, 언어별 관례에 따라
@@ -135,7 +139,7 @@ client connector 표면:
 Kotlin은 Java 계약 위에 `suspend` / `Flow` wrapper를 얹는다. Kotlin wrapper는
 새 runtime 의미를 만들지 않고, Java `CompletionStage`를 coroutine suspension으로
 기다린다. Kotlin `suspend fun` handler도 Java annotation handler와 같은 registry
-공간에 등록되어야 하며, framework-owned coroutine adapter가 suspend function을 실행하고
+공간에 등록되어야 하며, framework가 소유하는 coroutine adapter가 suspend function을 실행하고
 결과를 `CompletionStage`로 Java core에 돌려준다.
 
 ### 4.3 Node.js / TypeScript
@@ -180,13 +184,13 @@ coroutine handler를 사용할 수 있다. 메서드는 `snake_case`, 타입은 
 
 client connector 표면:
 
-| 영역 | core connector | coroutine adapter |
-|------|----------------|-------------------|
-| core lifecycle / send / request | callback 또는 result 기반 core 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `dispatch().async()`, `request(...).async()`, `wait_for(...).async()` |
+| 영역 | callback/result connector 표면 | coroutine adapter |
+|------|------------------------------|-------------------|
+| lifecycle / send / request | framework connector가 소유하는 callback 또는 result 기반 표면. 예외와 coroutine에 의존하지 않음 | `connect().async()`, `close().async()`, `dispatch().async()`, `request(...).async()`, `wait_for(...).async()` |
 | callback completion | `on_completed(...).start()` | callback 기반 completion이 필요할 때 사용 |
-| coroutine completion | core에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
+| coroutine completion | bindings나 낮은 수준 connector 표면에는 직접 섞지 않음 | `co_await` 가능한 `task_t<T>` 반환 |
 
-Unreal, Godot, Axmol 같은 engine adapter는 core connector를 복제하지 않고, engine main
+Unreal, Godot, Axmol 같은 engine adapter는 기본 connector를 복제하지 않고, engine main
 thread와 delegate 모델에 맞는 adapter/plugin으로 둔다. Unreal public 표면에는 일반 C++
 coroutine API를 강제하지 않는다.
 
@@ -196,17 +200,17 @@ coroutine API를 강제하지 않는다.
 
 | 언어 | 네이밍 | async 표면 기준 |
 |------|--------|----------------|
-| Python | public API는 `snake_case` | `asyncio`와 `await` 중심 표면으로 투영한다. send/publish는 async submit 의미를 유지한다. |
+| Python | public API는 `snake_case` | framework가 bindings callback completion을 `asyncio.Future`나 framework task로 변환한다. 사용자 표면은 `asyncio`와 `await` 중심으로 투영한다. send/publish는 async submit 의미를 유지한다. |
 | Go | exported 이름은 `PascalCase` | `context.Context`, goroutine, channel 같은 Go 관용구로 취소와 완료를 표현한다. blocking/nonblocking을 별도 동사로 쪼개지 않는다. |
-| Rust | 메서드는 `snake_case`, 타입은 `PascalCase` | `async fn`, `Future`, `Result<T, E>` 중심으로 투영한다. send/publish backpressure 의미는 public no-wait 옵션이 아니라 framework async submit 의미를 따른다. |
+| Rust | 메서드는 `snake_case`, 타입은 `PascalCase` | framework가 bindings callback completion을 runtime별 `Future`나 channel로 변환한다. 사용자 표면은 `async fn`, `Future`, `Result<T, E>` 중심으로 투영한다. send/publish backpressure 의미는 public no-wait 옵션이 아니라 framework async submit 의미를 따른다. |
 
 세 언어 모두 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
 설명하고, 같은 capability 안에서 Discovery와 manual 연결을 섞지 않는다.
 
 ## 5. Coroutine Adapter
 
-Coroutine은 core 의미가 아니라 언어 또는 runtime 표면이다. Coroutine wrapper는 아래
-규칙을 따른다.
+Coroutine은 core 또는 bindings 의미가 아니라 언어 또는 runtime 표면이다. Coroutine
+wrapper는 framework 또는 runtime adapter가 소유하며 아래 규칙을 따른다.
 
 - core async 작업과 같은 cancellation, timeout, error 의미를 유지한다.
 - 별도 queue나 별도 runtime 의미를 만들어 handler 실행 순서를 바꾸지 않는다.

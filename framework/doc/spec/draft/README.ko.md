@@ -9,7 +9,7 @@
 이 디렉토리는 **언어 중립 공통 스펙 중 아직 닫히지 않은 초안**만 모은다.
 
 정식 공통 스펙은 [../README.ko.md](../README.ko.md)에 있다. 여기 문서는 공개
-계약이 아니며, surface가 고정되면 상위 `spec/`으로 옮긴다. 언어별 초안은 이
+계약이 아니며, 공개 계약이 고정되면 상위 `spec/`으로 옮긴다. 언어별 초안은 이
 디렉토리가 아니라 각 `languages/<lang>/doc/draft/`에 둔다.
 
 ## 문서 목록
@@ -18,9 +18,10 @@
 |------|------|
 | [streaming-client.ko.md](./streaming-client.ko.md) | STREAM 서버에 접속하는 범용 client connector 초안 |
 | [spot-actor-disconnected-callback-rollout.ko.md](./spot-actor-disconnected-callback-rollout.ko.md) | Spot actor disconnected를 handler 등록에서 lifecycle callback으로 옮기는 공통 전환 계획 |
+| [entry-spot-actor-destroy-plan.ko.md](./entry-spot-actor-destroy-plan.ko.md) | actor destroy API를 Entry Spot context에 추가하고 모든 framework 언어와 문서, 회귀 테스트에 반영하는 계획 |
 
 ## 관리 원칙
 
 - 요구가 생기면 먼저 use case 또는 draft 문서에 기록한다.
-- 정식 공통 스펙은 구현과 공개 surface가 고정된 뒤 `spec/`으로 승격한다.
+- 정식 공통 스펙은 구현과 공개 계약이 고정된 뒤 `spec/`으로 승격한다.
 - 언어별 상세는 공통 스펙에서 개념을 먼저 닫은 뒤 해당 언어 문서로 내린다.

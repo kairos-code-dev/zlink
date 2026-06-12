@@ -452,7 +452,11 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
                  "zlink::http_client::client_t::create (options.api_http_endpoint)"),
                std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
-    EXPECT_NE (client.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_NE (client.find (".fetch<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_EQ (client.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_EQ (client.find (".json ()"), std::string::npos);
+    EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
+    EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
     EXPECT_NE (client.find ("connector_options.endpoint = room.play_endpoint"), std::string::npos);
     EXPECT_NE (client.find ("client1.request<authenticate_res_t>"), std::string::npos);
     EXPECT_NE (client.find ("client1.wait_for<game_state_notify_t>"), std::string::npos);

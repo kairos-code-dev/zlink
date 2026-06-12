@@ -34,7 +34,10 @@ class tictactoe_client_scenario_t
     bool run (const tictactoe_client_options_t &options)
     {
         try {
-            auto room = create_room (options);
+            auto room = zlink::http_client::client_t::create (options.api_http_endpoint)
+                          .post ("/games")
+                          .body (create_game_http_req_t{options.game_name})
+                          .fetch<create_game_http_res_t> ();
             if (room.play_endpoint.empty ()) {
                 throw std::runtime_error ("API returned an empty play endpoint.");
             }
@@ -159,17 +162,6 @@ class tictactoe_client_scenario_t
         }
     }
 
-    static create_game_http_res_t create_room (const tictactoe_client_options_t &options)
-    {
-        auto created = zlink::http_client::client_t::create (options.api_http_endpoint)
-                         .json ()
-                         .post ("/games")
-                         .body (create_game_http_req_t{options.game_name})
-                         .submit<create_game_http_res_t> ()
-                         .result ();
-        if (!created) { throw std::runtime_error ("HTTP POST /games failed."); }
-        return created.value ().body;
-    }
 
     static void require_condition (bool condition, const char *expression)
     {

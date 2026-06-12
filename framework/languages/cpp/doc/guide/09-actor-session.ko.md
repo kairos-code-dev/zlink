@@ -17,13 +17,13 @@ sequenceDiagram
     participant GW as actor gateway
     participant SP as room spot
 
-    rect rgb(243, 229, 245)
+    rect rgb(219, 234, 254)
     Note over C,AM: 1) 접속과 바인딩
     C->>SS: stream 접속 + authenticate 패킷
     SS->>AM: 인증 성공 → actor 바인딩 (ensure actor)
     end
 
-    rect rgb(255, 248, 225)
+    rect rgb(254, 243, 199)
     Note over C,SP: 2) 플레이 — 패킷 relay
     C->>SS: place_mark 패킷
     SS->>AM: find(actor_id)
@@ -34,7 +34,7 @@ sequenceDiagram
     GW-->>C: reply 패킷
     end
 
-    rect rgb(232, 245, 233)
+    rect rgb(187, 247, 208)
     Note over SP,C: 3) 알림 역류
     SP->>GW: 룸 상태 변경 notify (topic)
     GW->>SS: 구독 중인 actor의 세션으로

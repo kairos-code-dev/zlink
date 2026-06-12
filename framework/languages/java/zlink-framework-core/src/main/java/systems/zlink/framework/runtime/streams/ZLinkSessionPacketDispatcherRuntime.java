@@ -9,6 +9,7 @@ import java.util.concurrent.Executor;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkSessionPacketHandler;
@@ -37,7 +38,8 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
         if (handler == null) {
             return CompletableFuture.completedFuture(false);
         }
-        return executeHandler(() -> handler.handleAsync(context, header, payload))
+        return executeHandler(() ->
+            ZLinkHandlerStages.fromRunnable(() -> handler.handle(context, header, payload)))
             .thenApply(ignored -> true);
     }
 

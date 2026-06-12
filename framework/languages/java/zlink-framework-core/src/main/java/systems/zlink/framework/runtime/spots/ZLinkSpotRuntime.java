@@ -1406,6 +1406,18 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
+        public CompletionStage<Void> destroyActorAsync(ZLinkActor actor) {
+            if (actorRuntime == null) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "Entry Spot actor destroy requires the actor runtime"));
+            }
+            return actorRuntime.destroyFromEntrySpot(
+                nodeRid,
+                actor,
+                () -> notifySpotActorLifecycle(entrySpot, actor, false));
+        }
+
+        @Override
         public ZLinkSpotHandlerRegistry handlers() {
             return new ZLinkSpotHandlerRegistry() {
                 @Override

@@ -28,7 +28,7 @@ public final class RouteSession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(
+    public void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
         return context.client()
@@ -59,7 +59,7 @@ public final class ActorRelaySession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(
+    public void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
         return actorManager.getOrCreate("player-42", "player")

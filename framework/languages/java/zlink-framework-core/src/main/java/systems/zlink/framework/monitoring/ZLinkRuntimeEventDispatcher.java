@@ -41,13 +41,7 @@ public final class ZLinkRuntimeEventDispatcher {
             return;
         }
         try {
-            registration.handler()
-                .handleAsync(registration.eventType().cast(event))
-                .whenComplete((ignored, error) -> {
-                    if (error != null) {
-                        handlerFailureCount.incrementAndGet();
-                    }
-                });
+            registration.handler().handle(registration.eventType().cast(event));
         } catch (RuntimeException ex) {
             handlerFailureCount.incrementAndGet();
         }

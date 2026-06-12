@@ -17,7 +17,7 @@ class SubmitBingoCardHandler(
     SubmitBingoCardReq,
     SubmitBingoCardRes,
     >(coroutines) {
-    override suspend fun handle(
+    override suspend fun handleSuspending(
         spot: BingoRoomSpot,
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,

@@ -26,6 +26,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
@@ -101,8 +102,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
         ZLinkBackendActorRef actorRef = spotNode.createActor(actorId);
         DefaultActorContext context = new DefaultActorContext(actorRef);
-        return createFactory(factoryType)
-            .create(actorId, context)
+        return ZLinkHandlerStages
+            .fromSupplier(() -> createFactory(factoryType).create(actorId, context))
             .thenApply(actor -> {
                 actors.put(actorId, actor);
                 actorTypes.put(actorId, actorType);
@@ -323,6 +324,73 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         context.joined = false;
     }
 
+    public CompletionStage<Void> destroyFromEntrySpot(
+        RoutingId entryNodeRid,
+        ZLinkActor actor,
+        Supplier<CompletionStage<Void>> beforeDestroy) {
+        if (entryNodeRid == null) {
+            throw new ZLinkConfigurationException("entryNodeRid is required");
+        }
+        if (actor == null) {
+            throw new ZLinkConfigurationException("actor is required");
+        }
+        if (beforeDestroy == null) {
+            throw new ZLinkConfigurationException("beforeDestroy is required");
+        }
+
+        DefaultActorContext context;
+        ZLinkBackendActorRef actorRef;
+        synchronized (this) {
+            ZLinkActor current = actors.get(actor.actorId());
+            if (current == null || current != actor) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            context = contextsByActor.get(actor);
+            if (context == null) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "actor does not have a native Actor ref: " + actor.actorId()));
+            }
+            try {
+                actorRef = context.beginDestroy(entryNodeRid, actor.actorId());
+            } catch (ZLinkConfigurationException ex) {
+                return CompletableFuture.failedFuture(ex);
+            }
+            if (actorRef == null) {
+                return CompletableFuture.completedFuture(null);
+            }
+        }
+
+        CompletionStage<Void> beforeDestroyStage;
+        try {
+            beforeDestroyStage = beforeDestroy.get();
+        } catch (RuntimeException ex) {
+            synchronized (this) {
+                context.resetDestroying();
+            }
+            return CompletableFuture.failedFuture(ex);
+        }
+
+        return beforeDestroyStage
+            .thenCompose(ignored -> spotNode.destroyActor(actorRef, defaultTimeout))
+            .thenRun(() -> {
+                synchronized (this) {
+                    context.clearAfterDestroy();
+                    actors.remove(actor.actorId(), actor);
+                    actorTypes.remove(actor.actorId());
+                    contextsByActor.remove(actor);
+                    dispatchQueues.remove(actor.actorId());
+                }
+            })
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    synchronized (this) {
+                        context.resetDestroying();
+                    }
+                }
+            });
+    }
+
     private final class DefaultActorContext implements ZLinkActorContext {
         private ZLinkBackendActorRef actorRef;
         private ZLinkBoundSession boundSession;
@@ -330,6 +398,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         private RoutingId spotRid;
         private ZLinkSpot spot;
         private boolean joined;
+        private boolean destroying;
 
         DefaultActorContext(ZLinkBackendActorRef actorRef) {
             this.actorRef = actorRef;
@@ -408,6 +477,41 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 return true;
             }
             return false;
+        }
+
+        void clearAfterDestroy() {
+            actorRef = null;
+            boundSession = null;
+            sessionBindingToken++;
+            spotRid = null;
+            spot = null;
+            joined = false;
+            destroying = false;
+        }
+
+        ZLinkBackendActorRef beginDestroy(RoutingId entryNodeRid, String actorId) {
+            if (destroying) {
+                return null;
+            }
+            if (actorRef == null) {
+                throw new ZLinkConfigurationException(
+                    "actor does not have a native Actor ref: " + actorId);
+            }
+            if (spot != null) {
+                throw new ZLinkConfigurationException(
+                    "actor must leave its current Spot before destroy: " + actorId);
+            }
+            if (!actorRef.nodeRid().equals(entryNodeRid)) {
+                throw new ZLinkConfigurationException(
+                    "actor is not owned by this Entry Spot: " + actorId);
+            }
+
+            destroying = true;
+            return actorRef;
+        }
+
+        void resetDestroying() {
+            destroying = false;
         }
     }
 

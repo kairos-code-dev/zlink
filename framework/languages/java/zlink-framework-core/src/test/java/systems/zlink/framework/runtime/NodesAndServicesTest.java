@@ -149,10 +149,10 @@ final class NodesAndServicesTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
@@ -163,18 +163,15 @@ final class NodesAndServicesTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onConnected() {
         }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onDisconnected() {
         }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
+        public void onError(ZLinkStreamError error) {
         }
     }
 }

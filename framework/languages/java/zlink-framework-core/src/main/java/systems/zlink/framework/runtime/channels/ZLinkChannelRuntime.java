@@ -53,6 +53,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
@@ -856,7 +857,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             ZLinkSendHandler handler =
                 (ZLinkSendHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(message, context);
+            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -894,7 +895,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             ZLinkRequestHandler handler =
                 (ZLinkRequestHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(request, context);
+            return ZLinkHandlerStages.fromSupplier(() -> handler.handle(request, context));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -932,7 +933,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             ZLinkPublishHandler handler =
                 (ZLinkPublishHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(message, context);
+            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -1012,9 +1013,7 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             ZLinkRouteSendHandler handler =
                 (ZLinkRouteSendHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(
-                message,
-                context);
+            return ZLinkHandlerStages.fromRunnable(() -> handler.handle(message, context));
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -1039,9 +1038,8 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             }
             ZLinkRouteRequestHandler handler =
                 (ZLinkRouteRequestHandler) handlerFactory.create(registration.handlerType());
-            return handler.handleAsync(
-                    request,
-                    context)
+            return ZLinkHandlerStages
+                .fromSupplier(() -> handler.handle(request, context))
                 .thenApply(serializer::serialize);
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);

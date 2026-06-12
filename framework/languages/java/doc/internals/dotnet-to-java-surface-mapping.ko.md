@@ -106,7 +106,7 @@ handler 콜백은 `ZLinkPublishHandler`/`ZLinkPublishContext`/`@ZLinkPublish`
 `.NET` 의 `CancellationToken cancellationToken` 파라미터는 Java handler 시그니처에
 **별도 파라미터로 옮기지 않는다.** cancellation은 handler/`context` 안으로 접는다.
 `ZLinkRequestContext` 등 context가 cancellation 신호(host shutdown, request 취소)를
-노출하고, async 반환은 `CompletionStage<T>` 가 책임진다. 이렇게 하면 handler
+노출한다. handler는 일반 함수처럼 값을 반환하거나 예외를 던진다. 이렇게 하면 handler
 시그니처가 짧게 유지되고, 취소는 context 한곳에서만 본다.
 
 Kotlin은 Java API의 의미를 바꾸지 않고 아래처럼 감싼다.

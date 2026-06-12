@@ -46,7 +46,6 @@ final class MonitoringEventsTest {
         List<ZLinkSocketEvent> events = new ArrayList<>();
         dispatcher.register(ZLinkSocketEvent.class, event -> {
             events.add(event);
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
         });
 
         try (ZLinkMonitoringRuntime ignored = new ZLinkMonitoringRuntime(
@@ -77,7 +76,6 @@ final class MonitoringEventsTest {
         List<ZLinkRegistryEvent> events = new ArrayList<>();
         dispatcher.register(ZLinkRegistryEvent.class, event -> {
             events.add(event);
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
         });
 
         try (ZLinkMonitoringRuntime runtime = new ZLinkMonitoringRuntime(
@@ -112,7 +110,6 @@ final class MonitoringEventsTest {
         List<ZLinkSpotEvent> events = new ArrayList<>();
         dispatcher.register(ZLinkSpotEvent.class, event -> {
             events.add(event);
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
         });
 
         try (ZLinkMonitoringRuntime runtime = new ZLinkMonitoringRuntime(
@@ -368,6 +365,14 @@ final class MonitoringEventsTest {
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new UnsupportedOperationException("join entry spot is not used by this test"));
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void> destroyActor(
+            ZLinkBackendActorRef actor,
+            java.time.Duration timeout) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new UnsupportedOperationException("destroy actor is not used by this test"));
         }
 
         @Override

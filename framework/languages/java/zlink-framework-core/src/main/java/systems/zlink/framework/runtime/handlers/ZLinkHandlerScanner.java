@@ -85,6 +85,7 @@ public final class ZLinkHandlerScanner {
 
             ZLinkSend send = method.getAnnotation(ZLinkSend.class);
             if (send != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
                 Class<?> messageType = requireChannelHandlerShape(
                     candidate,
                     method,
@@ -102,6 +103,7 @@ public final class ZLinkHandlerScanner {
 
             ZLinkRequest request = method.getAnnotation(ZLinkRequest.class);
             if (request != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
                 Class<?> messageType = requireChannelHandlerShape(
                     candidate,
                     method,
@@ -120,6 +122,7 @@ public final class ZLinkHandlerScanner {
 
             ZLinkPublish publish = method.getAnnotation(ZLinkPublish.class);
             if (publish != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
                 Class<?> messageType = requireChannelHandlerShape(
                     candidate,
                     method,
@@ -137,6 +140,7 @@ public final class ZLinkHandlerScanner {
 
             ZLinkSpotActorSend actorSend = method.getAnnotation(ZLinkSpotActorSend.class);
             if (actorSend != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
                 ActorMessageShape shape = requireActorPacketHandlerShape(
                     candidate,
                     method,
@@ -154,6 +158,7 @@ public final class ZLinkHandlerScanner {
 
             ZLinkSpotActorRequest actorRequest = method.getAnnotation(ZLinkSpotActorRequest.class);
             if (actorRequest != null) {
+                rejectJavaCompletionStageReturn(candidate, method);
                 ActorMessageShape shape = requireActorPacketHandlerShape(
                     candidate,
                     method,
@@ -170,6 +175,19 @@ public final class ZLinkHandlerScanner {
                     groups));
             }
 
+        }
+    }
+
+    private static void rejectJavaCompletionStageReturn(Class<?> handlerType, Method method) {
+        if (ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)) {
+            return;
+        }
+        Type returnType = method.getGenericReturnType();
+        if (returnType instanceof ParameterizedType parameterized
+            && parameterized.getRawType() == java.util.concurrent.CompletionStage.class) {
+            throw new ZLinkConfigurationException(
+                "Java handler method must return a plain value or void, not CompletionStage: "
+                    + handlerType.getName() + "." + method.getName());
         }
     }
 
@@ -416,11 +434,6 @@ public final class ZLinkHandlerScanner {
     private static Class<?> resolveReplyType(Class<?> handlerType, Method method) {
         if (ZLinkHandlerMethodInvoker.isKotlinSuspendMethod(method)) {
             return ZLinkHandlerMethodInvoker.kotlinSuspendReplyType(handlerType, method);
-        }
-        Type returnType = method.getGenericReturnType();
-        if (returnType instanceof ParameterizedType parameterized
-            && parameterized.getRawType() == java.util.concurrent.CompletionStage.class) {
-            return requireClassArgument(handlerType, parameterized.getActualTypeArguments()[0]);
         }
         if (method.getReturnType() == Void.TYPE || method.getReturnType() == Void.class) {
             throw new ZLinkConfigurationException(

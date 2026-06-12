@@ -1,8 +1,9 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
 
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.concurrent.CompletionStage;
 import java.util.HashMap;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
@@ -28,14 +29,12 @@ public final class BingoRoomDirectory {
         this.json = json;
     }
 
-    public CompletionStage<String> allocateAsync(String actorId, String mode) {
+    public String allocate(String actorId, String mode) {
         if (actorId == null || actorId.isBlank()) {
-            return java.util.concurrent.CompletableFuture.failedFuture(
-                new IllegalStateException("actorId is required"));
+            throw new IllegalStateException("actorId is required");
         }
         if (!"two-player".equals(mode)) {
-            return java.util.concurrent.CompletableFuture.failedFuture(
-                new IllegalStateException("Unsupported bingo mode. mode=" + mode));
+            throw new IllegalStateException("Unsupported bingo mode. mode=" + mode);
         }
 
         String roomId;
@@ -63,9 +62,12 @@ public final class BingoRoomDirectory {
         }
 
         Message settingsPart = serialize(settings);
-        return spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(roomId), settingsPart)
-            .thenApply(ignored -> roomId)
-            .whenComplete((ignored, error) -> settingsPart.close());
+        try {
+            await(spots.getOrCreate(BingoRoomSpot.class, RoutingId.from(roomId), settingsPart));
+            return roomId;
+        } finally {
+            settingsPart.close();
+        }
     }
 
     private Message serialize(BingoRoomModels.BingoRoomSettings settings) {

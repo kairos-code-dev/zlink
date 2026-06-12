@@ -1,7 +1,12 @@
 package systems.zlink.samples.tictactoe.server.play.adapters.zlink.spots;
 
+import static systems.zlink.framework.ZLinkAwait.await;
+
+import systems.zlink.framework.CancellationToken;
+import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.samples.tictactoe.server.play.adapters.zlink.actors.PlayActor;
 
 public final class PlayEntrySpot implements ZLinkEntrySpot {
     private final ZLinkEntrySpotContext context;
@@ -13,5 +18,14 @@ public final class PlayEntrySpot implements ZLinkEntrySpot {
     @Override
     public ZLinkEntrySpotContext context() {
         return context;
+    }
+
+    @Override
+    public void onPostActorJoined(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        if (actor instanceof PlayActor player && player.destroyAfterEntrySpotJoin()) {
+            await(context.destroyActorAsync(player));
+        }
     }
 }

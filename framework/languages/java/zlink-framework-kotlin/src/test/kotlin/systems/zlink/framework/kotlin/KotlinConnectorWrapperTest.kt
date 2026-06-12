@@ -142,13 +142,13 @@ final class KotlinConnectorWrapperTest {
     }
 
     @Test
-    fun coroutineRuntimeMapsSuspendHandlerToCompletionStage() {
+    fun coroutineRuntimeMapsSuspendHandlerToJavaHandler() {
         ZLinkCoroutineRuntime().use { runtime ->
             val handler = runtime.requestHandler<String, String> { request, _ -> "$request/reply" }
 
             assertEquals(
                 "request/reply",
-                handler.handleAsync("request", requestContext()).toCompletableFuture().get(1, TimeUnit.SECONDS),
+                handler.handle("request", requestContext()),
             )
         }
     }
@@ -172,27 +172,26 @@ final class KotlinConnectorWrapperTest {
     }
 
     @Test
-    fun coroutineRuntimeCompletesStageExceptionallyWhenHandlerThrows() {
+    fun coroutineRuntimePropagatesSuspendHandlerFailure() {
         ZLinkCoroutineRuntime().use { runtime ->
             val handler = runtime.requestHandler<String, String> { _, _ ->
                 throw IllegalStateException("boom")
             }
 
-            val failure = assertThrows<CompletionException> {
-                handler.handleAsync("request", requestContext()).toCompletableFuture().join()
+            val failure = assertThrows<IllegalStateException> {
+                handler.handle("request", requestContext())
             }
 
-            assertTrue(failure.cause is IllegalStateException)
+            assertEquals("boom", failure.message)
         }
     }
 
     @Test
-    fun closingCoroutineRuntimeCancelsInFlightHandler() {
+    fun closingCoroutineRuntimeCancelsInFlightCompletionStage() {
         val runtime = ZLinkCoroutineRuntime()
-        val handler = runtime.requestHandler<String, String> { _, _ ->
+        val future = runtime.completionStage<String> {
             awaitCancellation()
-        }
-        val future = handler.handleAsync("request", requestContext()).toCompletableFuture()
+        }.toCompletableFuture()
 
         runtime.close()
 
@@ -200,6 +199,31 @@ final class KotlinConnectorWrapperTest {
             future.get(1, TimeUnit.SECONDS)
         }
         assertTrue(future.isCancelled || future.isCompletedExceptionally)
+    }
+
+    @Test
+    fun closingCoroutineRuntimeCancelsInFlightBlockingHandler() {
+        val runtime = ZLinkCoroutineRuntime()
+        val started = CompletableDeferred<Unit>()
+        val handler = runtime.requestHandler<String, String> { _, _ ->
+            started.complete(Unit)
+            awaitCancellation()
+        }
+        val future = CompletableFuture.supplyAsync {
+            handler.handle("request", requestContext())
+        }
+
+        runBlocking {
+            withTimeout(1_000) {
+                started.await()
+            }
+        }
+        runtime.close()
+
+        assertThrows<Exception> {
+            future.get(1, TimeUnit.SECONDS)
+        }
+        assertTrue(future.isCompletedExceptionally)
     }
 
     private fun options(endpoint: URI = URI.create("tcp://127.0.0.1:7200")) =

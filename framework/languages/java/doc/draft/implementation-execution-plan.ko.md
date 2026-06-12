@@ -192,7 +192,8 @@ verification은 실패로 처리하고 먼저 제거한다.
   실제 runtime 기능을 생략했음을 숨기는 코드
 - readiness 문제를 가리는 sleep, polling delay, 임시 metadata/route store
 - framework가 Java binding internal/private member를 reflection으로 호출하는 코드
-- Java public API에 blocking helper를 추가해 `CompletionStage` 경로를 우회하는 코드
+- Java public API가 제공하는 `await(...)` helper를 쓰지 않고 sample에서
+  `toCompletableFuture().join()`을 직접 반복하는 코드
 - Kotlin wrapper가 Java runtime과 다른 lifecycle, ordering, error 의미를 만드는 코드
 
 단, `zlink-framework-testkit` 안의 fake backend와 fixture는 허용한다. testkit fixture는
@@ -673,7 +674,7 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 | WebSocket transport | `ZlinkStreamTransportFactory.ConnectWebSocketAsync`, `TransportTests.WebSocketSendUsesBinaryFrames` | `ws://`와 `wss://` endpoint 모두 Java `HttpClient` WebSocket async API로 연결하고 STREAM frame을 binary message로 송수신한다. `wss://`는 `skipServerCertificateValidation`용 SSL context로 self-signed test endpoint를 통과함 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`webSocketRequestUsesBinaryFrameAndCorrelatesResponse`, `wssRequestUsesBinaryFrameAndSkippedCertificateValidation`, `skipServerCertificateValidationDefaultsToFalseAndCanBeEnabled`) | 완료 |
 | heartbeat control packets | `HeartbeatSendsReservedControlPing`, `InboundHeartbeatPingReceivesPongWhenHeartbeatDisabled`, `HeartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | heartbeat option, ping/pong control frame, heartbeat timeout pending failure를 connector lifecycle에 연결함 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`heartbeatSendsReservedControlPing`, `inboundHeartbeatPingReceivesPongWhenHeartbeatDisabled`, `heartbeatTimeoutFailsPendingRequestsWithTimeoutCause`) | 완료 |
 | reconnect backoff/max attempts | `ZlinkStreamConnectorLifecycle`, `ReconnectRestoresConnectionAfterTransportClose`, `ConnectWhileReconnectingFailsWhenClosed` | `reconnect().submit()`이 initial delay, backoff factor, max delay, max attempts를 사용해 재시도하고 실패 시 DISCONNECTED로 전환한다. `.NET`의 `MaxAttempts = null`은 Java에서 `UNLIMITED_RECONNECT_ATTEMPTS`로 표현하고, enabled 상태의 zero attempts는 잘못된 설정으로 거부한다. transport read failure도 reconnect 경로로 진입하고, reconnect 지연 중 close가 들어오면 CLOSED 상태를 유지한다 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks` (`reconnectRestoresConnectionAfterTransportClose`, `reconnectFailsAfterMaxAttemptsWhenEndpointUnavailable`, `reconnectUnlimitedAttemptsRestoresLateServer`, `reconnectEnabledRejectsZeroMaxAttempts`, `closeWhileReconnectingKeepsConnectorClosed`) | 완료 |
-| callback request API | `IZlinkStreamConnectorInternal.RequestEncoded(... callback ...)` | Java public API는 `CompletionStage` 기본 표면만 제공한다. callback request helper는 Java/Kotlin async 정책상 별도 public helper로 추가하지 않고 `CompletionStage.whenComplete(...)`와 Kotlin `await()`를 표준 사용성으로 둔다 | `timeout 300s gradle check`, `timeout 300s ./samples/run_samples.sh` | 완료 |
+| callback request API | `IZlinkStreamConnectorInternal.RequestEncoded(... callback ...)` | Java public API는 `CompletionStage` submit 표면을 기본으로 제공하고, 같은 call builder에 blocking `await(...)` helper도 둔다. callback request helper는 Java/Kotlin async 정책상 별도 public helper로 추가하지 않고 `CompletionStage.whenComplete(...)`와 Kotlin `await()`를 표준 사용성으로 둔다 | `timeout 300s gradle check`, `timeout 300s ./samples/run_samples.sh` | 완료 |
 | codec module separation | `.Codecs`, `.Json`, `.MessagePack`, `.Protobuf` | connector core와 JSON/MessagePack/Protobuf helper 모듈이 분리되어 있고, JSON typed helper는 실제 TCP connector `send/request/on` 표면 위에서 검증됨 | `timeout 120s gradle :zlink-framework-testkit:contractTest --tests systems.zlink.framework.testkit.ConnectorCodecContractTest --rerun-tasks`, `timeout 300s gradle check` | 완료 |
 | POSD connector responsibility split | `Runtime/Transport/*`, pending request, callback dispatch, codec 책임 분리 | TCP/TLS/WebSocket transport는 `ZLinkStreamTransportConnection` 구현으로 분리하고, request timeout/correlation은 `ZLinkStreamPendingRequests`, manual dispatch queue는 `ZLinkStreamDispatchQueue`가 맡는다. connector public API는 transport 종류나 pending map을 노출하지 않음 | `timeout 180s gradle :zlink-stream-connector:test --rerun-tasks`, 완료 금지 패턴 검색 | 완료 |
 
@@ -737,11 +738,11 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 | 항목 | `.NET`/Java 기준 | Kotlin 구현 | 검증 | 판정 |
 |------|------------------|-------------|------|------|
 | `CompletionStage` suspend wrapper | Java framework/connector async public API는 `CompletionStage`를 반환 | `ZLinkConnectorExtensions.kt`, `ZLinkFrameworkExtensions.kt`가 `await()`로 Java stage를 suspend 함수로 감쌈 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`suspendWrapperPreservesConnectorSemantics`, `frameworkSubmitAndRequestWrappersAwaitCompletionStage`) | 완료 |
-| framework가 소유하는 coroutine runtime | suspend handler는 Java handler interface로 돌아가며 `CompletionStage`로 완료 | `ZLinkCoroutineRuntime`이 `SupervisorJob` + dispatcher 소유 scope에서 `scope.future(dispatcher)`로 handler stage를 생성함 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeMapsSuspendHandlerToCompletionStage`, `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage`, `closingCoroutineRuntimeCancelsInFlightHandler`) | 완료 |
+| framework가 소유하는 coroutine runtime | suspend handler는 Java handler interface로 돌아가며 일반 함수처럼 완료 | `ZLinkCoroutineRuntime`이 framework scope의 취소 상태를 포함해 suspend handler를 실행하고, 완료된 뒤 값을 반환하거나 예외를 전달함 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`coroutineRuntimeMapsSuspendHandlerToJavaHandler`, `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage`, `closingCoroutineRuntimeCancelsInFlightBlockingHandler`) | 완료 |
 | Kotlin suspend annotation discovery | Java annotation handler처럼 Spring bean scanner가 annotated method를 찾아 runtime catalog에 등록해야 함 | `ZLinkHandlerScanner`가 Kotlin compiler의 `Continuation` parameter를 handler parameter에서 제외하고, Spring bean scanner가 같은 catalog에 등록함. Kotlin provider가 있으면 method invoker는 framework가 소유하는 coroutine context에서 suspend handler를 실행함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers`, `springLifecycleDiscoversKotlinSuspendAnnotationBeanType`, `kotlinSuspendAnnotationRunsInsideFrameworkCoroutineContext`) | 완료 |
 | Kotlin suspend Spot/actor annotation dispatch | Java Spot actor annotation handler처럼 actor request/send/join/lifecycle이 같은 method handler invoker로 실행되어야 함 | Spot actor suspend method도 logical parameter와 reply type을 Java method handler와 같은 registration에 보존하고 `ZLinkHandlerMethodInvoker`로 실행함. timer는 annotation 표면이 아니라 `ZLinkSpotTimerHandler` interface wrapper 표면으로 유지함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers`, `kotlinSuspendSpotActorMethodRunsThroughMethodInvoker`) | 완료 |
 | duplicate validation parity | Java handler와 Kotlin suspend handler가 같은 mapping을 등록하면 기존 duplicate validation으로 거부해야 함 | Kotlin suspend handler가 Java handler와 같은 channel packet key를 사용하므로 duplicate registration validation에서 startup 실패함 | `./gradlew :zlink-framework-kotlin:test --tests systems.zlink.framework.kotlin.KotlinSuspendAnnotationHandlerTest --stacktrace` (`duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision`) | 완료 |
-| exception/cancellation mapping | Java handler failure policy는 exceptional `CompletionStage`를 받음 | suspend wrapper handler와 suspend annotation handler exception/cancellation이 Java stage exceptional/cancel completion으로 전달됨 | `./gradlew :zlink-framework-kotlin:test --stacktrace` (`coroutineRuntimeCompletesStageExceptionallyWhenHandlerThrows`, `closingCoroutineRuntimeCancelsInFlightHandler`, `kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally`, `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally`) | 완료 |
+| exception/cancellation mapping | Java handler failure policy는 handler 예외를 받음 | suspend wrapper handler와 suspend annotation handler exception/cancellation이 Java runtime의 handler failure 경로로 전달됨 | `./gradlew :zlink-framework-kotlin:test --stacktrace` (`coroutineRuntimePropagatesSuspendHandlerFailure`, `closingCoroutineRuntimeCancelsInFlightBlockingHandler`, `kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally`, `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally`) | 완료 |
 | connector `Flow` wrapper | Java connector `on(...)`, `onErrorReceived(...)`, dispatch mode, handler ordering 의미를 유지 | `messages(packetName)`와 `errors()`가 Java connector handler를 `callbackFlow`로 감싸고 별도 receive loop를 만들지 않음 | `timeout 180s gradle :zlink-framework-kotlin:test --rerun-tasks` (`connectorMessagesFlowUsesJavaManualDispatchSemantics`, `connectorErrorsFlowUsesJavaManualDispatchSemantics`) | 완료 |
 | forbidden coroutine scope | runtime 의미를 `GlobalScope`나 runtime `runBlocking`으로 만들지 않음 | production Kotlin wrapper에 `GlobalScope`/`runBlocking` 없음. `runBlocking`은 sample/test entry point에서만 사용 | 완료 금지 패턴 검색 | 완료 |
 
@@ -882,7 +883,9 @@ sample gate는 아래를 자동 확인해야 한다.
 
 Kotlin/JVM 표면 제약: `CompletionStage`→`suspend`, monitoring stream→`Flow`,
 Java builder를 호출하는 thin DSL만 둔다. Kotlin 전용 runtime 의미를 만들지 않는다.
-Java public API에는 blocking/parking helper를 추가하지 않는다.
+Java public API는 call builder에 `await(...)` helper를 제공한다. 이 helper는
+`submit(...)`과 같은 작업을 현재 thread에서 기다리는 편의 표면이며, Kotlin 전용
+runtime 의미를 만들지 않는다.
 Kotlin handler 실행은 framework가 소유하는 coroutine adapter에서만 이루어지고, Java core의
 serial execution queue와 lifecycle을 우회하지 않는다.
 
@@ -992,7 +995,7 @@ self-review와 self-approval:
 binding과 비동기 API:
 1. Java framework는 bindings/java public API만 사용한다. framework 안에서 binding internal/private member를 reflection으로 호출하지 않는다.
 2. 필요한 binding 기능이 없으면 bindings/java에 public API를 추가하고 테스트한 뒤 framework adapter에서 그 public API를 호출한다.
-3. Java public API는 CompletionStage 기반 비동기 표면을 기본으로 하고, Java public API에 thread blocking helper를 추가하지 않는다.
+3. Java public API는 CompletionStage 기반 비동기 표면을 기본으로 하고, call builder의 `await(...)` helper는 같은 작업을 절차식 코드에서 기다리는 편의 표면으로 제공한다.
 4. Kotlin은 Java runtime 의미를 바꾸지 않는 suspend/Flow wrapper만 제공한다.
 5. bindings/java 수정이 필요한 경우에는 bindings/java public API, 테스트, 문서까지 함께 닫는다. Java framework 안에서 임시 adapter, reflection, blocking wrapper로 binding gap을 숨기지 않는다.
 6. Kotlin coroutine 지원은 Java CompletionStage를 suspend/Flow로 감싸는 thin wrapper로 구현하고, runtime 의미나 callback 실행 순서를 Kotlin wrapper가 새로 정의하지 않게 한다.

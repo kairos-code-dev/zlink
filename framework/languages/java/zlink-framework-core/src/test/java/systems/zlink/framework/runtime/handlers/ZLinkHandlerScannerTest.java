@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.ZLinkHandlerContext;
@@ -30,6 +28,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.testfixtures.handlerasync.CompletionStageAttributedHandler;
 
 final class ZLinkHandlerScannerTest {
     @Test
@@ -180,52 +179,57 @@ final class ZLinkHandlerScannerTest {
             () -> ZLinkHandlerScanner.scan(Set.of(ConflictingSpotActorPacketHandler.class)));
     }
 
+    @Test
+    void rejectsJavaCompletionStageAttributedHandlerReturn() {
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> ZLinkHandlerScanner.scan(Set.of(CompletionStageAttributedHandler.class)));
+    }
+
     public static final class UngroupedInterfaceHandler
         implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             String request,
             ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+            return request;
         }
     }
 
     public static final class UngroupedAttributedHandler {
         @ZLinkRequest(packetName = "Echo")
-        public CompletionStage<String> handle(String request) {
-            return CompletableFuture.completedFuture(request);
+        public String handle(String request) {
+            return request;
         }
     }
 
     public static final class ContextAttributedRequestHandler {
         @ZLinkRequest(packetName = "ContextRequest")
-        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(context.packetName().orElse(request));
+        public String handle(String request, ZLinkRequestContext context) {
+            return context.packetName().orElse(request);
         }
     }
 
     public static final class ContextAttributedSendHandler {
         @ZLinkSend(packetName = "ContextSend")
-        public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String request, ZLinkHandlerContext context) {
         }
     }
 
     public static final class ContextAttributedPublishHandler {
         @ZLinkPublish(packetName = "ContextPublish")
-        public CompletionStage<Void> handle(String request, ZLinkPublishContext context) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String request, ZLinkPublishContext context) {
         }
     }
 
     public static final class DefaultParameterAttributedHandler {
         @ZLinkRequest(packetName = "DefaultParameterRequest")
-        public CompletionStage<String> handle(
+        public String handle(
             String request,
             Object defaultParameter,
             ZLinkRequestContext context,
             CancellationToken cancellationToken) {
-            return CompletableFuture.completedFuture(request);
+            return request;
         }
     }
 
@@ -233,20 +237,19 @@ final class ZLinkHandlerScannerTest {
     @ZLinkHandlerGroup("secondary")
     public static final class RepeatableGroupHandler {
         @ZLinkSend(packetName = "RepeatableGroupSend")
-        public CompletionStage<Void> handle(String request) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String request) {
         }
     }
 
     public static final class DotnetShapeSpotActorHandler {
         @ZLinkSpotActorRequest(packetName = "SpotActorRequest")
-        public CompletionStage<SpotActorReply> handle(
+        public SpotActorReply handle(
             TestSpot spot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
             SpotActorRequest request,
             CancellationToken cancellationToken) {
-            return CompletableFuture.completedFuture(new SpotActorReply());
+            return new SpotActorReply();
         }
     }
 
@@ -271,13 +274,13 @@ final class ZLinkHandlerScannerTest {
             SpotActorRequest,
             SpotActorReply> {
         @Override
-        public CompletionStage<SpotActorReply> handleAsync(
+        public SpotActorReply handle(
             TestEntrySpot entrySpot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
             SpotActorRequest request,
             CancellationToken cancellationToken) {
-            return CompletableFuture.completedFuture(new SpotActorReply());
+            return new SpotActorReply();
         }
     }
 

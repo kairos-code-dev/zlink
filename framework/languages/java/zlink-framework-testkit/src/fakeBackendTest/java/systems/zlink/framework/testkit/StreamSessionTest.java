@@ -384,32 +384,28 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
+        public void onConnected() {
             connectedCount += 1;
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
+        public void onDisconnected() {
             disconnectedCount += 1;
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
+        public void onError(ZLinkStreamError error) {
             errors.add(error.error()
                 + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::nativeCode).orElse(0)
                 + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::message).orElse(""));
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
             dispatches.add(header.packetName() + ":" + payload.toUtf8String());
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class ContextSession implements ZLinkSession {
@@ -434,26 +430,23 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
+        public void onConnected() {
             sessionId = context.sessionId();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
-            return context.actors()
+            context.actors()
                 .bind(new ZLinkActorRef(
                     actorNodeRid,
                     "player-1",
@@ -467,7 +460,9 @@ final class StreamSessionTest {
                 })
                 .thenCompose(ignored -> context.client()
                     .reply("reply")
-                    .submit());
+                    .submit())
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -495,33 +490,28 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
-            return handlers.tryHandleAsync(context, header, payload)
-                .thenCompose(handled -> {
-                    if (handled) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    relays.add("relay:" + header.packetName()
-                        + ":" + payload.toUtf8String());
-                    return CompletableFuture.completedFuture(null);
-                });
+            boolean handled = handlers.tryHandleAsync(context, header, payload)
+                .toCompletableFuture()
+                .join();
+            if (!handled) {
+                relays.add("relay:" + header.packetName()
+                    + ":" + payload.toUtf8String());
+            }
         }
     }
 
@@ -533,14 +523,16 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> handleAsync(
+        public void handle(
             ZLinkSessionContext context,
             ZLinkStreamHeader header,
             Message payload) {
             DispatcherSession.handled.add("handler:" + payload.toUtf8String());
-            return context.client()
+            context.client()
                 .reply("authenticated")
-                .submit();
+                .submit()
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -562,32 +554,31 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
-            return context.client()
+            context.client()
                 .reply("reply")
                 .submit()
                 .whenComplete((ignored, error) -> {
                     if (error != null) {
                         errorMessage = error.getMessage();
                     }
-                });
+                })
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -601,19 +592,16 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
     }
 
     public static final class CompressedSession implements ZLinkSession {
@@ -629,25 +617,22 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
-            return context.client()
+            context.client()
                 .send("notify")
                 .packetName("Notify")
                 .metadata("trace", "send-trace")
@@ -657,7 +642,9 @@ final class StreamSessionTest {
                     .reply("reply")
                     .metadata("trace", "reply-trace")
                     .compress()
-                    .submit());
+                    .submit())
+                .toCompletableFuture()
+                .join();
         }
     }
 }

@@ -27,7 +27,8 @@ framework는 새로운 wire 의미를 만들지 않는다. `.NET`과 같은 chan
 > 고정한다.
 > Reactor `Mono`/`Flux`(또는 RxJava) 표면을 자동으로 노출하는 것은 비목표다.
 > 필요하면 Kotlin coroutine wrapper처럼 별도 thin wrapper에서 다룬다.
-> Java public API에는 `submitAwait` 같은 blocking/parking helper를 두지 않는다.
+> Java public API에는 `submitAwait` 같은 별도 이름을 두지 않는다. call builder는
+> `submit(...)`과 같은 작업을 기다리는 `await(...)` 또는 `await()`를 함께 제공한다.
 > Kotlin wrapper는 Java runtime을 다시 구현하지 않는다. `suspend` handler는
 > framework가 소유하는 coroutine에서 실행하고 결과를 `CompletionStage<T>`로 돌려주며,
 > ordering, timeout, cancellation, exception mapping은 Java core 정책을 따른다.
@@ -110,7 +111,7 @@ handler 콜백은 `ZLinkPublishHandler`/`ZLinkPublishContext`/`@ZLinkPublish`
 `.NET` 의 `CancellationToken cancellationToken` 파라미터는 Java handler 시그니처에
 **별도 파라미터로 옮기지 않는다.** cancellation은 handler/`context` 안으로 접는다.
 `ZLinkRequestContext` 등 context가 cancellation 신호(host shutdown, request 취소)를
-노출하고, async 반환은 `CompletionStage<T>` 가 책임진다. 이렇게 하면 handler
+노출한다. handler는 일반 함수처럼 값을 반환하거나 예외를 던진다. 이렇게 하면 handler
 시그니처가 짧게 유지되고, 취소는 context 한곳에서만 본다.
 
 Kotlin은 Java API의 의미를 바꾸지 않고 아래처럼 감싼다.

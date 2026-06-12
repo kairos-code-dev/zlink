@@ -41,10 +41,10 @@ public void configure(ZLinkFrameworkOptions framework) {
 @Component
 public final class PlayerActorFactory implements ZLinkActorFactory {
     @Override
-    public CompletionStage<ZLinkActor> create(
+    public ZLinkActor create(
         String actorId,
         ZLinkActorContext context) {
-        return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        return new PlayerActor(actorId, context);
     }
 }
 ```
@@ -157,18 +157,23 @@ public final class TicTacToeSession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(
+    public void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
         if ("auth".equals(header.name())) {
             AuthReq req = payload.decode(AuthReq.class);
-            return actors.getOrCreate(req.actorId(), "player")
+            actors.getOrCreate(req.actorId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))
-                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit());
+                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit())
+                .toCompletableFuture()
+                .join();
+            return;
         }
-        return context.actors().bound().stream().findFirst()
+        context.actors().bound().stream().findFirst()
             .map(actor -> actor.relay(header, payload))
-            .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"));
+            .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"))
+            .toCompletableFuture()
+            .join();
     }
 }
 ```

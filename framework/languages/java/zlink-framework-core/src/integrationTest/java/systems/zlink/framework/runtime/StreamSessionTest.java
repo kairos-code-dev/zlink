@@ -166,17 +166,17 @@ final class StreamSessionTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
     public static final class ActorEchoHandler {
         @ZLinkSpotActorRequest(packetName = "StreamActorEcho")
-        public CompletionStage<String> handleAsync(PlayerActor actor, String request) {
-            return CompletableFuture.completedFuture(actor.actorId() + ":" + request);
+        public String handle(PlayerActor actor, String request) {
+            return actor.actorId() + ":" + request;
         }
     }
 
@@ -187,19 +187,16 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
     }
 
     public static final class EchoSession implements ZLinkSession {
@@ -220,30 +217,26 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
             dispatchedOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (!"Ping".equals(header.packetName())) {
-                return CompletableFuture.failedFuture(
-                    new IllegalArgumentException("unexpected packet: " + header.packetName()));
+                throw new IllegalArgumentException("unexpected packet: " + header.packetName());
             }
-            return context.client().reply("pong").submit();
+            context.client().reply("pong").submit().toCompletableFuture().join();
         }
     }
 
@@ -264,34 +257,34 @@ final class StreamSessionTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
             if ("Bind".equals(header.packetName())) {
                 String actorId = new String(payload.toByteArray(), StandardCharsets.UTF_8);
-                return actors.getOrCreate(actorId, "player")
+                actors.getOrCreate(actorId, "player")
                     .thenCompose(actor -> actor.context()
                         .joinEntrySpot(RoutingId.from("play-node"))
                         .submit()
                         .thenCompose(ignored -> context.actors().bind(actor)))
-                    .thenCompose(ignored -> context.client().reply("bound").submit());
+                    .thenCompose(ignored -> context.client().reply("bound").submit())
+                    .toCompletableFuture()
+                    .join();
+                return;
             }
-            return context.actors().bound().get(0).relay(header, payload);
+            context.actors().bound().get(0).relay(header, payload).toCompletableFuture().join();
         }
     }
 

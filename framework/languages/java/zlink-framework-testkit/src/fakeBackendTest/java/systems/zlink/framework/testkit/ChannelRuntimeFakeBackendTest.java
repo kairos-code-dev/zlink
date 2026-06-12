@@ -152,10 +152,10 @@ final class ChannelRuntimeFakeBackendTest {
     public static final class ChannelMessagingFakeHandler
         implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             String request,
             ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+            return request;
         }
     }
 

@@ -3,6 +3,7 @@ package systems.zlink.framework.spots;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActor;
 
 public interface ZLinkEntrySpotContext {
     RoutingId spotRid();
@@ -15,6 +16,8 @@ public interface ZLinkEntrySpotContext {
     }
 
     ZLinkSpotOutbound outbound();
+
+    CompletionStage<Void> destroyActorAsync(ZLinkActor actor);
 
     CompletionStage<ZLinkTimer> addTimer(
         String name,

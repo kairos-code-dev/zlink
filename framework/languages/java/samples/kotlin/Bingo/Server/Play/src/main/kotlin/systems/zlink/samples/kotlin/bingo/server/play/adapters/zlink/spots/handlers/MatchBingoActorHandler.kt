@@ -25,7 +25,7 @@ class MatchBingoActorHandler(
     MatchBingoReq,
     MatchBingoRes,
     >(coroutines) {
-    override suspend fun handle(
+    override suspend fun handleSuspending(
         entrySpot: BingoEntrySpot,
         actor: PlayerActor,
         context: ZLinkSpotActorRequestContext,

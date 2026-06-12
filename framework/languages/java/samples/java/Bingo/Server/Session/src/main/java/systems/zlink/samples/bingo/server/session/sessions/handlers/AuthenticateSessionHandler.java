@@ -1,7 +1,7 @@
 package systems.zlink.samples.bingo.server.session.sessions.handlers;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorRef;
@@ -30,7 +30,7 @@ public final class AuthenticateSessionHandler
     }
 
     @Override
-    public CompletionStage<Void> handleAsync(
+    public void handle(
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
         Message payload) {
@@ -42,43 +42,40 @@ public final class AuthenticateSessionHandler
                 connectorCodec(header)),
             Messages.AuthenticateReq.class);
         if (request.accessToken() == null || request.accessToken().isBlank()) {
-            return CompletableFuture.failedFuture(
-                new IllegalArgumentException("access token is required"));
+            throw new IllegalArgumentException("access token is required");
         }
-        return channels
+        var authenticated = channels
             .requestToChannel(SampleNames.ApiChannel, new Messages.AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(Messages.AuthenticatePlayerRes.class)
-            .thenCompose(authenticated -> {
-                if (!authenticated.accepted()
-                    || authenticated.actorId() == null
-                    || authenticated.actorId().isBlank()
-                    || authenticated.displayName() == null
-                    || authenticated.displayName().isBlank()) {
-                    return CompletableFuture.failedFuture(new IllegalStateException(
-                        authenticated.reason() == null
-                            ? "Player authentication failed."
-                            : authenticated.reason()));
-                }
-                return channels
-                    .requestToChannel(
-                        SampleNames.PlayChannel,
-                        new Messages.EnsurePlayerActorReq(
-                            authenticated.actorId(),
-                            authenticated.displayName()))
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submit(Messages.EnsurePlayerActorRes.class)
-                    .thenCompose(ensured -> context.actors()
-                        .bind(new ZLinkActorRef(
-                            RoutingId.from(ensured.actor().nodeRid()),
-                            ensured.actor().actorId(),
-                            ensured.actor().generation()))
-                        .thenCompose(ignored -> context.client()
-                            .reply(new Messages.AuthenticateRes(
-                                ensured.actorId(),
-                                authenticated.displayName()))
-                            .submit()));
-            });
+            .await(Messages.AuthenticatePlayerRes.class);
+        if (!authenticated.accepted()
+            || authenticated.actorId() == null
+            || authenticated.actorId().isBlank()
+            || authenticated.displayName() == null
+            || authenticated.displayName().isBlank()) {
+            throw new IllegalStateException(
+                authenticated.reason() == null
+                    ? "Player authentication failed."
+                    : authenticated.reason());
+        }
+        var ensured = channels
+            .requestToChannel(
+                SampleNames.PlayChannel,
+                new Messages.EnsurePlayerActorReq(
+                    authenticated.actorId(),
+                    authenticated.displayName()))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.EnsurePlayerActorRes.class);
+        await(context.actors()
+            .bind(new ZLinkActorRef(
+                RoutingId.from(ensured.actor().nodeRid()),
+                ensured.actor().actorId(),
+                ensured.actor().generation())));
+        context.client()
+            .reply(new Messages.AuthenticateRes(
+                ensured.actorId(),
+                authenticated.displayName()))
+            .await();
     }
 
     private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {

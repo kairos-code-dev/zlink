@@ -21,7 +21,6 @@ final class MonitoringRunnerTest {
         });
         dispatcher.register(ZLinkSocketEvent.class, event -> {
             successfulCalls.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
         });
 
         dispatcher.publish(event());

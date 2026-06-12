@@ -1,6 +1,5 @@
 package systems.zlink.samples.tictactoe.server.api.handlers;
 
-import java.util.concurrent.CompletionStage;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,16 +19,16 @@ public final class CreateGameHttpHandler {
     }
 
     @PostMapping("/games")
-    public CompletionStage<CreateGameHttpRes> handleAsync(@RequestBody CreateGameHttpReq request) {
-        return client.requestToChannel(
+    public CreateGameHttpRes handle(@RequestBody CreateGameHttpReq request) {
+        CreateGameRes game = client.requestToChannel(
                     SampleNames.PlayChannel,
                     new CreateGameReq(gameName(request)))
                 .timeout(SampleNames.RequestTimeout)
-            .submit(CreateGameRes.class)
-            .thenApply(game -> new CreateGameHttpRes(
-                game.roomId(),
-                game.playEndpoint(),
-                game.gameName()));
+            .await(CreateGameRes.class);
+        return new CreateGameHttpRes(
+            game.roomId(),
+            game.playEndpoint(),
+            game.gameName());
     }
 
     private static String gameName(CreateGameHttpReq request) {

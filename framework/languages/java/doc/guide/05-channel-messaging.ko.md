@@ -24,10 +24,10 @@ server는 handler를 등록한다.
 public final class GetProfileHandler
     implements ZLinkRequestHandler<GetProfileRequest, GetProfileReply> {
     @Override
-    public CompletionStage<GetProfileReply> handleAsync(
+    public GetProfileReply handle(
         GetProfileRequest request,
         ZLinkRequestContext context) {
-        return CompletableFuture.completedFuture(new GetProfileReply(request.accountId()));
+        return new GetProfileReply(request.accountId());
     }
 }
 ```

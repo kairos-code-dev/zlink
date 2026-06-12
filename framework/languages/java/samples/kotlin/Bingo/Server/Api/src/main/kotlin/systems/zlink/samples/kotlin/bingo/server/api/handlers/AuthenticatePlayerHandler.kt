@@ -11,10 +11,10 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerRes
 class AuthenticatePlayerHandler(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
-    override fun handleAsync(
+    override fun handle(
         request: AuthenticatePlayerReq,
         context: ZLinkRequestContext,
-    ) = coroutines.completionStage {
+    ) = coroutines.blocking {
         AuthenticatePlayerRes(
             accepted = true,
             actorId = request.accessToken,

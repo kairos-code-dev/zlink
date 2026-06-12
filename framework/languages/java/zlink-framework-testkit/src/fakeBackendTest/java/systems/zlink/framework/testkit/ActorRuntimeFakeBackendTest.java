@@ -8,8 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -158,6 +157,111 @@ final class ActorRuntimeFakeBackendTest {
     }
 
     @Test
+    void entrySpotDestroyActorRemovesEntryOwnedActorAfterLeftCallback() {
+        EntrySpot.leftCount = 0;
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addSpotMesh("game", mesh ->
+            mesh.addNode("play", node -> {
+                node.enableRouter();
+                node.addEntrySpot(EntrySpot.class);
+                node.addSpotFactory(GameSpot.class);
+            }));
+        options.addActorFactory("player", PlayerActorFactory.class);
+        FakeZLinkBackendAdapterFactory backendFactory =
+            new FakeZLinkBackendAdapterFactory();
+        RoutingId spotRid = RoutingId.from("game-1");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, backendFactory)) {
+            ZLinkActor entryOwned = runtime.actorManager()
+                .create("player-destroy", "player")
+                .toCompletableFuture()
+                .join();
+
+            EntrySpot.instance.context()
+                .destroyActorAsync(entryOwned)
+                .toCompletableFuture()
+                .join();
+            EntrySpot.instance.context()
+                .destroyActorAsync(entryOwned)
+                .toCompletableFuture()
+                .join();
+            assertEquals(
+                Optional.empty(),
+                runtime.actorManager().find("player-destroy").toCompletableFuture().join());
+            assertEquals(1, EntrySpot.leftCount);
+
+            ZLinkActor recreated = runtime.actorManager()
+                .create("player-destroy", "player")
+                .toCompletableFuture()
+                .join();
+            EntrySpot.instance.context()
+                .destroyActorAsync(entryOwned)
+                .toCompletableFuture()
+                .join();
+            assertSame(
+                recreated,
+                runtime.actorManager().find("player-destroy").toCompletableFuture().join().orElseThrow());
+            assertEquals(1, EntrySpot.leftCount);
+
+            PlayerActor reentrant = (PlayerActor) runtime.actorManager()
+                .create("player-destroy-reentrant", "player")
+                .toCompletableFuture()
+                .join();
+            reentrant.destroyAgainOnEntryLeft = true;
+            EntrySpot.instance.context()
+                .destroyActorAsync(reentrant)
+                .toCompletableFuture()
+                .join();
+            assertEquals(
+                Optional.empty(),
+                runtime.actorManager().find("player-destroy-reentrant").toCompletableFuture().join());
+            assertEquals(2, EntrySpot.leftCount);
+
+            runtime.spotManager()
+                .create(GameSpot.class, spotRid)
+                .toCompletableFuture()
+                .join();
+            ZLinkActor roomActor = runtime.actorManager()
+                .create("player-room-destroy", "player")
+                .toCompletableFuture()
+                .join();
+            roomActor.context()
+                .joinSpot(spotRid, "join-request")
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
+            assertThrows(
+                CompletionException.class,
+                () -> EntrySpot.instance.context()
+                    .destroyActorAsync(roomActor)
+                    .toCompletableFuture()
+                    .join());
+
+            roomActor.context()
+                .joinEntrySpot(RoutingId.from("spot-node"))
+                .submit()
+                .toCompletableFuture()
+                .join();
+            EntrySpot.instance.context()
+                .destroyActorAsync(roomActor)
+                .toCompletableFuture()
+                .join();
+            assertEquals(
+                Optional.empty(),
+                runtime.actorManager().find("player-room-destroy").toCompletableFuture().join());
+            assertEquals(3, EntrySpot.leftCount);
+        }
+
+        assertEquals(
+            true,
+            backendFactory.calls().contains("spotNode.destroyActor.player-destroy"));
+        assertEquals(
+            true,
+            backendFactory.calls().contains("spotNode.destroyActor.player-room-destroy"));
+    }
+
+    @Test
     void actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addSpotMesh("game", mesh ->
@@ -196,6 +300,7 @@ final class ActorRuntimeFakeBackendTest {
     public static final class PlayerActor implements ZLinkActor {
         private final String actorId;
         private final ZLinkActorContext context;
+        boolean destroyAgainOnEntryLeft;
 
         PlayerActor(String actorId, ZLinkActorContext context) {
             this.actorId = actorId;
@@ -215,10 +320,10 @@ final class ActorRuntimeFakeBackendTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
@@ -236,15 +341,28 @@ final class ActorRuntimeFakeBackendTest {
     }
 
     public static final class EntrySpot implements ZLinkEntrySpot {
+        static EntrySpot instance;
+        static int leftCount;
         private final ZLinkEntrySpotContext context;
 
         public EntrySpot(ZLinkEntrySpotContext context) {
+            instance = this;
             this.context = context;
         }
 
         @Override
         public ZLinkEntrySpotContext context() {
             return context;
+        }
+
+        @Override
+        public void onActorLeft(
+            ZLinkActor actor,
+            systems.zlink.framework.CancellationToken cancellationToken) {
+            leftCount++;
+            if (actor instanceof PlayerActor player && player.destroyAgainOnEntryLeft) {
+                context.destroyActorAsync(actor).toCompletableFuture().join();
+            }
         }
     }
 }

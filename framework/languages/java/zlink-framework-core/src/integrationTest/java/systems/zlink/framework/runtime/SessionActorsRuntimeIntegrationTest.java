@@ -453,10 +453,10 @@ final class SessionActorsRuntimeIntegrationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
@@ -482,18 +482,17 @@ final class SessionActorsRuntimeIntegrationTest {
 
     public static final class ActorEchoHandler {
         @ZLinkSpotActorRequest(packetName = "ActorEcho")
-        public CompletionStage<String> handleAsync(PlayerActor actor, String request) {
+        public String handle(PlayerActor actor, String request) {
             actorRelayRequests.offer(actor.actorId() + ":" + request);
-            return CompletableFuture.completedFuture(request);
+            return request;
         }
     }
 
     public static final class ActorNotifyHandler {
         @ZLinkSpotActorSend(packetName = "ActorNotify")
-        public CompletionStage<Void> handleAsync(PlayerActor actor, String request) {
+        public void handle(PlayerActor actor, String request) {
             actorRelayRequests.offer(actor.actorId() + ":" + request);
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public record JsonRelayReq(String value) {
@@ -504,9 +503,9 @@ final class SessionActorsRuntimeIntegrationTest {
 
     public static final class DefaultJsonActorHandler {
         @ZLinkSpotActorRequest
-        public CompletionStage<JsonRelayRes> handleAsync(PlayerActor actor, JsonRelayReq request) {
+        public JsonRelayRes handle(PlayerActor actor, JsonRelayReq request) {
             actorRelayRequests.offer(actor.actorId() + ":" + request.value());
-            return CompletableFuture.completedFuture(new JsonRelayRes(request.value()));
+            return new JsonRelayRes(request.value());
         }
     }
 
@@ -565,13 +564,15 @@ final class SessionActorsRuntimeIntegrationTest {
         }
 
         @ZLinkRequest(packetName = "Ensure")
-        public CompletionStage<String> handleAsync(String actorId) {
+        public String handle(String actorId) {
             return actors.getOrCreate(actorId, "player")
                 .thenCompose(actor -> actor.context()
                     .joinEntrySpot(RoutingId.from("play-node"))
                     .timeout(Duration.ofSeconds(2))
                     .submit())
-                .thenApply(joined -> joined.actorId());
+                .thenApply(joined -> joined.actorId())
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -582,18 +583,15 @@ final class SessionActorsRuntimeIntegrationTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
     }
 }

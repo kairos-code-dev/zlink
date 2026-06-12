@@ -68,9 +68,7 @@ public final class ZLinkHandlerMethodInvoker {
             try {
                 method.setAccessible(true);
                 Object result = method.invoke(handler, logicalArguments);
-                return result instanceof CompletionStage<?> stage
-                    ? stage.thenApply(value -> value)
-                    : CompletableFuture.completedFuture(result);
+                return CompletableFuture.completedFuture(result);
             } catch (IllegalAccessException | InvocationTargetException ex) {
                 return CompletableFuture.failedFuture(unwrapReflectionFailure(ex));
             }

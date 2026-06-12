@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers;
 
-import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
@@ -18,42 +17,38 @@ public final class MatchBingoActorHandler
         Messages.MatchBingoReq,
         Messages.MatchBingoRes> {
     @Override
-    public CompletionStage<Messages.MatchBingoRes> handleAsync(
+    public Messages.MatchBingoRes handle(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
         Messages.MatchBingoReq request,
         CancellationToken cancellationToken) {
-        return entrySpot.context().outbound().requestToChannel(
+        var matched = entrySpot.context().outbound().requestToChannel(
                 SampleNames.ApiChannel,
                 new Messages.MatchBingoApiReq(
                     actor.actorId(),
                     actor.displayName(),
                     request.mode()))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(Messages.MatchBingoApiRes.class)
-            .thenCompose(matched -> {
-                if (cancellationToken.isCancellationRequested()) {
-                    return java.util.concurrent.CompletableFuture.failedFuture(
-                        new IllegalStateException("MatchBingoReq was cancelled"));
-                }
-                return actor.context()
-                    .<Messages.BingoRoomJoinRes>joinSpot(
-                        RoutingId.from(matched.roomId()),
-                        new Messages.BingoRoomJoinReq(
-                            matched.roomId(),
-                            actor.actorId(),
-                            actor.displayName()))
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submit(Messages.BingoRoomJoinRes.class)
-                    .thenApply(joined -> {
-                        if (cancellationToken.isCancellationRequested()) {
-                            throw new IllegalStateException("MatchBingoReq was cancelled");
-                        }
-                        return new Messages.MatchBingoRes(
-                            matched.roomId(),
-                            joined.reply().state());
-                    });
-            });
+            .await(Messages.MatchBingoApiRes.class);
+
+        if (cancellationToken.isCancellationRequested()) {
+            throw new IllegalStateException("MatchBingoReq was cancelled");
+        }
+        var joined = actor.context()
+            .joinSpot(
+                RoutingId.from(matched.roomId()),
+                new Messages.BingoRoomJoinReq(
+                    matched.roomId(),
+                    actor.actorId(),
+                    actor.displayName()))
+            .timeout(SampleTimings.RequestTimeout)
+            .await(Messages.BingoRoomJoinRes.class);
+        if (cancellationToken.isCancellationRequested()) {
+            throw new IllegalStateException("MatchBingoReq was cancelled");
+        }
+        return new Messages.MatchBingoRes(
+            matched.roomId(),
+            joined.reply().state());
     }
 }

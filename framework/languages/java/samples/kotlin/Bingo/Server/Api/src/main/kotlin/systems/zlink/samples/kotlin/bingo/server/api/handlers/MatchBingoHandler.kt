@@ -18,10 +18,10 @@ class MatchBingoHandler(
     private val client: ZLinkClient,
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes> {
-    override fun handleAsync(
+    override fun handle(
         request: MatchBingoApiReq,
         context: ZLinkRequestContext,
-    ) = coroutines.completionStage {
+    ) = coroutines.blocking {
         val allocated = client
             .requestToChannel(SampleNames.PlayChannel, AllocateBingoRoomReq(request.actorId, request.mode))
             .timeout(SampleTimings.RequestTimeout)

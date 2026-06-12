@@ -96,6 +96,6 @@ cancellation 정책에 따라 정리한다.
 
 ## 6. STREAM session 의미
 
-`onConnectedAsync()`는 connection ready 이후 호출한다. `onErrorAsync(...)`는 session과
+`onConnected()`는 connection ready 이후 호출한다. `onError(...)`는 session과
 매칭되는 transport error만 받는다. handshake 실패나 bind 실패는 monitoring event로
 남긴다. 같은 session의 dispatch callback은 직렬로 실행한다.

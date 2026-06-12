@@ -19,14 +19,12 @@
   `sendTo`, `requestTo`, `sendChannel`, `requestChannel` 같은 action 이름을
   유지한다.
 - blocking과 non-blocking을 별도 동사 이름으로 나누지 않는다.
-- Java handler와 submit 표면은
-  [framework 공통 정책](../../../../doc/spec/async-execution-policy.ko.md)에 따라
-  `CompletionStage`를 기준으로 한다. Kotlin `suspend` 표면은 이 Java handler를
-  감싸는 adapter이며, 별도 runtime 의미를 만들지 않는다.
+- Java handler는 일반 Java 메서드처럼 값을 반환하거나 `void`로 끝난다.
+  `CompletionStage`는 request, send, manager, connector처럼 호출자가 완료를 기다려야
+  하는 API에서만 사용한다.
 - Kotlin `suspend fun`에 Java와 같은 ZLink annotation을 붙인 handler도 같은 계약으로
   본다. Spring bean scanner는 Kotlin suspend method를 별도 수동 등록 없이 발견해야
-  하며, framework가 소유하는 coroutine adapter를 통해 Java `CompletionStage` handler로
-  실행해야 한다.
+  하며, framework가 소유하는 coroutine adapter를 통해 실행해야 한다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
   설명한다.
 
@@ -53,7 +51,8 @@ executor는 framework host가 닫힐 때 함께 닫힌다.
 
 Kotlin `suspend` handler의 coroutine dispatcher와 scope ownership은 Kotlin adapter가
 담당한다. Java handler executor는 Kotlin coroutine dispatcher의 대체물이 아니며,
-Kotlin adapter가 `CompletionStage`로 변환한 completion만 Java core가 받는다.
+Kotlin adapter는 suspend handler가 끝날 때까지 기다린 뒤 Java handler와 같은 방식으로
+값을 반환하거나 예외를 전달한다.
 
 Kotlin adapter는 Java core의 generic suspend invoker 주입 지점을 사용한다. Kotlin
 application은 Kotlin extension으로 dispatcher 또는 scope를 설정한다.
@@ -66,7 +65,7 @@ options.useCoroutineHandlers(scope, dispatcher)
 dispatcher만 넘기면 Kotlin adapter가 `CoroutineScope`를 만들고 framework handler
 completion을 그 scope에서 실행한다. 외부 `CoroutineScope`를 넘기면 scope ownership은
 application에 남고, framework는 해당 scope를 닫지 않는다. 두 경우 모두 Java core는
-Kotlin handler의 결과를 `CompletionStage` completion으로만 관찰한다.
+Kotlin handler의 결과를 Java sync handler 호출의 반환값 또는 예외로 관찰한다.
 
 ## 1. 인터페이스 전체 목록
 
@@ -165,40 +164,40 @@ public interface ZLinkPublishContext extends ZLinkHandlerContext {
 
 ```java
 public interface ZLinkRequestHandler<TRequest, TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TRequest request,
         ZLinkRequestContext context);
 }
 
 public interface ZLinkSendHandler<TMessage> {
-    CompletionStage<Void> handleAsync(
+    void handle(
         TMessage message,
         ZLinkSendContext context);
 }
 
 public interface ZLinkPublishHandler<TMessage> {
-    CompletionStage<Void> handleAsync(
+    void handle(
         TMessage message,
         ZLinkPublishContext context);
 }
 
 public interface ZLinkRouteSendHandler<TMessage> {
-    CompletionStage<Void> handleAsync(
+    void handle(
         TMessage message,
         ZLinkRouteSendContext context);
 }
 
 public interface ZLinkRouteRequestHandler<TRequest, TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TRequest request,
         ZLinkRouteRequestContext context);
 }
 ```
 
-Kotlin adapter는 `suspend` handler를 위 Java handler interface로 변환한다. adapter는
-framework가 소유하는 `CoroutineScope`에서 handler를 실행하고 `CompletionStage`를 반환해야
-한다. `runBlocking`으로 현재 dispatch thread를 막거나, Java core의 serial execution
-queue를 우회하는 별도 coroutine queue를 만들지 않는다.
+Kotlin adapter는 `suspend` handler를 위 Java handler interface로 변환한다. Java
+interface가 sync 표면이므로 adapter는 suspend 블록이 끝날 때까지 기다린 뒤 값을
+반환한다. Kotlin code 안에서는 `CompletionStage.await()`로 framework request 계열
+API의 완료를 기다릴 수 있다.
 
 annotation method handler dispatch도 같은 규칙을 따른다. Kotlin `suspend fun` handler는
 scanner가 발견한 Java method handler catalog에 그대로 등록되고, invocation 시점에는
@@ -220,8 +219,8 @@ message, actor, context parameter만 계약으로 보아야 한다.
 Kotlin suspend annotation handler는 아래 원칙을 지킨다.
 
 - handler 실행은 framework가 소유한 `CoroutineScope`에서 시작한다.
-- handler completion, exception, cancellation은 Java core가 받는 `CompletionStage`
-  completion, exceptional completion, cancellation로 모인다.
+- suspend function의 completion, exception, cancellation은 Java core의 내부
+  completion 상태로 모인다.
 - channel, Spot, actor, session dispatch ordering은 Java core의 serial execution
   queue를 따른다. Kotlin adapter가 별도 queue를 만들거나 callback 순서를 새로
   정의하지 않는다.
@@ -245,7 +244,7 @@ public interface ZLinkEntrySpotActorRequestHandler<
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorRequestContext context,
@@ -258,7 +257,7 @@ public interface ZLinkSpotActorRequestHandler<
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TSpot spot,
         TActor actor,
         ZLinkSpotActorRequestContext context,
@@ -267,16 +266,16 @@ public interface ZLinkSpotActorRequestHandler<
 }
 
 public interface ZLinkSpot {
-    CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+    ZLinkSpotActorJoinResponse onActorJoin(
         ZLinkActor actor,
         Message request,
         CancellationToken cancellationToken);
 
-    CompletionStage<Void> onPostActorJoinedAsync(
+    void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    CompletionStage<Void> onActorLeftAsync(
+    void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
@@ -286,11 +285,11 @@ public interface ZLinkSpot {
 }
 
 public interface ZLinkEntrySpot {
-    CompletionStage<Void> onPostActorJoinedAsync(
+    void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    CompletionStage<Void> onActorLeftAsync(
+    void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
@@ -314,23 +313,22 @@ payload는 framework가 빌려준 값이므로 callback 밖에서 보관해야 �
 public interface ZLinkSession {
     ZLinkSessionContext context();
 
-    CompletionStage<Void> onConnectedAsync();
+    void onConnected();
 
-    CompletionStage<Void> onDisconnectedAsync();
+    void onDisconnected();
 
-    CompletionStage<Void> onErrorAsync(ZLinkStreamError error);
+    void onError(ZLinkStreamError error);
 
-    default CompletionStage<Void> onDispatchAsync(
+    default void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
-        return CompletableFuture.completedFuture(null);
     }
 }
 
 public interface ZLinkSessionPacketHandler<TSessionContext extends ZLinkSessionContext> {
     String packetName();
 
-    CompletionStage<Void> handleAsync(
+    void handle(
         TSessionContext context,
         ZLinkStreamHeader header,
         Message payload);
@@ -396,12 +394,14 @@ public interface ZLinkSessionSendCall {
     ZLinkSessionSendCall packetName(String messageName);
     ZLinkSessionSendCall compress();
     CompletionStage<Void> submit();
+    void await();
 }
 
 public interface ZLinkSessionReplyCall {
     ZLinkSessionReplyCall metadata(String key, String value);
     ZLinkSessionReplyCall compress();
     CompletionStage<Void> submit();
+    void await();
 }
 
 public interface ZLinkSessionActor {
@@ -419,7 +419,7 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> create(
+    ZLinkActor create(
         String actorId,
         ZLinkActorContext context);
 }
@@ -443,12 +443,14 @@ public interface ZLinkActorContext {
 public interface ZLinkActorJoinEntrySpotCall {
     ZLinkActorJoinEntrySpotCall timeout(Duration timeout);
     CompletionStage<ZLinkActorRef> submit();
+    ZLinkActorRef await();
 }
 
 public interface ZLinkActorJoinSpotCall {
     ZLinkActorJoinSpotCall timeout(Duration timeout);
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
         Class<TReply> replyType);
+    <TReply> ZLinkActorJoinResult<TReply> await(Class<TReply> replyType);
 }
 
 public record ZLinkActorJoinResult<TReply>(
@@ -466,6 +468,7 @@ public interface ZLinkBoundSessionSendCall {
     ZLinkBoundSessionSendCall packetName(String packetName);
     ZLinkBoundSessionSendCall metadata(String key, String value);
     CompletionStage<Void> submit();
+    void await();
 }
 ```
 
@@ -475,7 +478,7 @@ public interface ZLinkBoundSessionSendCall {
 `reply(...)`를 호출하면 실패한 `CompletionStage`를 반환한다. 이 제한이 있어야 client
 request/reply correlation이 packet 이름만으로 섞이지 않는다.
 
-`onErrorAsync(...)`는 application handler 내부 예외를 받는 callback이 아니다.
+`onError(...)`는 application handler 내부 예외를 받는 callback이 아니다.
 이 문서에서는 monitor에서 관찰 가능한 session-correlatable transport 오류만
 `ZLinkStreamError`로 다시 올리는 용도로 제한한다.
 
@@ -757,12 +760,14 @@ public interface ZLinkClient {
 public interface ZLinkSendCall {
     ZLinkSendCall packetName(String messageName);
     CompletionStage<Void> submit();
+    void await();
 }
 
 public interface ZLinkRequestCall {
     ZLinkRequestCall packetName(String messageName);
     ZLinkRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> TReply await(Class<TReply> replyType);
 }
 
 public interface ZLinkSpotOutbound {
@@ -821,6 +826,7 @@ public interface ZLinkEntrySpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
+    CompletionStage<Void> destroyActorAsync(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
         Duration period,
@@ -857,6 +863,7 @@ public interface ZLinkFanoutClient {
 public interface ZLinkPublishCall {
     ZLinkPublishCall packetName(String messageName);
     CompletionStage<Void> submit();
+    void await();
 }
 
 public record ZLinkSpotCreateResult(
@@ -898,35 +905,31 @@ public interface ZLinkSpot {
     default void configure() {
     }
 
-    default CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
-        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
+    default ZLinkSpotCreateResponse onCreate(Message request) {
+        return ZLinkSpotCreateResponse.accept();
     }
 
-    default CompletionStage<Void> onInitializeAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onInitialize() {
     }
 
-    default CompletionStage<Void> onClosingAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onClosing() {
     }
 
-    default CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+    default ZLinkSpotActorJoinResponse onActorJoin(
         ZLinkActor actor,
         Message request,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
+        return ZLinkSpotActorJoinResponse.reject();
     }
 
-    default CompletionStage<Void> onPostActorJoinedAsync(
+    default void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 
-    default CompletionStage<Void> onActorLeftAsync(
+    default void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 }
 
@@ -936,24 +939,20 @@ public interface ZLinkEntrySpot {
     default void configure() {
     }
 
-    default CompletionStage<Void> onInitializeAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onInitialize() {
     }
 
-    default CompletionStage<Void> onClosingAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onClosing() {
     }
 
-    default CompletionStage<Void> onPostActorJoinedAsync(
+    default void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 
-    default CompletionStage<Void> onActorLeftAsync(
+    default void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 }
 
@@ -1024,9 +1023,16 @@ public record ZLinkTimerTick(
 }
 ```
 
+`destroyActorAsync(actor)`는 Entry Spot context 전용 API이다. user Spot context에는
+actor destroy API가 없다. actor가 user Spot에 있으면 먼저 `leaveActorAsync(...)` 또는
+actor context의 Entry Spot join 흐름으로 Entry Spot에 돌아와야 한다. destroy가 성공하는
+첫 호출은 Entry Spot `onActorLeft(...)` callback을 한 번 실행한 뒤 native actor ref와
+framework registry를 정리한다. 같은 actor instance에 대한 중복 destroy는 성공으로 끝나지만
+callback을 다시 실행하지 않는다.
+
 등록된 Entry Spot은 framework startup에서 native Entry Spot 위에 activation으로
-생성된다. 생성된 activation은 `configure()`를 먼저 호출한 뒤 `onInitializeAsync()`를
-실행하고, framework shutdown에서는 `onClosingAsync()`를 호출한 뒤 timer와 native
+생성된다. 생성된 activation은 `configure()`를 먼저 호출한 뒤 `onInitialize()`를
+실행하고, framework shutdown에서는 `onClosing()`를 호출한 뒤 timer와 native
 Entry Spot을 정리한다. actor join과 entry actor packet dispatch는 별도 runtime 경로로
 검증해야 한다.
 
@@ -1074,7 +1080,7 @@ public interface ZLinkRuntimeEvent {
 }
 
 public interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
-    CompletionStage<Void> handleAsync(TEvent event);
+    void handle(TEvent event);
 }
 
 public enum ZLinkSocketEventKind {
@@ -1237,7 +1243,7 @@ public @interface ZLinkStreamPacket {
 SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
 framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
 accepted가 `true`일 때만 actor 위치가 user Spot으로 commit되고
-`onPostActorJoinedAsync`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
+`onPostActorJoined`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
 post-join callback도 실행되지 않는다. Entry Spot은 admission callback을 갖지 않는다.
 disconnected callback은 actor만 받는다. session actor의 현재 binding이 끊어졌거나
 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며, actor가 들어오거나

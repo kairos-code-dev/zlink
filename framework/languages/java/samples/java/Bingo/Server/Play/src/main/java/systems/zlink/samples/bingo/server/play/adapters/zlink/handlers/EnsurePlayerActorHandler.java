@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
 
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRef;
@@ -25,23 +26,21 @@ public final class EnsurePlayerActorHandler
     }
 
     @Override
-    public CompletionStage<Messages.EnsurePlayerActorRes> handleAsync(
+    public Messages.EnsurePlayerActorRes handle(
         Messages.EnsurePlayerActorReq request,
         ZLinkRequestContext context) {
-        return actors.getOrCreate(request.actorId(), SampleNames.PlayerActorType)
-            .thenCompose(actor -> {
-                if (actor instanceof PlayerActor player) {
-                    player.setDisplayName(request.displayName());
-                }
-                return actor.context()
-                    .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid))
-                    .timeout(SampleTimings.RequestTimeout)
-                    .submit();
-            })
-            .thenApply(joined -> new Messages.EnsurePlayerActorRes(
-                request.actorId(),
-                SampleNames.PlayerActorType,
-                toSnapshot(joined)));
+        var actor = await(actors.getOrCreate(request.actorId(), SampleNames.PlayerActorType));
+        if (actor instanceof PlayerActor player) {
+            player.setDisplayName(request.displayName());
+        }
+        var joined = actor.context()
+            .joinEntrySpot(RoutingId.from(SampleTopology.PlayRid))
+            .timeout(SampleTimings.RequestTimeout)
+            .await();
+        return new Messages.EnsurePlayerActorRes(
+            request.actorId(),
+            SampleNames.PlayerActorType,
+            toSnapshot(joined));
     }
 
     private static Messages.ActorRefSnapshot toSnapshot(ZLinkActorRef actor) {

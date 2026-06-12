@@ -706,8 +706,8 @@ final class ChannelMessagingTest {
 
     public static final class EchoHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+        public String handle(String request, ZLinkRequestContext context) {
+            return request;
         }
     }
 
@@ -730,20 +730,19 @@ final class ChannelMessagingTest {
     @ZLinkHandlerGroup("scanned-profile")
     public static final class ScannedEchoHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture("scanned:" + request);
+        public String handle(String request, ZLinkRequestContext context) {
+            return "scanned:" + request;
         }
     }
 
     public static final class ProfileChangedHandler implements ZLinkSendHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkSendContext context) {
+        public void handle(String message, ZLinkSendContext context) {
             SEND_MESSAGE.set(message);
             SEND_PACKET.set(context.packetName().orElse(""));
             SEND_CHANNEL.set(context.channelName().orElse(""));
             SEND_LATCH.get().countDown();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     @ZLinkHandlerGroup("annotated-profile")
@@ -763,13 +762,12 @@ final class ChannelMessagingTest {
 
     public static final class ScoreChangedHandler implements ZLinkPublishHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
+        public void handle(String message, ZLinkPublishContext context) {
             FANOUT_MESSAGE.set(message);
             FANOUT_TOPIC.set(context.topic());
             FANOUT_CHANNEL.set(context.channelName().orElse(""));
             FANOUT_LATCH.get().countDown();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     @ZLinkHandlerGroup("annotated-events")
@@ -784,41 +782,41 @@ final class ChannelMessagingTest {
 
     public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
+        public String handle(String request, ZLinkRouteRequestContext context) {
             ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
-            return CompletableFuture.completedFuture("route:" + request);
+            return "route:" + request;
         }
     }
 
     @ZLinkHandlerGroup("route-shared")
     public static final class ScannedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
-            return CompletableFuture.completedFuture("scanned-route:" + request);
+        public String handle(String request, ZLinkRouteRequestContext context) {
+            return "scanned-route:" + request;
         }
     }
 
     public static final class DelayedRouteEchoHandler implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRouteRequestContext context) {
+        public String handle(String request, ZLinkRouteRequestContext context) {
             String[] parts = request.split(":", 2);
             String value = parts[0];
             long delayMillis = parts.length == 2 ? Long.parseLong(parts[1]) : 0;
             return CompletableFuture.supplyAsync(
                 () -> value,
-                CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS));
+                CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .join();
         }
     }
 
     public static final class RouteNoticeHandler implements ZLinkRouteSendHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkRouteSendContext context) {
+        public void handle(String message, ZLinkRouteSendContext context) {
             ROUTE_SEND_MESSAGE.set(message);
             ROUTE_SEND_PACKET.set(context.packetName().orElse(""));
             ROUTE_SEND_CHANNEL.set(context.channelName().orElse(""));
             ROUTE_SEND_SOURCE.set(context.routingId());
             ROUTE_SEND_LATCH.get().countDown();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 }

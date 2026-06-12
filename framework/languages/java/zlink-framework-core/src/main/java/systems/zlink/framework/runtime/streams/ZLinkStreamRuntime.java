@@ -24,6 +24,7 @@ import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
+import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
@@ -174,11 +175,13 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             return;
         }
         sessions.remove(sessionKey(streamNode, routingId));
-        state.queue().enqueue(() -> executeHandler(() -> state.session()
-                .onErrorAsync(new ZLinkStreamError(
+        state.queue().enqueue(() -> executeHandler(() ->
+            ZLinkHandlerStages.fromRunnable(() -> {
+                state.session().onError(new ZLinkStreamError(
                     ZLinkStreamSessionError.TRANSPORT_ERROR,
-                    Optional.of(new ZLinkStreamDiagnostic(nativeCode, message))))
-                .thenCompose(ignored -> state.session().onDisconnectedAsync())));
+                    Optional.of(new ZLinkStreamDiagnostic(nativeCode, message))));
+                state.session().onDisconnected();
+            })));
     }
 
     private SessionState createSessionState(
@@ -224,7 +227,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     + streamNode.sessionType().getName());
         }
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
-        queue.enqueue(() -> executeHandler(session::onConnectedAsync));
+        queue.enqueue(() -> executeHandler(() ->
+            ZLinkHandlerStages.fromRunnable(session::onConnected)));
         return new SessionState(session, queue, context);
     }
 
@@ -235,7 +239,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     @Override
     public void close() {
         for (SessionState state : sessions.values()) {
-            state.queue().enqueue(() -> executeHandler(state.session()::onDisconnectedAsync));
+            state.queue().enqueue(() -> executeHandler(() ->
+                ZLinkHandlerStages.fromRunnable(state.session()::onDisconnected)));
         }
         for (ZLinkBackendStreamSocket stream : streams) {
             stream.close();
@@ -336,7 +341,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             currentDispatchHeader = header;
             CompletionStage<Void> stage;
             try {
-                stage = session.onDispatchAsync(header, payload);
+                stage = ZLinkHandlerStages.fromRunnable(() -> session.onDispatch(header, payload));
             } catch (RuntimeException ex) {
                 currentDispatchHeader = null;
                 payload.close();

@@ -202,7 +202,7 @@ public interface ZLinkEntrySpotActorRequestHandler<
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorRequestContext context,
@@ -213,7 +213,7 @@ public interface ZLinkSpotActorSendHandler<
     TSpot extends ZLinkSpot,
     TActor extends ZLinkActor,
     TMessage> {
-    CompletionStage<Void> handleAsync(
+    void handle(
         TSpot spot,
         TActor actor,
         ZLinkSpotActorSendContext context,

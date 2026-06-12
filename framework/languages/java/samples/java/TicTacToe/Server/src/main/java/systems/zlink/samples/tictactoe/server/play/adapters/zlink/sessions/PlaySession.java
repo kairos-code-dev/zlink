@@ -1,7 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play.adapters.zlink.sessions;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -27,26 +27,25 @@ public final class PlaySession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onConnectedAsync() {
-        return CompletableFuture.completedFuture(null);
+    public void onConnected() {
     }
 
     @Override
-    public CompletionStage<Void> onDisconnectedAsync() {
-        return CompletableFuture.completedFuture(null);
+    public void onDisconnected() {
+        context.actors().bound()
+            .forEach(actor -> await(actor.notifyDisconnected()));
     }
 
     @Override
-    public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-        return CompletableFuture.completedFuture(null);
+    public void onError(ZLinkStreamError error) {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(ZLinkStreamHeader header, Message payload) {
-        return handlers.tryHandleAsync(context, header, payload)
-            .thenCompose(handled -> handled
-                ? CompletableFuture.completedFuture(null)
-                : requireActor(header.packetName()).relay(header, payload));
+    public void onDispatch(ZLinkStreamHeader header, Message payload) {
+        boolean handled = await(handlers.tryHandleAsync(context, header, payload));
+        if (!handled) {
+            await(requireActor(header.packetName()).relay(header, payload));
+        }
     }
 
     private ZLinkSessionActor requireActor(String packetName) {

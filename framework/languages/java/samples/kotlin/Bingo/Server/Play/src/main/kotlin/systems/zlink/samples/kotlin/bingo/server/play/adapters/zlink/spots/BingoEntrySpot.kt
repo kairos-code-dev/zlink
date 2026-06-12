@@ -1,11 +1,11 @@
 package systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots
 
-import java.util.concurrent.CompletionStage
-import java.util.concurrent.CompletableFuture
 import systems.zlink.framework.CancellationToken
+import systems.zlink.framework.ZLinkAwait
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
+import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.actors.PlayerActor
 import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.handlers.MatchBingoActorHandler
 
 class BingoEntrySpot(
@@ -17,17 +17,17 @@ class BingoEntrySpot(
         context.handlers().addHandler(MatchBingoActorHandler::class.java)
     }
 
-    override fun onPostActorJoinedAsync(
+    override fun onPostActorJoined(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> {
-        return CompletableFuture.completedFuture(null)
+    ) {
+        if (actor is PlayerActor && actor.destroyAfterEntrySpotJoin) {
+            ZLinkAwait.await(context.destroyActorAsync(actor))
+        }
     }
 
-    override fun onActorLeftAsync(
+    override fun onActorLeft(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> {
-        return CompletableFuture.completedFuture(null)
-    }
+    ) = Unit
 }

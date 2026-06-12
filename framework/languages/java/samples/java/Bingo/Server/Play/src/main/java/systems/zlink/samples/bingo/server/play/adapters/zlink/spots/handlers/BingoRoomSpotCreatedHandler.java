@@ -2,8 +2,6 @@ package systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.BingoRoomSpot;
@@ -16,11 +14,11 @@ public final class BingoRoomSpotCreatedHandler {
         this.json = json;
     }
 
-    public CompletionStage<ZLinkSpotCreateResponse> handleAsync(
+    public ZLinkSpotCreateResponse handle(
         BingoRoomSpot spot,
         Message request) {
         spot.applySettings(decodeSettings(request));
-        return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
+        return ZLinkSpotCreateResponse.accept();
     }
 
     private BingoRoomModels.BingoRoomSettings decodeSettings(Message request) {

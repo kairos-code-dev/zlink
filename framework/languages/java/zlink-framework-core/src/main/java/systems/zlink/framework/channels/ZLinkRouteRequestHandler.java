@@ -1,9 +1,7 @@
 package systems.zlink.framework.channels;
 
-import java.util.concurrent.CompletionStage;
-
 public interface ZLinkRouteRequestHandler<TRequest, TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TRequest request,
         ZLinkRouteRequestContext context);
 }

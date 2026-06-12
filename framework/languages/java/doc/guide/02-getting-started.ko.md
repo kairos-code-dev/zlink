@@ -59,12 +59,11 @@ public final class GetPriceHandler
     implements ZLinkRequestHandler<PriceRequest, PriceReply> {
 
     @Override
-    public CompletionStage<PriceReply> handleAsync(
+    public PriceReply handle(
         PriceRequest request,
         ZLinkRequestContext context) {
         // 실제로는 시세 캐시/DB 조회. 여기서는 고정값.
-        return CompletableFuture.completedFuture(
-            new PriceReply(request.symbol(), 187.42));
+        return new PriceReply(request.symbol(), 187.42);
     }
 }
 

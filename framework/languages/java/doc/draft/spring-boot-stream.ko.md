@@ -77,17 +77,18 @@ public final class GameStreamSession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onConnectedAsync() {
-        return CompletableFuture.completedFuture(null);
+    public void onConnected() {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(
+    public void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
-        return actors.getOrCreate("player-42", "player")
+        actors.getOrCreate("player-42", "player")
             .thenCompose(actor -> context.actors().bind(actor))
-            .thenCompose(bound -> bound.relay(header, payload));
+            .thenCompose(bound -> bound.relay(header, payload))
+            .toCompletableFuture()
+            .join();
     }
 }
 ```

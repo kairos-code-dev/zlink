@@ -16,10 +16,13 @@ class PlaySession(
 ) : ZLinkCoroutineSession(coroutines) {
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDisconnected() {
+    override suspend fun onDisconnectedSuspending() {
+        context.actors().bound().forEach { actor ->
+            actor.notifyDisconnected().await()
+        }
     }
 
-    override suspend fun onDispatch(header: ZLinkStreamHeader, payload: Message) {
+    override suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
         if (handlers.tryHandleAsync(context, header, payload).await()) {
             return
         }

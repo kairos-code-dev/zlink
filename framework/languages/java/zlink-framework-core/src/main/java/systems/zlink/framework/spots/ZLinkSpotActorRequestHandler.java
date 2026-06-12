@@ -1,6 +1,5 @@
 package systems.zlink.framework.spots;
 
-import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 
@@ -9,7 +8,7 @@ public interface ZLinkSpotActorRequestHandler<
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
-    CompletionStage<TReply> handleAsync(
+    TReply handle(
         TSpot spot,
         TActor actor,
         ZLinkSpotActorRequestContext context,

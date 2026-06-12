@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.handlers;
 
-import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -18,10 +17,10 @@ public final class AllocateBingoRoomHandler
     }
 
     @Override
-    public CompletionStage<Messages.AllocateBingoRoomRes> handleAsync(
+    public Messages.AllocateBingoRoomRes handle(
         Messages.AllocateBingoRoomReq request,
         ZLinkRequestContext context) {
-        return rooms.allocateAsync(request.actorId(), request.mode())
-            .thenApply(Messages.AllocateBingoRoomRes::new);
+        return new Messages.AllocateBingoRoomRes(
+            rooms.allocate(request.actorId(), request.mode()));
     }
 }

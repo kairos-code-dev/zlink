@@ -260,9 +260,9 @@ connector sample은 `ZLinkStreamConnectorFactory.create(...)`로 직접 생성�
 ## 6. Kotlin 표면
 
 Kotlin은 Java contract를 감싸는 편의 계층이다. core runtime을 다시 만들지 않는다.
-Java runtime은 handler와 submit 결과를 `CompletionStage`로만 본다. Kotlin adapter는
+Java handler는 일반 함수처럼 값을 반환하거나 `void`로 끝난다. Kotlin adapter는
 사용자가 작성한 `suspend` handler를 framework가 소유한 coroutine 안에서 실행하고,
-그 결과를 다시 `CompletionStage`로 돌려준다.
+완료된 뒤 Java handler와 같은 반환값 또는 예외로 core runtime에 전달한다.
 
 ```kotlin
 suspend fun <TReply> ZLinkClient.request(
@@ -285,20 +285,21 @@ Kotlin DSL은 Java builder를 호출하는 thin wrapper다. Java와 다른 설�
   request 자체는 `CompletionStage.await()`로 suspend되므로 dispatcher thread를
   오래 점유하지 않는다.
 - `suspend` request/send/publish helper는 Java builder의 `submit()`를 호출한 뒤
-  `kotlinx-coroutines-jdk8`의 `await()`로 변환한다. Java public API에
-  `submitAwait` 같은 blocking/parking helper를 추가하지 않는다.
+  `kotlinx-coroutines-jdk8`의 `await()`로 변환한다. Java call builder도
+  `await(...)` 또는 `await()`를 제공해서 절차식 sample code가
+  `toCompletableFuture().join()`을 직접 쓰지 않게 한다.
 - `suspend` handler 등록은 Java handler interface로 변환한다. 변환된 handler는
-  `scope.future(dispatcher) { ... }` 형태로 실행되어 `CompletionStage`를 반환한다.
-  `runBlocking`은 현재 thread를 막으므로 금지한다.
+  framework가 소유한 scope의 취소 상태를 같이 보면서 suspend 블록이 끝날 때까지
+  기다린 뒤 값을 반환한다.
 - channel, Spot, actor, session처럼 순서가 필요한 경로는 coroutine을 동시에 띄워
-  순서를 맡기지 않는다. Java core의 serial execution queue가 이전
-  `CompletionStage` 완료를 기준으로 다음 dispatch를 시작한다.
+  순서를 맡기지 않는다. Java core의 serial execution queue가 이전 handler 실행이
+  끝난 뒤 다음 dispatch를 시작한다.
 - request timeout, session close, host shutdown은 Kotlin coroutine cancellation로
-  전달되어야 한다. 반대로 coroutine이 cancel되면 Java `CompletionStage`는 취소 또는
-  exceptional completion으로 끝나고 pending reply 정리 정책을 따라야 한다.
-- `suspend` handler가 던진 예외는 Java `CompletionStage` exceptional completion으로
-  변환한다. reply error, monitoring event, retry 가능 여부는 Java core의 handler
-  failure policy가 한 곳에서 결정한다.
+  전달되어야 한다. 반대로 coroutine이 cancel되면 handler 호출은 취소 예외로 끝나고
+  pending reply 정리 정책을 따라야 한다.
+- `suspend` handler가 던진 예외는 Java handler 예외와 같은 failure policy로 전달한다.
+  reply error, monitoring event, retry 가능 여부는 Java core의 handler failure policy가
+  한 곳에서 결정한다.
 - Spring Boot adapter와 함께 쓸 때 MDC, tracing, security context 같은 thread-local
   값은 자동 보장을 전제로 하지 않는다. 필요한 경우 Kotlin adapter가 명시적 context
   propagation hook을 제공하고, 기본 동작은 문서화한다.
@@ -372,8 +373,8 @@ shutdown 순서는 반대 방향이다.
 submit할 수 있게 될 때까지만 비동기 대기한다. `request`는 packet submit과 reply
 wait를 분리하고, reply wait는 request timeout 정책을 따른다.
 
-STREAM session의 `onConnectedAsync()`는 connection ready 이후 호출한다.
-`onErrorAsync(...)`는 session과 매칭되는 transport error만 받는다. handshake 실패나
+STREAM session의 `onConnected()`는 connection ready 이후 호출한다.
+`onError(...)`는 session과 매칭되는 transport error만 받는다. handshake 실패나
 bind/accept/close 실패는 session callback이 아니라 monitoring event로 남긴다.
 
 ## 10. 구현 시 주의점
@@ -383,9 +384,10 @@ bind/accept/close 실패는 session callback이 아니라 monitoring event로 �
 - compatibility shim은 기본으로 만들지 않는다. 초기 포팅은 작고 명확한 public
   surface를 우선한다.
 - request/send/publish submit은 thread를 오래 막지 않는 async submit 경로로 둔다.
-- Java public API에는 `submitAwait`, `awaitBlocking` 같은 blocking/parking helper를
-  두지 않는다. Java 사용자는 `CompletionStage` continuation을 쓰고, 절차식 표현은
-  Kotlin `suspend` wrapper에서 제공한다.
+- Java public API는 `submitAwait`, `awaitBlocking`처럼 별도 이름을 늘리지 않는다.
+  대신 call builder에 `submit(...)`과 같은 작업을 기다리는 `await(...)` 또는
+  `await()`를 함께 둔다. manager/context처럼 `CompletionStage`를 직접 반환하는 API는
+  `ZLinkAwait.await(...)` helper로 절차식 sample code를 작성한다.
 - Kotlin adapter는 Java runtime의 lifecycle, validation, ordering 의미를 바꾸지
   않는다. adapter 안에서 별도 mailbox, 별도 pending request tracker, 별도 retry
   policy를 만들지 않는다.

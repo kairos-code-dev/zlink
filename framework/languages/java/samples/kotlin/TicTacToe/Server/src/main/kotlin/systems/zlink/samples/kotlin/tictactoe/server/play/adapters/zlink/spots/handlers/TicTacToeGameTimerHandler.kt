@@ -8,7 +8,7 @@ import systems.zlink.samples.kotlin.tictactoe.server.play.adapters.zlink.spots.T
 class TicTacToeGameTimerHandler(
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineSpotTimerHandler<TicTacToeGame>(coroutines) {
-    override suspend fun handle(
+    override suspend fun handleSuspending(
         spot: TicTacToeGame,
         tick: ZLinkTimerTick,
     ) {

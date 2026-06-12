@@ -293,9 +293,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             InjectedRequestHandler handler =
                 (InjectedRequestHandler) handlerFactory.create(InjectedRequestHandler.class);
 
-            String reply = handler.handleAsync("42", requestContext())
-                .toCompletableFuture()
-                .join();
+            String reply = handler.handle("42", requestContext());
 
             assertEquals("profile:42", reply);
         }
@@ -1053,10 +1051,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
@@ -1068,13 +1066,13 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new InjectedPlayerActor(
+            return new InjectedPlayerActor(
                 actorId,
                 context,
-                dependency.format(actorId)));
+                dependency.format(actorId));
         }
     }
 
@@ -1087,9 +1085,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
+        public void handle(ZLinkSocketEvent event) {
             count.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1102,9 +1099,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<Void> handleAsync(ZLinkRegistryEvent event) {
+        public void handle(ZLinkRegistryEvent event) {
             sourceName.complete(event.sourceName());
-            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1125,26 +1121,24 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onConnected() {
         }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onDisconnected() {
         }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
+        public void onError(ZLinkStreamError error) {
         }
 
         @Override
-        public CompletionStage<Void> onDispatchAsync(
+        public void onDispatch(
             ZLinkStreamHeader header,
             Message payload) {
-            return dispatcher.tryHandleAsync(context, header, payload)
-                .thenApply(ignored -> null);
+            dispatcher.tryHandleAsync(context, header, payload)
+                .toCompletableFuture()
+                .join();
         }
     }
 
@@ -1166,13 +1160,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<Void> handleAsync(
+        public void handle(
             ZLinkSessionContext context,
             ZLinkStreamHeader header,
             Message payload) {
             count.incrementAndGet();
             handled.complete(null);
-            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1209,10 +1202,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             String request,
             ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(dependency.format(request));
+            return dependency.format(request);
         }
     }
 
@@ -1225,11 +1218,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<ProfileReply> handleAsync(
+        public ProfileReply handle(
             ProfileRequest request,
             ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(
-                new ProfileReply(dependency.format(request.profileId())));
+            return
+                new ProfileReply(dependency.format(request.profileId()));
         }
     }
 
@@ -1262,10 +1255,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "GetProfile")
-        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+        public ProfileReply handle(ProfileRequest request) {
             requestCount++;
-            return CompletableFuture.completedFuture(
-                new ProfileReply(dependency.format(request.profileId())));
+            return
+                new ProfileReply(dependency.format(request.profileId()));
         }
 
         int requestCount() {
@@ -1309,12 +1302,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "DecorateProfile")
-        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+        public ProfileReply handle(ProfileRequest request) {
             String value = dependency.format(request.profileId());
             for (ProfileDecorator decorator : decorators) {
                 value = decorator.decorate(value);
             }
-            return CompletableFuture.completedFuture(new ProfileReply(value));
+            return new ProfileReply(value);
         }
     }
 
@@ -1331,12 +1324,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @ZLinkRequest(packetName = "DecorateProfileSet")
-        public CompletionStage<ProfileReply> handleAsync(ProfileRequest request) {
+        public ProfileReply handle(ProfileRequest request) {
             String value = dependency.format(request.profileId());
             for (ProfileDecorator decorator : decorators) {
                 value = decorator.decorate(value);
             }
-            return CompletableFuture.completedFuture(new ProfileReply(value));
+            return new ProfileReply(value);
         }
     }
 
@@ -1349,10 +1342,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             String request,
             ZLinkRouteRequestContext context) {
-            return CompletableFuture.completedFuture(dependency.format(request));
+            return dependency.format(request);
         }
     }
 

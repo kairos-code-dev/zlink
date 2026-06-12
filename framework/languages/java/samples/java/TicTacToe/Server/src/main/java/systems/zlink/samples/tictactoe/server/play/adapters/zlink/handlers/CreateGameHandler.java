@@ -1,6 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play.adapters.zlink.handlers;
 
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.contracts.core.RoutingId;
 import org.springframework.beans.factory.ObjectProvider;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -29,12 +30,12 @@ public final class CreateGameHandler {
     }
 
     @ZLinkRequest(packetName = "CreateGameReq")
-    public CompletionStage<CreateGameRes> create(CreateGameReq request) {
+    public CreateGameRes create(CreateGameReq request) {
         TicTacToeGameCreator.GameRoom room = gameCreator.nextRoom(request.gameName());
-        return spots.getObject().create(TicTacToeGame.class, RoutingId.from(room.roomId()))
-            .thenApply(created -> new CreateGameRes(
-                room.roomId(),
-                settings.playEndpoint(),
-                room.gameName()));
+        await(spots.getObject().create(TicTacToeGame.class, RoutingId.from(room.roomId())));
+        return new CreateGameRes(
+            room.roomId(),
+            settings.playEndpoint(),
+            room.gameName());
     }
 }

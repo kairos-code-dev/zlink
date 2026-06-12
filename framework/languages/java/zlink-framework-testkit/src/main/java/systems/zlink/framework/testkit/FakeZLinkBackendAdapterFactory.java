@@ -725,6 +725,10 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 1,
                 0));
         }
+        @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
+            record("destroyActor." + actor.actorId());
+            return CompletableFuture.completedFuture(null);
+        }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) {
             record("sendActorBoundSession." + actor.actorId() + "." + firstPart(parts));
             return true;

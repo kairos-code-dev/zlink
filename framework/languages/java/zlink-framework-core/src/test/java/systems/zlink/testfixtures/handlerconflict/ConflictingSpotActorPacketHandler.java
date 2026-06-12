@@ -14,13 +14,13 @@ import systems.zlink.framework.spots.ZLinkSpotContext;
 public final class ConflictingSpotActorPacketHandler {
     @ZLinkSpotActorSend(packetName = "SpotActorSend")
     @ZLinkSpotActorRequest(packetName = "SpotActorRequest")
-    public CompletionStage<SpotActorReply> handle(
+    public SpotActorReply handle(
         TestSpot spot,
         TestActor actor,
         ZLinkSpotActorRequestContext context,
         SpotActorRequest request,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(new SpotActorReply());
+        return new SpotActorReply();
     }
 
     public static final class TestSpot implements ZLinkSpot {

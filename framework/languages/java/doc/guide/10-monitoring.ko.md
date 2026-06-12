@@ -58,7 +58,7 @@ ZLinkMonitoringCustomizer monitoring() {
 public final class RegistryMonitor
     implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
     @Override
-    public CompletionStage<Void> handleAsync(ZLinkRegistryEvent event) {
+    public void handle(ZLinkRegistryEvent event) {
         switch (event.event()) {
             case STATUS_CHANGED:
                 // event.status() 관찰
@@ -69,7 +69,6 @@ public final class RegistryMonitor
             default:
                 break;
         }
-        return CompletableFuture.completedFuture(null);
     }
 }
 ```
@@ -85,9 +84,8 @@ registry event는 `STATUS_CHANGED`, `TOPOLOGY_CHANGED`, `SERVICE_SUMMARY_CHANGED
 public final class ProfileSocketMonitor
     implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
     @Override
-    public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
+    public void handle(ZLinkSocketEvent event) {
         // event.event()와 event.diagnostic()으로 상태와 진단 정보를 확인한다.
-        return CompletableFuture.completedFuture(null);
     }
 }
 ```

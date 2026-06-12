@@ -23,7 +23,7 @@ class AuthenticatePlaySessionHandler(
     private val channels: ZLinkClient,
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineSessionPacketHandler<ZLinkSessionContext>(coroutines, "AuthenticateReq") {
-    override suspend fun handle(
+    override suspend fun handleSuspending(
         context: ZLinkSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,

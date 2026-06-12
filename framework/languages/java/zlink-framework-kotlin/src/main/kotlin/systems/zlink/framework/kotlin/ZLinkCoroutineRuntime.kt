@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
 import kotlinx.coroutines.runBlocking
 import systems.zlink.contracts.messaging.Message
@@ -27,6 +28,7 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEvent
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkEntrySpot
+import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
@@ -50,6 +52,10 @@ import systems.zlink.stream.connector.ZLinkStreamError
 import systems.zlink.stream.connector.ZLinkStreamErrorHandler
 import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler
+
+suspend fun ZLinkEntrySpotContext.destroyActor(actor: ZLinkActor) {
+    destroyActorAsync(actor).await()
+}
 
 class ZLinkCoroutineRuntime : AutoCloseable {
     private val dispatcher: CoroutineDispatcher
@@ -212,7 +218,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         voidStage(block)
 
     fun <T> blocking(block: suspend CoroutineScope.() -> T): T =
-        runBlocking(dispatcher) {
+        runBlocking(scope.coroutineContext + dispatcher) {
             block()
         }
 

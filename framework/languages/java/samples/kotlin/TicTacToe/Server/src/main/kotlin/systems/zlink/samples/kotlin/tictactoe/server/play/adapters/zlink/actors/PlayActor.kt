@@ -8,6 +8,8 @@ class PlayActor(
     private val context: ZLinkActorContext,
 ) : ZLinkActor {
     private var joinedRoomId: String? = null
+    var destroyAfterEntrySpotJoin: Boolean = false
+        private set
 
     override fun actorId(): String = actorId
 
@@ -19,4 +21,8 @@ class PlayActor(
 
     fun requireJoinedGame(): String =
         joinedRoomId ?: throw IllegalStateException("actor has not joined a game")
+
+    fun markForDestroyAfterRoomLeave() {
+        destroyAfterEntrySpotJoin = true
+    }
 }

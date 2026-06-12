@@ -1,7 +1,7 @@
 package systems.zlink.samples.tictactoe.server.play.adapters.zlink.sessions.handlers;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
@@ -35,7 +35,7 @@ public final class AuthenticatePlaySessionHandler
     }
 
     @Override
-    public CompletionStage<Void> handleAsync(
+    public void handle(
         ZLinkSessionContext context,
         ZLinkStreamHeader header,
         Message payload) {
@@ -47,21 +47,19 @@ public final class AuthenticatePlaySessionHandler
                 connectorCodec(header)),
             AuthenticateReq.class);
         if (request.accessToken() == null || request.accessToken().isBlank()) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("access token is required"));
+            throw new IllegalArgumentException("access token is required");
         }
-        return channels
+        AuthenticatePlayerRes authenticated = channels
             .requestToChannel(
                 SampleNames.ApiChannel,
                 new AuthenticatePlayerReq(request.accessToken()))
             .timeout(SampleNames.RequestTimeout)
-            .submit(AuthenticatePlayerRes.class)
-            .thenCompose(authenticated -> actors.getOrCreate(
-                authenticated.actorId(),
-                SampleNames.PlayActor))
-            .thenCompose(context.actors()::bind)
-            .thenCompose(bound -> context.client()
-                .reply(new AuthenticateRes(bound.actorId()))
-                .submit());
+            .await(AuthenticatePlayerRes.class);
+        var playActor = await(actors.getOrCreate(authenticated.actorId(), SampleNames.PlayActor));
+        var bound = await(context.actors().bind(playActor));
+        context.client()
+            .reply(new AuthenticateRes(bound.actorId()))
+            .await();
     }
 
     private static ZLinkStreamCodec connectorCodec(ZLinkStreamHeader header) {

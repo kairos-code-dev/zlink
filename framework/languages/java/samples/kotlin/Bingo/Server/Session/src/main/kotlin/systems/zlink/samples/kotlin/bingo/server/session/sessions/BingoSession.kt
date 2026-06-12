@@ -16,7 +16,7 @@ class BingoSession(
 ) : ZLinkCoroutineSession(coroutines) {
     override fun context(): ZLinkSessionContext = context
 
-    override suspend fun onDispatch(
+    override suspend fun onDispatchSuspending(
         header: ZLinkStreamHeader,
         payload: Message,
     ) {

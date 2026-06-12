@@ -12,10 +12,10 @@ class AllocateBingoRoomHandler(
     private val rooms: BingoRoomDirectory,
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes> {
-    override fun handleAsync(
+    override fun handle(
         request: AllocateBingoRoomReq,
         context: ZLinkRequestContext,
-    ) = coroutines.completionStage {
+    ) = coroutines.blocking {
         AllocateBingoRoomRes(rooms.allocate(request.actorId, request.mode))
     }
 }

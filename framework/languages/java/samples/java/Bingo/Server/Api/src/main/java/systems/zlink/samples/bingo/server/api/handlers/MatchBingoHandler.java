@@ -1,6 +1,5 @@
 package systems.zlink.samples.bingo.server.api.handlers;
 
-import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
@@ -21,14 +20,14 @@ public final class MatchBingoHandler
     }
 
     @Override
-    public CompletionStage<Messages.MatchBingoApiRes> handleAsync(
+    public Messages.MatchBingoApiRes handle(
         Messages.MatchBingoApiReq request,
         ZLinkRequestContext context) {
-        return client.requestToChannel(
+        Messages.AllocateBingoRoomRes allocated = client.requestToChannel(
                 SampleNames.PlayChannel,
                 new Messages.AllocateBingoRoomReq(request.actorId(), request.mode()))
             .timeout(SampleTimings.RequestTimeout)
-            .submit(Messages.AllocateBingoRoomRes.class)
-            .thenApply(allocated -> new Messages.MatchBingoApiRes(allocated.roomId()));
+            .await(Messages.AllocateBingoRoomRes.class);
+        return new Messages.MatchBingoApiRes(allocated.roomId());
     }
 }

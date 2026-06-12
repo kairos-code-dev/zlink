@@ -916,8 +916,8 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     public static final class EchoHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+        public String handle(String request, ZLinkRequestContext context) {
+            return request;
         }
     }
 
@@ -928,43 +928,40 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class AnnotatedEchoHandler
         implements ZLinkRequestHandler<AnnotatedPacket, String> {
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             AnnotatedPacket request,
             ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request.value());
+            return request.value();
         }
     }
 
     @ZLinkHandlerGroup("scanned-publish")
     public static final class EventHandler implements ZLinkPublishHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkPublishContext context) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String message, ZLinkPublishContext context) {
         }
     }
 
     @ZLinkHandlerGroup("scanned-attributed-publish")
     public static final class AttributedEventHandler {
         @ZLinkPublish(packetName = "AttributedEvent")
-        public CompletionStage<Void> handleAsync(
+        public void handle(
             String message,
             ZLinkPublishContext context) {
-            return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class SendHandler implements ZLinkSendHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkSendContext context) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String message, ZLinkSendContext context) {
         }
     }
 
     @ZLinkHandlerGroup("scanned-request")
     public static final class ScannedRequestHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+        public String handle(String request, ZLinkRequestContext context) {
+            return request;
         }
     }
 
@@ -973,15 +970,14 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class MultiGroupScannedRequestHandler
         implements ZLinkRequestHandler<Integer, Integer> {
         @Override
-        public CompletionStage<Integer> handleAsync(Integer request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+        public Integer handle(Integer request, ZLinkRequestContext context) {
+            return request;
         }
     }
 
     public static final class RouteSendHandler implements ZLinkRouteSendHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(String message, ZLinkRouteSendContext context) {
-            return CompletableFuture.completedFuture(null);
+        public void handle(String message, ZLinkRouteSendContext context) {
         }
     }
 
@@ -989,10 +985,10 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class RouteEchoHandler
         implements ZLinkRouteRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             String request,
             ZLinkRouteRequestContext context) {
-            return CompletableFuture.completedFuture(request);
+            return request;
         }
     }
 
@@ -1032,18 +1028,15 @@ final class DefaultZLinkFrameworkOptionsTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onConnected() {
         }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
+        public void onDisconnected() {
         }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
+        public void onError(ZLinkStreamError error) {
         }
     }
 }

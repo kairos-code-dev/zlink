@@ -45,6 +45,7 @@ class BingoRoomSpot(
     private var settings = BingoRoomSettings.create("two-player", 0)
     private var timer: ZLinkTimer? = null
     private var status: String = WaitingForPlayers
+    private var cleanupStarted = false
 
     init {
         resetDrawDeck()
@@ -52,7 +53,7 @@ class BingoRoomSpot(
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
@@ -61,7 +62,7 @@ class BingoRoomSpot(
         context.handlers().addHandler(SubmitBingoCardHandler::class.java)
     }
 
-    override suspend fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actor: ZLinkActor,
         request: Message,
         cancellationToken: CancellationToken,
@@ -72,19 +73,22 @@ class BingoRoomSpot(
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override suspend fun onPostActorJoined(
+    override suspend fun onPostActorJoinedSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
-    override suspend fun onActorLeft(
+    override suspend fun onActorLeftSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
+        if (actor is PlayerActor) {
+            actors.remove(actor.actorId())
+        }
     }
 
-    override suspend fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         timer = context.addTimer(
             "bingo-draw",
             Duration.ofMillis(settings.drawPeriodMillis),
@@ -93,7 +97,7 @@ class BingoRoomSpot(
         ).await()
     }
 
-    override suspend fun onClosing() {
+    override suspend fun onClosingSuspending() {
         timer?.cancelAsync()?.await()
     }
 
@@ -178,6 +182,18 @@ class BingoRoomSpot(
         }
         notifications.publish(numberDrawnEvents(state, number), actors::get)
         notifications.publish(eventsForAll(kind, state), actors::get)
+        leaveFinishedActors()
+    }
+
+    private suspend fun leaveFinishedActors() {
+        if (cleanupStarted || status != Finished) {
+            return
+        }
+        cleanupStarted = true
+        for (actor in actors.values.toList()) {
+            actor.markForDestroyAfterRoomLeave()
+            context.leaveActorAsync(actor).await()
+        }
     }
 
     private fun snapshot(): BingoRoomState {
@@ -267,6 +283,7 @@ class BingoRoomSpot(
             "Bingo room draw period must be positive."
         }
         this.settings = settings
+        cleanupStarted = false
         resetDrawDeck()
     }
 

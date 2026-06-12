@@ -79,7 +79,7 @@ public final class StageSpot implements ZLinkSpot {
     }
 
     @Override
-    public CompletionStage<Void> onInitializeAsync() {
+    public void onInitialize() {
         return context.addTimer(
             "heartbeat",
             Duration.ofSeconds(1),
@@ -113,10 +113,9 @@ public final class StageHandlers {
     }
 
     @ZLinkSpotSubscription(spotNodeName = "stage-node", topic = "stage.state.updated")
-    public CompletionStage<Void> onStageStateAsync(
+    public void onStageState(
         StageStateUpdated event,
         ZLinkSpotSubscriptionContext context) {
-        return CompletableFuture.completedFuture(null);
     }
 }
 ```

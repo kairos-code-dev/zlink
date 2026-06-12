@@ -21,10 +21,10 @@ class EnsurePlayerActorHandler(
     private val actors: ZLinkActorManager,
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes> {
-    override fun handleAsync(
+    override fun handle(
         request: EnsurePlayerActorReq,
         context: ZLinkRequestContext,
-    ) = coroutines.completionStage {
+    ) = coroutines.blocking {
         val actor = actors.getOrCreate(request.actorId, SampleNames.PlayerActorType).await()
         if (actor is PlayerActor) {
             actor.setDisplayName(request.displayName)

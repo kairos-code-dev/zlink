@@ -7,6 +7,7 @@ public final class PlayActor implements ZLinkActor {
     private final String actorId;
     private final ZLinkActorContext context;
     private String joinedRoomId;
+    private boolean destroyAfterEntrySpotJoin;
 
     public PlayActor(String actorId, ZLinkActorContext context) {
         this.actorId = actorId;
@@ -32,5 +33,13 @@ public final class PlayActor implements ZLinkActor {
             throw new IllegalStateException("actor has not joined a room");
         }
         return joinedRoomId;
+    }
+
+    public boolean destroyAfterEntrySpotJoin() {
+        return destroyAfterEntrySpotJoin;
+    }
+
+    public void markForDestroyAfterRoomLeave() {
+        destroyAfterEntrySpotJoin = true;
     }
 }

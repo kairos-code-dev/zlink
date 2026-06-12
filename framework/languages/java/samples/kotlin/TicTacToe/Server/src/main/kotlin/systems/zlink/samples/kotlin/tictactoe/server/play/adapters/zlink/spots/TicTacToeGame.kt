@@ -43,15 +43,16 @@ class TicTacToeGame(
     private var turnDeadline: Instant? = null
     private var gameTick: ZLinkTimer? = null
     private var created = false
+    private var cleanupStarted = false
 
     override fun context(): ZLinkSpotContext = context
 
-    override suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+    override suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override suspend fun onActorJoin(
+    override suspend fun onActorJoinSuspending(
         actor: ZLinkActor,
         request: Message,
         cancellationToken: CancellationToken,
@@ -65,19 +66,22 @@ class TicTacToeGame(
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override suspend fun onPostActorJoined(
+    override suspend fun onPostActorJoinedSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
-    override suspend fun onActorLeft(
+    override suspend fun onActorLeftSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
+        if (actor is PlayActor) {
+            players.removeIf { it.actor.actorId == actor.actorId }
+        }
     }
 
-    override suspend fun onInitialize() {
+    override suspend fun onInitializeSuspending() {
         gameTick = context.addTimer(
             "game-tick",
             gameTickPeriod,
@@ -86,7 +90,7 @@ class TicTacToeGame(
         ).await()
     }
 
-    override suspend fun onClosing() {
+    override suspend fun onClosingSuspending() {
         gameTick?.cancelAsync()?.await()
     }
 
@@ -177,6 +181,7 @@ class TicTacToeGame(
         ensureCreated()
         val deadline = turnDeadline
         if (status != "InProgress" || deadline == null || Instant.now().isBefore(deadline)) {
+            leaveFinishedActors(snapshot())
             return
         }
 
@@ -190,7 +195,20 @@ class TicTacToeGame(
         lastMoveCell = null
         turnDeadline = null
 
-        broadcast(snapshot(), null)
+        val state = snapshot()
+        broadcast(state, null)
+        leaveFinishedActors(state)
+    }
+
+    private suspend fun leaveFinishedActors(state: GameState) {
+        if (cleanupStarted || !isTerminal(state)) {
+            return
+        }
+        cleanupStarted = true
+        for (slot in players.toList()) {
+            slot.actor.markForDestroyAfterRoomLeave()
+            context.leaveActorAsync(slot.actor).await()
+        }
     }
 
     private fun resetTurnDeadline() {
@@ -252,4 +270,7 @@ class TicTacToeGame(
     }
 
     private data class PlayerSlot(var actor: PlayActor, val mark: String)
+
+    private fun isTerminal(state: GameState): Boolean =
+        state.status == "Won" || state.status == "Draw" || state.status == "TurnTimedOut"
 }

@@ -222,9 +222,8 @@ final class SpotManagerTest {
         }
 
         @Override
-        public CompletionStage<Void> onInitializeAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onInitialize() {
+                    }
     }
 
     public static final class PublishingSpot implements ZLinkSpot {
@@ -260,22 +259,22 @@ final class SpotManagerTest {
         }
 
         @Override
-        public CompletionStage<Void> onInitializeAsync() {
+        public void onInitialize() {
             initializedOnVirtualThread.set(Thread.currentThread().isVirtual());
-            return context.addTimer(
+            context.addTimer(
                     "heartbeat",
                     Duration.ofMillis(10),
                     HeartbeatTimerHandler.class,
                     null)
-                .thenApply(timer -> null);
+                .toCompletableFuture()
+                .join();
         }
 
         @Override
-        public CompletionStage<Void> onClosingAsync() {
+        public void onClosing() {
             closedOnVirtualThread.set(Thread.currentThread().isVirtual());
             closed.countDown();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class RejectingSpot implements ZLinkSpot {
@@ -291,9 +290,8 @@ final class SpotManagerTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
-            return CompletableFuture.completedFuture(
-                ZLinkSpotCreateResponse.reject(Message.from("reject:" + request.toUtf8String())));
+        public ZLinkSpotCreateResponse onCreate(Message request) {
+            return ZLinkSpotCreateResponse.reject(Message.from("reject:" + request.toUtf8String()));
         }
     }
 
@@ -322,28 +320,31 @@ final class SpotManagerTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+        public ZLinkSpotCreateResponse onCreate(Message request) {
             createCalls.incrementAndGet();
             createRequest.set(request.toUtf8String());
             createStarted.countDown();
-            return release.thenApply(ignored -> ZLinkSpotCreateResponse.accept());
+            release.join();
+            return ZLinkSpotCreateResponse.accept();
         }
     }
 
     public static final class HeartbeatTimerHandler implements ZLinkSpotTimerHandler<PublishingSpot> {
         @Override
-        public CompletionStage<Void> handleAsync(PublishingSpot spot, ZLinkTimerTick tick) {
+        public void handle(PublishingSpot spot, ZLinkTimerTick tick) {
             PublishingSpot.timerOnVirtualThread.set(Thread.currentThread().isVirtual());
             if (PublishingSpot.removed.get()) {
                 PublishingSpot.afterRemoveTick.countDown();
             }
             PublishingSpot.ticks.incrementAndGet();
-            return spot.context()
+            spot.context()
                 .outbound()
                 .publish("heartbeat", "tick")
                 .packetName("Heartbeat")
                 .submit()
-                .thenRun(PublishingSpot.timerPublished::countDown);
+                .thenRun(PublishingSpot.timerPublished::countDown)
+                .toCompletableFuture()
+                .join();
         }
     }
 }

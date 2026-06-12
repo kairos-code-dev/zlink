@@ -11,6 +11,8 @@ class PlayerActor(
         private set
     var roomId: String = ""
         private set
+    var destroyAfterEntrySpotJoin: Boolean = false
+        private set
 
     override fun actorId(): String = actorId
 
@@ -22,5 +24,9 @@ class PlayerActor(
 
     fun joinRoom(value: String) {
         roomId = value
+    }
+
+    fun markForDestroyAfterRoomLeave() {
+        destroyAfterEntrySpotJoin = true
     }
 }

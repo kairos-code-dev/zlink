@@ -505,6 +505,12 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
                         result.flags());
                 });
         }
+        @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
+            return spotNode.destroyActor(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()))
+                .timeout(timeout)
+                .submit()
+                .thenApply(ignored -> null);
+        }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return submit(spotNode.sendActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch())), parts, flags); }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { spotNode.closeActorBoundSession(new ActorRef(actor.nodeRid(), actor.actorId(), actor.epoch()), timeout); }
         @Override public systems.zlink.contracts.service.spot.SpotNodeStatus status() { return spotNode.status(); }

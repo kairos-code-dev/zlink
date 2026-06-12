@@ -1,11 +1,12 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.spots;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
+import systems.zlink.samples.bingo.server.play.adapters.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.adapters.zlink.spots.handlers.MatchBingoActorHandler;
 
 public final class BingoEntrySpot implements ZLinkEntrySpot {
@@ -26,16 +27,17 @@ public final class BingoEntrySpot implements ZLinkEntrySpot {
     }
 
     @Override
-    public CompletionStage<Void> onPostActorJoinedAsync(
+    public void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
+        if (actor instanceof PlayerActor player && player.destroyAfterEntrySpotJoin()) {
+            await(context.destroyActorAsync(player));
+        }
     }
 
     @Override
-    public CompletionStage<Void> onActorLeftAsync(
+    public void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 }

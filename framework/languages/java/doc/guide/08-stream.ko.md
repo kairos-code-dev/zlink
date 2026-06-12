@@ -55,18 +55,22 @@ public final class GameSession implements ZLinkSession {
     }
 
     @Override
-    public CompletionStage<Void> onDispatchAsync(
+    public void onDispatch(
         ZLinkStreamHeader header,
         Message payload) {
         switch (header.name()) {
             case "ClientInput":
                 ClientInput input = payload.decode(ClientInput.class);
-                return channels.sendToChannel("play", new ForwardInputCommand(input))
-                    .submit();
+                channels.sendToChannel("play", new ForwardInputCommand(input))
+                    .submit()
+                    .toCompletableFuture()
+                    .join();
+                return;
             case "Ping":
-                return context.client().reply(new Pong()).submit();
+                context.client().reply(new Pong()).submit().toCompletableFuture().join();
+                return;
             default:
-                return CompletableFuture.completedFuture(null);
+                return;
         }
     }
 }
@@ -86,14 +90,14 @@ public final class GameSession implements ZLinkSession {
 
 ### lifecycle과 실행 보장
 
-- 콜백은 socket monitor 이벤트에 매핑된다: `onConnectedAsync` <- connection ready,
-  `onDisconnectedAsync` <- disconnected. session에 귀속되는 transport 오류는
-  `onErrorAsync`가 먼저, 연결 종료 확정 후 `onDisconnectedAsync`가 따른다.
+- 콜백은 socket monitor 이벤트에 매핑된다: `onConnected` <- connection ready,
+  `onDisconnected` <- disconnected. session에 귀속되는 transport 오류는
+  `onError`가 먼저, 연결 종료 확정 후 `onDisconnected`가 따른다.
 - handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
   runtime monitoring으로만 간다([10-monitoring](./10-monitoring.ko.md)).
 - **같은 session의 콜백은 직렬**로 돈다(두 dispatch/lifecycle이 겹치지 않음).
   frame 도착 순서는 session별로 보존된다. session끼리는 독립으로 진행한다.
-- application handler 예외는 `onErrorAsync`로 올라오지 않는다.
+- application handler 예외는 `onError`로 올라오지 않는다.
 - **recv 루프는 노출하지 않는다.** framework가 수신 dispatch를 소유하고 응용은
   handler만 구현한다(DI/filter/logging을 일관되게 엮기 위해).
 

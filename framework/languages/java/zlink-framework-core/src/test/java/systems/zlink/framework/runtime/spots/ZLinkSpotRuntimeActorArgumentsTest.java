@@ -71,13 +71,13 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
     }
 
     public static final class DotnetShapeHandler {
-        public CompletionStage<Reply> request(
+        public Reply request(
             TestSpot spot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
             Request request,
             CancellationToken cancellationToken) {
-            return CompletableFuture.completedFuture(new Reply());
+            return new Reply();
         }
     }
 

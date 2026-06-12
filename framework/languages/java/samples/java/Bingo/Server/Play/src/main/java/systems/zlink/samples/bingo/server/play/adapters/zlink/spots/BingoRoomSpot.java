@@ -1,12 +1,12 @@
 package systems.zlink.samples.bingo.server.play.adapters.zlink.spots;
 
+import static systems.zlink.framework.ZLinkAwait.await;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -35,6 +35,7 @@ public final class BingoRoomSpot implements ZLinkSpot {
         BingoRoomModels.BingoRoomSettings.create("two-player", 0);
     private BingoRoomGame game;
     private ZLinkTimer timer;
+    private boolean cleanupStarted;
 
     public BingoRoomSpot(
         ZLinkSpotContext context,
@@ -54,87 +55,83 @@ public final class BingoRoomSpot implements ZLinkSpot {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
-        return createdHandler.handleAsync(this, request);
+    public ZLinkSpotCreateResponse onCreate(Message request) {
+        return createdHandler.handle(this, request);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+    public ZLinkSpotActorJoinResponse onActorJoin(
         ZLinkActor actor,
         Message request,
         CancellationToken cancellationToken) {
         if (!(actor instanceof PlayerActor player)) {
-            return CompletableFuture.failedFuture(
-                new IllegalArgumentException("Bingo room only accepts PlayerActor."));
+            throw new IllegalArgumentException("Bingo room only accepts PlayerActor.");
         }
         Messages.BingoRoomJoinReq joinRequest = decode(request, Messages.BingoRoomJoinReq.class);
-        return joinAsync(player, joinRequest)
-            .thenApply(reply -> ZLinkSpotActorJoinResponse.accept(encode(reply)));
+        return ZLinkSpotActorJoinResponse.accept(encode(join(player, joinRequest)));
     }
 
     @Override
-    public CompletionStage<Void> onPostActorJoinedAsync(
+    public void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public CompletionStage<Void> onActorLeftAsync(
+    public void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
+        actors.remove(actor.actorId());
     }
 
     @Override
-    public CompletionStage<Void> onInitializeAsync() {
-        return context.addTimer(
+    public void onInitialize() {
+        timer = await(context.addTimer(
                 "bingo-draw",
                 Duration.ofMillis(settings.drawPeriodMillis()),
                 BingoRoomTimerHandler.class,
-                new ZLinkTimerOptions())
-            .thenAccept(created -> timer = created);
+                new ZLinkTimerOptions()));
     }
 
     @Override
-    public CompletionStage<Void> onClosingAsync() {
-        return timer == null ? CompletableFuture.completedFuture(null) : timer.cancelAsync();
+    public void onClosing() {
+        if (timer != null) {
+            await(timer.cancelAsync());
+        }
     }
 
-    public CompletionStage<Messages.BingoRoomJoinRes> joinAsync(
+    public Messages.BingoRoomJoinRes join(
         PlayerActor actor,
         Messages.BingoRoomJoinReq request) {
         if (!actor.actorId().equals(request.actorId())) {
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                "Join request actor id does not match bound actor."));
+            throw new IllegalStateException("Join request actor id does not match bound actor.");
         }
         if (!request.roomId().equals(context.spotRid().toString())) {
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                "Join request room id does not match bingo room."));
+            throw new IllegalStateException("Join request room id does not match bingo room.");
         }
         actor.setDisplayName(request.displayName());
         actor.joinRoom(request.roomId());
         actors.put(actor.actorId(), actor);
         BingoRoomGame.Change change = game.join(actor.actorId(), request.displayName());
-        return notifications.publishAsync(change.events(), actors::get)
-            .thenApply(ignored -> new Messages.BingoRoomJoinRes(change.state()));
+        notifications.publish(change.events(), actors::get);
+        return new Messages.BingoRoomJoinRes(change.state());
     }
 
-    public CompletionStage<Messages.SubmitBingoCardRes> submitCardAsync(
+    public Messages.SubmitBingoCardRes submitCard(
         PlayerActor actor,
         Messages.SubmitBingoCardReq request) {
         if (!request.roomId().equals(context.spotRid().toString())) {
-            return CompletableFuture.failedFuture(new IllegalStateException(
-                "Submit request room id does not match bingo room."));
+            throw new IllegalStateException("Submit request room id does not match bingo room.");
         }
         BingoRoomGame.Change change = game.submitCard(actor.actorId(), request.card());
-        return notifications.publishAsync(change.events(), actors::get)
-            .thenApply(ignored -> new Messages.SubmitBingoCardRes(change.state()));
+        notifications.publish(change.events(), actors::get);
+        return new Messages.SubmitBingoCardRes(change.state());
     }
 
-    public CompletionStage<Void> tickAsync() {
+    public void tick() {
         BingoRoomGame.Change change = game.drawNext();
-        return notifications.publishAsync(change.events(), actors::get);
+        notifications.publish(change.events(), actors::get);
+        leaveFinishedActors(change);
     }
 
     public void applySettings(BingoRoomModels.BingoRoomSettings settings) {
@@ -149,6 +146,19 @@ public final class BingoRoomSpot implements ZLinkSpot {
         }
         this.settings = settings;
         this.game = BingoGame.room(context.spotRid().toString(), settings);
+        this.cleanupStarted = false;
+    }
+
+    private void leaveFinishedActors(BingoRoomGame.Change change) {
+        if (cleanupStarted || !change.state().status().equals("Finished")) {
+            return;
+        }
+
+        cleanupStarted = true;
+        for (PlayerActor actor : actors.values().toArray(PlayerActor[]::new)) {
+            actor.markForDestroyAfterRoomLeave();
+            await(context.leaveActorAsync(actor));
+        }
     }
 
     private <T> T decode(Message request, Class<T> type) {

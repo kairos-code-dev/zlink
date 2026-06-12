@@ -8,7 +8,7 @@ import systems.zlink.samples.kotlin.bingo.server.play.adapters.zlink.spots.Bingo
 class BingoRoomTimerHandler(
     coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkCoroutineSpotTimerHandler<BingoRoomSpot>(coroutines) {
-    override suspend fun handle(
+    override suspend fun handleSuspending(
         spot: BingoRoomSpot,
         tick: ZLinkTimerTick,
     ) {

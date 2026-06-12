@@ -68,8 +68,7 @@ public final class ProfileSocketMonitor
     implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
 
     @Override
-    public CompletionStage<Void> handleAsync(ZLinkSocketEvent event) {
-        return CompletableFuture.completedFuture(null);
+    public void handle(ZLinkSocketEvent event) {
     }
 }
 
@@ -78,8 +77,7 @@ public final class RegistryMonitor
     implements ZLinkRuntimeEventHandler<ZLinkRegistryEvent> {
 
     @Override
-    public CompletionStage<Void> handleAsync(ZLinkRegistryEvent event) {
-        return CompletableFuture.completedFuture(null);
+    public void handle(ZLinkRegistryEvent event) {
     }
 }
 ```
@@ -110,7 +108,7 @@ public sealed interface ZLinkRuntimeEvent permits
 }
 
 public interface ZLinkRuntimeEventHandler<T extends ZLinkRuntimeEvent> {
-    CompletionStage<Void> handleAsync(T event);
+    void handle(T event);
 }
 ```
 

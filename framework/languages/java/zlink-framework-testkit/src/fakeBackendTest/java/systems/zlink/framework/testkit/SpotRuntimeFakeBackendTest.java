@@ -1365,9 +1365,8 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> onInitializeAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onInitialize() {
+                    }
     }
 
     public static final class PayloadSpot implements ZLinkSpot {
@@ -1379,9 +1378,9 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
+        public ZLinkSpotCreateResponse onCreate(Message request) {
             lastCreatePayload.set(request.toUtf8String());
-            return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
+            return ZLinkSpotCreateResponse.accept();
         }
     }
 
@@ -1431,12 +1430,11 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> onActorLeftAsync(
+        public void onActorLeft(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class HandlerSpot implements ZLinkSpot {
@@ -1463,27 +1461,25 @@ final class SpotRuntimeFakeBackendTest {
     public static final class SpotCommandHandler
         implements ZLinkSpotPacketHandler<HandlerSpot, String> {
         @Override
-        public CompletionStage<Void> handleAsync(HandlerSpot spot, String message) {
+        public void handle(HandlerSpot spot, String message) {
             HandlerSpot.dispatches.add("packet:" + message);
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class SpotQueryHandler {
         @ZLinkSpotRequest(packetName = "SpotQuery")
-        public CompletionStage<String> handleAsync(HandlerSpot spot, String request) {
+        public String handle(HandlerSpot spot, String request) {
             HandlerSpot.dispatches.add("request:" + request);
-            return CompletableFuture.completedFuture("reply:" + request);
+            return "reply:" + request;
         }
     }
 
     public static final class SpotEventHandler
         implements ZLinkSpotSubscriptionHandler<HandlerSpot, String> {
         @Override
-        public CompletionStage<Void> handleAsync(HandlerSpot spot, String message) {
+        public void handle(HandlerSpot spot, String message) {
             HandlerSpot.dispatches.add("subscription:" + message);
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class SerialSpot implements ZLinkSpot {
@@ -1504,7 +1500,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
             Message request,
             CancellationToken cancellationToken) {
@@ -1512,11 +1508,10 @@ final class SpotRuntimeFakeBackendTest {
             SerialActorJoinHandler.events.add(
                 "join:start:" + actor.actorId() + ":" + decoded.value());
             SerialActorJoinHandler.started.complete(null);
-            return SerialActorJoinHandler.release.thenApply(ignored -> {
-                SerialActorJoinHandler.events.add("join:end:" + actor.actorId());
-                return ZLinkSpotActorJoinResponse.accept(
-                    Message.from(("joined:" + decoded.value()).getBytes(StandardCharsets.UTF_8)));
-            });
+            SerialActorJoinHandler.release.join();
+            SerialActorJoinHandler.events.add("join:end:" + actor.actorId());
+            return ZLinkSpotActorJoinResponse.accept(
+                Message.from(("joined:" + decoded.value()).getBytes(StandardCharsets.UTF_8)));
         }
     }
 
@@ -1535,16 +1530,17 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> handleAsync(SerialSpot spot, String message) {
+        public void handle(SerialSpot spot, String message) {
             events.add("start:" + message);
             if ("first".equals(message)) {
                 firstStarted.complete(null);
-                return releaseFirst.thenRun(() -> events.add("end:first"));
+                releaseFirst.join();
+                events.add("end:first");
+                return;
             }
             events.add("end:" + message);
             secondStarted.complete(null);
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     @ZLinkPacket("SerialJoinRequest")
@@ -1611,11 +1607,10 @@ final class SpotRuntimeFakeBackendTest {
     public static final class NoopSendHandler
         implements ZLinkSendHandler<String> {
         @Override
-        public CompletionStage<Void> handleAsync(
+        public void handle(
             String message,
             ZLinkSendContext context) {
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class AmbientOutboundSpot implements ZLinkSpot {
@@ -1627,12 +1622,14 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotCreateResponse> onCreateAsync(Message request) {
-            return outbound
+        public ZLinkSpotCreateResponse onCreate(Message request) {
+            outbound
                 .sendToChannel("play-events", "hello")
                 .packetName("Greeting")
                 .submit()
-                .thenApply(ignored -> ZLinkSpotCreateResponse.accept());
+                .toCompletableFuture()
+                .join();
+            return ZLinkSpotCreateResponse.accept();
         }
     }
 
@@ -1659,32 +1656,28 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<Void> onInitializeAsync() {
+        public void onInitialize() {
             initializeCount.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onClosingAsync() {
+        public void onClosing() {
             closingCount.incrementAndGet();
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onPostActorJoinedAsync(
+        public void onPostActorJoined(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastJoin.set(actor.actorId() + ":" + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
 
         @Override
-        public CompletionStage<Void> onActorLeftAsync(
+        public void onActorLeft(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     public static final class InterfaceEntrySpot implements ZLinkEntrySpot {
@@ -1714,14 +1707,14 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @Override
-        public CompletionStage<String> handleAsync(
+        public String handle(
             InterfaceEntrySpot entrySpot,
             PlayerActor actor,
             ZLinkSpotActorRequestContext context,
             InterfaceActorRequest request,
             systems.zlink.framework.CancellationToken cancellationToken) {
             lastRequest.set(actor.actorId() + ":" + request.value());
-            return CompletableFuture.completedFuture("reply:" + request.value());
+            return "reply:" + request.value();
         }
     }
 
@@ -1744,22 +1737,21 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoinAsync(
+        public ZLinkSpotActorJoinResponse onActorJoin(
             ZLinkActor actor,
             Message request,
             CancellationToken cancellationToken) {
             lastJoin.set(actor.actorId() + ":" + request.toUtf8String());
-            return CompletableFuture.completedFuture(
-                ZLinkSpotActorJoinResponse.accept(Message.from("joined:" + request.toUtf8String())));
+            return
+                ZLinkSpotActorJoinResponse.accept(Message.from("joined:" + request.toUtf8String()));
         }
 
         @Override
-        public CompletionStage<Void> onPostActorJoinedAsync(
+        public void onPostActorJoined(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastPostJoin.set(actor.actorId() + ":" + actor.context().isJoined());
-            return CompletableFuture.completedFuture(null);
-        }
+                    }
     }
 
     @ZLinkPacket("InterfaceActorRequest")
@@ -1798,9 +1790,8 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastMessage = new AtomicReference<>();
 
         @ZLinkSpotActorSend
-        public CompletionStage<Void> send(PlayerActor actor, String message) {
+        public void send(PlayerActor actor, String message) {
             lastMessage.set(actor.actorId() + ":" + message);
-            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -1809,9 +1800,9 @@ final class SpotRuntimeFakeBackendTest {
         static final AtomicReference<String> lastRequest = new AtomicReference<>();
 
         @ZLinkSpotActorRequest(packetName = "ActorRequestString")
-        public CompletionStage<String> request(PlayerActor actor, String request) {
+        public String request(PlayerActor actor, String request) {
             lastRequest.set(actor.actorId() + ":" + request);
-            return CompletableFuture.completedFuture("reply:" + request);
+            return "reply:" + request;
         }
     }
 
@@ -1837,10 +1828,10 @@ final class SpotRuntimeFakeBackendTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 

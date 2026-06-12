@@ -150,8 +150,9 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   test certificate trust option
 - HTTP status mapping
 
-HTTP/2와 non-blocking async 실행은 범위 밖이다. 전자는 Boost.Beast가 지원하지 않고,
-후자는 task 실행 모델 변경이 필요하므로 별도 설계로 다룬다.
+HTTP/2와 non-blocking async 실행은 현재 구현 범위 밖이다. 전자는 Boost.Beast가 지원하지
+않고, 후자는 task 실행 모델 변경이 필요하므로 별도 설계로 다룬다. coroutine suspend/resume
+지원 초안은 [cpp-http-client-coroutines.ko.md](./cpp-http-client-coroutines.ko.md)에 둔다.
 
 `base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
 `follow_redirects(...)`, `retry(...)`, `proxy(...)`, request path, request header name,

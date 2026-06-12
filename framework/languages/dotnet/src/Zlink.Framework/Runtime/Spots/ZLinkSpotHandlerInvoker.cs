@@ -199,21 +199,6 @@ internal sealed class ZLinkSpotHandlerInvoker(IServiceProvider services, object 
             .ConfigureAwait(false);
     }
 
-    public async ValueTask InvokeActorDisconnectedAsync(
-        ZLinkSpotActorLifecycleDescriptor descriptor,
-        IZLinkActor actor,
-        CancellationToken cancellationToken)
-    {
-        EnsureActorType(
-            descriptor.HandlerType,
-            descriptor.ActorType,
-            actor,
-            "SPOT actor disconnected handler");
-
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, actor, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     private static void EnsureActorType(
         Type handlerType,
         Type expectedActorType,

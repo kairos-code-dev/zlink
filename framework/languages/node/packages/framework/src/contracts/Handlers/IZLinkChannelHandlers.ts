@@ -55,18 +55,10 @@ export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, 
   handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }
 
-export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor): Promise<void>;
-}
-
 export interface ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor extends ZLinkActor, TMessage> {
   handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor extends ZLinkActor, TRequest, TReply> {
   handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
-}
-
-export interface ZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor extends ZLinkActor> {
-  handle(entrySpot: TEntrySpot, actor: TActor): Promise<void>;
 }

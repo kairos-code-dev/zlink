@@ -1554,7 +1554,7 @@ message type, reply type을 template 인자로 명시한다.
 - `spot_context_t::handlers()`를 추가하고 registry descriptor storage는
   `src/runtime/spots/spot_runtime.*`의 context state에 숨겼다.
 - `add_handler`, `add_subscribe`, `add_actor_join`, `add_actor_packet`,
-  `add_post_actor_joined`, `add_actor_left`, `add_actor_disconnected` 등록 표면을 추가했다.
+  `add_post_actor_joined`, `add_actor_left`, `on_actor_disconnected` 등록 표면을 추가했다.
 - duplicate handler registration은 같은 kind, packet/topic, actor 조합 기준으로
   `request_protocol_error`를 낸다.
 - Bingo/TicTacToe Spot sample에 `.NET Configure()`에 해당하는 `configure(context)`를 추가해
@@ -1723,7 +1723,7 @@ template 인자로 드러내고, dispatch/DI/serializer 실행은 framework 내�
 
 - `spot_actor_change_kind_t`, `spot_actor_change_result_t`를 SPOT public contract에
   추가했다.
-- `add_post_actor_joined`, `add_actor_left`, `add_actor_disconnected` 등록 API를
+- `add_post_actor_joined`, `add_actor_left`, `on_actor_disconnected` 등록 API를
   `THandler, TSpot, TActor` template 형태로 보정했다.
 - lifecycle invoker가 `spot`, `actor`, `spot_actor_change_result_t`를 typed handler에
   전달하도록 바꿨다.

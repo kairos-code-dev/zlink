@@ -85,14 +85,6 @@ internal sealed partial class ZLinkSpotActivation
         AddActorPacketCore<THandler, TActor>(packetName);
     }
 
-    public void AddActorDisconnected<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-    {
-        EnsureConfigurationOpen();
-        RequireActorHandlers().AddDisconnected(typeof(THandler), typeof(TActor));
-    }
-
     private void AddActorPacketCore<THandler, TActor>(string? packetName)
         where THandler : class
         where TActor : IZLinkActor

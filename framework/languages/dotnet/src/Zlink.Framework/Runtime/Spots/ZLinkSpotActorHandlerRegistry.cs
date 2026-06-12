@@ -100,10 +100,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             return;
         }
 
-        if (descriptor.Disconnected is { } disconnected)
-        {
-            AddLifecycleDescriptor(_disconnected, disconnected);
-        }
     }
 
     private void AddPacketDescriptor(ZLinkSpotActorPacketDescriptor descriptor)
@@ -125,17 +121,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         _packets.Add(key, descriptor);
     }
 
-    public void AddDisconnected(Type handlerType, Type actorType)
-    {
-        EnsureNotBound();
-        var descriptor = ZLinkSpotActorHandlerDescriptorFactory.CreateDisconnected(
-            _surface,
-            _expectedSpotType,
-            handlerType,
-            actorType);
-        AddLifecycleDescriptor(_disconnected, descriptor);
-    }
-
     public void Bind()
     {
         if (_expectedSpotType is not null)
@@ -152,6 +137,11 @@ internal sealed class ZLinkSpotActorHandlerRegistry
                 if (descriptor.Left is { } left)
                 {
                     AddLifecycleDescriptor(_left, left);
+                }
+
+                if (descriptor.Disconnected is { } disconnected)
+                {
+                    AddLifecycleDescriptor(_disconnected, disconnected);
                 }
             }
         }

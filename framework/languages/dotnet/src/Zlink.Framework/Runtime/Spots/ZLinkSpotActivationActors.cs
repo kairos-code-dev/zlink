@@ -160,7 +160,7 @@ internal sealed partial class ZLinkSpotActivation
             && _actorHandlers.TryResolveDisconnected(actor.GetType(), out var descriptor)
             && descriptor is not null)
         {
-            await HandlerInvoker.InvokeActorDisconnectedAsync(descriptor, actor, cancellationToken)
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
                 .ConfigureAwait(false);
         }
     }

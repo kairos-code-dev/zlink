@@ -359,7 +359,7 @@ handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. d
 | `addHandler(Handler, packetName)` | `AddHandler<THandler>(packetName)` | actor packet handler(이름 명시) |
 | `addActorPacket(Handler, Actor)` | `AddActorPacket<THandler, TActor>()` | actor 타입 명시 packet handler |
 | `addActorPacket(Handler, Actor, packetName)` | `AddActorPacket<THandler, TActor>(packetName)` | 위 + 이름 명시 |
-| `addActorDisconnected(Handler, Actor)` | `AddActorDisconnected<THandler, TActor>()` | disconnect 후 callback |
+| `onActorDisconnected(actor)` | `OnActorDisconnectedAsync(...)` | disconnect 후 callback |
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
 

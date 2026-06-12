@@ -30,7 +30,6 @@ import systems.zlink.framework.handlers.ZLinkPacket
 import systems.zlink.framework.handlers.ZLinkPublish
 import systems.zlink.framework.handlers.ZLinkRequest
 import systems.zlink.framework.handlers.ZLinkSend
-import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
 import systems.zlink.framework.handlers.ZLinkSpotActorSend
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory
@@ -343,10 +342,6 @@ class KotlinSpringSuspendSpotActorHandler {
         ObservedValues.lastActorSend.set("${actor.actorId()}:${message.value}")
     }
 
-    @ZLinkSpotActorDisconnected
-    suspend fun disconnected(actor: PlayerActor) {
-        ObservedValues.lastActorDisconnected.set(actor.actorId())
-    }
 }
 
 @ZLinkHandlerGroup("kotlin-failure")
@@ -363,10 +358,10 @@ class KotlinSuspendFailureHandler {
 }
 
 class JavaProfileRequestHandler : systems.zlink.framework.channels.ZLinkRequestHandler<ProfileRequest, ProfileReply> {
-    override fun handleAsync(
+    override fun handle(
         request: ProfileRequest,
         context: ZLinkRequestContext,
-    ) = CompletableFuture.completedFuture(ProfileReply(request.name))
+    ) = ProfileReply(request.name)
 }
 
 @Configuration(proxyBeanMethods = false)
@@ -406,7 +401,6 @@ object ObservedValues {
     val lastActorSend: AtomicReference<String> = AtomicReference()
     val lastActorJoined: AtomicReference<String> = AtomicReference()
     val lastActorLeft: AtomicReference<String> = AtomicReference()
-    val lastActorDisconnected: AtomicReference<String> = AtomicReference()
 }
 
 @ZLinkPacket("ProfileRequest")

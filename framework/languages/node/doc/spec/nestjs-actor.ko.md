@@ -441,11 +441,6 @@ export interface ZLinkActorHandlerRegistry {
     actor: Type<TActor>,
     packetName?: string,
   ): void;
-
-  addActorDisconnected<TActor extends ZLinkActor>(
-    handler: Type,
-    actor: Type<TActor>,
-  ): void;
 }
 
 // user Spot registry는 packet/subscribe 등록을 더 갖는다.
@@ -502,12 +497,6 @@ export interface ZLinkEntrySpotActorRequestHandler<
   ): Promise<TReply>;
 }
 
-export interface ZLinkEntrySpotActorDisconnectedHandler<
-  TEntrySpot extends ZLinkEntrySpot,
-  TActor extends ZLinkActor,
-> {
-  handle(entrySpot: TEntrySpot, actor: TActor): Promise<void>;
-}
 ```
 
 decorator 방식은 다음과 같다. `@ZLinkSpotActorRequest()` /
@@ -585,22 +574,18 @@ export interface ZLinkSpot {
   onActorJoin?(actor: ZLinkActor, request: Message): Promise<ZLinkSpotActorJoinResponse>;
   onPostActorJoined?(actor: ZLinkActor): Promise<void>;
   onActorLeft?(actor: ZLinkActor): Promise<void>;
-}
-
-export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor): Promise<void>;
+  onActorDisconnected?(actor: ZLinkActor): Promise<void>;
 }
 ```
 
 decorator 방식은 method 에 다음을 붙인다 (인자 순서는 interface 와 동일).
 
 - `@ZLinkSpotActorSend()` / `@ZLinkSpotActorRequest()` -- actor packet
-- `@ZLinkSpotActorDisconnected()` -- disconnect notification callback
 
 Entry Spot 과 user Spot 어느 쪽이든 actor packet handler 는 `addHandler(...)` 로
-등록할 수 있다. actor disconnected callback 은 actor 타입을 호출 쪽에서 명시해야 하면
-`addActorDisconnected(handler, Actor)` 를 사용한다. join / leave lifecycle 은 Spot 멤버
-`onPostActorJoined(...)` / `onActorLeft(...)` callback 으로 선언한다.
+등록할 수 있다. actor disconnected lifecycle 은 handler 등록 API를 사용하지 않고
+Spot 멤버 `onActorDisconnected(...)` callback 으로 선언한다. join / leave lifecycle 도
+Spot 멤버 `onPostActorJoined(...)` / `onActorLeft(...)` callback 으로 선언한다.
 
 ### 4.3 등록 순서
 

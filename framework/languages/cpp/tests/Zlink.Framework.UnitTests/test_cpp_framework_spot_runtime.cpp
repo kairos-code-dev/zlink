@@ -34,8 +34,11 @@ struct entry_spot_t : public zlink::framework::entry_spot_t
         actor.moved_value += 10;
     }
 
+    void on_actor_disconnected (player_actor_factory_t &) { ++disconnected_count; }
+
     int joined_count{};
     int left_count{};
+    int disconnected_count{};
 };
 
 struct state_update_t
@@ -425,6 +428,18 @@ int main ()
         || lifecycle_actor_state.joined_value != 141) {
         return 59;
     }
+    auto stale_disconnect =
+      lifecycle_runtime.notify_actor_disconnected (lifecycle_actor.ref (), lifecycle_actor_state);
+    if (stale_disconnect
+        || stale_disconnect.error_kind () != framework_error_kind_t::actor_stale_generation
+        || lifecycle_stage_spot->disconnected_count != 0) {
+        return 67;
+    }
+    auto current_disconnect = lifecycle_runtime.notify_actor_disconnected (
+      lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
+    if (!current_disconnect || lifecycle_stage_spot->disconnected_count != 1) {
+        return 68;
+    }
     auto close_joined_spot = lifecycle_stage.context.close ().result ();
     if (!close_joined_spot || close_joined_spot.value ()
         || !lifecycle_builder.find_spot (lifecycle_stage.spot_rid)) {
@@ -460,6 +475,11 @@ int main ()
         || lifecycle_entry_spot->joined_count != 1 || lifecycle_actor_state.moved_value != 100
         || lifecycle_actor_state.joined_value != 151) {
         return 62;
+    }
+    auto entry_disconnect = lifecycle_runtime.notify_actor_disconnected (
+      lifecycle_actor_context.actor_ref (), lifecycle_actor_state);
+    if (!entry_disconnect || lifecycle_entry_spot->disconnected_count != 1) {
+        return 69;
     }
     auto close_after_actor_left = lifecycle_stage.context.close ().result ();
     if (!close_after_actor_left || !close_after_actor_left.value ()
@@ -638,18 +658,15 @@ int main ()
     context.handlers ()
       .add_handler<&stage_spot_t::on_state_update> ("state.update")
       .add_handler<&stage_spot_t::on_throwing_state_update> ("state.throw")
-      .add_actor_packet<&stage_spot_t::on_move> ("move")
-      .add_actor_disconnected<&stage_spot_t::on_actor_disconnected> ();
+      .add_actor_packet<&stage_spot_t::on_move> ("move");
     const auto handler_descriptors = context.handlers ().descriptors ();
-    if (handler_descriptors.size () != 4
+    if (handler_descriptors.size () != 3
         || handler_descriptors[0].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[0].packet_name != "state.update"
         || handler_descriptors[1].kind != zlink::framework::spot_handler_kind_t::packet
         || handler_descriptors[1].packet_name != "state.throw"
         || handler_descriptors[2].kind != zlink::framework::spot_handler_kind_t::actor_packet
-        || handler_descriptors[2].packet_name != "move"
-        || handler_descriptors[3].kind
-             != zlink::framework::spot_handler_kind_t::actor_disconnected) {
+        || handler_descriptors[2].packet_name != "move") {
         return 20;
     }
 
@@ -766,12 +783,6 @@ int main ()
     stage_spot.on_actor_left (actor);
     if (stage_spot.left_count != 1 || actor.moved_value != 156) {
         return 26;
-    }
-
-    const auto disconnected_dispatch = context.handlers ().invoke_actor_disconnected (
-      stage_spot, actor, spot_provider, spot_serializers);
-    if (!disconnected_dispatch || stage_spot.disconnected_count != 1) {
-        return 27;
     }
 
     bool duplicate_packet_failed = false;

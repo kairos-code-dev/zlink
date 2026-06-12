@@ -21,6 +21,7 @@ export interface ZLinkSpot {
   onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
   onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorDisconnected?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkEntrySpot {
@@ -30,4 +31,5 @@ export interface ZLinkEntrySpot {
   onClosing?(signal?: AbortSignal): Promise<void>;
   onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorDisconnected?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }

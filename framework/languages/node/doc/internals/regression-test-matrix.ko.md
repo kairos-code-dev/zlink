@@ -185,8 +185,8 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `getOrCreate(spotType, spotRid)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `onCreate(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `onCreate(...)` 또는 `onInitialize(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `find(...)`, `list(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `configure()` handler registration | `integration-single-process` | `context.addPacket(...)`, `context.addHandler(...)`, `context.addActorPacket(...)`, `context.addActorDisconnected(...)`, `context.addSubscribe(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `registerEntrySpot(EntrySpotClass)`로 등록한 `context.addPacket(...)`, `addSubscribe(...)`, `addHandler(...)`, `addActorPacket(...)`, `addActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
+| `configure()` handler registration | `integration-single-process` | `context.addPacket(...)`, `context.addHandler(...)`, `context.addActorPacket(...)`, `context.onActorDisconnected(...)`, `context.addSubscribe(...)` 등의 등록이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `registerEntrySpot(EntrySpotClass)`로 등록한 `context.addPacket(...)`, `addSubscribe(...)`, `addHandler(...)`, `addActorPacket(...)`, `onActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `onInitialize(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `onClosing(...)` 정상 close callback | `integration-single-process` | `close(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |

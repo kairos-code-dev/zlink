@@ -685,7 +685,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "`add_handler<&TSpot::method>()`",
       "`add_subscribe<&TSpot::method>(topic)`",
       "`add_actor_packet<&TSpot::method>()`",
-      "`add_actor_disconnected<&TSpot::method>()`",
+      "`on_actor_disconnected(actor)`",
       "`on_actor_join(actor, message_t)`",
       "`on_post_actor_joined(actor)`",
       "`on_actor_left(actor)`",
@@ -701,7 +701,7 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "compile-time으로 검증한다",
       "actor join admission은 registry handler가 아니라 user Spot member callback으로 처리하고",
       "request/reply는 DTO generic이 아니라 `message_t`를 사용한다",
-      "actor join/post-join/left lifecycle은 Spot member callback 이름이 계약이다",
+      "actor join/post-join/left/disconnected lifecycle은 Spot member callback 이름이 계약이다",
       "Spot create result는 `existing`, `created`, `rejected` state와 optional reply message를",
       "Play sample smoke는 handler 객체 직접 호출만으로 통과하지 않는다"};
     for (const auto &needle : required) {

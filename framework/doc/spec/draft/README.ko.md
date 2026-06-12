@@ -17,6 +17,7 @@
 | 문서 | 설명 |
 |------|------|
 | [streaming-client.ko.md](./streaming-client.ko.md) | STREAM 서버에 접속하는 범용 client connector 초안 |
+| [spot-actor-disconnected-callback-rollout.ko.md](./spot-actor-disconnected-callback-rollout.ko.md) | Spot actor disconnected를 handler 등록에서 lifecycle callback으로 옮기는 공통 전환 계획 |
 
 ## 관리 원칙
 

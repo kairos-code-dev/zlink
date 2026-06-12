@@ -12,8 +12,4 @@ public interface ZLinkSpotHandlerRegistry {
     default void addActorPacket(Class<?> handlerType) {
         addHandler(handlerType);
     }
-
-    default void addActorDisconnected(Class<?> handlerType) {
-        addHandler(handlerType);
-    }
 }

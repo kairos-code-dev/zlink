@@ -8,6 +8,5 @@ public enum ZLinkScannedHandlerKind {
     ACTOR_SEND,
     ACTOR_REQUEST,
     ACTOR_JOINED,
-    ACTOR_LEFT,
-    ACTOR_DISCONNECTED
+    ACTOR_LEFT
 }

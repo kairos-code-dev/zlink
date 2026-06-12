@@ -24,12 +24,10 @@ import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.spots.ZLinkSpotHandlerRegistry;
-import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
@@ -76,79 +74,77 @@ final class HandlerContractTest {
         ZLinkSpotHandlerRegistry.class.getMethod("addPacket", Class.class);
         ZLinkSpotHandlerRegistry.class.getMethod("addSubscribe", String.class, Class.class);
         ZLinkSpotHandlerRegistry.class.getMethod("addActorPacket", Class.class);
-        ZLinkSpotHandlerRegistry.class.getMethod("addActorDisconnected", Class.class);
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Join"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addPostActor" + "Joined"));
         assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Left"));
+        assertFalse(hasMethod(ZLinkSpotHandlerRegistry.class, "addActor" + "Disconnected"));
 
-        ZLinkSpotPacketHandler.class.getMethod("handleAsync", Object.class, Object.class);
-        ZLinkSpotRequestHandler.class.getMethod("handleAsync", Object.class, Object.class);
-        ZLinkSpotSubscriptionHandler.class.getMethod("handleAsync", Object.class, Object.class);
+        ZLinkSpotPacketHandler.class.getMethod("handle", Object.class, Object.class);
+        ZLinkSpotRequestHandler.class.getMethod("handle", Object.class, Object.class);
+        ZLinkSpotSubscriptionHandler.class.getMethod("handle", Object.class, Object.class);
         ZLinkEntrySpotActorSendHandler.class.getMethod(
-            "handleAsync",
+            "handle",
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
             Object.class,
             CancellationToken.class);
         ZLinkEntrySpotActorRequestHandler.class.getMethod(
-            "handleAsync",
+            "handle",
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
             Object.class,
             CancellationToken.class);
         ZLinkSpotActorSendHandler.class.getMethod(
-            "handleAsync",
+            "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
             Object.class,
             CancellationToken.class);
         ZLinkSpotActorRequestHandler.class.getMethod(
-            "handleAsync",
+            "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
             systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
             Object.class,
             CancellationToken.class);
-        ZLinkSpotActorDisconnectedHandler.class.getMethod(
-            "handleAsync",
-            Object.class,
-            systems.zlink.framework.actors.ZLinkActor.class,
-            CancellationToken.class);
-        ZLinkEntrySpotActorDisconnectedHandler.class.getMethod(
-            "handleAsync",
-            ZLinkEntrySpot.class,
-            systems.zlink.framework.actors.ZLinkActor.class,
-            CancellationToken.class);
     }
 
     @Test
     void spotLifecycleCallbacksAreMemberContracts() throws NoSuchMethodException {
-        ZLinkSpot.class.getMethod("onCreateAsync", Message.class);
+        ZLinkSpot.class.getMethod("onCreate", Message.class);
         ZLinkSpot.class.getMethod(
-            "onActorJoinAsync",
+            "onActorJoin",
             ZLinkActor.class,
             Message.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
-            "onPostActorJoinedAsync",
+            "onPostActorJoined",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
-            "onActorLeftAsync",
+            "onActorLeft",
+            ZLinkActor.class,
+            CancellationToken.class);
+        ZLinkSpot.class.getMethod(
+            "onActorDisconnected",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
-            "onPostActorJoinedAsync",
+            "onPostActorJoined",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
-            "onActorLeftAsync",
+            "onActorLeft",
             ZLinkActor.class,
             CancellationToken.class);
-        assertFalse(hasMethod(ZLinkEntrySpot.class, "onActorJoinAsync"));
+        ZLinkEntrySpot.class.getMethod(
+            "onActorDisconnected",
+            ZLinkActor.class,
+            CancellationToken.class);
+        assertFalse(hasMethod(ZLinkEntrySpot.class, "onActorJoin"));
         assertTrue(ZLinkSpotActorJoinResponse.accept().accepted());
     }
 
@@ -160,6 +156,9 @@ final class HandlerContractTest {
         assertClassMissing("systems.zlink.framework.spots.ZLinkSpotActor" + "JoinHandler");
         assertClassMissing("systems.zlink.framework.spots.ZLinkSpotPostActor" + "JoinedHandler");
         assertClassMissing("systems.zlink.framework.spots.ZLinkSpotActor" + "LeftHandler");
+        assertClassMissing("systems.zlink.framework.handlers.ZLinkSpotActor" + "Disconnected");
+        assertClassMissing("systems.zlink.framework.spots.ZLinkSpotActor" + "DisconnectedHandler");
+        assertClassMissing("systems.zlink.framework.spots.ZLinkEntrySpotActor" + "DisconnectedHandler");
         assertClassMissing("systems.zlink.framework.spots.ZLinkSpotActorChange" + "Result");
         assertClassMissing("systems.zlink.framework.spots.ZLinkSpotActorChange" + "Kind");
     }

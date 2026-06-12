@@ -21,19 +21,6 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
             if (packet is not null)
             {
                 yield return new ZLinkSpotActorInferredHandlerDescriptor { Packet = packet };
-                continue;
-            }
-
-            var disconnected = TryCreateDisconnected(
-                surface,
-                expectedSpotType,
-                handlerType,
-                null,
-                definition,
-                arguments);
-            if (disconnected is not null)
-            {
-                yield return new ZLinkSpotActorInferredHandlerDescriptor { Disconnected = disconnected };
             }
         }
     }
@@ -90,37 +77,6 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
         return null;
     }
 
-    public static ZLinkSpotActorLifecycleDescriptor? TryCreateDisconnected(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type definition,
-        Type[] arguments)
-    {
-        if (definition == typeof(IZLinkEntrySpotActorDisconnectedHandler<,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-            {
-                return null;
-            }
-
-            return CreateDisconnected(surface, expectedSpotType, handlerType, expectedActorType, arguments);
-        }
-
-        if (definition == typeof(IZLinkSpotActorDisconnectedHandler<,>))
-        {
-            if (surface != ZLinkSpotActorHandlerSurface.UserSpot)
-            {
-                return null;
-            }
-
-            return CreateDisconnected(surface, expectedSpotType, handlerType, expectedActorType, arguments);
-        }
-
-        return null;
-    }
-
     private static ZLinkSpotActorPacketDescriptor CreatePacket(
         ZLinkSpotActorHandlerSurface surface,
         Type? expectedSpotType,
@@ -142,19 +98,4 @@ internal static class ZLinkSpotActorInterfaceDescriptorFactory
             packetName);
     }
 
-    private static ZLinkSpotActorLifecycleDescriptor CreateDisconnected(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type? expectedActorType,
-        Type[] arguments)
-    {
-        ZLinkSpotActorDescriptorBuilder.ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
-        ZLinkSpotActorDescriptorBuilder.ValidateActorType(handlerType, expectedActorType, arguments[1]);
-        return ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
-            surface,
-            handlerType,
-            arguments[0],
-            arguments[1]);
-    }
 }

@@ -171,7 +171,7 @@ request에 대한 응답은 actor request handler의 반환값과 원래 request
 처리한다.
 `disconnect()`는 현재 actor에 묶인 client session을 backend binding에서 해제하고
 actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
-`@ZLinkSpotActorDisconnected` handler를 대신 실행하지 않는다.
+Spot actor disconnected callback을 대신 실행하지 않는다.
 
 actor가 join한 SPOT의 실행 문맥 상태가 필요하면 `context.getSpot()` 또는 typed
 `context.getSpot(MatchSpot.class)`로 현재 join된 user Spot 인스턴스를 가져온다. join
@@ -185,7 +185,7 @@ MatchSpot spot = actor.context().getSpot(MatchSpot.class);
 session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 뒤,
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
 실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
-session과 `@ZLinkSpotActorDisconnected` handler를 건드리지 않는다.
+session과 disconnected lifecycle callback을 건드리지 않는다.
 `relay(header, payload)`는 session이 받은 actor packet을 bound actor route로
 전달한다. framework는 payload copy를 만들어 전송하므로 호출자가 넘긴 `Message`의
 소유권은 호출자에게 남아 있다.

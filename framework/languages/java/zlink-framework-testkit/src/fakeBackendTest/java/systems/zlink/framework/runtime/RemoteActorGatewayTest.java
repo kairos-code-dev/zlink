@@ -12,11 +12,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorRef;
 import systems.zlink.framework.spots.ZLinkSpot;
+import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -87,17 +90,34 @@ final class RemoteActorGatewayTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
+        public ZLinkActor create(
             String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return new PlayerActor(actorId, context);
         }
     }
 
     public static final class GameSpot implements ZLinkSpot {
+        static int disconnectCount;
+
         @Override
         public ZLinkSpotContext context() {
             return null;
+        }
+
+        @Override
+        public ZLinkSpotActorJoinResponse onActorJoin(
+            ZLinkActor actor,
+            Message request,
+            CancellationToken cancellationToken) {
+            return ZLinkSpotActorJoinResponse.accept(Message.from("joined"));
+        }
+
+        @Override
+        public void onActorDisconnected(
+            ZLinkActor actor,
+            CancellationToken cancellationToken) {
+            disconnectCount++;
         }
     }
 
@@ -108,18 +128,15 @@ final class RemoteActorGatewayTest {
         }
 
         @Override
-        public CompletionStage<Void> onConnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onConnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onDisconnectedAsync() {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onDisconnected() {
+                    }
 
         @Override
-        public CompletionStage<Void> onErrorAsync(ZLinkStreamError error) {
-            return CompletableFuture.completedFuture(null);
-        }
+        public void onError(ZLinkStreamError error) {
+                    }
     }
 }

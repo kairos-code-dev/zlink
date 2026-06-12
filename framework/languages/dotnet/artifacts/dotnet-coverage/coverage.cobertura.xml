@@ -5157,7 +5157,7 @@
                 <line number="333" hits="1" branch="False" />
               </lines>
             </method>
-            <method line-rate="1" branch-rate="1" complexity="1" name="AddActorDisconnected" signature="&lt;THandler, TActor&gt;()">
+            <method line-rate="1" branch-rate="1" complexity="1" name="OnActorDisconnectedAsync" signature="&lt;THandler, TActor&gt;()">
               <lines>
                 <line number="337" hits="1" branch="False" />
               </lines>
@@ -5312,7 +5312,7 @@
                 <line number="417" hits="0" branch="False" />
               </lines>
             </method>
-            <method line-rate="0" branch-rate="1" complexity="1" name="AddActorDisconnected" signature="&lt;THandler, TActor&gt;()">
+            <method line-rate="0" branch-rate="1" complexity="1" name="OnActorDisconnectedAsync" signature="&lt;THandler, TActor&gt;()">
               <lines>
                 <line number="421" hits="0" branch="False" />
               </lines>
@@ -5823,7 +5823,7 @@
             <line number="715" hits="1" branch="False" />
           </lines>
         </class>
-        <class line-rate="1" branch-rate="1" complexity="1" name="Zlink.Framework.ContractTests.Spots.SpotContracts.EntryActorDisconnectedHandler" filename="/home/hep7/project/kairos/zlink/framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Spots/SpotContracts.cs">
+        <class line-rate="1" branch-rate="1" complexity="1" name="Zlink.Framework.ContractTests.Spots.SpotContracts.EntryActorDisconnectedCallback" filename="/home/hep7/project/kairos/zlink/framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Spots/SpotContracts.cs">
           <methods>
             <method line-rate="1" branch-rate="1" complexity="1" name="HandleAsync" signature="(Zlink.Framework.ContractTests.Spots.SpotContracts.EntrySpot, Zlink.Framework.ContractTests.Spots.SpotContracts.PlayerActor, System.Threading.CancellationToken)">
               <lines>
@@ -21284,7 +21284,7 @@
                 <line number="90" hits="1" branch="False" />
               </lines>
             </method>
-            <method line-rate="0" branch-rate="1" complexity="1" name="AddActorDisconnected" signature="&lt;THandler, TActor&gt;()">
+            <method line-rate="0" branch-rate="1" complexity="1" name="OnActorDisconnectedAsync" signature="&lt;THandler, TActor&gt;()">
               <lines>
                 <line number="95" hits="0" branch="False" />
                 <line number="96" hits="0" branch="False" />
@@ -22853,7 +22853,7 @@
                 <line number="121" hits="1" branch="False" />
               </lines>
             </method>
-            <method line-rate="0" branch-rate="1" complexity="1" name="AddActorDisconnected" signature="&lt;THandler, TActor&gt;()">
+            <method line-rate="0" branch-rate="1" complexity="1" name="OnActorDisconnectedAsync" signature="&lt;THandler, TActor&gt;()">
               <lines>
                 <line number="126" hits="0" branch="False" />
                 <line number="127" hits="0" branch="False" />
@@ -26458,7 +26458,7 @@
                 <line number="94" hits="1" branch="False" />
               </lines>
             </method>
-            <method line-rate="0" branch-rate="1" complexity="1" name="AddActorDisconnected" signature="&lt;THandler, TActor&gt;()">
+            <method line-rate="0" branch-rate="1" complexity="1" name="OnActorDisconnectedAsync" signature="&lt;THandler, TActor&gt;()">
               <lines>
                 <line number="99" hits="0" branch="False" />
               </lines>

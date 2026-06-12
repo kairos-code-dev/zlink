@@ -18,9 +18,6 @@ internal interface IZLinkSpotHandlerRegistrySink
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddActorDisconnected<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
 }
 
 internal interface IZLinkSpotOutboundSink
@@ -61,10 +58,6 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
         where TActor : IZLinkActor
         => activation.AddActorPacket<THandler, TActor>(packetName);
 
-    public void AddActorDisconnected<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor
-        => activation.AddActorDisconnected<THandler, TActor>();
 }
 
 internal sealed class ZLinkSpotOutboundSurface(IZLinkSpotOutboundSink activation)

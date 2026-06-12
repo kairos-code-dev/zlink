@@ -977,6 +977,40 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', (
   );
 });
 
+test('zlinkFramework builder maps stream node registration without raw server code', () => {
+  class PlayerActorFactory {}
+  class ClientHeaderSession {
+    constructor(context) {
+      this.context = context;
+    }
+  }
+  class StageEntrySpot {}
+
+  const module = nestjs.ZLinkModule.forRoot(
+    nestjs.zlinkFramework()
+      .actorFactory('player', PlayerActorFactory)
+      .streamNode('client.stream', (stream) => stream
+        .bind('tcp://0.0.0.0:9100')
+        .attachActorGateway('game.spot')
+        .registerSession(ClientHeaderSession))
+      .spotNode('game.spot', (spot) => spot
+        .router('tcp://0.0.0.0:9110', 'game-node')
+        .entrySpot(StageEntrySpot))
+      .build()
+  );
+  const registration = module.providers.find((provider) => provider.provide === nestjs.ZLINK_FRAMEWORK_REGISTRATION).useValue;
+  const streamNode = registration.streamNodes.get('client.stream');
+  const spotNode = registration.spotNodes.get('game.spot');
+
+  assert.equal(streamNode.bind, 'tcp://0.0.0.0:9100');
+  assert.equal(streamNode.attachActorGateway, 'game.spot');
+  assert.equal(streamNode.session, ClientHeaderSession);
+  assert.equal(registration.actorFactories.get('player'), PlayerActorFactory);
+  assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9110');
+  assert.equal(spotNode.router.routingId, 'game-node');
+  assert.equal(spotNode.entrySpotType, StageEntrySpot);
+});
+
 test('ZLinkModule.forRoot validates and maps SpotNode router and pubSub capability options', () => {
   const module = nestjs.ZLinkModule.forRoot({
     spotNodes: {
@@ -1705,7 +1739,6 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   class PacketHandler {}
   class SubscribeHandler {}
   class ActorPacketHandler {}
-  class ActorDisconnectedHandler {}
   class SpotHandler {}
   class PlayerActor {}
   class EntrySpot {
@@ -1718,7 +1751,6 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
       this.context.handlers.addPacket(PacketHandler, 'entry.packet');
       this.context.handlers.addSubscribe(SubscribeHandler, 'entry.topic');
       this.context.handlers.addActorPacket(ActorPacketHandler, PlayerActor, 'actor.packet');
-      this.context.handlers.addActorDisconnected(ActorDisconnectedHandler, PlayerActor);
       this.context.handlers.addSpotHandler(SpotHandler);
       registry = this.context.handlers;
     }
@@ -1828,7 +1860,6 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     { kind: 'packet', handlerType: PacketHandler, packetName: 'entry.packet' },
     { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'entry.topic' },
     { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' },
-    { kind: 'actorDisconnected', handlerType: ActorDisconnectedHandler, actorType: PlayerActor },
     { kind: 'spotHandler', handlerType: SpotHandler }
   ]);
   assert.deepEqual(calls, [

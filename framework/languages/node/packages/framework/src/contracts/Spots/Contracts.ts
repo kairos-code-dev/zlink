@@ -8,7 +8,6 @@ import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
 export interface ZLinkActorHandlerRegistry {
   addHandler(handlerType: Type): this;
   addActorPacket(handlerType: Type, actorType: Type<ZLinkActor>, packetName?: string): this;
-  addActorDisconnected(handlerType: Type, actorType: Type<ZLinkActor>): this;
 }
 
 export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {

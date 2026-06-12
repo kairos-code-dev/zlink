@@ -279,6 +279,10 @@ public interface ZLinkSpot {
     CompletionStage<Void> onActorLeftAsync(
         ZLinkActor actor,
         CancellationToken cancellationToken);
+
+    void onActorDisconnected(
+        ZLinkActor actor,
+        CancellationToken cancellationToken);
 }
 
 public interface ZLinkEntrySpot {
@@ -289,15 +293,17 @@ public interface ZLinkEntrySpot {
     CompletionStage<Void> onActorLeftAsync(
         ZLinkActor actor,
         CancellationToken cancellationToken);
+
+    void onActorDisconnected(
+        ZLinkActor actor,
+        CancellationToken cancellationToken);
 }
 ```
 
-`ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`,
-`ZLinkSpotActorDisconnectedHandler`, `ZLinkEntrySpotActorDisconnectedHandler`도 같은
-패턴을 따른다. Entry Spot actor request/send/disconnected는 Entry Spot 전용
-interface를 사용하고, user Spot actor request/send/disconnected는 Spot handler
-interface를 사용한다. actor join admission과 join/left lifecycle은 위 member callback
-표면만 사용한다.
+`ZLinkSpotActorSendHandler`, `ZLinkEntrySpotActorSendHandler`도 같은 패턴을 따른다.
+Entry Spot actor request/send는 Entry Spot 전용 interface를 사용하고, user Spot actor
+request/send는 Spot handler interface를 사용한다. actor join admission, post-join,
+left, disconnected lifecycle은 위 member callback 표면만 사용한다.
 
 stream은 `.NET` 기준과 같이 header session 하나로 설명한다. 이전 설계의
 `packet session`/`raw session` 분리는 현재 포팅 기준이 아니다. callback으로 전달된
@@ -792,9 +798,6 @@ public interface ZLinkActorHandlerRegistry {
         Class<?> handlerType,
         Class<? extends ZLinkActor> actorType,
         String packetName);
-    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
-    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
-    void addActorDisconnected(Class<?> handlerType, Class<? extends ZLinkActor> actorType);
 }
 
 public interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
@@ -1227,11 +1230,6 @@ public @interface ZLinkSpotActorSend {
 
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ZLinkSpotActorDisconnected {
-}
-
-@Target(ElementType.METHOD)
-@Retention(RetentionPolicy.RUNTIME)
 public @interface ZLinkStreamPacket {
 }
 ```
@@ -1241,14 +1239,16 @@ framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반
 accepted가 `true`일 때만 actor 위치가 user Spot으로 commit되고
 `onPostActorJoinedAsync`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
 post-join callback도 실행되지 않는다. Entry Spot은 admission callback을 갖지 않는다.
-`ZLinkSpotActorDisconnected` handler는 actor만 받는다. session actor의 현재 binding이
-끊어졌거나 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며,
-actor가 들어오거나 나간 Spot 변경 결과를 만들지 않기 때문이다.
+disconnected callback은 actor만 받는다. session actor의 현재 binding이 끊어졌거나
+application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며, actor가 들어오거나
+나간 Spot 변경 결과를 만들지 않기 때문이다.
 
-public final class PlayerActorDisconnectedHandler {
-    @ZLinkSpotActorDisconnected
-    public CompletionStage<Void> disconnected(PlayerActor actor) {
-        return CompletableFuture.completedFuture(null);
+public final class MatchSpot implements ZLinkSpot {
+    @Override
+    public void onActorDisconnected(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        // session binding cleanup or domain notification
     }
 }
 ```

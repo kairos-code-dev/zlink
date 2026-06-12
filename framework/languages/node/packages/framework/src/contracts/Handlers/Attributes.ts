@@ -45,10 +45,6 @@ export function ZLinkSpotActorRequest(packetName?: string): MethodDecorator {
   return methodDecorator({ kind: 'spotActorRequest', packetName });
 }
 
-export function ZLinkSpotActorDisconnected(): MethodDecorator {
-  return methodDecorator({ kind: 'spotActorDisconnected' });
-}
-
 export function ZLinkStreamPacket(): MethodDecorator {
   return methodDecorator({ kind: 'streamPacket' });
 }

@@ -124,6 +124,13 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
     {
         return ValueTask.CompletedTask;
     }
+
+    ValueTask OnActorDisconnectedAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkActorHandlerRegistry
@@ -142,9 +149,6 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddActorDisconnected<THandler, TActor>()
-        where THandler : class
-        where TActor : IZLinkActor;
 }
 
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
@@ -240,6 +244,13 @@ public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     {
         return ValueTask.CompletedTask;
     }
+
+    ValueTask OnActorDisconnectedAsync(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkEntrySpotContext
@@ -284,16 +295,6 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
-    where TSpot : class
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TSpot spot,
-        TActor actor,
-        CancellationToken cancellationToken);
-}
-
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
@@ -315,15 +316,5 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         TActor actor,
         ZLinkSpotActorRequestContext context,
         TRequest request,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
-    where TEntrySpot : class, IZLinkEntrySpot
-    where TActor : IZLinkActor
-{
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
-        TActor actor,
         CancellationToken cancellationToken);
 }

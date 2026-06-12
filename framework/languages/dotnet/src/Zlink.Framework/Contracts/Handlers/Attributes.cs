@@ -59,11 +59,6 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorDisconnectedAttribute : Attribute
-{
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class ZLinkStreamPacketAttribute : Attribute
 {
 }

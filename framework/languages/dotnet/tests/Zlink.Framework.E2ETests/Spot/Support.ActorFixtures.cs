@@ -31,7 +31,6 @@ public abstract partial class SpotTestSupport
         {
             Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch");
             Context.Handlers.AddActorPacket<ActorDispatchHandler, TestActor>("dispatch-after-context-join");
-            Context.Handlers.AddActorDisconnected<ActorStageDisconnectedHandler, TestActor>();
         }
 
         public async ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -61,6 +60,16 @@ public abstract partial class SpotTestSupport
             _ = cancellationToken;
             _recorder.SpotActorLeaves.Enqueue($"{actor.ActorId}@{Context.SpotRid.ToHex()}");
             actor.DetachSpot(this);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnActorDisconnectedAsync(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = actor;
+            _ = cancellationToken;
+            Interlocked.Increment(ref _recorder.DisconnectCount);
             return ValueTask.CompletedTask;
         }
 
@@ -104,22 +113,6 @@ public abstract partial class SpotTestSupport
             {
                 Interlocked.Decrement(ref spot._inFlight);
             }
-        }
-    }
-
-    public sealed class ActorStageDisconnectedHandler(ActorIntegrationRecorder recorder)
-        : IZLinkSpotActorDisconnectedHandler<ActorStageSpot, TestActor>
-    {
-        public ValueTask HandleAsync(
-            ActorStageSpot spot,
-            TestActor actor,
-            CancellationToken cancellationToken)
-        {
-            _ = spot;
-            _ = actor;
-            _ = cancellationToken;
-            Interlocked.Increment(ref recorder.DisconnectCount);
-            return ValueTask.CompletedTask;
         }
     }
 

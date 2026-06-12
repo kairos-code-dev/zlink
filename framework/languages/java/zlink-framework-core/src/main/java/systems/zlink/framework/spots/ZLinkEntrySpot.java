@@ -1,7 +1,5 @@
 package systems.zlink.framework.spots;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.CancellationToken;
 import systems.zlink.framework.actors.ZLinkActor;
 
@@ -11,23 +9,24 @@ public interface ZLinkEntrySpot {
     default void configure() {
     }
 
-    default CompletionStage<Void> onInitializeAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onInitialize() {
     }
 
-    default CompletionStage<Void> onClosingAsync() {
-        return CompletableFuture.completedFuture(null);
+    default void onClosing() {
     }
 
-    default CompletionStage<Void> onPostActorJoinedAsync(
+    default void onPostActorJoined(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
     }
 
-    default CompletionStage<Void> onActorLeftAsync(
+    default void onActorLeft(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
-        return CompletableFuture.completedFuture(null);
+    }
+
+    default void onActorDisconnected(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
     }
 }

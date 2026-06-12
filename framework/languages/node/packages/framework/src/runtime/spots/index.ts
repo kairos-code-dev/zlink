@@ -625,7 +625,6 @@ export interface ZLinkSpotHandlerRegistration {
     | 'packet'
     | 'subscribe'
     | 'actorPacket'
-    | 'actorDisconnected'
     | 'spotHandler';
   readonly handlerType: Type;
   readonly packetName?: string;
@@ -648,11 +647,6 @@ export class DefaultZLinkSpotHandlerRegistry implements ZLinkSpotHandlerRegistry
 
   addActorPacket(handlerType: Type, actorType: Type, packetName?: string): this {
     this.entries.push({ kind: 'actorPacket', handlerType, actorType, packetName });
-    return this;
-  }
-
-  addActorDisconnected(handlerType: Type, actorType: Type): this {
-    this.entries.push({ kind: 'actorDisconnected', handlerType, actorType });
     return this;
   }
 

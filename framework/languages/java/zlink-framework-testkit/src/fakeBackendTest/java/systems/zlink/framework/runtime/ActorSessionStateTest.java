@@ -8,28 +8,34 @@ import systems.zlink.framework.runtime.backend.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.handlers.ZLinkHandlerGroup;
-import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
 final class ActorSessionStateTest {
     @Test
     void actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream() {
-        DisconnectedHandler.disconnectCount = 0;
+        RemoteActorGatewayTest.GameSpot.disconnectCount = 0;
         FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
         DefaultZLinkFrameworkOptions options = RemoteActorGatewayTest.options();
-        options.addHandlersFromPackageOf(ActorSessionStateTest.class);
+        RoutingId spotRid = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backend)) {
+            runtime.spotManager()
+                .create(RemoteActorGatewayTest.GameSpot.class, spotRid)
+                .toCompletableFuture()
+                .join();
             ZLinkActor actor = runtime.actorManager()
                 .create("player-1", "player")
+                .toCompletableFuture()
+                .join();
+            actor.context()
+                .joinSpot(spotRid, "join")
+                .submit(String.class)
                 .toCompletableFuture()
                 .join();
             ZLinkSessionActor staleBinding = runtime.sessionActors(
@@ -46,7 +52,7 @@ final class ActorSessionStateTest {
                 .join();
 
             staleBinding.notifyDisconnected().toCompletableFuture().join();
-            assertTrue(DisconnectedHandler.disconnectCount == 0);
+            assertTrue(RemoteActorGatewayTest.GameSpot.disconnectCount == 0);
             actor.context()
                 .boundSession()
                 .send("push")
@@ -59,7 +65,8 @@ final class ActorSessionStateTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> actor.context().boundSession());
-            assertTrue(DisconnectedHandler.disconnectCount == 1);
+            assertTrue(RemoteActorGatewayTest.GameSpot.disconnectCount == 1);
+            assertTrue(actor.context().isJoined());
         }
 
         assertTrue(backend.calls().contains("stream.unbindActor.player-1"));
@@ -68,14 +75,4 @@ final class ActorSessionStateTest {
                 && call.endsWith(".push")));
     }
 
-    @ZLinkHandlerGroup("entry")
-    public static final class DisconnectedHandler {
-        static int disconnectCount;
-
-        @ZLinkSpotActorDisconnected
-        public CompletableFuture<Void> disconnected(RemoteActorGatewayTest.PlayerActor actor) {
-            disconnectCount++;
-            return CompletableFuture.completedFuture(null);
-        }
-    }
 }

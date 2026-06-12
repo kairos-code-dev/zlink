@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.future.future
+import kotlinx.coroutines.runBlocking
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
@@ -26,10 +27,8 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEvent
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkEntrySpot
-import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler
-import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler
@@ -78,7 +77,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TRequest, ZLinkRequestContext) -> TReply,
     ): ZLinkRequestHandler<TRequest, TReply> =
         ZLinkRequestHandler { request, context ->
-            stage {
+            blocking {
                 block(request, context)
             }
         }
@@ -87,7 +86,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TMessage, ZLinkSendContext) -> Unit,
     ): ZLinkSendHandler<TMessage> =
         ZLinkSendHandler { message, context ->
-            voidStage {
+            blocking {
                 block(message, context)
             }
         }
@@ -96,7 +95,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TMessage, ZLinkPublishContext) -> Unit,
     ): ZLinkPublishHandler<TMessage> =
         ZLinkPublishHandler { message, context ->
-            voidStage {
+            blocking {
                 block(message, context)
             }
         }
@@ -105,7 +104,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TRequest, ZLinkRouteRequestContext) -> TReply,
     ): ZLinkRouteRequestHandler<TRequest, TReply> =
         ZLinkRouteRequestHandler { request, context ->
-            stage {
+            blocking {
                 block(request, context)
             }
         }
@@ -114,7 +113,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TMessage, ZLinkRouteSendContext) -> Unit,
     ): ZLinkRouteSendHandler<TMessage> =
         ZLinkRouteSendHandler { message, context ->
-            voidStage {
+            blocking {
                 block(message, context)
             }
         }
@@ -123,7 +122,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (TSpot, ZLinkTimerTick) -> Unit,
     ): ZLinkSpotTimerHandler<TSpot> =
         ZLinkSpotTimerHandler { spot, tick ->
-            voidStage {
+            blocking {
                 block(spot, tick)
             }
         }
@@ -132,7 +131,7 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         block: suspend (String, ZLinkActorContext) -> ZLinkActor,
     ): ZLinkActorFactory =
         ZLinkActorFactory { actorId, context ->
-            stage {
+            blocking {
                 block(actorId, context)
             }
         }
@@ -144,21 +143,22 @@ class ZLinkCoroutineRuntime : AutoCloseable {
         object : ZLinkSessionPacketHandler<TSessionContext> {
             override fun packetName(): String = packetName
 
-            override fun handleAsync(
+            override fun handle(
                 context: TSessionContext,
                 header: ZLinkStreamHeader,
                 payload: Message,
-            ): CompletionStage<Void> =
-                voidStage {
+            ) {
+                blocking {
                     block(context, header, payload)
                 }
+            }
         }
 
     fun <TEvent : ZLinkRuntimeEvent> runtimeEventHandler(
         block: suspend (TEvent) -> Unit,
     ): ZLinkRuntimeEventHandler<TEvent> =
         ZLinkRuntimeEventHandler { event ->
-            voidStage {
+            blocking {
                 block(event)
             }
         }
@@ -211,6 +211,11 @@ class ZLinkCoroutineRuntime : AutoCloseable {
     fun voidCompletionStage(block: suspend CoroutineScope.() -> Unit): CompletionStage<Void> =
         voidStage(block)
 
+    fun <T> blocking(block: suspend CoroutineScope.() -> T): T =
+        runBlocking(dispatcher) {
+            block()
+        }
+
     private fun <T> stage(block: suspend CoroutineScope.() -> T): CompletionStage<T> =
         scope.future(dispatcher) {
             block()
@@ -230,8 +235,8 @@ abstract class ZLinkCoroutineActorFactory(
     final override fun create(
         actorId: String,
         context: ZLinkActorContext,
-    ): CompletionStage<ZLinkActor> =
-        coroutines.completionStage {
+    ): ZLinkActor =
+        coroutines.blocking {
             createActor(actorId, context)
         }
 
@@ -244,15 +249,16 @@ abstract class ZLinkCoroutineActorFactory(
 abstract class ZLinkCoroutineSpotTimerHandler<TSpot : ZLinkSpot>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkSpotTimerHandler<TSpot> {
-    final override fun handleAsync(
+    final override fun handle(
         spot: TSpot,
         tick: ZLinkTimerTick,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(spot, tick)
+    ) {
+        coroutines.blocking {
+            handleSuspending(spot, tick)
         }
+    }
 
-    protected abstract suspend fun handle(spot: TSpot, tick: ZLinkTimerTick)
+    protected abstract suspend fun handleSuspending(spot: TSpot, tick: ZLinkTimerTick)
 }
 
 abstract class ZLinkCoroutineEntrySpotActorSendHandler<
@@ -261,18 +267,19 @@ abstract class ZLinkCoroutineEntrySpotActorSendHandler<
     TMessage>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage> {
-    final override fun handleAsync(
+    final override fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(entrySpot, actor, context, message, cancellationToken)
+    ) {
+        coroutines.blocking {
+            handleSuspending(entrySpot, actor, context, message, cancellationToken)
         }
+    }
 
-    protected abstract suspend fun handle(
+    protected abstract suspend fun handleSuspending(
         entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
@@ -288,18 +295,18 @@ abstract class ZLinkCoroutineEntrySpotActorRequestHandler<
     TReply>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply> {
-    final override fun handleAsync(
+    final override fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
         cancellationToken: CancellationToken,
-    ): CompletionStage<TReply> =
-        coroutines.completionStage {
-            handle(entrySpot, actor, context, request, cancellationToken)
+    ): TReply =
+        coroutines.blocking {
+            handleSuspending(entrySpot, actor, context, request, cancellationToken)
         }
 
-    protected abstract suspend fun handle(
+    protected abstract suspend fun handleSuspending(
         entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
@@ -315,18 +322,18 @@ abstract class ZLinkCoroutineSpotActorRequestHandler<
     TReply>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply> {
-    final override fun handleAsync(
+    final override fun handle(
         spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
         cancellationToken: CancellationToken,
-    ): CompletionStage<TReply> =
-        coroutines.completionStage {
-            handle(spot, actor, context, request, cancellationToken)
+    ): TReply =
+        coroutines.blocking {
+            handleSuspending(spot, actor, context, request, cancellationToken)
         }
 
-    protected abstract suspend fun handle(
+    protected abstract suspend fun handleSuspending(
         spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
@@ -341,64 +348,23 @@ abstract class ZLinkCoroutineSpotActorSendHandler<
     TMessage>(
     private val coroutines: ZLinkCoroutineRuntime,
 ) : ZLinkSpotActorSendHandler<TSpot, TActor, TMessage> {
-    final override fun handleAsync(
+    final override fun handle(
         spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(spot, actor, context, message, cancellationToken)
+    ) {
+        coroutines.blocking {
+            handleSuspending(spot, actor, context, message, cancellationToken)
         }
+    }
 
-    protected abstract suspend fun handle(
+    protected abstract suspend fun handleSuspending(
         spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
-        cancellationToken: CancellationToken,
-    )
-}
-
-abstract class ZLinkCoroutineEntrySpotActorDisconnectedHandler<
-    TEntrySpot : ZLinkEntrySpot,
-    TActor : ZLinkActor>(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor> {
-    final override fun handleAsync(
-        entrySpot: TEntrySpot,
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(entrySpot, actor, cancellationToken)
-        }
-
-    protected abstract suspend fun handle(
-        entrySpot: TEntrySpot,
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    )
-}
-
-abstract class ZLinkCoroutineSpotActorDisconnectedHandler<
-    TSpot,
-    TActor : ZLinkActor>(
-    private val coroutines: ZLinkCoroutineRuntime,
-) : ZLinkSpotActorDisconnectedHandler<TSpot, TActor> {
-    final override fun handleAsync(
-        spot: TSpot,
-        actor: TActor,
-        cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(spot, actor, cancellationToken)
-        }
-
-    protected abstract suspend fun handle(
-        spot: TSpot,
-        actor: TActor,
         cancellationToken: CancellationToken,
     )
 }
@@ -409,16 +375,17 @@ abstract class ZLinkCoroutineSessionPacketHandler<TSessionContext : ZLinkSession
 ) : ZLinkSessionPacketHandler<TSessionContext> {
     final override fun packetName(): String = packetName
 
-    final override fun handleAsync(
+    final override fun handle(
         context: TSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            handle(context, header, payload)
+    ) {
+        coroutines.blocking {
+            handleSuspending(context, header, payload)
         }
+    }
 
-    protected abstract suspend fun handle(
+    protected abstract suspend fun handleSuspending(
         context: TSessionContext,
         header: ZLinkStreamHeader,
         payload: Message,
@@ -430,57 +397,70 @@ abstract class ZLinkCoroutineSpot(
 ) : ZLinkSpot {
     abstract override fun context(): ZLinkSpotContext
 
-    final override fun onCreateAsync(request: Message): CompletionStage<ZLinkSpotCreateResponse> =
-        coroutines.completionStage {
-            onCreate(request)
+    final override fun onCreate(request: Message): ZLinkSpotCreateResponse =
+        coroutines.blocking {
+            onCreateSuspending(request)
         }
 
-    final override fun onInitializeAsync(): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onInitialize()
+    final override fun onInitialize() {
+        coroutines.blocking {
+            onInitializeSuspending()
         }
+    }
 
-    final override fun onClosingAsync(): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onClosing()
+    final override fun onClosing() {
+        coroutines.blocking {
+            onClosingSuspending()
         }
+    }
 
-    final override fun onActorJoinAsync(
+    final override fun onActorJoin(
         actor: ZLinkActor,
         request: Message,
         cancellationToken: CancellationToken,
-    ): CompletionStage<ZLinkSpotActorJoinResponse> =
-        coroutines.completionStage {
-            onActorJoin(actor, request, cancellationToken)
+    ): ZLinkSpotActorJoinResponse =
+        coroutines.blocking {
+            onActorJoinSuspending(actor, request, cancellationToken)
         }
 
-    final override fun onPostActorJoinedAsync(
+    final override fun onPostActorJoined(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onPostActorJoined(actor, cancellationToken)
+    ) {
+        coroutines.blocking {
+            onPostActorJoinedSuspending(actor, cancellationToken)
         }
+    }
 
-    final override fun onActorLeftAsync(
+    final override fun onActorLeft(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onActorLeft(actor, cancellationToken)
+    ) {
+        coroutines.blocking {
+            onActorLeftSuspending(actor, cancellationToken)
         }
+    }
 
-    protected open suspend fun onCreate(request: Message): ZLinkSpotCreateResponse {
+    final override fun onActorDisconnected(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+        coroutines.blocking {
+            onActorDisconnectedSuspending(actor, cancellationToken)
+        }
+    }
+
+    protected open suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
         return ZLinkSpotCreateResponse.accept()
     }
 
-    protected open suspend fun onInitialize() {
+    protected open suspend fun onInitializeSuspending() {
     }
 
-    protected open suspend fun onClosing() {
+    protected open suspend fun onClosingSuspending() {
     }
 
-    protected open suspend fun onActorJoin(
+    protected open suspend fun onActorJoinSuspending(
         actor: ZLinkActor,
         request: Message,
         cancellationToken: CancellationToken,
@@ -488,13 +468,19 @@ abstract class ZLinkCoroutineSpot(
         return ZLinkSpotActorJoinResponse.reject()
     }
 
-    protected open suspend fun onPostActorJoined(
+    protected open suspend fun onPostActorJoinedSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
-    protected open suspend fun onActorLeft(
+    protected open suspend fun onActorLeftSuspending(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+    }
+
+    protected open suspend fun onActorDisconnectedSuspending(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
@@ -506,38 +492,42 @@ abstract class ZLinkCoroutineSession(
 ) : ZLinkSession {
     abstract override fun context(): ZLinkSessionContext
 
-    final override fun onConnectedAsync(): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onConnected()
+    final override fun onConnected() {
+        coroutines.blocking {
+            onConnectedSuspending()
         }
+    }
 
-    final override fun onDisconnectedAsync(): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onDisconnected()
+    final override fun onDisconnected() {
+        coroutines.blocking {
+            onDisconnectedSuspending()
         }
+    }
 
-    final override fun onErrorAsync(error: FrameworkStreamError): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onError(error)
+    final override fun onError(error: FrameworkStreamError) {
+        coroutines.blocking {
+            onErrorSuspending(error)
         }
+    }
 
-    final override fun onDispatchAsync(
+    final override fun onDispatch(
         header: ZLinkStreamHeader,
         payload: Message,
-    ): CompletionStage<Void> =
-        coroutines.voidCompletionStage {
-            onDispatch(header, payload)
+    ) {
+        coroutines.blocking {
+            onDispatchSuspending(header, payload)
         }
-
-    protected open suspend fun onConnected() {
     }
 
-    protected open suspend fun onDisconnected() {
+    protected open suspend fun onConnectedSuspending() {
     }
 
-    protected open suspend fun onError(error: FrameworkStreamError) {
+    protected open suspend fun onDisconnectedSuspending() {
     }
 
-    protected open suspend fun onDispatch(header: ZLinkStreamHeader, payload: Message) {
+    protected open suspend fun onErrorSuspending(error: FrameworkStreamError) {
+    }
+
+    protected open suspend fun onDispatchSuspending(header: ZLinkStreamHeader, payload: Message) {
     }
 }

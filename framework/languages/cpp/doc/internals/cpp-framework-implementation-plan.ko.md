@@ -691,10 +691,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - `add_handler<&TSpot::method>()`
 - `add_subscribe<&TSpot::method>(topic)`
 - `add_actor_packet<&TSpot::method>()`
-- `add_actor_disconnected<&TSpot::method>()`
 - `on_actor_join(actor, message_t)`
 - `on_post_actor_joined(actor)`
 - `on_actor_left(actor)`
+- `on_actor_disconnected(actor)`
 - `spot_context_t::close()`
 - `spot_create_result_t`
 - Entry Spot
@@ -711,7 +711,7 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R reliab
 - actor join admission은 registry handler가 아니라 user Spot member callback으로 처리하고,
   request/reply는 DTO generic이 아니라 `message_t`를 사용한다.
 - SPOT packet, subscription, actor packet, actor disconnected 등록은 별도 handler class를
-  지원하지 않는다. actor join/post-join/left lifecycle은 Spot member callback 이름이 계약이다.
+  지원하지 않는다. actor join/post-join/left/disconnected lifecycle은 Spot member callback 이름이 계약이다.
   같은 동작을 여러 방식으로 등록하게 두면 샘플과 실제 구현이 갈라지므로 Spot 객체 하나가
   상태와 동작을 함께 갖는 방식으로 통일한다.
 - Spot create result는 `existing`, `created`, `rejected` state와 optional reply message를

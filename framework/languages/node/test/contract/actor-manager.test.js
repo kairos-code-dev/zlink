@@ -493,11 +493,6 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       return 'ok';
     }
   }
-  class DisconnectedHandler {
-    async handle(spot, actor) {
-      events.push(`disconnected:${spot.name}:${actor.actorId}`);
-    }
-  }
   const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime()
     .addPacket({
       kind: framework.ZLinkActorPacketKind.Send,
@@ -510,8 +505,7 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       packetName: 'move',
       actorType: PlayerActor,
       handlerType: MoveRequestHandler
-    })
-    .addActorDisconnected({ actorType: PlayerActor, handlerType: DisconnectedHandler });
+    });
   const actor = new PlayerActor('alice', {});
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry,
@@ -522,6 +516,9 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       },
       async onActorLeft(leftActor) {
         events.push(`left:game:${leftActor.actorId}`);
+      },
+      async onActorDisconnected(disconnectedActor) {
+        events.push(`disconnected:game:${disconnectedActor.actorId}`);
       }
     }
   });

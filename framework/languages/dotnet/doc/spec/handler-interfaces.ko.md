@@ -366,7 +366,7 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
-    void AddActorDisconnected<THandler, TActor>()
+    void OnActorDisconnectedAsync(TActor, CancellationToken)
         where THandler : class
         where TActor : IZLinkActor;
 }
@@ -527,7 +527,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
+public interface IZLinkSpot<TActor>.OnActorDisconnectedAsync
     where TSpot : class
     where TActor : IZLinkActor
 {
@@ -561,7 +561,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
+public interface IZLinkEntrySpot<TActor>.OnActorDisconnectedAsync
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
@@ -612,7 +612,7 @@ reject를 반환하면 `OnInitializeAsync(...)`는 호출하지 않고 spot을 �
 - `Context.AddPacket(...)`
 - `Context.AddHandler(...)`
 - `Context.AddActorPacket(...)`
-- `Context.AddActorDisconnected(...)`
+- `OnActorDisconnectedAsync callback`
 - `Context.AddSubscribe(...)`
 
 초기화가 끝난 뒤에 handler 를 추가하면 어떻게 될까. native subscription 과
@@ -623,7 +623,7 @@ dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 �
 actor 타입, send/request/lifecycle 종류, packet 이름 기본값을 추론한다.
 handler 가 여러 actor handler interface 를 구현해서 모호하면 명시적인
 `AddActorPacket<THandler, TActor>(...)`,
-`AddActorDisconnected<THandler, TActor>()` 를 사용한다.
+`OnActorDisconnectedAsync(TActor, CancellationToken)` 를 사용한다.
 
 `AddActorPacket<THandler, TActor>(...)` 는 actor 타입을 호출 쪽에서 명시하고,
 `THandler` 가 구현한 handler interface 를 보고 send 와 request 를 구분한다.
@@ -704,7 +704,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>
+public interface IZLinkEntrySpot<TActor>.OnActorDisconnectedAsync
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
@@ -852,7 +852,7 @@ public ValueTask OnActorLeftAsync(
 actor disconnected notification 은 별도 handler interface 로 등록한다.
 
 ```csharp
-public interface IZLinkSpotActorDisconnectedHandler<TSpot, TActor>
+public interface IZLinkSpot<TActor>.OnActorDisconnectedAsync
     where TSpot : class
     where TActor : IZLinkActor
 {
@@ -3674,7 +3674,7 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class ZLinkSpotActorDisconnectedAttribute : Attribute
+public sealed class OnActorDisconnectedAsync callback : Attribute
 {
 }
 ```

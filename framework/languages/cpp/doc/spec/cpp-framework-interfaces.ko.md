@@ -1360,7 +1360,7 @@ public:
     spot_handler_registry_t &add_actor_packet(std::string packet_name = {});
 
     template <auto Method>
-    spot_handler_registry_t &add_actor_disconnected();
+    spot_handler_registry_t &on_actor_disconnected();
 
     template <typename TSpot>
     result_t<message_t> invoke_packet(std::string_view packet_name,

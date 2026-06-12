@@ -13,7 +13,6 @@ import type {
   ZLinkActorManager,
   ZLinkBoundSession,
   ZLinkSpot,
-  ZLinkSpotActorDisconnectedHandler,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
@@ -73,11 +72,6 @@ export enum ZLinkActorPacketKind {
 export interface ZLinkActorPacketDescriptor {
   readonly kind: ZLinkActorPacketKind;
   readonly packetName: string;
-  readonly actorType: Type<ZLinkActor>;
-  readonly handlerType: Type;
-}
-
-export interface ZLinkActorLifecycleDescriptor {
   readonly actorType: Type<ZLinkActor>;
   readonly handlerType: Type;
 }
@@ -551,7 +545,6 @@ export class ZLinkActorDispatchRouter {
 
 export class ZLinkSpotActorHandlerRegistryRuntime {
   private readonly packets = new Map<string, ZLinkActorPacketDescriptor>();
-  private readonly disconnected = new Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>();
 
   addPacket(descriptor: ZLinkActorPacketDescriptor): this {
     const key = packetKey(descriptor.kind, descriptor.actorType, descriptor.packetName);
@@ -562,10 +555,6 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
     }
     this.packets.set(key, descriptor);
     return this;
-  }
-
-  addActorDisconnected(descriptor: ZLinkActorLifecycleDescriptor): this {
-    return this.addLifecycle(this.disconnected, descriptor, 'disconnected');
   }
 
   resolvePacket(
@@ -591,41 +580,6 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
     return undefined;
   }
 
-  resolveActorDisconnected(actor: ZLinkActor): ZLinkActorLifecycleDescriptor | undefined {
-    return this.resolveLifecycle(this.disconnected, actor);
-  }
-
-  private addLifecycle(
-    target: Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>,
-    descriptor: ZLinkActorLifecycleDescriptor,
-    kind: string
-  ): this {
-    if (target.has(descriptor.actorType)) {
-      throw new ZLinkConfigurationException(
-        `Actor ${kind} handler for '${descriptor.actorType.name}' is already registered.`
-      );
-    }
-    target.set(descriptor.actorType, descriptor);
-    return this;
-  }
-
-  private resolveLifecycle(
-    source: Map<Type<ZLinkActor>, ZLinkActorLifecycleDescriptor>,
-    actor: ZLinkActor
-  ): ZLinkActorLifecycleDescriptor | undefined {
-    const actorType = actor.constructor as Type<ZLinkActor>;
-    const exact = source.get(actorType);
-    if (exact !== undefined) {
-      return exact;
-    }
-
-    for (const [registeredType, descriptor] of source.entries()) {
-      if (actor instanceof registeredType) {
-        return descriptor;
-      }
-    }
-    return undefined;
-  }
 }
 
 export interface ZLinkSpotActorDispatcherOptions {
@@ -717,26 +671,7 @@ export class ZLinkSpotActorDispatcher {
   }
 
   notifyActorDisconnected(actor: ZLinkActor): Promise<void> {
-    return this.invokeLifecycle(
-      actor,
-      this.options.registry.resolveActorDisconnected(actor),
-      (handler: ZLinkSpotActorDisconnectedHandler<ZLinkSpot, ZLinkActor>) =>
-        handler.handle(this.options.spot, actor)
-    );
-  }
-
-  private invokeLifecycle<THandler>(
-    actor: ZLinkActor,
-    descriptor: ZLinkActorLifecycleDescriptor | undefined,
-    invoke: (handler: THandler) => Promise<void>
-  ): Promise<void> {
-    return this.execute(async () => {
-      if (descriptor === undefined) {
-        return;
-      }
-      this.ensureActorType(descriptor, actor);
-      await invoke(this.createHandler<THandler>(descriptor));
-    });
+    return this.execute(() => this.options.spot.onActorDisconnected?.(actor));
   }
 
   private requirePacket(
@@ -752,10 +687,7 @@ export class ZLinkSpotActorDispatcher {
     return descriptor;
   }
 
-  private ensureActorType(
-    descriptor: ZLinkActorPacketDescriptor | ZLinkActorLifecycleDescriptor,
-    actor: ZLinkActor
-  ): void {
+  private ensureActorType(descriptor: ZLinkActorPacketDescriptor, actor: ZLinkActor): void {
     if (actor instanceof descriptor.actorType) {
       return;
     }

@@ -63,42 +63,7 @@ internal static class ZLinkSpotActorHandlerDescriptorFactory
             0 => throw new InvalidOperationException(
                 $"Actor handler '{handlerType}' must implement exactly one supported Entry Spot or user Spot actor handler interface or declare exactly one SPOT actor handler attribute."),
             _ => throw new InvalidOperationException(
-                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use AddActorPacket or AddActorDisconnected to select the actor surface explicitly."),
+                $"Actor handler '{handlerType}' implements multiple supported actor handler interfaces. Use AddActorPacket to select the actor surface explicitly."),
         };
-    }
-
-    public static ZLinkSpotActorLifecycleDescriptor CreateDisconnected(
-        ZLinkSpotActorHandlerSurface surface,
-        Type? expectedSpotType,
-        Type handlerType,
-        Type expectedActorType)
-    {
-        foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
-        {
-            var descriptor = ZLinkSpotActorInterfaceDescriptorFactory.TryCreateDisconnected(
-                surface,
-                expectedSpotType,
-                handlerType,
-                expectedActorType,
-                definition,
-                arguments);
-            if (descriptor is not null)
-            {
-                return descriptor;
-            }
-        }
-
-        var attributed = ZLinkSpotActorAttributedDescriptorFactory.TryCreateDisconnected(
-            surface,
-            expectedSpotType,
-            handlerType,
-            expectedActorType);
-        if (attributed is not null)
-        {
-            return attributed;
-        }
-
-        throw new InvalidOperationException(
-            $"Actor disconnected handler '{handlerType}' must implement a supported SPOT actor disconnected handler interface or declare a matching SPOT actor disconnected attribute.");
     }
 }

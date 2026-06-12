@@ -17,7 +17,6 @@ import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.handlers.ZLinkSend;
-import systems.zlink.framework.handlers.ZLinkSpotActorDisconnected;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
@@ -26,11 +25,9 @@ import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
-import systems.zlink.framework.spots.ZLinkEntrySpotActorDisconnectedHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorDisconnectedHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
@@ -79,10 +76,8 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
             || ZLinkSpotTimerHandler.class.isAssignableFrom(type)
             || ZLinkEntrySpotActorSendHandler.class.isAssignableFrom(type)
             || ZLinkEntrySpotActorRequestHandler.class.isAssignableFrom(type)
-            || ZLinkEntrySpotActorDisconnectedHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorSendHandler.class.isAssignableFrom(type)
             || ZLinkSpotActorRequestHandler.class.isAssignableFrom(type)
-            || ZLinkSpotActorDisconnectedHandler.class.isAssignableFrom(type)
             || ZLinkSession.class.isAssignableFrom(type)
             || ZLinkSessionPacketHandler.class.isAssignableFrom(type)
             || hasZLinkHandlerAnnotation(type);
@@ -104,8 +99,7 @@ final class ZLinkSpringHandlerFactory implements ZLinkHandlerFactory {
                     || annotation.annotationType() == ZLinkSpotSubscription.class
                     || annotation.annotationType() == ZLinkSpotRequest.class
                     || annotation.annotationType() == ZLinkSpotActorSend.class
-                    || annotation.annotationType() == ZLinkSpotActorRequest.class
-                    || annotation.annotationType() == ZLinkSpotActorDisconnected.class) {
+                    || annotation.annotationType() == ZLinkSpotActorRequest.class) {
                     return true;
                 }
             }

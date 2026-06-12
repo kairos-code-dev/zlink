@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <memory>
 #include <optional>
@@ -25,6 +26,7 @@ class spot_node_builder_state_t
     std::map<std::string, std::string> spot_names_by_rid;
     std::map<std::string, spot_context_t> spot_contexts_by_rid;
     std::map<std::string, spot_rid_t> actor_spot_rids;
+    std::map<std::string, std::uint64_t> actor_generations;
     std::map<std::string, std::type_index> actor_factories;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
     std::uint64_t next_spot_id = 1;
@@ -81,6 +83,7 @@ class spot_context_state_t
     spot_lifecycle_callbacks_t lifecycle;
     std::map<std::type_index, std::function<void (void *, void *)>> post_actor_joined_callbacks;
     std::map<std::type_index, std::function<void (void *, void *)>> actor_left_callbacks;
+    std::map<std::type_index, std::function<void (void *, void *)>> actor_disconnected_callbacks;
     bool close_requested = false;
     bool closed = false;
     std::size_t actor_count = 0;
@@ -183,6 +186,44 @@ class spot_node_runtime_t
         return result_t<void>::success ();
     }
 
+    template <typename TActor>
+    result_t<void> notify_actor_disconnected (const actor_ref_t &actor_ref, TActor &actor)
+    {
+        if (actor_ref.empty ()) {
+            return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                            "actor ref is empty");
+        }
+        const auto key = actor_key (actor_ref);
+        const auto found_location = _state->actor_spot_rids.find (key);
+        if (found_location == _state->actor_spot_rids.end ()) {
+            return result_t<void>::success ();
+        }
+        const auto found_generation = _state->actor_generations.find (key);
+        if (found_generation != _state->actor_generations.end ()
+            && found_generation->second != actor_ref.generation ()) {
+            return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
+                                            "actor generation is stale");
+        }
+        auto context = find_context (found_location->second);
+        if (!context) {
+            return result_t<void>::success ();
+        }
+        try {
+            notify_actor_disconnected<TActor> (*context->_state, actor);
+            return result_t<void>::success ();
+        }
+        catch (const framework_exception_t &error) {
+            return result_t<void>::failure (error.kind (), error.what (), error.is_retriable ());
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed, error.what ());
+        }
+        catch (...) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "spot actor disconnected callback failed");
+        }
+    }
+
   private:
     template <typename TSpot, typename TActor>
     static constexpr bool has_actor_join_callback =
@@ -203,6 +244,12 @@ class spot_node_runtime_t
     static constexpr bool has_actor_left_callback = requires (TSpot & spot, TActor &actor)
     {
         spot.on_actor_left (actor);
+    };
+
+    template <typename TSpot, typename TActor>
+    static constexpr bool has_actor_disconnected_callback = requires (TSpot & spot, TActor &actor)
+    {
+        spot.on_actor_disconnected (actor);
     };
 
     static std::string actor_key (const actor_ref_t &actor_ref)
@@ -227,6 +274,7 @@ class spot_node_runtime_t
         auto &context_state = *context._state;
         const auto key = actor_key (actor_ref);
         _state->actor_spot_rids[key] = context_state.spot_rid;
+        _state->actor_generations[key] = actor_ref.generation () + 1;
         context_state.actor_count++;
         context_state.post_actor_joined_callbacks[std::type_index (typeid (TActor))] =
           [] (void *spot, void *actor) {
@@ -241,6 +289,13 @@ class spot_node_runtime_t
                 static_cast<TSpot *> (spot)->on_actor_left (*static_cast<TActor *> (actor));
             }
         };
+        context_state.actor_disconnected_callbacks[std::type_index (typeid (TActor))] =
+          [] (void *spot, void *actor) {
+              if constexpr (has_actor_disconnected_callback<TSpot, TActor>) {
+                  static_cast<TSpot *> (spot)->on_actor_disconnected (
+                    *static_cast<TActor *> (actor));
+              }
+          };
         auto committed = actor_ref_t (
           node_rid_t::from_string (_state->snapshot.name), std::string (actor_ref.actor_type ()),
           std::string (actor_ref.actor_id ()), actor_ref.generation () + 1);
@@ -257,6 +312,7 @@ class spot_node_runtime_t
         }
         auto previous_context = find_context (found_location->second);
         _state->actor_spot_rids.erase (found_location);
+        _state->actor_generations.erase (key);
         if (!previous_context) {
             return;
         }
@@ -281,6 +337,16 @@ class spot_node_runtime_t
     {
         const auto found = state.actor_left_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.actor_left_callbacks.end () && state.spot_instance) {
+            found->second (state.spot_instance.get (), &actor);
+        }
+    }
+
+    template <typename TActor>
+    void notify_actor_disconnected (spot_context_state_t &state, TActor &actor)
+    {
+        const auto found =
+          state.actor_disconnected_callbacks.find (std::type_index (typeid (TActor)));
+        if (found != state.actor_disconnected_callbacks.end () && state.spot_instance) {
             found->second (state.spot_instance.get (), &actor);
         }
     }

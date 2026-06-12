@@ -115,10 +115,8 @@ export interface ActorRef {
 | context | `ZLinkEntrySpotContext` | Entry Spot 실행 context | 4.3.1 |
 | handler | `ZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user Spot actor send handler | 4.4.2 |
 | handler | `ZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user Spot actor request handler | 4.4.2 |
-| handler | `ZLinkSpotActorDisconnectedHandler<TSpot, TActor>` | actor disconnect 알림 handler | 4.3.1 |
 | handler | `ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor send handler | 4.4.2 |
 | handler | `ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor request handler | 4.4.2 |
-| handler | `ZLinkEntrySpotActorDisconnectedHandler<TEntrySpot, TActor>` | Entry Spot actor disconnect handler | 4.3.1 |
 | lifecycle | `ZLinkSpot.onActorJoin(...)` | user Spot actor join admission callback | 4.4.1 |
 | options | `ZLinkSpotActorReplyOptions` | spot actor request reply 옵션 빌더 | 4.4.2 |
 | stream | `ZLinkStream` | stream I/O와 peer 식별 | 4.4 |
@@ -462,11 +460,6 @@ export interface ZLinkActorHandlerRegistry {
     actorType: Type<TActor>,
     packetName: string,
   ): void;
-
-  addActorDisconnected<THandler, TActor extends ZLinkActor>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>,
-  ): void;
 }
 
 /** C# IZLinkSpotHandlerRegistry 대응. actor registry 를 확장한 spot handler 등록 표면. */
@@ -559,10 +552,6 @@ export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, 
   ): Promise<TReply>;
 }
 
-export interface ZLinkSpotActorDisconnectedHandler<TSpot, TActor extends ZLinkActor> {
-  handle(spot: TSpot, actor: TActor): Promise<void>;
-}
-
 export interface ZLinkEntrySpotActorSendHandler<
   TEntrySpot extends ZLinkEntrySpot,
   TActor extends ZLinkActor,
@@ -590,17 +579,11 @@ export interface ZLinkEntrySpotActorRequestHandler<
   ): Promise<TReply>;
 }
 
-export interface ZLinkEntrySpotActorDisconnectedHandler<
-  TEntrySpot extends ZLinkEntrySpot,
-  TActor extends ZLinkActor,
-> {
-  handle(entrySpot: TEntrySpot, actor: TActor): Promise<void>;
-}
 ```
 
 > 코드 기준: Entry Spot lifecycle(join/left)은 handler interface 가 아니라
 > `ZLinkEntrySpot.onPostActorJoined(...)` / `onActorLeft(...)` 멤버 callback 으로 선언한다.
-> disconnected 만 `ZLinkEntrySpotActorDisconnectedHandler` 로 분리되어 있다.
+> actor disconnected 도 `ZLinkEntrySpot.onActorDisconnected(...)` 멤버 callback 으로 선언한다.
 
 #### lifecycle callback 의미
 
@@ -621,13 +604,12 @@ framework 가 예외를 던진다.
 - `context.handlers.addPacket(...)`
 - `context.handlers.addHandler(...)`
 - `context.handlers.addActorPacket(...)`
-- `context.handlers.addActorDisconnected(...)`
 - `context.handlers.addSubscribe(...)`
 
 `addHandler(handlerType)` 는 `handlerType` 이 구현한 actor handler interface 를 보고
 actor 타입 / send·request / packet 이름 기본값을 추론한다. handler 가
 여러 actor handler interface 를 구현해서 모호하면 명시적
-`addActorPacket(handlerType, actorType)` 또는 `addActorDisconnected(...)` 를 쓴다.
+`addActorPacket(handlerType, actorType)` 를 쓴다.
 
 handler 선언은 두 방식이다.
 
@@ -2235,14 +2217,12 @@ Entry Spot 과 user Spot 에서 같은 decorator 이름을 쓴다. 어느 regist
 ```ts
 export function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
 export function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
-export function ZLinkSpotActorDisconnected(): MethodDecorator;
 ```
 
 method 시그니처 순서:
 
 - send: `(spotOrEntrySpot, actor, context, message)` 반환 없음
 - request: `(spotOrEntrySpot, actor, context, request)` reply 반환
-- disconnected: `(spotOrEntrySpot, actor)` 반환 없음
 
 `packetName` 미지정 시 message/request 타입의 packet 이름을 쓴다. 한 handler 클래스에 여러 spot
 actor handler decorator method 가 있으면 `addHandler(handlerType)` 에서 모호하므로 startup

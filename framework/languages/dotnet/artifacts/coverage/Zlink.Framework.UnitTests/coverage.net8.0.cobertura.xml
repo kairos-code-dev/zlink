@@ -17348,7 +17348,7 @@
                 <line number="90" hits="0" branch="False" />
               </lines>
             </method>
-            <method name="AddActorDisconnected" signature="()" line-rate="0" branch-rate="1" complexity="1">
+            <method name="OnActorDisconnectedAsync" signature="()" line-rate="0" branch-rate="1" complexity="1">
               <lines>
                 <line number="95" hits="0" branch="False" />
                 <line number="96" hits="0" branch="False" />
@@ -20686,7 +20686,7 @@
                 <line number="121" hits="0" branch="False" />
               </lines>
             </method>
-            <method name="AddActorDisconnected" signature="()" line-rate="0" branch-rate="1" complexity="1">
+            <method name="OnActorDisconnectedAsync" signature="()" line-rate="0" branch-rate="1" complexity="1">
               <lines>
                 <line number="126" hits="0" branch="False" />
                 <line number="127" hits="0" branch="False" />
@@ -26502,7 +26502,7 @@
                 <line number="94" hits="0" branch="False" />
               </lines>
             </method>
-            <method name="AddActorDisconnected" signature="()" line-rate="0" branch-rate="1" complexity="1">
+            <method name="OnActorDisconnectedAsync" signature="()" line-rate="0" branch-rate="1" complexity="1">
               <lines>
                 <line number="99" hits="0" branch="False" />
               </lines>

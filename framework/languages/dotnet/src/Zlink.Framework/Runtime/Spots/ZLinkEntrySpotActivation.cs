@@ -294,7 +294,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         try
         {
             using var _ = ZLinkSpotAmbientContext.Push(this);
-            await _invoker.InvokeActorDisconnectedAsync(
+            await _invoker.InvokeActorLifecycleAsync(
                     descriptor,
                     actor,
                     cancellationToken)

@@ -132,8 +132,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | `CreateAsync<TSpot>(request)` create rejected | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`와 reply `Message`로 반환되고 spot은 등록되지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `OnCreateAsync(...)` reject는 `State = Rejected`로 반환되고, `OnCreateAsync(...)` 또는 `OnInitializeAsync(...)` 예외는 `SpotCreateFailed`로 전파되며 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `GetAsync(...)`, `ListAsync(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `Context.AddActorDisconnected(...)`, `Context.AddSubscribe(...)` 등의 등록과 Spot 멤버 lifecycle callback 이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `AddActorDisconnected(...)`와 Entry Spot 멤버 lifecycle callback 이 Entry Spot registry에 반영된다 |
+| `Configure()` handler registration | `integration-single-process` | `Context.AddPacket(...)`, `Context.AddHandler(...)`, `Context.AddActorPacket(...)`, `OnActorDisconnectedAsync callback`, `Context.AddSubscribe(...)` 등의 등록과 Spot 멤버 lifecycle callback 이 descriptor에 반영된다 |
+| Entry Spot handler registration | `integration-single-process` | `AddEntrySpot<TEntrySpot>()`로 등록한 `Context.AddPacket(...)`, `AddSubscribe(...)`, `AddHandler(...)`, `AddActorPacket(...)`, `OnActorDisconnectedAsync(...)`와 Entry Spot 멤버 lifecycle callback 이 Entry Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `OnInitializeAsync(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `OnClosingAsync(...)` 정상 close callback | `integration-single-process` | `CloseAsync(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |

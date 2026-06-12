@@ -6,6 +6,7 @@
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <chrono>
+#include <coroutine>
 #include <functional>
 #include <map>
 #include <memory>
@@ -58,6 +59,46 @@ struct raw_http_response_t
 class request_builder_t;
 class client_builder_t;
 
+class coroutine_execute_scheduler_t
+{
+  public:
+    virtual ~coroutine_execute_scheduler_t () = default;
+
+    virtual void execute (std::function<void ()> work) = 0;
+};
+
+class coroutine_resume_scheduler_t
+{
+  public:
+    virtual ~coroutine_resume_scheduler_t () = default;
+
+    virtual void resume (std::function<void ()> continuation) = 0;
+    virtual void resume (std::coroutine_handle<> continuation)
+    {
+        resume ([continuation] { continuation.resume (); });
+    }
+};
+
+class framework_resume_scheduler_t final : public coroutine_resume_scheduler_t
+{
+  public:
+    using post_t = std::function<void (std::function<void ()>)>;
+
+    explicit framework_resume_scheduler_t (post_t post) : _post (std::move (post))
+    {
+        if (!_post) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "HTTP client framework resume scheduler post function is required");
+        }
+    }
+
+    void resume (std::function<void ()> continuation) override { _post (std::move (continuation)); }
+
+  private:
+    post_t _post;
+};
+
 namespace detail
 {
 class http_client_runtime_t;
@@ -98,14 +139,17 @@ class client_builder_t
     client_builder_t &basic_auth (const std::string &user, const std::string &password);
     client_builder_t &bearer_token (const std::string &token);
     client_builder_t &trust_certificate_file (std::string path);
-    client_builder_t &client_certificate_file (std::string certificate_path,
-                                               std::string key_path);
+    client_builder_t &client_certificate_file (std::string certificate_path, std::string key_path);
     client_builder_t &follow_redirects (int max_redirects = 5);
     client_builder_t &retry (int attempts);
     client_builder_t &cookies ();
     client_builder_t &proxy (std::string url);
     client_builder_t &proxy_basic_auth (const std::string &user, const std::string &password);
     client_builder_t &compression ();
+    client_builder_t &coroutines ();
+    client_builder_t &coroutines (std::shared_ptr<coroutine_resume_scheduler_t> resume_scheduler);
+    client_builder_t &coroutines (std::shared_ptr<coroutine_execute_scheduler_t> execute_scheduler,
+                                  std::shared_ptr<coroutine_resume_scheduler_t> resume_scheduler);
 
     client_t build () const;
 
@@ -134,6 +178,9 @@ class client_builder_t
     std::optional<std::string> _proxy;
     std::optional<std::string> _proxy_authorization;
     bool _compression = false;
+    bool _coroutines = false;
+    std::shared_ptr<coroutine_execute_scheduler_t> _execute_scheduler;
+    std::shared_ptr<coroutine_resume_scheduler_t> _resume_scheduler;
 };
 
 class request_builder_t
@@ -225,8 +272,8 @@ class request_builder_t
         auto result = submit<T> ().result ();
         if (!result) {
             const auto *error = result.error ();
-            throw zlink::framework::framework_exception_t (
-              error->kind (), error->what (), error->is_retriable ());
+            throw zlink::framework::framework_exception_t (error->kind (), error->what (),
+                                                           error->is_retriable ());
         }
         return std::move (result.value ().body);
     }

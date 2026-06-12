@@ -59,7 +59,8 @@ std::string percent_encode (const std::string &value)
 
 std::string base64_encode (std::string_view input)
 {
-    static constexpr char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static constexpr char table[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string encoded;
     encoded.reserve ((input.size () + 2) / 3 * 4);
     unsigned value = 0;
@@ -263,10 +264,57 @@ client_builder_t &client_builder_t::compression ()
     return *this;
 }
 
+client_builder_t &client_builder_t::coroutines ()
+{
+    _coroutines = true;
+    _execute_scheduler.reset ();
+    _resume_scheduler.reset ();
+    return *this;
+}
+
+client_builder_t &
+client_builder_t::coroutines (std::shared_ptr<coroutine_resume_scheduler_t> resume_scheduler)
+{
+    if (!resume_scheduler) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP client coroutine resume scheduler is required");
+    }
+    _coroutines = true;
+    _execute_scheduler.reset ();
+    _resume_scheduler = std::move (resume_scheduler);
+    return *this;
+}
+
+client_builder_t &
+client_builder_t::coroutines (std::shared_ptr<coroutine_execute_scheduler_t> execute_scheduler,
+                              std::shared_ptr<coroutine_resume_scheduler_t> resume_scheduler)
+{
+    if (!execute_scheduler || !resume_scheduler) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP client coroutine execute and resume schedulers are required");
+    }
+    _coroutines = true;
+    _execute_scheduler = std::move (execute_scheduler);
+    _resume_scheduler = std::move (resume_scheduler);
+    return *this;
+}
+
 client_t client_builder_t::build () const
 {
     require_non_blank (_base_url, "HTTP client base_url is required");
     require_positive_timeout (_timeout);
+    auto execute_scheduler = _execute_scheduler;
+    auto resume_scheduler = _resume_scheduler;
+    if (_coroutines) {
+        if (!execute_scheduler) {
+            execute_scheduler = detail::default_coroutine_execute_scheduler ();
+        }
+        if (!resume_scheduler) {
+            resume_scheduler = detail::default_coroutine_resume_scheduler ();
+        }
+    }
     detail::http_client_options_t options{.base_url = _base_url,
                                           .json = _json,
                                           .timeout = _timeout,
@@ -278,7 +326,10 @@ client_t client_builder_t::build () const
                                           .cookies = _cookies,
                                           .proxy = _proxy,
                                           .proxy_authorization = _proxy_authorization,
-                                          .compression = _compression};
+                                          .compression = _compression,
+                                          .coroutines = _coroutines,
+                                          .execute_scheduler = std::move (execute_scheduler),
+                                          .resume_scheduler = std::move (resume_scheduler)};
     try {
         return client_t (std::make_shared<detail::http_client_runtime_t> (std::move (options)));
     }
@@ -323,9 +374,7 @@ request_builder_t client_builder_t::options (std::string path) const
     return build ().options (std::move (path));
 }
 
-request_builder_t::request_builder_t (client_t client,
-                                      http_method_t method,
-                                      std::string path) :
+request_builder_t::request_builder_t (client_t client, http_method_t method, std::string path) :
     _client (std::move (client)), _method (method), _path (std::move (path))
 {
     if (_path.empty () || _path.front () != '/') {
@@ -429,8 +478,8 @@ std::string request_builder_t::resolve_target () const
 std::pair<std::optional<std::string>, std::map<std::string, std::string>>
 request_builder_t::resolve_body_and_headers () const
 {
-    const int body_sources = (_body ? 1 : 0) + (_body_provider ? 1 : 0)
-                             + (!_form.empty () ? 1 : 0) + (!_multipart.empty () ? 1 : 0);
+    const int body_sources = (_body ? 1 : 0) + (_body_provider ? 1 : 0) + (!_form.empty () ? 1 : 0)
+                             + (!_multipart.empty () ? 1 : 0);
     if (body_sources > 1) {
         throw zlink::framework::framework_exception_t (
           zlink::framework::framework_error_kind_t::request_protocol_error,
@@ -497,6 +546,9 @@ zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () c
                                    .headers = std::move (headers),
                                    .timeout = _timeout,
                                    .sink = nullptr};
+    if (_client._runtime->uses_coroutines ()) {
+        return _client._runtime->submit (std::move (request));
+    }
     return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
 }
 
@@ -522,6 +574,9 @@ request_builder_t::download (std::function<void (std::string_view)> sink) const
                                    .headers = std::move (headers),
                                    .timeout = _timeout,
                                    .sink = std::move (sink)};
+    if (_client._runtime->uses_coroutines ()) {
+        return _client._runtime->submit (std::move (request));
+    }
     return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
 }
 

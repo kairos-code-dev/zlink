@@ -4,6 +4,8 @@
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/thread_pool.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
@@ -33,6 +35,47 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
 using tcp = asio::ip::tcp;
+
+class default_coroutine_scheduler_t final
+    : public zlink::http_client::coroutine_execute_scheduler_t,
+      public zlink::http_client::coroutine_resume_scheduler_t
+{
+  public:
+    default_coroutine_scheduler_t () : _pool (1) {}
+
+    void execute (std::function<void ()> work) override
+    {
+        asio::post (_pool, [work = std::move (work)] () mutable { work (); });
+    }
+
+    void resume (std::function<void ()> continuation) override
+    {
+        asio::post (_pool, [continuation = std::move (continuation)] () mutable {
+            try {
+                continuation ();
+            }
+            catch (...) {
+            }
+        });
+    }
+
+  private:
+    asio::thread_pool _pool;
+};
+
+std::shared_ptr<default_coroutine_scheduler_t> default_scheduler_instance ()
+{
+    static auto *scheduler = new std::shared_ptr<default_coroutine_scheduler_t> (
+      std::make_shared<default_coroutine_scheduler_t> ());
+    return *scheduler;
+}
+
+zlink::framework::result_t<raw_http_response_t> timeout_before_exchange ()
+{
+    return zlink::framework::result_t<raw_http_response_t>::failure (
+      zlink::framework::framework_error_kind_t::timeout,
+      "HTTP request timed out before the scheduler started it", true);
+}
 
 struct parsed_url_t
 {
@@ -185,10 +228,8 @@ hop_target_t resolve_location (const hop_target_t &current, const std::string &l
                 .target = url.target_prefix.empty () ? "/" : url.target_prefix};
     }
     if (!location.empty () && location.front () == '/') {
-        return {.scheme = current.scheme,
-                .host = current.host,
-                .port = current.port,
-                .target = location};
+        return {
+          .scheme = current.scheme, .host = current.host, .port = current.port, .target = location};
     }
     throw request_error ("HTTP redirect location is not supported: " + location);
 }
@@ -432,15 +473,13 @@ void cookie_jar_t::store (const std::string &host, const std::string &set_cookie
     }
 }
 
-std::string cookie_jar_t::header_for (const std::string &host,
-                                      const std::string &path,
-                                      bool secure) const
+std::string
+cookie_jar_t::header_for (const std::string &host, const std::string &path, bool secure) const
 {
     const std::lock_guard<std::mutex> lock (_mutex);
     std::string header;
     for (const auto &cookie : _cookies) {
-        if (cookie.host != host || (cookie.secure && !secure)
-            || path.rfind (cookie.path, 0) != 0) {
+        if (cookie.host != host || (cookie.secure && !secure) || path.rfind (cookie.path, 0) != 0) {
             continue;
         }
         if (!header.empty ()) {
@@ -544,13 +583,11 @@ class request_performer_t
     }
 
     template <typename TBody>
-    http::request<TBody> build_wire_request (const hop_target_t &hop,
-                                             http_method_t method,
-                                             bool absolute_form) const
+    http::request<TBody>
+    build_wire_request (const hop_target_t &hop, http_method_t method, bool absolute_form) const
     {
-        const auto wire_target = absolute_form
-                                   ? "http://" + hop.host + ":" + hop.port + hop.target
-                                   : hop.target;
+        const auto wire_target =
+          absolute_form ? "http://" + hop.host + ":" + hop.port + hop.target : hop.target;
         http::request<TBody> wire{to_beast_method (method), wire_target, 11};
 
         const bool default_port = (hop.scheme == "http" && hop.port == "80")
@@ -728,10 +765,9 @@ class request_performer_t
 
         // While following redirects, intermediate bodies are drained instead
         // of being delivered to the caller's sink.
-        const bool draining =
-          _options.follow_redirects > 0
-          && is_redirect_status (static_cast<int> (parser.get ().result_int ()))
-          && parser.get ().count (http::field::location) > 0;
+        const bool draining = _options.follow_redirects > 0
+                              && is_redirect_status (static_cast<int> (parser.get ().result_int ()))
+                              && parser.get ().count (http::field::location) > 0;
 
         char chunk[16384];
         while (!parser.is_done ()) {
@@ -814,8 +850,7 @@ class request_performer_t
         http::request<http::empty_body> connect_request{http::verb::connect, authority, 11};
         connect_request.set (http::field::host, authority);
         if (_options.proxy_authorization) {
-            connect_request.set (http::field::proxy_authorization,
-                                 *_options.proxy_authorization);
+            connect_request.set (http::field::proxy_authorization, *_options.proxy_authorization);
         }
         http::write (stream, connect_request);
 
@@ -835,11 +870,10 @@ class request_performer_t
     const http_request_t &_request;
 };
 
-zlink::framework::result_t<raw_http_response_t>
-perform_once (const http_client_options_t &options,
-              cookie_jar_t &cookie_jar,
-              connection_pool_t &pool,
-              const http_request_t &request)
+zlink::framework::result_t<raw_http_response_t> perform_once (const http_client_options_t &options,
+                                                              cookie_jar_t &cookie_jar,
+                                                              connection_pool_t &pool,
+                                                              const http_request_t &request)
 {
     try {
         return request_performer_t (options, cookie_jar, pool, request).perform ();
@@ -868,17 +902,110 @@ http_client_runtime_t::execute (const http_request_t &request) const
 {
     // Streamed uploads and downloads cannot be replayed, so they are excluded
     // from automatic retry.
-    const int max_retries =
-      (request.sink || request.body_provider) ? 0 : _options.retry_attempts;
+    const int max_retries = (request.sink || request.body_provider) ? 0 : _options.retry_attempts;
 
     for (int attempt = 0;; ++attempt) {
         auto result = perform_once (_options, _cookie_jar, *_connection_pool, request);
-        if (result.has_value () || attempt >= max_retries
-            || !result.error ()->is_retriable ()) {
+        if (result.has_value () || attempt >= max_retries || !result.error ()->is_retriable ()) {
             return result;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
+}
+
+zlink::framework::result_t<raw_http_response_t>
+http_client_runtime_t::execute_with_deadline (http_request_t request,
+                                              std::chrono::steady_clock::time_point deadline) const
+{
+    const int max_retries = (request.sink || request.body_provider) ? 0 : _options.retry_attempts;
+
+    for (int attempt = 0;; ++attempt) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline) {
+            return timeout_before_exchange ();
+        }
+
+        auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+        if (remaining <= std::chrono::milliseconds::zero ()) {
+            remaining = std::chrono::milliseconds (1);
+        }
+
+        auto attempt_request = request;
+        attempt_request.timeout = remaining;
+        auto result = perform_once (_options, _cookie_jar, *_connection_pool, attempt_request);
+        if (result.has_value () || attempt >= max_retries || !result.error ()->is_retriable ()) {
+            return result;
+        }
+
+        const auto before_sleep = std::chrono::steady_clock::now ();
+        if (before_sleep >= deadline) {
+            return timeout_before_exchange ();
+        }
+        std::this_thread::sleep_until (
+          std::min (deadline, before_sleep + std::chrono::milliseconds (50)));
+    }
+}
+
+zlink::framework::task_t<raw_http_response_t>
+http_client_runtime_t::submit (http_request_t request) const
+{
+    const auto timeout = request.timeout.value_or (_options.timeout);
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    zlink::framework::detail::task_completion_source_t<raw_http_response_t> completion (
+      completion_scheduler ());
+    auto task = completion.task ();
+    auto runtime = shared_from_this ();
+    auto execute_scheduler = _options.execute_scheduler;
+    if (!execute_scheduler) {
+        completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP client coroutine execute scheduler is not configured"));
+        return task;
+    }
+    try {
+        execute_scheduler->execute (
+          [runtime, request = std::move (request), deadline, completion] () mutable {
+              completion.complete (runtime->execute_with_deadline (std::move (request), deadline));
+          });
+    }
+    catch (const std::exception &ex) {
+        completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
+          zlink::framework::framework_error_kind_t::closed,
+          std::string ("HTTP client coroutine execute scheduler rejected work: ") + ex.what (),
+          true));
+    }
+    catch (...) {
+        completion.complete (zlink::framework::result_t<raw_http_response_t>::failure (
+          zlink::framework::framework_error_kind_t::closed,
+          "HTTP client coroutine execute scheduler rejected work", true));
+    }
+    return task;
+}
+
+bool http_client_runtime_t::uses_coroutines () const
+{
+    return _options.coroutines;
+}
+
+zlink::framework::detail::task_scheduler_t http_client_runtime_t::completion_scheduler () const
+{
+    auto resume_scheduler = _options.resume_scheduler;
+    if (!resume_scheduler) {
+        return {};
+    }
+    return [resume_scheduler = std::move (resume_scheduler)] (std::function<void ()> work) mutable {
+        resume_scheduler->resume (std::move (work));
+    };
+}
+
+std::shared_ptr<coroutine_execute_scheduler_t> default_coroutine_execute_scheduler ()
+{
+    return default_scheduler_instance ();
+}
+
+std::shared_ptr<coroutine_resume_scheduler_t> default_coroutine_resume_scheduler ()
+{
+    return default_scheduler_instance ();
 }
 
 } // namespace zlink::http_client::detail

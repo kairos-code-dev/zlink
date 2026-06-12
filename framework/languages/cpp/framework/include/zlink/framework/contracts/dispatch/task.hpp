@@ -21,13 +21,22 @@ template <typename T> class task_t;
 namespace detail
 {
 
-template <typename T> class task_shared_state_t
+using task_scheduler_t = std::function<void (std::function<void ()>)>;
+
+template <typename T>
+class task_shared_state_t : public std::enable_shared_from_this<task_shared_state_t<T>>
 {
   public:
+    explicit task_shared_state_t (task_scheduler_t scheduler = {}) :
+        _scheduler (std::move (scheduler))
+    {
+    }
+
     void complete (result_t<T> result)
     {
         std::vector<std::coroutine_handle<>> continuations;
         std::vector<std::function<void (const result_t<T> &)>> callbacks;
+        auto self = this->shared_from_this ();
         {
             std::lock_guard lock (_mutex);
             if (_result) {
@@ -39,10 +48,10 @@ template <typename T> class task_shared_state_t
         }
         _ready.notify_all ();
         for (auto &callback : callbacks) {
-            callback (*_result);
+            schedule ([self, callback = std::move (callback)] { callback (*self->_result); });
         }
         for (auto continuation : continuations) {
-            continuation.resume ();
+            schedule ([continuation] { continuation.resume (); });
         }
     }
 
@@ -64,7 +73,7 @@ template <typename T> class task_shared_state_t
             }
         }
         if (resume_now) {
-            continuation.resume ();
+            schedule ([continuation] { continuation.resume (); });
         }
     }
 
@@ -77,22 +86,39 @@ template <typename T> class task_shared_state_t
 
     void on_completed (std::function<void (const result_t<T> &)> callback)
     {
-        const result_t<T> *completed = nullptr;
+        auto self = this->shared_from_this ();
+        bool completed = false;
         {
             std::lock_guard lock (_mutex);
             if (_result) {
-                completed = &*_result;
+                completed = true;
             } else {
                 _callbacks.push_back (std::move (callback));
                 return;
             }
         }
-        callback (*completed);
+        if (completed) {
+            schedule ([self, callback = std::move (callback)] { callback (*self->_result); });
+        }
     }
 
   private:
+    void schedule (std::function<void ()> work) const
+    {
+        if (!_scheduler) {
+            work ();
+            return;
+        }
+        try {
+            _scheduler (std::move (work));
+        }
+        catch (...) {
+        }
+    }
+
     mutable std::mutex _mutex;
     std::condition_variable _ready;
+    task_scheduler_t _scheduler;
     std::optional<result_t<T>> _result;
     std::vector<std::coroutine_handle<>> _continuations;
     std::vector<std::function<void (const result_t<T> &)>> _callbacks;
@@ -101,7 +127,10 @@ template <typename T> class task_shared_state_t
 template <typename T> class task_completion_source_t
 {
   public:
-    task_completion_source_t () : _state (std::make_shared<task_shared_state_t<T>> ()) {}
+    explicit task_completion_source_t (task_scheduler_t scheduler = {}) :
+        _state (std::make_shared<task_shared_state_t<T>> (std::move (scheduler)))
+    {
+    }
 
     task_t<T> task ();
 

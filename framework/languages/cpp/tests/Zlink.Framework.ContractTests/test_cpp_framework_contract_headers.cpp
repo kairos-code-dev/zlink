@@ -60,6 +60,7 @@
 
 #include <future>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -68,10 +69,9 @@
 static_assert (zlink::framework::version_major == 0);
 static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
-static_assert (std::is_same_v<
-               decltype (zlink::stream_e2e_client::use (
-                 std::declval<zlink::stream_connector::connector_t &> ())),
-               zlink::stream_e2e_client::coroutine_connector_t>);
+static_assert (std::is_same_v<decltype (zlink::stream_e2e_client::use (
+                                std::declval<zlink::stream_connector::connector_t &> ())),
+                              zlink::stream_e2e_client::coroutine_connector_t>);
 static_assert (!std::is_same_v<zlink::framework::task_t<int>, std::future<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<int>> ().async ()),
@@ -118,9 +118,35 @@ static_assert (!has_future_get<zlink::framework::task_t<int>>);
 static_assert (std::is_same_v<decltype (zlink::http_client::client_t::create ()
                                           .base_url ("http://127.0.0.1:18080")
                                           .json ()
+                                          .coroutines ()
                                           .build ()
                                           .post ("/sample")),
                               zlink::http_client::request_builder_t>);
+
+static_assert (std::is_polymorphic_v<zlink::http_client::coroutine_execute_scheduler_t>);
+static_assert (std::is_polymorphic_v<zlink::http_client::coroutine_resume_scheduler_t>);
+static_assert (std::is_base_of_v<zlink::http_client::coroutine_resume_scheduler_t,
+                                 zlink::http_client::framework_resume_scheduler_t>);
+
+template <typename T>
+concept has_http_client_coroutine_resume_builder =
+  requires (T value, std::shared_ptr<zlink::http_client::coroutine_resume_scheduler_t> resume)
+{
+    value.coroutines (resume);
+};
+
+template <typename T>
+concept has_http_client_coroutine_execute_resume_builder =
+  requires (T value,
+            std::shared_ptr<zlink::http_client::coroutine_execute_scheduler_t> execute,
+            std::shared_ptr<zlink::http_client::coroutine_resume_scheduler_t> resume)
+{
+    value.coroutines (execute, resume);
+};
+
+static_assert (has_http_client_coroutine_resume_builder<zlink::http_client::client_builder_t>);
+static_assert (
+  has_http_client_coroutine_execute_resume_builder<zlink::http_client::client_builder_t>);
 
 namespace
 {

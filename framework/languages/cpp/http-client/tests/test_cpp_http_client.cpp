@@ -19,7 +19,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <condition_variable>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -34,6 +37,7 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 namespace http = beast::http;
 using tcp = asio::ip::tcp;
+using namespace std::chrono_literals;
 
 struct create_game_request_t
 {
@@ -50,6 +54,96 @@ struct header_echo_reply_t
 {
     std::string defaultHeader;
     std::string overrideHeader;
+};
+
+class queued_execute_scheduler_t final : public zlink::http_client::coroutine_execute_scheduler_t
+{
+  public:
+    void execute (std::function<void ()> work) override
+    {
+        const std::lock_guard lock (_mutex);
+        ++calls;
+        _work.push_back (std::move (work));
+    }
+
+    bool run_one ()
+    {
+        std::function<void ()> work;
+        {
+            const std::lock_guard lock (_mutex);
+            if (_work.empty ()) {
+                return false;
+            }
+            work = std::move (_work.front ());
+            _work.pop_front ();
+        }
+        work ();
+        return true;
+    }
+
+    std::size_t pending () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _work.size ();
+    }
+
+    std::atomic_int calls{0};
+
+  private:
+    mutable std::mutex _mutex;
+    std::deque<std::function<void ()>> _work;
+};
+
+class rejecting_execute_scheduler_t final : public zlink::http_client::coroutine_execute_scheduler_t
+{
+  public:
+    void execute (std::function<void ()>) override { throw std::runtime_error ("closed queue"); }
+};
+
+class queued_resume_scheduler_t final : public zlink::http_client::coroutine_resume_scheduler_t
+{
+  public:
+    void resume (std::function<void ()> continuation) override
+    {
+        const std::lock_guard lock (_mutex);
+        ++calls;
+        _work.push_back (std::move (continuation));
+    }
+
+    bool run_one ()
+    {
+        std::function<void ()> work;
+        {
+            const std::lock_guard lock (_mutex);
+            if (_work.empty ()) {
+                return false;
+            }
+            work = std::move (_work.front ());
+            _work.pop_front ();
+        }
+        last_resume_thread = std::this_thread::get_id ();
+        work ();
+        return true;
+    }
+
+    void drain ()
+    {
+        while (run_one ()) {
+        }
+    }
+
+    std::size_t pending () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _work.size ();
+    }
+
+    std::atomic_int calls{0};
+    std::thread::id last_resume_thread{};
+
+  private:
+    mutable std::mutex _mutex;
+    std::deque<std::function<void ()>> _work;
 };
 
 void to_json (nlohmann::json &json, const create_game_request_t &value)
@@ -113,10 +207,10 @@ http::response<http::string_body> make_response (const http::request<http::strin
         return response;
     }
     if (target == "/echo-content-type") {
-        response.body () =
-          nlohmann::json{{"contentType", std::string (request[http::field::content_type])},
-                         {"requestBody", request.body ()}}
-            .dump ();
+        response.body () = nlohmann::json{
+          {"contentType", std::string (request[http::field::content_type])},
+          {"requestBody",
+           request.body ()}}.dump ();
         response.prepare_payload ();
         return response;
     }
@@ -192,7 +286,7 @@ http::response<http::string_body> make_response (const http::request<http::strin
         response.body () = R"({"error":"server error"})";
     } else if (target == "/invalid-json") {
         response.body () = "{";
-    } else if (target == "/slow") {
+    } else if (target == "/slow" || target == "/flaky-slow") {
         std::this_thread::sleep_for (std::chrono::milliseconds (250));
         response.body () = R"({"method":"GET","name":"slow"})";
     } else if (target == "/headers") {
@@ -279,7 +373,8 @@ class loopback_http_server_t
                 return;
             }
 
-            if (request.target () == "/flaky" && ++_flaky_hits == 1) {
+            if ((request.target () == "/flaky" || request.target () == "/flaky-slow")
+                && ++_flaky_hits == 1) {
                 socket.shutdown (tcp::socket::shutdown_both, ec); // drop without a response
                 return;
             }
@@ -731,6 +826,221 @@ TEST (ZLinkHttpClient, SupportsCoroutineSubmit)
     EXPECT_EQ (result.value ().body.name, "coawait");
 }
 
+TEST (ZLinkHttpClient, CoroutineClientDoesNotBlockCallerWhileResponseIsPending)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (500ms)
+                    .coroutines ()
+                    .build ();
+
+    const auto started = std::chrono::steady_clock::now ();
+    auto task = client.get ("/slow").submit<create_game_reply_t> ();
+    const auto submit_elapsed = std::chrono::steady_clock::now () - started;
+
+    EXPECT_LT (submit_elapsed, 100ms);
+    auto result = task.result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body.name, "slow");
+}
+
+TEST (ZLinkHttpClient, RejectsNullCoroutineSchedulers)
+{
+    EXPECT_TRUE (throws_protocol_error (
+      [] {
+          std::shared_ptr<zlink::http_client::coroutine_resume_scheduler_t> resume;
+          (void) zlink::http_client::client_t::create ("http://127.0.0.1:18080")
+            .coroutines (resume);
+      },
+      "resume scheduler"));
+
+    EXPECT_TRUE (throws_protocol_error (
+      [] {
+          std::shared_ptr<zlink::http_client::coroutine_execute_scheduler_t> execute;
+          auto resume = std::make_shared<queued_resume_scheduler_t> ();
+          (void) zlink::http_client::client_t::create ("http://127.0.0.1:18080")
+            .coroutines (execute, resume);
+      },
+      "execute and resume schedulers"));
+
+    EXPECT_TRUE (throws_protocol_error (
+      [] {
+          (void) zlink::http_client::framework_resume_scheduler_t (
+            zlink::http_client::framework_resume_scheduler_t::post_t{});
+      },
+      "post function"));
+}
+
+TEST (ZLinkHttpClient, CustomExecuteAndResumeSchedulersControlCoroutineResume)
+{
+    loopback_http_server_t server;
+    auto execute = std::make_shared<queued_execute_scheduler_t> ();
+    auto resume = std::make_shared<queued_resume_scheduler_t> ();
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (500ms)
+                    .coroutines (execute, resume)
+                    .build ();
+
+    auto task = create_game_with_coroutine_submit (client);
+    EXPECT_EQ (execute->calls.load (), 1);
+    EXPECT_EQ (execute->pending (), 1U);
+    EXPECT_FALSE (task.await_ready ());
+
+    ASSERT_TRUE (execute->run_one ());
+    EXPECT_EQ (resume->pending (), 1U);
+    EXPECT_FALSE (task.await_ready ());
+
+    ASSERT_TRUE (resume->run_one ());
+    EXPECT_EQ (resume->last_resume_thread, std::this_thread::get_id ());
+    auto result = task.result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body.name, "coawait");
+    EXPECT_EQ (resume->calls.load (), 1);
+}
+
+TEST (ZLinkHttpClient, CustomResumeSchedulerControlsCallbackExecution)
+{
+    loopback_http_server_t server;
+    auto resume = std::make_shared<queued_resume_scheduler_t> ();
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (500ms)
+                    .coroutines (resume)
+                    .build ();
+
+    bool callback_called = false;
+    std::thread::id callback_thread;
+    client.post ("/games")
+      .body (create_game_request_t{.name = "callback-scheduler"})
+      .submit<create_game_reply_t> ([&] (const auto &result) {
+          callback_called = true;
+          callback_thread = std::this_thread::get_id ();
+          ASSERT_TRUE (result);
+          EXPECT_EQ (result.value ().body.name, "callback-scheduler");
+      });
+
+    for (int attempt = 0; attempt < 100 && !callback_called; ++attempt) {
+        resume->drain ();
+        std::this_thread::sleep_for (5ms);
+    }
+
+    ASSERT_TRUE (callback_called);
+    EXPECT_EQ (callback_thread, std::this_thread::get_id ());
+    EXPECT_GE (resume->calls.load (), 1);
+}
+
+TEST (ZLinkHttpClient, FrameworkResumeSchedulerAdapterUsesProvidedQueue)
+{
+    loopback_http_server_t server;
+    std::deque<std::function<void ()>> framework_queue;
+    auto resume = std::make_shared<zlink::http_client::framework_resume_scheduler_t> (
+      [&framework_queue] (std::function<void ()> continuation) {
+          framework_queue.push_back (std::move (continuation));
+      });
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (500ms)
+                    .coroutines (resume)
+                    .build ();
+
+    auto task = create_game_with_coroutine_submit (client);
+    for (int attempt = 0; attempt < 100 && !task.await_ready (); ++attempt) {
+        while (!framework_queue.empty ()) {
+            auto continuation = std::move (framework_queue.front ());
+            framework_queue.pop_front ();
+            continuation ();
+        }
+        std::this_thread::sleep_for (5ms);
+    }
+
+    ASSERT_TRUE (task.await_ready ());
+    auto result = task.result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body.name, "coawait");
+}
+
+TEST (ZLinkHttpClient, ExecuteSchedulerRejectionCompletesTaskAsClosed)
+{
+    auto execute = std::make_shared<rejecting_execute_scheduler_t> ();
+    auto resume = std::make_shared<queued_resume_scheduler_t> ();
+    auto client = zlink::http_client::client_t::create ("http://127.0.0.1:1")
+                    .json ()
+                    .coroutines (execute, resume)
+                    .build ();
+
+    const auto result = client.get ("/games").submit_raw ().result ();
+
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::closed);
+}
+
+TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
+{
+    loopback_http_server_t server;
+    auto execute = std::make_shared<queued_execute_scheduler_t> ();
+    auto resume = std::make_shared<queued_resume_scheduler_t> ();
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (10ms)
+                    .coroutines (execute, resume)
+                    .build ();
+
+    auto task = client.get ("/games").submit_raw ();
+    ASSERT_EQ (execute->pending (), 1U);
+    std::this_thread::sleep_for (30ms);
+    ASSERT_TRUE (execute->run_one ());
+    resume->drain ();
+
+    const auto result = task.result ();
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::timeout);
+    EXPECT_EQ (server.connections (), 0);
+}
+
+TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (10ms)
+                    .retry (2)
+                    .coroutines ()
+                    .build ();
+
+    const auto started = std::chrono::steady_clock::now ();
+    const auto result = client.get ("/flaky-slow").submit_raw ().result ();
+    const auto elapsed = std::chrono::steady_clock::now () - started;
+
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::timeout);
+    EXPECT_EQ (server.connections (), 1);
+    EXPECT_LT (elapsed, 50ms);
+}
+
+TEST (ZLinkHttpClient, ScheduledRequestOwnsTemporaryBuilderStateUntilCompletion)
+{
+    loopback_http_server_t server;
+    auto execute = std::make_shared<queued_execute_scheduler_t> ();
+    auto resume = std::make_shared<queued_resume_scheduler_t> ();
+
+    auto task = zlink::http_client::client_t::create (server.base_url ())
+                  .json ()
+                  .timeout (500ms)
+                  .coroutines (execute, resume)
+                  .post ("/games")
+                  .body (create_game_request_t{.name = "temporary-builder"})
+                  .submit<create_game_reply_t> ();
+
+    ASSERT_EQ (execute->pending (), 1U);
+    ASSERT_TRUE (execute->run_one ());
+    ASSERT_TRUE (resume->run_one ());
+    auto result = task.result ();
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (result.value ().body.name, "temporary-builder");
+}
+
 TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
 {
     loopback_http_server_t server;
@@ -882,8 +1192,7 @@ TEST (ZLinkHttpClient, SendsFormUrlencodedBody)
 
     ASSERT_TRUE (result) << result.error ()->what ();
     const auto echoed = nlohmann::json::parse (result.value ().body);
-    EXPECT_EQ (echoed.at ("contentType").get<std::string> (),
-               "application/x-www-form-urlencoded");
+    EXPECT_EQ (echoed.at ("contentType").get<std::string> (), "application/x-www-form-urlencoded");
     EXPECT_EQ (echoed.at ("requestBody").get<std::string> (), "user=kim%20lee&role=admin%26ops");
 }
 
@@ -934,8 +1243,7 @@ TEST (ZLinkHttpClient, FollowsRedirectsWhenEnabled)
                        .json ()
                        .follow_redirects ()
                        .build ();
-    const auto followed =
-      following.get ("/redirect-once").submit<create_game_reply_t> ().result ();
+    const auto followed = following.get ("/redirect-once").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (followed) << followed.error ()->what ();
     EXPECT_EQ (followed.value ().status, 200);
     EXPECT_EQ (followed.value ().body.method, "GET");
@@ -985,17 +1293,14 @@ TEST (ZLinkHttpClient, StopsAtTheRedirectLimit)
 
     const auto result = client.get ("/redirect-loop").submit_raw ().result ();
     ASSERT_FALSE (result);
-    EXPECT_NE (std::string (result.error ()->what ()).find ("redirect limit"),
-               std::string::npos);
+    EXPECT_NE (std::string (result.error ()->what ()).find ("redirect limit"), std::string::npos);
 }
 
 TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
 {
     loopback_http_server_t server;
-    auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
-                    .retry (2)
-                    .build ();
+    auto client =
+      zlink::http_client::client_t::create (server.base_url ()).json ().retry (2).build ();
 
     // The first /flaky connection is dropped without a response; the retry
     // must succeed against the recovered server.
@@ -1007,10 +1312,8 @@ TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
 TEST (ZLinkHttpClient, StoresAndSendsCookies)
 {
     loopback_http_server_t server;
-    auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
-                    .cookies ()
-                    .build ();
+    auto client =
+      zlink::http_client::client_t::create (server.base_url ()).json ().cookies ().build ();
 
     ASSERT_TRUE (client.get ("/set-cookie").submit_raw ().result ());
 
@@ -1025,8 +1328,7 @@ TEST (ZLinkHttpClient, StoresAndSendsCookies)
     auto without_jar = make_json_client (server.base_url ());
     const auto plain = without_jar.get ("/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (plain);
-    EXPECT_EQ (nlohmann::json::parse (plain.value ().body).at ("cookie").get<std::string> (),
-               "");
+    EXPECT_EQ (nlohmann::json::parse (plain.value ().body).at ("cookie").get<std::string> (), "");
 }
 
 TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
@@ -1047,10 +1349,8 @@ TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
 TEST (ZLinkHttpClient, DecompressesGzipResponses)
 {
     loopback_http_server_t server;
-    auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
-                    .compression ()
-                    .build ();
+    auto client =
+      zlink::http_client::client_t::create (server.base_url ()).json ().compression ().build ();
 
     const auto result = client.get ("/gzip").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1077,6 +1377,32 @@ TEST (ZLinkHttpClient, DownloadStreamsResponseBody)
     EXPECT_TRUE (result.value ().body.empty ());
     EXPECT_GT (chunks, 1);
     EXPECT_EQ (received, big_download_body ());
+}
+
+TEST (ZLinkHttpClient, CoroutineDownloadSinkRunsOnExecuteSchedulerWorker)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (2000ms)
+                    .coroutines ()
+                    .build ();
+
+    const auto caller_thread = std::this_thread::get_id ();
+    std::mutex mutex;
+    std::thread::id sink_thread;
+    std::string received;
+    const auto result = client.get ("/big")
+                          .download ([&] (std::string_view chunk) {
+                              const std::lock_guard lock (mutex);
+                              sink_thread = std::this_thread::get_id ();
+                              received.append (chunk);
+                          })
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (received, big_download_body ());
+    EXPECT_NE (sink_thread, caller_thread);
 }
 
 TEST (ZLinkHttpClient, DownloadFollowsRedirectsWithoutLeakingIntermediateBodies)
@@ -1127,10 +1453,8 @@ TEST (ZLinkHttpClient, PerRequestTimeoutOverridesClientTimeout)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url (), std::chrono::milliseconds (2000));
 
-    const auto timed_out = client.get ("/slow")
-                             .timeout (std::chrono::milliseconds (100))
-                             .submit_raw ()
-                             .result ();
+    const auto timed_out =
+      client.get ("/slow").timeout (std::chrono::milliseconds (100)).submit_raw ().result ();
     ASSERT_FALSE (timed_out);
     EXPECT_EQ (timed_out.error ()->kind (), zlink::framework::framework_error_kind_t::timeout);
 
@@ -1174,17 +1498,46 @@ TEST (ZLinkHttpClient, UploadsStreamedRequestBody)
     ASSERT_TRUE (result) << result.error ()->what ();
     const auto echoed = nlohmann::json::parse (result.value ().body);
     EXPECT_EQ (echoed.at ("contentType").get<std::string> (), "application/octet-stream");
-    EXPECT_EQ (echoed.at ("requestBody").get<std::string> (),
-               "chunk-one|chunk-two|chunk-three");
+    EXPECT_EQ (echoed.at ("requestBody").get<std::string> (), "chunk-one|chunk-two|chunk-three");
+}
+
+TEST (ZLinkHttpClient, CoroutineBodyStreamProviderRunsOnExecuteSchedulerWorker)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (500ms)
+                    .coroutines ()
+                    .build ();
+
+    const auto caller_thread = std::this_thread::get_id ();
+    std::mutex mutex;
+    std::thread::id provider_thread;
+    int index = 0;
+    const auto result = client.post ("/echo-content-type")
+                          .body_stream (
+                            [&] () -> std::optional<std::string> {
+                                const std::lock_guard lock (mutex);
+                                provider_thread = std::this_thread::get_id ();
+                                if (index++ == 0) {
+                                    return std::string ("chunked");
+                                }
+                                return std::nullopt;
+                            },
+                            "text/plain")
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_NE (provider_thread, caller_thread);
+    EXPECT_NE (result.value ().body.find ("chunked"), std::string::npos);
 }
 
 TEST (ZLinkHttpClient, DecompressesDeflateResponses)
 {
     loopback_http_server_t server;
-    auto client = zlink::http_client::client_t::create (server.base_url ())
-                    .json ()
-                    .compression ()
-                    .build ();
+    auto client =
+      zlink::http_client::client_t::create (server.base_url ()).json ().compression ().build ();
 
     const auto result = client.get ("/deflate").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();

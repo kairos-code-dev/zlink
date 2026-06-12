@@ -5,10 +5,54 @@
 `submit_raw()`/`submit<T>()`는 `zlink::framework::task_t`를 돌려준다. 결과를
 소비하는 방법은 세 가지다.
 
+## coroutine 실행 켜기
+
+기본 client는 기존 코드와 같은 blocking submit 의미를 유지한다. HTTP 대기 중 호출
+스레드를 비우려면 client 구성에서 coroutine 실행을 명시한다.
+
+```cpp
+auto client = zlink::http_client::client_t::create ("http://127.0.0.1:18080")
+  .json ()
+  .coroutines ()
+  .build ();
+```
+
+`.coroutines()`는 HTTP client 내부 scheduler를 사용한다. 이 scheduler는 public header에
+Boost.Asio, Boost.Beast, OpenSSL runtime 타입을 드러내지 않는다.
+
+server runtime처럼 coroutine을 다시 실행할 위치를 직접 정해야 하는 경우에는 framework
+queue adapter를 resume scheduler로 주입한다.
+
+```cpp
+auto server_resume_scheduler =
+  std::make_shared<zlink::http_client::framework_resume_scheduler_t> (
+    [&server_queue] (std::function<void ()> continuation) {
+        server_queue.post (std::move (continuation));
+    });
+
+auto client = zlink::http_client::client_t::create ("https://matchmaking.internal")
+  .json ()
+  .coroutines (server_resume_scheduler)
+  .build ();
+```
+
+필요하면 HTTP 작업을 실행하는 scheduler와 coroutine을 다시 실행하는 scheduler를
+분리해서 둘 다 제공할 수 있다.
+
+```cpp
+auto client = zlink::http_client::client_t::create ("https://matchmaking.internal")
+  .json ()
+  .coroutines (http_execute_scheduler, server_resume_scheduler)
+  .build ();
+```
+
+이때 execute scheduler는 HTTP 교환 작업을 실행하고, resume scheduler는 완료 후
+continuation과 callback이 실행될 위치를 정한다.
+
 ## co_await (framework handler 안에서의 표준)
 
-framework runtime/handler 코드는 `co_await`로 받는다. 성공이면 값이 나오고,
-실패면 `framework_exception_t`가 던져진다.
+framework runtime/handler 코드는 `.coroutines(...)`로 구성한 client를 `co_await`로
+받는다. 성공이면 값이 나오고, 실패면 `framework_exception_t`가 던져진다.
 
 ```cpp
 zlink::framework::task_t<void>
@@ -39,7 +83,9 @@ auto board = client.get ("/leaderboard").fetch<leaderboard_t> ();   // 동등 + 
 
 ## 콜백 submit
 
-`submit<T>(callback)`은 완료 시 `result_t`를 콜백으로 전달한다.
+`submit<T>(callback)`은 완료 시 `result_t`를 콜백으로 전달한다. coroutine 실행을 켠
+client에서는 HTTP 완료 뒤 resume scheduler가 정한 위치에서 typed decode와 callback이
+이어진다.
 
 ```cpp
 client.post ("/games")
@@ -66,12 +112,10 @@ client.post ("/games")
 | client 시나리오·CLI·배치 | `fetch<T>()` 또는 `.result()` |
 | 콜백 스타일이 자연스러운 glue 코드 | `submit<T>(callback)` |
 
-## 알아 둘 것: 실행은 동기다
+## streaming callback 위치
 
-현재 구현에서 HTTP 교환 자체는 `submit` 호출 안에서 동기로 완료되고, `task_t`는
-완료된 결과를 감싼다. 즉 `co_await`가 "기다리는 동안 다른 일"을 만들어 주지는
-않는다. 이 규칙(`handler에서는 co_await`)은 **미래에 실행이 진짜 비동기로 바뀌어도
-호출 코드가 그대로 유효하도록** 하는 계약이다. non-blocking 실행은 별도 설계
-범위다 — [1. 개요](./01-overview.ko.md).
+`body_stream(provider)`의 provider와 `download(sink)`의 sink는 HTTP 작업을 실행하는
+execute scheduler worker에서 호출된다. 이 callback 안에서 server handler state를 직접
+건드리지 말고, 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
 
 [다음: Streaming →](./08-streaming.ko.md)

@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <coroutine>
+#include <deque>
+#include <functional>
 #include <thread>
 
 namespace
@@ -94,6 +96,28 @@ int main ()
     if (shutdown_call.async ().result ().error_kind ()
         != zlink::framework::framework_error_kind_t::shutdown) {
         return 5;
+    }
+
+    std::deque<std::function<void ()>> scheduled;
+    zlink::framework::detail::task_completion_source_t<int> scheduled_completion (
+      [&scheduled] (std::function<void ()> work) { scheduled.push_back (std::move (work)); });
+    auto scheduled_task = scheduled_completion.task ();
+    int scheduled_callback_count = 0;
+    zlink::framework::detail::observe_task_completion (
+      scheduled_task, [&scheduled_callback_count] (const zlink::framework::result_t<int> &result) {
+          if (result.value () == 300) {
+              ++scheduled_callback_count;
+          }
+      });
+    scheduled_completion.complete (zlink::framework::result_t<int>::success (300));
+    scheduled_completion.complete (zlink::framework::result_t<int>::success (400));
+    if (scheduled_callback_count != 0 || scheduled.size () != 1) {
+        return 6;
+    }
+    scheduled.front () ();
+    scheduled.pop_front ();
+    if (scheduled_callback_count != 1 || scheduled_task.result ().value () != 300) {
+        return 7;
     }
 
     return 0;

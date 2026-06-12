@@ -39,15 +39,20 @@ JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
 
 ## 실행 모델
 
-요청 실행은 **동기(blocking)** 다. `submit_raw()`/`submit<T>()`가 돌려주는
-`task_t`는 호출 시점에 이미 실행이 끝난 결과를 감싼 것이고, `.result()`는 그
-결과를 꺼낸다. 코루틴(`co_await`)과 콜백 submit은 결과 소비 형태를 바꿔줄 뿐이다.
+요청 실행은 client 설정에 따라 두 가지로 나뉜다.
+
+- 기본 client는 기존처럼 `submit_raw()`/`submit<T>()` 호출 중 HTTP 교환을 동기로
+  실행한다. 이 동작은 기존 blocking 코드와 테스트를 깨지 않기 위한 기본값이다.
+- `.coroutines()`를 명시한 client는 `submit_raw()`/`submit<T>()` 호출 시 HTTP 작업을
+  내부 scheduler에 등록하고 `task_t`를 돌려준다. `co_await`는 응답이 준비될 때까지
+  호출 스레드를 점유하지 않고 suspend된다.
 
 이 모델의 실용적 결론 하나만 기억하면 된다:
 
 > framework runtime/handler 스레드 안에서는 `submit<T>()`를 `co_await`하고,
-> `.result()`/`fetch<T>()` 같은 blocking 접근은 테스트·client 시나리오처럼
-> blocking이 허용되는 곳에서만 쓴다.
+> `.result()`/`fetch<T>()` 같은 blocking 접근은 테스트·client 시나리오처럼 blocking이
+> 허용되는 곳에서만 쓴다. handler 안에서 HTTP 대기 중 스레드를 비우려면 client를
+> `.coroutines()` 또는 server가 제공한 resume scheduler로 구성한다.
 
 자세한 규칙은 [7. 비동기와 코루틴](./07-async-coroutines.ko.md)에서 다룬다.
 
@@ -63,6 +68,6 @@ JSON 전용 client가 아니다. 일반 HTTP client이며, typed JSON 경로
 - HTTP proxy (absolute-form + `CONNECT` tunnel)
 - gzip/deflate 응답 투명 해제
 
-범위 밖: HTTP/2(Boost.Beast 미지원), non-blocking async 실행(별도 설계 대상).
+범위 밖: HTTP/2(Boost.Beast 미지원), caller cancellation 공통 모델.
 
 [다음: 시작하기 →](./02-getting-started.ko.md)

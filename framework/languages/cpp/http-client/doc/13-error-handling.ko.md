@@ -16,11 +16,11 @@
 
 | kind | 언제 | retriable |
 |------|------|-----------|
-| `request_protocol_error` | 잘못된 설정/입력: bad base_url·scheme, 0 이하 timeout, 빈 헤더 이름, path가 `/`로 시작 안 함, 복수 body 소스, OpenSSL 없는 빌드의 https | ✗ |
+| `request_protocol_error` | 잘못된 설정/입력: bad base_url·scheme, 0 이하 timeout, 빈 헤더 이름, path가 `/`로 시작 안 함, 복수 body 소스, `nullptr` coroutine scheduler, OpenSSL 없는 빌드의 https | ✗ |
 | `request_failed` | transport 실패(연결 거부·끊김, TLS 검증 실패), typed 경로의 4xx/5xx, redirect 한도 초과, proxy CONNECT 거부 | transport는 ✓, 나머지 ✗ |
-| `timeout` | client/request timeout 초과 | ✓ |
+| `timeout` | client/request timeout 초과. coroutine client에서는 scheduler queue 등록 시점부터 timeout을 계산한다 | ✓ |
 | `payload_decode_failed` | 응답 JSON 디코딩 실패, 손상된 gzip/deflate body | ✗ |
-| `closed` | 초기화되지 않은 client (`client_t{}` 기본 생성 후 사용) | ✗ |
+| `closed` | 초기화되지 않은 client (`client_t{}` 기본 생성 후 사용), custom execute scheduler가 작업 등록을 거부함 | ✗ |
 
 설정 오류(`request_protocol_error`)는 의도적으로 transport 실패와 구분된다 —
 코드 버그라서 재시도가 무의미하기 때문이다. setter/`build()` 시점에 바로 throw

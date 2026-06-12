@@ -46,6 +46,9 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 - `client_t::create(base_url)` 또는 `create().base_url(...)` +
   `.json().timeout(...).default_header(...).trust_certificate_file(...)`
   `.follow_redirects(...).retry(...).cookies().proxy(...).compression().build()`
+- coroutine 실행 설정: `.coroutines()`, `.coroutines(resume_scheduler)`,
+  `.coroutines(execute_scheduler, resume_scheduler)`
+- server/framework queue adapter: `framework_resume_scheduler_t`
 - 인증: `basic_auth(user, password)`, `bearer_token(token)`,
   `proxy_basic_auth(user, password)`, mTLS `client_certificate_file(cert, key)`
 - 단발 request용 `build()` 생략 shortcut: `client_t::create(url).post(...)`
@@ -132,6 +135,9 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
 - connection keep-alive pool: 같은 origin(+proxy)의 idle 연결을 재사용한다. 서버가
   연결을 닫았으면(stale) fresh 연결로 1회 자동 재시도한다. `body_stream` request는
   provider를 되감을 수 없으므로 항상 fresh 연결을 쓴다.
+- coroutine scheduler: 설정하지 않은 client는 기존 blocking submit 의미를 유지한다.
+  `.coroutines()`를 명시하면 HTTP 작업을 내부 scheduler에 등록하고, custom scheduler를
+  주입하면 HTTP 실행 위치와 continuation resume 위치를 분리할 수 있다.
 - redirect 자동 추적: `follow_redirects(max)`. `301/302`의 `POST`와 `303`은 `GET`으로
   바뀌고 body를 버린다. `307/308`은 method와 body를 보존한다. 절대 URL과 절대 경로
   Location을 지원하며, 한도를 넘으면 `request_failed`로 닫힌다.
@@ -150,9 +156,10 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   test certificate trust option
 - HTTP status mapping
 
-HTTP/2와 non-blocking async 실행은 현재 구현 범위 밖이다. 전자는 Boost.Beast가 지원하지
-않고, 후자는 task 실행 모델 변경이 필요하므로 별도 설계로 다룬다. coroutine suspend/resume
-지원 초안은 [cpp-http-client-coroutines.ko.md](./cpp-http-client-coroutines.ko.md)에 둔다.
+HTTP/2와 caller cancellation 공통 모델은 현재 구현 범위 밖이다. HTTP/2는 Boost.Beast가
+지원하지 않고, cancellation은 server runtime마다 의미가 달라 별도 설계가 필요하다.
+coroutine suspend/resume 설계 기록은
+[cpp-http-client-coroutines.ko.md](./cpp-http-client-coroutines.ko.md)에 둔다.
 
 `base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
 `follow_redirects(...)`, `retry(...)`, `proxy(...)`, request path, request header name,
@@ -207,6 +214,11 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - JSON request/response: typed DTO request를 JSON으로 보내고 reply DTO를 읽는다
 - coroutine submit: `co_await submit<T>()`가 typed response를 반환하고 내부 raw submit을
   blocking wait로 기다리지 않는다
+- coroutine scheduler: `.coroutines()` 기본 scheduler, custom resume scheduler,
+  custom execute/resume scheduler, framework queue adapter, scheduler 등록 실패,
+  queue timeout을 검증한다
+- streaming callback 위치: coroutine client의 `body_stream(provider)`와 `download(sink)`는
+  execute scheduler worker에서 호출된다
 - build 생략 shortcut: builder가 임시여도 `build()` 없이 `post(...)` 등으로 보낸 request가
   use-after-free 없이 완료된다
 - typed body fetch: `fetch<T>()`가 typed DTO를 직접 반환하고 실패 status를 예외로 던진다

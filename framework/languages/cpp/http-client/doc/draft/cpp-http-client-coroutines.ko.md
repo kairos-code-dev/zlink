@@ -4,12 +4,9 @@
 
 # Draft -- ZLink HTTP Client Coroutine Support For C++
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 `zlink::http_client`의 공개 계약이 아니며, 정식 spec으로 승격하기 전까지
-> 구현 완료를 보장하지 않는다.
-> 현재 구현은 HTTP 교환을 동기로 실행하고, `co_await`는 이미 완료된 결과를
-> 소비하는 형태다. 이 문서는 HTTP client가 실제로 coroutine suspend/resume을
-> 지원하기 위한 다음 구현 계약을 정리한다.
+> 이 문서는 **draft 설계 기록**이다.
+> 현재 구현된 coroutine suspend/resume 경로의 배경과 후속 검토 항목을 함께 정리한다.
+> 정식 spec으로 승격하기 전까지는 `zlink::http_client`의 최종 공개 계약 문서가 아니다.
 
 ## 1. 목적
 
@@ -147,7 +144,8 @@ class coroutine_resume_scheduler_t
   public:
     virtual ~coroutine_resume_scheduler_t() = default;
 
-    virtual void resume(std::coroutine_handle<> continuation) = 0;
+    virtual void resume(std::function<void()> continuation) = 0;
+    virtual void resume(std::coroutine_handle<> continuation);
 };
 
 } // namespace zlink::http_client
@@ -157,8 +155,9 @@ class coroutine_resume_scheduler_t
 된다. 따라서 server용 execute scheduler는 이 작업을 handler thread에서 직접 실행하지 않아야
 한다.
 
-`resume`은 완료된 coroutine을 다시 실행한다. server runtime scheduler는 이 메서드에서
-server가 정한 실행 위치로 continuation을 넘긴다.
+`resume`은 완료된 continuation을 다시 실행한다. coroutine handle overload는 handle을
+`std::function<void()>` continuation으로 감싸 같은 scheduler 정책을 사용한다. 이렇게 하면
+`co_await` continuation과 callback submit을 같은 resume 위치 규칙으로 다룰 수 있다.
 
 HTTP client 내부 기본 scheduler는 두 인터페이스를 모두 구현한다.
 
@@ -416,7 +415,7 @@ class server_http_client_resume_scheduler_t final
   : public zlink::http_client::coroutine_resume_scheduler_t
 {
   public:
-    void resume(std::coroutine_handle<> continuation) override;
+    void resume(std::function<void()> continuation) override;
 };
 ```
 
@@ -428,6 +427,18 @@ class server_http_client_resume_scheduler_t final
 HTTP client는 server runtime 내부 타입을 include하지 않는다. server framework 쪽 adapter가
 HTTP client resume scheduler 인터페이스를 구현한다. HTTP 작업 실행은 기본적으로 HTTP client
 내부 scheduler가 맡는다.
+
+HTTP client는 framework queue adapter로 `framework_resume_scheduler_t`를 제공한다. server
+framework는 자신의 queue 등록 함수를 이 adapter에 넘겨 HTTP client가 framework 내부 타입을
+include하지 않게 유지할 수 있다.
+
+```cpp
+auto resume_scheduler =
+  std::make_shared<zlink::http_client::framework_resume_scheduler_t>(
+    [] (std::function<void()> continuation) {
+      server_queue.post(std::move(continuation));
+    });
+```
 
 ## 11. Client 성능 테스트 사용
 

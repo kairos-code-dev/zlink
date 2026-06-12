@@ -81,13 +81,13 @@ dotnet 의 `AddZLinkFramework(options => ...)` 빌더 람다는, node 에서
 | `channel.EnableSubscriber()` | `.subscriber()` |
 | `channel.EnableSubscriber(s => s.UseManualConnections(...))` | `.subscriber('...')` 또는 `.subscriber([...])` |
 | `channel.AddHandlerGroup("api")` | `.handlerGroup('api')` |
-| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkHandlers(...).request(H, 'Packet').providers()` + `handlerGroups` |
-| `channel.AddSendHandler<H, TMsg>()` | `zlinkHandlers(...).send(H, 'Packet').providers()` + `handlerGroups` |
-| `channel.AddPublishHandler<H, TMsg>()` | `zlinkHandlers(...).publish(H, 'Packet').providers()` + `handlerGroups` |
+| `channel.AddRequestHandler<H, TReq, TRep>()` | `zlinkRequestHandler(group, packet)` + `.handlerGroup(group)` |
+| `channel.AddSendHandler<H, TMsg>()` | `zlinkSendHandler(group, packet)` + `.handlerGroup(group)` |
+| `channel.AddPublishHandler<H, TMsg>()` | `zlinkPublishHandler(group, packet)` + `.handlerGroup(group)` |
 | `options.UseDiscovery(...AddRegistryEndpoint...)` | `discovery: { registries: [...] }` |
 | `options.DefaultTimeout = ...` | `defaultTimeoutMs: number` |
 | `options.Codecs.AddProtobuf()` | `codecs: [...]` |
-| `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + `zlinkHandlers(...)` |
+| `options.AddHandlersFromAssemblyOf<T>()` | NestJS `providers` + handler decorator discovery |
 
 ### 3.1 channel 등록
 
@@ -335,8 +335,11 @@ ZLinkModule.forRoot(
 ```
 
 이 호출은 channel 이 어떤 handler group 을 받을지만 정한다. handler class 자체는
-NestJS `providers` 에서 등록하고, ZLink group 소속은 `zlinkHandlers(...)` helper 로
-provider 등록 위치에서 함께 지정한다. handler class 에 ZLink decorator 를 붙이지 않는다.
+NestJS `providers` 에서 등록하고, ZLink group 소속과 packet 이름은 handler class 의
+`zlinkRequestHandler(...)`, `zlinkSendHandler(...)`, `zlinkPublishHandler(...)`
+decorator 로 지정한다. decorator 는 NestJS injectable metadata 도 함께 붙이므로,
+handler 가 DI 대상이라는 사실과 zlink packet handler 라는 사실을 한 곳에서 읽을 수
+있다.
 
 현재 handler 노출은 `clientServerChannels[name].handlerGroups`,
 `fanoutChannels[name].handlerGroups`, `routerMeshes[name].handlerGroups` 가 지정한
@@ -348,13 +351,14 @@ handler 가 `requestHandlers` 로 등록된다. `routerMeshes` channel 에서는
 
 #### handler group[^handlergroup]으로 묶기
 
-먼저 NestJS provider 등록 위치에서 handler class 를 **논리 그룹 이름** 으로 묶는다.
+먼저 handler class decorator 에 **논리 그룹 이름** 을 적는다.
 이 그룹 이름의 성격은 다음과 같다.
 
 - 사용자가 임의로 정하는 문자열이다.
 - 실제 channel 이름과는 완전히 분리된 namespace 다.
 
 ```ts
+@zlinkRequestHandler('api', 'AuthenticatePlayerReq')
 export class AuthenticatePlayerHandler {
   handle(
     request: AuthenticatePlayerReq,
@@ -364,6 +368,7 @@ export class AuthenticatePlayerHandler {
   }
 }
 
+@zlinkSendHandler('admin.route', 'AdminCommand')
 export class AdminCommandHandler {
   async handle(
     command: RebootCommand,
@@ -374,14 +379,7 @@ export class AdminCommandHandler {
 }
 
 @Module({
-  providers: [
-    ...zlinkHandlers('api')
-      .request(AuthenticatePlayerHandler, 'AuthenticatePlayerReq')
-      .providers(),
-    ...zlinkHandlers('admin.route')
-      .send(AdminCommandHandler, 'AdminCommand')
-      .providers(),
-  ],
+  providers: [AuthenticatePlayerHandler, AdminCommandHandler],
 })
 export class HandlerModule {}
 ```
@@ -408,8 +406,8 @@ ZLinkModule.forRoot(
 
 `handlerGroups: ['api']` 를 풀어 읽으면 다음과 같다.
 
-> "이 channel 로 들어온 메시지는, `zlinkHandlers('api', ...)` 로 묶은 NestJS
-> provider 중에서 packet kind /
+> "이 channel 로 들어온 메시지는, `zlinkRequestHandler('api', ...)` 처럼
+> decorator 로 `api` group 을 선언한 NestJS provider 중에서 packet kind /
 > packet name 이 맞는 handler 를 호출한다."
 
 이렇게 두면 다음 장점이 생긴다.
@@ -419,8 +417,8 @@ ZLinkModule.forRoot(
   매핑할 수 있다.
 - 한 channel 에 여러 그룹을 함께 매핑할 수도 있다.
   예: `handlerGroups: ['api', 'debug']`.
-- handler 코드는 어느 물리 channel 로 매핑될지 신경 쓸 필요가 없다. provider group
-  등록 위치와 channel group 선택만 바꾸면 된다.
+- handler 코드는 어느 물리 channel 로 매핑될지 신경 쓸 필요가 없다. handler class 의
+  decorator group 과 channel group 선택만 바꾸면 된다.
 
 ```ts
 ZLinkModule.forRoot(
@@ -438,19 +436,19 @@ ZLinkModule.forRoot(
 - 같은 그룹 안에서의 충돌
 - 서로 다른 그룹의 충돌이 한 channel 에 같이 붙은 경우
 
-> `zlinkHandlers(...)` 에 넣지 않은 provider 는 channel handler 로 자동 노출되지
+> zlink handler decorator 가 없는 provider 는 channel handler 로 자동 노출되지
 > 않는다. NestJS 의 일반 provider 로는 남지만, ZLink dispatch 대상은 아니다.
 
-SPOT/Actor handler 는 이 channel handler group 에 넣지 않는다. SPOT 으로 들어오는
-일반 packet, actor 대상 packet, actor join/left/disconnected handler, timer handler 는
-해당 `Spot` 또는 `EntrySpot` 의 `configure()` 안에서 `this.context.handlers.add...()` 나
-`this.context.addTimer(...)` 로 등록한다.
+SPOT/Actor handler 는 이 channel handler group 에 넣지 않는다. actor 대상 packet 은
+`zlinkEntrySpotActorRequestHandler(...)` 또는 `zlinkSpotActorRequestHandler(...)` 로
+대상 Entry Spot 또는 user Spot 타입을 명시한다. Spot 내부 timer 와 일반 Spot handler 는
+해당 `Spot` 또는 `EntrySpot` 이 가진 context 로 등록한다.
 
-`zlinkHandlers(groupName)` 은 `request(...)`, `send(...)`, `publish(...)` 를 가진 작은
-builder 를 반환한다. 각 메서드는 handler provider 와 packet name 을 함께 받는다.
-packet name 을 생략하면 class 이름에서 `Handler` 접미사를 뺀 값을 기본값으로 쓴다.
-handler method 이름은 기본 `handle` 이며, 예외가 필요할 때만 세 번째 인자의
-`{ methodName }` 을 사용한다.
+`zlinkRequestHandler(groupName, packetName)`, `zlinkSendHandler(...)`,
+`zlinkPublishHandler(...)` 는 handler class decorator 다. decorator 는 handler 가 속한
+논리 group 과 packet name, 호출할 method 이름을 metadata 로 붙인다. packet name 을
+생략하면 class 이름에서 `Handler` 접미사를 뺀 값을 기본값으로 쓴다. handler method
+이름은 기본 `handle` 이며, 예외가 필요할 때만 options 의 `{ methodName }` 을 사용한다.
 
 handler 인스턴스 생성도 framework 가 직접 `new` 하지 않는다. 대신 NestJS DI 에 맡긴다.
 구체적으로는 다음과 같이 동작한다.
@@ -558,8 +556,8 @@ export class GetUserHandler {
 - payload 는 typed 객체로 역직렬화된다.
 - `ZLinkRequestContext` 에서 packet 이름, content type, 연결 취소 신호를 읽는다.
 - `signal?: AbortSignal` 로 timeout / cancel 을 그대로 이어 준다.
-- handler 클래스는 packet 하나당 하나로 두는 것을 기본으로 한다. group 은 class
-  decorator 가 아니라 `zlinkHandlers(...)` provider 등록 위치에서 지정한다.
+- handler 클래스는 packet 하나당 하나로 두는 것을 기본으로 한다. group 과 packet
+  이름은 handler class decorator 에서 지정한다.
 - 기본 dispatch key 는 request payload 타입(클래스 생성자) 이름이다. 예를 들어
   `UserRequest` 클래스는 기본적으로 `UserRequest` packet 으로 매핑된다.
 - 이름 충돌이 있거나, 외부 계약 때문에 다른 키가 필요한 경우에만 packet name 을
@@ -578,14 +576,13 @@ export class GetUserHandler implements ZLinkRequestHandler<UserRequest, UserRepl
 }
 ```
 
-그리고 NestJS module provider 등록 쪽에서 다음처럼 group 에 묶는다.
+그리고 NestJS module provider 등록 쪽에는 decorated handler class 만 넣는다.
 
 ```ts
-providers: [
-  ...zlinkHandlers('user')
-    .request(GetUserHandler, 'UserRequest')
-    .providers(),
-]
+@zlinkRequestHandler('user', 'UserRequest')
+export class GetUserHandler {}
+
+providers: [GetUserHandler]
 ```
 
 ### 4.2 publish handler contract
@@ -603,9 +600,8 @@ export class CacheInvalidateHandler {
 ```
 
 request-response 와 event 는, 서로 별도 표면으로 보이는 편이 자연스럽다.
-fanout subscriber channel 에 `handlerGroups` 로 group 을 노출하고, provider 등록 쪽에서
-`zlinkHandlers('cache.events').publish(CacheInvalidateHandler, 'cache.invalidate').providers()`
-로 이 handler 를 묶으면 runtime 은 publish envelope 의 packet name
+fanout subscriber channel 에 `handlerGroups` 로 group 을 노출하고, handler class 에
+`zlinkPublishHandler('cache.events', 'cache.invalidate')` decorator 를 붙이면 runtime 은 publish envelope 의 packet name
 으로 handler 를 선택하고 topic 은 `ZLinkPublishContext` 로 전달한다.
 
 ### 4.3 inbound dispatch 시퀀스
@@ -848,12 +844,13 @@ ZLinkModule.forRoot(
     .build()
 );
 
-providers: [
-  ...zlinkHandlers('play.route')
-    .request(RoutePingHandler, 'RoutePing')
-    .send(RouteNoticeHandler, 'RouteNotice')
-    .providers(),
-]
+@zlinkRequestHandler('play.route', 'RoutePing')
+export class RoutePingHandler {}
+
+@zlinkSendHandler('play.route', 'RouteNotice')
+export class RouteNoticeHandler {}
+
+providers: [RoutePingHandler, RouteNoticeHandler]
 ```
 
 ```ts
@@ -1170,11 +1167,11 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
     있으면 즉시 실패시키는 단계다. 런타임에서 늦게 드러나는 실패를 막는다.
 
 [^packetname]: **packet name** 은 메시지 종류를 가리키는 문자열 키다. 기본값은 payload
-    타입(클래스 생성자) 이름이고, `zlinkHandlers(...)` builder 의 packet name 이나
+    타입(클래스 생성자) 이름이고, handler decorator 의 packet name 이나
     handler options 로 override 할 수 있다.
 
-[^handlergroup]: **handler group** 은 `zlinkHandlers("...").request(...).providers()` 처럼 NestJS
-    provider 등록 위치에서 붙이는 논리적 묶음 이름이다. 실제 channel 이름과는 분리된
+[^handlergroup]: **handler group** 은 `zlinkRequestHandler("...", "...")` 처럼 NestJS
+    handler class decorator 에서 붙이는 논리적 묶음 이름이다. 실제 channel 이름과는 분리된
     별도 namespace 이며, channel 등록 쪽에서 `handlerGroups: ['...']` 로 끌어다 붙여
     어느 channel 에 노출할지 결정한다.
 

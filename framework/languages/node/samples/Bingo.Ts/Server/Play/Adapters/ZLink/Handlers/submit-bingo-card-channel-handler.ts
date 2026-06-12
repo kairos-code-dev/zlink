@@ -1,4 +1,5 @@
 const { Inject } = require('@nestjs/common');
+const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
 const { PlayerActorFactory } = require('../Actors/player-actor-factory');
 const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
 const { SubmitBingoCardHandler } = require('../Spots/Handlers/submit-bingo-card-handler');
@@ -18,12 +19,13 @@ import type {
   SubmitBingoCardRes
 } from '../../../../../Shared/Contracts/messages';
 
+@zlinkRequestHandler('play', PacketNames.submitBingoCardReq)
 class SubmitBingoCardChannelHandler implements ZLinkRequestHandler<SubmitBingoCardReq & PlayerIdentity, SubmitBingoCardRes> {
   constructor(
-    private readonly actorFactory: PlayerActorFactoryType,
-    private readonly rooms: BingoRoomAllocatorType,
-    private readonly submitCard: SubmitBingoCardHandlerType,
-    private readonly timer: BingoRoomTimerHandlerType
+    @Inject(PlayerActorFactory) private readonly actorFactory: PlayerActorFactoryType,
+    @Inject(BingoRoomAllocator) private readonly rooms: BingoRoomAllocatorType,
+    @Inject(SubmitBingoCardHandler) private readonly submitCard: SubmitBingoCardHandlerType,
+    @Inject(BingoRoomTimerHandler) private readonly timer: BingoRoomTimerHandlerType
   ) {}
 
   async handle(request: SubmitBingoCardReq & PlayerIdentity): Promise<SubmitBingoCardRes> {
@@ -49,10 +51,5 @@ function createActorRequestContext(packetName: string): ZLinkSpotActorRequestCon
     }
   };
 }
-
-Inject(PlayerActorFactory)(SubmitBingoCardChannelHandler, undefined, 0);
-Inject(BingoRoomAllocator)(SubmitBingoCardChannelHandler, undefined, 1);
-Inject(SubmitBingoCardHandler)(SubmitBingoCardChannelHandler, undefined, 2);
-Inject(BingoRoomTimerHandler)(SubmitBingoCardChannelHandler, undefined, 3);
 
 export { SubmitBingoCardChannelHandler };

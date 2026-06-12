@@ -7,6 +7,7 @@ import type {
   AuthenticateReq
 } from '../../../Shared/Contracts/messages';
 
+@zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)
 class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticateReq, AuthenticatePlayerRes> {
   async handle(request: AuthenticateReq): Promise<AuthenticatePlayerRes> {
     if (typeof request.accessToken !== 'string' || request.accessToken.length === 0) {
@@ -15,7 +16,5 @@ class AuthenticatePlayerHandler implements ZLinkRequestHandler<AuthenticateReq, 
     return authenticatePlayerRes(request.accessToken);
   }
 }
-
-zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)(AuthenticatePlayerHandler);
 
 export { AuthenticatePlayerHandler };

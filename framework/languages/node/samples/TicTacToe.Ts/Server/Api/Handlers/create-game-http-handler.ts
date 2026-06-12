@@ -1,4 +1,4 @@
-const { Inject } = require('@nestjs/common');
+const { Inject, Injectable } = require('@nestjs/common');
 const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../packages/nestjs/dist');
 const {
   PacketNames,
@@ -13,8 +13,9 @@ import type {
   CreateGameRes
 } from '../../../Shared/Contracts/messages';
 
-class CreateGameHttpHandler {
-  constructor(private readonly playClient: ZLinkChannelClient) {}
+@Injectable()
+class CreateGameEndpoint {
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly playClient: ZLinkChannelClient) {}
 
   async handle(request: CreateGameReq): Promise<CreateGameHttpRes> {
     const response = await this.playClient
@@ -26,6 +27,4 @@ class CreateGameHttpHandler {
   }
 }
 
-Inject(ZLINK_CHANNEL_CLIENT)(CreateGameHttpHandler, undefined, 0);
-
-export { CreateGameHttpHandler };
+export { CreateGameEndpoint };

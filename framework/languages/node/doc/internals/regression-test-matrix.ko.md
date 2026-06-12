@@ -111,7 +111,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | publisher capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
-| handler group mapping | `unit` | `zlinkHandlers(...)` provider 등록만으로는 전역 dispatch 대상이 되지 않고, channel 의 `handlerGroups: ['...']`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
+| handler group mapping | `unit` | handler decorator 등록만으로는 전역 dispatch 대상이 되지 않고, channel 의 `handlerGroups: ['...']`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
 | handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `addHandlerGroup(...)` 또는 `add*Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
 | handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 `acceptSpotRoutesFromChannel(...)` 명시 참조가 없으면 startup validation 오류다 |
 | fanout subscriber handler exposure | `unit` | 현재 NestJS registration 에는 publish handler exposure 표면이 없으므로 정식 dispatch 대상으로 검증하지 않는다 |
@@ -125,7 +125,7 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | Spot route transport 전용 channel | `integration-single-process` | `acceptSpotRoutesFromChannel(...)`으로만 참조된 router-capable channel 은 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
-| 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `zlinkHandlers('api', ...)` provider group 을 두 채널에 `handlerGroups`로 노출해도 채널마다 dispatch namespace가 독립이다 |
+| 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `zlinkRequestHandler('api', ...)` group 을 두 채널에 `handlerGroups`로 노출해도 채널마다 dispatch namespace가 독립이다 |
 | `addHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
 | event handler group mapping | `unit` | publish handler group mapping 은 subscriber handler registration 표면이 생긴 뒤 추가한다 |
 | HTTP(REST controller) handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 NestJS DI[^di] 컨테이너에서 정상 동작 |
@@ -185,8 +185,9 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | `getOrCreate(spotType, spotRid)` same type | `integration-single-process` | 같은 `spotId`를 같은 Spot 타입으로 다시 확보하면 기존 spot을 반환하고 새 `onCreate(...)`를 호출하지 않는다 |
 | spot create lifecycle failure | `integration-single-process` | `onCreate(...)` 또는 `onInitialize(...)` 실패는 `SpotCreateFailed`로 전파되고 failed entry는 제거되어 다음 생성 요청이 재시도할 수 있다 |
 | `find(...)`, `list(...)` | `integration-single-process` | manager 조회 결과가 일관된다 |
-| `configure()` handler registration | `integration-single-process` | `context.addPacket(...)`, `context.addHandler(...)`, `context.addActorPacket(...)`, `context.onActorDisconnected(...)`, `context.addSubscribe(...)` 등의 등록이 descriptor에 반영된다 |
-| Entry Spot handler registration | `integration-single-process` | `registerEntrySpot(EntrySpotClass)`로 등록한 `context.addPacket(...)`, `addSubscribe(...)`, `addHandler(...)`, `addActorPacket(...)`, `onActorDisconnected(...)`가 Entry Spot registry에 반영된다 |
+| `configure()` handler registration | `integration-single-process` | `context.handlers.addPacket(...)`, `context.handlers.addHandler(...)`, `context.handlers.addSubscribe(...)` 등의 spot-local 등록이 descriptor에 반영된다 |
+| Entry Spot actor handler decorator registration | `integration-single-process` | `zlinkEntrySpotActorRequestHandler(...)` decorator 로 등록한 actor packet handler 가 대상 Entry Spot registry에 반영된다 |
+| user Spot actor handler decorator registration | `integration-single-process` | `zlinkSpotActorRequestHandler(...)` decorator 로 등록한 actor packet handler 가 대상 user Spot registry에 반영된다 |
 | Entry Spot packet callback concurrency | `integration-single-process` | Entry Spot 일반 packet handler는 user Spot과 같은 등록 표면을 쓰지만 Entry Spot 전체 실행 줄에 직렬화되지 않는다 |
 | `onInitialize(...)` handler resolve | `integration-single-process` | spot마다 분리된 DI scope가 정상 동작한다 |
 | `onClosing(...)` 정상 close callback | `integration-single-process` | `close(...)` 호출 시 spot 실행 문맥에서 한 번 호출된다 |

@@ -1,14 +1,11 @@
 const { Inject } = require('@nestjs/common');
 const {
-  PacketNames,
   bingoRoomJoinReq,
   createProtobufMessage,
   matchBingoRes,
   readProtobufMessage
 } = require('../../../../../Shared/Contracts/messages');
 const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
-const { MatchBingoActorHandler } = require('./Handlers/match-bingo-actor-handler');
-const { PlayerActor } = require('../Actors/player-actor');
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext
@@ -22,21 +19,12 @@ import type {
 } from '../../../../../Shared/Contracts/messages';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 
-type BingoActor = {
-  actorId: string;
-  displayName: string;
-};
-
 type BingoJoinReply = Partial<StateEnvelope & RoomJoinError>;
 
 class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   readonly context?: ZLinkEntrySpotContext;
 
   constructor(private readonly roomDirectory: BingoRoomAllocatorType) {}
-
-  configure(): void {
-    this.context?.handlers.addActorPacket(MatchBingoActorHandler, PlayerActor, PacketNames.matchBingoReq);
-  }
 
   async matchActor(actor: PlayerActorType, request: MatchBingoReq): Promise<MatchBingoRes> {
     const matched = await this.roomDirectory.allocate(request.mode);
@@ -55,7 +43,10 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   }
 
   async onPostActorJoined(actor: PlayerActorType): Promise<void> {
-    void actor;
+    if (!actor.destroyAfterEntrySpotJoin) {
+      return;
+    }
+    await this.context?.destroyActor(actor);
   }
 
   async onActorLeft(actor: PlayerActorType): Promise<void> {

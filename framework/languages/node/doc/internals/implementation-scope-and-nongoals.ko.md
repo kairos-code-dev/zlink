@@ -33,7 +33,7 @@
   `mesh.addNode(...)` 대응 options)
   `SPOT`[^spot] 등록 표면
 - `ZLinkSpotManager`, `ZLinkSpotPublisherClient`
-- handler group mapping 모델. 즉 `zlinkHandlers('...', ...)` provider group
+- handler group mapping 모델. 즉 handler class decorator group
   등록과 channel 등록 쪽의 handler group 바인딩(`handlerGroups: [...]`) 을 짝으로
   두는 모델이다.
   NestJS `DiscoveryService` 기반의 provider 전체 scan[^scan] 은 보조

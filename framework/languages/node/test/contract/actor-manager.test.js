@@ -474,6 +474,9 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   manager.getState('alice').clearJoinedSpot();
   await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
     events.push(`left:${leftActor.actorId}`);
+    await manager.destroyActor(node, 'node-a', actor, async (nestedActor) => {
+      events.push(`left:${nestedActor.actorId}:reentrant`);
+    });
   });
   await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
     events.push(`left:${leftActor.actorId}:duplicate`);

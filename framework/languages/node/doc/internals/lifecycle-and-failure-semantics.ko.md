@@ -232,7 +232,8 @@ binding 을 지우지 못하도록 조건부 unbind 에 사용한다.
 - `onInitialize(...)` 는 spot 의 실행 문맥에서 단 한 번만 호출된다.
 - `configure()` 는 `onInitialize(...)` 보다 먼저 한 번 호출된다.
   `context.addPacket<THandler>()`, `context.addSubscribe<THandler>()`,
-  `context.addActorPacket<THandler, TActor>()` 등록은 오직 이 단계에서만 허용된다.
+  같은 spot-local 등록은 이 단계에서 수행한다. actor packet handler 는
+  `configure()` 에서 등록하지 않고 NestJS decorator discovery 로 등록한다.
 - `onActorJoin(...)`, `onPostActorJoined(...)`, `onActorLeft(...)` 는 별도 handler
   등록이 아니라 Spot / Entry Spot 멤버 callback 으로 선언한다.
 - `onClosing(...)` 는 `ZLinkSpotManager.close(...)` 로 SPOT 을 정상적으로

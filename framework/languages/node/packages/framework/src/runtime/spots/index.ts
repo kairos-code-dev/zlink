@@ -5,6 +5,7 @@ import type {
   ZLinkActor,
   ZLinkChannelClient,
   ZLinkEntrySpot,
+  ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkEntrySpotContext,
   ZLinkFanoutClient,
   ZLinkPublishCall,
@@ -12,6 +13,7 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
+  ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotContext,
   ZLinkSpotCreateResult,
   ZLinkSpotCreateResponse,
@@ -48,6 +50,7 @@ import { ZLinkAsyncSubmitter } from '../messaging';
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
+  readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly nodeRid?: RoutingId;
   readonly actorCountProvider?: (spotRid: RoutingId) => number;
   readonly channelClient?: ZLinkChannelClient;
@@ -141,6 +144,7 @@ export class ZLinkSpotNodeRuntimeManager {
       nodeRid: node.routingId,
       spotNodeName,
       providerResolver: this.options.providerResolver,
+      actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
       destroyActor: (nodeRid, actor, beforeDestroy, signal) => {
         if (this.options.actorDestroyer === undefined) {
           throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
@@ -303,6 +307,7 @@ interface ZLinkSpotPublisherBundle {
 
 interface ZLinkEntrySpotActivationOptions {
   readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly actorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
   readonly nativeSpot: ZLinkBackendSpot;
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
@@ -328,6 +333,11 @@ export class ZLinkEntrySpotActivation {
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
     this.context = this.createContext();
     this.entrySpot = undefined as unknown as ZLinkEntrySpot;
+    for (const handler of options.actorRequestHandlers ?? []) {
+      if (handler.entrySpotType === options.entrySpotType) {
+        this.handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
+      }
+    }
   }
 
   async create(): Promise<void> {
@@ -545,6 +555,11 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     this.requireRegisteredFactory(spotType);
     const serial = new ZLinkSpotSerialExecutor();
     const handlers = new DefaultZLinkSpotHandlerRegistry();
+    for (const handler of this.options.spotActorRequestHandlers ?? []) {
+      if (handler.spotType === spotType) {
+        handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
+      }
+    }
     const timers = new ZLinkSpotTimerRegistry();
     const outbound = new DefaultZLinkSpotOutbound(
       serial,
@@ -681,7 +696,7 @@ export class DefaultZLinkSpotHandlerRegistry implements ZLinkSpotHandlerRegistry
     return this;
   }
 
-  addActorPacket(handlerType: Type, actorType: Type, packetName?: string): this {
+  addActorPacketRegistration(handlerType: Type, actorType: Type, packetName: string): this {
     this.entries.push({ kind: 'actorPacket', handlerType, actorType, packetName });
     return this;
   }

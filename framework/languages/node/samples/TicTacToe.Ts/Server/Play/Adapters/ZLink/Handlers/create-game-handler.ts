@@ -13,11 +13,12 @@ import type {
   CreateGameRes
 } from '../../../../../Shared/Contracts/messages';
 
+@zlinkRequestHandler('play', PacketNames.createGame)
 class CreateGameHandler implements ZLinkRequestHandler<CreateGameReq, CreateGameRes> {
   constructor(
-    private readonly games: TicTacToeGameCreatorType,
-    private readonly playEndpoint: string,
-    private readonly timerHandler: TicTacToeGameTimerHandlerType
+    @Inject(TicTacToeGameCreator) private readonly games: TicTacToeGameCreatorType,
+    @Inject(PLAY_STREAM_ENDPOINT) private readonly playEndpoint: string,
+    @Inject(TicTacToeGameTimerHandler) private readonly timerHandler: TicTacToeGameTimerHandlerType
   ) {}
 
   async handle(request: CreateGameReq): Promise<CreateGameRes> {
@@ -26,12 +27,5 @@ class CreateGameHandler implements ZLinkRequestHandler<CreateGameReq, CreateGame
     return createGameRes(room.roomId, room.gameName, room.playEndpoint);
   }
 }
-
-Inject(TicTacToeGameCreator)(CreateGameHandler, undefined, 0);
-Inject(PLAY_STREAM_ENDPOINT)(CreateGameHandler, undefined, 1);
-Inject(TicTacToeGameTimerHandler)(CreateGameHandler, undefined, 2);
-
-
-zlinkRequestHandler('play', PacketNames.createGame)(CreateGameHandler);
 
 export { CreateGameHandler };

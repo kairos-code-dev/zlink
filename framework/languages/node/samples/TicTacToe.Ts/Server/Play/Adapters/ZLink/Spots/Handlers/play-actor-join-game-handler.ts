@@ -1,4 +1,4 @@
-const { Inject } = require('@nestjs/common');
+const { Inject, Injectable } = require('@nestjs/common');
 const {
   PacketNames,
   gameStateNotify,
@@ -12,8 +12,9 @@ import type {
   JoinGameRes
 } from '../../../../../../Shared/Contracts/messages';
 
+@Injectable()
 class PlayActorJoinGameHandler {
-  constructor(private readonly games: TicTacToeGameCreatorType) {}
+  constructor(@Inject(TicTacToeGameCreator) private readonly games: TicTacToeGameCreatorType) {}
 
   async handle(request: JoinGameInternalReq): Promise<JoinGameRes> {
     const room = this.games.require(request.roomId);
@@ -35,7 +36,5 @@ class PlayActorJoinGameHandler {
     return joinGameRes(room.roomId, result.joined.actorId, result.joined.mark, state);
   }
 }
-
-Inject(TicTacToeGameCreator)(PlayActorJoinGameHandler, undefined, 0);
 
 export { PlayActorJoinGameHandler };

@@ -129,24 +129,20 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         `Actor '${actor.actorId}' must leave its current SPOT before destroy.`
       );
     }
-    const actorRef = state.nativeActorRef;
+    const actorRef = state.beginDestroy(entryNodeRid);
     if (actorRef === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' does not have a native Actor ref.`
-      );
-    }
-    if (toFrameworkRoutingId(actorRef.nodeRid) !== entryNodeRid) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' is not owned by this Entry Spot.`
-      );
+      return;
     }
 
-    await beforeDestroy?.(actor, destroySignal);
-    await node.destroyActor(actorRef, 0, destroySignal);
-    state.clearAfterDestroy();
-    this.states.delete(actor.actorId);
+    try {
+      await beforeDestroy?.(actor, destroySignal);
+      await node.destroyActor(actorRef, 0, destroySignal);
+      state.clearAfterDestroy();
+      this.states.delete(actor.actorId);
+    } catch (error) {
+      state.resetDestroying();
+      throw error;
+    }
   }
 
   private async createOrGet(
@@ -229,6 +225,7 @@ export class ZLinkActorRuntimeState {
   private spotValue: ZLinkSpot | undefined;
   private spotRidValue: RoutingId | undefined;
   private nativeActorRefValue: ZLinkBackendActorRef | undefined;
+  private destroying = false;
 
   constructor(readonly actorId: string) {}
 
@@ -254,6 +251,32 @@ export class ZLinkActorRuntimeState {
 
   get isJoined(): boolean {
     return this.spotRidValue !== undefined;
+  }
+
+  beginDestroy(entryNodeRid: RoutingId): ZLinkBackendActorRef | undefined {
+    if (this.destroying) {
+      return undefined;
+    }
+    const actorRef = this.nativeActorRefValue;
+    if (actorRef === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${this.actorId}' does not have a native Actor ref.`
+      );
+    }
+    if (toFrameworkRoutingId(actorRef.nodeRid) !== entryNodeRid) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${this.actorId}' is not owned by this Entry Spot.`
+      );
+    }
+
+    this.destroying = true;
+    return actorRef;
+  }
+
+  resetDestroying(): void {
+    this.destroying = false;
   }
 
   ensureContext(
@@ -363,6 +386,7 @@ export class ZLinkActorRuntimeState {
     this.spotValue = undefined;
     this.spotRidValue = undefined;
     this.nativeActorRefValue = undefined;
+    this.destroying = false;
   }
 }
 

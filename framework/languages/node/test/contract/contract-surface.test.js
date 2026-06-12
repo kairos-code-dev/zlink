@@ -74,7 +74,9 @@ test('spot actor lifecycle handler registration API is not public', () => {
     'ActorLeftHandler',
     'ZLinkSpotActorJoinHandler',
     'ZLinkSpotPostActorJoinedHandler',
-    'ZLinkSpotActorLeftHandler'
+    'ZLinkSpotActorLeftHandler',
+    '.handlers.addActorPacket(',
+    'addActorPacket(handlerType'
   ];
 
   const remaining = removedNames.filter((name) => workspaceText.includes(name));

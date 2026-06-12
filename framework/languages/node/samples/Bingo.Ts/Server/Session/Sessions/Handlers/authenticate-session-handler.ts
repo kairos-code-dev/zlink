@@ -1,4 +1,4 @@
-const { Inject } = require('@nestjs/common');
+const { Inject, Injectable } = require('@nestjs/common');
 const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../../packages/nestjs/dist');
 const { SampleNames, SampleTimings } = require('../../../Configuration/sample-names');
 const {
@@ -23,8 +23,9 @@ type AuthenticateSessionContext = {
   displayName: string | null;
 };
 
-class AuthenticateSessionHandler {
-  constructor(private readonly zlinkClient: ZLinkChannelClient) {}
+@Injectable()
+class SessionAuthenticator {
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient) {}
 
   async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateSessionRes> {
     const authenticated = await this.zlinkClient
@@ -50,6 +51,4 @@ class AuthenticateSessionHandler {
   }
 }
 
-Inject(ZLINK_CHANNEL_CLIENT)(AuthenticateSessionHandler, undefined, 0);
-
-export { AuthenticateSessionHandler };
+export { SessionAuthenticator };

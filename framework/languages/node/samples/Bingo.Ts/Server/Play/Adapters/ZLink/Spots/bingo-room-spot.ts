@@ -10,8 +10,6 @@ const {
 } = require('../../../../../Shared/Contracts/messages');
 const { BingoRoomGame } = require('../../../Domain/Bingo/bingo-room-game');
 const { createRoomSettings } = require('../../../Domain/Bingo/bingo-room-models');
-const { SubmitBingoCardHandler } = require('./Handlers/submit-bingo-card-handler');
-const { PlayerActor } = require('../Actors/player-actor');
 import type {
   Message,
   ZLinkSpot,
@@ -27,8 +25,7 @@ import type {
 import type {
   BingoRoomJoinReq,
   SubmitBingoCardReq,
-  SubmitBingoCardRes,
-  StateEnvelope
+  SubmitBingoCardRes
 } from '../../../../../Shared/Contracts/messages';
 
 type BingoActor = {
@@ -51,6 +48,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   readonly roomId: string;
   private readonly notifications: BingoNotificationPublisherLike;
   private readonly game: BingoRoomGameType;
+  private cleanupStarted = false;
 
   constructor(
     contextOrRoomId?: ZLinkSpotContext | string,
@@ -68,10 +66,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     this.roomId = contextOrRoomId ?? 'bingo-room';
     this.notifications = notifications ?? createNoopNotificationPublisher();
     this.game = new BingoRoomGame(this.roomId, settings ?? createRoomSettings(undefined, 0));
-  }
-
-  configure(): void {
-    this.context?.handlers.addActorPacket(SubmitBingoCardHandler, PlayerActor, PacketNames.submitBingoCardReq);
   }
 
   async onActorJoin(actor: PlayerActorType, request: Message): Promise<ZLinkSpotActorJoinResponse> {
@@ -132,10 +126,23 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
         await this.notifications.publish(this.game.players.map((player) =>
           this.notifications.gameEnded(player.actor, stateEnvelope(state))
         ));
+        await this.leaveFinishedActors();
         return state;
       }
     }
     return this.snapshot();
+  }
+
+  private async leaveFinishedActors(): Promise<void> {
+    if (this.cleanupStarted || this.snapshot().status !== 'Finished') {
+      return;
+    }
+    this.cleanupStarted = true;
+    for (const player of [...this.game.players]) {
+      const actor = player.actor as PlayerActorType;
+      actor.markForDestroyAfterRoomLeave();
+      await this.context?.leaveActor(actor);
+    }
   }
 
   snapshot(): BingoRoomSnapshot {

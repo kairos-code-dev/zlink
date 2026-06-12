@@ -1,14 +1,10 @@
 require('reflect-metadata');
 
 const http = require('node:http');
-const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { ZLinkModule, zlinkFramework } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
-const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-handler');
-const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
-const { SampleNames } = require('../Configuration/sample-settings');
 const { loadSampleConfig } = require('../Configuration/sample-config');
+const { createTicTacToeApiModule, getCreateGameEndpoint } = require('./tictactoe-api-module');
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
 type HttpEndpoint = {
@@ -18,31 +14,12 @@ type HttpEndpoint = {
 
 async function main(): Promise<void> {
   const config = loadSampleConfig();
-  class TicTacToeApiModule {}
-
-  Module({
-    imports: [
-      ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .server(config.apiEndpoint)
-            .handlerGroup('api'))
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(config.playEndpoint))
-          .build()
-      })
-    ],
-    providers: [
-      CreateGameHttpHandler,
-      AuthenticatePlayerHandler
-    ]
-  })(TicTacToeApiModule);
-
+  const TicTacToeApiModule = createTicTacToeApiModule(config);
   const apiApp = await NestFactory.createApplicationContext(TicTacToeApiModule, {
     logger: false,
     abortOnError: false
   });
-  const createGame = apiApp.get(CreateGameHttpHandler, { strict: false });
+  const createGame = getCreateGameEndpoint(apiApp);
 
   const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST' || request.url !== '/games') {

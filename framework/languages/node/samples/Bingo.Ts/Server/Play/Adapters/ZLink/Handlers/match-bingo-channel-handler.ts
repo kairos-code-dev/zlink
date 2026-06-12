@@ -1,4 +1,5 @@
 const { Inject } = require('@nestjs/common');
+const { zlinkRequestHandler } = require('../../../../../../../../packages/nestjs/dist');
 const { PlayerActorFactory } = require('../Actors/player-actor-factory');
 const { BingoEntrySpot } = require('../Spots/bingo-entry-spot');
 const { MatchBingoActorHandler } = require('../Spots/Handlers/match-bingo-actor-handler');
@@ -16,12 +17,14 @@ import type {
   PlayerIdentity
 } from '../../../../../Shared/Contracts/messages';
 
+@zlinkRequestHandler('play', PacketNames.matchBingoReq)
 class MatchBingoChannelHandler implements ZLinkRequestHandler<MatchBingoReq & PlayerIdentity, MatchBingoRes> {
   constructor(
-    private readonly actorFactory: PlayerActorFactoryType,
-    private readonly entrySpot: BingoEntrySpotType,
-    private readonly matchBingoActor: MatchBingoActorHandlerType
+    @Inject(PlayerActorFactory) private readonly actorFactory: PlayerActorFactoryType,
+    @Inject(BingoEntrySpot) private readonly entrySpot: BingoEntrySpotType,
+    @Inject(MatchBingoActorHandler) private readonly matchBingoActor: MatchBingoActorHandlerType
   ) {}
+
   async handle(request: MatchBingoReq & PlayerIdentity): Promise<MatchBingoRes> {
     const actor = await this.actorFactory.ensure(request.actorId, request.displayName);
     return await this.matchBingoActor.handle(this.entrySpot, actor, createActorRequestContext(PacketNames.matchBingoReq), request);
@@ -42,9 +45,5 @@ function createActorRequestContext(packetName: string): ZLinkSpotActorRequestCon
     }
   };
 }
-
-Inject(PlayerActorFactory)(MatchBingoChannelHandler, undefined, 0);
-Inject(BingoEntrySpot)(MatchBingoChannelHandler, undefined, 1);
-Inject(MatchBingoActorHandler)(MatchBingoChannelHandler, undefined, 2);
 
 export { MatchBingoChannelHandler };

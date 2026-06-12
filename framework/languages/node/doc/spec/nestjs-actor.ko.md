@@ -424,29 +424,23 @@ transport 위치값도 handler 표면에 노출하지 않는다.
 이 절은 actor 의 packet handler 를 어디에 어떻게 등록하는지, 그리고 Entry Spot
 과 user Spot 의 등록 표면을 어떻게 나누는지 정리한다.
 
-actor 가 처리할 packet handler 는 **현재 실행 문맥의 registry 에 등록한다.**
-즉 Entry Spot 은 Entry Spot 전용 registry 를 갖고, user Spot 은 각 Spot
-타입마다 별도의 registry 를 갖는다.
+actor 가 처리할 packet handler 는 **NestJS provider decorator 로 등록한다.**
+Entry Spot actor handler 는 대상 Entry Spot 타입을, user Spot actor handler 는
+대상 user Spot 타입을 decorator 에 명시한다. actor 타입과 packet 이름도 같은
+decorator 에 함께 적는다. 이렇게 해야 spot 타입이 여러 개일 때 어느 handler 가
+어느 spot 에 붙는지 `main.ts` 나 `configure()` 를 열어 보지 않아도 바로 알 수
+있다.
 
-일반 channel handler 처럼 decorator scan[^attribute-scan] 과 그룹 매핑으로
-노출하는 모델이 아니다. 대신 각 Spot 의 `configure()` 안에서
-`context.handlers.addHandler(THandler)` 로 등록한다. 이 메서드는 handler 가
-구현한 actor handler interface 또는 method decorator 에서 actor 타입과
-packet/lifecycle 종류를 추론한다. handler 가 여러 actor handler interface 를
-구현해서 모호한 경우에는 `context.handlers.addActorPacket<THandler, TActor>()`
-같은 명시 등록 메서드를 사용한다.
+`configure()` 에서 actor packet handler 를 등록하지 않는다. `configure()` 는
+spot-local timer, subscribe, 일반 packet 같은 초기화만 담당한다. actor packet
+등록은 NestJS `DiscoveryService` 가 provider metadata 를 읽어 framework
+registration 에 반영한다.
 
-registry 표면은 다음과 같다 (Entry Spot 과 user Spot 공통 base).
+registry 표면은 다음과 같다.
 
 ```ts
 export interface ZLinkActorHandlerRegistry {
   addHandler(handler: Type, packetName?: string): void;
-
-  addActorPacket<TActor extends ZLinkActor>(
-    handler: Type,
-    actor: Type<TActor>,
-    packetName?: string,
-  ): void;
 }
 
 // user Spot registry는 packet/subscribe 등록을 더 갖는다.
@@ -458,8 +452,8 @@ export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
 
 이 모델의 의도는 다음과 같다.
 
-- actor packet 묶음은 현재 실행 문맥인 Entry Spot 또는 user Spot 이 정한다.
-- actor type 과 실행 문맥이 달라지면 packet 매핑도 다르게 가져갈 수 있다.
+- actor packet 묶음은 handler decorator 의 `entrySpot` 또는 `spot` 타입이 정한다.
+- actor type 과 spot type 이 달라지면 packet 매핑도 다르게 가져갈 수 있다.
 - 같은 handler 클래스를 여러 actor type 이 공유해도 된다.
 
 ### 4.1 Entry Spot actor handler
@@ -505,15 +499,24 @@ export interface ZLinkEntrySpotActorRequestHandler<
 
 ```
 
-decorator 방식은 다음과 같다. `@ZLinkSpotActorRequest()` /
-`@ZLinkSpotActorSend()` 는 선택적으로 `{ packetName }` 을 받는다.
+decorator 방식은 다음과 같다. `@zlinkEntrySpotActorRequestHandler(...)` 는
+NestJS `@Injectable()` 의미와 zlink actor handler metadata 를 함께 붙인다.
 
 ```ts
-@Injectable()
-export class JoinMatchHandler {
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => PlayerEntrySpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.joinMatchReq,
+})
+export class JoinMatchHandler
+  implements ZLinkEntrySpotActorRequestHandler<
+    PlayerEntrySpot,
+    PlayerActor,
+    JoinMatchReq,
+    JoinMatchRes
+  > {
   constructor(private readonly notifications: GameNotificationPublisher) {}
 
-  @ZLinkSpotActorRequest()
   async handle(
     entrySpot: PlayerEntrySpot,
     actor: PlayerActor,
@@ -584,32 +587,68 @@ export interface ZLinkSpot {
 }
 ```
 
-decorator 방식은 method 에 다음을 붙인다 (인자 순서는 interface 와 동일).
+decorator 방식은 다음과 같다. `@zlinkSpotActorRequestHandler(...)` 는 대상 user
+Spot 타입과 actor 타입을 명시한다.
 
-- `@ZLinkSpotActorSend()` / `@ZLinkSpotActorRequest()` -- actor packet
+```ts
+@zlinkSpotActorRequestHandler({
+  spot: () => BingoRoomSpot,
+  actor: () => PlayerActor,
+  packetName: PacketNames.submitBingoCardReq,
+})
+export class SubmitBingoCardHandler
+  implements ZLinkSpotActorRequestHandler<
+    BingoRoomSpot,
+    PlayerActor,
+    SubmitBingoCardReq,
+    SubmitBingoCardRes
+  > {
+  async handle(
+    room: BingoRoomSpot,
+    actor: PlayerActor,
+    context: ZLinkSpotActorRequestContext,
+    request: SubmitBingoCardReq,
+  ): Promise<SubmitBingoCardRes> {
+    return room.submitCard(actor, request);
+  }
+}
+```
 
-Entry Spot 과 user Spot 어느 쪽이든 actor packet handler 는 `addHandler(...)` 로
-등록할 수 있다. actor disconnected lifecycle 은 handler 등록 API를 사용하지 않고
-Spot 멤버 `onActorDisconnected(...)` callback 으로 선언한다. join / leave lifecycle 도
-Spot 멤버 `onPostActorJoined(...)` / `onActorLeft(...)` callback 으로 선언한다.
+actor disconnected lifecycle 은 handler 등록 API를 사용하지 않고 Spot 멤버
+`onActorDisconnected(...)` callback 으로 선언한다. join / leave lifecycle 도 Spot
+멤버 `onPostActorJoined(...)` / `onActorLeft(...)` callback 으로 선언한다.
 
 ### 4.3 등록 순서
 
-handler 클래스는 Entry Spot 이나 user Spot 의 `configure()` 에서 타입으로
-등록한다. framework 는 handler 실행 시 NestJS DI 에 등록된 의존성을 사용해
-handler 인스턴스를 만든다.
+handler 클래스는 NestJS provider 로 등록한다. framework 는 NestJS
+`DiscoveryService` 로 provider metadata 를 읽고, `entrySpot` 또는 `spot` 타입이
+일치하는 SpotNode registration 에 actor packet handler 를 자동으로 붙인다.
 
 ```ts
-ZLinkModule.forRoot({
-  discover: { include: [JoinMatchHandler /* ... */] },
-});
+@Module({
+  imports: [
+    ZLinkModule.forRoot({
+      spotNodes: {
+        play: {
+          entrySpotType: PlayerEntrySpot,
+          spotFactories: [BingoRoomSpot],
+        },
+      },
+    }),
+  ],
+  providers: [
+    JoinMatchHandler,
+    SubmitBingoCardHandler,
+  ],
+})
+export class PlayModule {}
 ```
 
 dotnet 의 `AddHandlersFromAssemblyOf<TMarker>()` 는 node 의
 `discover`(NestJS `DiscoveryService`) 로 매핑한다. 이는 decorator scan 과 함께
-typed actor handler 후보까지 한꺼번에 모은다. 다만 실제 actor 매핑은 Entry Spot
-이나 user Spot 의 `configure()` 에서 일어난다는 점은 그대로 유지된다 (scan ≠
-자동 노출).
+typed actor handler 후보까지 한꺼번에 모은다. 실제 actor packet 매핑은
+decorator 의 `entrySpot` 또는 `spot` 타입과 SpotNode registration 을 대조해서
+만든다.
 
 ## 5. Actor context
 
@@ -1172,9 +1211,11 @@ export interface ZLinkModuleOptions {
 
 ## 13. 결정된 기준
 
-- actor 의 packet handler 와 lifecycle callback handler 는 Entry Spot 또는
-  user Spot registry 에서 등록한다. `zlinkHandlers(...)` provider group 매핑은
-  일반 channel handler 전용이며, SPOT 으로 들어오는 actor packet 에는 사용하지 않는다.
+- actor 의 packet handler 는 `zlinkEntrySpotActorRequestHandler(...)` 또는
+  `zlinkSpotActorRequestHandler(...)` decorator 로 등록한다. `configure()` 에서
+  actor packet handler 를 등록하지 않는다. `zlinkRequestHandler(...)` 같은 channel
+  handler decorator 는 일반 channel handler 전용이며, SPOT 으로 들어오는 actor packet 에는
+  사용하지 않는다.
 - actor 의 위치는 application 의 resolver 가 결정한다. framework 는 그
   정보의 저장소를 소유하지 않는다.
 - actor id 는 application identity[^identity] 다. 보통 인증 단계에서

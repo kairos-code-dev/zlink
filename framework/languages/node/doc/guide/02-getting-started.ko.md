@@ -56,22 +56,21 @@ export class ProfileClient {
 
 ## 2. handler group
 
-handler 는 NestJS provider 로 등록한다. ZLink 쪽에서는 `zlinkHandlers(...)` 으로
-provider 를 논리 그룹에 묶고, channel options 의 `handlerGroups` 로 그 group 을
-선택한다. handler class 에 ZLink decorator 를 붙이지 않아도 NestJS DI 로 생성된
-provider 인스턴스의 `handle(...)` 이 호출된다.
+handler 는 NestJS provider 로 등록한다. ZLink 쪽에서는
+`zlinkRequestHandler(...)`, `zlinkSendHandler(...)`, `zlinkPublishHandler(...)`
+decorator 로 provider 를 논리 그룹에 묶고, channel options 의 `handlerGroups` 로
+그 group 을 선택한다. decorator 는 NestJS injectable metadata 도 함께 붙인다.
 
 `main.ts` 에서 handler 나 service 를 직접 `new` 로 조립하지 않는다. channel 에서
-받을 node handler 만 `zlinkHandlers(...)` 에 넣고, handler class 자체는
-NestJS `providers` 로 등록한다. Spot, Entry Spot, actor factory, stream session,
-Spot 내부 handler 도 같은 원칙을 따른다. 다만 Spot 내부 handler 는 channel group
-이 아니라 해당 Spot 또는 Entry Spot 의 registry 에서 handler type 으로 등록한다.
+받을 node handler 는 decorator 로 group 과 packet 이름을 선언하고, handler class
+자체는 NestJS `providers` 로 등록한다. Spot, Entry Spot, actor factory, stream
+session, Spot 내부 handler 도 같은 원칙을 따른다. 다만 actor packet handler 는
+channel group 이 아니라 spot actor handler decorator 로 대상 Spot 타입을 명시한다.
 
 ```ts
-import { Injectable } from '@nestjs/common';
-import { ZLinkModule, zlinkFramework, zlinkHandlers } from '@zlink-systems/nestjs';
+import { ZLinkModule, zlinkFramework, zlinkRequestHandler } from '@zlink-systems/nestjs';
 
-@Injectable()
+@zlinkRequestHandler('api', 'GetProfile')
 export class GetProfileHandler {
   handle(request: { id: string }) {
     return { id: request.id };
@@ -88,11 +87,7 @@ export class GetProfileHandler {
         .build()
     ),
   ],
-  providers: [
-    ...zlinkHandlers('api')
-      .request(GetProfileHandler, 'GetProfile')
-      .providers(),
-  ],
+  providers: [GetProfileHandler],
 })
 export class AppModule {}
 ```

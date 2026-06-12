@@ -1,5 +1,5 @@
 const { Inject } = require('@nestjs/common');
-const { ZLINK_CHANNEL_CLIENT } = require('../../../../../../packages/nestjs/dist');
+const { ZLINK_CHANNEL_CLIENT, zlinkRequestHandler } = require('../../../../../../packages/nestjs/dist');
 const {
   PacketNames,
   allocateBingoRoomReq,
@@ -16,6 +16,7 @@ import type {
   MatchBingoReq
 } from '../../../Shared/Contracts/messages';
 
+@zlinkRequestHandler('api', PacketNames.matchBingoApiReq)
 class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoReq, MatchBingoApiRes> {
   constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient) {}
 

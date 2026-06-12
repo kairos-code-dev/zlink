@@ -126,6 +126,8 @@ export interface TicTacToeActor {
   attachClient(client: TicTacToeActorClient): void;
   detachClient(client: TicTacToeActorClient): void;
   markDisconnected(): void;
+  markForDestroyAfterRoomLeave(): void;
+  destroyAfterEntrySpotJoin: boolean;
   push(packetName: string, payload: unknown): Promise<void>;
 }
 

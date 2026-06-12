@@ -1,14 +1,13 @@
 require('reflect-metadata');
 
 const net = require('node:net');
-const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const connector = require('../../../../../packages/stream-connector/dist');
-const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkFramework } = require('../../../../../packages/nestjs/dist');
+const { ZLINK_CHANNEL_CLIENT } = require('../../../../../packages/nestjs/dist');
 const { closeNestRuntime, waitForShutdown } = require('../runtime-support');
 const { createChannelClient, createRegistryClient } = require('../discovery-support');
-const { AuthenticateSessionHandler } = require('./Sessions/Handlers/authenticate-session-handler');
 const { BingoSession } = require('./Sessions/bingo-session');
+const { createBingoSessionModule, getSessionAuthenticator } = require('./bingo-session-module');
 const { SampleNames, SampleTimings } = require('../Configuration/sample-names');
 const { loadSampleConfig } = require('../Configuration/sample-config');
 const { PacketNames, bingoNotificationsReq, withPlayerIdentity } = require('../../Shared/Contracts/messages');
@@ -17,10 +16,7 @@ import type { Server, Socket } from 'node:net';
 import type { ZLinkChannelClient } from '../../../../packages/framework/dist';
 import type { BingoChannelClient } from '../discovery-support';
 import type { BingoSession as BingoSessionType } from './Sessions/bingo-session';
-import type {
-  BingoActorRef,
-  PlayerIdentity
-} from '../../Shared/Contracts/messages';
+import type { BingoActorRef } from '../../Shared/Contracts/messages';
 
 type TcpEndpoint = {
   host: string;
@@ -64,31 +60,16 @@ async function bootstrap(): Promise<void> {
   const play = await registry.resolve(SampleNames.playService);
   const notifications = await registry.resolve(SampleNames.notificationService);
   const notificationClient = await createChannelClient(SampleNames.notificationChannel, notifications.endpoint);
-
-  class BingoSessionModule {}
-
-  Module({
-    imports: [
-      ZLinkModule.forRootFactory({
-        useFactory: () => zlinkFramework()
-          .clientServerChannel(SampleNames.apiChannel, (channel) => channel
-            .client(api.endpoint))
-          .clientServerChannel(SampleNames.playChannel, (channel) => channel
-            .client(play.endpoint))
-          .build()
-      })
-    ],
-    providers: [
-      AuthenticateSessionHandler
-    ]
-  })(BingoSessionModule);
-
+  const BingoSessionModule = createBingoSessionModule({
+    apiEndpoint: api.endpoint,
+    playEndpoint: play.endpoint
+  });
   const app = await NestFactory.createApplicationContext(BingoSessionModule, {
     logger: false,
     abortOnError: false
   });
   const channelClient = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-  const authenticate = app.get(AuthenticateSessionHandler, { strict: false });
+  const authenticate = getSessionAuthenticator(app);
 
   const streamServer = net.createServer((socket: Socket) => {
     const transport = new StreamTransport(socket);

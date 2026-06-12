@@ -59,7 +59,7 @@
 | 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
-| `handlerGroups: ['...']`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `zlinkHandlers('...', ...)` provider group 과 channel 매핑을 조합해서 노출 범위를 제한한다 |
+| `handlerGroups: ['...']`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | handler class decorator 의 group 과 channel 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `handlerGroups`에 여러 그룹을 넣어 그룹들의 합집합을 한 채널에 노출한다 |
 | `handlerGroups`가 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
 | client-server channel에서 `spotRouteEgress`만 등록하고 client capability 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |

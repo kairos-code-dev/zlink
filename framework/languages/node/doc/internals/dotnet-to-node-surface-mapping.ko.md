@@ -108,7 +108,7 @@ builder 람다(`channel => { ... }`) 패턴은 NestJS 의 선언적 options 객�
 dotnet builder 메서드 한 개 = node options 의 키 한 개로 1:1 대응시키는 것을
 기본으로 한다(§5 표 참조).
 `AddRequestHandler<T>()` 처럼 handler type 을 등록하는 흐름은 NestJS 에서
-`zlinkHandlers('group').request(Handler, 'Packet').providers()` provider 등록으로 옮긴다.
+`zlinkRequestHandler('group', 'Packet')` decorator 등록으로 옮긴다.
 channel 의 `handlerGroups` 는 어떤 provider group 을 이 channel 에 노출할지 정한다.
 
 ### 3.2 lifecycle 매핑
@@ -151,7 +151,7 @@ provider token 으로 주입 가능하게 등록한다.
 | `ValueTask` / `ValueTask<T>` / `Task<T>` | `Promise<void>` / `Promise<T>` | async submit 기본 |
 | `Async<T>` / `HandleAsync` / `StartAsync` | `submit<T>()` / `handle()` / `start()` | async suffix 를 이름으로 옮기지 않음 |
 | `CancellationToken cancellationToken` | `signal?: AbortSignal` (선택 인자) 또는 생략 | handler 시그니처를 짧게 유지 |
-| attribute `[ZLinkRequest]` | `zlinkHandlers(...).request(Handler, 'Packet').providers()` provider group | §4.1 |
+| attribute `[ZLinkRequest]` | `zlinkRequestHandler(group, packet)` class decorator + NestJS provider | §4.1 |
 | `[ZLinkPacket("name")]` (class) | class decorator `@ZLinkPacket('name')` | packet key 지정 |
 | `record` / `readonly record struct` | `interface` 또는 `type`(불변 객체) | DTO |
 | `enum` | `enum`(문자열 값 권장) 또는 union 리터럴 | wire 값은 코드로 확인 |
@@ -198,11 +198,7 @@ export class GetPriceHandler implements ZLinkRequestHandler<PriceRequest, PriceR
       },
     }),
   ],
-  providers: [
-    ...zlinkHandlers('price')
-      .request(GetPriceHandler, 'GetPrice')
-      .providers(),
-  ],
+  providers: [GetPriceHandler],
 })
 export class PriceModule {}
 ```
@@ -220,7 +216,7 @@ interface 로 handler 를 **찾고**, 실제 노출은 명시적 등록(`AddHand
 node 는 다음으로 매핑한다.
 
 - **찾기**: NestJS `DiscoveryService` 로 provider 를 훑고,
-  `zlinkHandlers(...)` builder 가 provider handler type 에 붙인 metadata 로 handler 후보를
+  handler decorator 가 provider handler type 에 붙인 metadata 로 handler 후보를
   모은다.
 - **노출**: dotnet 과 동일하게 **scan ≠ 자동 노출**이다. 실제 channel 노출은
   module options 의 `handlerGroups: [...]` 가 정한다.

@@ -179,11 +179,6 @@ export interface NumberDrawnNotify {
   state: unknown;
 }
 
-type ZLinkMessage = {
-  data(): Buffer;
-  close(): void;
-};
-
 function actorDisplayName(actorId: string): string {
   return actorId.replace('player-', 'Player ');
 }

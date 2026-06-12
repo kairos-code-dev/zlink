@@ -1,4 +1,4 @@
-const { Inject } = require('@nestjs/common');
+const { Inject, Injectable } = require('@nestjs/common');
 const { PacketNames, gameStateNotify, placeMarkRes } = require('../../../../../../Shared/Contracts/messages');
 const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
 import type { TicTacToeGameCreator as TicTacToeGameCreatorType } from '../../../../Application/GameCreation/tictactoe-game-creator';
@@ -7,8 +7,9 @@ import type {
   PlaceMarkRes
 } from '../../../../../../Shared/Contracts/messages';
 
+@Injectable()
 class PlayActorPlaceMarkHandler {
-  constructor(private readonly games: TicTacToeGameCreatorType) {}
+  constructor(@Inject(TicTacToeGameCreator) private readonly games: TicTacToeGameCreatorType) {}
 
   async handle(request: PlaceMarkInternalReq): Promise<PlaceMarkRes> {
     if (request.actor.roomId === undefined) {
@@ -23,10 +24,13 @@ class PlayActorPlaceMarkHandler {
       }
       await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
     }
+    if (state.status === 'Won' || state.status === 'Draw' || state.status === 'TurnTimedOut') {
+      setImmediate(() => {
+        void this.games.cleanupFinishedRoom(room);
+      });
+    }
     return placeMarkRes(room.roomId, request.actor.actorId, request.cell, state);
   }
 }
-
-Inject(TicTacToeGameCreator)(PlayActorPlaceMarkHandler, undefined, 0);
 
 export { PlayActorPlaceMarkHandler };

@@ -176,25 +176,37 @@ test('node framework samples exercise the real NestJS application context', () =
   }
 
   const serverRoles = [
-    ['TicTacToe.Ts/Server/Api/main.ts', 'TicTacToeApiModule'],
-    ['TicTacToe.Ts/Server/Play/main.ts', 'TicTacToePlayModule'],
-    ['Bingo.Ts/Server/Api/main.ts', 'BingoApiModule'],
-    ['Bingo.Ts/Server/Play/main.ts', 'BingoPlayModule'],
-    ['Bingo.Ts/Server/Registry/main.ts', 'BingoRegistryModule'],
-    ['Bingo.Ts/Server/Session/main.ts', 'BingoSessionModule']
+    ['TicTacToe.Ts/Server/Api/main.ts', 'TicTacToe.Ts/Server/Api/tictactoe-api-module.ts', 'createTicTacToeApiModule'],
+    ['TicTacToe.Ts/Server/Play/main.ts', 'TicTacToe.Ts/Server/Play/tictactoe-play-module.ts', 'createTicTacToePlayModule'],
+    ['Bingo.Ts/Server/Api/main.ts', 'Bingo.Ts/Server/Api/bingo-api-module.ts', 'createBingoApiModule'],
+    ['Bingo.Ts/Server/Play/main.ts', 'Bingo.Ts/Server/Play/bingo-play-module.ts', 'createBingoPlayModule'],
+    ['Bingo.Ts/Server/Registry/main.ts', 'Bingo.Ts/Server/Registry/bingo-registry-module.ts', 'createBingoRegistryModule'],
+    ['Bingo.Ts/Server/Session/main.ts', 'Bingo.Ts/Server/Session/bingo-session-module.ts', 'createBingoSessionModule']
   ];
-  for (const [relative, moduleName] of serverRoles) {
-    const content = fs.readFileSync(path.join(samplesRoot, relative), 'utf8');
+  for (const [mainRelative, moduleRelative, factoryName] of serverRoles) {
+    const main = fs.readFileSync(path.join(samplesRoot, mainRelative), 'utf8');
+    const module = fs.readFileSync(path.join(samplesRoot, moduleRelative), 'utf8');
+    if (!main.includes(factoryName)) {
+      missing.push(`${mainRelative}:${factoryName}`);
+    }
+    if (!main.includes('NestFactory.createApplicationContext')) {
+      missing.push(`${mainRelative}:NestFactory.createApplicationContext`);
+    }
+    for (const text of ['providers: [', "require('@nestjs/common')", 'ZLinkModule.forRoot']) {
+      if (main.includes(text)) {
+        hiddenServerRuntime.push(`${mainRelative}:${text}`);
+      }
+    }
     for (const text of [
       "require('@nestjs/common')",
-      "require('@nestjs/core')",
-      'ZLinkModule.forRoot',
-      'NestFactory.createApplicationContext',
-      `})(${moduleName});`
+      'ZLinkModule.forRoot'
     ]) {
-      if (!content.includes(text)) {
-        missing.push(`${relative}:${text}`);
+      if (!module.includes(text)) {
+        missing.push(`${moduleRelative}:${text}`);
       }
+    }
+    if (!/providers:\s*(?:\[|zlinkDiscoverProviders)/.test(module)) {
+      missing.push(`${moduleRelative}:providers`);
     }
   }
 
@@ -332,11 +344,11 @@ test('Bingo TypeScript sample uses registry discovery instead of direct server p
   const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
   const session = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
-  const registry = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'main.ts'), 'utf8');
+  const registryHandlers = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'Handlers', 'registry-handlers.ts'), 'utf8');
   const discovery = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'discovery-support.ts'), 'utf8');
   const required = [
-    [registry, 'RegisterServiceHandler'],
-    [registry, 'ResolveServiceHandler'],
+    [registryHandlers, 'RegisterServiceHandler'],
+    [registryHandlers, 'ResolveServiceHandler'],
     [discovery, 'createRegistryClient'],
     [play, 'registry.register(SampleNames.playService'],
     [api, 'registry.resolve(SampleNames.playService'],
@@ -534,7 +546,7 @@ test('node client scenarios follow the common sample document order', () => {
 
 test('node samples use the codecs required by the common specs', () => {
   const ticTacToeClient = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Client', 'tictactoe-client-scenario.ts'), 'utf8');
-  const ticTacToePlay = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const ticTacToePlay = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'tictactoe-play-module.ts'), 'utf8');
   const ticTacToeContracts = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Shared', 'Contracts', 'messages.ts'), 'utf8');
   const bingoClient = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Client', 'main.ts'), 'utf8');
   const bingoSession = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Session', 'main.ts'), 'utf8');
@@ -580,7 +592,7 @@ test('node samples use the codecs required by the common specs', () => {
 
 test('TicTacToe server uses framework stream session instead of connector framing', () => {
   const checked = [
-    'Server/Play/main.ts',
+    'Server/Play/tictactoe-play-module.ts',
     'Server/Play/Adapters/ZLink/Actors/play-actor.ts',
     'Server/Play/Adapters/ZLink/Sessions/play-session.ts',
     'Server/Play/Adapters/ZLink/Sessions/play-session-factory.ts',
@@ -598,7 +610,7 @@ test('TicTacToe server uses framework stream session instead of connector framin
     }
   }
 
-  const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const playModule = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'tictactoe-play-module.ts'), 'utf8');
   const playSession = fs.readFileSync(path.join(
     samplesRoot,
     'TicTacToe.Ts',
@@ -637,7 +649,7 @@ test('TicTacToe server uses framework stream session instead of connector framin
     'actorManager.getOrCreate',
     'player.actor.push('
   ]) {
-    if (!`${playMain}\n${playSession}\n${playActor}\n${playJoinHandler}`.includes(text)) {
+    if (!`${playModule}\n${playSession}\n${playActor}\n${playJoinHandler}`.includes(text)) {
       missing.push(text);
     }
   }
@@ -695,6 +707,8 @@ test('node samples keep contracts separate from sample configuration and applica
 test('TicTacToe TypeScript sample uses declarative handler registration', () => {
   const apiMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const apiModule = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Api', 'tictactoe-api-module.ts'), 'utf8');
+  const playModule = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'tictactoe-play-module.ts'), 'utf8');
   const apiHandler = fs.readFileSync(path.join(
     samplesRoot,
     'TicTacToe.Ts',
@@ -713,33 +727,104 @@ test('TicTacToe TypeScript sample uses declarative handler registration', () => 
     'Handlers',
     'create-game-handler.ts'
   ), 'utf8');
+  const ticTacToeTimerHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'Handlers',
+    'tictactoe-game-timer-handler.ts'
+  ), 'utf8');
+  const bingoPlayModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'bingo-play-module.ts'), 'utf8');
+  const bingoTimerHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'Handlers',
+    'bingo-room-timer-handler.ts'
+  ), 'utf8');
   const nestPackage = fs.readFileSync(path.join(workspaceRoot, 'packages', 'nestjs', 'src', 'index.ts'), 'utf8');
   const required = [
     [nestPackage, 'export function zlinkRequestHandler'],
-    [apiHandler, "zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)"],
-    [playHandler, "zlinkRequestHandler('play', PacketNames.createGame)"],
-    [apiMain, '.handlerGroup(\'api\')'],
-    [playMain, '.handlerGroup(\'play\')'],
-    [playMain, '.streamNode(SampleNames.playStream']
+    [nestPackage, 'export function zlinkSpotTimerHandler'],
+    [apiHandler, "@zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)"],
+    [playHandler, "@zlinkRequestHandler('play', PacketNames.createGame)"],
+    [ticTacToeTimerHandler, 'class TicTacToeGameTimerHandler'],
+    [ticTacToeTimerHandler, '@zlinkSpotTimerHandler()'],
+    [bingoTimerHandler, 'class BingoRoomTimerHandler'],
+    [bingoTimerHandler, '@zlinkSpotTimerHandler()'],
+    [apiModule, '.handlerGroup(\'api\')'],
+    [playModule, '.handlerGroup(\'play\')'],
+    [playModule, '.streamNode(SampleNames.playStream']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
   const violations = [];
+  if (nestPackage.includes('export function zlinkHandlers')) {
+    violations.push('@zlink-systems/nestjs:zlinkHandlers');
+  }
+  for (const [name, content] of [
+    ['TicTacToe.Ts/Server/Api/Handlers/authenticate-player-handler.ts', apiHandler],
+    ['TicTacToe.Ts/Server/Play/Adapters/ZLink/Handlers/create-game-handler.ts', playHandler],
+    ['TicTacToe.Ts/Server/Play/Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler.ts', ticTacToeTimerHandler],
+    ['Bingo.Ts/Server/Play/Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler.ts', bingoTimerHandler]
+  ]) {
+    if (/zlink(?:Request|Send|Publish|SpotActorRequest|EntrySpotActorRequest|SpotTimer)Handler\([^;\n]*\)\([A-Z]/.test(content)) {
+      violations.push(`${name}:manual-decorator-call`);
+    }
+  }
   for (const [name, content] of [
     ['TicTacToe.Ts/Server/Api/main.ts', apiMain],
-    ['TicTacToe.Ts/Server/Play/main.ts', playMain]
+    ['TicTacToe.Ts/Server/Play/main.ts', playMain],
+    ['Bingo.Ts/Server/Api/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8')],
+    ['Bingo.Ts/Server/Play/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8')],
+    ['Bingo.Ts/Server/Registry/main.ts', fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Registry', 'main.ts'), 'utf8')]
   ]) {
     if (content.includes('zlinkHandlers')) {
       violations.push(name);
     }
   }
   for (const text of [
+    'providers: [',
+    "require('@nestjs/common')",
+    'ZLinkModule.forRoot',
+    'CreateGameHandler',
+    'AuthenticatePlayerHandler',
     'PlayActorJoinGameHandler',
     'PlayActorPlaceMarkHandler'
   ]) {
-    if (playMain.includes(text)) {
-      violations.push(`TicTacToe.Ts/Server/Play/main.ts:${text}`);
+    for (const [name, content] of [
+      ['TicTacToe.Ts/Server/Api/main.ts', apiMain],
+      ['TicTacToe.Ts/Server/Play/main.ts', playMain]
+    ]) {
+      if (content.includes(text)) {
+        violations.push(`${name}:${text}`);
+      }
+    }
+  }
+  for (const text of [
+    'TicTacToeGameTimerHandler',
+    'BingoRoomTimerHandler',
+    'CreateGameHandler',
+    'SubmitBingoCardChannelHandler',
+    'MatchBingoActorHandler',
+    'SubmitBingoCardHandler'
+  ]) {
+    for (const [name, content] of [
+      ['TicTacToe.Ts/Server/Play/tictactoe-play-module.ts', playModule],
+      ['Bingo.Ts/Server/Play/bingo-play-module.ts', bingoPlayModule]
+    ]) {
+      if (content.includes(text)) {
+        violations.push(`${name}:${text}`);
+      }
     }
   }
 
@@ -794,7 +879,7 @@ test('Bingo TypeScript sample separates room lifecycle from pure bingo game rule
 });
 
 test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
-  const playMain = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const playModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'bingo-play-module.ts'), 'utf8');
   const roomSpot = fs.readFileSync(path.join(
     samplesRoot,
     'Bingo.Ts',
@@ -849,29 +934,46 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
   const required = [
     [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
     [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
-    [playMain, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
-    [playMain, '.spotNode(SampleNames.roomSpotType'],
-    [playMain, '.entrySpot(BingoEntrySpot)'],
-    [playMain, '.spotFactory(BingoRoomSpot)'],
+    [playModule, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
+    [playModule, '.spotNode(SampleNames.roomSpotType'],
+    [playModule, '.entrySpot(BingoEntrySpot)'],
+    [playModule, '.spotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
-    [roomSpot, 'addActorPacket(SubmitBingoCardHandler, PlayerActor, PacketNames.submitBingoCardReq)'],
     [roomSpot, 'onActorJoin(actor: PlayerActorType'],
     [roomSpot, 'onPostActorJoined(actor: PlayerActorType'],
     [roomSpot, 'onActorLeft(actor: PlayerActorType'],
     [roomSpot, 'onActorDisconnected(actor: PlayerActorType'],
     [entrySpot, 'implements ZLinkEntrySpot<PlayerActorType>'],
-    [entrySpot, 'addActorPacket(MatchBingoActorHandler, PlayerActor, PacketNames.matchBingoReq)'],
     [entrySpot, 'onPostActorJoined(actor: PlayerActorType'],
     [entrySpot, 'onActorLeft(actor: PlayerActorType'],
     [entrySpot, 'onActorDisconnected(actor: PlayerActorType'],
-    [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>'],
-    [submitHandler, 'implements ZLinkSpotActorRequestHandler<BingoRoomSpot, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>']
+    [matchHandler, 'zlinkEntrySpotActorRequestHandler'],
+    [matchHandler, 'entrySpot: () => BingoEntrySpot'],
+    [matchHandler, 'actor: () => PlayerActor'],
+    [matchHandler, 'packetName: PacketNames.matchBingoReq'],
+    [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpotType, PlayerActorType, MatchBingoReq, MatchBingoRes>'],
+    [submitHandler, 'zlinkSpotActorRequestHandler'],
+    [submitHandler, 'spot: () => BingoRoomSpot'],
+    [submitHandler, 'actor: () => PlayerActor'],
+    [submitHandler, 'packetName: PacketNames.submitBingoCardReq'],
+    [submitHandler, 'implements ZLinkSpotActorRequestHandler<BingoRoomSpotType, PlayerActorType, SubmitBingoCardReq, SubmitBingoCardRes>']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
     .map(([, text]) => text);
 
+  const violations = [];
+  for (const [name, content] of [
+    ['Bingo.Ts/Server/Play/Adapters/ZLink/Spots/bingo-room-spot.ts', roomSpot],
+    ['Bingo.Ts/Server/Play/Adapters/ZLink/Spots/bingo-entry-spot.ts', entrySpot]
+  ]) {
+    if (content.includes('addActorPacket')) {
+      violations.push(name);
+    }
+  }
+
   assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
 });
 
 test('node sample runners own server process orchestration', () => {
@@ -967,6 +1069,22 @@ test('node session samples do not implement sample-only actor session stores', (
   assert.deepEqual(violations, []);
 });
 
+test('node samples do not keep unreachable TypeScript files', () => {
+  const violations = findUnreachableSampleTypeScriptFiles();
+
+  assert.deepEqual(violations, []);
+});
+
+test('node framework source tree does not keep emitted JavaScript beside TypeScript sources', () => {
+  const srcRoot = path.join(workspaceRoot, 'packages', 'framework', 'src');
+  const emitted = listFiles(srcRoot)
+    .filter((file) => file.endsWith('.js'))
+    .map((file) => path.relative(workspaceRoot, file))
+    .sort();
+
+  assert.deepEqual(emitted, []);
+});
+
 test('node run_samples.sh executes every sample self-check', () => {
   const output = childProcess.execFileSync(path.join(samplesRoot, 'run_samples.sh'), {
     cwd: workspaceRoot,
@@ -1004,6 +1122,111 @@ function sampleSourceFiles(root) {
     }
   }
   return files;
+}
+
+function listFiles(root) {
+  const files = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const fullPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'dist' || entry.name === 'node_modules') {
+        continue;
+      }
+      files.push(...listFiles(fullPath));
+    } else if (entry.isFile()) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+}
+
+function findUnreachableSampleTypeScriptFiles() {
+  const files = new Set(listFiles(samplesRoot).filter((file) => file.endsWith('.ts')));
+  const used = new Set();
+  const queue = [];
+
+  function add(file) {
+    const normalized = path.normalize(file);
+    if (files.has(normalized) && !used.has(normalized)) {
+      used.add(normalized);
+      queue.push(normalized);
+    }
+  }
+
+  for (const sample of requiredSamples) {
+    for (const entry of [
+      'Client/main.ts',
+      'Server/Api/main.ts',
+      'Server/Play/main.ts',
+      'Server/Registry/main.ts',
+      'Server/Session/main.ts'
+    ]) {
+      add(path.join(samplesRoot, sample, entry));
+    }
+  }
+
+  while (queue.length > 0) {
+    const file = queue.shift();
+    const content = fs.readFileSync(file, 'utf8');
+    addDiscoveredProviderFiles(file, content, add, files);
+    for (const specifier of importSpecifiers(content)) {
+      const resolved = resolveSampleImport(file, specifier, files);
+      if (resolved !== null) {
+        add(resolved);
+      }
+    }
+  }
+
+  return [...files]
+    .filter((file) => !used.has(file))
+    .map((file) => path.relative(samplesRoot, file))
+    .sort();
+}
+
+function addDiscoveredProviderFiles(file, content, add, files) {
+  const discoveryPattern = /zlinkDiscoverProviders\(path\.join\(__dirname,\s*([^)]*)\)\)/g;
+  for (const match of content.matchAll(discoveryPattern)) {
+    const parts = [...match[1].matchAll(/'([^']+)'/g)].map((part) => part[1]);
+    if (parts.length === 0) {
+      continue;
+    }
+    const discoveredRoot = path.resolve(path.dirname(file), ...parts);
+    for (const candidate of files) {
+      if (candidate.startsWith(`${discoveredRoot}${path.sep}`)) {
+        add(candidate);
+      }
+    }
+  }
+}
+
+function importSpecifiers(content) {
+  const specifiers = [];
+  for (const pattern of [
+    /require\(['"]([^'"]+)['"]\)/g,
+    /from ['"]([^'"]+)['"]/g,
+    /import\(['"]([^'"]+)['"]\)/g
+  ]) {
+    for (const match of content.matchAll(pattern)) {
+      specifiers.push(match[1]);
+    }
+  }
+  return specifiers;
+}
+
+function resolveSampleImport(fromFile, specifier, files) {
+  if (!specifier.startsWith('.')) {
+    return null;
+  }
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  for (const candidate of [
+    `${base}.ts`,
+    path.join(base, 'index.ts')
+  ]) {
+    if (files.has(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function assertOrdered(name, content, snippets) {

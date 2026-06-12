@@ -13,6 +13,7 @@ import type {
   ZLinkClientServerChannelBuilder,
   ZLinkDealerMeshChannelBuilder,
   ZLinkDiscoveryBuilder,
+  ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
@@ -137,9 +138,25 @@ export interface ZLinkSpotNodeOptions {
   readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
+  readonly entrySpotActorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
+  readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly attachedChannelClients?: Readonly<Record<string, ZLinkSpotAttachedChannelClientOptions>>;
   readonly attachedSpotPublisherClients?: Readonly<Record<string, ZLinkSpotPublisherClientOptions>>;
   readonly acceptedSpotRouteChannels?: Readonly<Record<string, ZLinkSpotRouteChannelAcceptanceOptions>>;
+}
+
+export interface ZLinkEntrySpotActorRequestHandlerRegistration {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly actorType: Type<ZLinkActor>;
+  readonly handlerType: Type;
+  readonly packetName: string;
+}
+
+export interface ZLinkSpotActorRequestHandlerRegistration {
+  readonly spotType: Type<ZLinkSpot>;
+  readonly actorType: Type<ZLinkActor>;
+  readonly handlerType: Type;
+  readonly packetName: string;
 }
 
 export interface ZLinkSpotRouterCapabilityOptions {

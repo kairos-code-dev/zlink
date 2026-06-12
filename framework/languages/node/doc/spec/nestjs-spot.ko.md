@@ -126,17 +126,19 @@ dotnet 의 `options.AddSpotMesh("game.stage", mesh => ...)` 람다는 NestJS 의
 선언적 options 객체 `spotNodes[name] = {...}` 와 전역 `discovery` 로 옮긴다.
 dotnet builder 메서드 한 개가 node options 키 한 개에 1:1 로 대응한다.
 
-Spot 관련 application 객체는 NestJS DI 가 소유한다. `entrySpotType`, Spot factory
-type, packet handler type, actor handler type, timer handler type 은 모두
-`providers` 에 등록되어야 한다. framework 는 SpotNode 가 Entry Spot 을 만들거나
-SpotManager 가 user Spot 을 만들 때 NestJS provider resolver 를 통해 해당 타입을
-resolve 한다. provider 로 등록되지 않은 경우에만 NestJS 밖에서 쓰는 저수준
-framework 경로가 직접 생성 fallback 을 사용할 수 있다.
+Spot 관련 application 객체는 NestJS DI 가 소유한다. `entrySpotType` 과 Spot
+factory type 은 module 의 `providers` 에 직접 등록한다. packet handler type,
+actor handler type, timer handler type 은 각 handler class 에 decorator 를 붙이고
+module 이 `zlinkDiscoverProviders(...)` 로 가져온다. framework 는 SpotNode 가
+Entry Spot 을 만들거나 SpotManager 가 user Spot 을 만들 때 NestJS provider
+resolver 를 통해 해당 타입을 resolve 한다. provider 로 등록되지 않은 경우에만
+NestJS 밖에서 쓰는 저수준 framework 경로가 직접 생성 fallback 을 사용할 수 있다.
 
-node/channel handler group 은 `main.ts` 의 module 설정에서 고른다. 그러나 Spot
-packet, subscribe, actor, timer handler 는 `main.ts` 에서 한꺼번에 나열하지 않고
-Entry Spot 또는 user Spot 의 `configure()` 에서 registry 에 등록한다. Spot 이 어떤
-메시지를 처리하는지는 Spot 자체의 책임이기 때문이다.
+node/channel handler group 은 module 설정에서 고른다. 그러나 Spot packet,
+subscribe, actor, timer handler 는 `main.ts` 에서 한꺼번에 나열하지 않는다. handler
+class 가 decorator 로 자신의 역할을 드러내고, Entry Spot 또는 user Spot 이 자기
+registry 에 필요한 handler 를 연결한다. Spot 이 어떤 메시지를 처리하는지는 Spot
+자체의 책임이기 때문이다.
 
 ```ts
 @Module({
@@ -159,7 +161,7 @@ Entry Spot 또는 user Spot 의 `configure()` 에서 registry 에 등록한다. 
   providers: [
     StageEntrySpot,
     StageSpot,
-    /* handler provider 들 */
+    ...zlinkDiscoverProviders(path.join(__dirname, 'Handlers')),
   ],
 })
 export class AppModule {}
@@ -355,10 +357,8 @@ handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. d
 | --- | --- | --- |
 | `addPacket(Handler)` | `AddPacket<THandler>()` | spot packet / request handler |
 | `addSubscribe(Handler, topic)` | `AddSubscribe<THandler>(topic)` | topic subscription handler |
-| `addHandler(Handler)` | `AddHandler<THandler>()` | actor packet handler(이름 자동) |
-| `addHandler(Handler, packetName)` | `AddHandler<THandler>(packetName)` | actor packet handler(이름 명시) |
-| `addActorPacket(Handler, Actor)` | `AddActorPacket<THandler, TActor>()` | actor 타입 명시 packet handler |
-| `addActorPacket(Handler, Actor, packetName)` | `AddActorPacket<THandler, TActor>(packetName)` | 위 + 이름 명시 |
+| `addHandler(Handler)` | `AddHandler<THandler>()` | spot-local handler |
+| `addHandler(Handler, packetName)` | `AddHandler<THandler>(packetName)` | 이름을 명시한 spot-local handler |
 | `onActorDisconnected(actor)` | `OnActorDisconnectedAsync(...)` | disconnect 후 callback |
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
@@ -858,13 +858,15 @@ export class StagePublishController {
 
 ## 7. subscribe 모델
 
-이 절은 `SPOT` 안에서 packet handler, actor packet handler, subscribe handler, timer 가
+이 절은 `SPOT` 안에서 packet handler, subscribe handler, timer 가
 어떤 모양으로 등록되는지를 정리한다. 핵심은 NestJS channel handler group 이 아니라
 `configure()` 안에서 직접 등록하는 점이다. 실제 handler 인터페이스는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 를 기준으로 본다.
 
 현재 `SPOT` 모델은 spot 객체가 `configure()` 단계에서 직접 handler 를 등록하는
-쪽을 기본으로 본다.
+쪽을 기본으로 본다. actor packet handler 는 예외다. actor packet handler 는
+`zlinkEntrySpotActorRequestHandler(...)` 또는 `zlinkSpotActorRequestHandler(...)`
+decorator 로 등록한다.
 
 ```ts
 @Injectable()
@@ -876,7 +878,6 @@ export class StageSpot implements ZLinkSpot {
   configure(): void {
     this.context.handlers.addPacket(GetStageStateHandler);
     this.context.handlers.addPacket(ReportStageStateHandler);
-    this.context.handlers.addActorPacket(PlaceMarkHandler, PlayerActor, 'PlaceMarkReq');
     this.context.handlers.addSubscribe(StageStateUpdatedHandler, 'stage.state.updated');
   }
 
@@ -913,7 +914,7 @@ export class StageSpot implements ZLinkSpot {
 timer handler 는 아래처럼 tick metadata 를 받는다.
 
 ```ts
-@Injectable()
+@zlinkSpotTimerHandler()
 export class StageHeartbeatHandler implements ZLinkSpotTimerHandler<StageSpot> {
   async handle(spot: StageSpot, tick: ZLinkTimerTick): Promise<void> {
   }

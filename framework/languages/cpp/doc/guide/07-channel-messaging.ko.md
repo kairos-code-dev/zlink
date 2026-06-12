@@ -126,6 +126,7 @@ request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 
 양쪽 application 코드는 typed DTO만 본다.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant App as Api: 핸들러 코드
     participant CC as channel client

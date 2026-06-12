@@ -66,10 +66,10 @@ app.add_hosted_service (std::make_unique<season_scheduler_t> ());
 
 | 진입점 | 역할 | 다루는 장 |
 |--------|------|-----------|
-| `app.config()` | 설정 소스 로딩과 조회 | [4장](./04-configuration.ko.md) |
-| `app.logging()` | 로그 출력 대상 (`use_file(...)` 등) | 11장 |
-| `app.monitoring()` / `app.metrics()` / `app.health()` | 관측·상태 | 11장 |
-| `app.add_zlink_framework(람다)` | **zlink 토폴로지 선언** — 채널/SPOT/stream/HTTP/registry | 5~10장 |
+| `app.config()` | 설정 소스 로딩과 조회 | [5장](./05-configuration.ko.md) |
+| `app.logging()` | 로그 출력 대상 (`use_file(...)` 등) | 12장 |
+| `app.monitoring()` / `app.metrics()` / `app.health()` | 관측·상태 | 12장 |
+| `app.add_zlink_framework(람다)` | **zlink 토폴로지 선언** — 채널/SPOT/stream/HTTP/registry | 6~11장 |
 | `app.add_module(...)` / `add_zlink_framework<TModule>()` | 구성 패키징 (아래 §6) | — |
 | `app.advanced()` | services/handlers/zlink builder 직접 접근 (탈출구) | — |
 
@@ -129,6 +129,9 @@ class create_game_http_handler_t
 `dependency_list_t`에 적은 순서대로 컨테이너가 resolve해 생성자에 넣어 준다.
 `channel_client_t`, `logger_t<T>` 같은 프레임워크 서비스도 같은 방식으로 받는다.
 
+DI 컨테이너 전체 API(등록 방법 3종, 팩토리 람다, scope 종류, captive dependency 주의사항)는
+[4장 DI 컨테이너](./04-di-container.ko.md)에서 다룬다.
+
 ## 4. 핸들러 모델
 
 핸들러는 실행 컨텍스트에 따라 두 종류로 나뉜다. 구조와 수명이 완전히 다르므로
@@ -167,7 +170,7 @@ class authenticate_player_handler_t
 
 | 상태 성격 | 둘 곳 |
 |-----------|-------|
-| 가변 도메인 상태 (게임 룸, 매치 진행) | **SPOT** — 직렬 실행이 보장되어 락이 필요 없다 ([6장](./06-spot.ko.md)) |
+| 가변 도메인 상태 (게임 룸, 매치 진행) | **SPOT** — 직렬 실행이 보장되어 락이 필요 없다 ([8장](./08-spot.ko.md)) |
 | 불변 구성 (topology, 설정) | 싱글톤 서비스 — 읽기 전용이라 안전 |
 | 공유 인프라 (캐시, 카운터) | 싱글톤 서비스 + **자체 동기화 필수** (mutex/atomic) |
 
@@ -242,7 +245,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
 | 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
 | DI | `dependency_types` + 생성자 주입 | 없음 — `attach_channel_client`로 채널 연결 | 없음 — `attach_channel_client`로 채널 연결 |
 
-직렬 실행이 보장되는 이유와 `co_await` 중에도 안전한 이유는 [6장 §1](./06-spot.ko.md)에서 다룬다.
+직렬 실행이 보장되는 이유와 `co_await` 중에도 안전한 이유는 [8장 §1](./08-spot.ko.md)에서 다룬다.
 
 ## 5. 실행 모델: task_t와 result_t
 
@@ -276,6 +279,7 @@ handle (const create_game_http_req_t &request)
 다른 핸들러를 실행**한다. 응답이 도착하면 코루틴이 그 지점부터 재개(resume)된다.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant W as worker 스레드
     participant H1 as 핸들러 A (코루틴)
@@ -320,4 +324,4 @@ class matchmaking_module_t : public zlink::framework::module_t
 app.add_zlink_framework<matchmaking_module_t> ();   // 또는 app.add_module (module);
 ```
 
-[다음: Configuration →](./04-configuration.ko.md)
+[다음: DI 컨테이너 →](./04-di-container.ko.md)

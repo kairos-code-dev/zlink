@@ -55,6 +55,7 @@ flowchart LR
   핸들러를 실행한다. 룸 하나가 외부 응답을 기다린다고 서버가 멈추지 않는다.
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
 sequenceDiagram
     participant Q as room-3187 큐
     participant W as worker 풀

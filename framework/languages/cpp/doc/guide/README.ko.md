@@ -37,6 +37,27 @@ int main (int argc, char **argv)
 | 12 | [인터페이스 카탈로그](./12-interface-catalog.ko.md) | 핸들러/옵션 표면 레퍼런스 |
 | 13 | [샘플 지도](./13-samples-map.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
 
+## 다이어그램 읽는 법
+
+이 가이드의 모든 다이어그램은 같은 시각 언어를 쓴다 — 색이 곧 개념이다.
+
+```mermaid
+flowchart LR
+    CH["채널<br/>(메시징 경로)"]:::channel
+    SP["SPOT<br/>(직렬 실행 영역)"]:::spot
+    AC["actor / session"]:::actor
+    ST["stream<br/>(외부 경계)"]:::stream
+    RG["registry / 인프라"]:::infra
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+```
+
+여러 장이 같은 TicTacToe/Bingo 토폴로지를 그리며, 장마다 확대 위치만 바뀐다 —
+1장에서 전체 지도를 보고, 각 기능 장에서 그 일부를 확대해 들어간다.
+
 ## 관련 문서
 
 - HTTP **client**(요청을 보내는 쪽)는 별도 산출물이다 —

@@ -41,6 +41,30 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
   (`add_message_pack<T>()`)을 함께 한다.
 - 같은 그룹을 여러 채널이 공유할 수 있고, 한 채널에 그룹 하나를 연결한다.
 
+위 선언이 만들어 내는 것:
+
+```mermaid
+flowchart LR
+    subgraph ApiProc["Api 서버 프로세스"]
+        AC["channel client<br/>tictactoe.play"]:::channel
+    end
+    subgraph PlayProc["Play 서버 프로세스"]
+        PS["channel server<br/>bind tcp://0.0.0.0:5561"]:::channel
+        subgraph HG["handler group: play"]
+            H1["create_game_handler_t"]
+            H2["ensure_player_actor_handler_t"]
+        end
+        PS -- "packet_name으로 라우팅" --> HG
+    end
+    AC == "request / reply<br/>(message_pack)" ==> PS
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+채널 이름(`tictactoe.play`)이 양쪽을 잇는 키다. 서버는 endpoint에 bind하고
+그룹의 핸들러로 디스패치하며, 클라이언트는 같은 이름으로 연결해 typed 요청을
+보낸다.
+
 ## 3. 클라이언트 쪽: channel_client_t
 
 요청을 보내는 프로세스는 채널을 client로 연결하고, `channel_client_t`를
@@ -98,6 +122,25 @@ auto reply = co_await _client
                .async ();
 ```
 
+request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 런타임이 처리하고,
+양쪽 application 코드는 typed DTO만 본다.
+
+```mermaid
+sequenceDiagram
+    participant App as Api: 핸들러 코드
+    participant CC as channel client
+    participant PS as Play: channel server
+    participant H as handler group "play"
+
+    App->>CC: co_await request<create_game_res_t>(...)
+    Note over App: suspend — 스레드 비점유 (3장 §5)
+    CC->>PS: create_game_req (message_pack 인코딩)
+    PS->>H: packet_name "CreateGame" → 디코딩 후 handle()
+    H-->>PS: create_game_res
+    PS-->>CC: reply 인코딩 전송
+    CC-->>App: resume — typed create_game_res_t
+```
+
 실패는 `co_await`에서 `framework_exception_t`로 던져진다 —
 [13장. 에러 처리는 3장 §5와 동일 모델](./03-concepts.ko.md).
 
@@ -123,6 +166,20 @@ options.add_fanout_channel ("bingo.notifications")
 `publisher_t`를 얻는 경로는 두 가지다 — spot 코드라면 노드에
 `attach_publisher(channel)`를 걸고 spot 쪽에서 주입받는 패턴([6장 §6](./06-spot.ko.md)),
 일반 코드라면 `app.advanced().use_zlink([&](auto &z){ auto pub = z.publisher(); ... })`.
+
+```mermaid
+flowchart LR
+    P["publisher<br/>bind tcp://0.0.0.0:5571"]:::channel
+    S1["subscriber A<br/>handler group: notifications"]:::channel
+    S2["subscriber B<br/>handler group: notifications"]:::channel
+    S3["subscriber C<br/>(topic 미구독 — 수신 없음)"]:::infra
+    P -- "topic: room-3187" --> S1
+    P -- "topic: room-3187" --> S2
+    P -.->|"room-9920만 구독"| S3
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+```
 
 ## 5. route mesh (고급)
 

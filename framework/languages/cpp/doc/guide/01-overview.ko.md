@@ -53,11 +53,42 @@
 └───────────────────────────────────────────────────────────────┘
 ```
 
-전형적인 게임 서버 예(TicTacToe 샘플의 실제 구성):
+전형적인 게임 서버 예(샘플의 실제 구성) — 이 지도를 각 장에서 확대해 들어간다.
+
+```mermaid
+flowchart LR
+    Client["게임 클라이언트"]
+    subgraph Api["Api 서버"]
+        HTTP["HTTP hosting<br/>POST /games"]:::infra
+        ApiC["채널 client"]:::channel
+    end
+    subgraph Play["Play 서버"]
+        PlayS["채널 server"]:::channel
+        SpotN["SPOT node<br/>(entry + room spots)"]:::spot
+        StreamN["stream node"]:::stream
+        ActorG["actor gateway"]:::actor
+    end
+    Registry["Registry<br/>(discovery)"]:::infra
+
+    Client -- "① HTTP 게임 생성 (9장)" --> HTTP
+    HTTP --> ApiC
+    ApiC -- "② 채널 request (5장)" --> PlayS
+    PlayS --> SpotN
+    Client -- "③ stream 접속·플레이 (8장)" --> StreamN
+    StreamN -- "relay (7장)" --> ActorG --> SpotN
+    ApiC -.->|"주소 해석 (10장)"| Registry
+    PlayS -.->|등록| Registry
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+```
 
 - **Api 서버** — HTTP로 게임 생성을 받고, 채널 클라이언트로 Play 서버에 위임
-- **Play 서버** — 채널 서버 + SPOT(게임 룸) + actor
-- **Registry 서버** — discovery 제공
+- **Play 서버** — 채널 서버 + SPOT(게임 룸) + actor + stream
+- **Registry 서버** — discovery 제공 (점선 = registry로 해석되는 연결)
 - **클라이언트** — stream connector로 Play에 접속
 
 ## 4. 산출물

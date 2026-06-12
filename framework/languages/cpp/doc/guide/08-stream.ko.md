@@ -62,6 +62,18 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 | `on_error(stream, error)` | 전송 오류 |
 | `on_disconnected(stream)` | 연결 종료 — actor unbind 등 정리 |
 
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "연결됨" as connected
+    state "인증됨 (actor 바인딩)" as authenticated
+    [*] --> connected: on_connected
+    connected --> authenticated: authenticate 패킷
+    authenticated --> authenticated: on_packet → relay (7장)
+    connected --> [*]: on_disconnected
+    authenticated --> [*]: on_disconnected → unbind_session
+```
+
 전형적인 `on_packet` 패턴은 [7장 §4](./07-actor-session.ko.md)에 있다:
 인증 패킷이면 인증 → actor 바인딩, 그 외에는 바인딩된 actor로
 `relay(header, payload)`.

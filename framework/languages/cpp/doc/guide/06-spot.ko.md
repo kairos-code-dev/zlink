@@ -13,6 +13,71 @@ spot에 입장(join)하고, spot 안에서 패킷을 처리하고, 토픽으로 
 - spot은 `entry_spot_t`(노드당 1개, 입장/매칭 담당)와 `spot_t`(룸 본체)로
   나뉜다.
 
+## 1.1 실행 컨텍스트 직렬화 — 큐 하나, 한 번에 하나
+
+spot으로 들어오는 모든 것 — actor 패킷, timer tick, join/leave — 은 **spot별
+순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를 **코루틴으로**
+실행하고, 그 핸들러가 끝나야 다음 항목을 꺼낸다.
+
+```mermaid
+flowchart LR
+    A1["actor A<br/>submit_card"]:::actor
+    A2["actor B<br/>submit_card"]:::actor
+    T1["timer<br/>draw tick"]:::infra
+    J1["actor C<br/>join 요청"]:::actor
+    subgraph SQ["room-3187 spot 큐 (도착 순서 보존)"]
+        direction LR
+        Q1["③ join"] --- Q2["② tick"] --- Q3["① submit_card"]
+    end
+    EXEC["코루틴 실행<br/>(한 번에 하나)"]:::spot
+    STATE["룸 상태<br/>락 없음"]:::spot
+
+    A1 --> SQ
+    A2 --> SQ
+    T1 --> SQ
+    J1 --> SQ
+    SQ -- dequeue --> EXEC --> STATE
+
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+```
+
+핸들러가 `co_await`로 다른 서버를 기다리는 동안에도 두 가지가 동시에 성립한다.
+
+- **spot 관점** — 큐는 그 핸들러가 끝날 때까지 다음 항목을 꺼내지 않는다.
+  suspend 지점에서도 다른 패킷이 끼어들지 않으므로 룸 상태는 안전하다.
+- **스레드 관점** — suspend된 동안 worker 스레드는 풀로 돌아가 **다른 spot의**
+  핸들러를 실행한다. 룸 하나가 외부 응답을 기다린다고 서버가 멈추지 않는다.
+
+```mermaid
+sequenceDiagram
+    participant Q as room-3187 큐
+    participant W as worker 풀
+    participant S as room spot (상태)
+    participant CH as api 채널
+    participant Q2 as room-8841 큐
+
+    Note over Q: [① submit_card(A)] [② tick] 대기 중
+    Q->>W: ① dequeue → 코루틴 시작
+    activate W
+    W->>S: 카드 검증·상태 갱신 (락 없음)
+    W->>CH: co_await request(...).async()
+    deactivate W
+    Note over S: ①이 끝나기 전 — ②는 큐에서 대기
+    Note over W: 워커는 다른 spot 처리
+    Q2->>W: room-8841 핸들러 실행
+    CH-->>W: 응답 도착 → ① resume
+    activate W
+    W->>S: 결과 반영, co_return
+    deactivate W
+    Q->>W: ② tick dequeue → 다음 코루틴
+```
+
+핸들러를 비동기로 쓰면서도 동기식 코드처럼 위에서 아래로 작성할 수 있는 이유는
+[3장 §5](./03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
+절대 겹치지 않는다"는 직렬성 보장을 더한 것이다.
+
 ## 2. 노드 선언
 
 spot은 spot mesh(디스커버리 채널) 아래 노드로 선언한다. Bingo Play 서버의 실제
@@ -41,12 +106,15 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `add_actor_factory<F>(type)` | actor factory 등록 ([7장](./07-actor-session.ko.md)) |
 | `enable_actor_gateway()` | actor gateway 활성화 ([7장](./07-actor-session.ko.md)) |
 
-## 3. Spot 클래스 작성
+## 3. room spot 작성
 
-`spot_t`(또는 `entry_spot_t`)를 상속하고 `configure`에서 패킷 핸들러를 등록한다.
+`spot_t`를 상속하고 도메인 상태를 직접 소유한다. `configure()`에서
+`add_actor_packet<&T::method>()`로 메서드를 actor 패킷 핸들러로 등록한다.
+인스턴스는 **룸(게임)마다 하나**이며 수명은 룸과 같다.
 
 ```cpp
-class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_game_t
+class bingo_room_spot_t : public zlink::framework::spot_t,
+                           public bingo_room_game_t       // 도메인 상태 직접 소유
 {
   public:
     void configure (zlink::framework::spot_context_t &context)
@@ -54,12 +122,13 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         context.handlers ().add_actor_packet<&bingo_room_spot_t::submit_card> ();
     }
 
-    // actor 패킷 핸들러: (actor, 요청 컨텍스트, typed 요청) → typed 응답
+    // 시그니처: (const TActor&, const spot_actor_request_context_t&, const TReq&) → TRes
     submit_bingo_card_res_t
     submit_card (const player_actor_t &actor,
                  const zlink::framework::spot_actor_request_context_t &context,
                  const submit_bingo_card_req_t &request)
     {
+        // bingo_room_game_t 멤버 접근 — 직렬 실행 보장, 락 불필요
         return bingo_room_game_t::submit_card (actor.actor.actor_id, request.card);
     }
 
@@ -72,12 +141,12 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
           to_stream_payload (bingo_room_join_res_t{snapshot ()}));
     }
 
-    void on_post_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 */ }
+    void on_post_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
     void on_actor_left (const player_actor_t &actor) { leave (actor.actor.actor_id); }
 };
 ```
 
-수명주기 훅 요약:
+수명주기 훅:
 
 | 훅 | 시점 |
 |----|------|
@@ -86,11 +155,17 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
 | `on_post_actor_joined(actor)` | 입장 확정 후 |
 | `on_actor_left(actor)` | 퇴장 |
 
-핸들러는 동기 반환 또는 `task_t<...>` 코루틴 둘 다 가능하다([3장 §4·§5](./03-concepts.ko.md)).
+핸들러 메서드는 동기 반환 또는 `task_t<...>` 코루틴 둘 다 가능하다.
+코루틴 중에도 spot 큐 직렬성은 유지된다([§1.1](#11-실행-컨텍스트-직렬화--큐-하나-한-번에-하나)).
+
+노드 핸들러(채널·HTTP)와의 핵심 차이 — spot_t 메서드에는
+`request_type`/`reply_type`/`topic_name`이 없고 `dependency_types` DI도 없다.
+필요한 채널 client나 publisher는 노드 선언(`attach_channel_client`)으로 연결한다([§6](#6-spot에서-바깥으로-보내기)).
 
 ## 4. entry spot: 매칭과 룸 배정
 
-entry spot은 룸에 들어가기 전 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
+entry spot은 룸에 들어가기 **전** 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
+`entry_spot_t`를 상속하며 **노드당 1개**만 생성된다.
 
 ```cpp
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
@@ -109,9 +184,18 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
         return {room_id, rooms.get (room_id).snapshot ()};
     }
 
-    bingo_room_allocator_t rooms;
+    bingo_room_allocator_t rooms;   // 배정 상태 — spot 큐 직렬화로 락 불필요
 };
 ```
+
+room spot(`spot_t`)과의 차이:
+
+| | entry spot (`entry_spot_t`) | room spot (`spot_t`) |
+|--|--|--|
+| 개수 | 노드당 1개 | 룸(게임)마다 1개 |
+| 역할 | 매칭·룸 배정 (라우팅 전) | 도메인 상태 소유·처리 |
+| 보유 상태 | 배정 관리 (`bingo_room_allocator_t`) | 게임 룸 상태 (`bingo_room_game_t`) |
+| actor join | 직접 처리 (entry가 결합점) | `on_actor_join`으로 수락/거부 |
 
 ## 5. Timer
 

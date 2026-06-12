@@ -23,9 +23,17 @@ framework/languages/cpp/samples/Bingo/run_sample.sh
 
 가장 작은 완전체. Api + Play 2개 서버와 stream 클라이언트.
 
-```text
-Client ──HTTP POST /games──▶ Api ──channel──▶ Play (spot: 게임 룸)
-   └────────stream(접속/플레이)──────────────▶ Play
+```mermaid
+flowchart LR
+    C["Client"]
+    Api["Api 서버"]:::infra
+    Play["Play 서버<br/>spot: 게임 룸"]:::spot
+    C -- "① HTTP POST /games (9장)" --> Api
+    Api -- "② 채널 request (5장)" --> Play
+    C -- "③ stream 접속·플레이 (7·8장)" --> Play
+
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
 | 위치 | 보여주는 것 | 장 |
@@ -43,11 +51,26 @@ Client ──HTTP POST /games──▶ Api ──channel──▶ Play (spot: �
 4개 서버(Api · Play · Session · Registry). discovery로 endpoint 결합을
 끊고, fanout 알림과 protobuf codec을 쓴다.
 
-```text
-            ┌────────── Registry (discovery) ──────────┐
-Client ──▶ Api ──channel(discovery)──▶ Play (entry spot + room spot)
-   └──stream──▶ Session ──actor gateway──▶ Play
-                            Play ──fanout notify──▶ 구독자
+```mermaid
+flowchart LR
+    C["Client"]
+    Api["Api 서버"]:::infra
+    Sess["Session 서버"]:::stream
+    Play["Play 서버<br/>entry spot + room spots"]:::spot
+    R["Registry"]:::infra
+    Sub["알림 구독자"]:::channel
+
+    C -- HTTP --> Api
+    C -- stream --> Sess
+    Api -- "채널 (discovery)" --> Play
+    Sess -- "actor gateway (7장)" --> Play
+    Play -- "fanout notify (5장 §4)" --> Sub
+    Api & Sess & Play -.->|"등록·질의 (10장)"| R
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
 | 위치 | 보여주는 것 | 장 |

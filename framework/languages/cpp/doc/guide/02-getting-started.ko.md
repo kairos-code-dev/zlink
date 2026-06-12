@@ -51,7 +51,8 @@ inline void to_json (nlohmann::json &json, const create_game_http_res_t &value)
 
 ## 3. 핸들러 작성
 
-핸들러는 상속 없는 평범한 클래스다. 세 가지 멤버가 계약이다.
+여기서 만드는 것은 **노드 핸들러** — 채널·HTTP 요청을 처리하는 유형이다. 상속
+없는 평범한 클래스로 세 가지 멤버가 계약이다.
 
 - `using request_type` / `using reply_type` — 메시지 타입
 - `static constexpr const char *topic_name` — 메시지 식별자
@@ -75,11 +76,16 @@ class create_game_http_handler_t
 
 두 가지를 기억한다.
 
-- **핸들러 인스턴스는 요청마다 새로 만들어진다(transient).** 멤버 변수에 상태를
-  누적할 수 없다 — 상태가 필요하면 싱글톤 서비스를 만들어
-  [DI로 주입](./03-concepts.ko.md)받는다.
+- **수명은 transient, 실행은 동시** — 인스턴스는 요청마다 새로 만들어지고,
+  서로 다른 요청이 worker 풀에서 **동시에** 실행된다. 멤버 변수에 상태를 누적할
+  수 없고, 핸들러를 싱글톤으로 등록해서도 안 된다. 상태를 어디에 둘지는
+  [3장 §4.1](./03-concepts.ko.md)의 규칙을 따른다.
 - 비동기 작업이 필요하면 반환 타입을 `task_t<reply_type>`으로 바꾸고 코루틴으로
-  쓴다 — [3. 핵심 개념](./03-concepts.ko.md)의 실행 모델 참고.
+  쓴다 — [3장 §5](./03-concepts.ko.md) 참고.
+
+> SPOT 안의 게임 룸 상태를 처리하는 SPOT 핸들러는 구조가 다르다 —
+> `spot_t`/`entry_spot_t`를 상속하고 `configure()`로 등록하는 패턴이며
+> [3장 §4.2](./03-concepts.ko.md)와 [6장](./06-spot.ko.md)에서 다룬다.
 
 ## 4. 앱 조립과 실행
 

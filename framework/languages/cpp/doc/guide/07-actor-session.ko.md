@@ -9,10 +9,37 @@ stream([8장](./08-stream.ko.md))으로 게이트웨이 서버에 붙고, 인증
 actor와 바인딩된다. 이후 클라이언트의 패킷은 actor를 통해 spot으로 relay되고,
 spot의 알림은 역방향으로 클라이언트까지 흘러간다.
 
-```text
-client ──stream──▶ session ──bind──▶ actor ──relay──▶ spot (room)
-                      ▲                                   │
-                      └────────── notify ◀────────────────┘
+```mermaid
+sequenceDiagram
+    participant C as 게임 클라이언트
+    participant SS as stream session
+    participant AM as session_actor_manager
+    participant GW as actor gateway
+    participant SP as room spot
+
+    rect rgb(243, 229, 245)
+    Note over C,AM: 1) 접속과 바인딩
+    C->>SS: stream 접속 + authenticate 패킷
+    SS->>AM: 인증 성공 → actor 바인딩 (ensure actor)
+    end
+
+    rect rgb(255, 248, 225)
+    Note over C,SP: 2) 플레이 — 패킷 relay
+    C->>SS: place_mark 패킷
+    SS->>AM: find(actor_id)
+    AM-->>SS: session_actor_t
+    SS->>GW: actor.relay(header, payload)
+    GW->>SP: actor 패킷 핸들러 디스패치 (6장 직렬 큐)
+    SP-->>GW: 응답
+    GW-->>C: reply 패킷
+    end
+
+    rect rgb(232, 245, 233)
+    Note over SP,C: 3) 알림 역류
+    SP->>GW: 룸 상태 변경 notify (topic)
+    GW->>SS: 구독 중인 actor의 세션으로
+    SS-->>C: game_state_notify 패킷
+    end
 ```
 
 ## 2. actor 타입과 factory

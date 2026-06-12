@@ -69,6 +69,28 @@ app.monitoring ().on_trace ([] (const zlink::framework::runtime_event_base_t &ev
 | `add_stream_events(name)` | stream 연결 수명 |
 | `add_actor_events(name)` | actor 바인딩/해제 |
 
+```mermaid
+flowchart LR
+    SRC1["socket"]:::infra
+    SRC2["registry / discovery"]:::infra
+    SRC3["spot / timer"]:::spot
+    SRC4["stream / actor"]:::stream
+    BUS["런타임 이벤트 버스"]:::infra
+    ON["on&lt;TEvent&gt; 구독"]:::channel
+    TRACE["on_trace (전체)"]:::channel
+    MET["metrics 집계"]:::channel
+    HP["health 판정 → /ready (9장)"]:::channel
+
+    SRC1 & SRC2 & SRC3 & SRC4 --> BUS
+    BUS --> ON & TRACE & MET
+    MET --> HP
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+```
+
 ## 3. health
 
 health check를 등록하고, HTTP로 노출한다([9장 §3](./09-http-hosting.ko.md)).

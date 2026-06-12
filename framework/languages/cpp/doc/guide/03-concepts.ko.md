@@ -7,11 +7,21 @@
 
 ## 1. app_t 수명주기
 
-```text
-create() ──▶ 구성 단계 ──▶ run(argc, argv) ──▶ 서비스 중 ──▶ 종료
-             config/logging/                     stop() 또는
-             add_zlink_framework/                request_stop()
-             add_hosted_service
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "구성 단계" as configure
+    state "서비스 중" as serving
+    state "종료" as stopping
+    [*] --> configure: create()
+    configure: config / logging
+    configure: add_zlink_framework
+    configure: add_hosted_service
+    configure --> serving: run(argc, argv)
+    serving: 채널·HTTP·spot 디스패치
+    serving --> stopping: stop() / request_stop() / 신호
+    stopping: hosted service stop → 채널·HTTP 정리
+    stopping --> [*]: 종료 코드 반환
 ```
 
 ```cpp
@@ -121,30 +131,117 @@ class create_game_http_handler_t
 
 ## 4. 핸들러 모델
 
-모든 인바운드 처리(채널, HTTP, SPOT, actor)는 같은 모양의 핸들러로 수렴한다.
+핸들러는 실행 컨텍스트에 따라 두 종류로 나뉜다. 구조와 수명이 완전히 다르므로
+혼동하지 않는 것이 중요하다.
+
+### 4.1 노드 핸들러 (채널·HTTP)
+
+채널과 HTTP 경로의 핸들러는 독립된 클래스로 세 가지 멤버가 계약이다.
 
 ```cpp
 class authenticate_player_handler_t
 {
   public:
-    using request_type = authenticate_player_req_t;
-    using reply_type = authenticate_player_res_t;
+    using request_type  = authenticate_player_req_t;
+    using reply_type    = authenticate_player_res_t;
     static constexpr const char *topic_name = "AuthenticatePlayer";
 
+    // 동기 핸들러
     authenticate_player_res_t handle (const authenticate_player_req_t &request);
+
+    // 또는 코루틴 핸들러 (내부에서 co_await 가능)
+    // zlink::framework::task_t<authenticate_player_res_t>
+    // handle (const authenticate_player_req_t &request);
 };
 ```
 
-- **동기 핸들러** — `reply_type handle(const request_type&)`
-- **코루틴 핸들러** — `task_t<reply_type> handle(const request_type&)`,
-  내부에서 `co_await`로 다른 호출을 기다린다
-- **핸들러 그룹** — `options.handlers().add<T>("api")`로 그룹에 등록하고,
-  채널이 `use_handler_group("api")`로 그룹을 가져다 쓴다. 같은 핸들러 묶음을
-  여러 채널에서 재사용할 수 있다.
-- **수명은 transient** — 핸들러 인스턴스는 요청마다 새로 만들어진다. 멤버에
-  상태를 누적하지 말고, 공유 상태는 싱글톤 서비스로 주입받는다.
-- 메시지 디코딩 → 핸들러 호출 → 응답 인코딩은 런타임이 처리한다. 핸들러는
-  타입 있는 DTO만 본다.
+- **수명은 transient** — 인스턴스는 요청마다 새로 만들어진다.
+- **실행은 동시** — 서로 다른 요청의 핸들러가 worker 풀에서 **동시에** 실행된다.
+- **핸들러 자체를 싱글톤으로 등록하는 것은 금지 패턴** — 동시 실행 중인 인스턴스들이
+  하나의 객체를 공유하면 멤버 변수가 경쟁 상태에 빠진다.
+- **핸들러 그룹** — `options.handlers().add<T>("api")`로 등록하고, 채널이
+  `use_handler_group("api")`로 가져다 쓴다.
+- DI — `dependency_types` + 생성자 주입 ([§3](#3-서비스di-컨테이너) 참고).
+
+상태를 둘 곳은 성격에 따라 결정한다.
+
+| 상태 성격 | 둘 곳 |
+|-----------|-------|
+| 가변 도메인 상태 (게임 룸, 매치 진행) | **SPOT** — 직렬 실행이 보장되어 락이 필요 없다 ([6장](./06-spot.ko.md)) |
+| 불변 구성 (topology, 설정) | 싱글톤 서비스 — 읽기 전용이라 안전 |
+| 공유 인프라 (캐시, 카운터) | 싱글톤 서비스 + **자체 동기화 필수** (mutex/atomic) |
+
+메시지 디코딩 → 핸들러 호출 → 응답 인코딩은 런타임이 처리한다. 핸들러는 타입
+있는 DTO만 본다.
+
+### 4.2 SPOT 핸들러 (entry spot · room spot)
+
+SPOT 핸들러는 독립된 핸들러 클래스가 아니라 **spot 클래스 자체의 메서드**다.
+`spot_t` 또는 `entry_spot_t`를 상속하고, `configure()`에서
+`add_actor_packet<&T::method>()`로 메서드를 등록한다.
+
+```cpp
+// room spot — 게임 룸 하나를 담당, spot_t 상속
+class tictactoe_game_spot_t : public zlink::framework::spot_t,
+                               public tictactoe_match_t          // 도메인 상태 직접 소유
+{
+  public:
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        // 메서드를 actor 패킷 핸들러로 등록 — request_type/reply_type/topic_name 불필요
+        context.handlers ().add_actor_packet<&tictactoe_game_spot_t::place_mark> ();
+    }
+
+    // 시그니처: (const TActor&, const spot_actor_request_context_t&, const TReq&) → TRes
+    place_mark_res_t place_mark (const player_actor_t &actor,
+                                 const zlink::framework::spot_actor_request_context_t &context,
+                                 const place_mark_req_t &request)
+    {
+        return place (actor.actor_id, request);   // tictactoe_match_t 멤버 — 락 없이 안전
+    }
+
+    // 수명주기 훅 (선택 구현)
+    zlink::framework::spot_actor_join_response_t
+    on_actor_join (const player_actor_t &actor, const zlink::message_t &msg);
+    void on_post_actor_joined (const player_actor_t &actor);
+    void on_actor_left (const player_actor_t &actor);
+};
+```
+
+```cpp
+// entry spot — 매칭·룸 배정 전담, entry_spot_t 상속, 노드당 1개
+class entry_spot_t : public zlink::framework::entry_spot_t
+{
+  public:
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_actor_packet<&entry_spot_t::join_game> ();
+    }
+
+    join_game_res_t join_game (const player_actor_t &actor,
+                               zlink::framework::spot_actor_request_context_t &,
+                               const join_game_req_t &request)
+    {
+        return room.join (actor.actor_id, request);   // 배정 로직 — 직렬 실행
+    }
+
+    tictactoe_match_t room{"entry-match"};   // 배정·매칭 상태를 멤버로 직접 보유
+};
+```
+
+노드 핸들러와의 핵심 차이:
+
+| | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
+|---|---|---|---|
+| 기반 | 독립 클래스 | `entry_spot_t` 상속 | `spot_t` 상속 |
+| 수명 | transient (요청마다) | 노드와 동일 (영속) | 룸과 동일 (영속) |
+| 개수 | 요청마다 새 인스턴스 | 노드당 1개 | 룸(게임)마다 1개 |
+| 실행 | 동시 (worker 풀) | 직렬 (spot 큐 하나) | 직렬 (spot 큐 하나) |
+| 역할 | 요청 처리·위임 | 매칭·룸 배정 | 도메인 상태 소유·처리 |
+| 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
+| DI | `dependency_types` + 생성자 주입 | 없음 — `attach_channel_client`로 채널 연결 | 없음 — `attach_channel_client`로 채널 연결 |
+
+직렬 실행이 보장되는 이유와 `co_await` 중에도 안전한 이유는 [6장 §1](./06-spot.ko.md)에서 다룬다.
 
 ## 5. 실행 모델: task_t와 result_t
 
@@ -170,8 +267,40 @@ handle (const create_game_http_req_t &request)
 `framework_exception_t`(`kind()`/`is_retriable()`)로 던져지고, `result_t`
 경로에서는 `error()`로 조회한다.
 
-코루틴 핸들러를 돌리는 worker 수는 `options.handler_coroutine_workers(n)`으로
-조정한다.
+### 왜 co_await인가 — 스레드는 기다리지 않는다
+
+코루틴 핸들러는 **worker 풀**(기본 = CPU 코어 수,
+`options.handler_coroutine_workers(n)`으로 조정)에서 실행된다. 핸들러가
+`co_await`에 도달하면 코루틴만 멈추고(suspend), **worker 스레드는 풀로 돌아가
+다른 핸들러를 실행**한다. 응답이 도착하면 코루틴이 그 지점부터 재개(resume)된다.
+
+```mermaid
+sequenceDiagram
+    participant W as worker 스레드
+    participant H1 as 핸들러 A (코루틴)
+    participant CH as Play 채널
+    participant H2 as 핸들러 B (코루틴)
+
+    W->>H1: handle() 실행
+    activate H1
+    H1->>CH: co_await request(...).async()
+    deactivate H1
+    Note over H1: suspend — 응답 대기 (스레드 점유 없음)
+    Note over W: 워커는 즉시 다음 일로
+    W->>H2: handle() 실행
+    activate H2
+    H2-->>W: co_return (완료)
+    deactivate H2
+    CH-->>H1: 응답 도착 → resume
+    activate H1
+    H1-->>W: co_return (완료)
+    deactivate H1
+```
+
+그래서 비동기 호출을 콜백 없이 **동기식 코드처럼 위에서 아래로** 쓰면서도,
+worker 몇 개로 수많은 동시 요청을 처리할 수 있다. 같은 코드를 `.result()`로
+쓰면 응답이 올 때까지 스레드 하나가 통째로 잠든다 — 핸들러 안에서 금지하는
+이유다.
 
 ## 6. 구성 패키징: module_t
 

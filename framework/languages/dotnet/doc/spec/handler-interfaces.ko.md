@@ -365,10 +365,6 @@ public interface IZLinkActorHandlerRegistry
     void AddActorPacket<THandler, TActor>(string packetName)
         where THandler : class
         where TActor : IZLinkActor;
-
-    void OnActorDisconnectedAsync(TActor, CancellationToken)
-        where THandler : class
-        where TActor : IZLinkActor;
 }
 
 public readonly record struct RoutingId(string Value)
@@ -527,14 +523,15 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpot<TActor>.OnActorDisconnectedAsync
-    where TSpot : class
+public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
-    ValueTask HandleAsync(
-        TSpot spot,
+    ValueTask OnActorDisconnectedAsync(
         TActor actor,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage>
@@ -561,14 +558,15 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpot<TActor>.OnActorDisconnectedAsync
-    where TEntrySpot : class, IZLinkEntrySpot
+public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     where TActor : IZLinkActor
 {
-    ValueTask HandleAsync(
-        TEntrySpot entrySpot,
+    ValueTask OnActorDisconnectedAsync(
         TActor actor,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public readonly record struct ZLinkSpotActorJoinResult(
@@ -612,7 +610,6 @@ reject를 반환하면 `OnInitializeAsync(...)`는 호출하지 않고 spot을 �
 - `Context.AddPacket(...)`
 - `Context.AddHandler(...)`
 - `Context.AddActorPacket(...)`
-- `OnActorDisconnectedAsync callback`
 - `Context.AddSubscribe(...)`
 
 초기화가 끝난 뒤에 handler 를 추가하면 어떻게 될까. native subscription 과
@@ -622,8 +619,7 @@ dispatch table 의 의미가 어긋나게 된다. 그래서 framework 는 이 �
 `AddHandler<THandler>(...)` 는 `THandler` 가 구현한 actor handler interface 를 보고
 actor 타입, send/request/lifecycle 종류, packet 이름 기본값을 추론한다.
 handler 가 여러 actor handler interface 를 구현해서 모호하면 명시적인
-`AddActorPacket<THandler, TActor>(...)`,
-`OnActorDisconnectedAsync(TActor, CancellationToken)` 를 사용한다.
+`AddActorPacket<THandler, TActor>(...)` 를 사용한다.
 
 `AddActorPacket<THandler, TActor>(...)` 는 actor 타입을 호출 쪽에서 명시하고,
 `THandler` 가 구현한 handler interface 를 보고 send 와 request 를 구분한다.
@@ -849,21 +845,40 @@ public ValueTask OnActorLeftAsync(
     CancellationToken cancellationToken);
 ```
 
-actor disconnected notification 은 별도 handler interface 로 등록한다.
+actor disconnected notification 은 별도 handler 를 등록하지 않는다. Spot 이
+`IZLinkSpot<TActor>` 또는 `IZLinkEntrySpot<TActor>` 를 구현하고 필요한 경우
+아래 callback 을 override 한다.
 
 ```csharp
-public interface IZLinkSpot<TActor>.OnActorDisconnectedAsync
-    where TSpot : class
+public ValueTask OnActorDisconnectedAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
+```
+
+Entry Spot 도 같은 callback 이름을 사용한다.
+
+```csharp
+public ValueTask OnActorDisconnectedAsync(
+    PlayerActor actor,
+    CancellationToken cancellationToken);
+```
+
+generic Spot interface 의 기본 구현은 아무 작업도 하지 않는다.
+
+```csharp
+public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
-    ValueTask HandleAsync(
-        TSpot spot,
+    ValueTask OnActorDisconnectedAsync(
         TActor actor,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 ```
 
-actor disconnected handler 는 join/leave lifecycle 과 별개다. session 이
+actor disconnected callback 은 join/leave lifecycle 과 별개다. session 이
 끊겼다는 사실을 actor 에 알려야 할 때 application 이
 `NotifyDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
 callback 은 actor membership 을 바꾸지 않는다.
@@ -3673,10 +3688,6 @@ public sealed class ZLinkSpotActorRequestAttribute : Attribute
     public string? PacketName { get; init; }
 }
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-public sealed class OnActorDisconnectedAsync callback : Attribute
-{
-}
 ```
 
 method 시그니처는 아래 순서를 따른다.
@@ -3684,8 +3695,8 @@ method 시그니처는 아래 순서를 따른다.
 - send: `(spotOrEntrySpot, actor, message, CancellationToken)` 반환값 없음
 - request: `(spotOrEntrySpot, actor, request, CancellationToken)` reply 반환
 - actor join: `(spot, actor, Message request, CancellationToken)` `ZLinkSpotActorJoinResult` 반환
-- joined/left: `(spotOrEntrySpot, actor, CancellationToken)` 반환값 없음
-- disconnected: `(spotOrEntrySpot, actor, CancellationToken)` 반환값 없음
+- joined/left/disconnected: Spot class 의 public instance callback
+  `(actor, CancellationToken)` 반환값 없음
 
 `PacketName` 을 지정하지 않으면 message/request 타입의 packet 이름을 사용한다.
 같은 handler 클래스에 여러 Spot actor handler attribute method 가 있으면

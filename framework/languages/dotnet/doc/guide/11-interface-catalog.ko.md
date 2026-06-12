@@ -397,7 +397,6 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
         Context.AddPacket<RoomPacketHandler>();
         Context.AddSubscribe<RoomEventHandler>("room.events");
         Context.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
-        Context.OnActorDisconnectedAsync<PlayerDisconnectedHandler, PlayerActor>();
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -420,6 +419,11 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
+    public ValueTask OnActorDisconnectedAsync(
+        PlayerActor actor,
+        CancellationToken ct)
+        => ValueTask.CompletedTask;
+
     public async ValueTask OnInitializeAsync(CancellationToken ct)
     {
         await Context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
@@ -438,7 +442,7 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
 | `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `LeaveActorAsync` + `CloseAsync` + `AddTimer` |
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
-| `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`, `OnActorDisconnectedAsync`) |
+| `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe(`AddPacket`, `AddSubscribe`) |
 | `IZLinkSpotOutbound` | spot 안 outbound(`SendToSpot`, `RequestToSpot`, `Publish(topic, msg)`, `SendToChannel`, `RequestToChannel`) |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8 도 참조) |

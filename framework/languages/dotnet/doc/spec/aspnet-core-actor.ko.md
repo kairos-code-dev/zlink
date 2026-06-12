@@ -161,8 +161,9 @@ actor 자체에는 disconnect callback 을 두지 않는다. actor 는 Entry Spo
 user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려야 하는 경우에도
 application 이 session callback 에서 대상 actor 를 고른 뒤
 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
-framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 actor disconnected handler 를
-호출하며, actor 를 room 에서 자동으로 leave 시키지 않는다.
+framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 handler 를
+등록하지 않고 Spot 의 `OnActorDisconnectedAsync(...)` callback 을 호출하며,
+actor 를 room 에서 자동으로 leave 시키지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
 
@@ -798,7 +799,7 @@ sequenceDiagram
     S->>G: Conditional unbind by session token
     opt application decides to notify this actor
         S->>G: actor.NotifyDisconnectedAsync()
-        G->>Act: Spot actor disconnected handler
+        G->>Act: Spot OnActorDisconnectedAsync callback
     end
 ```
 

@@ -5,7 +5,8 @@
 | [TicTacToe](./TicTacToe) | Tic-tac-toe API server, play server, standalone client, game creation, STREAM authentication, actor game join, move requests, and game-state messages. Uses MessagePack payloads. |
 | [Bingo](./Bingo/) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. Uses Protobuf payloads. |
 | [SupportChat](./SupportChat/) | Multi-role support conversation sample with API, support, session, registry, probe, and client roles. |
-| [ShoppingMallCheckout](./ShoppingMallCheckout/) | Checkout workflow sample with replicated commerce API and order workflow roles. |
+| [ShoppingMall](./ShoppingMall/) | Order workflow sample with replicated commerce API and order workflow roles. |
+| [DeliveryDispatch](./DeliveryDispatch/) | Delivery dispatch sample with HTTP intake, courier timeout, reassignment, tracking, ZLink fanout, and customer session push. |
 | [GameQuest](./GameQuest/) | Gameplay event and quest mission sample with replicated API and mission roles. |
 
 Run all samples on Linux or WSL:

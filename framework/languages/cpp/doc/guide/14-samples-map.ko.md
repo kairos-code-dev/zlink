@@ -32,8 +32,8 @@ flowchart LR
     Api -- "② 채널 request (7장)" --> Play
     C -- "③ stream 접속·플레이 (9·10장)" --> Play
 
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 | 위치 | 보여주는 것 | 장 |
@@ -67,10 +67,10 @@ flowchart LR
     Play -- "fanout notify (7장 §5)" --> Sub
     Api & Sess & Play -.->|"등록·질의 (11장)"| R
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 | 위치 | 보여주는 것 | 장 |

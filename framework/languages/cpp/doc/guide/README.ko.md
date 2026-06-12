@@ -60,11 +60,11 @@ flowchart LR
     StreamN --> ActorG --> SpotN
     ApiC & CoreS -.->|"주소 해석"| Registry
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
-    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#000000
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 각 서버 프로세스는 독립 실행 파일이고 서로 TCP로 연결된다. 하나의 서버 안에
@@ -249,11 +249,11 @@ flowchart LR
     AC["actor / session"]:::actor
     ST["stream<br/>(외부 경계)"]:::stream
     RG["registry / 인프라"]:::infra
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
-    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#000000
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 여러 장이 같은 TicTacToe/Bingo 토폴로지를 그리며, 장마다 확대 위치만 바뀐다.

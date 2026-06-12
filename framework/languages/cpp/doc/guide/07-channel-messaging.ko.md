@@ -58,7 +58,7 @@ flowchart LR
     end
     AC == "request / reply<br/>(message_pack)" ==> PS
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
 ```
 
 채널 이름(`tictactoe.play`)이 양쪽을 잇는 키다. 서버는 endpoint에 bind하고
@@ -185,7 +185,7 @@ flowchart LR
     C == "요청 3" ==> S1
     C -. "서버 추가 후<br/>자동 발견" .-> S3
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
 ```
 
 핸들러는 client/server 채널과 동일한 구조다 — `request_type`/`reply_type`/`topic_name` + `handle()`. 채널 선언만 `add_dealer_mesh_channel`로 바꾸면 된다.
@@ -225,8 +225,8 @@ flowchart LR
     P -- "topic: room-3187" --> S2
     P -.->|"room-9920만 구독"| S3
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 ## 6. route mesh (고급)

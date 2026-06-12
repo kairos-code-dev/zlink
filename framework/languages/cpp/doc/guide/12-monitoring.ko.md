@@ -85,10 +85,10 @@ flowchart LR
     BUS --> ON & TRACE & MET
     MET --> HP
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef stream fill:#f3e5f5,stroke:#6a1b9a,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 ## 3. health

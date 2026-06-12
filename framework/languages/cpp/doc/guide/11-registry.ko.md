@@ -26,8 +26,8 @@ flowchart LR
         S2 == 연결 ==> P2
     end
 
-    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 ```mermaid

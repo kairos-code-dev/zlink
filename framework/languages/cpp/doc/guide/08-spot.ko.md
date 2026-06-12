@@ -42,9 +42,9 @@ flowchart LR
     J1 --> SQ
     SQ -- dequeue --> EXEC --> STATE
 
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
-    classDef actor fill:#fff8e1,stroke:#f9a825,color:#795500
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
+    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
+    classDef actor fill:#fff8e1,stroke:#f9a825,color:#000000
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
 핸들러가 `co_await`로 다른 서버를 기다리는 동안에도 두 가지가 동시에 성립한다.

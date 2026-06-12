@@ -103,6 +103,12 @@ class ensure_player_actor_handler_t
 stream session([8장](./08-stream.ko.md)) 쪽에서 `session_actor_manager_t`로
 바인딩을 관리한다. 인증 성공 시 bind, 연결 종료 시 unbind.
 
+**중요**: 클라이언트가 끊겼을 때 actor 바인딩 해제와 spot 퇴장 처리는
+**프레임워크가 자동으로 하지 않는다.** `on_disconnected` 안에서 애플리케이션
+코드가 직접 `unbind_session()`을 호출해야 한다. SPOT에서의 퇴장 역시 마찬가지로
+개발자가 결정하는 로직이다 — 예를 들어 재접속을 허용하는 설계라면 disconnection
+시 spot에서 퇴장시키지 않고 actor를 유지할 수 있다.
+
 ```cpp
 class play_session_t final : public zlink::framework::packet_stream_session_t
 {
@@ -129,9 +135,10 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
         if (_bound_actor_id) {
+            // 자동 처리 아님 — 앱이 직접 호출해야 한다
             _actors.unbind_session (*_bound_actor_id);
         }
-        // ...
+        // spot 퇴장(leave) 처리도 여기서 결정 — 재접속 허용 설계라면 생략 가능
     }
 };
 ```

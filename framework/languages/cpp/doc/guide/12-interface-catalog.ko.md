@@ -15,7 +15,7 @@
 | actor + factory | actor struct + `create(actor_id)` factory | [7 §2](./07-actor-session.ko.md) |
 | stream session | `packet_stream_session_t` 상속 — `on_connected/packet/error/disconnected` | [8 §3](./08-stream.ko.md) |
 | HTTP middleware | `use<TMiddleware>()` — before/after 훅 | [9 §4](./09-http-hosting.ko.md) |
-| hosted service | `hosted_service_t` — `start(provider)`/`stop()` | [3 §1](./03-concepts.ko.md) |
+| hosted service | `hosted_service_t` — `start(provider)`/`stop() noexcept` | [3 §1](./03-concepts.ko.md) |
 | module | `module_t` — `configure_services/zlink/handlers/monitoring` | [3 §6](./03-concepts.ko.md) |
 | 설정 바인딩 | `static T bind(const configuration_section_t&)` | [4 §5](./04-configuration.ko.md) |
 | 메시지(packet) | struct + `static constexpr const char *packet_name` (+codec ADL) | [2 §2](./02-getting-started.ko.md) |

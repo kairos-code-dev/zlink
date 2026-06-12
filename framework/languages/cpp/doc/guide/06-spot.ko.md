@@ -8,16 +8,20 @@ SPOT은 room·stage·zone처럼 **"장소" 하나의 상태와 참가자를 묶�
 게임 룸 하나가 spot 인스턴스 하나다. actor([7장](./07-actor-session.ko.md))가
 spot에 입장(join)하고, spot 안에서 패킷을 처리하고, 토픽으로 알림을 받는다.
 
-- spot 인스턴스의 핸들러는 **그 인스턴스 안에서 직렬 실행**된다 — 룸 상태에
-  락 없이 접근할 수 있다.
-- spot은 `entry_spot_t`(노드당 1개, 입장/매칭 담당)와 `spot_t`(룸 본체)로
-  나뉜다.
+spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상태 관리 방식을 결정한다.
 
-## 1.1 실행 컨텍스트 직렬화 — 큐 하나, 한 번에 하나
+| | `spot_t` (room spot) | `entry_spot_t` (entry spot) |
+|--|--|--|
+| 개수 | 상태 단위마다 1개 | 노드당 1개 |
+| 직렬화 | **모든 요청** — actor 패킷·timer·join/leave가 단일 큐 | **actor별** — 같은 actor의 요청만 순서 보장, 다른 actor 요청은 동시 실행 가능 |
+| 공유 상태 접근 | 락 없이 안전 | **자체 동기화 필요** (actor 간 동시 접근 가능) |
+| 역할 | 도메인 상태 소유·처리 | 배정·매칭·할당 |
 
-spot으로 들어오는 모든 것 — actor 패킷, timer tick, join/leave — 은 **spot별
-순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를 **코루틴으로**
-실행하고, 그 핸들러가 끝나야 다음 항목을 꺼낸다.
+## 1.1 room spot 직렬화 — 큐 하나, 한 번에 하나
+
+room spot(`spot_t`)으로 들어오는 모든 것 — actor 패킷, timer tick, join/leave —
+은 **spot별 순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를
+**코루틴으로** 실행하고, 그 핸들러가 끝나야 다음 항목을 꺼낸다.
 
 ```mermaid
 flowchart LR
@@ -98,7 +102,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `add_node(name)` | spot 노드 추가 |
 | `enable_router(endpoint, rid)` | 노드 간 라우팅 수신 |
 | `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
-| `use_discovery(channel)` | registry 기반 노드 발견 ([10장](./10-registry.ko.md)) |
+| `use_discovery(channel)` | registry 기반 노드 발견 ([10장](./10-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
 | `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([5장 §5](./05-channel-messaging.ko.md)) |
 | `attach_channel_client(name)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
@@ -167,6 +171,10 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 entry spot은 룸에 들어가기 **전** 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
 `entry_spot_t`를 상속하며 **노드당 1개**만 생성된다.
 
+**실행 모델이 room spot과 다르다.** entry spot의 actor 패킷은 **actor별 순서만
+보장**한다 — 같은 actor의 연속 요청은 순서대로 처리되지만, 서로 다른 actor의 요청은
+**동시에 실행될 수 있다.** 따라서 entry spot 안의 공유 상태는 직접 동기화해야 한다.
+
 ```cpp
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
 {
@@ -180,11 +188,11 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
                                    zlink::framework::spot_actor_request_context_t &,
                                    const match_bingo_req_t &request)
     {
-        const auto room_id = rooms.allocate (request.mode);
+        const auto room_id = rooms.allocate (request.mode);  // rooms는 내부적으로 thread-safe해야 함
         return {room_id, rooms.get (room_id).snapshot ()};
     }
 
-    bingo_room_allocator_t rooms;   // 배정 상태 — spot 큐 직렬화로 락 불필요
+    bingo_room_allocator_t rooms;   // 다른 actor 요청과 동시 접근 가능 → 자체 동기화 필요
 };
 ```
 
@@ -192,16 +200,23 @@ room spot(`spot_t`)과의 차이:
 
 | | entry spot (`entry_spot_t`) | room spot (`spot_t`) |
 |--|--|--|
-| 개수 | 노드당 1개 | 룸(게임)마다 1개 |
-| 역할 | 매칭·룸 배정 (라우팅 전) | 도메인 상태 소유·처리 |
-| 보유 상태 | 배정 관리 (`bingo_room_allocator_t`) | 게임 룸 상태 (`bingo_room_game_t`) |
-| actor join | 직접 처리 (entry가 결합점) | `on_actor_join`으로 수락/거부 |
+| 개수 | 노드당 1개 | 상태 단위마다 1개 |
+| 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
+| 직렬화 범위 | **actor별** — 같은 actor 요청만 순서 보장 | **전체** — 모든 요청(actor 무관)이 단일 큐 |
+| 공유 상태 접근 | **자체 동기화 필요** | 락 없이 안전 |
+| actor join | `on_post_actor_joined` / `on_actor_left` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
 
 ## 5. Timer
 
 spot 안의 주기 작업은 `spot_context_t::add_timer<THandler>`로 등록한다.
-`THandler`는 tick을 받는 별도 핸들러 클래스이고, tick은 spot 핸들러와 같은
-직렬 실행 보장을 받는다.
+`THandler`는 tick을 받는 별도 핸들러 클래스다.
+
+timer tick의 직렬화 보장은 spot 종류에 따라 다르다.
+
+- **room spot** — tick은 actor 패킷·join/leave와 같은 단일 큐로 처리된다.
+  직렬 실행이 보장되어 룸 상태에 락 없이 접근할 수 있다.
+- **entry spot** — tick은 entry spot의 전역 직렬화 경계에 묶이지 않는다.
+  tick 핸들러에서 공유 상태에 접근할 때는 자체 동기화가 필요하다.
 
 ```cpp
 class draw_tick_handler_t final

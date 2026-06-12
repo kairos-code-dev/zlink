@@ -82,7 +82,7 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
     options.handlers ()...;     // 핸들러 그룹 등록
     options.codecs ()...;       // 직렬화 codec 등록
     options.add_client_server_channel (...);   // 채널
-    options.add_spot_node (...);               // SPOT
+    options.add_spot_mesh (...).add_node (...); // SPOT
     options.add_stream_node (...);             // stream
     options.http ()...;                        // HTTP hosting
     options.use_discovery ()...;               // registry 연동
@@ -234,10 +234,11 @@ class entry_spot_t : public zlink::framework::entry_spot_t
 | | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
 |---|---|---|---|
 | 기반 | 독립 클래스 | `entry_spot_t` 상속 | `spot_t` 상속 |
-| 수명 | transient (요청마다) | 노드와 동일 (영속) | 룸과 동일 (영속) |
-| 개수 | 요청마다 새 인스턴스 | 노드당 1개 | 룸(게임)마다 1개 |
-| 실행 | 동시 (worker 풀) | 직렬 (spot 큐 하나) | 직렬 (spot 큐 하나) |
-| 역할 | 요청 처리·위임 | 매칭·룸 배정 | 도메인 상태 소유·처리 |
+| 수명 | transient (요청마다) | 노드와 동일 (영속) | 상태 단위와 동일 (영속) |
+| 개수 | 요청마다 새 인스턴스 | 노드당 1개 | 상태 단위마다 1개 |
+| 실행 | 동시 (worker 풀) | **actor별 직렬** — 다른 actor 간 동시 가능 | **전체 직렬** — 단일 큐, 모든 요청 순서 보장 |
+| 공유 상태 | 핸들러에 두지 않음 | **자체 동기화 필요** | 락 없이 안전 |
+| 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
 | 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
 | DI | `dependency_types` + 생성자 주입 | 없음 — `attach_channel_client`로 채널 연결 | 없음 — `attach_channel_client`로 채널 연결 |
 

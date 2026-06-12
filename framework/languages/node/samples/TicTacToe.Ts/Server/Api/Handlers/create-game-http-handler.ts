@@ -6,6 +6,7 @@ const {
   createGameReq
 } = require('../../../Shared/Contracts/messages');
 const { SampleNames, SampleTimings } = require('../../Configuration/sample-settings');
+import type { ZLinkChannelClient } from '../../../../../packages/framework/dist';
 import type {
   CreateGameHttpRes,
   CreateGameReq,
@@ -13,17 +14,14 @@ import type {
 } from '../../../Shared/Contracts/messages';
 
 class CreateGameHttpHandler {
-  [key: string]: any;
-  constructor(playClient: any) {
-    this.playClient = playClient;
-  }
+  constructor(private readonly playClient: ZLinkChannelClient) {}
 
   async handle(request: CreateGameReq): Promise<CreateGameHttpRes> {
-    const response: CreateGameRes = await this.playClient
+    const response = await this.playClient
       .requestToChannel(SampleNames.playChannel, createGameReq(request.gameName))
       .packetName(PacketNames.createGame)
       .timeout(SampleTimings.requestTimeout)
-      .submit();
+      .submit<CreateGameRes>();
     return createGameHttpRes(response);
   }
 }

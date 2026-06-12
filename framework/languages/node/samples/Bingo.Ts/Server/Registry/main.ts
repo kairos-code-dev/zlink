@@ -19,7 +19,8 @@ import type {
 } from '../../Shared/Contracts/messages';
 
 class BingoServiceRegistry {
-  [key: string]: any;
+  private readonly services: Map<string, string>;
+
   constructor() {
     this.services = new Map();
   }
@@ -45,20 +46,16 @@ class BingoServiceRegistry {
 }
 
 class RegisterServiceHandler {
-  [key: string]: any;
-  constructor(registry: any) {
-    this.registry = registry;
-  }
+  constructor(private readonly registry: BingoServiceRegistry) {}
+
   handle(request: RegisterServiceReq): RegisterServiceRes {
     return this.registry.register(request);
   }
 }
 
 class ResolveServiceHandler {
-  [key: string]: any;
-  constructor(registry: any) {
-    this.registry = registry;
-  }
+  constructor(private readonly registry: BingoServiceRegistry) {}
+
   handle(request: ResolveServiceReq): ResolveServiceRes {
     return this.registry.resolve(request);
   }

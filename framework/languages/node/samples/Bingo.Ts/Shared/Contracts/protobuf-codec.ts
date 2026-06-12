@@ -189,11 +189,12 @@ function decodeEnvelope(bytes: Uint8Array): Envelope {
   return decodeMessage('BingoPayloadEnvelope', bytes) as Envelope;
 }
 
-function encodeMessage(type: string, value: any): Uint8Array {
+function encodeMessage(type: string, value: unknown): Uint8Array {
   const schema = requireSchema(type);
   const chunks: Uint8Array[] = [];
+  const record = isRecord(value) ? value : {};
   for (const field of schema) {
-    const rawValue = value?.[field.name];
+    const rawValue = record[field.name];
     if (rawValue === undefined || rawValue === null) {
       continue;
     }
@@ -249,7 +250,7 @@ function decodeMessage(type: string, bytes: Uint8Array): Record<string, unknown>
   return output;
 }
 
-function encodeField(field: FieldSchema, value: any): Uint8Array {
+function encodeField(field: FieldSchema, value: unknown): Uint8Array {
   if (field.kind === 'bool' || field.kind === 'int32' || field.kind === 'uint64') {
     return concat([
       encodeVarint((field.field << 3) | 0),
@@ -264,17 +265,27 @@ function encodeField(field: FieldSchema, value: any): Uint8Array {
   ]);
 }
 
-function encodeLengthDelimitedValue(field: FieldSchema, value: any): Uint8Array {
+function encodeLengthDelimitedValue(field: FieldSchema, value: unknown): Uint8Array {
   if (field.kind === 'string') {
     return Buffer.from(String(value), 'utf8');
   }
   if (field.kind === 'bytes') {
-    return typeof value === 'string' ? Buffer.from(value, 'utf8') : Uint8Array.from(value);
+    if (typeof value === 'string') {
+      return Buffer.from(value, 'utf8');
+    }
+    if (value instanceof Uint8Array) {
+      return Uint8Array.from(value);
+    }
+    throw new Error(`Field '${field.name}' expects bytes.`);
   }
   if (field.kind === 'message') {
     return encodeMessage(field.message ?? '', value);
   }
   throw new Error(`Field '${field.name}' cannot use length-delimited protobuf encoding.`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function decodeFieldValue(

@@ -6,7 +6,7 @@ const {
   placeMarkStreamReq
 } = require('../Shared/Contracts/messages');
 const connector = require('../../../../packages/stream-connector/dist');
-const msgpack = require('../../../../packages/stream-connector-msgpack/dist');
+const json = require('../../../../packages/stream-connector-json/dist');
 const { SampleTimings } = require('./Configuration/sample-settings');
 import type {
   AuthenticateRes,
@@ -191,7 +191,7 @@ class TicTacToeClientScenario {
 function createPlayerClient(endpoint: string): ZlinkStreamConnector {
   return connector.zlinkStreamConnectorFactory.create({
     endpoint,
-    codec: msgpack.zlinkStreamMessagePackCodec,
+    codec: json.zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }

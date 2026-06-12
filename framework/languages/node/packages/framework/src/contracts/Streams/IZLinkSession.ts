@@ -11,6 +11,10 @@ export interface ZLinkSession {
   onDispatch?(header: ZlinkStreamHeader, payload: Message, signal?: AbortSignal): Promise<void>;
 }
 
+export interface ZLinkSessionFactory<TSession extends ZLinkSession = ZLinkSession> {
+  create(context: ZLinkSessionContext): TSession | Promise<TSession>;
+}
+
 export interface ZLinkSessionContext {
   readonly sessionId: string;
   readonly routingId?: RoutingId;

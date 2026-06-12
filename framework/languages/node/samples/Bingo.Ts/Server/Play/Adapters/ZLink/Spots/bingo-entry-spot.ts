@@ -1,17 +1,26 @@
 const { Inject } = require('@nestjs/common');
 const {
+  PacketNames,
   bingoRoomJoinReq,
   createProtobufMessage,
   matchBingoRes,
   readProtobufMessage
 } = require('../../../../../Shared/Contracts/messages');
 const { BingoRoomAllocator } = require('../../../Application/RoomAllocation/bingo-room-allocator');
+const { MatchBingoActorHandler } = require('./Handlers/match-bingo-actor-handler');
+const { PlayerActor } = require('../Actors/player-actor');
+import type {
+  ZLinkEntrySpot,
+  ZLinkEntrySpotContext
+} from '../../../../../../../packages/framework/dist';
+import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   MatchBingoReq,
   MatchBingoRes,
   RoomJoinError,
   StateEnvelope
 } from '../../../../../Shared/Contracts/messages';
+import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 
 type BingoActor = {
   actorId: string;
@@ -20,13 +29,16 @@ type BingoActor = {
 
 type BingoJoinReply = Partial<StateEnvelope & RoomJoinError>;
 
-class BingoEntrySpot {
-  [key: string]: any;
-  constructor(roomDirectory: any) {
-    this.roomDirectory = roomDirectory;
+class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
+  readonly context?: ZLinkEntrySpotContext;
+
+  constructor(private readonly roomDirectory: BingoRoomAllocatorType) {}
+
+  configure(): void {
+    this.context?.handlers.addActorPacket(MatchBingoActorHandler, PlayerActor, PacketNames.matchBingoReq);
   }
 
-  async match(actor: BingoActor, request: MatchBingoReq): Promise<MatchBingoRes> {
+  async matchActor(actor: PlayerActorType, request: MatchBingoReq): Promise<MatchBingoRes> {
     const matched = await this.roomDirectory.allocate(request.mode);
     const joinRequest = createProtobufMessage(bingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName));
     try {
@@ -40,6 +52,18 @@ class BingoEntrySpot {
     } finally {
       joinRequest.close();
     }
+  }
+
+  async onPostActorJoined(actor: PlayerActorType): Promise<void> {
+    void actor;
+  }
+
+  async onActorLeft(actor: PlayerActorType): Promise<void> {
+    void actor;
+  }
+
+  async onActorDisconnected(actor: PlayerActorType): Promise<void> {
+    void actor;
   }
 }
 

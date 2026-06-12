@@ -432,6 +432,102 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   assert.deepEqual(events, ['joinEntry:1:node-b:50']);
 });
 
+test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stale instances', async () => {
+  const events = [];
+  const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      return { ...createdRef, actorId };
+    },
+    async destroyActor(actorRef) {
+      events.push(`destroyNative:${actorRef.actorId}:${actorRef.generation}`);
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+
+  const actor = await manager.create('alice', 'player');
+  manager.getState('alice').ensureNativeActorRef(node);
+  manager.getState('alice').setJoinedSpot('stage-1');
+
+  await assert.rejects(
+    () => manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
+      events.push(`left:${leftActor.actorId}`);
+    }),
+    { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
+  );
+  assert.equal(await manager.find('alice'), actor);
+
+  manager.getState('alice').clearJoinedSpot();
+  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
+    events.push(`left:${leftActor.actorId}`);
+  });
+  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
+    events.push(`left:${leftActor.actorId}:duplicate`);
+  });
+  assert.equal(await manager.find('alice'), undefined);
+
+  const recreated = await manager.create('alice', 'player');
+  manager.getState('alice').ensureNativeActorRef(node);
+  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
+    events.push(`left:${leftActor.actorId}:stale`);
+  });
+  assert.equal(await manager.find('alice'), recreated);
+
+  assert.deepEqual(events, [
+    'createNative:alice',
+    'left:alice',
+    'destroyNative:alice:1',
+    'createNative:alice'
+  ]);
+});
+
+test('ZLinkEntrySpotActivation destroyActor invokes Entry Spot left before destroy hook', async () => {
+  const events = [];
+  class EntrySpot {
+    async onActorLeft(actor) {
+      events.push(`entryLeft:${actor.actorId}`);
+    }
+  }
+  const nativeSpot = {
+    routingId: 'entry-stage',
+    async dispose() {}
+  };
+  const activation = new framework.ZLinkEntrySpotActivation({
+    entrySpotType: EntrySpot,
+    nativeSpot,
+    nodeRid: 'node-a',
+    spotNodeName: 'node-a',
+    async destroyActor(nodeRid, actor, beforeDestroy) {
+      events.push(`destroyHook:${nodeRid}:${actor.actorId}`);
+      await beforeDestroy(actor);
+      events.push(`destroyAfterLeft:${actor.actorId}`);
+    }
+  });
+
+  await activation.create();
+  await activation.context.destroyActor({ actorId: 'alice' });
+
+  assert.deepEqual(events, [
+    'destroyHook:node-a:alice',
+    'entryLeft:alice',
+    'destroyAfterLeft:alice'
+  ]);
+});
+
 test('ZLinkActorNativeJoinCoordinator maps native join failures to framework errors', async () => {
   class PlayerActor {
     constructor(actorId, context) {

@@ -9,6 +9,7 @@ const { AuthenticatePlayerHandler } = require('./Handlers/authenticate-player-ha
 const { CreateGameHttpHandler } = require('./Handlers/create-game-http-handler');
 const { SampleNames } = require('../Configuration/sample-settings');
 const { loadSampleConfig } = require('../Configuration/sample-config');
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 
 type HttpEndpoint = {
   host: string;
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
   });
   const createGame = apiApp.get(CreateGameHttpHandler, { strict: false });
 
-  const server = http.createServer(async (request: any, response: any) => {
+  const server = http.createServer(async (request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST' || request.url !== '/games') {
       response.writeHead(404).end();
       return;
@@ -69,8 +70,8 @@ async function main(): Promise<void> {
   await closeNestRuntime(apiApp);
 }
 
-function readJson(request: any): Promise<any> {
-  return new Promise<any>((resolve, reject) => {
+function readJson(request: IncomingMessage): Promise<unknown> {
+  return new Promise<unknown>((resolve, reject) => {
     const chunks: Buffer[] = [];
     request.on('data', (chunk: Buffer) => chunks.push(chunk));
     request.once('error', reject);
@@ -84,7 +85,7 @@ function readJson(request: any): Promise<any> {
   });
 }
 
-function listen(server: any, endpoint: string): Promise<void> {
+function listen(server: Server, endpoint: string): Promise<void> {
   const { host, port } = parseHttpEndpoint(endpoint);
   return new Promise<void>((resolve, reject) => {
     server.once('error', reject);

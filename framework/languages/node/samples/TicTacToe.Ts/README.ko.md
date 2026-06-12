@@ -39,7 +39,14 @@ cd framework\languages\node\samples\TicTacToe.Ts
 - `Client/Configuration/`: client self-check 실행 설정을 둔다.
 - `Client/tictactoe-client-scenario.ts`: HTTP 생성, 응답 Play endpoint로 stream connector
   생성, stream 인증, join, move, push 검증을 순서대로 표현하는 client scenario 를 둔다.
-- `Shared/Contracts/`: client 와 server 가 함께 쓰는 MessagePack message DTO 와 codec helper 만 둔다.
+- `Shared/Contracts/`: client 와 server 가 함께 쓰는 message DTO 와 packet factory 만 둔다.
+
+서버 쪽 stream 은 framework stream node 로 등록한다. Play server 는 stream socket,
+frame header, payload codec 을 직접 다루지 않는다. `PlaySession` 은
+`ZLINK_ACTOR_MANAGER` 로 player actor 를 얻고 request 에 대한 직접 응답만
+`context.client.reply(...)` 로 보낸다. 상대 player 에게 보내는 push 는 actor 의
+`push(...)` 메서드가 현재 연결된 client stream 으로 보낸다. stream connector 는 client
+scenario 가 Play stream endpoint 에 접속할 때만 사용한다.
 
 ## Success Condition
 

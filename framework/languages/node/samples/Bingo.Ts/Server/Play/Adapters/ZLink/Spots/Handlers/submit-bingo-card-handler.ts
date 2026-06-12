@@ -1,19 +1,23 @@
 import type {
+  ZLinkSpotActorRequestContext,
+  ZLinkSpotActorRequestHandler
+} from '../../../../../../../../packages/framework/dist';
+import type { BingoRoomSpot } from '../bingo-room-spot';
+import type { PlayerActor } from '../../Actors/player-actor';
+import type {
   SubmitBingoCardReq,
   SubmitBingoCardRes
 } from '../../../../../../Shared/Contracts/messages';
 
-type BingoActor = {
-  actorId: string;
-};
-
-type BingoRoomLike = {
-  submitCard(actor: BingoActor, request: SubmitBingoCardReq): Promise<SubmitBingoCardRes>;
-};
-
-class SubmitBingoCardHandler {
-  [key: string]: any;
-  async handle(room: BingoRoomLike, actor: BingoActor, request: SubmitBingoCardReq): Promise<SubmitBingoCardRes> {
+class SubmitBingoCardHandler
+  implements ZLinkSpotActorRequestHandler<BingoRoomSpot, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes> {
+  async handle(
+    room: BingoRoomSpot,
+    actor: PlayerActor,
+    context: ZLinkSpotActorRequestContext,
+    request: SubmitBingoCardReq
+  ): Promise<SubmitBingoCardRes> {
+    void context;
     return await room.submitCard(actor, request);
   }
 }

@@ -1,5 +1,6 @@
 class TicTacToeBoard {
-  [key: string]: any;
+  private readonly cells: string[];
+
   constructor() {
     this.cells = Array(9).fill('.');
   }
@@ -32,7 +33,7 @@ class TicTacToeBoard {
   }
 }
 
-function winningLines(): number[][] {
+function winningLines(): readonly (readonly [number, number, number])[] {
   return [
     [0, 1, 2],
     [3, 4, 5],

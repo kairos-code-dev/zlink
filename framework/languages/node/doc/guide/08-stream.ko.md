@@ -3,6 +3,12 @@
 stream 은 외부 client 와 장기 연결을 유지하는 표면이다. framework server 쪽은 session
 lifecycle 을 받고, client 쪽은 `@zlink-systems/stream-connector` 를 사용한다.
 
+server application 은 stream socket, frame 길이, header codec, payload codec 을 직접
+다루지 않는다. server 는 `ZLinkModule` 에 stream node 와 session 을 등록하고,
+framework 가 connection accept, frame decode, session dispatch, reply frame 작성을
+맡는다. `@zlink-systems/stream-connector` 는 외부 client 코드에서 server 에
+접속할 때 사용하는 패키지다.
+
 ## 1. server session
 
 session 은 하나의 `onDispatch(header, payload)` 로 packet 을 받는다.
@@ -18,6 +24,45 @@ export class GameSession {
   }
 }
 ```
+
+NestJS server 에서는 stream endpoint 와 session type 만 등록한다.
+
+```ts
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .streamNode('game.stream', (stream) => stream
+      .bind('tcp://127.0.0.1:9000')
+      .registerSession(GameSession))
+    .build()
+);
+```
+
+위 코드가 server 쪽의 STREAM 구성이다. application 이 `net.createServer(...)` 나
+`ZlinkStreamFrameCodec` 을 호출해야 한다면 framework 표면을 우회하고 있는 것이다.
+
+session 이 NestJS provider 로 등록된 repository, handler, channel client 같은 객체를
+사용해야 하면 session class 를 직접 provider 로 만들지 않고 factory 를 등록한다.
+factory 는 필요한 provider 를 주입받고, 연결이 생길 때마다 `create(context)` 에서
+session 을 만든다.
+
+```ts
+ZLinkModule.forRoot(
+  zlinkFramework()
+    .streamNode('game.stream', (stream) => stream
+      .bind('tcp://127.0.0.1:9000')
+      .registerSession(GameSessionFactory))
+    .build()
+);
+```
+
+이때 NestJS `providers` 에는 `GameSessionFactory` 와 factory 가 주입받는 application
+service 만 등록한다. stream socket, frame codec, session token alias 같은 framework
+배선은 application provider 로 등록하지 않는다.
+
+stream session 이 player actor 를 사용해야 하면 actor 생성과 보관은 framework actor
+manager 에 맡긴다. session 안에서 `Map<string, Actor>` 같은 저장소를 만들고 모든
+연결을 순회해 push 를 flush 하면 framework 의 actor/session 경계를 다시 application
+으로 끌어올리는 구조가 된다.
 
 ## 2. connector
 

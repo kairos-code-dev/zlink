@@ -17,11 +17,10 @@ type BingoSessionHandlers = {
 };
 
 class BingoSession {
-  [key: string]: any;
-  constructor(context: BingoSessionContext, handlers: BingoSessionHandlers) {
-    this.context = context;
-    this.handlers = handlers;
-  }
+  constructor(
+    readonly context: BingoSessionContext,
+    private readonly handlers: BingoSessionHandlers
+  ) {}
 
   async dispatch(header: BingoRouteHeader, payload: unknown): Promise<unknown> {
     if (await this.handlers.tryHandle(this.context, header, payload)) {

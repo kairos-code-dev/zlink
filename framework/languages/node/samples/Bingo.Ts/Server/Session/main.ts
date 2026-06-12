@@ -13,6 +13,14 @@ const { SampleNames, SampleTimings } = require('../Configuration/sample-names');
 const { loadSampleConfig } = require('../Configuration/sample-config');
 const { PacketNames, bingoNotificationsReq, withPlayerIdentity } = require('../../Shared/Contracts/messages');
 const { fromBingoProto, toBingoProto } = require('../../Shared/Contracts/protobuf-codec');
+import type { Server, Socket } from 'node:net';
+import type { ZLinkChannelClient } from '../../../../packages/framework/dist';
+import type { BingoChannelClient } from '../discovery-support';
+import type { BingoSession as BingoSessionType } from './Sessions/bingo-session';
+import type {
+  BingoActorRef,
+  PlayerIdentity
+} from '../../Shared/Contracts/messages';
 
 type TcpEndpoint = {
   host: string;
@@ -35,9 +43,18 @@ type SessionContext = {
   notificationCursor: number;
   closed: boolean;
   actors: {
-    bound: any[];
-    bind(actor: any): Promise<void>;
+    bound: BingoSessionActorRef[];
+    bind(actor: BingoActorRef): Promise<void>;
   };
+};
+
+type BingoSessionActorRef = BingoActorRef & {
+  relay(header: StreamHeader, payload: unknown): Promise<unknown>;
+};
+
+type NotificationBatch = {
+  nextSeq: number;
+  delivered: Array<{ seq: number; packetName: string; payload: unknown }>;
 };
 
 async function bootstrap(): Promise<void> {
@@ -70,10 +87,10 @@ async function bootstrap(): Promise<void> {
     logger: false,
     abortOnError: false
   });
-  const channelClient = app.get(ZLINK_CHANNEL_CLIENT, { strict: false });
+  const channelClient = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const authenticate = app.get(AuthenticateSessionHandler, { strict: false });
 
-  const streamServer = net.createServer((socket: any) => {
+  const streamServer = net.createServer((socket: Socket) => {
     const transport = new StreamTransport(socket);
     const context = createSessionContext();
     const session = new BingoSession(context, {
@@ -100,7 +117,7 @@ async function bootstrap(): Promise<void> {
           return;
         }
         buffer = buffer.subarray(packet.length);
-        void dispatchPacket(session, packet.bytes, transport, channelClient);
+        void dispatchPacket(session, context, packet.bytes, transport, channelClient);
       }
     });
   });
@@ -122,7 +139,13 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-async function dispatchPacket(session: any, bytes: Buffer, transport: any, channelClient: any): Promise<void> {
+async function dispatchPacket(
+  session: BingoSessionType,
+  context: SessionContext,
+  bytes: Buffer,
+  transport: StreamTransport,
+  channelClient: ZLinkChannelClient
+): Promise<void> {
   try {
     const frame = connector.ZlinkStreamFrameCodec.decode(bytes);
     const header = connector.ZlinkStreamHeaderCodec.decode(frame.header);
@@ -131,19 +154,24 @@ async function dispatchPacket(session: any, bytes: Buffer, transport: any, chann
       await session.dispatch(header, payload);
       return;
     }
-    const response = await relayToPlay(channelClient, session.context, header.name, payload);
+    const response = await relayToPlay(channelClient, context, header.name, payload);
     transport.reply(header, response);
   } catch (error) {
     transport.send('StreamError', { message: error instanceof Error ? error.message : String(error) });
   }
 }
 
-async function relayToPlay(channelClient: any, context: SessionContext, packetName: string, request: object): Promise<unknown> {
+async function relayToPlay(
+  channelClient: ZLinkChannelClient,
+  context: SessionContext,
+  packetName: string,
+  request: object
+): Promise<unknown> {
   return await relayToChannel(channelClient, SampleNames.playChannel, context, packetName, request);
 }
 
 async function relayToChannel(
-  channelClient: any,
+  channelClient: ZLinkChannelClient | BingoChannelClient,
   channelName: string,
   context: SessionContext,
   packetName: string,
@@ -157,10 +185,14 @@ async function relayToChannel(
     .requestToChannel(channelName, payload)
     .packetName(packetName)
     .timeout(SampleTimings.requestTimeout)
-    .submit();
+    .submit<unknown>();
 }
 
-async function pumpNotifications(channelClient: any, context: SessionContext, transport: any): Promise<void> {
+async function pumpNotifications(
+  channelClient: BingoChannelClient,
+  context: SessionContext,
+  transport: StreamTransport
+): Promise<void> {
   while (!context.closed) {
     if (context.actorId !== null && context.displayName !== null) {
       try {
@@ -170,7 +202,7 @@ async function pumpNotifications(channelClient: any, context: SessionContext, tr
           context,
           PacketNames.bingoNotificationsReq,
           bingoNotificationsReq(context.notificationCursor)
-        ) as { nextSeq: number; delivered: Array<{ seq: number; packetName: string; payload: unknown }> };
+        ) as NotificationBatch;
         context.notificationCursor = response.nextSeq;
         for (const delivered of response.delivered) {
           transport.send(delivered.packetName, delivered.payload, { seq: String(delivered.seq) });
@@ -193,18 +225,15 @@ function createSessionContext(): SessionContext {
     closed: false,
     actors: {
       bound: [],
-      async bind(actor: any): Promise<void> {
-        this.bound.push(actor);
+      async bind(actor: BingoActorRef): Promise<void> {
+        this.bound.push(createBoundActor(actor));
       }
     }
   };
 }
 
 class StreamTransport {
-  [key: string]: any;
-  constructor(socket: any) {
-    this.socket = socket;
-  }
+  constructor(private readonly socket: Socket) {}
 
   reply(requestHeader: StreamHeader, payload: unknown): void {
     this.write({
@@ -238,7 +267,17 @@ class StreamTransport {
   }
 }
 
-function listen(server: any, endpoint: string): Promise<void> {
+function createBoundActor(actor: BingoActorRef): BingoSessionActorRef {
+  return {
+    ...actor,
+    async relay(header: StreamHeader, payload: unknown): Promise<unknown> {
+      void header;
+      return payload;
+    }
+  };
+}
+
+function listen(server: Server, endpoint: string): Promise<void> {
   const { host, port } = parseTcpEndpoint(endpoint);
   return new Promise<void>((resolve, reject) => {
     server.once('error', reject);

@@ -7,6 +7,7 @@ const {
   authenticateSessionRes,
   ensurePlayerActorReq
 } = require('../../../../Shared/Contracts/messages');
+import type { ZLinkChannelClient } from '../../../../../../packages/framework/dist';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -23,27 +24,24 @@ type AuthenticateSessionContext = {
 };
 
 class AuthenticateSessionHandler {
-  [key: string]: any;
-  constructor(zlinkClient: any) {
-    this.zlinkClient = zlinkClient;
-  }
+  constructor(private readonly zlinkClient: ZLinkChannelClient) {}
 
   async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateSessionRes> {
-    const authenticated: AuthenticatePlayerRes = await this.zlinkClient
+    const authenticated = await this.zlinkClient
       .requestToChannel(SampleNames.apiChannel, authenticateReq(request.accessToken))
       .packetName(PacketNames.authenticatePlayerReq)
       .timeout(SampleTimings.requestTimeout)
-      .submit();
+      .submit<AuthenticatePlayerRes>();
 
     if (!authenticated.accepted || !authenticated.actorId || !authenticated.displayName) {
       throw new Error(authenticated.reason ?? 'Player authentication failed.');
     }
 
-    const ensured: EnsurePlayerActorRes = await this.zlinkClient
+    const ensured = await this.zlinkClient
       .requestToChannel(SampleNames.playChannel, ensurePlayerActorReq(authenticated.actorId, authenticated.displayName))
       .packetName(PacketNames.ensurePlayerActorReq)
       .timeout(SampleTimings.requestTimeout)
-      .submit();
+      .submit<EnsurePlayerActorRes>();
 
     await context.actors.bind(ensured.actor);
     context.actorId = ensured.actorId;

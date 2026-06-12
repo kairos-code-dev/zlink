@@ -1,19 +1,23 @@
 const { BingoCard } = require('./bingo-card');
+import type { BingoCard as BingoCardType } from './bingo-card';
 
 type BingoPlayerGameState = {
   actorId: string;
-  card: any | null;
+  card: BingoCardType | null;
 };
 
 class BingoGame {
-  [key: string]: any;
+  readonly drawnNumbers: number[];
+  readonly winners: string[];
+  private readonly drawDeck: number[];
+
   constructor(drawDeck: number[]) {
     this.drawDeck = [...drawDeck];
     this.drawnNumbers = [];
     this.winners = [];
   }
 
-  submitCard(player: BingoPlayerGameState, cardNumbers: number[]): any {
+  submitCard(player: BingoPlayerGameState, cardNumbers: number[]): BingoCardType {
     if (player.card !== null) {
       throw new Error(`Actor '${player.actorId}' already submitted a Bingo card.`);
     }
@@ -32,6 +36,9 @@ class BingoGame {
       return null;
     }
     const number = this.drawDeck.shift();
+    if (number === undefined) {
+      return null;
+    }
     this.drawnNumbers.push(number);
     for (const player of players) {
       const lines = player.card.mark(number);
@@ -52,3 +59,4 @@ class BingoGame {
 }
 
 export { BingoGame };
+export type { BingoPlayerGameState };

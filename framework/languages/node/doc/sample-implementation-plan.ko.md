@@ -88,8 +88,9 @@ samples/
 다이어그램의 이름은 실제 디렉토리 역할만 나타낸다. dotnet sample 과 같은 역할을
 제공하기 위해 샘플 최상위 역할 디렉토리는 dotnet sample 과 같은 `Client`, `Server`,
 `Shared` 형태를 사용한다. 파일명과 함수명은 Node.js 관례를 따른다. NestJS sample 은
-TypeScript 로 작성하고, framework public API와 stream connector public API만 사용해야
-한다.
+TypeScript 로 작성하고, 역할에 맞는 public API만 사용해야 한다. server sample 은
+framework public API(`ZLinkModule`, `zlinkFramework`, handler/session contract)만
+사용하고, stream connector public API는 client sample 에서만 사용한다.
 
 ## 4. Sample Self-Check 기준
 
@@ -98,7 +99,8 @@ TypeScript 로 작성하고, framework public API와 stream connector public API
 
 필수 확인:
 
-- sample 이 framework/connector public API만 import 한다.
+- server sample 이 framework public API만 import 하고, client sample 만 stream
+  connector public API를 import 한다.
 - readiness 를 숨기기 위해 sleep 만 추가하지 않는다. registry query, connector
   connection ready event, framework lifecycle signal 같은 관찰 가능한 상태를 기다린다.
 - NestJS sample 에 application route store, metadata store, actor-session fallback

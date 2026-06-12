@@ -12,12 +12,14 @@ import type {
   ZLinkSessionActors,
   ZLinkSessionClient,
   ZLinkSessionContext,
+  ZLinkSessionFactory,
   ZLinkSession,
   ZLinkProviderResolver,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
   ZLinkStream
 } from '../../contracts';
+import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
@@ -142,9 +144,11 @@ export class ZLinkStreamRuntimeManager {
         socket,
         bindingRuntime: this.options.bindingRuntime,
         headerDecoder: (header) => decodeStreamHeader(messageToBytes(header)),
-        sessionFactory: (context) => {
-          return createProviderInstance(sessionType as Type<ZLinkSession>, this.options.providerResolver, context);
-        }
+        sessionFactory: (context) => createStreamSessionInstance(
+          sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
+          this.options.providerResolver,
+          context
+        )
       });
       runtime.start();
       this.nodes.set(nodeName, { runtime, socket, monitor });
@@ -782,16 +786,18 @@ class ZLinkStreamFrameMessageFactory {
   }
 
   private requireMessageFactory(): ZLinkStreamMessageFactory {
-    if (this.options.messageFactory === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
-        'Stream message factory is not started.',
-        true
-      );
-    }
-    return this.options.messageFactory;
+    return this.options.messageFactory ?? defaultStreamMessageFactory;
   }
 }
+
+const defaultStreamMessageFactory: ZLinkStreamMessageFactory = {
+  createTextMessage(payload: string): Message {
+    return ZLinkBindingMessage.from(Buffer.from(payload));
+  },
+  createBinaryMessage(payload: Uint8Array): Message {
+    return ZLinkBindingMessage.from(Buffer.from(payload));
+  }
+};
 
 export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   readonly client: ZLinkSessionClient;
@@ -1338,6 +1344,27 @@ async function createProviderInstance<T>(
   return fallbackArg === undefined
     ? new (type as new () => T)()
     : new (type as new (arg: unknown) => T)(fallbackArg);
+}
+
+async function createStreamSessionInstance(
+  type: Type<ZLinkSession> | Type<ZLinkSessionFactory>,
+  resolver: ZLinkProviderResolver | undefined,
+  context: DefaultZLinkSessionContext
+): Promise<ZLinkSession> {
+  const created = await createProviderInstance<ZLinkSession | ZLinkSessionFactory>(
+    type as Type<ZLinkSession | ZLinkSessionFactory>,
+    resolver,
+    context
+  );
+  if (isSessionFactory(created)) {
+    return await created.create(context);
+  }
+  return created as ZLinkSession;
+}
+
+function isSessionFactory(value: unknown): value is ZLinkSessionFactory {
+  return typeof (value as { create?: unknown }).create === 'function'
+    && (value as { context?: unknown }).context === undefined;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

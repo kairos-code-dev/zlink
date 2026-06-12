@@ -39,6 +39,7 @@ export interface ZLinkEntrySpotContext {
   readonly routingId: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
+  destroyActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkEntrySpot>>(
     name: string,
     periodMs: number,

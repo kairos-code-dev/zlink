@@ -1741,9 +1741,11 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   class ActorPacketHandler {}
   class SpotHandler {}
   class PlayerActor {}
+  let entryContext;
   class EntrySpot {
     constructor(context) {
       this.context = context;
+      entryContext = context;
     }
     configure() {
       calls.push(`entry:configure:${this.context.spotRid}:${this.context.nodeRid}`);
@@ -1759,6 +1761,9 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     }
     async onClosing() {
       calls.push('entry:onClosing');
+    }
+    async onActorLeft(actor) {
+      calls.push(`entry:onActorLeft:${actor.actorId}`);
     }
   }
   const entrySpotFacade = {
@@ -1853,6 +1858,14 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   });
 
   await runtime.start();
+  runtime.setActorManager({
+    async destroyActor(node, nodeRid, actor, beforeDestroy) {
+      calls.push(`actorManager:destroy:${node.routingId}:${nodeRid}:${actor.actorId}`);
+      await beforeDestroy(actor);
+      calls.push(`actorManager:destroyed:${actor.actorId}`);
+    }
+  });
+  await entryContext.destroyActor({ actorId: 'player-1' });
   await runtime.stop();
 
   assert.deepEqual(registry.snapshot(), [
@@ -1868,6 +1881,9 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     'spot:entrySpot',
     'entry:configure:entry-rid:node-entry',
     'entry:onInitialize',
+    'actorManager:destroy:node-entry:node-entry:player-1',
+    'entry:onActorLeft:player-1',
+    'actorManager:destroyed:player-1',
     'entry:onClosing',
     'entry:dispose',
     'spot:dispose',

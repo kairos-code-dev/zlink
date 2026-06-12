@@ -7,24 +7,24 @@ const {
 } = require('../../../Shared/Contracts/messages');
 const { SampleNames, SampleTimings } = require('../../Configuration/sample-names');
 import type {
+  ZLinkChannelClient,
+  ZLinkRequestHandler
+} from '../../../../../packages/framework/dist';
+import type {
   AllocateBingoRoomRes,
   MatchBingoApiRes,
   MatchBingoReq
 } from '../../../Shared/Contracts/messages';
 
-class MatchBingoHandler {
-  [key: string]: any;
-
-  constructor(@Inject(ZLINK_CHANNEL_CLIENT) zlinkClient: any) {
-    this.zlinkClient = zlinkClient;
-  }
+class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoReq, MatchBingoApiRes> {
+  constructor(@Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient) {}
 
   async handle(request: MatchBingoReq): Promise<MatchBingoApiRes> {
-    const allocated: AllocateBingoRoomRes = await this.zlinkClient
+    const allocated = await this.zlinkClient
       .requestToChannel(SampleNames.playChannel, allocateBingoRoomReq(request.mode))
       .packetName(PacketNames.allocateBingoRoom)
       .timeout(SampleTimings.requestTimeout)
-      .submit();
+      .submit<AllocateBingoRoomRes>();
     return matchBingoApiRes(allocated.roomId);
   }
 }

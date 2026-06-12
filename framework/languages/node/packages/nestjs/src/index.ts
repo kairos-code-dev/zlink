@@ -21,11 +21,15 @@ import type {
   ZLinkRouteChannelRequestHandlerRegistration,
   ZLinkRouteChannelSendHandlerRegistration,
   ZLinkRouteSendContext,
+  ZLinkEntrySpot,
+  ZLinkSpot,
   ZLinkRegistryOptions,
   ZLinkRegistryQueryClientOptions,
   ZLinkSpotNodeRegistrationOptions,
   ZLinkSpotNodeOptions,
   ZLinkSpotRemoteAddressResolver,
+  ZLinkSession,
+  ZLinkSessionFactory,
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 
@@ -36,12 +40,15 @@ interface FrameworkRuntimeHost {
   readonly routeTransport: unknown;
   readonly spotPublisherTransport: unknown;
   readonly streamBindingRuntime: unknown;
-  readonly boundSessionFactory: unknown;
+  readonly boundSessionFactory: {
+    create(actorId: string): unknown;
+  };
   readonly isStarted: boolean;
   start(): Promise<void>;
   stop(): Promise<void>;
   onApplicationBootstrap(): Promise<void>;
   onApplicationShutdown(): Promise<void>;
+  setActorManager?(actorManager: unknown): void;
 }
 
 interface RegistryRuntime {
@@ -174,9 +181,12 @@ export interface ZLinkModuleOptions extends Omit<
 
 export interface ZLinkNestFrameworkOptionsBuilder {
   options(options: ZLinkNestFrameworkAdditionalOptions): this;
+  actorFactory(actorType: string, factoryType: Type): this;
   clientServerChannel(name: string, configure: (channel: ZLinkNestClientServerChannelBuilder) => void): this;
   fanoutChannel(name: string, configure: (channel: ZLinkNestFanoutChannelBuilder) => void): this;
   routerMesh(name: string, configure: (mesh: ZLinkNestRouterMeshBuilder) => void): this;
+  spotNode(name: string, configure: (spot: ZLinkNestSpotNodeBuilder) => void): this;
+  streamNode(name: string, configure: (stream: ZLinkNestStreamNodeBuilder) => void): this;
   build(): ZLinkModuleOptions;
 }
 
@@ -202,6 +212,18 @@ export interface ZLinkNestRouterMeshBuilder {
   routingId(routingId: string | undefined): this;
   connect(endpoint: string | readonly string[] | undefined): this;
   handlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestStreamNodeBuilder {
+  bind(endpoint: string | undefined): this;
+  attachActorGateway(spotNodeName: string | undefined): this;
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
+}
+
+export interface ZLinkNestSpotNodeBuilder {
+  router(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
+  entrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
 }
 
 export const ZLINK_NEST_HANDLER_GROUP = Symbol.for('@zlink-systems/nestjs:handler-group');
@@ -277,9 +299,17 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
   private readonly clientServerChannels: Record<string, ZLinkNestClientServerChannelOptions> = {};
   private readonly fanoutChannels: Record<string, ZLinkNestFanoutChannelOptions> = {};
   private readonly routerMeshes: Record<string, ZLinkNestRouterMeshOptions> = {};
+  private readonly streams: Record<string, ZLinkStreamNodeOptions> = {};
+  private readonly spotNodes: Record<string, ZLinkSpotNodeOptions> = {};
+  private readonly actorFactories: Record<string, Type> = {};
 
   options(options: ZLinkNestFrameworkAdditionalOptions): this {
     this.additionalOptions = { ...this.additionalOptions, ...options };
+    return this;
+  }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    this.actorFactories[actorType] = factoryType;
     return this;
   }
 
@@ -304,12 +334,29 @@ class DefaultZLinkNestFrameworkOptionsBuilder implements ZLinkNestFrameworkOptio
     return this;
   }
 
+  spotNode(name: string, configure: (spot: ZLinkNestSpotNodeBuilder) => void): this {
+    const spot = new DefaultZLinkNestSpotNodeBuilder();
+    configure(spot);
+    this.spotNodes[name] = spot.build();
+    return this;
+  }
+
+  streamNode(name: string, configure: (stream: ZLinkNestStreamNodeBuilder) => void): this {
+    const stream = new DefaultZLinkNestStreamNodeBuilder();
+    configure(stream);
+    this.streams[name] = stream.build();
+    return this;
+  }
+
   build(): ZLinkModuleOptions {
     return {
       ...this.additionalOptions,
       clientServerChannels: { ...this.clientServerChannels },
       fanoutChannels: { ...this.fanoutChannels },
-      routerMeshes: { ...this.routerMeshes }
+      routerMeshes: { ...this.routerMeshes },
+      streams: { ...this.streams, ...(this.additionalOptions.streams ?? {}) },
+      spotNodes: { ...this.spotNodes, ...(this.additionalOptions.spotNodes as Record<string, ZLinkSpotNodeOptions> | undefined ?? {}) },
+      actorFactories: { ...this.actorFactories, ...(this.additionalOptions.actorFactories as Record<string, Type> | undefined ?? {}) }
     };
   }
 }
@@ -384,6 +431,65 @@ class DefaultZLinkNestRouterMeshBuilder implements ZLinkNestRouterMeshBuilder {
   }
 
   build(): ZLinkNestRouterMeshOptions {
+    return this.options;
+  }
+}
+
+class DefaultZLinkNestStreamNodeBuilder implements ZLinkNestStreamNodeBuilder {
+  private options: ZLinkStreamNodeOptions = {};
+
+  bind(endpoint: string | undefined): this {
+    this.options = { ...this.options, bind: endpoint };
+    return this;
+  }
+
+  attachActorGateway(spotNodeName: string | undefined): this {
+    this.options = { ...this.options, attachActorGateway: spotNodeName };
+    return this;
+  }
+
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this {
+    if (this.options.session !== undefined) {
+      throw new framework.ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
+    }
+    this.options = { ...this.options, session: sessionType as Type };
+    return this;
+  }
+
+  build(): ZLinkStreamNodeOptions {
+    return this.options;
+  }
+}
+
+class DefaultZLinkNestSpotNodeBuilder implements ZLinkNestSpotNodeBuilder {
+  private options: ZLinkSpotNodeOptions = {};
+
+  router(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
+    this.options = {
+      ...this.options,
+      router: {
+        bind,
+        routingId,
+        manualConnections: connect === undefined ? undefined : endpointList(connect)
+      }
+    };
+    return this;
+  }
+
+  entrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
+    this.options = { ...this.options, entrySpotType };
+    return this;
+  }
+
+  spotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+    this.options = {
+      ...this.options,
+      spotFactories: [...(this.options.spotFactories ?? []), spotType]
+    };
+    return this;
+  }
+
+  build(): ZLinkSpotNodeOptions {
     return this.options;
   }
 }
@@ -1203,12 +1309,18 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
   },
   {
     token: ZLINK_ACTOR_MANAGER,
-    requiresRuntime: false,
+    requiresRuntime: true,
     isEnabled: (registration) => framework.hasActorManager(registration),
-    create: (registration, _runtime, moduleRef, discovery) => new framework.DefaultZLinkActorManager({
-      actorFactories: registration.actorFactories,
-      providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
-    })
+    create: (registration, runtime, moduleRef, discovery) => {
+      const host = requireRuntime(runtime);
+      const actorManager = new framework.DefaultZLinkActorManager({
+        actorFactories: registration.actorFactories,
+        boundSessionFactory: host.boundSessionFactory.create.bind(host.boundSessionFactory),
+        providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+      });
+      host.setActorManager?.(actorManager);
+      return actorManager;
+    }
   }
 ];
 

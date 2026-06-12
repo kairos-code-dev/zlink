@@ -9,6 +9,7 @@ import {
 } from '../channels';
 import { ZLinkFrameworkRuntimeState } from '../execution';
 import { ZLinkRuntimeSpotPublisherTransport, ZLinkSpotNodeRuntimeManager } from '../spots';
+import type { DefaultZLinkActorManager } from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
   ZLinkStreamBindingRuntime,
@@ -34,6 +35,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   private channelRuntime?: ZLinkChannelRuntimeManager;
   private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
+  private actorManager?: DefaultZLinkActorManager;
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly routeTransport = new ZLinkRuntimeRouteTransport(() => this.channelRuntime);
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
@@ -81,7 +83,13 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         registration: this.options.registration,
         backendAdapterFactory: this.backendAdapterFactory,
         context,
-        providerResolver: this.options.providerResolver
+        providerResolver: this.options.providerResolver,
+        actorDestroyer: (node, entryNodeRid, actor, beforeDestroy, signal) => {
+          if (this.actorManager === undefined) {
+            throw new Error('Entry Spot actor destroy requires ZLINK_ACTOR_MANAGER.');
+          }
+          return this.actorManager.destroyActor(node, entryNodeRid, actor, beforeDestroy, signal);
+        }
       });
       await spotNodeRuntime.start();
       this.spotNodeRuntime = spotNodeRuntime;
@@ -132,6 +140,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
 
   async onApplicationShutdown(): Promise<void> {
     await this.stop();
+  }
+
+  setActorManager(actorManager: DefaultZLinkActorManager): void {
+    this.actorManager = actorManager;
   }
 }
 

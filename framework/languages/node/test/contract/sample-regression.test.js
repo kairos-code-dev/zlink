@@ -542,9 +542,8 @@ test('node samples use the codecs required by the common specs', () => {
   const bingoCodec = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'protobuf-codec.ts'), 'utf8');
   const bingoProto = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Shared', 'Contracts', 'bingo_messages.proto'), 'utf8');
   const required = [
-    [ticTacToeClient, 'zlinkStreamMessagePackCodec'],
-    [ticTacToePlay, 'ZlinkStreamCodec.MessagePack'],
-    [ticTacToeContracts, 'createMessagePackMessage'],
+    [ticTacToeClient, 'zlinkStreamJsonCodec'],
+    [ticTacToePlay, '.streamNode(SampleNames.playStream'],
     [bingoClient, 'bingoProtobufCodec'],
     [bingoSession, 'ZlinkStreamCodec.Protobuf'],
     [bingoSession, 'fromBingoProto'],
@@ -566,12 +565,80 @@ test('node samples use the codecs required by the common specs', () => {
         continue;
       }
       const content = fs.readFileSync(file, 'utf8');
-      if (/stream-connector-json|zlinkStreamJsonCodec|ZlinkStreamCodec\.Json|createJsonMessage|readJsonMessage/.test(content)) {
+      if (sample === 'TicTacToe.Ts' && /MessagePack|msgpack|toMsgPack|fromMsgPack|zlinkStreamMessagePackCodec|createMessagePackMessage|readMessagePackMessage/.test(content)) {
         violations.push(path.relative(samplesRoot, file));
       }
       if (sample === 'Bingo.Ts' && /MessagePack|msgpack|toMsgPack|fromMsgPack|zlinkStreamMessagePackCodec|createMessagePackMessage|readMessagePackMessage/.test(content)) {
         violations.push(path.relative(samplesRoot, file));
       }
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
+});
+
+test('TicTacToe server uses framework stream session instead of connector framing', () => {
+  const checked = [
+    'Server/Play/main.ts',
+    'Server/Play/Adapters/ZLink/Actors/play-actor.ts',
+    'Server/Play/Adapters/ZLink/Sessions/play-session.ts',
+    'Server/Play/Adapters/ZLink/Sessions/play-session-factory.ts',
+    'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-join-game-handler.ts',
+    'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler.ts',
+    'Shared/Contracts/messages.ts'
+  ];
+  const missing = [];
+  const violations = [];
+
+  for (const relative of checked) {
+    const content = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', relative), 'utf8');
+    if (/stream-connector|ZlinkStream(Frame|Header|Codec)|net\.createServer|tryReadFrame/.test(content)) {
+      violations.push(relative);
+    }
+  }
+
+  const playMain = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const playSession = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Sessions',
+    'play-session.ts'
+  ), 'utf8');
+  const playActor = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Actors',
+    'play-actor.ts'
+  ), 'utf8');
+  const playJoinHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'TicTacToe.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'Handlers',
+    'play-actor-join-game-handler.ts'
+  ), 'utf8');
+  for (const text of [
+    '.streamNode(SampleNames.playStream',
+    '.registerSession(PlaySessionFactory)',
+    'context.client.reply',
+    'actorManager.getOrCreate',
+    'player.actor.push('
+  ]) {
+    if (!`${playMain}\n${playSession}\n${playActor}\n${playJoinHandler}`.includes(text)) {
+      missing.push(text);
     }
   }
 
@@ -652,7 +719,8 @@ test('TicTacToe TypeScript sample uses declarative handler registration', () => 
     [apiHandler, "zlinkRequestHandler('api', PacketNames.authenticatePlayerReq)"],
     [playHandler, "zlinkRequestHandler('play', PacketNames.createGame)"],
     [apiMain, '.handlerGroup(\'api\')'],
-    [playMain, '.handlerGroup(\'play\')']
+    [playMain, '.handlerGroup(\'play\')'],
+    [playMain, '.streamNode(SampleNames.playStream']
   ];
   const missing = required
     .filter(([content, text]) => !content.includes(text))
@@ -664,6 +732,14 @@ test('TicTacToe TypeScript sample uses declarative handler registration', () => 
   ]) {
     if (content.includes('zlinkHandlers')) {
       violations.push(name);
+    }
+  }
+  for (const text of [
+    'PlayActorJoinGameHandler',
+    'PlayActorPlaceMarkHandler'
+  ]) {
+    if (playMain.includes(text)) {
+      violations.push(`TicTacToe.Ts/Server/Play/main.ts:${text}`);
     }
   }
 
@@ -715,6 +791,87 @@ test('Bingo TypeScript sample separates room lifecycle from pure bingo game rule
 
   assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
+});
+
+test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
+  const playMain = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
+  const roomSpot = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'bingo-room-spot.ts'
+  ), 'utf8');
+  const entrySpot = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'bingo-entry-spot.ts'
+  ), 'utf8');
+  const matchHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'Handlers',
+    'match-bingo-actor-handler.ts'
+  ), 'utf8');
+  const submitHandler = fs.readFileSync(path.join(
+    samplesRoot,
+    'Bingo.Ts',
+    'Server',
+    'Play',
+    'Adapters',
+    'ZLink',
+    'Spots',
+    'Handlers',
+    'submit-bingo-card-handler.ts'
+  ), 'utf8');
+  const frameworkSpotContract = fs.readFileSync(path.join(
+    workspaceRoot,
+    'packages',
+    'framework',
+    'src',
+    'contracts',
+    'Spots',
+    'ZLinkSpot.ts'
+  ), 'utf8');
+  const required = [
+    [frameworkSpotContract, 'interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>'],
+    [frameworkSpotContract, 'interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>'],
+    [playMain, '.actorFactory(SampleNames.playerActorType, PlayerActorFactory)'],
+    [playMain, '.spotNode(SampleNames.roomSpotType'],
+    [playMain, '.entrySpot(BingoEntrySpot)'],
+    [playMain, '.spotFactory(BingoRoomSpot)'],
+    [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
+    [roomSpot, 'addActorPacket(SubmitBingoCardHandler, PlayerActor, PacketNames.submitBingoCardReq)'],
+    [roomSpot, 'onActorJoin(actor: PlayerActorType'],
+    [roomSpot, 'onPostActorJoined(actor: PlayerActorType'],
+    [roomSpot, 'onActorLeft(actor: PlayerActorType'],
+    [roomSpot, 'onActorDisconnected(actor: PlayerActorType'],
+    [entrySpot, 'implements ZLinkEntrySpot<PlayerActorType>'],
+    [entrySpot, 'addActorPacket(MatchBingoActorHandler, PlayerActor, PacketNames.matchBingoReq)'],
+    [entrySpot, 'onPostActorJoined(actor: PlayerActorType'],
+    [entrySpot, 'onActorLeft(actor: PlayerActorType'],
+    [entrySpot, 'onActorDisconnected(actor: PlayerActorType'],
+    [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes>'],
+    [submitHandler, 'implements ZLinkSpotActorRequestHandler<BingoRoomSpot, PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes>']
+  ];
+  const missing = required
+    .filter(([content, text]) => !content.includes(text))
+    .map(([, text]) => text);
+
+  assert.deepEqual(missing, []);
 });
 
 test('node sample runners own server process orchestration', () => {

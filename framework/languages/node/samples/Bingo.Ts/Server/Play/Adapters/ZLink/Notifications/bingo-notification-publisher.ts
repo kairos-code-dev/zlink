@@ -1,6 +1,7 @@
 const { SampleNames } = require('../../../../Configuration/sample-names');
 const { Inject } = require('@nestjs/common');
 const { BingoNotificationDeliveryLog } = require('../../../notification-delivery-log');
+import type { BingoNotificationDeliveryLog as BingoNotificationDeliveryLogType } from '../../../notification-delivery-log';
 import type {
   NumberDrawnNotify,
   PlayerJoinedNotify,
@@ -18,10 +19,7 @@ type BingoNotificationEvent = {
 };
 
 class BingoNotificationPublisher {
-  [key: string]: any;
-  constructor(deliveryLog: unknown) {
-    this.deliveryLog = deliveryLog;
-  }
+  constructor(private readonly deliveryLog: BingoNotificationDeliveryLogType) {}
 
   async publish(events: BingoNotificationEvent[]): Promise<void> {
     for (const event of events) {

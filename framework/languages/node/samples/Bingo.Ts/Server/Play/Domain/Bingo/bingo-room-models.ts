@@ -21,3 +21,4 @@ function createRoomSettings(mode: string | undefined, roomSeq: number): BingoRoo
 }
 
 export { BingoRoomStatus, createRoomSettings };
+export type { BingoRoomSettings };

@@ -1,6 +1,3 @@
-const { Message } = require('@zlink-systems/zlink');
-const msgpack = require('../../../../../packages/stream-connector-msgpack/dist');
-
 const PacketNames = Object.freeze({
   authenticateReq: 'AuthenticateReq',
   authenticateRes: 'AuthenticateRes',
@@ -125,24 +122,25 @@ export interface GameStateNotify {
 export interface TicTacToeActor {
   actorId: string;
   displayName: string;
+  roomId?: string;
+  attachClient(client: TicTacToeActorClient): void;
+  detachClient(client: TicTacToeActorClient): void;
+  markDisconnected(): void;
+  push(packetName: string, payload: unknown): Promise<void>;
 }
 
-type ZLinkMessage = {
-  data(): Buffer;
-  getString(): string;
-  close(): void;
-};
+export interface TicTacToeActorClient {
+  send(message: unknown): {
+    packetName(packetName: string): {
+      metadata(key: string, value: string): {
+        submit(signal?: AbortSignal): Promise<void>;
+      };
+    };
+  };
+}
 
 function actorDisplayName(actorId: string): string {
   return actorId === 'p1' ? 'Player X' : 'Player O';
-}
-
-function createMessagePackMessage(value: unknown): ZLinkMessage {
-  return Message.from(Buffer.from(msgpack.toMsgPack(value).payload));
-}
-
-function readMessagePackMessage<TValue = unknown>(message: ZLinkMessage): TValue {
-  return msgpack.fromMsgPack({ codec: msgpack.toMsgPack({}).codec, payload: message.data() }) as TValue;
 }
 
 function authenticateReq(accessToken: string): AuthenticateReq {
@@ -217,7 +215,6 @@ export {
   createGameRes,
   createGameHttpRes,
   createGameReq,
-  createMessagePackMessage,
   gameStateNotify,
   joinGameInternalReq,
   joinGameReq,
@@ -225,6 +222,5 @@ export {
   placeMarkRes,
   placeMarkReq,
   placeMarkStreamReq,
-  playerJoinedNotify,
-  readMessagePackMessage
+  playerJoinedNotify
 };

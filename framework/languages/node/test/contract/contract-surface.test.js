@@ -93,6 +93,8 @@ test('entry spot public surface exposes no create or admission callbacks', () =>
   assert.equal(entrySpot.includes('onPostActorJoined'), true);
   assert.equal(entrySpot.includes('onActorLeft'), true);
   assert.equal(entryContext.includes('leaveActor'), false);
+  assert.equal(entryContext.includes('destroyActor'), true);
+  assert.equal(declarationBody(declarations, 'ZLinkSpotContext').includes('destroyActor'), false);
   assert.equal(entryContext.includes('close('), false);
 });
 
@@ -109,7 +111,7 @@ function uniqueMatches(text, pattern) {
 }
 
 function declarationBody(text, name) {
-  const match = text.match(new RegExp(`export interface ${name}(?: [^{]+)? \\{([\\s\\S]*?)\\n\\}`));
+  const match = text.match(new RegExp(`export interface ${name}(?:<[^>{]+>)?(?: [^{]+)? \\{([\\s\\S]*?)\\n\\}`));
   assert.ok(match, `missing declaration for ${name}`);
   return match[0];
 }

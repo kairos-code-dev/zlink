@@ -1,9 +1,10 @@
 const SampleNames = Object.freeze({
   apiChannel: 'tictactoe.api',
   playChannel: 'tictactoe.play',
+  playStream: 'tictactoe.play.stream',
   clientStreamNode: 'client.stream',
-  playerActorType: 'player',
-  playActorNodeRid: 'tictactoe.play.node'
+  playSpotNode: 'play-node',
+  playerActorType: 'player'
 });
 
 const SampleTimings = Object.freeze({

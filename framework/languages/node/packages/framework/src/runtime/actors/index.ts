@@ -105,6 +105,50 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     return this.states.get(actorId);
   }
 
+  async destroyActor(
+    node: ZLinkBackendSpotNode,
+    entryNodeRid: RoutingId,
+    actor: ZLinkActor,
+    beforeDestroyOrSignal?: ((actor: ZLinkActor, signal?: AbortSignal) => Promise<void>) | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const beforeDestroy = typeof beforeDestroyOrSignal === 'function'
+      ? beforeDestroyOrSignal
+      : undefined;
+    const destroySignal = typeof beforeDestroyOrSignal === 'function'
+      ? signal
+      : beforeDestroyOrSignal;
+    throwIfAborted(destroySignal);
+    const state = this.states.get(actor.actorId);
+    if (state === undefined || state.actor === undefined || state.actor !== actor) {
+      return;
+    }
+    if (state.isJoined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actor.actorId}' must leave its current SPOT before destroy.`
+      );
+    }
+    const actorRef = state.nativeActorRef;
+    if (actorRef === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actor.actorId}' does not have a native Actor ref.`
+      );
+    }
+    if (toFrameworkRoutingId(actorRef.nodeRid) !== entryNodeRid) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor '${actor.actorId}' is not owned by this Entry Spot.`
+      );
+    }
+
+    await beforeDestroy?.(actor, destroySignal);
+    await node.destroyActor(actorRef, 0, destroySignal);
+    state.clearAfterDestroy();
+    this.states.delete(actor.actorId);
+  }
+
   private async createOrGet(
     actorId: string,
     actorType: string,
@@ -308,6 +352,17 @@ export class ZLinkActorRuntimeState {
   clearJoinedSpot(): void {
     this.spotRidValue = undefined;
     this.spotValue = undefined;
+  }
+
+  clearAfterDestroy(): void {
+    this.creationTask = undefined;
+    this.configured = false;
+    this.context = undefined;
+    this.actorTypeValue = undefined;
+    this.actorValue = undefined;
+    this.spotValue = undefined;
+    this.spotRidValue = undefined;
+    this.nativeActorRefValue = undefined;
   }
 }
 

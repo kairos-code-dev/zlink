@@ -1,5 +1,5 @@
 import type { ZLinkSpot, ZLinkSpotMeshBuilder, ZLinkSpotNodeBuilder } from '../Spots';
-import type { ZLinkSession } from '../Streams';
+import type { ZLinkSession, ZLinkSessionFactory } from '../Streams';
 import type { Type } from '../Common';
 
 export interface ZLinkFrameworkOptions {
@@ -65,5 +65,5 @@ export interface ZLinkRouteMeshChannelBuilder extends ZLinkRouteChannelBuilder {
 export interface ZLinkStreamNodeBuilder {
   bind(endpoint: string): this;
   attachActorGateway(spotNodeName: string): this;
-  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this;
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }

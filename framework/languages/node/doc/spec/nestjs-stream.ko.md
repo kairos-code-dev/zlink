@@ -33,7 +33,10 @@ packet session 방식으로 정리하는 것이다.
 
 현재 스펙에서는 application 이 직접 `recv` loop 를 돌리는 방식은 지원 대상으로
 잡지 않는다. framework 가 수신 dispatch 를 맡고, 사용자는 session 만 구현하는
-쪽을 기본으로 둔다.
+쪽을 기본으로 둔다. NestJS server application 은 `@zlink-systems/stream-connector`
+의 frame/header codec 을 사용해서 server 를 직접 만들지 않는다. connector 패키지는
+외부 client 가 STREAM server 에 접속할 때 쓰는 public API 이며, server host 는
+framework stream node runtime 이 담당한다.
 
 ## 2. 기본 방향
 
@@ -384,9 +387,20 @@ module options 객체로 옮긴다. dotnet builder 메서드 한 개 = node opti
 export class AppModule {}
 ```
 
-`session` 으로 등록하는 클래스는 `ZLinkSession` 을 구현해야 한다. session 은
-NestJS provider 로 등록되어 DI 를 받으며, framework 가 연결마다 session 인스턴스를
-context 와 함께 생성한다(생성자 주입 + framework 가 주는 `context`).
+`session` 으로 등록하는 클래스는 `ZLinkSession` 을 구현하거나
+`ZLinkSessionFactory` 로 session 을 만들어야 한다. session 이 연결별 context 만
+필요하면 session class 자체를 등록한다. session 이 repository 나 domain service 같은
+NestJS provider 를 주입받아야 하면 factory provider 를 등록하고, factory 의
+`create(context)` 가 연결별 session 을 만든다. 두 경우 모두 application 은 stream
+socket 이나 frame codec 을 직접 열지 않는다.
+
+NestJS `providers` 에는 application 이 직접 소유하는 handler, domain service,
+factory 만 둔다. framework runtime 이 소유하는 socket accept, frame decode,
+reply frame 작성, session token alias 는 application provider 목록에 넣지 않는다.
+actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
+`spotNode(...)` 로 actor factory 와 SpotNode 를 선언할 수 있다. 이 선언은
+`actorFactories` / `spotNodes` options 와 같은 공개 계약을 만들지만, server entrypoint
+에서 raw options 객체를 직접 조립하지 않아도 되게 한다.
 
 이 등록 모델에서 짚어 둘 점은 다음과 같다.
 
@@ -398,6 +412,9 @@ context 와 함께 생성한다(생성자 주입 + framework 가 주는 `context
   `RegisterSession<T>()` 가 두 번째 등록에서 startup validation 예외를 던지듯,
   node 도 같은 node 에 session 을 중복 지정하면 startup validation 에서 거부한다.
 - recv callback 이나 recv loop 를 application 이 직접 노출받지 않는다.
+- server application 은 `net.createServer(...)`, `ZlinkStreamFrameCodec`,
+  `ZlinkStreamHeaderCodec` 으로 STREAM server 를 만들지 않는다. 이런 코드는
+  framework runtime 또는 connector 구현에만 둔다.
 - 등록 시점에 이 node 가 framework Header 기반 packet 경로라는 사실이 분명하게
   드러난다.
 - `attachActorGateway` 는 session→actor bind/relay 가 향할 SpotNode 이름을

@@ -1,5 +1,7 @@
 class BingoCard {
-  [key: string]: any;
+  readonly numbers: number[];
+  readonly marks: boolean[];
+
   constructor(numbers: number[]) {
     if (numbers.length !== 9) {
       throw new Error('Bingo card must contain exactly 9 cells.');

@@ -2,6 +2,7 @@ import type {
   Message,
   RoutingId,
   Type,
+  ZLinkActor,
   ZLinkChannelClient,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -61,6 +62,13 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly actorDestroyer?: (
+    node: ZLinkBackendSpotNode,
+    entryNodeRid: RoutingId,
+    actor: ZLinkActor,
+    beforeDestroy: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal
+  ) => Promise<void>;
 }
 
 export class ZLinkSpotNodeRuntimeManager {
@@ -132,7 +140,13 @@ export class ZLinkSpotNodeRuntimeManager {
       nativeSpot,
       nodeRid: node.routingId,
       spotNodeName,
-      providerResolver: this.options.providerResolver
+      providerResolver: this.options.providerResolver,
+      destroyActor: (nodeRid, actor, beforeDestroy, signal) => {
+        if (this.options.actorDestroyer === undefined) {
+          throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
+        }
+        return this.options.actorDestroyer(node, nodeRid, actor, beforeDestroy, signal);
+      }
     });
     try {
       await activation.create();
@@ -293,6 +307,12 @@ interface ZLinkEntrySpotActivationOptions {
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly destroyActor?: (
+    nodeRid: RoutingId,
+    actor: ZLinkActor,
+    beforeDestroy: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal
+  ) => Promise<void>;
 }
 
 export class ZLinkEntrySpotActivation {
@@ -347,6 +367,17 @@ export class ZLinkEntrySpotActivation {
       routingId: this.options.nativeSpot.routingId,
       handlers: this.handlers,
       outbound: this.outbound,
+      destroyActor(actor: ZLinkActor, signal?: AbortSignal) {
+        if (activation.options.destroyActor === undefined) {
+          throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
+        }
+        return activation.options.destroyActor(
+          activation.options.nodeRid,
+          actor,
+          (leftActor, leftSignal) => activation.notifyActorLeftForDestroy(leftActor, leftSignal),
+          signal
+        );
+      },
       addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkEntrySpot>>(
         name: string,
         periodMs: number,
@@ -366,6 +397,11 @@ export class ZLinkEntrySpotActivation {
         );
       }
     };
+  }
+
+  private notifyActorLeftForDestroy(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    return this.serial.execute(() => this.entrySpot.onActorLeft?.(actor, signal));
   }
 }
 

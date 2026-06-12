@@ -350,15 +350,24 @@ test('session client reply compress writes dotnet LZ4-pickled response payload',
   assert.deepEqual(JSON.parse(new TextDecoder().decode(unpickleLz4(frame.payload))), { accepted: true });
 });
 
-test('session client send fails retriably when message factory is not started', async () => {
+test('session client send uses default binding message factory when one is not supplied', async () => {
   class ReadyPacket {}
   const runtime = new framework.ZLinkStreamBindingRuntime();
-  const context = runtime.createSessionContext(fakeStream('session-5', 'rid-5'));
+  const written = [];
+  const context = runtime.createSessionContext({
+    ...fakeStream('session-5', 'rid-5'),
+    write(message) {
+      written.push(message.data());
+      return true;
+    }
+  });
 
-  await assert.rejects(
-    () => context.client.send(new ReadyPacket()).submit(),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
-  );
+  await context.client.send(new ReadyPacket()).submit();
+
+  const frame = decodeFrame(written[0]);
+  assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Send);
+  assert.equal(frame.header.name, 'ReadyPacket');
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {});
 });
 
 function fakeStream(sessionId, routingId) {

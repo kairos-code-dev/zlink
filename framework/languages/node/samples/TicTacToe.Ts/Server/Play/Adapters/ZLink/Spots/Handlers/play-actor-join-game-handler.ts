@@ -6,32 +6,30 @@ const {
   playerJoinedNotify
 } = require('../../../../../../Shared/Contracts/messages');
 const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
+import type { TicTacToeGameCreator as TicTacToeGameCreatorType } from '../../../../Application/GameCreation/tictactoe-game-creator';
 import type {
   JoinGameInternalReq,
   JoinGameRes
 } from '../../../../../../Shared/Contracts/messages';
 
 class PlayActorJoinGameHandler {
-  [key: string]: any;
-  constructor(games: any) {
-    this.games = games;
-  }
+  constructor(private readonly games: TicTacToeGameCreatorType) {}
 
-  handle(request: JoinGameInternalReq): JoinGameRes {
+  async handle(request: JoinGameInternalReq): Promise<JoinGameRes> {
     const room = this.games.require(request.roomId);
     const result = room.match.joinPlayer(request.actor);
-    (request.actor as any).roomId = room.roomId;
+    request.actor.roomId = room.roomId;
     const state = result.state;
     if (result.newlyJoined && room.match.players.size === 2) {
       for (const player of room.match.players.values()) {
         if (player.actorId === result.joined.actorId) {
           continue;
         }
-        player.actor.push(
+        await player.actor.push(
           PacketNames.playerJoinedNotify,
           playerJoinedNotify(room.roomId, result.joined.actorId, result.joined.mark, state)
         );
-        player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+        await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
       }
     }
     return joinGameRes(room.roomId, result.joined.actorId, result.joined.mark, state);

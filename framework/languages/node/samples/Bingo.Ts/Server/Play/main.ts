@@ -10,6 +10,7 @@ const { PlayerActorFactory } = require('./Adapters/ZLink/Actors/player-actor-fac
 const { BingoNotificationPublisher } = require('./Adapters/ZLink/Notifications/bingo-notification-publisher');
 const { BingoRoomTimerHandler } = require('./Adapters/ZLink/Spots/Handlers/bingo-room-timer-handler');
 const { BingoEntrySpot } = require('./Adapters/ZLink/Spots/bingo-entry-spot');
+const { BingoRoomSpot } = require('./Adapters/ZLink/Spots/bingo-room-spot');
 const { MatchBingoActorHandler } = require('./Adapters/ZLink/Spots/Handlers/match-bingo-actor-handler');
 const { AllocateBingoRoomHandler } = require('./Adapters/ZLink/Handlers/allocate-bingo-room-handler');
 const { BingoRoomAllocator } = require('./Application/RoomAllocation/bingo-room-allocator');
@@ -36,6 +37,10 @@ async function bootstrap(): Promise<void> {
           .clientServerChannel(SampleNames.notificationChannel, (channel) => channel
             .server(config.notificationEndpoint)
             .handlerGroup('notifications'))
+          .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
+          .spotNode(SampleNames.roomSpotType, (spot) => spot
+            .entrySpot(BingoEntrySpot)
+            .spotFactory(BingoRoomSpot))
           .build()
       })
     ],

@@ -1,4 +1,5 @@
 const { TicTacToeBoard } = require('./tictactoe-board');
+import type { TicTacToeBoard as TicTacToeBoardType } from './tictactoe-board';
 import type { GameState, TicTacToeActor } from '../../../../Shared/Contracts/messages';
 
 type JoinedPlayer = {
@@ -23,7 +24,17 @@ type TicTacToeTickChange = {
 };
 
 class TicTacToeMatch {
-  [key: string]: any;
+  readonly roomId: string;
+  readonly players: Map<string, JoinedPlayer>;
+  private readonly board: TicTacToeBoardType;
+  private readonly turnTimeoutMs: number;
+  private status: string;
+  private winner: string | null;
+  private nextTurn: string | null;
+  private lastMoveActorId: string | null;
+  private lastMoveCell: number | null;
+  private turnDeadline: number | null;
+
   constructor(roomId: string, turnTimeoutMs: number = 15000) {
     this.roomId = roomId;
     this.turnTimeoutMs = turnTimeoutMs;
@@ -127,7 +138,11 @@ class TicTacToeMatch {
       this.turnDeadline = null;
       return;
     }
-    this.nextTurn = [...this.players.values()].find((player) => player.actorId !== actorId).actorId;
+    const nextPlayer = [...this.players.values()].find((player) => player.actorId !== actorId);
+    if (nextPlayer === undefined) {
+      throw new Error(`Room '${this.roomId}' cannot advance without another player.`);
+    }
+    this.nextTurn = nextPlayer.actorId;
     this.resetTurnDeadline();
   }
 

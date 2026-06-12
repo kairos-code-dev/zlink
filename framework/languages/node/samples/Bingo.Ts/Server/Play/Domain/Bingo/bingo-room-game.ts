@@ -1,5 +1,7 @@
 const { BingoGame } = require('./bingo-game');
 const { BingoRoomStatus } = require('./bingo-room-models');
+import type { BingoGame as BingoGameType } from './bingo-game';
+import type { BingoCard } from './bingo-card';
 
 type BingoActor = {
   actorId: string;
@@ -14,12 +16,37 @@ type BingoRoomSettings = {
 type BingoPlayerSeat = {
   actor: BingoActor;
   seat: number;
-  card: any | null;
+  card: BingoCard | null;
   isHost: boolean;
 };
 
+type BingoRoomSnapshot = {
+  roomId: string;
+  status: string;
+  hostActorId: string | null;
+  canStart: boolean;
+  drawSeq: number;
+  lastDrawnNumber: number | null;
+  drawnNumbers: number[];
+  players: {
+    actorId: string;
+    displayName: string;
+    seat: number;
+    isHost: boolean;
+    card: number[];
+    marks: boolean[];
+    completedLines: number;
+  }[];
+  winners: string[];
+};
+
 class BingoRoomGame {
-  [key: string]: any;
+  readonly roomId: string;
+  readonly players: BingoPlayerSeat[];
+  private readonly settings: BingoRoomSettings;
+  private readonly game: BingoGameType;
+  private status: string;
+
   constructor(roomId: string, settings: BingoRoomSettings) {
     this.roomId = roomId;
     this.settings = {
@@ -78,7 +105,7 @@ class BingoRoomGame {
     return drawn;
   }
 
-  snapshot(): any {
+  snapshot(): BingoRoomSnapshot {
     return {
       roomId: this.roomId,
       status: this.status,
@@ -110,3 +137,4 @@ class BingoRoomGame {
 }
 
 export { BingoRoomGame };
+export type { BingoActor, BingoPlayerSeat, BingoRoomSettings, BingoRoomSnapshot };

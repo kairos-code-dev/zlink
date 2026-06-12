@@ -29,7 +29,8 @@ import type {
   ZLinkSpotNodeBuilder,
   ZLinkSpotRouteChannelAcceptanceBuilder,
   ZLinkStreamNodeBuilder,
-  ZLinkSession
+  ZLinkSession,
+  ZLinkSessionFactory
 } from '../../contracts';
 
 export interface ZLinkFrameworkRegistration {
@@ -422,7 +423,7 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
     return this;
   }
 
-  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession>): this {
+  registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this {
     if (this.streamNode.session !== undefined) {
       throw new ZLinkConfigurationException('STREAM node cannot register more than one header stream session.');
     }

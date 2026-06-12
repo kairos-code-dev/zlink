@@ -1,22 +1,59 @@
-type ActorNotification = {
-  seq: number;
-  packetName: string;
-  payload: unknown;
+import type {
+  ZLinkActor,
+  ZLinkActorContext
+} from '../../../../../../../packages/framework/dist';
+import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
+
+type PlayClient = {
+  send(message: unknown): {
+    packetName(packetName: string): {
+      metadata(key: string, value: string): {
+        submit(signal?: AbortSignal): Promise<void>;
+      };
+    };
+  };
 };
 
-class PlayActor {
-  [key: string]: any;
-  constructor(actorId: string, displayName: string) {
+class PlayActor implements ZLinkActor, TicTacToeActor {
+  readonly actorId: string;
+  readonly context: ZLinkActorContext;
+  displayName: string;
+  roomId?: string;
+  private nextSeq: number;
+  private client: PlayClient | null;
+
+  constructor(actorId: string, displayName: string, context: ZLinkActorContext) {
     this.actorId = actorId;
+    this.context = context;
     this.displayName = displayName;
-    this.notifications = [];
     this.nextSeq = 0;
-    this.session = null;
+    this.client = null;
   }
 
-  push(packetName: string, payload: unknown): void {
+  attachClient(client: PlayClient): void {
+    this.client = client;
+  }
+
+  detachClient(client: PlayClient): void {
+    if (this.client === client) {
+      this.client = null;
+    }
+  }
+
+  markDisconnected(): void {
+    this.client = null;
+  }
+
+  async push(packetName: string, payload: unknown): Promise<void> {
+    if (this.client === null) {
+      return;
+    }
     this.nextSeq += 1;
-    this.notifications.push({ seq: this.nextSeq, packetName, payload });
+    await this.client
+      .send(payload)
+      .packetName(packetName)
+      .metadata('seq', String(this.nextSeq))
+      .submit();
   }
 }
 

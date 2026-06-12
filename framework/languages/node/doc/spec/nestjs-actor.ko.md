@@ -328,6 +328,12 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   STREAM session binding 은 서로 독립된 상태 전이로 본다.
 - **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** session disconnect 는
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
+- Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다. user Spot context 에는
+  destroy API 가 없다. user Spot 안에서는 먼저 `leaveActor(...)` 로 actor 를 Entry Spot 으로
+  돌려보낸 뒤 Entry Spot 에서 destroy 한다.
+- Entry Spot destroy 는 actor 상태를 지우기 전에 Entry Spot `onActorLeft(actor)` callback 을
+  한 번 실행한다. 같은 actor instance 를 다시 destroy 해도 성공으로 끝나며 callback 은 다시
+  실행하지 않는다.
 - **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
@@ -660,6 +666,7 @@ export interface ZLinkActorJoinEntrySpotCall {
 | `getSpot()` / `getSpot<TSpot>()` | 자기가 join한 user Spot 객체에 접근 |
 | `joinSpot(spotRid, request).submit<TReply>()` | user Spot에 join 요청 (Entry → user Spot 또는 user Spot → user Spot 이동). STREAM session binding을 전제로 하지 않는다. `spotRid`은 user Spot routing id(string) |
 | `joinEntrySpot(spotNodeRid).submit()` | target SpotNode 의 Entry Spot 으로 이동. message payload와 join reply payload는 없다 |
+| `Entry Spot context.destroyActor(actor)` | Entry Spot 에 있는 actor 를 종료. Entry Spot `onActorLeft(actor)` callback 뒤 native actor ref와 framework registry를 정리 |
 
 actor request 에 대한 reply 는 actor context 의 별도 `reply(...)` 호출이 아니라
 request handler 의 반환값으로 처리한다. actor, Entry Spot actor, user Spot actor

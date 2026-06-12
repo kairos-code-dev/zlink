@@ -1,21 +1,24 @@
 import type {
+  ZLinkEntrySpotActorRequestHandler,
+  ZLinkSpotActorRequestContext
+} from '../../../../../../../../packages/framework/dist';
+import type { BingoEntrySpot } from '../bingo-entry-spot';
+import type { PlayerActor } from '../../Actors/player-actor';
+import type {
   MatchBingoReq,
   MatchBingoRes
 } from '../../../../../../Shared/Contracts/messages';
 
-type BingoActor = {
-  actorId: string;
-  displayName: string;
-};
-
-type BingoEntrySpotLike = {
-  match(actor: BingoActor, request: MatchBingoReq): Promise<MatchBingoRes>;
-};
-
-class MatchBingoActorHandler {
-  [key: string]: any;
-  async handle(entrySpot: BingoEntrySpotLike, actor: BingoActor, request: MatchBingoReq): Promise<MatchBingoRes> {
-    return await entrySpot.match(actor, request);
+class MatchBingoActorHandler
+  implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActor, MatchBingoReq, MatchBingoRes> {
+  async handle(
+    entrySpot: BingoEntrySpot,
+    actor: PlayerActor,
+    context: ZLinkSpotActorRequestContext,
+    request: MatchBingoReq
+  ): Promise<MatchBingoRes> {
+    void context;
+    return await entrySpot.matchActor(actor, request);
   }
 }
 

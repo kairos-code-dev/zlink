@@ -12,24 +12,24 @@ export interface ZLinkSpotCreateResponse {
   readonly reply?: Message;
 }
 
-export interface ZLinkSpot {
+export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> {
   readonly context?: ZLinkSpotContext;
   configure?(): void;
   onCreate?(request: Message, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
-  onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
-  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onActorDisconnected?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: TActor, request: Message, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
+  onPostActorJoined?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onActorLeft?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onActorDisconnected?(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkEntrySpot {
+export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> {
   readonly context?: ZLinkEntrySpotContext;
   configure?(): void;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
-  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onActorDisconnected?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onPostActorJoined?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onActorLeft?(actor: TActor, signal?: AbortSignal): Promise<void>;
+  onActorDisconnected?(actor: TActor, signal?: AbortSignal): Promise<void>;
 }

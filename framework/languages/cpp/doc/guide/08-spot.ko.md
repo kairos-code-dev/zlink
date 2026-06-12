@@ -1,11 +1,11 @@
 [← 목차](./README.ko.md)
 
-# 6. SPOT
+# 8. SPOT
 
 ## 1. SPOT이 하는 일
 
 SPOT은 room·stage·zone처럼 **"장소" 하나의 상태와 참가자를 묶는 실행 단위**다.
-게임 룸 하나가 spot 인스턴스 하나다. actor([7장](./07-actor-session.ko.md))가
+게임 룸 하나가 spot 인스턴스 하나다. actor([9장](./09-actor-session.ko.md))가
 spot에 입장(join)하고, spot 안에서 패킷을 처리하고, 토픽으로 알림을 받는다.
 
 spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상태 관리 방식을 결정한다.
@@ -102,13 +102,13 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `add_node(name)` | spot 노드 추가 |
 | `enable_router(endpoint, rid)` | 노드 간 라우팅 수신 |
 | `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
-| `use_discovery(channel)` | registry 기반 노드 발견 ([10장](./10-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
-| `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([5장 §5](./05-channel-messaging.ko.md)) |
+| `use_discovery(channel)` | registry 기반 노드 발견 ([11장](./11-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
+| `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([7장 §5](./07-channel-messaging.ko.md)) |
 | `attach_channel_client(name)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
 | `add_spot<T>(name)` | spot 타입 등록 |
-| `add_actor_factory<F>(type)` | actor factory 등록 ([7장](./07-actor-session.ko.md)) |
-| `enable_actor_gateway()` | actor gateway 활성화 ([7장](./07-actor-session.ko.md)) |
+| `add_actor_factory<F>(type)` | actor factory 등록 ([9장](./09-actor-session.ko.md)) |
+| `enable_actor_gateway()` | actor gateway 활성화 ([9장](./09-actor-session.ko.md)) |
 
 ## 3. room spot 작성
 
@@ -244,7 +244,7 @@ void configure (zlink::framework::spot_context_t &context)
 
 `timer_t::cancel()`로 중지한다. tick 핸들러의 미처리 예외 정책은
 `stop_on_unhandled_exception`으로 정한다. timer 이벤트는
-[11장 모니터링](./11-monitoring.ko.md)의 `add_spot_timer_events`로 관측한다.
+[12장 모니터링](./12-monitoring.ko.md)의 `add_spot_timer_events`로 관측한다.
 
 ## 6. spot에서 바깥으로 보내기
 
@@ -254,4 +254,4 @@ void configure (zlink::framework::spot_context_t &context)
 - 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해
   spot 토픽으로 발행된다.
 
-[다음: Actor · Session →](./07-actor-session.ko.md)
+[다음: Actor · Session →](./09-actor-session.ko.md)

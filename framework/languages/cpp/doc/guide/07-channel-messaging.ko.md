@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 5. 채널 메시징
+# 7. 채널 메시징
 
 ## 1. 채널이 하는 일
 
@@ -12,7 +12,7 @@
 | client/server | `add_client_server_channel(name)` | request-reply, 단방향 send |
 | fanout | `add_fanout_channel(name)` | publisher → 다수 subscriber (topic) |
 | dealer mesh | `add_dealer_mesh_channel(name)` | 동격 노드 간 분산 |
-| route mesh | `add_route_mesh_channel(name)` | SPOT 라우팅 백본 ([6장](./06-spot.ko.md)) |
+| route mesh | `add_route_mesh_channel(name)` | SPOT 라우팅 백본 ([8장](./08-spot.ko.md)) |
 
 ## 2. 서버 쪽: 핸들러 그룹과 채널
 
@@ -73,7 +73,7 @@ flowchart LR
 ```cpp
 options.add_client_server_channel ("tictactoe.play")
   .enable_client ("tcp://10.30.1.15:5561");   // endpoint 직접 지정
-// 또는 registry discovery로 endpoint를 찾게 한다 (10장)
+// 또는 registry discovery로 endpoint를 찾게 한다 (11장)
 options.add_client_server_channel ("tictactoe.play").enable_client ();
 ```
 
@@ -142,9 +142,57 @@ sequenceDiagram
 ```
 
 실패는 `co_await`에서 `framework_exception_t`로 던져진다 —
-[13장. 에러 처리는 3장 §5와 동일 모델](./03-concepts.ko.md).
+에러 처리는 [3장 §5](./03-concepts.ko.md)와 동일 모델이다.
 
-## 4. fanout: publish/subscribe
+## 4. dealer mesh: 외부 로드밸런서 없이 수평 확장
+
+처리량을 늘리고 싶을 때 같은 채널에 서버 인스턴스를 추가하면 된다. 별도 nginx·HAProxy 없이 클라이언트 요청이 자동으로 분산된다.
+
+```cpp
+// 이미지 처리 서버 A
+options.add_dealer_mesh_channel ("image.resize")
+    .enable_server ("tcp://0.0.0.0:5600")
+    .use_handler_group ("resize");
+
+// 이미지 처리 서버 B — 동일 채널, 다른 프로세스
+options.add_dealer_mesh_channel ("image.resize")
+    .enable_server ("tcp://0.0.0.0:5601")
+    .use_handler_group ("resize");
+```
+
+```cpp
+// 클라이언트: 두 서버에 연결. 요청은 라운드로빈으로 분산됨
+options.add_dealer_mesh_channel ("image.resize")
+    .enable_client ()
+    .connect ("tcp://10.30.1.10:5600")
+    .connect ("tcp://10.30.1.10:5601");
+
+// 또는 discovery로 자동 발견 — 서버가 추가될 때 클라이언트 재시작 불필요
+options.add_dealer_mesh_channel ("image.resize")
+    .enable_client ()
+    .use_discovery ();   // registry에서 같은 채널의 서버 목록을 받아 자동 연결
+```
+
+```mermaid
+flowchart LR
+    C["클라이언트<br/>dealer_mesh client"]:::channel
+    S1["이미지 서버 A<br/>bind 5600"]:::channel
+    S2["이미지 서버 B<br/>bind 5601"]:::channel
+    S3["이미지 서버 C<br/>bind 5602<br/>(동적 추가)"]:::channel
+
+    C == "요청 1" ==> S1
+    C == "요청 2" ==> S2
+    C == "요청 3" ==> S1
+    C -. "서버 추가 후<br/>자동 발견" .-> S3
+
+    classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+```
+
+핸들러는 client/server 채널과 동일한 구조다 — `request_type`/`reply_type`/`topic_name` + `handle()`. 채널 선언만 `add_dealer_mesh_channel`로 바꾸면 된다.
+
+> **route mesh와 차이**: dealer mesh는 어느 서버에나 요청을 보낼 수 있는 stateless 서비스에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§6](#6-route-mesh-고급))를 쓴다.
+
+## 5. fanout: publish/subscribe
 
 알림처럼 한 곳에서 여러 구독자로 흘리는 메시지는 fanout 채널을 쓴다.
 
@@ -164,7 +212,7 @@ options.add_fanout_channel ("bingo.notifications")
 ```
 
 `publisher_t`를 얻는 경로는 두 가지다 — spot 코드라면 노드에
-`attach_publisher(channel)`를 걸고 spot 쪽에서 주입받는 패턴([6장 §6](./06-spot.ko.md)),
+`attach_publisher(channel)`를 걸고 spot 쪽에서 주입받는 패턴([8장 §6](./08-spot.ko.md)),
 일반 코드라면 `app.advanced().use_zlink([&](auto &z){ auto pub = z.publisher(); ... })`.
 
 ```mermaid
@@ -181,7 +229,7 @@ flowchart LR
     classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-## 5. route mesh (고급)
+## 6. route mesh (고급)
 
 SPOT 노드 간 라우팅 백본이 필요할 때만 쓴다. TicTacToe Play 서버의 실제 선언:
 
@@ -193,7 +241,7 @@ options.add_route_mesh_channel ("tictactoe.router")
   .enable_spot_route_egress ("tictactoe.game.discovery");
 ```
 
-SPOT과의 결합은 [6장](./06-spot.ko.md)의 `accept_routes_from_channel`에서
+SPOT과의 결합은 [8장](./08-spot.ko.md)의 `accept_routes_from_channel`에서
 이어진다.
 
-[다음: SPOT →](./06-spot.ko.md)
+[다음: SPOT →](./08-spot.ko.md)

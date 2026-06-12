@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 4. Configuration
+# 5. Configuration
 
 endpoint·포트·동작 플래그를 코드에 하드코딩하지 않고 CLI/환경변수/JSON 파일에서
 읽는 방법을 다룬다. 진입점은 `app.config()`(`config_builder_t`)다.
@@ -145,4 +145,4 @@ auto suffix = app.config ().environment ();     // "staging"
 4. 필수 값은 `require`/`bind_required`로 — 빠진 설정은 부팅 시점에 시끄럽게
    실패하는 편이 낫다.
 
-[다음: 채널 메시징 (작성 예정)](./README.ko.md)
+[다음: HTTP Hosting →](./06-http-hosting.ko.md)

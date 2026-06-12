@@ -5,7 +5,7 @@
 | 분류 | 위치 | 내용 |
 |------|------|------|
 | **사용자 가이드** | [guide/](./guide/README.ko.md) | 이 프레임워크로 시스템을 작성하는 방법. 이것부터 읽는다. |
-| **공식 spec** | [spec/](./spec/) | 기능별 계약 문서. 가이드와 어긋나면 spec과 코드가 정답이다. |
+| **spec (설계 초안)** | [spec/](./spec/) | 기능별 설계 계약. 구현 전 blueprint 상태이며, 가이드와 어긋나면 spec과 코드가 정답이다. |
 | **internals** | [internals/](./internals/) | 설계 정책·구현 계획·리팩토링 기록. 프레임워크를 고치는 사람용. |
 
 ## spec 목록
@@ -30,7 +30,7 @@
 | 산출물 | 문서 |
 |--------|------|
 | HTTP client (`zlink::http_client`) | [가이드](../http-client/doc/README.ko.md) · [spec](../http-client/doc/spec/cpp-http-client.ko.md) |
-| Stream connector (`zlink::stream_connector`) | [draft 계약](../connector/doc/draft/cpp-stream-connector.ko.md) |
+| Stream connector (`zlink::stream_connector`) | [사용자 가이드](../connector/doc/guide/INDEX.ko.md) |
 
 ## internals 목록
 

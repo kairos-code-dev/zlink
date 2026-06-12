@@ -208,7 +208,7 @@ bool draft_tracking_table_matches_files (const std::filesystem::path &root)
 
     // 별도 산출물의 계약 문서도 추적표에 정확히 한 번 올린다.
     const std::string artifact_links[] = {
-      "(../../connector/doc/draft/cpp-stream-connector.ko.md)",
+      "(../../connector/doc/guide/INDEX.ko.md)",
       "(../../http-client/doc/spec/cpp-http-client.ko.md)"};
     for (const auto &link : artifact_links) {
         if (count_occurrences (table, link) != 1) {
@@ -2451,8 +2451,8 @@ int main ()
                          "-DZLINK_STREAM_CONNECTOR_BUILD_GODOT=OFF");
     ok &= file_contains (root / "connector/core/packaging/vcpkg/portfile.cmake",
                          "-DZLINK_STREAM_CONNECTOR_BUILD_AXMOL=OFF");
-    ok &= file_contains (root / "connector/doc/draft/cpp-stream-connector.ko.md",
-                         "Cocos Creator는 TypeScript connector 문서에서 다룬다.");
+    ok &= file_contains (root / "connector/doc/guide/01-overview.ko.md",
+                         "TypeScript connector 사용");
     ok &= file_does_not_contain (root / "CMakeLists.txt",
                                  "cocos-connector",
                                  "C++ connector package names must not use ambiguous cocos-connector");

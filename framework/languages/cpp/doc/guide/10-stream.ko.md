@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 8. Stream
+# 10. Stream
 
 ## 1. stream이 하는 일
 
@@ -19,7 +19,7 @@ node + session으로 받고, 클라이언트 쪽은 별도 산출물인 **stream
 options.add_stream_node ("tictactoe.stream")
   .bind (topology.stream_endpoint)            // 예: tcp://0.0.0.0:5581
   .register_session<play_session_t> ()
-  .attach_actor_gateway ("tictactoe.spot.node");   // actor 경로 연결 (7장)
+  .attach_actor_gateway ("tictactoe.spot.node");   // actor 경로 연결 (9장)
 ```
 
 | 빌더 | 의미 |
@@ -69,12 +69,12 @@ stateDiagram-v2
     state "인증됨 (actor 바인딩)" as authenticated
     [*] --> connected: on_connected
     connected --> authenticated: authenticate 패킷
-    authenticated --> authenticated: on_packet → relay (7장)
+    authenticated --> authenticated: on_packet → relay (9장)
     connected --> [*]: on_disconnected
     authenticated --> [*]: on_disconnected → unbind_session
 ```
 
-전형적인 `on_packet` 패턴은 [7장 §4](./07-actor-session.ko.md)에 있다:
+전형적인 `on_packet` 패턴은 [9장 §4](./09-actor-session.ko.md)에 있다:
 인증 패킷이면 인증 → actor 바인딩, 그 외에는 바인딩된 actor로
 `relay(header, payload)`.
 
@@ -116,6 +116,6 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
 `header.packet_name()`으로 어떤 DTO인지 식별하고, payload를 해당 타입으로
 디코딩한다. spot까지 relay되는 패킷은 spot의
 `add_actor_packet<&T::method>()` 등록과 만나 typed 핸들러로 디스패치된다
-([6장 §3](./06-spot.ko.md)).
+([8장 §3](./08-spot.ko.md)).
 
-[다음: HTTP Hosting →](./09-http-hosting.ko.md)
+[다음: Registry →](./11-registry.ko.md)

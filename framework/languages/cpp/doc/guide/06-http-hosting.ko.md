@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 9. HTTP Hosting
+# 6. HTTP Hosting
 
 ## 1. embedded HTTP server가 하는 일
 
@@ -31,7 +31,7 @@ options.http ()
 - 같은 메서드+경로를 두 번 매핑하면 구성 시점에 거부된다.
 
 동기 핸들러와 코루틴 핸들러 모두 가능하다. HTTP 요청을 받아 채널로 위임하는
-전형적인 패턴은 [5장 §3](./05-channel-messaging.ko.md)에 있다.
+전형적인 패턴은 [7장 §3](./07-channel-messaging.ko.md)에 있다.
 
 ## 3. health endpoint
 
@@ -46,7 +46,7 @@ options.http ()
 ```
 
 응답은 `{"status","readiness","liveness"}` JSON이다. 상태를 구성하는 check는
-[11장 §3](./11-monitoring.ko.md)의 `app.health()`로 등록한다.
+[12장 §3](./12-monitoring.ko.md)의 `app.health()`로 등록한다.
 
 ```bash
 $ curl -s http://127.0.0.1:8080/ready
@@ -107,4 +107,4 @@ options.http ().configure_server ([] (zlink::framework::http_server_options_buil
 종료 시 서버는 열린 연결을 정리하고 내려간다 — keep-alive로 붙어 있는
 클라이언트가 있어도 `stop()`이 매달리지 않는다.
 
-[다음: Registry →](./10-registry.ko.md)
+[다음: 채널 메시징 →](./07-channel-messaging.ko.md)

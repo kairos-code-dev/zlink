@@ -1,11 +1,11 @@
 [← 목차](./README.ko.md)
 
-# 7. Actor · Session
+# 9. Actor · Session
 
 ## 1. actor가 하는 일
 
 actor는 **접속한 사용자 한 명을 대표하는 객체**다. 클라이언트는
-stream([8장](./08-stream.ko.md))으로 게이트웨이 서버에 붙고, 인증을 거쳐 자신의
+stream([10장](./10-stream.ko.md))으로 게이트웨이 서버에 붙고, 인증을 거쳐 자신의
 actor와 바인딩된다. 이후 클라이언트의 패킷은 actor를 통해 spot으로 relay되고,
 spot의 알림은 역방향으로 클라이언트까지 흘러간다.
 
@@ -29,7 +29,7 @@ sequenceDiagram
     SS->>AM: find(actor_id)
     AM-->>SS: session_actor_t
     SS->>GW: actor.relay(header, payload)
-    GW->>SP: actor 패킷 핸들러 디스패치 (6장 직렬 큐)
+    GW->>SP: actor 패킷 핸들러 디스패치 (8장 직렬 큐)
     SP-->>GW: 응답
     GW-->>C: reply 패킷
     end
@@ -68,7 +68,7 @@ options.add_spot_mesh ("tictactoe.game.discovery")
   .add_actor_factory<player_actor_factory_t> ("player");   // actor type 이름
 ```
 
-spot의 actor 패킷 핸들러([6장 §3](./06-spot.ko.md))가 받는 첫 인자가 바로 이
+spot의 actor 패킷 핸들러([8장 §3](./08-spot.ko.md))가 받는 첫 인자가 바로 이
 actor 타입이다.
 
 ## 3. actor 보장(ensure) 핸들러
@@ -100,7 +100,7 @@ class ensure_player_actor_handler_t
 
 ## 4. session ↔ actor 바인딩
 
-stream session([8장](./08-stream.ko.md)) 쪽에서 `session_actor_manager_t`로
+stream session([10장](./10-stream.ko.md)) 쪽에서 `session_actor_manager_t`로
 바인딩을 관리한다. 인증 성공 시 bind, 연결 종료 시 unbind.
 
 **중요**: 클라이언트가 끊겼을 때 actor 바인딩 해제와 spot 퇴장 처리는
@@ -172,4 +172,4 @@ options.add_stream_node ("tictactoe.stream")
 relay 계약의 세부(메타데이터 전파 정책 등)는 spec
 [actor-gateway-session-relay](../spec/actor-gateway-session-relay.ko.md)가 정본이다.
 
-[다음: Stream →](./08-stream.ko.md)
+[다음: Stream →](./10-stream.ko.md)

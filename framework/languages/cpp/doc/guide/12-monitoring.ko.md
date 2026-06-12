@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 11. Monitoring
+# 12. Monitoring
 
 관측은 네 갈래다 — 로그, 런타임 이벤트, 메트릭, health. 각각 `app.logging()`,
 `app.monitoring()`, `app.metrics()`, `app.health()`로 구성한다.
@@ -79,7 +79,7 @@ flowchart LR
     ON["on&lt;TEvent&gt; 구독"]:::channel
     TRACE["on_trace (전체)"]:::channel
     MET["metrics 집계"]:::channel
-    HP["health 판정 → /ready (9장)"]:::channel
+    HP["health 판정 → /ready (6장)"]:::channel
 
     SRC1 & SRC2 & SRC3 & SRC4 --> BUS
     BUS --> ON & TRACE & MET
@@ -93,7 +93,7 @@ flowchart LR
 
 ## 3. health
 
-health check를 등록하고, HTTP로 노출한다([9장 §3](./09-http-hosting.ko.md)).
+health check를 등록하고, HTTP로 노출한다([6장 §3](./06-http-hosting.ko.md)).
 
 ```cpp
 app.health ()
@@ -129,4 +129,4 @@ app.metrics ().record_runtime_metric ("games.active", 42.0,
 런타임 메트릭은 이벤트 버스 위에 집계되며, 외부 수집기 연동은 `on<TEvent>`
 구독으로 내보낸다.
 
-[다음: 인터페이스 카탈로그 →](./12-interface-catalog.ko.md)
+[다음: 인터페이스 카탈로그 →](./13-interface-catalog.ko.md)

@@ -1,6 +1,6 @@
 [← 목차](./README.ko.md)
 
-# 10. Registry
+# 11. Registry
 
 ## 1. registry가 하는 일
 
@@ -79,7 +79,7 @@ options.add_client_server_channel ("bingo.api").enable_client ();
 
 ## 4. SPOT과 discovery
 
-spot mesh는 discovery 채널 이름으로 노드들을 발견한다([6장 §2](./06-spot.ko.md)).
+spot mesh는 discovery 채널 이름으로 노드들을 발견한다([8장 §2](./08-spot.ko.md)).
 
 ```cpp
 options.add_spot_mesh ("bingo.room.discovery")    // 이 이름이 discovery 채널
@@ -100,10 +100,10 @@ options.use_registry_spot_remote_addresses ("bingo.room.routes");
 ## 5. 점검
 
 - registry 상태 check를 health에 올릴 수 있다 —
-  [11장 §3](./11-monitoring.ko.md)의 `add_registry_check`.
+  [12장 §3](./12-monitoring.ko.md)의 `add_registry_check`.
 - registry 이벤트(등록/해제/조회) 관측은 `add_registry_events` —
-  [11장 §2](./11-monitoring.ko.md).
+  [12장 §2](./12-monitoring.ko.md).
 - 동작 예제: `samples/Bingo`가 registry 포함 4-서버 토폴로지의 정본이다
-  ([13장](./13-samples-map.ko.md)).
+  ([14장](./14-samples-map.ko.md)).
 
-[다음: Monitoring →](./11-monitoring.ko.md)
+[다음: Monitoring →](./12-monitoring.ko.md)

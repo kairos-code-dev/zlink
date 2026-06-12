@@ -167,7 +167,9 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
 ```cpp
 options.http ()
   .listen ("https://0.0.0.0:8443")
-  .configure_tls (tls_cert, tls_key)
+  .configure_tls ([] (auto &tls) {
+      tls.certificate_file (cert_path).private_key_file (key_path);
+  })
   .map_post<create_game_http_handler_t> ("/games")
   .map_get<get_room_http_handler_t> ("/rooms/{room_id}")
   .map_readiness ("/ready");
@@ -201,8 +203,12 @@ options.http ()
 `use_discovery()`로 동적으로 찾는다.
 
 ```cpp
+options.use_discovery ()    // registry에서 노드 주소를 자동으로 받아온다
+  .add_registry_endpoint (topology.registry_endpoint);
+
 options.add_spot_mesh ("bingo.room.discovery")
-  .use_discovery ()           // registry에서 노드 주소를 자동으로 받아온다
+  .add_node ("bingo.room.node")
+  .enable_router (topology.router_endpoint, topology.rid)
   .add_entry_spot<bingo_entry_spot_t> ()
   .add_spot<bingo_room_spot_t> ("bingo.room");
 ```

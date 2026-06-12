@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [인터페이스](../spec/handler-interfaces.ko.md) | [channel](../spec/cpp-channel-messaging.ko.md) | [SPOT](../spec/cpp-spot.ko.md) | [STREAM](../spec/cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md) | [HTTP Hosting](../spec/cpp-http-hosting.ko.md)
 
 # Draft -- ZLink Framework C++ Policy
 
@@ -1342,7 +1342,7 @@ result, event model로 표현한다. 이 기준을 지키면 C++ public API는 `
 계약을 제공하면서도 C++20의 RAII, template, coroutine 사용성을 유지할 수 있다.
 
 C++ Stream Connector 패키징은 별도 문서인
-[STREAM Connector](../../connector/doc/draft/cpp-stream-connector.ko.md)를 따른다. framework sample이나
+[STREAM Connector 가이드](../../connector/doc/guide/INDEX.ko.md)를 따른다. framework sample이나
 framework target에 connector public API를 섞지 않는다.
 Unreal Connector도 같은 문서에서 다루며 framework target에 포함하지 않는다.
 

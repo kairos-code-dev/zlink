@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](../../connector/doc/draft/cpp-stream-connector.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: C++ Stream Connector 가이드](../../connector/doc/guide/INDEX.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)

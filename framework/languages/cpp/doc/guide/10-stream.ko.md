@@ -102,12 +102,12 @@ co_await stream.reply_packet (request_header, payload).async ();  // 요청에 �
 ```cpp
 // TicTacToe 클라이언트 시나리오의 실제 흐름 (요약)
 auto client = /* stream connector 생성, room.play_endpoint로 접속 */;
-auto auth = co_await client.request<authenticate_res_t> (authenticate_req_t{token});
+auto auth = co_await client.request<authenticate_res_t> (authenticate_req_t{token}).async ();
 client.wait_for<game_state_notify_t> (...);   // 서버 알림 수신
 ```
 
 connector의 계약과 사용법은
-[stream connector 문서](../../connector/doc/draft/cpp-stream-connector.ko.md)를
+[stream connector 가이드](../../connector/doc/guide/INDEX.ko.md)를
 본다. 동작 예제는 `samples/TicTacToe/Client`가 정본이다.
 
 ## 5. 패킷 계약

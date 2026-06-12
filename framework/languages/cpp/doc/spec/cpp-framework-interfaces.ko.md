@@ -4,12 +4,12 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [channel](./cpp-channel-messaging.ko.md) | [SPOT](./cpp-spot.ko.md) | [STREAM](./cpp-stream.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Interface Design
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` framework의 전반적인 public interface 방향을
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++` framework의 전반적인 public interface 방향을
 > 정리한다.
 > 이 문서는 `framework/doc/spec` 아래 공통 framework 정책을 상위 기준으로 따르고,
 > C++ binding의 public 라이브러리 표면을 기반으로 framework 계층을 설계한다.
@@ -1836,25 +1836,27 @@ app.add_zlink_framework([&](auto &options) {
 
     options.http()
       .listen(topology.api_http_endpoint)
-      .map_post<create_match_handler_t>("/games");
+      .map_post<create_game_http_handler_t>("/games");
 });
 ```
 
 HTTP handler는 message handler와 같은 type alias 규칙을 사용한다.
 
 ```cpp
-class create_match_handler_t {
+class create_game_http_handler_t {
 public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
+      dependency_list_t<channel_client_t, sample_topology_t,
+                        logger_t<create_game_http_handler_t>>;
 
-    explicit create_match_handler_t(
-      create_match_room_handler_t &rooms,
-      sample_topology_t &topology);
+    explicit create_game_http_handler_t(
+      channel_client_t &client,
+      sample_topology_t &topology,
+      logger_t<create_game_http_handler_t> &logger);
 
-    create_match_res_t handle(const create_match_req_t &request);
+    task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
 };
 ```
 

@@ -8,15 +8,15 @@
 
 # Spec -- ZLink Framework C++ HTTP Hosting
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` framework가 ASP.NET Core Minimal API 기반 HTTP hosting을
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++` framework가 ASP.NET Core Minimal API 기반 HTTP hosting을
 > 어떻게 같은 의미로 제공할지 정리한다.
 
 ## 1. 기준 동작
 
 기준은 C++ TicTacToe sample의 HTTP 시작 흐름이다. `.NET` TicTacToe sample처럼
-HTTP에서 게임 시작 정보를 받은 뒤 stream connector로 이어지지만, C++ sample은
-`CreateMatchReq/Res`와 match 용어를 사용한다.
+HTTP에서 게임 시작 정보를 받은 뒤 stream connector로 이어진다. C++ sample은
+`CreateGameHttpReq/Res`와 game 용어를 사용한다.
 
 ```text
 HTTP client
@@ -24,20 +24,19 @@ HTTP client
       |
       v
 C++ HTTP hosting
-  options.http().map_post<create_match_handler_t>("/games")
+  options.http().map_post<create_game_http_handler_t>("/games")
       |
       v
 DI handler
-  create_match_handler_t::handle(
-    create_match_req_t request)
+  create_game_http_handler_t::handle(
+    create_game_http_req_t request)
       |
       v
-Match room allocation
-  create_match_room_handler_t::handle(...)
+channel_client_t.request<create_game_res_t>(play_channel, ...)
       |
       v
 HTTP JSON response
-  create_match_res_t { match_id, owner_actor_id, play_endpoint }
+  create_game_http_res_t { room_id, play_endpoint, game_name }
 ```
 
 C++ framework는 이 흐름을 아래 의미로 맞춘다.
@@ -78,7 +77,7 @@ app.add_zlink_framework([&](auto &options) {
 
     options.http()
       .listen(topology.api_http_endpoint)
-      .map_post<create_match_handler_t>("/games");
+      .map_post<create_game_http_handler_t>("/games");
 
     options.handlers()
       .add<authenticate_player_handler_t>("api");
@@ -95,32 +94,34 @@ transport metadata, raw body, 직접 response 제어가 필요하므로 여러 h
 지원한다. 아래 shape 전체가 HTTP hosting 완료 범위다.
 
 ```cpp
-struct create_match_req_t {
-    static constexpr const char *packet_name = "CreateMatchReq";
-    std::string owner_actor_id;
+struct create_game_http_req_t {
+    static constexpr const char *packet_name = "CreateGameHttpReq";
+    std::string game_name;
 };
 
-struct create_match_res_t {
-    static constexpr const char *packet_name = "CreateMatchRes";
-    std::string match_id;
-    std::string owner_actor_id;
+struct create_game_http_res_t {
+    static constexpr const char *packet_name = "CreateGameHttpRes";
+    std::string room_id;
     std::string play_endpoint;
+    std::string game_name;
 };
 
-class create_match_handler_t {
+class create_game_http_handler_t {
 public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<
-        create_match_room_handler_t,
-        sample_topology_t>;
+        zlink::framework::channel_client_t,
+        sample_topology_t,
+        zlink::framework::logger_t<create_game_http_handler_t>>;
 
-    explicit create_match_handler_t(
-      create_match_room_handler_t &rooms,
-      sample_topology_t &topology);
+    explicit create_game_http_handler_t(
+      zlink::framework::channel_client_t &client,
+      sample_topology_t &topology,
+      zlink::framework::logger_t<create_game_http_handler_t> &logger);
 
-    create_match_res_t handle(const create_match_req_t &request);
+    task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
 };
 ```
 
@@ -128,19 +129,14 @@ handler의 `handle(...)`은 sync 반환과 `task_t<T>` 반환을 모두 허용�
 `.NET`의 `Task<IResult>` 또는 `Task<T>` 의미를 `task_t<T>`로 투영한다.
 
 ```cpp
-create_match_res_t
-create_match_handler_t::handle(const create_match_req_t &request)
+task_t<create_game_http_res_t>
+create_game_http_handler_t::handle(const create_game_http_req_t &request)
 {
-    auto room = _rooms.handle(create_match_room_req_t {});
-    auto owner = request.owner_actor_id.empty()
-      ? std::string(sample_names_t::x_actor_id)
-      : request.owner_actor_id;
-
-    return create_match_res_t {
-      room.match_id,
-      owner,
-      _topology.stream_endpoint
-    };
+    auto room = co_await _client
+      .request<create_game_res_t> (sample_names_t::play_channel,
+                                   create_game_req_t{request.game_name})
+      .async ();
+    co_return create_game_http_res_t {room.room_id, room.play_endpoint, room.game_name};
 }
 ```
 
@@ -364,7 +360,7 @@ options.http()
       tls.certificate_file("certs/server.crt")
         .private_key_file("certs/server.key");
   })
-  .map_post<create_match_handler_t>("/games");
+  .map_post<create_game_http_handler_t>("/games");
 ```
 
 `map_post<THandler>(path)`는 typed route에서 아래 작업을 한 번에 수행한다.
@@ -597,11 +593,11 @@ C++ TicTacToe sample은 `.NET` TicTacToe와 같은 HTTP 시작 흐름을 가져�
 
 - `sample_topology_t`에 `api_http_endpoint`를 추가한다.
 - `Server/Api` role은 zlink API channel server와 HTTP endpoint를 함께 구성한다.
-- `CreateMatchReq`, `CreateMatchRes` DTO를 C++ shared contracts에 둔다.
-- `CreateMatchHandler`는 HTTP request를 받아 match room을 만들고 `match_id`,
-  `owner_actor_id`, `play_endpoint`를 반환한다.
-- client는 `zlink::http_client`로 먼저 `POST /games`를 호출해 `match_id`,
-  `owner_actor_id`, `play_endpoint`를 받는다.
+- `CreateGameHttpReq`, `CreateGameHttpRes` DTO를 C++ shared contracts에 둔다.
+- `create_game_http_handler_t`는 HTTP request를 받아 play 채널로 게임 룸을 만들고
+  `room_id`, `play_endpoint`, `game_name`을 반환한다.
+- client는 `zlink::http_client`로 먼저 `POST /games`를 호출해 `room_id`,
+  `play_endpoint`, `game_name`을 받는다.
 - `api_http_endpoint`가 `https://`이면 client는 `zlink::http_client`의 TLS verification
   option을 명시해 같은 흐름을 검증한다.
 - 이후 stream connector는 HTTP 응답의 `play_endpoint`로 연결한다.

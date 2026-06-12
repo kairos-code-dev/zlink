@@ -8,13 +8,13 @@
 
 | 확장 지점 | 형태 | 장 |
 |-----------|------|-----|
-| 채널/HTTP 핸들러 | `request_type`/`reply_type`/`topic_name` + `handle()` (동기 또는 `task_t`) | [3](./03-concepts.ko.md)·[5](./07-channel-messaging.ko.md)·[9](./06-http-hosting.ko.md) |
+| 채널/HTTP 핸들러 | `request_type`/`reply_type`/`topic_name` + `handle()` (동기 또는 `task_t`) | [3](./03-concepts.ko.md)·[7](./07-channel-messaging.ko.md)·[6](./06-http-hosting.ko.md) |
 | 핸들러 DI | `using dependency_types = dependency_list_t<...>` + 생성자 주입 | [3 §3](./03-concepts.ko.md) |
-| spot | `spot_t`/`entry_spot_t` 상속 + `configure(spot_context_t&)` | [6](./08-spot.ko.md) |
-| spot actor 패킷 핸들러 | `(const actor_t&, spot_actor_request_context_t&, const req_t&) → res_t` | [6 §3](./08-spot.ko.md) |
-| actor + factory | actor struct + `create(actor_id)` factory | [7 §2](./09-actor-session.ko.md) |
-| stream session | `packet_stream_session_t` 상속 — `on_connected/packet/error/disconnected` | [8 §3](./10-stream.ko.md) |
-| HTTP middleware | `use<TMiddleware>()` — before/after 훅 | [9 §4](./06-http-hosting.ko.md) |
+| spot | `spot_t`/`entry_spot_t` 상속 + `configure(spot_context_t&)` | [8](./08-spot.ko.md) |
+| spot actor 패킷 핸들러 | `(const actor_t&, spot_actor_request_context_t&, const req_t&) → res_t` | [8 §3](./08-spot.ko.md) |
+| actor + factory | actor struct + `create(actor_id)` factory | [9 §2](./09-actor-session.ko.md) |
+| stream session | `packet_stream_session_t` 상속 — `on_connected/packet/error/disconnected` | [10 §3](./10-stream.ko.md) |
+| HTTP middleware | `use<TMiddleware>()` — before/after 훅 | [6 §4](./06-http-hosting.ko.md) |
 | hosted service | `hosted_service_t` — `start(provider)`/`stop() noexcept` | [3 §1](./03-concepts.ko.md) |
 | module | `module_t` — `configure_services/zlink/handlers/monitoring` | [3 §6](./03-concepts.ko.md) |
 | 설정 바인딩 | `static T bind(const configuration_section_t&)` | [4 §5](./05-configuration.ko.md) |
@@ -38,17 +38,17 @@
 |--------|------|-----|
 | `services()` | DI 등록 (`add_singleton<T>` 등) | [3 §3](./03-concepts.ko.md) · [4장](./04-di-container.ko.md) |
 | `handlers()` | 핸들러 그룹 등록 (`add<T>("group")`) | [3 §4](./03-concepts.ko.md) |
-| `codecs()` | `add_json()` / `add_message_pack()`(+typed) / `add_protobuf()` | [5 §2](./07-channel-messaging.ko.md) |
-| `add_client_server_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` | [5](./07-channel-messaging.ko.md) |
-| `add_fanout_channel(name)` | `enable_publisher(ep)` · `use_handler_group(g)` | [5 §4](./07-channel-messaging.ko.md) |
-| `add_dealer_mesh_channel(name)` | 동격 노드 분산 | [5](./07-channel-messaging.ko.md) |
-| `add_route_mesh_channel(name)` | `bind` · `set_routing_id` · `connect` · `enable_spot_route_egress` | [5 §5](./07-channel-messaging.ko.md) |
-| `add_spot_mesh(discovery).add_node(name)` | `enable_router` · `enable_pub_sub` · `use_discovery` · `accept_routes_from_channel` · `attach_channel_client/publisher` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [6](./08-spot.ko.md)·[7](./09-actor-session.ko.md) |
-| `add_stream_node(name)` | `bind` · `register_session<T>` · `attach_actor_gateway` | [8](./10-stream.ko.md) |
-| `http()` | `listen` · `configure_tls` · `configure_server` · `map_get/post/put/delete<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [9](./06-http-hosting.ko.md) |
-| `use_discovery()` | `add_registry_endpoint(ep)` | [10](./11-registry.ko.md) |
-| `enable_registry(pub, router)` | registry 서버 | [10 §2](./11-registry.ko.md) |
-| `use_registry_spot_remote_addresses([channel])` | spot 원격 주소를 registry로 | [10 §4](./11-registry.ko.md) |
+| `codecs()` | `add_json()` / `add_message_pack()`(+typed) / `add_protobuf()` | [7 §2](./07-channel-messaging.ko.md) |
+| `add_client_server_channel(name)` | `enable_server(ep)` · `enable_client([ep])` · `use_handler_group(g)` | [7](./07-channel-messaging.ko.md) |
+| `add_fanout_channel(name)` | `enable_publisher(ep)` · `use_handler_group(g)` | [7 §4](./07-channel-messaging.ko.md) |
+| `add_dealer_mesh_channel(name)` | 동격 노드 분산 | [7](./07-channel-messaging.ko.md) |
+| `add_route_mesh_channel(name)` | `bind` · `set_routing_id` · `connect` · `enable_spot_route_egress` | [7 §6](./07-channel-messaging.ko.md) |
+| `add_spot_mesh(discovery).add_node(name)` | `enable_router` · `enable_pub_sub` · `use_discovery` · `accept_routes_from_channel` · `attach_channel_client/publisher` · `add_entry_spot<T>` · `add_spot<T>` · `add_actor_factory<F>` · `enable_actor_gateway` | [8](./08-spot.ko.md)·[9](./09-actor-session.ko.md) |
+| `add_stream_node(name)` | `bind` · `register_session<T>` · `attach_actor_gateway` | [10](./10-stream.ko.md) |
+| `http()` | `listen` · `configure_tls` · `configure_server` · `map_get/post/put/delete<T>` · `use<TMiddleware>` · `map_health/readiness/liveness` | [6](./06-http-hosting.ko.md) |
+| `use_discovery()` | `add_registry_endpoint(ep)` | [11](./11-registry.ko.md) |
+| `enable_registry(pub, router)` | registry 서버 | [11 §2](./11-registry.ko.md) |
+| `use_registry_spot_remote_addresses([channel])` | spot 원격 주소를 registry로 | [11 §4](./11-registry.ko.md) |
 | `handler_coroutine_workers(n)` | 코루틴 핸들러 worker 수 | [3 §5](./03-concepts.ko.md) |
 
 ## 4. 주입 가능한 프레임워크 서비스
@@ -57,13 +57,13 @@
 
 | 타입 | 용도 | 장 |
 |------|------|-----|
-| `channel_client_t` | 채널 request (request-reply) | [5 §3](./07-channel-messaging.ko.md) |
-| `session_actor_manager_t` | 세션-액터 바인딩 관리 | [7 §4](./09-actor-session.ko.md) |
+| `channel_client_t` | 채널 request (request-reply) | [7 §3](./07-channel-messaging.ko.md) |
+| `session_actor_manager_t` | 세션-액터 바인딩 관리 | [9 §4](./09-actor-session.ko.md) |
 | `logger_t<TOwner>` | 소스 이름 붙은 로거 | [11 §1](./12-monitoring.ko.md) |
 | 사용자 싱글톤 | `options.services().add_singleton<T>(...)`로 올린 타입 | [3 §3](./03-concepts.ko.md) |
 
 publish/send는 DI 주입이 아니라 `zlink_builder_t`에서 얻는 `publisher_t` /
-`message_bus_t`로 한다 — [5 §3](./07-channel-messaging.ko.md).
+`message_bus_t`로 한다 — [7 §3](./07-channel-messaging.ko.md).
 
 ## 5. 공통 타입
 
@@ -74,6 +74,6 @@ publish/send는 DI 주입이 아니라 `zlink_builder_t`에서 얻는 `publisher
 | `framework_exception_t` | `kind()` / `what()` / `is_retriable()` |
 | `framework_error_kind_t` | `request_protocol_error` · `request_failed` · `timeout` · `payload_decode_failed` · `closed` 등 |
 | `zlink::message_t` | raw 메시지 (typed 경계 밖에서만) |
-| `timer_t` / `timer_options_t` / `timer_tick_t` | spot timer ([6 §5](./08-spot.ko.md)) |
+| `timer_t` / `timer_options_t` / `timer_tick_t` | spot timer ([8 §5](./08-spot.ko.md)) |
 
 [다음: 샘플 지도 →](./14-samples-map.ko.md)

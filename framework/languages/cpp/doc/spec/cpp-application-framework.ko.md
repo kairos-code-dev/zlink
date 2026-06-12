@@ -4,12 +4,12 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md)
 
 # Spec -- ZLink Framework C++ Application Framework
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++`용 `ZLink Framework`를 어떤 application framework로
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++`용 `ZLink Framework`를 어떤 application framework로
 > 만들지 정리한다.
 
 ## 1. 제품 포지션
@@ -133,20 +133,20 @@ DI는 framework core 기능이다. 외부 DI 라이브러리를 public dependenc
 
 ```cpp
 options.services()
-  .add_singleton<create_match_room_handler_t>()
   .add_singleton<sample_topology_t>()
-  .add_transient<create_match_handler_t>();
+  .add_transient<create_game_http_handler_t>();
 ```
 
 handler auto registration은 handler 타입의 `dependency_types`를 사용한다.
 
 ```cpp
-class create_match_handler_t {
+class create_game_http_handler_t {
 public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
+      dependency_list_t<channel_client_t, sample_topology_t,
+                        logger_t<create_game_http_handler_t>>;
 };
 ```
 
@@ -214,20 +214,21 @@ HTTP hosting은 framework core 기능이다. ASP.NET Core Minimal API의 `MapGet
 ```cpp
 options.http()
   .listen(topology.api_http_endpoint)
-  .map_post<create_match_handler_t>("/games");
+  .map_post<create_game_http_handler_t>("/games");
 ```
 
 handler는 DI로 생성하고 DTO를 반환한다.
 
 ```cpp
-class create_match_handler_t {
+class create_game_http_handler_t {
 public:
-    using request_type = create_match_req_t;
-    using reply_type = create_match_res_t;
+    using request_type = create_game_http_req_t;
+    using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<create_match_room_handler_t, sample_topology_t>;
+      dependency_list_t<channel_client_t, sample_topology_t,
+                        logger_t<create_game_http_handler_t>>;
 
-    create_match_res_t handle(const create_match_req_t &request);
+    task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
 };
 ```
 
@@ -335,7 +336,7 @@ logging은 framework core 기능이다.
 - startup/shutdown log
 
 HTTP correlation id와 framework handler log correlation id는 연결되어야 한다. 예를 들어
-HTTP `POST /games`에서 `CreateMatchReq`를 처리할 때 같은 correlation id가 log와 monitoring
+HTTP `POST /games`에서 `CreateGameHttpReq`를 처리할 때 같은 correlation id가 log와 monitoring
 event에 남아야 한다.
 
 ## 11. Observability

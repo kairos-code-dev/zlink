@@ -4,12 +4,12 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](../internals/cpp-framework-policy.ko.md) | [Application Framework](./cpp-application-framework.ko.md) | [Framework 인터페이스](./cpp-framework-interfaces.ko.md) | [HTTP Hosting](./cpp-http-hosting.ko.md) | [HTTP Client](../../http-client/doc/README.ko.md)
 
 # Spec -- ZLink Framework C++ Embedded HTTP Server
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` framework 안에서 제공할 내장 HTTP 웹서버 runtime의
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++` framework 안에서 제공할 내장 HTTP 웹서버 runtime의
 > 개발 기준과 완료 조건을 정리한다.
 >
 > [HTTP Hosting](./cpp-http-hosting.ko.md)이 사용자가 보는 route, handler, DTO binding

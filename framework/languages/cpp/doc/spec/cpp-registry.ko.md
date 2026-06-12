@@ -8,8 +8,8 @@
 
 # Spec -- ZLink Framework C++ Registry
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` runtime에서 Registry를 어떤 표면으로 통합할지
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++` runtime에서 Registry를 어떤 표면으로 통합할지
 > 정리한다.
 
 ## 인터페이스 경계

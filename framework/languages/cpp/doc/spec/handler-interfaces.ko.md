@@ -8,8 +8,8 @@
 
 # Spec -- ZLink Framework C++ Interface Alignment
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, 기존 `C++` adapter interface catalog를 standalone
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> 기존 `C++` adapter interface catalog를 standalone
 > framework 정책에 맞춰 정렬하기 위한 문서다.
 > 전체 public interface 설계의 기준은
 > [Framework 인터페이스](./cpp-framework-interfaces.ko.md)다.

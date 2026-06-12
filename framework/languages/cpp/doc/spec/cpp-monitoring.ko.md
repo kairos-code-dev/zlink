@@ -8,8 +8,8 @@
 
 # Spec -- ZLink Framework C++ Monitoring
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `C++` runtime에서 socket, discovery, registry, spot
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `C++` runtime에서 socket, discovery, registry, spot
 > runtime event를 어떤 표면으로 올릴지 정리한다.
 
 ## 인터페이스 경계

@@ -8,8 +8,8 @@
 
 # Spec -- ZLink Framework C++ ActorGateway Session Relay
 
-> 이 문서는 **구현 전 초안**이다.
-> 현재 공개 계약이 아니며, `.NET` framework의 ActorGateway session relay와 같은
+> 이 문서는 **구현 완료된 설계 계약**이다.
+> `.NET` framework의 ActorGateway session relay와 같은
 > 개념을 `C++` standalone framework에서 어떻게 자체 host/runtime 기능으로 만들지
 > 정리한다.
 

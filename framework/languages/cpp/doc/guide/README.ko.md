@@ -1,7 +1,7 @@
 # ZLink Framework C++ — 사용자 가이드
 
-실시간 멀티플레이어 게임 서버, 이벤트 기반 분산 서버 시스템처럼 **여러 서버
-프로세스가 협력하는 시스템**을 만드는 C++ 애플리케이션 프레임워크다.
+**실시간 메시징이 중요한 서버 시스템**을 여러 프로세스로 나눠 만드는 C++
+애플리케이션 프레임워크다.
 
 ```cpp
 #include <zlink/framework.hpp>
@@ -12,44 +12,53 @@ int main (int argc, char **argv)
     app.add_zlink_framework ([] (zlink::framework::zlink_framework_options_t &options) {
         options.http ()
           .listen ("http://0.0.0.0:8080")
-          .map_post<create_game_http_handler_t> ("/games");
+          .map_post<open_conversation_http_handler_t> ("/conversations");
     });
     return app.run (argc, argv);
 }
 ```
 
 핸들러 클래스 하나를 등록하면 메시지 디코딩·라우팅·인코딩은 프레임워크가 처리한다.
-실제 서버는 여기에 서버 간 메시징, 게임 룸 관리, 클라이언트 연결, 서비스
-디스커버리가 더해진 구성이다.
 
 ---
 
 ## 이 프레임워크로 무엇을 만드는가
 
-전형적인 배치는 복수의 서버 프로세스가 역할을 나눠 협력하는 구조다.
+여러 서버 프로세스가 역할을 나눠 협력하고, 상태 변화를 실시간으로 클라이언트에
+전달해야 하는 시스템에 맞게 설계됐다.
+
+| 도메인 | 핵심 시나리오 |
+|--------|--------------|
+| **실시간 게임** | 룸 생성 → 플레이어 입장 → 게임 상태 갱신 → 클라이언트 push |
+| **고객 지원 채팅** | 대화 개설 → 상담원 배정 → 메시지 중계 → 대화 상태 push |
+| **주문 워크플로** | 주문 접수 → 단계별 처리 → 상태 변경 → 클라이언트 알림 |
+| **배송·배차** | 배차 요청 → 수행자 배정·수락 → 상태 추적 → 실시간 push |
+
+공통 구조는 하나다 — 역할별 서버 프로세스가 typed 메시지로 통신하고, 클라이언트는
+실시간 연결(stream)로 상태 변화를 받는다.
 
 ```mermaid
 flowchart LR
-    Client["게임 클라이언트"]
-    subgraph Api["Api 서버"]
-        HTTP["HTTP API<br/>POST /games"]:::infra
+    Client["클라이언트 앱"]
+    subgraph Entry["진입 서버"]
+        HTTP["HTTP API"]:::infra
         ApiC["채널 client"]:::channel
     end
-    subgraph Play["Play 서버"]
-        PlayS["채널 server"]:::channel
-        SpotN["SPOT<br/>(게임 룸)"]:::spot
+    subgraph Core["도메인 서버"]
+        CoreS["채널 server"]:::channel
+        SpotN["SPOT<br/>(상태 단위)"]:::spot
         StreamN["stream"]:::stream
         ActorG["actor gateway"]:::actor
     end
     Registry["Registry<br/>(discovery)"]:::infra
 
-    Client -- "① HTTP 게임 생성" --> HTTP
+    Client -- "① HTTP 요청" --> HTTP
     HTTP --> ApiC
-    ApiC -- "② 서버 간 요청" --> PlayS
-    PlayS --> SpotN
+    ApiC -- "② 서버 간 메시지" --> CoreS
+    CoreS --> SpotN
     Client -- "③ 실시간 접속" --> StreamN
     StreamN --> ActorG --> SpotN
-    ApiC & PlayS -.->|"주소 해석"| Registry
+    ApiC & CoreS -.->|"주소 해석"| Registry
 
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
     classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
@@ -58,10 +67,10 @@ flowchart LR
     classDef infra fill:#eceff1,stroke:#546e7a,color:#37474f
 ```
 
-각 서버 프로세스는 독립 실행 파일이고, 서로 TCP로 연결된다. 하나의 서버 안에
-HTTP 입구, 다른 서버와의 통신 경로, 클라이언트 연결, 게임 룸 상태 관리가
-모두 동거한다. `samples/TicTacToe`(2개 서버)와 `samples/Bingo`(4개 서버)가
-이 구조의 동작하는 완전한 예제다.
+각 서버 프로세스는 독립 실행 파일이고 서로 TCP로 연결된다. 하나의 서버 안에
+HTTP 입구, 다른 서버와의 통신 경로, 클라이언트 연결, 상태 단위 관리가 모두
+동거한다. `samples/TicTacToe`(2개 서버)와 `samples/Bingo`(4개 서버)가 동작하는
+완전한 예제다.
 
 ---
 
@@ -76,17 +85,17 @@ MessagePack / Protobuf)는 프레임워크가 처리한다.
 ```cpp
 // 보내는 쪽 (채널 클라이언트)
 auto result = co_await _client
-    .request<create_game_res_t> ("tictactoe.play",
-                                  create_game_req_t{request.game_name})
+    .request<open_conversation_res_t> ("support.core",
+                                       open_conversation_req_t{user_id})
     .async ();
 
 // 받는 쪽 (채널 서버의 핸들러)
-class create_game_handler_t {
+class open_conversation_handler_t {
   public:
-    using request_type = create_game_req_t;
-    using reply_type   = create_game_res_t;
-    static constexpr const char *topic_name = "CreateGame";
-    create_game_res_t handle (const create_game_req_t &req) { ... }
+    using request_type = open_conversation_req_t;
+    using reply_type   = open_conversation_res_t;
+    static constexpr const char *topic_name = "OpenConversation";
+    open_conversation_res_t handle (const open_conversation_req_t &req) { ... }
 };
 ```
 
@@ -95,45 +104,45 @@ request-reply 외에 fanout(pub/sub)과 dealer mesh(부하 분산) 패턴도 제
 
 ---
 
-### SPOT — 게임 룸·스테이지 상태를 락 없이 관리
+### SPOT — 상태 단위를 락 없이 관리
 
-SPOT은 게임 룸, 스테이지, 구역처럼 "장소" 하나의 상태와 참가자를 묶는 실행
-단위다. 한 SPOT 안에서 일어나는 모든 것 — 플레이어 패킷, 타이머, 입퇴장 —
-은 **직렬로** 처리된다. 락 없이 룸 상태에 접근할 수 있고, 코루틴으로 비동기
-처리를 써도 같은 룸에 두 요청이 겹치지 않는다.
+SPOT은 게임 룸, 지원 대화, 주문 처리 단위처럼 **"하나의 상태 영역"** 과 그 참여자를
+묶는 실행 단위다. 한 SPOT 안에서 일어나는 모든 것 — 참여자 패킷, 타이머, 입퇴장 —
+은 **직렬로** 처리된다. std::mutex 없이 상태에 접근할 수 있고, 코루틴으로 비동기
+처리를 써도 같은 SPOT에 두 요청이 겹치지 않는다.
 
 ```cpp
-class tictactoe_game_spot_t : public zlink::framework::spot_t,
-                               public tictactoe_match_t   // 게임 상태 직접 소유
+class conversation_spot_t : public zlink::framework::spot_t,
+                             public conversation_t   // 대화 상태 직접 소유
 {
   public:
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&tictactoe_game_spot_t::place_mark> ();
+        context.handlers ().add_actor_packet<&conversation_spot_t::send_message> ();
     }
 
-    place_mark_res_t place_mark (const player_actor_t &actor,
-                                 const zlink::framework::spot_actor_request_context_t &,
-                                 const place_mark_req_t &request)
+    send_message_res_t send_message (const user_actor_t &actor,
+                                     const zlink::framework::spot_actor_request_context_t &,
+                                     const send_message_req_t &request)
     {
-        return place (actor.actor_id, request);   // std::mutex 없이 안전
+        return append (actor.user_id, request.text);   // std::mutex 없이 안전
     }
 };
 ```
 
-매칭·룸 배정을 담당하는 entry spot(노드당 1개)과 게임 룸 본체인 room spot(룸마다
-1개)으로 나뉜다. 주기 작업은 timer로 등록한다. [6장 →](./06-spot.ko.md)
+배정·할당을 담당하는 entry spot(노드당 1개)과 상태 본체인 room spot(단위마다 1개)으로
+나뉜다. 주기 작업은 timer로 등록한다. [6장 →](./06-spot.ko.md)
 
 ---
 
 ### Stream + Actor — 클라이언트 실시간 연결
 
-게임 클라이언트가 서버에 접속하는 양방향 연결을 **stream**이라 하고, 연결 하나를
-대표하는 서버 쪽 객체가 **actor**다. 클라이언트가 접속하면 session이 actor를
-생성하고, actor는 SPOT에 입장해 게임에 참여한다.
+클라이언트의 실시간 양방향 연결을 **stream**이라 하고, 연결 하나를 대표하는
+서버 쪽 객체가 **actor**다. 클라이언트가 접속하면 session이 actor를 생성하고,
+actor는 SPOT에 입장해 상태 처리에 참여한다.
 
 ```cpp
-class play_session_t : public zlink::framework::packet_stream_session_t {
+class support_session_t : public zlink::framework::packet_stream_session_t {
   public:
     task_t<void> on_packet (stream_t &stream,
                             const stream_header_t &header,

@@ -6,12 +6,12 @@
 
 [C++ 묶음](../../../doc/README.ko.md) | [C++ 정책](../../../doc/internals/cpp-framework-policy.ko.md) | [Application Framework](../../../doc/spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../../../doc/spec/cpp-framework-interfaces.ko.md) | [HTTP Hosting](../../../doc/spec/cpp-http-hosting.ko.md)
 
-# Draft -- ZLink HTTP Client For C++
+# Spec -- ZLink HTTP Client For C++
 
 > 사용법 중심 문서는 [사용자 가이드](../README.ko.md)를 본다.
-> 이 문서는 **draft 계약**이다.
-> `zlink::http_client` 산출물의 현재 구현 범위와 다음 구현 범위를 함께 정리한다.
-> 정식 spec으로 승격하기 전까지는 `core/include/zlink.h` 기준 공개 계약이 아니다.
+> 이 문서는 `zlink::http_client` 산출물의 공개 계약을 정리한다.
+> 실제 계약의 단일 기준은 `http-client/include/zlink/http_client/**` public header와
+> `test_cpp_http_client`, `test_cpp_framework_contract_headers` 회귀 테스트다.
 
 ## 1. 목적
 
@@ -158,8 +158,6 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
 
 HTTP/2와 caller cancellation 공통 모델은 현재 구현 범위 밖이다. HTTP/2는 Boost.Beast가
 지원하지 않고, cancellation은 server runtime마다 의미가 달라 별도 설계가 필요하다.
-coroutine suspend/resume 설계 기록은
-[cpp-http-client-coroutines.ko.md](./cpp-http-client-coroutines.ko.md)에 둔다.
 
 `base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
 `follow_redirects(...)`, `retry(...)`, `proxy(...)`, request path, request header name,
@@ -194,7 +192,67 @@ JSON 변환은 `message_t` 또는 DTO serializer hook을 통해 처리한다. �
 test certificate나 local development certificate를 trust하는 설정은 HTTP client option으로
 명시해야 한다. 묵시적으로 TLS verification을 끄지 않는다.
 
-## 6. HTTP Hosting 테스트에서의 사용
+## 6. Coroutine 실행 계약
+
+`submit_raw()`와 `submit<T>()`는 `zlink::framework::task_t`를 반환한다. coroutine 설정이
+없는 client는 기존 blocking submit 의미를 유지한다. 호출 중 HTTP 작업을 동기로 실행하고,
+caller가 반환된 task에 `.result()`를 호출하면 현재 스레드는 결과가 올 때까지 기다린다.
+
+`.coroutines()`를 명시한 client는 HTTP 작업을 HTTP client 내부 scheduler에 등록한다. 이
+scheduler는 public header에 Boost.Asio, Boost.Beast, OpenSSL runtime 타입을 드러내지
+않는다. HTTP client는 process 안에서 공유되는 기본 scheduler를 사용하며, public shutdown
+API를 제공하지 않는다.
+
+server runtime처럼 continuation을 다시 실행할 위치를 직접 정해야 하는 경우에는 resume
+scheduler를 주입한다. HTTP 작업은 내부 scheduler가 실행하고, 완료된 coroutine과 callback은
+caller가 제공한 resume scheduler에서 이어진다.
+
+```cpp
+auto resume_scheduler =
+  std::make_shared<zlink::http_client::framework_resume_scheduler_t>(
+    [] (std::function<void ()> continuation) {
+      server_queue.post(std::move(continuation));
+    });
+
+auto client = zlink::http_client::client_t::create("https://matchmaking.internal")
+  .json()
+  .coroutines(resume_scheduler)
+  .build();
+```
+
+HTTP 작업 실행 위치와 resume 위치를 모두 caller가 정해야 하면
+`.coroutines(execute_scheduler, resume_scheduler)`를 쓴다.
+
+| client 설정 | `submit<T>()` 실행 의미 |
+|-------------|-------------------------|
+| coroutine 설정 없음 | 호출 중 HTTP 작업을 동기 실행한다 |
+| `.coroutines()` | 내부 scheduler가 HTTP 작업과 resume을 모두 처리한다 |
+| `.coroutines(resume)` | 내부 scheduler가 HTTP 작업을 실행하고 custom scheduler가 resume한다 |
+| `.coroutines(execute, resume)` | custom scheduler들이 HTTP 작업과 resume을 처리한다 |
+
+`coroutine_execute_scheduler_t::execute(...)`는 HTTP 작업을 실행한다.
+`coroutine_resume_scheduler_t::resume(...)`은 완료된 continuation을 다시 실행한다.
+scheduler 인자가 `nullptr`이면 `request_protocol_error`로 실패한다.
+
+coroutine 설정이 있는 client에서 `submit_raw()` 또는 `submit<T>()`를 호출하면 request
+builder가 method, path, headers, body provider, timeout 같은 request state를 값으로
+복사한 뒤 scheduler에 작업을 등록한다. 임시 builder와 client 객체가 사라져도 등록된
+작업은 자신이 가진 request state와 runtime shared ownership으로 완료되어야 한다.
+
+request timeout은 scheduler queue 등록 시점을 시작점으로 둔다. worker가 HTTP 작업을
+시작하기 전에 deadline이 지났으면 HTTP 교환을 시작하지 않고 timeout 실패로 task를
+완료한다.
+
+`submit<T>()`는 raw HTTP 작업이 끝난 뒤 typed JSON decode를 수행한다. coroutine client에서는
+decode와 caller continuation이 resume scheduler 정책을 따른다. `submit<T>(callback)`도
+coroutine 설정이 있으면 resume scheduler가 정한 위치에서 callback을 실행한다. callback에서
+예외가 나도 이미 완료된 task 결과를 바꾸지 않는다.
+
+`body_stream(provider)`의 provider와 `download(sink)`의 sink는 HTTP 작업을 실행하는
+execute scheduler worker에서 호출된다. 이 callback 안에서 server handler state를 직접
+건드리지 말고, 필요한 경우 thread-safe queue나 server scheduler post를 사용한다.
+
+## 7. HTTP Hosting 테스트에서의 사용
 
 HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아니라
 `zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출한다.
@@ -204,7 +262,7 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - HTTP hosting handler가 실제 public client로 검증된다.
 - 샘플과 테스트가 서로 다른 HTTP wrapper를 갖지 않는다.
 
-## 7. 회귀 테스트
+## 8. 회귀 테스트
 
 최소 테스트는 아래 축으로 둔다.
 

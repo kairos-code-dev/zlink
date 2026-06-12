@@ -38,6 +38,6 @@ auto game = zlink::http_client::client_t::create ("https://game-api.example.inte
 - 서버 핸들러 안에서 호출한다면 → [7. 비동기와 코루틴](./07-async-coroutines.ko.md)의 blocking 규칙 먼저
 - 실패가 어떻게 보고되는지 → [13. 에러 처리](./13-error-handling.ko.md)
 
-정식 계약과 회귀 테스트 축은 draft 문서
-[cpp-http-client.ko.md](./draft/cpp-http-client.ko.md)가 정본이다.
+정식 계약과 회귀 테스트 축은 spec 문서
+[cpp-http-client.ko.md](./spec/cpp-http-client.ko.md)가 정본이다.
 이 가이드는 사용법을 다룬다.

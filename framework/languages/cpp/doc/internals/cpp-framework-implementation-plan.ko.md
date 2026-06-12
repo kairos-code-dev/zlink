@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/draft/cpp-http-client.ko.md)
+[C++ 묶음](../README.ko.md) | [C++ 정책](./cpp-framework-policy.ko.md) | [Application Framework](../spec/cpp-application-framework.ko.md) | [Framework 인터페이스](../spec/cpp-framework-interfaces.ko.md) | [HTTP Client](../../http-client/doc/spec/cpp-http-client.ko.md)
 
 # Draft -- ZLink Framework C++ Implementation Plan
 
@@ -1603,6 +1603,7 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | [cpp-framework-overview.ko.md](./cpp-framework-overview.ko.md) | Goal 1-22 |
 | [cpp-stream-connector.ko.md](../../connector/doc/draft/cpp-stream-connector.ko.md) | Goal 14-16 |
 | [cpp-framework-policy.ko.md](./cpp-framework-policy.ko.md) | Goal 1-22 |
+| [cpp-http-client.ko.md](../../http-client/doc/spec/cpp-http-client.ko.md) | Goal 18 |
 | [cpp-application-framework.ko.md](../spec/cpp-application-framework.ko.md) | Goal 6, Goal 19, Goal 21, Goal 22 |
 | [cpp-framework-interfaces.ko.md](../spec/cpp-framework-interfaces.ko.md) | Goal 1-19, Goal 22 |
 | [handler-interfaces.ko.md](../spec/handler-interfaces.ko.md) | Goal 8-14 |
@@ -1617,7 +1618,6 @@ git diff --check -- framework/languages/cpp bindings/cpp
 | [actor-gateway-session-relay.ko.md](../spec/actor-gateway-session-relay.ko.md) | Goal 14, Goal 21 |
 | [cpp-registry.ko.md](../spec/cpp-registry.ko.md) | Goal 11, Goal 14, Goal 15 |
 | [cpp-monitoring.ko.md](../spec/cpp-monitoring.ko.md) | Goal 12, Goal 16 |
-| [cpp-http-client.ko.md](../../http-client/doc/draft/cpp-http-client.ko.md) | Goal 18, Goal 19, Goal 21 |
 | [cpp-http-hosting.ko.md](../spec/cpp-http-hosting.ko.md) | Goal 19, Goal 21 |
 | [cpp-embedded-http-server.ko.md](../spec/cpp-embedded-http-server.ko.md) | Goal 19, Goal 21 |
 | [cpp-framework-posd-refactoring-log.ko.md](./cpp-framework-posd-refactoring-log.ko.md) | Goal 1-22 POSD 기록 |

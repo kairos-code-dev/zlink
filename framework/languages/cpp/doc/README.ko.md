@@ -29,7 +29,7 @@
 
 | 산출물 | 문서 |
 |--------|------|
-| HTTP client (`zlink::http_client`) | [가이드](../http-client/doc/README.ko.md) · [draft 계약](../http-client/doc/draft/cpp-http-client.ko.md) |
+| HTTP client (`zlink::http_client`) | [가이드](../http-client/doc/README.ko.md) · [spec](../http-client/doc/spec/cpp-http-client.ko.md) |
 | Stream connector (`zlink::stream_connector`) | [draft 계약](../connector/doc/draft/cpp-stream-connector.ko.md) |
 
 ## internals 목록

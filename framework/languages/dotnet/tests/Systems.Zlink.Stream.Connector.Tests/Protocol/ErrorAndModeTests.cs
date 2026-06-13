@@ -112,6 +112,33 @@ public sealed partial class StreamConnectorTests
         await Task.CompletedTask;
     }
 
+    [Theory]
+    [InlineData("MaxReceivedMessages")]
+    [InlineData("MaxPendingDispatchCallbacks")]
+    public async Task QueueLimitsMustBePositive(string optionName)
+    {
+        var options = optionName switch
+        {
+            "MaxReceivedMessages" => new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                MaxReceivedMessages = 0
+            },
+            "MaxPendingDispatchCallbacks" => new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                MaxPendingDispatchCallbacks = 0
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(optionName), optionName, null)
+        };
+
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            ZlinkStreamConnectorFactory.Create(options));
+
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
+        await Task.CompletedTask;
+    }
+
     [Fact]
     public async Task InvalidHeaderFramePublishesDecodeError()
     {

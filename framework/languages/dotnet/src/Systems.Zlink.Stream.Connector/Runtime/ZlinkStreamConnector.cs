@@ -10,7 +10,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     private readonly ZlinkStreamPendingRequests _pending = new();
     private readonly ZlinkStreamTypedHandlerRegistry _typedHandlers = new();
-    private readonly ZlinkStreamReceivedMessages _receivedMessages = new();
+    private readonly ZlinkStreamReceivedMessages _receivedMessages;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly CancellationTokenSource _lifetimeCts = new();
     private readonly ZlinkStreamTaskRunner _taskRunner;
@@ -29,7 +29,11 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ZlinkStreamTransportFactory.ValidateOptions(options);
         _taskRunner = new ZlinkStreamTaskRunner(_lifetimeCts.Token);
-        _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner, options.DispatchMode);
+        _receivedMessages = new ZlinkStreamReceivedMessages(options.MaxReceivedMessages);
+        _callbacks = new ZlinkStreamConnectorCallbacks(
+            _taskRunner,
+            options.DispatchMode,
+            options.MaxPendingDispatchCallbacks);
 
         _headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         _compressionCodec = CreateCompressionCodec(options.Compression, options.MaxReceivePayloadSize);

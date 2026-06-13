@@ -121,6 +121,20 @@ internal static class ZlinkStreamTransportFactory
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxReceivePayloadSize must be positive.");
         }
+
+        if (options.MaxReceivedMessages <= 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "MaxReceivedMessages must be positive.");
+        }
+
+        if (options.MaxPendingDispatchCallbacks <= 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "MaxPendingDispatchCallbacks must be positive.");
+        }
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(

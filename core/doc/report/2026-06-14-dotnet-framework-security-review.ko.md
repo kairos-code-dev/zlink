@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/dotnet/src/{Zlink.Framework,Zlink.Framework.AspNetCore,Systems.Zlink.Stream.Connector,.Codecs,.Json,.MessagePack,.Protobuf}`
-- **상태**: 2026-06-14 원격 DoS 1차 항목(D1, D2, D5) 종결. D3, D4는 실행 순서 5-4에서 계속 처리.
+- **상태**: 2026-06-14 D1, D2, D3, D4, D5 종결. S1, S2는 오탐으로 종결.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **바인딩 범위 주의**: 본 계층은 **순수 관리 구현** — `DllImport`/`LibraryImport`/`Marshal`/`SafeHandle`/`AllocHGlobal`/`GCHandle`/`stackalloc` 없음.
@@ -15,8 +15,8 @@
 |---|--------|------|------|------|
 | D1 | High | DoS / 무제한 수신 할당 | `Systems.Zlink.Stream.Connector/.../Framing/ZlinkStreamFrameCodec.cs:96-104` | 2026-06-14 수정 완료 |
 | D2 | High | DoS / WS 단편 무제한 버퍼링 | `.../Transport/WebSocketConnection.cs:35-53,87-104` | 2026-06-14 수정 완료 |
-| D3 | Medium | DoS / 무제한 수신 메시지 적재 | `.../Runtime/ZlinkStreamReceivedMessages.cs:17-34`, `ZlinkStreamReceiveDispatcher.cs:76` | 확인 |
-| D4 | Medium | DoS / 무제한 디스패치 큐 | `.../Runtime/ZlinkStreamConnectorCallbacks.cs:230-236` | 확인 |
+| D3 | Medium | DoS / 무제한 수신 메시지 적재 | `.../Runtime/ZlinkStreamReceivedMessages.cs:17-34`, `ZlinkStreamReceiveDispatcher.cs:76` | 2026-06-14 수정 완료 |
+| D4 | Medium | DoS / 무제한 디스패치 큐 | `.../Runtime/ZlinkStreamConnectorCallbacks.cs:230-236` | 2026-06-14 수정 완료 |
 | D5 | Medium | DoS / LZ4 압축 폭탄 | `.../Compression/ZlinkStreamLz4CompressionCodec.cs:10-11` | 2026-06-14 수정 완료 |
 | S1 | Low | 동시성 / CTS use-after-dispose 창 | `ZlinkStreamConnectorLifecycle.cs:256` | 의심 → **오탐(멱등 dispose)** |
 | S2 | Low | 리소스 / pending-request 누수 | `ZlinkStreamPendingRequests.cs:46-66` | 의심 → **오탐(caller가 정리)** |
@@ -71,6 +71,16 @@
 - Claude 코드 리뷰에서 D1/D2/D5가 실제 코드에서 닫혔고, D3/D4를 악화시키지 않았으며,
   "D1/D2/D5 종결 blocker가 되는 추가 이슈 없음"이라는 판정을 받았다.
 
+후속 항목(D3, D4)은 같은 날 현재 코드와 다시 대조한 뒤 처리했다.
+
+- `ZlinkStreamConnectorOptions.MaxReceivedMessages`를 추가하고 기본값을 1024로 두었다. `WaitFor`용 수신 메시지 보관소는 한도를 넘으면 가장 오래된 메시지를 제거한다. `WaitFor`는 메시지 확인과 도착 대기 task 캡처를 같은 lock 안에서 처리하고, 메시지를 소비할 때는 이름별 list와 전체 순서 list에서 함께 제거한다.
+- `ZlinkStreamConnectorOptions.MaxPendingDispatchCallbacks`를 추가하고 기본값을 1024로 두었다. Manual dispatch callback queue는 한도를 넘으면 오래된 droppable callback을 제거해 느린 소비자나 callback 폭주가 힙을 무제한으로 키우지 못하게 했다. request completion callback은 queue 초과로 밀려나도 background에서 실행해 callback API가 조용히 사라지지 않게 했다.
+- 두 새 옵션은 0 이하 값을 `ValidationFailed`로 거부한다.
+- 실행한 검증:
+  - `cd framework/languages/dotnet && dotnet test tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj --no-restore --logger "console;verbosity=minimal"` 통과(53개).
+- core runtime과 public header를 수정하지 않았으므로 `bindings/dev_sync_local_core_libs.sh` 는 실행 대상이 아니다.
+- Codex 에이전트 리뷰에서 lost-wake 가능성과 request completion callback drop 위험을 지적받아 수정했고, 재리뷰에서 "추가 이슈 없음" 판정을 받았다.
+
 ### D1 — 무제한 수신 페이로드 할당 (`MaxReceivePayloadSize` 부재)
 - **분류**: DoS / 신뢰 불가 입력 · **확인 · repo 고유**
 - **위치**: `Systems.Zlink.Stream.Connector/Runtime/Protocol/Framing/ZlinkStreamFrameCodec.cs:96-104`
@@ -108,12 +118,14 @@ do {
 `Record()`가 모든 인바운드 비-응답 메시지를 `Dictionary<string,List<ReceivedMessage>>`에 cap/eviction/TTL 없이 append. `DispatchTypedHandlersAsync`가 `WaitForAsync` 소비자/핸들러 유무와 무관하게 **모든** 메시지에 `Record()` 호출. 기본 `DispatchMode = Manual`. 소비된 메시지는 `Consumed=true` 플래그만 달고 **리스트에서 제거 안 됨** → drain 소비자도 메모리 단조 증가.
 **트리거**: 앱이 `WaitForAsync` 안 하는 메시지 스트림 → 무제한 힙 증가.
 **수정**: per-name/total 큐 카운트 cap(drop-oldest/backpressure), `TryTake`에서 `Consumed` 엔트리 prune.
+**처리 결과(2026-06-14)**: `MaxReceivedMessages` 총량 한도를 추가하고, 한도 초과 시 가장 오래된 수신 메시지를 제거한다. `WaitFor`는 메시지 확인과 도착 대기 task 캡처를 같은 lock 안에서 처리하고, 소비된 메시지를 즉시 제거한다. 회귀 테스트는 한도 2에서 3개 메시지를 받은 뒤 오래된 첫 메시지가 제거되고 남은 두 메시지만 `WaitFor`로 수신되는지 확인한다.
 
 ### D4 — 무제한 디스패치 콜백 큐 (non-Immediate 모드)
 - `.../Runtime/ZlinkStreamConnectorCallbacks.cs:230-236` · **확인**
 
 `Enqueue`가 `_dispatchQueue`에 cap 없이 push, 앱이 명시적 `DispatchAsync` 호출 시에만 drain. 에러 폭주/재연결 폭풍/느린 소비자 시 무제한 증가.
 **수정**: drop/backpressure 정책의 bounded 큐.
+**처리 결과(2026-06-14)**: `MaxPendingDispatchCallbacks` 한도를 추가하고, Manual dispatch callback queue가 한도를 넘으면 오래된 droppable callback을 제거한다. request completion callback은 queue 초과로 밀려나도 background에서 실행한다. 회귀 테스트는 한도 2에서 3개 typed handler callback이 쌓일 때 마지막 두 callback만 실행되는지, 한도 1에서 request completion callback 2개가 모두 전달되는지 확인한다.
 
 ### D5 — LZ4 압축 폭탄 (압축 활성 시)
 - `.../Compression/ZlinkStreamLz4CompressionCodec.cs:10-11` · **확인**
@@ -157,5 +169,5 @@ do {
 
 ## 처리 우선순위
 1. **`MaxReceivePayloadSize`를 `ZlinkStreamConnectorOptions`에 추가**하고 (1) `ZlinkStreamFrameCodec.ReadAsync`, (2) `WebSocketConnection.ReadAsync` 누적, (3) LZ4 `Decompress` 출력에 강제 — 이 단일 경계가 주 OOM 벡터(D1/D2/D5)와 대부분의 DoS 증폭기를 무력화.
-2. **D3/D4**(무제한 메시지/콜백 큐) bounded 큐.
+2. **D3/D4**(무제한 메시지/콜백 큐) — 2026-06-14 bounded 보관 정책으로 수정 완료.
 3. ~~S1/S2~~ — **§Codex에서 둘 다 오탐 확정, 수정 대상 제외.**

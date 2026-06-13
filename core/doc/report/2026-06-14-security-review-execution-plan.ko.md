@@ -41,7 +41,7 @@
 | 5-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 종결 | 2026-06-14: H2/H3 Unreal pending queue 동기화·close-on-destruct 수정, stream connector·Unreal connector·contract header test 통과, Codex 에이전트 추가 이슈 없음, layout contract는 별도 SPOT timer 문구 불일치로 실패 |
 | 5-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F4 handler list를 CopyOnWriteArrayList로 수정, stream-connector test 통과, Codex 에이전트 추가 이슈 없음 |
 | 5-3 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 종결 | 2026-06-14: C3/C4 JSON 입력 검증 수정, S3 타이머 누수 의심은 코드 대조로 보안 이슈 아님 확인, build·typecheck·Node runtime gate 통과, Codex 에이전트 추가 이슈 없음 |
-| 5-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
+| 5-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 종결 | 2026-06-14: D3/D4 bounded 수신 메시지·callback queue 수정, stream connector test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-1 | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 대기 | - |
 | 6-2 | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 대기 | - |
 | 6-3 | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 대기 | - |

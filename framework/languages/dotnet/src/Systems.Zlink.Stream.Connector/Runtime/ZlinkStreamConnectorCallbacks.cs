@@ -4,7 +4,8 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 
 internal sealed class ZlinkStreamConnectorCallbacks(
     ZlinkStreamTaskRunner taskRunner,
-    ZlinkStreamDispatchMode dispatchMode)
+    ZlinkStreamDispatchMode dispatchMode,
+    int maxPendingDispatchCallbacks)
 {
     private readonly ConcurrentQueue<QueuedCallback> _dispatchQueue = new();
     private readonly object _gate = new();
@@ -103,7 +104,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 
     public async ValueTask DispatchUserCallbackAsync(
         Func<CancellationToken, ValueTask> callback,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool runWhenDropped = false)
     {
         ArgumentNullException.ThrowIfNull(callback);
 
@@ -114,7 +116,7 @@ internal sealed class ZlinkStreamConnectorCallbacks(
             return;
         }
 
-        Enqueue(callback, reportErrors: true);
+        Enqueue(callback, reportErrors: true, runWhenDropped);
     }
 
     public async ValueTask DispatchAsync(CancellationToken cancellationToken)
@@ -147,7 +149,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 callback(success(reply));
                                 return ValueTask.CompletedTask;
                             },
-                            CancellationToken.None)
+                            CancellationToken.None,
+                            runWhenDropped: true)
                         .ConfigureAwait(false);
                 }
                 catch (ZlinkStreamException ex)
@@ -158,7 +161,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 callback(failure(ex.Error));
                                 return ValueTask.CompletedTask;
                             },
-                            CancellationToken.None)
+                            CancellationToken.None,
+                            runWhenDropped: true)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -173,7 +177,8 @@ internal sealed class ZlinkStreamConnectorCallbacks(
                                 callback(failure(error));
                                 return ValueTask.CompletedTask;
                             },
-                            CancellationToken.None)
+                            CancellationToken.None,
+                            runWhenDropped: true)
                         .ConfigureAwait(false);
                 }
             });
@@ -224,15 +229,31 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 
         Enqueue(
             dispatchedToken => handler(error, dispatchedToken),
-            reportErrors: false);
+            reportErrors: false,
+            runWhenDropped: false);
     }
 
     private void Enqueue(
         Func<CancellationToken, ValueTask> callback,
-        bool reportErrors)
+        bool reportErrors,
+        bool runWhenDropped)
     {
-        _dispatchQueue.Enqueue(new QueuedCallback(callback, reportErrors));
-        Interlocked.Increment(ref _pendingDispatchCount);
+        _dispatchQueue.Enqueue(new QueuedCallback(callback, reportErrors, runWhenDropped));
+        var count = Interlocked.Increment(ref _pendingDispatchCount);
+        while (count > maxPendingDispatchCallbacks && _dispatchQueue.TryDequeue(out var dropped))
+        {
+            count = Interlocked.Decrement(ref _pendingDispatchCount);
+            if (dropped.RunWhenDropped)
+            {
+                taskRunner.RunDetached(
+                    "stream-dispatch-overflow-callback",
+                    async token => await InvokeUserCallbackAsync(
+                            dropped.Callback,
+                            token,
+                            dropped.ReportErrors)
+                        .ConfigureAwait(false));
+            }
+        }
     }
 
     private Func<ZlinkStreamError, CancellationToken, ValueTask>? SnapshotErrorReceived()
@@ -261,5 +282,6 @@ internal sealed class ZlinkStreamConnectorCallbacks(
 
     private readonly record struct QueuedCallback(
         Func<CancellationToken, ValueTask> Callback,
-        bool ReportErrors);
+        bool ReportErrors,
+        bool RunWhenDropped);
 }

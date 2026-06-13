@@ -1,10 +1,12 @@
 namespace Systems.Zlink.Stream.Connector.Runtime;
 
-internal sealed class ZlinkStreamReceivedMessages
+internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
 {
     private readonly Dictionary<string, List<ReceivedMessage>> _messages = new(StringComparer.Ordinal);
+    private readonly LinkedList<ReceivedMessage> _messageOrder = new();
     private readonly object _gate = new();
     private TaskCompletionSource _arrived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _messageCount;
 
     public int Count(string name)
     {
@@ -25,7 +27,11 @@ internal sealed class ZlinkStreamReceivedMessages
                 _messages.Add(message.Name, messages);
             }
 
-            messages.Add(new ReceivedMessage(message));
+            var received = new ReceivedMessage(message.Name, message);
+            received.OrderNode = _messageOrder.AddLast(received);
+            messages.Add(received);
+            _messageCount++;
+            TrimOldestMessages();
             arrived = _arrived;
             _arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
@@ -44,15 +50,15 @@ internal sealed class ZlinkStreamReceivedMessages
 
         while (!timeoutSource.IsCancellationRequested)
         {
-            var message = TryTake(name, predicate);
-            if (message is not null)
+            var pending = TryTakeOrWait(name, predicate, timeoutSource.Token);
+            if (pending.Message is not null)
             {
-                return message;
+                return pending.Message;
             }
 
             try
             {
-                await WaitAsync(timeoutSource.Token).ConfigureAwait(false);
+                await pending.WaitTask!.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested
                                                      && !cancellationToken.IsCancellationRequested)
@@ -64,50 +70,99 @@ internal sealed class ZlinkStreamReceivedMessages
         throw new TimeoutException($"Timed out waiting for '{name}' stream message.");
     }
 
-    private ZlinkStreamMessage<ZlinkStreamEncodedPayload>? TryTake(
+    private PendingMessage TryTakeOrWait(
         string name,
-        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate)
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate,
+        CancellationToken cancellationToken)
     {
         lock (_gate)
         {
-            if (!_messages.TryGetValue(name, out var messages))
-            {
-                return null;
-            }
-
-            foreach (var message in messages)
-            {
-                if (message.Consumed)
-                {
-                    continue;
-                }
-
-                if (predicate is not null && !predicate(message.Value))
-                {
-                    continue;
-                }
-
-                message.Consumed = true;
-                return message.Value;
-            }
-
-            return null;
+            var message = TryTakeLocked(name, predicate);
+            return message is not null
+                ? new PendingMessage(message, null)
+                : new PendingMessage(null, _arrived.Task.WaitAsync(cancellationToken));
         }
     }
 
-    private Task WaitAsync(CancellationToken cancellationToken)
+    private ZlinkStreamMessage<ZlinkStreamEncodedPayload>? TryTakeLocked(
+        string name,
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate)
     {
-        lock (_gate)
+        if (!_messages.TryGetValue(name, out var messages))
         {
-            return _arrived.Task.WaitAsync(cancellationToken);
+            return null;
+        }
+
+        for (var index = 0; index < messages.Count; index++)
+        {
+            var message = messages[index];
+            if (predicate is not null && !predicate(message.Value))
+            {
+                continue;
+            }
+
+            messages.RemoveAt(index);
+            _messageCount--;
+            RemoveFromOrder(message);
+            if (messages.Count == 0)
+            {
+                _messages.Remove(name);
+            }
+            return message.Value;
+        }
+
+        return null;
+    }
+
+    private void TrimOldestMessages()
+    {
+        while (_messageCount > maxMessages)
+        {
+            var oldestNode = _messageOrder.First;
+            if (oldestNode is null)
+            {
+                return;
+            }
+
+            var oldest = oldestNode.Value;
+            if (!_messages.TryGetValue(oldest.Name, out var messages))
+            {
+                _messageOrder.Remove(oldestNode);
+                continue;
+            }
+
+            messages.Remove(oldest);
+            _messageOrder.Remove(oldestNode);
+            oldest.OrderNode = null;
+            _messageCount--;
+            if (messages.Count == 0)
+            {
+                _messages.Remove(oldest.Name);
+            }
+        }
+    }
+
+    private void RemoveFromOrder(ReceivedMessage message)
+    {
+        if (message.OrderNode is not null)
+        {
+            _messageOrder.Remove(message.OrderNode);
+            message.OrderNode = null;
         }
     }
 
     private sealed class ReceivedMessage(
+        string name,
         ZlinkStreamMessage<ZlinkStreamEncodedPayload> value)
     {
+        public string Name { get; } = name;
+
         public ZlinkStreamMessage<ZlinkStreamEncodedPayload> Value { get; } = value;
 
-        public bool Consumed { get; set; }
+        public LinkedListNode<ReceivedMessage>? OrderNode { get; set; }
     }
+
+    private readonly record struct PendingMessage(
+        ZlinkStreamMessage<ZlinkStreamEncodedPayload>? Message,
+        Task? WaitTask);
 }

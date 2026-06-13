@@ -62,6 +62,195 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task ReceivedMessagesDropOldestEntriesAtConfiguredLimit()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            for (var index = 1; index <= 3; index++)
+            {
+                await WritePacketAsync(
+                    stream,
+                    headerCodec.Encode(new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Raw,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        "buffered",
+                        ZlinkStreamMetadata.Empty)).ToArray(),
+                    [(byte)index]);
+            }
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxReceivedMessages = 2
+        });
+        await connector.Connect.Async();
+        await server;
+        await WaitUntilAsync(
+            () => connector.ReceivedCount("buffered") == 2,
+            TimeSpan.FromSeconds(15));
+
+        var second = await connector.WaitFor("buffered")
+            .Where(message => message.Payload.Payload.Span[0] == 2)
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Async();
+        var third = await connector.WaitFor("buffered")
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Async();
+
+        Assert.Equal(2, second.Payload.Payload.Span[0]);
+        Assert.Equal(3, third.Payload.Payload.Span[0]);
+        Assert.Equal(0, connector.ReceivedCount("buffered"));
+    }
+
+    [Fact]
+    public async Task ManualDispatchCallbackQueueDropsOldestCallbacksAtConfiguredLimit()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            for (var index = 1; index <= 3; index++)
+            {
+                await WritePacketAsync(
+                    stream,
+                    headerCodec.Encode(new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Raw,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        "queued",
+                        ZlinkStreamMetadata.Empty)).ToArray(),
+                    [(byte)index]);
+            }
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxPendingDispatchCallbacks = 2
+        });
+        var handled = new List<byte>();
+        connector.On("queued", (message, _) =>
+        {
+            handled.Add(message.Payload.Payload.Span[0]);
+            return ValueTask.CompletedTask;
+        });
+
+        await connector.Connect.Async();
+        await server;
+        await WaitUntilAsync(
+            () => connector.PendingDispatchCount == 2,
+            TimeSpan.FromSeconds(15));
+        await connector.Dispatch.Async();
+
+        Assert.Equal([2, 3], handled);
+        Assert.Equal(0, connector.PendingDispatchCount);
+    }
+
+    [Fact]
+    public async Task ManualDispatchOverflowStillDeliversRequestCallbacks()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = ZlinkStreamDefaultCodecFactory.Header();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            for (var index = 1; index <= 2; index++)
+            {
+                var request = await ReadPacketAsync(stream);
+                var requestHeader = headerCodec.Decode(request.Header);
+                var responseHeader = new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Response,
+                    ZlinkStreamCodec.Raw,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    requestHeader.RequestSeq,
+                    $"reply.{index}",
+                    ZlinkStreamMetadata.Empty);
+                await WritePacketAsync(
+                    stream,
+                    headerCodec.Encode(responseHeader).ToArray(),
+                    [(byte)index]);
+            }
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxPendingDispatchCallbacks = 1
+        });
+        var results = new List<byte>();
+        var resultsGate = new object();
+        await connector.Connect.Async();
+
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 1 }))
+            .PacketName("request.one")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
+            {
+                if (result.IsSuccess)
+                {
+                    lock (resultsGate)
+                    {
+                        results.Add(1);
+                    }
+                }
+            });
+        connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 2 }))
+            .PacketName("request.two")
+            .Submit((ZlinkStreamResult<ZlinkStreamEncodedPayload> result) =>
+            {
+                if (result.IsSuccess)
+                {
+                    lock (resultsGate)
+                    {
+                        results.Add(2);
+                    }
+                }
+            });
+
+        await server;
+        await WaitUntilAsync(
+            () => connector.PendingDispatchCount == 1 && ResultCount() >= 1,
+            TimeSpan.FromSeconds(15));
+        await connector.Dispatch.Async();
+        await WaitUntilAsync(
+            () => ResultCount() == 2,
+            TimeSpan.FromSeconds(15));
+
+        lock (resultsGate)
+        {
+            Assert.Equal([1, 2], results.Order().ToArray());
+        }
+        Assert.Equal(0, connector.PendingDispatchCount);
+
+        int ResultCount()
+        {
+            lock (resultsGate)
+            {
+                return results.Count;
+            }
+        }
+    }
+
+    [Fact]
     public async Task ImmediateDispatchRunsHandlerWithoutManualDispatch()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

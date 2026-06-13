@@ -8,6 +8,14 @@
 > 바인딩 리포트는 실제 바인딩 코드와 Claude 코드 리뷰 결과를 다시 대조해 보강했다.
 > 실행 순서는 [2026-06-14-security-review-execution-plan.ko.md](2026-06-14-security-review-execution-plan.ko.md)에 정리한다.
 
+## 인덱스 확인 기록
+
+- 2026-06-14: README와 실행 순서 문서의 `.ko.md` 링크가 모두 실제 파일로 존재함을 확인했다.
+- 2026-06-14: 각 리포트 요약과 README의 최고 심각도, 교차언어 공통 결함, 처리 우선순위를 대조했다.
+- 2026-06-14: 공통 #2 LZ4 압축 폭탄 심각도를 Medium으로 바로잡고, Java와 .NET의 framework-core 중복 위치를 표에 함께 적었다.
+- 2026-06-14: 코드 변경 없음. core runtime과 public header 변경이 없어 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
+- 2026-06-14: Claude 리뷰에서 README 인덱스 확인 항목에 대해 "추가 이슈 없음" 판정을 받았다.
+
 ## 리포트 목록
 
 ### Core 런타임
@@ -66,15 +74,15 @@ stream-connector 와이어 프레임은 6바이트 prefix(`header_size` u16 + `p
 **근본 원인**: `frame_codec`의 크기 검증이 **encode 전용**으로만 호출되고 decode에서는 호출 안 됨.
 **공통 수정**: `maxReceivePayloadSize`(또는 `maxSend*` 재사용)를 모든 transport decode 경로에 주입, 할당 **이전에** `header+payload`(64비트 산술)를 상한과 비교·거부. 누적 버퍼·WS 단편 조립·메시지 큐에도 cap.
 
-### 공통 #2 — LZ4 압축 폭탄 (Node/Java/.NET High~Medium, C++는 L1로 별도)
+### 공통 #2 — LZ4 압축 폭탄 (Node/Java/.NET Medium, C++는 L1로 별도)
 
 LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 버퍼를 **먼저 할당**한다(폭탄 증폭).
 
 | 언어 | 위치 |
 |------|------|
 | Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` |
-| Java | `ZLinkStreamLz4Pickler.java:53` |
-| .NET | `ZlinkStreamLz4CompressionCodec.cs:10` |
+| Java | `ZLinkStreamLz4Pickler.java:53`, `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51` |
+| .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` |
 | C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, 단 http 디코딩은 무제한 — cpp 리포트 L1) |
 
 **수정**: 할당 전 `resultLength`를 max-decompressed-size로 clamp.

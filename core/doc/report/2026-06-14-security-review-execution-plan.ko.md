@@ -28,7 +28,7 @@
 
 | 순서 | 리포트 | 현재 상태 | 마지막 확인 |
 |------|--------|-----------|-------------|
-| 1 | [README.ko.md](README.ko.md) | 대기 | - |
+| 1 | [README.ko.md](README.ko.md) | 종결 | 2026-06-14: 링크·심각도·우선순위 대조, Claude 추가 이슈 없음 |
 | 2-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 대기 | - |
 | 2-2 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 대기 | - |
 | 2-3 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | - |

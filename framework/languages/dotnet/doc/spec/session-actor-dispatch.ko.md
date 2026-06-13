@@ -129,7 +129,7 @@ Spot queue 가 반드시 필요한 직렬화 경계다.
 | 입력 경로 | 실행 위치 |
 | --- | --- |
 | stream session → Entry/local actor | actor별로 순서를 보존한 뒤 현재 actor 위치로 dispatch |
-| Entry Spot actor packet | actor별 mailbox |
+| Entry Spot actor packet | Entry Spot 실행 queue |
 | stream session → user Spot actor | user Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |

@@ -260,9 +260,10 @@ builder.Services.AddZLinkFramework(options =>
 
 Entry Spot 클래스는 `IZLinkEntrySpot` 을 구현한다. `Configure()` 안에서
 Entry 단계의 handler 를 등록한다. Entry Spot 과 user Spot 은 등록할 수 있는
-기능 표면이 같다. 차이는 실행 정책이다. user Spot 은 같은 spot 으로 들어온
-callback 을 하나의 실행 줄에서 직렬로 처리하고, Entry Spot 은 공용 입구이므로
-actor packet 이나 일반 packet 을 Entry Spot 전체 실행 줄에 묶지 않는다.
+기능 표면이 같다. 실행 정책도 Spot 단위 직렬 실행을 따른다. user Spot 은 같은
+spot 으로 들어온 callback 을 하나의 실행 줄에서 처리하고, Entry Spot 은 Entry
+Spot 으로 들어온 actor packet, 일반 packet, timer, lifecycle callback 을 같은
+Entry Spot 실행 줄에서 처리한다.
 
 ```csharp
 public sealed class StageEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
@@ -320,8 +321,7 @@ admission[^admission] 을 결정하는 hook 이 아니라는 점에 주의한다
 ### 4.2 SPOT 실행 queue와 actor mailbox
 
 이 소절은 "같은 user Spot 안의 callback 은 왜 한 줄로 실행되는가" 와
-"Entry Spot 의 actor packet 은 왜 actor 단위로 갈라지는가" 두 질문을 묶어서
-정리한다.
+"Entry Spot callback 도 왜 같은 실행 줄을 쓰는가" 두 질문을 묶어서 정리한다.
 
 user Spot 은 room, game, stage 같은 하나의 상태 객체로 본다. 따라서 user Spot
 안에서 실행되는 callback 은 같은 Spot 실행 queue[^execution-queue] 에서
@@ -336,17 +336,17 @@ user Spot 은 room, game, stage 같은 하나의 상태 객체로 본다. 따라
 상태를 바꾸더라도 두 handler 가 동시에 실행되지 않는다. 즉 application 은 user
 Spot 인스턴스의 상태를 일일이 별도 lock 으로 보호하지 않아도 된다.
 
-Entry Spot 은 사정이 조금 다르다. Entry Spot 은 특정 room 상태를 소유하는 곳이
-아니라, 모든 actor 가 처음 거쳐 가는 공용 입구이기 때문이다. 그래서 Entry Spot
-actor packet 은 Entry Spot 전체 queue 가 아니라, 대상 actor 의
-mailbox[^mailbox] 로 들어간다. 같은 actor 의 packet 은 순서대로 실행되지만,
-서로 다른 actor 의 packet 은 굳이 기다릴 필요 없이 병렬로 진행된다.
+Entry Spot 은 특정 room 상태를 소유하는 곳이 아니라, 모든 actor 가 처음 거쳐 가는
+공용 입구다. 그래도 admission registry 와 lifecycle 상태는 Entry Spot application
+상태이므로, Entry Spot actor packet 도 Entry Spot 실행 queue 에서 직렬로 처리한다.
+같은 actor 의 packet 순서는 actor mailbox 가 먼저 보존하고, handler 실행은 Entry
+Spot 실행 줄에서 다시 직렬화된다.
 
 정리하면 다음과 같다.
 
 | 대상 | 실행 줄 |
 | --- | --- |
-| Entry Spot actor packet | actor별 mailbox |
+| Entry Spot actor packet | Entry Spot 실행 queue |
 | Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 문맥 |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -594,9 +594,9 @@ builder.Services.AddZLinkFramework(options =>
 현재 core spec 기준으로 이미 다음과 같은 점이 정해져 있다.
 
 - 같은 user `Spot`의 dispatch callback delivery는 직렬화된다.
-- Entry Spot 은 user Spot 과 같은 handler/callback 등록 표면을 갖지만,
-  Entry Spot 전체 실행 줄로 packet callback 을 직렬화하지 않는다. 여러 actor 와
-  입장 요청이 공유하는 입구이기 때문에 서로 관계없는 요청을 한 줄로 세우지 않는다.
+- Entry Spot 은 user Spot 과 같은 handler/callback 등록 표면을 갖고, Entry Spot
+  callback 을 Entry Spot 실행 줄에서 직렬로 실행한다. 여러 actor 와 입장 요청이
+  공유하는 입구이므로 admission 상태가 동시에 변경되지 않아야 한다.
 - subscribe, routed, **channel reply** completion은 모두 같은 spot execution
   context 안에서 처리된다.
 - timer는 native timer를 직접 노출하지 않고, framework runtime이 만든 managed
@@ -1199,8 +1199,8 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
 | `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot actor packet은 actor가 달라도 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
 | `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Serialized_On_EntrySpot_Line` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 직렬 실행 줄에서 실행된다. |
-| `TimerTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot callback을 전역으로 막지 않는다. |
-| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 전역 queue에 묶이지 않아도 같은 timer callback을 겹쳐 실행하지 않는다. |
+| `TimerTests.EntrySpotTimer_Waits_For_EntrySpot_Callbacks` | Entry Spot timer callback이 같은 Entry Spot의 앞선 callback 완료 뒤 실행된다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 같은 timer callback을 겹쳐 실행하지 않는다. |
 | `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native `ActorReadable` batch 안의 Entry Spot actor packet이 batch 순서 그대로 직렬 실행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.

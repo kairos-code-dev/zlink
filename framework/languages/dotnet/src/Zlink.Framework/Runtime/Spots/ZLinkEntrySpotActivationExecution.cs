@@ -50,6 +50,21 @@ internal sealed partial class ZLinkEntrySpotActivation
             .ConfigureAwait(false);
     }
 
+    private async ValueTask ExecuteQueuedAsync<TState>(
+        Func<ZLinkEntrySpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        CancellationToken cancellationToken)
+    {
+        var capturedOperation = operation;
+        var capturedState = state;
+        await _serial.RunAsync(
+                ct => RunOnLineAsync(
+                    (activation, innerCt) => capturedOperation(activation, capturedState, innerCt),
+                    ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private void QueueSerialized(
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation)
     {
@@ -92,7 +107,7 @@ internal sealed partial class ZLinkEntrySpotActivation
             typeof(THandler),
             EntrySpot.GetType(),
             _stopSource.Token,
-            (descriptor, tick, ct) => ExecuteAsync(
+            (descriptor, tick, ct) => ExecuteQueuedAsync(
                 static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
                     state.Descriptor,
                     state.Tick,

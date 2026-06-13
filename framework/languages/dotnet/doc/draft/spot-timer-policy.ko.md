@@ -276,17 +276,13 @@ timer 등록 표면은 Entry Spot과 user Spot이 같아야 한다. 차이는 �
 
 - user Spot timer callback은 user Spot packet, subscription, actor join, channel
   reply와 같은 Spot 실행 queue에서 직렬로 실행한다.
-- Entry Spot timer callback은 Entry Spot 전체 직렬화 queue에 묶지 않는다.
-  Entry Spot의 packet handler 정책과 동일하게, framework가 별도 task에서 callback을
-  실행한다.
+- Entry Spot timer callback은 Entry Spot actor packet, lifecycle callback, request
+  continuation과 같은 Entry Spot 실행 queue에서 직렬로 실행한다.
 - 단일 timer instance 안에서는 이전 callback이 끝나기 전에 같은 timer의 다음
-  callback을 겹쳐 실행하지 않는다. 즉 Entry Spot timer가 전역 queue에 묶이지
-  않는다는 말은 여러 Entry Spot callback과 병렬로 실행될 수 있다는 뜻이지, 같은
-  timer callback을 reentrant[^reentrant]하게 호출한다는 뜻은 아니다.
-- 여러 Entry Spot timer 또는 Entry Spot packet handler는 서로 동시에 실행될 수
-  있다. Entry Spot은 공용 입구이므로 timer에서 공유 mutable state를 직접 소유하지
-  않아야 한다. room, stage, match 상태처럼 직렬 보호가 필요한 상태는 user Spot에서
-  다룬다.
+  callback을 겹쳐 실행하지 않는다. Entry Spot timer는 같은 Entry Spot의 다른
+  callback과도 동시에 실행되지 않는다.
+- Entry Spot은 공용 입구지만 admission 상태를 소유할 수 있으므로, timer와 packet
+  handler가 같은 Entry Spot 실행 줄에서 상태를 갱신해야 한다.
 - 두 경우 모두 현재 Spot context는 handler 실행 중 조회 가능해야 한다.
 
 이 기준은 "Entry Spot과 Spot의 기능 표면은 같고, user Spot만 모든 요청을
@@ -385,8 +381,8 @@ application이 실제 경과 시간을 직접 계산하고 싶으면 `Delay`나 
 | `TimerTests.SpotTimer_Rejects_Unknown_OverrunPolicy` | 알 수 없는 overrun 정책 값은 설정 오류다. |
 | `TimerTests.SpotTimer_Reports_Handler_Exception_To_Monitoring` | handler 예외가 `TimerHandlerFailed` event와 timer diagnostic payload로 기록된다. |
 | `TimerTests.SpotTimer_StopOnUnhandledException_Stops_Timer` | option이 켜져 있으면 handler 예외 뒤 같은 timer가 다시 실행되지 않고 `TimerStoppedAfterUnhandledException` event가 기록된다. |
-| `TimerTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot packet 또는 actor packet callback을 전역으로 막지 않는다. |
-| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer가 전역 queue에는 묶이지 않더라도 같은 timer callback을 겹쳐 실행하지 않는다. |
+| `TimerTests.EntrySpotTimer_Waits_For_EntrySpot_Callbacks` | Entry Spot timer callback이 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
+| `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 같은 timer callback을 겹쳐 실행하지 않는다. |
 | `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 이후 handler가 더 이상 호출되지 않고 timer loop가 정리된다. |
 
 ## 7. 문서 반영 결과
@@ -396,11 +392,11 @@ application이 실제 경과 시간을 직접 계산하고 싶으면 `Delay`나 
 | 문서 | 반영 내용 |
 |------|-----------|
 | `framework/doc/spec/framework-api.ko.md` | 공통 framework timer 의미, managed scheduler 기준, server-side timer 기준, hard realtime 비보장, overrun 정책을 공통 계약으로 반영했다. |
-| `framework/doc/spec/interaction-model.ko.md` | user Spot timer가 Spot 실행 queue에 직렬화되고 Entry Spot timer는 전체 직렬화에 묶이지 않는 실행 규칙을 반영했다. |
+| `framework/doc/spec/interaction-model.ko.md` | user Spot timer와 Entry Spot timer가 각 Spot 실행 queue에 직렬화되는 실행 규칙을 반영했다. |
 | `framework/doc/spec/actor-model.ko.md` | actor가 join된 user Spot의 timer callback이 같은 Spot 상태 문맥에서 실행된다는 설명을 현재 실행 모델과 맞췄다. |
 | `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md` | `ZLinkTimerOptions`, `ZLinkTimerOverrunPolicy`, `ZLinkTimerTick`, timer handler signature를 정식 `.NET` 계약으로 반영했다. |
 | `framework/languages/dotnet/doc/spec/aspnet-core-spot.ko.md` | `Context.AddTimer<THandler>(...)`의 새 인자, callback 실행 문맥, 예외 정책, server tick 사용 기준을 반영했다. |
-| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | 이미 언급된 `ZLinkTimerTick` pseudo code를 실제 timer metadata 계약과 맞추고, Entry Spot timer가 전역 직렬화에 묶이지 않는 규칙을 반영했다. |
+| `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md` | 이미 언급된 `ZLinkTimerTick` pseudo code를 실제 timer metadata 계약과 맞추고, Entry Spot timer가 Entry Spot 실행 queue에서 처리되는 규칙을 반영했다. |
 | `framework/languages/dotnet/doc/spec/aspnet-core-monitoring.ko.md` | timer handler failure event와 `ZLinkSpotTimerDiagnostic` payload, timer failure event가 interval을 기다리지 않는다는 규칙을 monitoring 계약으로 반영했다. |
 | `framework/languages/dotnet/doc/spec/stage-wrapper-on-spot.ko.md` | stage/room timer 설명을 새 tick metadata와 overrun 정책 기준으로 갱신했다. |
 | `framework/languages/dotnet/doc/guide/samples/spot-samples.ko.md` | 샘플 timer handler signature와 room server tick 예제를 갱신했다. |

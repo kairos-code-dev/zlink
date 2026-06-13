@@ -186,10 +186,11 @@ parameter 순서나 반환 타입 오류는 컴파일이 아니라 startup valid
 
 | 대상 | 실행 라인 |
 |------|-----------|
-| Entry Spot actor packet | actor 별 mailbox(같은 actor 순서 보장, actor 끼리 병렬) |
+| Entry Spot actor packet | Entry Spot 의 단일 실행 큐(직렬) |
 | user Spot actor packet / packet / timer / subscription | 그 user Spot 의 단일 실행 큐(직렬) |
 
-그래서 user Spot 안의 room board 같은 가변 상태는 lock 없이 만질 수 있다.
+그래서 Entry Spot 의 admission 상태와 user Spot 안의 room board 같은 가변 상태는
+각 Spot 실행 큐 안에서 lock 없이 만질 수 있다.
 join 직후 들어온 packet 이 옛 Entry Spot handler 로 가지 않도록, dispatch 는 actor
 의 현재 위치를 다시 읽어 큐를 atomic 하게 고른다.
 

@@ -136,8 +136,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         return new ZLinkWorkerCall<TResult>(
             _runtime.WorkerPool,
             work,
-            callback => _ = ExecuteAsync((_, ct) => callback(ct), CancellationToken.None)
-                .AsTask());
+            callback => QueueSerialized((_, ct) => callback(ct)));
     }
 
     public void Configure()

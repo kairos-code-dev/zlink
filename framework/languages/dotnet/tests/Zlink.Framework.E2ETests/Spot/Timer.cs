@@ -296,7 +296,7 @@ public sealed class TimerTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally()
+    public async Task EntrySpotTimer_Waits_For_EntrySpot_Callbacks()
     {
         var spotNode = GetFreeTcpEndpoint();
         var spotChannel = $"game.entry-timer.{Guid.NewGuid():N}";
@@ -339,14 +339,17 @@ public sealed class TimerTests : SpotTestSupport
             .InvokePacketAsync(recordDescriptor!, record, CancellationToken.None)
             .AsTask();
 
-        await recorder.Recorded.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.DoesNotContain("timer-end", recorder.Events);
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
+        Assert.False(recordDispatch.IsCompleted);
+        Assert.DoesNotContain("record:record", recorder.Events);
 
         recorder.ReleaseTimer.TrySetResult();
         await recordDispatch.WaitAsync(TimeSpan.FromSeconds(5));
-        await RetryAsync(
-            () => recorder.Events.Contains("timer-end"),
-            TimeSpan.FromSeconds(5));
+        await recorder.Recorded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var events = recorder.Events.ToArray();
+        Assert.True(
+            Array.IndexOf(events, "timer-end") < Array.IndexOf(events, "record:record"),
+            string.Join(", ", events));
 
         await host.StopAsync();
     }

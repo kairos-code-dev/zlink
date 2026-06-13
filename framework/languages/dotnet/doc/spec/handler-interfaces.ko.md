@@ -1049,7 +1049,8 @@ framework 의 `Context.AddTimer<THandler>(...)` 는 low-level native timer 를
 현재 잡혀 있는 방향은 다음과 같다. framework runtime 이 policy-aware managed
 timer 를 만든다. user Spot timer 는 그 tick 을 **같은 spot execution context**
 안으로 enqueue 해서 `IZLinkSpotTimerHandler<TSpot>.HandleAsync(...)` 를 호출한다.
-Entry Spot timer 는 전역 Entry Spot queue 에 enqueue 하지 않는다.
+Entry Spot timer 도 Entry Spot actor packet, lifecycle callback, request continuation 과
+같은 Entry Spot 실행 queue 에 enqueue 해서 handler 를 호출한다.
 
 `IZLinkTimer.CancelAsync()` 는 이 managed timer loop 를 중단하고 정리하는
 고수준 handle 로 이해하면 된다.

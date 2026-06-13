@@ -43,7 +43,7 @@
 | 5-3 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 종결 | 2026-06-14: C3/C4 JSON 입력 검증 수정, S3 타이머 누수 의심은 코드 대조로 보안 이슈 아님 확인, build·typecheck·Node runtime gate 통과, Codex 에이전트 추가 이슈 없음 |
 | 5-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 종결 | 2026-06-14: D3/D4 bounded 수신 메시지·callback queue 수정, stream connector test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-1 | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 종결 | 2026-06-14: native library 로딩 경계 문서화, 메시지 크기 변환 checked 정책 통일, Zlink.Tests 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-2 | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 대기 | - |
+| 6-2 | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 종결 | 2026-06-14: native library 로딩 경계와 Windows DLL 검색 전제 문서화, Gradle test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-3 | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 대기 | - |
 | 6-4 | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 대기 | - |
 | 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 대기 | - |

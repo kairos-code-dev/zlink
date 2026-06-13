@@ -428,6 +428,32 @@ if(ZLINK_CPP_BUILD_TESTS)
     )
   endforeach()
 
+  add_executable(
+    test_cpp_contract_common_header_version
+    tests/contract/test_cpp_contract_common_header_version.cpp
+  )
+  target_include_directories(test_cpp_contract_common_header_version
+    BEFORE PRIVATE
+      ${CMAKE_CURRENT_LIST_DIR}/include
+  )
+  target_compile_features(test_cpp_contract_common_header_version PRIVATE cxx_std_20)
+  set_target_properties(test_cpp_contract_common_header_version PROPERTIES
+    CXX_EXTENSIONS OFF
+  )
+  if(ZLINK_CPP_REGISTER_CTEST)
+    if(UNIX AND NOT WIN32)
+      add_test(NAME test_cpp_contract_common_header_version
+        COMMAND /bin/bash -lc "$<TARGET_FILE:test_cpp_contract_common_header_version>")
+    else()
+      add_test(NAME test_cpp_contract_common_header_version COMMAND test_cpp_contract_common_header_version)
+    endif()
+    set_tests_properties(test_cpp_contract_common_header_version PROPERTIES
+      LABELS "contract"
+      TIMEOUT 120
+      WORKING_DIRECTORY ${ZLINK_REPO_ROOT_DIR}
+    )
+  endif()
+
   if(TARGET zlink::cpp_codec_json)
     add_cpp_contract_test(
       test_cpp_contract_codec_json

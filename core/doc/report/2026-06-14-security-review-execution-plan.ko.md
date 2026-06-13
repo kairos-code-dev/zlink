@@ -45,11 +45,11 @@
 | 6-1 | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 종결 | 2026-06-14: native library 로딩 경계 문서화, 메시지 크기 변환 checked 정책 통일, Zlink.Tests 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-2 | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 종결 | 2026-06-14: native library 로딩 경계와 Windows DLL 검색 전제 문서화, Gradle test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-3 | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 종결 | 2026-06-14: Windows DLL 검색 경계와 native view 수명 규칙 문서화, Python tests/samples 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-4 | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 종결 | 2026-06-14: Context thread-safety 계약 문서화와 회귀 테스트 추가, Rust cargo test 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 종결 | 2026-06-14: Message.Data slice 수명 규칙 문서화와 회귀 테스트 추가, Go test 통과, Codex 에이전트 추가 이슈 없음 |
+| 6-4 | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 종결 | 2026-06-14: Context thread-safety 계약 문서화, Rust 복제 `common.h` patch 값 정렬과 direct include 회귀 테스트 추가, Rust cargo test 통과, Codex 에이전트 추가 이슈 없음 |
+| 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 종결 | 2026-06-14: Message.Data slice 수명 규칙 문서화, Go 복제 `common.h` patch 값 정렬과 direct include 회귀 테스트 추가, Go test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-6 | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | 종결 | 2026-06-14: version macro patch 값 정렬과 common.h direct include 회귀 테스트 추가, core build와 C tests/samples 통과, dev_sync 후 Python tests/samples 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-7 | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | 종결 | 2026-06-14: callback family별 handler slot 제한 문서화, Node build/typecheck/rebuild/test 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-8 | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 종결 | 2026-06-14: 추가 수정 없음, C++ contract/sample smoke 통과, Codex 에이전트 추가 이슈 없음 |
+| 6-8 | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 종결 | 2026-06-14: C++ 복제 `common.h` patch 값 정렬과 direct include 회귀 테스트 추가, C++ contract/sample smoke 통과, Codex 에이전트 추가 이슈 없음 |
 
 ## 실행 순서
 

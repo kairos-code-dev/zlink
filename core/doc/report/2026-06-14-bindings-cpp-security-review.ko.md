@@ -1,9 +1,9 @@
 # C++ 바인딩 보안 검토 보고서
 
 - 작성일: 2026-06-14
-- 대상 범위: `bindings/cpp/src/Runtime/Native/native_message_parts.hpp`
-- 검토 방식: 메시지 part 이동, 실패 시 복구, close 경로를 코드 기준으로 확인했다.
-- 상태: 2026-06-14 추가 수정 없음. Codex 에이전트 리뷰 통과.
+- 대상 범위: `bindings/cpp/src/Runtime/Native/native_message_parts.hpp`, `bindings/cpp/include/zlink/common.h`
+- 검토 방식: 메시지 part 이동, 실패 시 복구, close 경로, 공개 버전 매크로를 코드 기준으로 확인했다.
+- 상태: 2026-06-14 `zlink/common.h` 직접 include 시 patch 버전 불일치를 수정했다. Codex 에이전트 리뷰 통과.
 
 ## 요약
 
@@ -11,12 +11,16 @@ C++ 바인딩은 core C API의 `zlink_msg_t`를 RAII 객체로 감싼다. 이번
 
 현재 확인한 범위에서는 C++ 바인딩 자체의 use-after-free, double close, 명백한 누수는 확인되지 않았다.
 
+다만 C++ 패키지가 복제해서 배포하는 `bindings/cpp/include/zlink/common.h`의 `ZLINK_VERSION_PATCH` 기본값이 `3`으로 남아 있었다. `bindings/cpp/include/zlink.h`와 core/C 바인딩의 `common.h`는 `6.0.4`를 가리키므로, 사용자가 `<zlink/common.h>`만 직접 include하면 같은 패키지 안에서도 patch 버전 판정이 달라졌다.
+
 ## 확인 결과
 
 - `bindings/cpp/src/Runtime/Native/native_message_parts.hpp:24-48`은 native part 배열을 닫는 helper를 한 곳에 모아 둔다.
 - `bindings/cpp/src/Runtime/Native/native_message_parts.hpp:50-78`은 `std::vector<message_t>`를 native vector로 옮기는 중 실패하면 이미 이동한 part를 다시 복구한다.
 - `bindings/cpp/src/Runtime/Native/native_message_parts.hpp:102-127`은 stack 배열 경로에서도 native 배열 크기와 message part 수가 다르면 바로 실패한다.
 - `bindings/cpp/src/Runtime/Native/native_message_parts.hpp:121-126`은 일부 이동 후 실패한 경우에도 이동된 메시지를 복구한다.
+- `bindings/cpp/include/zlink/common.h:13`은 `ZLINK_VERSION_PATCH` 기본값을 `4`로 맞춘다.
+- `bindings/cpp/tests/contract/test_cpp_contract_common_header_version.cpp`는 `<zlink/common.h>`만 직접 include해 `6.0.4`와 aggregate 버전을 확인한다.
 
 ## 기능 영향 검토
 
@@ -32,9 +36,10 @@ C++ 바인딩은 core C API의 `zlink_msg_t`를 RAII 객체로 감싼다. 이번
 
 검증:
 
-- `bindings/cpp/tests/run_tests.sh` 통과. C++ contract 15개와 sample smoke 19개가 통과했다.
+- `printf '#include <zlink/common.h>\nZLINK_VERSION_PATCH\n' | c++ -E -Ibindings/cpp/include -x c++ - | tail -n 5` 실행 결과 `4`를 확인했다.
+- `bindings/cpp/tests/run_tests.sh` 통과. C++ contract와 sample smoke가 통과했다.
 - Codex 에이전트 리뷰에서 "추가 이슈 없음" 판정을 받았다.
 
 ## 결론
 
-검토한 C++ 바인딩 메시지 소유권 경로에서는 추가 수정할 보안·기능·성능 이슈를 확인하지 못했다. 남은 위험은 core C API의 메시지 계약과 실제 구현에 종속된다.
+검토한 C++ 바인딩 메시지 소유권 경로에서는 추가 수정할 보안·기능·성능 이슈를 확인하지 못했다. 복제 public header의 버전 매크로 불일치는 직접 include 회귀 테스트로 고정했다. 남은 위험은 core C API의 메시지 계약과 실제 구현에 종속된다.

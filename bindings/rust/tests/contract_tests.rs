@@ -1,6 +1,9 @@
 //! Contract tests – verify FFI/native call mapping, type conversions,
 //! and resource lifecycle.
 
+use std::io::Write;
+use std::process::{Command, Stdio};
+
 use zlink::{
     ConfigResult, Context, DealerSocket, Message, Received, RecvFlags, RouterSocket, RoutingId,
     SendFlags, SpotNode, SubmitResult, has, version,
@@ -9,6 +12,47 @@ use zlink::{
 // ---------------------------------------------------------------------------
 // Context lifecycle
 // ---------------------------------------------------------------------------
+
+#[test]
+fn direct_common_header_version_matches_package() {
+    let mut child = Command::new("cc")
+        .args([
+            "-E",
+            &format!("-I{}/include", env!("CARGO_MANIFEST_DIR")),
+            "-x",
+            "c",
+            "-",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to start C preprocessor");
+
+    child
+        .stdin
+        .as_mut()
+        .expect("preprocessor stdin should be available")
+        .write_all(b"#include <zlink/common.h>\nZLINK_VERSION_PATCH\n")
+        .expect("failed to write preprocessor input");
+
+    let output = child
+        .wait_with_output()
+        .expect("failed to wait for C preprocessor");
+    assert!(
+        output.status.success(),
+        "preprocess zlink/common.h failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let version_patch = stdout
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    assert_eq!(version_patch, "4");
+}
 
 #[test]
 fn context_create_and_drop() {

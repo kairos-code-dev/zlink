@@ -1,15 +1,17 @@
 # Go 바인딩 보안 검토 보고서
 
 - 작성일: 2026-06-14
-- 대상 범위: `bindings/go/internal/native/ffi.go`, `bindings/go/internal/native/message.go`
-- 검토 방식: cgo 링크 설정, routing id 변환, 메시지 생성·복사·close 경로를 코드 기준으로 확인했다.
-- 상태: 2026-06-14 주의 항목 1건 문서화와 회귀 테스트 추가 완료. Codex 에이전트 리뷰 통과.
+- 대상 범위: `bindings/go/internal/native/ffi.go`, `bindings/go/internal/native/message.go`, `bindings/go/include/zlink/common.h`
+- 검토 방식: cgo 링크 설정, routing id 변환, 메시지 생성·복사·close 경로, 공개 버전 매크로를 코드 기준으로 확인했다.
+- 상태: 2026-06-14 주의 항목 1건 문서화와 회귀 테스트 추가 완료. 복제 `common.h`의 patch 버전 불일치도 수정했다. Codex 에이전트 리뷰 통과.
 
 ## 요약
 
 Go 바인딩은 cgo로 core C API를 호출한다. 이번 검토에서는 Go slice와 C 메시지 버퍼 사이의 복사, routing id 크기 제한, close 상태 관리를 확인했다.
 
 현재 확인한 범위에서는 Go 바인딩 자체의 명백한 기능 회귀 위험은 확인되지 않았다. 다만 `Message.Data()`는 native buffer를 복사하지 않고 slice로 노출하므로, 호출자가 메시지를 닫은 뒤 기존 slice를 계속 쓰지 않아야 한다.
+
+추가 대조에서 Go 패키지가 복제해서 배포하는 `bindings/go/include/zlink/common.h`의 `ZLINK_VERSION_PATCH` 기본값이 `3`으로 남아 있었다. `bindings/go/include/zlink.h`와 core/C 바인딩의 `common.h`는 `6.0.4`를 가리키므로, 사용자가 `<zlink/common.h>`만 직접 include하면 같은 패키지 안에서도 patch 버전 판정이 달라졌다.
 
 ## 확인된 이슈
 
@@ -40,6 +42,8 @@ Go 바인딩은 cgo로 core C API를 호출한다. 이번 검토에서는 Go sli
 - `bindings/go/internal/native/message.go:151-158`은 C routing id를 Go 값으로 복사한다. C 구조체의 size 필드가 `uint8_t`라서 현재 구조체 정의에서는 최대 255바이트 범위를 넘지 않는다.
 - `bindings/go/internal/native/message.go:173-181`은 새 메시지를 만들 때 C 메시지 저장소를 만든 뒤 Go 입력 데이터를 복사한다.
 - `bindings/go/internal/native/message.go:223-231`은 `Close()` 이후 closed 상태를 기록한다.
+- `bindings/go/include/zlink/common.h:13`은 `ZLINK_VERSION_PATCH` 기본값을 `4`로 맞춘다.
+- `bindings/go/contract_test.go`는 C 전처리기로 `<zlink/common.h>`만 직접 include해 patch 값이 `4`인지 확인한다.
 
 ## 기능 영향 검토
 
@@ -54,9 +58,10 @@ Routing id도 public API에서는 복사본을 반환하므로 외부 호출자�
 검증:
 
 - `cd bindings/go && go test ./... -run TestMessageBytesSnapshotSurvivesClose -count=1` 통과.
+- `cd bindings/go && go test ./... -run TestDirectCommonHeaderVersionMatchesPackage -count=1` 통과.
 - `cd bindings/go && go test ./...` 통과.
 - Codex 에이전트 리뷰에서 "추가 이슈 없음" 판정을 받았다.
 
 ## 결론
 
-Go 바인딩에서 즉시 수정해야 할 기능 결함은 확인하지 못했다. 2026-06-14에 `Data()`의 slice 수명 규칙을 문서와 테스트로 고정했다. 남은 위험은 core C API와 cgo callback 경계의 계약에 종속된다.
+Go 바인딩에서 즉시 수정해야 할 기능 결함은 확인하지 못했다. 2026-06-14에 `Data()`의 slice 수명 규칙을 문서와 테스트로 고정했고, 복제 public header의 버전 매크로 불일치도 직접 include 회귀 테스트로 고정했다. 남은 위험은 core C API와 cgo callback 경계의 계약에 종속된다.

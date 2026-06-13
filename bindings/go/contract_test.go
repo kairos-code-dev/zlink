@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,28 @@ func TestRuntimeVersionIsAvailable(t *testing.T) {
 	if version.Major <= 0 {
 		t.Fatalf("RuntimeVersion().Major = %d, want > 0", version.Major)
 	}
+}
+
+func TestDirectCommonHeaderVersionMatchesPackage(t *testing.T) {
+	cmd := exec.Command("cc", "-E", "-Iinclude", "-x", "c", "-")
+	cmd.Stdin = strings.NewReader("#include <zlink/common.h>\nZLINK_VERSION_PATCH\n")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("preprocess zlink/common.h: %v\n%s", err, output)
+	}
+	if got := lastNonEmptyLine(string(output)); got != "4" {
+		t.Fatalf("ZLINK_VERSION_PATCH from direct zlink/common.h include = %q, want 4", got)
+	}
+}
+
+func lastNonEmptyLine(output string) string {
+	lines := strings.Split(output, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func TestContextLifecycle(t *testing.T) {

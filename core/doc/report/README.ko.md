@@ -32,7 +32,7 @@
 - 2026-06-14: core `maxmsgsize` 정책 항목(#7)은 기본값을 유지하고, 신뢰할 수 없는 listener에서 `ZLINK_OPT_MAXMSGSIZE`를 명시하도록 guide와 site 문서를 보강했다.
 - 2026-06-14: core command body length clamp 항목(#9)을 수정하고 core 빌드·단위 테스트 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. 당시 C++ binding 검증은 병렬 binding parity 변경의 `spot_node_t` 테스트 컴파일 오류로 실패했고, C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
 - 2026-06-14: core IPC 주소 길이 방어 항목(#10)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
-- 2026-06-14: 바인딩 6-1부터 6-8까지 모두 종결했다. C-BINDING-001은 `core/include/zlink/common.h`와 C 바인딩 `common.h`의 patch 값을 `6.0.4`로 맞춰 해결했고, core 공개 헤더 변경 후 `bindings/dev_sync_local_core_libs.sh`와 Python 바인딩 tests/samples로 동기화 검증을 마쳤다.
+- 2026-06-14: 바인딩 6-1부터 6-8까지 모두 종결했다. C-BINDING-001은 `core/include/zlink/common.h`와 C 바인딩 `common.h`의 patch 값을 `6.0.4`로 맞춰 해결했고, core 공개 헤더 변경 후 `bindings/dev_sync_local_core_libs.sh`와 Python 바인딩 tests/samples로 동기화 검증을 마쳤다. 같은 직접 include 패턴이 C++/Go/Rust 바인딩 복제 `common.h`에도 남아 있어 patch 값을 `6.0.4`로 맞추고 각 바인딩 회귀 테스트를 추가했다.
 
 ## 리포트 목록
 
@@ -53,13 +53,13 @@
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
 | C | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | 추가 보안 수정 없음 (버전 매크로 불일치 수정 완료) |
-| C++ | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 추가 보안 수정 없음 (C++ contract/sample smoke 통과) |
+| C++ | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 추가 보안 수정 없음 (복제 `common.h` 버전 매크로 정렬, C++ contract/sample smoke 통과) |
 | .NET | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계 문서화, 메시지 크기 변환 정책 수정 완료) |
-| Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 추가 보안 수정 없음 (`Message.Data()` slice 수명 규칙 문서화와 회귀 테스트 추가 완료) |
+| Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 추가 보안 수정 없음 (`Message.Data()` slice 수명 규칙 문서화, 복제 `common.h` 버전 매크로 정렬 완료) |
 | Java | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계와 Windows DLL 검색 전제 문서화 완료) |
 | Node | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | 추가 보안 수정 없음 (callback handler slot 제한 문서화 완료) |
 | Python | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 추가 보안 수정 없음 (Windows DLL 검색 경계와 native view 수명 규칙 문서화 완료) |
-| Rust | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 추가 보안 수정 없음 (`Context` thread-safety 계약 문서화와 회귀 테스트 추가 완료) |
+| Rust | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 추가 보안 수정 없음 (`Context` thread-safety 계약 문서화, 복제 `common.h` 버전 매크로 정렬 완료) |
 
 > 아래 §교차언어 공통 결함은 **framework 4개 언어** 한정 분석이다. Core 런타임은 별도 트러스트 모델(직접 와이어 디코드)이라 위 core 리포트를 참조.
 
@@ -130,5 +130,5 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 
 1. **native library 로딩 경계 문서화와 제한** — .NET, Java, Python의 환경 변수·PATH 기반 로딩은 신뢰된 실행 환경을 전제로 한다. 배포 문서와 보안 모드에서 먼저 정리한다.
 2. **native buffer view 수명 문서화와 테스트** — Go `Message.Data()`, Python `memoryview`, Rust native slice 노출 규칙을 공개 계약과 테스트로 고정한다.
-3. **C 버전 매크로 불일치 수정** — `bindings/c/include/zlink/common.h`의 기본 patch 값을 현재 공개 버전과 맞춘다.
+3. **복제 public header 버전 매크로 불일치 수정** — C/C++/Go/Rust 바인딩의 `include/zlink/common.h` 기본 patch 값을 현재 공개 버전과 맞춘다.
 4. **Node callback slot 제한** — 현재 제한을 공개 문서에 적고, 실제 사용자가 8개를 넘는 handler를 요구하면 동적 slot 구조로 바꾼다.

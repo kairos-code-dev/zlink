@@ -39,7 +39,7 @@
 | 3-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F3 수정·F5 문서 경고·stream connector test 통과·Claude 추가 이슈 없음 |
 | 4 | [2026-06-13-core-src-security-review.ko.md](2026-06-13-core-src-security-review.ko.md) | 종결 | 2026-06-14: #1 mtrie, #2 WS/WSS buffering, #3 포트 파싱, #4 IPC unlink, #5 decoder allocator, #6 message/send 가드, #9 command body length clamp, #10 IPC 주소 길이 방어 수정, #7 maxmsgsize guide 보강, #8 반박 종결, core 빌드·관련 단위 테스트·C++ binding 검증 통과, #1/#2/#3/#4/#6 Claude 추가 이슈 없음, #5/#7/#9/#10 Codex 에이전트 추가 이슈 없음, C binding은 기존 C-BINDING-001 버전 테스트 불일치로 실패 |
 | 5-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 종결 | 2026-06-14: H2/H3 Unreal pending queue 동기화·close-on-destruct 수정, stream connector·Unreal connector·contract header test 통과, Codex 에이전트 추가 이슈 없음, layout contract는 별도 SPOT timer 문구 불일치로 실패 |
-| 5-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
+| 5-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F4 handler list를 CopyOnWriteArrayList로 수정, stream-connector test 통과, Codex 에이전트 추가 이슈 없음 |
 | 5-3 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
 | 5-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
 | 6-1 | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 대기 | - |

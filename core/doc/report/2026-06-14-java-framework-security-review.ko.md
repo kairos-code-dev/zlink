@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/java/{zlink-framework-core,-spring-boot-starter,zlink-stream-connector,-codecs,-json,-msgpack,-protobuf}/src/main/java`
-- **상태**: 2026-06-14 원격 DoS 항목(F1, F2)과 TLS 항목(F3, F5) 종결. F4와 부록 항목은 후속 순서에서 별도 확인.
+- **상태**: 2026-06-14 원격 DoS 항목(F1, F2), TLS 항목(F3, F5), 동시성 항목(F4) 종결. 부록 항목은 후속 순서에서 별도 확인.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **바인딩 범위 주의**: 본 계층에 **네이티브 바인딩 없음**(`native`/`System.loadLibrary`/`MemorySegment`/`Pointer`/JNA grep 0건;
@@ -17,7 +17,7 @@
 | F1 | High | DoS / 무제한 수신 할당 + int 오버플로 | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191`, `ZLinkStreamWireProtocol.java:138` | **수정 완료(2026-06-14)** |
 | F2 | Medium | DoS / LZ4 압축 폭탄 | `ZLinkStreamLz4Pickler.java:53` | **수정 완료(2026-06-14)** |
 | F3 | Medium | TLS 호스트명 검증 미설정(Netty) | `ZLinkTlsTransportConnection.java:54,68` | 수정 완료(2026-06-14) |
-| F4 | Low | 동시성 / 비-thread-safe 핸들러 리스트 | `DefaultZLinkStreamConnector.java:43-45` | 확인 |
+| F4 | Low | 동시성 / 비-thread-safe 핸들러 리스트 | `DefaultZLinkStreamConnector.java:43-45` | 수정 완료(2026-06-14) |
 | S1~S3 | — | (부록) | — | 의심 |
 | F5 | (footgun) | TLS 인증서 전체 신뢰 옵션 | `DefaultZLinkStreamConnector.java:472-509` | 문서 경고 완료(2026-06-14) |
 
@@ -121,6 +121,25 @@ Claude 리뷰에서 실제 TLS pipeline이 이 helper를 사용하고, WSS 계�
   ```
   `onErrorReceived`/`onDisconnected`/`onConnectionStateChanged` 및 unregister 람다(`:267,274,281`)가 사용자 스레드에서 변형, 비동기 I/O completion 스레드가 `List.copyOf(...)`로 read(`publishError:621`, `notifyDisconnected:615`, `transitionTo:603`). 구조 변경 중 `List.copyOf` → `ConcurrentModificationException`/`AIOOBE`. `handlers` `ConcurrentHashMap`의 `ArrayList` 값도 동일 패턴(`on:260` add / `dispatchToHandlers:429` read).
   **수정**: `CopyOnWriteArrayList`.
+
+**처리 결과(2026-06-14)**: top-level error/disconnected/state handler list와 packet-name별 message
+handler list 값을 `CopyOnWriteArrayList`로 바꾸었다. 등록·해제 스레드와 비동기 I/O callback 스레드가
+동시에 접근해도 list 구조 변경 중 `List.copyOf`가 실패하지 않는다.
+
+검증:
+
+- `./gradlew :zlink-stream-connector:test` (`framework/languages/java`, 통과)
+
+Codex 에이전트 리뷰:
+
+- 2026-06-14: 실제 `DefaultZLinkStreamConnector.java`를 대조한 결과, top-level
+  error/disconnected/state handler list와 packet-name별 message handler list가 모두
+  `CopyOnWriteArrayList`를 사용하며, 해제 람다와 dispatch snapshot 경로에서 F4가 지적한
+  `ConcurrentModificationException`/AIOOBE 위험이 닫혔다고 확인했다.
+- `zlink-stream-connector` main 코드 전체에서 같은 handler list `ArrayList` 패턴이 더 남아 있지
+  않다고 확인했다.
+- 리뷰 에이전트가 `./gradlew :zlink-stream-connector:test`를 재실행했고 통과를 확인했다.
+- 결론: "추가 이슈 없음."
 
 ### F5 — TLS 인증서 전체-신뢰 TrustManager (footgun, opt-in) — §Codex ADDITIONAL
 - `DefaultZLinkStreamConnector.java:472-473`(활성 시 insecure SSL context 설치), `:488-509`(`checkServerTrusted`가 **빈** `X509TrustManager`), 기본값 false(`ZLinkStreamConnectorOptions.java:41`) · **확인(opt-in)**

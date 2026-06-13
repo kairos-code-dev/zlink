@@ -8,7 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +15,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -40,9 +40,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final ZLinkStreamConnectorOptions options;
     private final Map<String, List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>>> handlers =
         new ConcurrentHashMap<>();
-    private final List<ZLinkStreamErrorHandler> errorHandlers = new ArrayList<>();
-    private final List<ZLinkStreamDisconnectedHandler> disconnectedHandlers = new ArrayList<>();
-    private final List<ZLinkStreamConnectionStateHandler> stateHandlers = new ArrayList<>();
+    private final List<ZLinkStreamErrorHandler> errorHandlers = new CopyOnWriteArrayList<>();
+    private final List<ZLinkStreamDisconnectedHandler> disconnectedHandlers =
+        new CopyOnWriteArrayList<>();
+    private final List<ZLinkStreamConnectionStateHandler> stateHandlers =
+        new CopyOnWriteArrayList<>();
     private final Map<String, AtomicInteger> receivedCounts = new ConcurrentHashMap<>();
     private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
     private final AtomicLong nextRequestSeq = new AtomicLong();
@@ -260,7 +262,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler) {
         requirePacketName(name);
         Objects.requireNonNull(handler, "handler");
-        handlers.computeIfAbsent(name, ignored -> new ArrayList<>()).add(handler);
+        handlers.computeIfAbsent(name, ignored -> new CopyOnWriteArrayList<>()).add(handler);
         return () -> handlers.getOrDefault(name, List.of()).remove(handler);
     }
 

@@ -4,11 +4,13 @@
 
 #include "utils/ip.hpp"
 #include "core/msg.hpp"
+#include "protocol/decoder_allocators.hpp"
 #include "protocol/wire.hpp"
 #include "protocol/zmp_decoder.hpp"
 #include "protocol/zmp_metadata.hpp"
 #include "protocol/zmp_protocol.hpp"
 
+#include <limits>
 #include <unity.h>
 #include <vector>
 
@@ -155,6 +157,26 @@ void test_effective_ttl ()
     TEST_ASSERT_EQUAL_UINT16 (0, zlink::zmp_effective_ttl_ds (0, 0));
 }
 
+void test_shared_message_allocator_size_checks_overflow ()
+{
+    std::size_t allocation_size = 0;
+    TEST_ASSERT_TRUE (zlink::shared_message_memory_allocator::allocation_size_for_test (
+      64, 2, &allocation_size));
+    TEST_ASSERT_EQUAL_UINT64 (
+      64 + sizeof (zlink::atomic_counter_t) + 2 * sizeof (zlink::msg_t::content_t),
+      allocation_size);
+
+    const std::size_t max_size = std::numeric_limits<std::size_t>::max ();
+    TEST_ASSERT_FALSE (zlink::shared_message_memory_allocator::allocation_size_for_test (
+      64, max_size / sizeof (zlink::msg_t::content_t) + 1, &allocation_size));
+
+    TEST_ASSERT_FALSE (zlink::shared_message_memory_allocator::allocation_size_for_test (
+      max_size - sizeof (zlink::atomic_counter_t) + 1, 0, &allocation_size));
+
+    TEST_ASSERT_FALSE (zlink::shared_message_memory_allocator::allocation_size_for_test (
+      max_size - sizeof (zlink::atomic_counter_t), 1, &allocation_size));
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -172,6 +194,7 @@ int main (void)
     RUN_TEST (test_metadata_parse_invalid);
     RUN_TEST (test_metadata_add_basic_properties);
     RUN_TEST (test_effective_ttl);
+    RUN_TEST (test_shared_message_allocator_size_checks_overflow);
 
     zlink::shutdown_network ();
 

@@ -101,6 +101,12 @@ class shared_message_memory_allocator
 
     void advance_content () { _msg_content++; }
 
+#ifdef ZLINK_BUILD_TESTS
+    static bool allocation_size_for_test (std::size_t target_size_,
+                                          std::size_t max_counters_,
+                                          std::size_t *out_);
+#endif
+
   private:
     void clear ();
 

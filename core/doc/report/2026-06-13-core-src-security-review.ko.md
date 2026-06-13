@@ -24,7 +24,7 @@
 | 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | **수정 완료(2026-06-14)** | repo 고유 순서 |
-| 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | 확인, 현실 도달성 낮음 | upstream 파생 |
+| 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | 확인, 기본값 정책 사안 | upstream 동작 |
 | 8 | - | 동시성 / 미스 웨이크업 | `core/src/runtime/core/mailbox.cpp:121-143` | **반박됨, 수정 제외** | repo 고유 |
@@ -461,7 +461,7 @@ int rc = address.resolve (addr.c_str ());   // 길이/abstract 검증은 그 다
 - **분류**: 정수 오버플로 → under-allocation / 힙 오버플로
 - **위치**: `core/src/runtime/protocol/decoder_allocators.cpp:88-89`
 - **출처**: upstream 파생(libzmq `shared_message_memory_allocator`), 생성자는 repo 수정
-- **상태**: ✅ 확인(도달성은 설정 의존)
+- **상태**: ✅ 2026-06-14 수정 완료
 
 ### 코드
 
@@ -484,6 +484,42 @@ alloc_assert (_buf);
 ### 수정 방향
 
 `__builtin_mul_overflow`/`__builtin_add_overflow`(또는 `a > SIZE_MAX - b` 가드)로 `allocationsize`를 계산, 오버플로 시 `alloc_assert`/ENOMEM.
+
+### 처리 기록 (2026-06-14)
+
+`shared_message_memory_allocator::allocate`가 `target_size + sizeof(atomic_counter_t) +
+_max_counters * sizeof(content_t)`를 직접 계산하지 않도록 바꾸었다. `_max_counters *
+sizeof(content_t)` 곱셈과 두 번의 덧셈을 모두 `std::size_t` 범위 안에서 확인하고, 오버플로가 나면
+`errno = ENOMEM`을 설정한 뒤 기존 메모리 부족 경로와 같은 `alloc_assert`로 중단한다.
+
+첫 번째 생성자의 `_max_counters` 계산도 `(_max_size + max_vsm_size - 1)` 형태의 덧셈 대신
+나눗셈과 나머지로 올림 계산을 하도록 바꾸어, 생성자 단계의 산술 오버플로 가능성도 제거했다.
+정상 크기에서는 기존 할당 크기와 buffer layout이 그대로 유지된다.
+
+검증:
+- `unittest_zmp_decoder`에 정상 크기 계산, counter byte 곱셈 오버플로, refcount 덧셈 오버플로,
+  content counter 덧셈 오버플로 회귀 테스트를 추가했다.
+- `cmake --build core/build --target unittest_zmp_decoder -j2`: 통과.
+- `ctest --test-dir core/build -R '^unittest_zmp_decoder$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 원인은 기존
+  `C-BINDING-001` 버전 매크로 기대값 불일치와 동일하다.
+
+Codex 에이전트 리뷰:
+- 2026-06-14: 실제 `decoder_allocators.cpp`와 `decoder_allocators.hpp`, `unittest_zmp_decoder.cpp`를
+  대조한 결과, `_max_counters * sizeof(content_t)` 곱셈과 최종 합산 overflow가
+  `checked_mul`과 두 번의 `checked_add`로 닫혔다고 확인했다.
+- 정상 크기에서 `allocationsize`, `_allocated_size`, `_msg_content`, 반환 buffer pointer의 layout은
+  기존과 같다고 확인했다.
+- 첫 번째 생성자의 `_max_counters` 계산은 기존 `ceil(max_size / msg_t::max_vsm_size)` 의미를
+  유지하면서 덧셈 overflow를 피한다고 확인했다.
+- `allocation_size_for_test`는 `ZLINK_BUILD_TESTS` 안에만 있어 일반 runtime/public surface에 새 계약을
+  만들지 않는다고 확인했다.
+- 같은 decoder allocator 계층에 동일한 성격의 unchecked allocation size 곱셈·합산 패턴이 추가로
+  보이지 않는다고 확인했다.
+- 결론: "추가 이슈 없음."
 
 ---
 

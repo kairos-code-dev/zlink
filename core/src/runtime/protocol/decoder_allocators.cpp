@@ -5,6 +5,8 @@
 
 #include "core/msg.hpp"
 
+#include <limits>
+
 namespace
 {
 std::size_t clamp_allocation_size (std::size_t requested_, std::size_t max_)
@@ -15,6 +17,43 @@ std::size_t clamp_allocation_size (std::size_t requested_, std::size_t max_)
         return 1;
     return requested_ > max_ ? max_ : requested_;
 }
+
+std::size_t max_counter_count_for_size (std::size_t max_size_)
+{
+    const std::size_t stride = zlink::msg_t::max_vsm_size;
+    return max_size_ / stride + (max_size_ % stride == 0 ? 0 : 1);
+}
+
+bool checked_add (std::size_t lhs_, std::size_t rhs_, std::size_t *out_)
+{
+    if (lhs_ > std::numeric_limits<std::size_t>::max () - rhs_)
+        return false;
+    *out_ = lhs_ + rhs_;
+    return true;
+}
+
+bool checked_mul (std::size_t lhs_, std::size_t rhs_, std::size_t *out_)
+{
+    if (lhs_ != 0 && rhs_ > std::numeric_limits<std::size_t>::max () / lhs_)
+        return false;
+    *out_ = lhs_ * rhs_;
+    return true;
+}
+
+bool compute_allocation_size (std::size_t target_size_,
+                              std::size_t max_counters_,
+                              std::size_t *out_)
+{
+    std::size_t counter_bytes = 0;
+    if (!checked_mul (max_counters_, sizeof (zlink::msg_t::content_t), &counter_bytes))
+        return false;
+
+    std::size_t with_refcount = 0;
+    if (!checked_add (target_size_, sizeof (zlink::atomic_counter_t), &with_refcount))
+        return false;
+
+    return checked_add (with_refcount, counter_bytes, out_);
+}
 }
 
 zlink::shared_message_memory_allocator::shared_message_memory_allocator (std::size_t bufsize_) :
@@ -24,7 +63,7 @@ zlink::shared_message_memory_allocator::shared_message_memory_allocator (std::si
     _max_size (bufsize_),
     _allocated_size (0),
     _msg_content (NULL),
-    _max_counters ((_max_size + msg_t::max_vsm_size - 1) / msg_t::max_vsm_size)
+    _max_counters (max_counter_count_for_size (_max_size))
 {
 }
 
@@ -85,8 +124,11 @@ unsigned char *zlink::shared_message_memory_allocator::allocate ()
     // if buf != NULL it is not used by any message so we can re-use it for the next run
     if (!_buf) {
         // allocate memory for reference counters together with reception buffer
-        std::size_t const allocationsize = target_size + sizeof (zlink::atomic_counter_t)
-                                           + _max_counters * sizeof (zlink::msg_t::content_t);
+        std::size_t allocationsize = 0;
+        if (!compute_allocation_size (target_size, _max_counters, &allocationsize)) {
+            errno = ENOMEM;
+            alloc_assert (false);
+        }
 
         _buf = static_cast<unsigned char *> (std::malloc (allocationsize));
         alloc_assert (_buf);
@@ -178,3 +220,12 @@ void zlink::shared_message_memory_allocator::set_allocation_size (std::size_t ne
     if (_buf_size > _allocation_size || _buf_size == 0)
         _buf_size = _allocation_size;
 }
+
+#ifdef ZLINK_BUILD_TESTS
+bool zlink::shared_message_memory_allocator::allocation_size_for_test (std::size_t target_size_,
+                                                                       std::size_t max_counters_,
+                                                                       std::size_t *out_)
+{
+    return compute_allocation_size (target_size_, max_counters_, out_);
+}
+#endif

@@ -33,6 +33,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkActor actor;
     private final ZLinkStreamCodec defaultCodec;
     private long bindingToken;
+    private Runnable unbindListener = () -> {};
 
     ZLinkBoundSessionRuntime(
         ZLinkBackendStreamSocket stream,
@@ -55,6 +56,10 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         this.bindingToken = bindingToken;
     }
 
+    void setUnbindListener(Runnable unbindListener) {
+        this.unbindListener = unbindListener == null ? () -> {} : unbindListener;
+    }
+
     @Override
     public <TMessage> ZLinkBoundSessionSendCall send(TMessage message) {
         return new SendCall(
@@ -72,7 +77,10 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     public CompletionStage<Void> disconnect() {
         return stream.unbindActor(sessionRid, actorId)
             .submit(DEFAULT_TIMEOUT)
-            .thenRun(() -> actorRuntime.clearSessionBinding(actor, bindingToken));
+            .thenRun(() -> {
+                actorRuntime.clearSessionBinding(actor, bindingToken);
+                unbindListener.run();
+            });
     }
 
     private record SendCall(

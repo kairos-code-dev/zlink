@@ -271,29 +271,29 @@ public interface ZLinkSpot {
         Message request,
         CancellationToken cancellationToken);
 
-    void onPostActorJoined(
+    void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    void onActorLeft(
+    void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    void onActorDisconnected(
+    void onDisconnectActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 }
 
 public interface ZLinkEntrySpot {
-    void onPostActorJoined(
+    void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    void onActorLeft(
+    void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 
-    void onActorDisconnected(
+    void onDisconnectActor(
         ZLinkActor actor,
         CancellationToken cancellationToken);
 }
@@ -814,7 +814,7 @@ public interface ZLinkSpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
-    CompletionStage<Void> leaveActorAsync(ZLinkActor actor);
+    CompletionStage<Void> leaveActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
         Duration period,
@@ -826,7 +826,7 @@ public interface ZLinkEntrySpotContext {
     RoutingId spotRid();
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
-    CompletionStage<Void> destroyActorAsync(ZLinkActor actor);
+    CompletionStage<Void> destroyActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
         Duration period,
@@ -922,12 +922,12 @@ public interface ZLinkSpot {
         return ZLinkSpotActorJoinResponse.reject();
     }
 
-    default void onPostActorJoined(
+    default void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
-    default void onActorLeft(
+    default void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
@@ -945,12 +945,12 @@ public interface ZLinkEntrySpot {
     default void onClosing() {
     }
 
-    default void onPostActorJoined(
+    default void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
-    default void onActorLeft(
+    default void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
@@ -1023,12 +1023,11 @@ public record ZLinkTimerTick(
 }
 ```
 
-`destroyActorAsync(actor)`는 Entry Spot context 전용 API이다. user Spot context에는
-actor destroy API가 없다. actor가 user Spot에 있으면 먼저 `leaveActorAsync(...)` 또는
+`destroyActor(actor)`는 Entry Spot context 전용 API이다. user Spot context에는
+actor destroy API가 없다. actor가 user Spot에 있으면 먼저 `leaveActor(...)` 또는
 actor context의 Entry Spot join 흐름으로 Entry Spot에 돌아와야 한다. destroy가 성공하는
-첫 호출은 Entry Spot `onActorLeft(...)` callback을 한 번 실행한 뒤 native actor ref와
-framework registry를 정리한다. 같은 actor instance에 대한 중복 destroy는 성공으로 끝나지만
-callback을 다시 실행하지 않는다.
+호출은 lifecycle callback을 호출하지 않고 native actor ref와 framework registry를 정리한다.
+같은 actor instance에 대한 중복 destroy는 성공으로 끝난다.
 
 등록된 Entry Spot은 framework startup에서 native Entry Spot 위에 activation으로
 생성된다. 생성된 activation은 `configure()`를 먼저 호출한 뒤 `onInitialize()`를
@@ -1243,7 +1242,7 @@ public @interface ZLinkStreamPacket {
 SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
 framework 공통 `Message` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
 accepted가 `true`일 때만 actor 위치가 user Spot으로 commit되고
-`onPostActorJoined`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
+`onJoinActor`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
 post-join callback도 실행되지 않는다. Entry Spot은 admission callback을 갖지 않는다.
 disconnected callback은 actor만 받는다. session actor의 현재 binding이 끊어졌거나
 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며, actor가 들어오거나
@@ -1251,7 +1250,7 @@ application이 actor disconnected 알림을 명시적으로 보낼 때 실행되
 
 public final class MatchSpot implements ZLinkSpot {
     @Override
-    public void onActorDisconnected(
+    public void onDisconnectActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
         // session binding cleanup or domain notification

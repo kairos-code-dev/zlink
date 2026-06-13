@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
@@ -41,6 +42,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final Map<String, String> actorTypes = new HashMap<>();
     private final Map<ZLinkActor, DefaultActorContext> contextsByActor = new HashMap<>();
     private final Map<String, ZLinkAsyncSerialQueue> dispatchQueues = new HashMap<>();
+    private BiFunction<RoutingId, ZLinkActor, CompletionStage<Void>> createdNotifier =
+        (ignoredNode, ignoredActor) -> CompletableFuture.completedFuture(null);
     private Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier =
         ignored -> CompletableFuture.completedFuture(null);
     private Function<RoutingId, ZLinkSpot> spotResolver = ignored -> null;
@@ -109,7 +112,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 actorTypes.put(actorId, actorType);
                 contextsByActor.put(actor, context);
                 return actor;
-            });
+            })
+            .thenCompose(actor -> submitActorDispatch(
+                    actor.actorId(),
+                    () -> createdNotifier.apply(actorRef.nodeRid(), actor))
+                .thenApply(ignored -> actor));
     }
 
     @Override
@@ -248,8 +255,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     public CompletionStage<Void> submitActorDispatch(
         String actorId,
         Supplier<CompletionStage<Void>> operation) {
-        ZLinkAsyncSerialQueue queue =
-            dispatchQueues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue());
+        ZLinkAsyncSerialQueue queue;
+        synchronized (this) {
+            if (!actors.containsKey(actorId)) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "actor is not managed by this runtime: " + actorId));
+            }
+            queue = dispatchQueues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue());
+        }
         return queue.enqueue(operation);
     }
 
@@ -258,6 +271,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         this.disconnectedNotifier = disconnectedNotifier == null
             ? ignored -> CompletableFuture.completedFuture(null)
             : disconnectedNotifier;
+    }
+
+    public void setCreatedNotifier(
+        BiFunction<RoutingId, ZLinkActor, CompletionStage<Void>> createdNotifier) {
+        this.createdNotifier = createdNotifier == null
+            ? (ignoredNode, ignoredActor) -> CompletableFuture.completedFuture(null)
+            : createdNotifier;
     }
 
     public void setSpotResolver(Function<RoutingId, ZLinkSpot> spotResolver) {
@@ -326,16 +346,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
 
     public CompletionStage<Void> destroyFromEntrySpot(
         RoutingId entryNodeRid,
-        ZLinkActor actor,
-        Supplier<CompletionStage<Void>> beforeDestroy) {
+        ZLinkActor actor) {
         if (entryNodeRid == null) {
             throw new ZLinkConfigurationException("entryNodeRid is required");
         }
         if (actor == null) {
             throw new ZLinkConfigurationException("actor is required");
-        }
-        if (beforeDestroy == null) {
-            throw new ZLinkConfigurationException("beforeDestroy is required");
         }
 
         DefaultActorContext context;
@@ -361,18 +377,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             }
         }
 
-        CompletionStage<Void> beforeDestroyStage;
-        try {
-            beforeDestroyStage = beforeDestroy.get();
-        } catch (RuntimeException ex) {
-            synchronized (this) {
-                context.resetDestroying();
-            }
-            return CompletableFuture.failedFuture(ex);
-        }
-
-        return beforeDestroyStage
-            .thenCompose(ignored -> spotNode.destroyActor(actorRef, defaultTimeout))
+        return spotNode.destroyActor(actorRef, defaultTimeout)
+            .thenCompose(ignored -> context.disconnectBoundSessionForDestroy())
             .thenRun(() -> {
                 synchronized (this) {
                     context.clearAfterDestroy();
@@ -389,6 +395,42 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                     }
                 }
             });
+    }
+
+    public void close() {
+        List<Map.Entry<ZLinkActor, DefaultActorContext>> snapshot;
+        synchronized (this) {
+            snapshot = List.copyOf(contextsByActor.entrySet());
+        }
+
+        for (Map.Entry<ZLinkActor, DefaultActorContext> entry : snapshot) {
+            ZLinkActor actor = entry.getKey();
+            DefaultActorContext context = entry.getValue();
+            ZLinkBackendActorRef actorRef = context.actorRef;
+            if (actorRef == null) {
+                continue;
+            }
+
+            try {
+                context.disconnectBoundSessionForDestroy().toCompletableFuture().join();
+            } catch (RuntimeException ignored) {
+                // Runtime shutdown is best-effort; native context close will release remaining handles.
+            }
+
+            try {
+                spotNode.destroyActor(actorRef, defaultTimeout).toCompletableFuture().join();
+            } catch (RuntimeException ignored) {
+                // Actors outside the Entry Spot may reject destroy. Shutdown must still release maps.
+            }
+
+            synchronized (this) {
+                context.clearAfterDestroy();
+                actors.remove(actor.actorId(), actor);
+                actorTypes.remove(actor.actorId());
+                contextsByActor.remove(actor);
+                dispatchQueues.remove(actor.actorId());
+            }
+        }
     }
 
     private final class DefaultActorContext implements ZLinkActorContext {
@@ -477,6 +519,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
                 return true;
             }
             return false;
+        }
+
+        CompletionStage<Void> disconnectBoundSessionForDestroy() {
+            ZLinkBoundSession current = boundSession;
+            if (current == null) {
+                return CompletableFuture.completedFuture(null);
+            }
+            return current.disconnect();
         }
 
         void clearAfterDestroy() {

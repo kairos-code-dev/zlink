@@ -30,6 +30,8 @@ public final class ZLinkFrameworkRegistration {
         new ZLinkMetadataPolicyRegistration();
     private final ZLinkDispatchOptionsRegistration dispatchOptions =
         new ZLinkDispatchOptionsRegistration();
+    private final ZLinkWorkerOptionsRegistration workers =
+        new ZLinkWorkerOptionsRegistration();
     private final List<String> registryEndpoints = new ArrayList<>();
     private final List<ChannelRegistration> channels = new ArrayList<>();
     private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
@@ -63,6 +65,10 @@ public final class ZLinkFrameworkRegistration {
 
     public ZLinkDispatchOptionsRegistration dispatchOptions() {
         return dispatchOptions;
+    }
+
+    public ZLinkWorkerOptionsRegistration workers() {
+        return workers;
     }
 
     public List<String> registryEndpoints() {
@@ -175,6 +181,7 @@ public final class ZLinkFrameworkRegistration {
 
     void validate() {
         dispatchOptions.validate();
+        workers.validate();
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
         Set<String> spotPublisherChannels = new LinkedHashSet<>();

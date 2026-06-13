@@ -17,7 +17,17 @@ public interface ZLinkEntrySpotContext {
 
     ZLinkSpotOutbound outbound();
 
-    CompletionStage<Void> destroyActorAsync(ZLinkActor actor);
+    /**
+     * Offloads work to the framework worker pool. The work runs outside the Entry
+     * Spot serial execution line; completion callbacks and awaitable continuations
+     * re-enter the Entry Spot serial line.
+     */
+    default <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
+        throw new UnsupportedOperationException(
+            "worker offload is only available on runtime-created contexts");
+    }
+
+    CompletionStage<Void> destroyActor(ZLinkActor actor);
 
     CompletionStage<ZLinkTimer> addTimer(
         String name,

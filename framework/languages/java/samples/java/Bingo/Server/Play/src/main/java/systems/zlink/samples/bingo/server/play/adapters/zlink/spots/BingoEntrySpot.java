@@ -27,17 +27,32 @@ public final class BingoEntrySpot implements ZLinkEntrySpot {
     }
 
     @Override
-    public void onPostActorJoined(
+    public void onCreateActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
         if (actor instanceof PlayerActor player && player.destroyAfterEntrySpotJoin()) {
-            await(context.destroyActorAsync(player));
+            await(context.destroyActor(player));
         }
     }
 
     @Override
-    public void onActorLeft(
+    public void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onDisconnectActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        if (actor instanceof PlayerActor player) {
+            player.markDisconnected();
+        }
     }
 }

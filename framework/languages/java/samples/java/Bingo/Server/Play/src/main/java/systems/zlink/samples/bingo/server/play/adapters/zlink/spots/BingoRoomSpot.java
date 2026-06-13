@@ -72,16 +72,25 @@ public final class BingoRoomSpot implements ZLinkSpot {
     }
 
     @Override
-    public void onPostActorJoined(
+    public void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onActorLeft(
+    public void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
         actors.remove(actor.actorId());
+    }
+
+    @Override
+    public void onDisconnectActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        if (actor instanceof PlayerActor player) {
+            player.markDisconnected();
+        }
     }
 
     @Override
@@ -157,7 +166,7 @@ public final class BingoRoomSpot implements ZLinkSpot {
         cleanupStarted = true;
         for (PlayerActor actor : actors.values().toArray(PlayerActor[]::new)) {
             actor.markForDestroyAfterRoomLeave();
-            await(context.leaveActorAsync(actor));
+            await(context.leaveActor(actor));
         }
     }
 

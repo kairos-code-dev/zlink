@@ -9,6 +9,7 @@ public final class PlayerActor implements ZLinkActor {
     private String displayName;
     private String roomId = "";
     private boolean destroyAfterEntrySpotJoin;
+    private boolean disconnected;
 
     public PlayerActor(String actorId, ZLinkActorContext context) {
         this.actorId = actorId;
@@ -48,5 +49,13 @@ public final class PlayerActor implements ZLinkActor {
 
     public void markForDestroyAfterRoomLeave() {
         destroyAfterEntrySpotJoin = true;
+    }
+
+    public boolean disconnected() {
+        return disconnected;
+    }
+
+    public void markDisconnected() {
+        disconnected = true;
     }
 }

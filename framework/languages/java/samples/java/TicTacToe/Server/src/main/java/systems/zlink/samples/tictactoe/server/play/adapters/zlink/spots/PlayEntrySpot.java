@@ -21,11 +21,26 @@ public final class PlayEntrySpot implements ZLinkEntrySpot {
     }
 
     @Override
-    public void onPostActorJoined(
+    public void onCreateActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+    }
+
+    @Override
+    public void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
         if (actor instanceof PlayActor player && player.destroyAfterEntrySpotJoin()) {
-            await(context.destroyActorAsync(player));
+            await(context.destroyActor(player));
+        }
+    }
+
+    @Override
+    public void onDisconnectActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        if (actor instanceof PlayActor player) {
+            player.markDisconnected();
         }
     }
 }

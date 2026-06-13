@@ -1270,7 +1270,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join()
                 .orElseThrow();
 
-            OutboundSpot.context.leaveActorAsync(actor).toCompletableFuture().join();
+            OutboundSpot.context.leaveActor(actor).toCompletableFuture().join();
         }
 
         assertEquals("player-1:false", OutboundSpot.lastLeave.get());
@@ -1430,7 +1430,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onActorLeft(
+        public void onLeaveActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
@@ -1666,14 +1666,14 @@ final class SpotRuntimeFakeBackendTest {
                     }
 
         @Override
-        public void onPostActorJoined(
+        public void onJoinActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastJoin.set(actor.actorId() + ":" + actor.context().isJoined());
                     }
 
         @Override
-        public void onActorLeft(
+        public void onLeaveActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastLeave.set(actor.actorId() + ":" + actor.context().isJoined());
@@ -1747,7 +1747,7 @@ final class SpotRuntimeFakeBackendTest {
         }
 
         @Override
-        public void onPostActorJoined(
+        public void onJoinActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             lastPostJoin.set(actor.actorId() + ":" + actor.context().isJoined());

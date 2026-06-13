@@ -81,10 +81,16 @@ final class SampleReleaseGateContractTest {
         assertTrue(aggregateRunner.contains("ZLINK_LIBRARY_PATH")
                 && aggregateRunner.contains("core/build/lib/libzlink.so"),
             "aggregate sample runner must use the local core runtime when it is available");
+        assertTrue(aggregateRunner.contains("ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback")
+                && aggregateRunner.contains("java actor lifecycle sample gate completed"),
+            "aggregate sample runner must run the actor lifecycle runtime gate");
         String aggregatePowerShellRunner = Files.readString(samplesRoot.resolve("run_samples.ps1"));
         assertTrue(aggregatePowerShellRunner.contains("ZLINK_LIBRARY_PATH")
                 && aggregatePowerShellRunner.contains("core/build/lib/libzlink.so"),
             "aggregate PowerShell sample runner must use the local core runtime when it is available");
+        assertTrue(aggregatePowerShellRunner.contains("ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback")
+                && aggregatePowerShellRunner.contains("java actor lifecycle sample gate completed"),
+            "aggregate PowerShell sample runner must run the actor lifecycle runtime gate");
 
         for (String language : REQUIRED_LANGUAGES) {
             Path languageRoot = samplesRoot.resolve(language);
@@ -191,6 +197,55 @@ final class SampleReleaseGateContractTest {
 
             assertTrue(offenders.isEmpty(), "sample forbidden pattern offenders: " + offenders);
         }
+    }
+
+    @Test
+    void officialDocsKeepActorDestroyEntryOwned() throws IOException {
+        List<Path> docs = officialActorDestroyDocs();
+        List<String> offenders = new java.util.ArrayList<>();
+        List<String> forbidden = List.of(
+            "DestroyActorAsync",
+            "destroyActorAsync",
+            "destroy_actor",
+            "OnActorLeft",
+            "onActorLeft",
+            "on_actor_left",
+            "OnCreateActor",
+            "on_actor_created",
+            "onPostActorJoined",
+            "disconnect -> destroy",
+            "자동 삭제",
+            "disconnect가 actor destroy를 실행한다",
+            "disconnect가 actor destroy를 자동",
+            "disconnect cleanup만으로 actor destroy가 실행된다",
+            "destroy를 자동으로 실행한다");
+
+        for (Path doc : docs) {
+            String content = Files.readString(doc);
+            for (String needle : forbidden) {
+                if (content.contains(needle)) {
+                    offenders.add(frameworkJavaRoot().relativize(doc) + ": " + needle);
+                }
+            }
+        }
+
+        String handlerSpec = Files.readString(frameworkJavaRoot()
+            .resolve("doc/spec/handler-interfaces.ko.md"));
+        String actorGuide = Files.readString(frameworkJavaRoot()
+            .resolve("doc/guide/07-actor-session.ko.md"));
+        assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
+            "handler spec must keep destroyActor on Entry Spot context");
+        assertTrue(handlerSpec.contains("user Spot context에는"),
+            "handler spec must say user Spot context has no destroy API");
+        assertTrue(handlerSpec.contains("lifecycle callback을 호출하지 않고"),
+            "handler spec must document destroy callback isolation");
+        assertTrue(actorGuide.contains("`ZLinkEntrySpotContext.destroyActor(actor)`"),
+            "actor guide must document Java Entry Spot destroy API");
+        assertTrue(actorGuide.contains("lifecycle callback을"),
+            "actor guide must mention lifecycle callback isolation");
+        assertTrue(actorGuide.contains("호출하지 않고 native actor ref"),
+            "actor guide must mention cleanup without lifecycle callback");
+        assertTrue(offenders.isEmpty(), "actor destroy documentation offenders: " + offenders);
     }
 
     @Test
@@ -610,8 +665,8 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("implements ZLinkSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameSpotSource.contains("onPostActorJoined(")
-                && gameSpotSource.contains("onActorLeft(")
+        assertTrue(gameSpotSource.contains("onJoinActor(")
+                && gameSpotSource.contains("onLeaveActor(")
                 && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
                 && !entrySpotSource.contains("onActorJoin"),
             "TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
@@ -960,8 +1015,8 @@ final class SampleReleaseGateContractTest {
                 && gameTimerHandlerSource.contains("ZLinkCoroutineSpotTimerHandler<TicTacToeGame>")
                 && gameTimerHandlerSource.contains("spot.tick()"),
             "Kotlin TicTacToe game Spot must mirror the .NET lifecycle, timer, and turn-timeout API usage");
-        assertTrue(gameSpotSource.contains("override suspend fun onPostActorJoinedSuspending(")
-                && gameSpotSource.contains("override suspend fun onActorLeftSuspending(")
+        assertTrue(gameSpotSource.contains("override fun onJoinActor(")
+                && gameSpotSource.contains("override fun onLeaveActor(")
                 && !gameSpotSource.contains("ZLinkSpotActorChange" + "Result")
                 && !entrySpotSource.contains("onActorJoin"),
             "Kotlin TicTacToe EntrySpot and GameSpot lifecycle must use member callbacks without change-result arguments");
@@ -1393,12 +1448,156 @@ final class SampleReleaseGateContractTest {
             "Kotlin Bingo server push must go through framework bound sessions, not direct client objects");
     }
 
+    @Test
+    void maintainedSamplesImplementActorLifecycleScenarios() throws IOException {
+        assertJavaActorLifecycleSpec(
+            "Bingo",
+            "Server/Play/src/main/java",
+            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.java",
+            "systems/zlink/samples/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.java",
+            "systems/zlink/samples/bingo/server/play/adapters/zlink/actors/PlayerActor.java",
+            "Server/Session/src/main/java",
+            "systems/zlink/samples/bingo/server/session/sessions/BingoSession.java");
+        assertJavaActorLifecycleSpec(
+            "TicTacToe",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.java",
+            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.java",
+            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/actors/PlayActor.java",
+            "Server/src/main/java",
+            "systems/zlink/samples/tictactoe/server/play/adapters/zlink/sessions/PlaySession.java");
+        assertKotlinActorLifecycleSpec(
+            "Bingo",
+            "Server/Play/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoEntrySpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/spots/BingoRoomSpot.kt",
+            "systems/zlink/samples/kotlin/bingo/server/play/adapters/zlink/actors/PlayerActor.kt",
+            "Server/Session/src/main/kotlin",
+            "systems/zlink/samples/kotlin/bingo/server/session/sessions/BingoSession.kt");
+        assertKotlinActorLifecycleSpec(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/PlayEntrySpot.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/spots/TicTacToeGame.kt",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/actors/PlayActor.kt",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/adapters/zlink/sessions/PlaySession.kt");
+    }
+
+    private static void assertJavaActorLifecycleSpec(
+        String sample,
+        String playSourceRoot,
+        String entrySpotPath,
+        String userSpotPath,
+        String actorPath,
+        String sessionSourceRoot,
+        String sessionPath) throws IOException {
+        String entrySpotSource = sampleJavaSource(sample, playSourceRoot, entrySpotPath);
+        String userSpotSource = sampleJavaSource(sample, playSourceRoot, userSpotPath);
+        String actorSource = sampleJavaSource(sample, playSourceRoot, actorPath);
+        String sessionSource = sampleJavaSource(sample, sessionSourceRoot, sessionPath);
+
+        assertActorLifecycleSpec(
+            sample,
+            entrySpotSource,
+            userSpotSource,
+            actorSource,
+            sessionSource,
+            List.of("public void onDisconnected()", "notifyDisconnected()"));
+    }
+
+    private static void assertKotlinActorLifecycleSpec(
+        String sample,
+        String playSourceRoot,
+        String entrySpotPath,
+        String userSpotPath,
+        String actorPath,
+        String sessionSourceRoot,
+        String sessionPath) throws IOException {
+        String entrySpotSource = sampleKotlinSource(sample, playSourceRoot, entrySpotPath);
+        String userSpotSource = sampleKotlinSource(sample, playSourceRoot, userSpotPath);
+        String actorSource = sampleKotlinSource(sample, playSourceRoot, actorPath);
+        String sessionSource = sampleKotlinSource(sample, sessionSourceRoot, sessionPath);
+
+        assertActorLifecycleSpec(
+            sample,
+            entrySpotSource,
+            userSpotSource,
+            actorSource,
+            sessionSource,
+            List.of("onDisconnectedSuspending", "notifyDisconnected().await()"));
+    }
+
+    private static void assertActorLifecycleSpec(
+        String sample,
+        String entrySpotSource,
+        String userSpotSource,
+        String actorSource,
+        String sessionSource,
+        List<String> disconnectCleanupNeedles) {
+        for (String needle : List.of(
+            "onCreateActor",
+            "onJoinActor",
+            "onDisconnectActor",
+            "destroyActor(",
+            "destroyAfterEntrySpotJoin",
+            "markDisconnected")) {
+            assertTrue(entrySpotSource.contains(needle), sample + " Entry Spot must include " + needle);
+        }
+        for (String needle : List.of(
+            "onLeaveActor",
+            "onDisconnectActor",
+            "leaveActor(",
+            "markForDestroyAfterRoomLeave",
+            "markDisconnected")) {
+            assertTrue(userSpotSource.contains(needle), sample + " user Spot must include " + needle);
+        }
+        assertFalse(userSpotSource.contains("destroyActor("),
+            sample + " user Spot must not destroy actors directly");
+        for (String needle : List.of(
+            "destroyAfterEntrySpotJoin",
+            "markForDestroyAfterRoomLeave",
+            "markDisconnected",
+            "disconnected")) {
+            assertTrue(actorSource.contains(needle), sample + " actor must include " + needle);
+        }
+        for (String needle : disconnectCleanupNeedles) {
+            assertTrue(sessionSource.contains(needle), sample + " session disconnect must include " + needle);
+        }
+        assertFalse(sessionSource.contains("leaveActor(") || sessionSource.contains("destroyActor("),
+            sample + " session disconnect must not leave rooms or destroy actors");
+    }
+
     private static Path samplesRoot() {
         return frameworkJavaRoot().resolve("samples");
     }
 
     private static Path frameworkJavaRoot() {
         return Path.of(System.getProperty("user.dir")).getParent();
+    }
+
+    private static List<Path> officialActorDestroyDocs() throws IOException {
+        List<Path> docs = new java.util.ArrayList<>();
+        for (String relativeRoot : List.of("doc/guide", "doc/spec", "doc/internals")) {
+            Path root = frameworkJavaRoot().resolve(relativeRoot);
+            if (!Files.exists(root)) {
+                continue;
+            }
+            try (Stream<Path> files = Files.walk(root)) {
+                files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".md"))
+                    .forEach(docs::add);
+            }
+        }
+        try (Stream<Path> files = Files.walk(samplesRoot())) {
+            files
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().equals("README.md")
+                    || path.getFileName().toString().equals("README.ko.md"))
+                .forEach(docs::add);
+        }
+        return docs;
     }
 
     private static String sampleJavaSource(String sample, String relativePath) throws IOException {

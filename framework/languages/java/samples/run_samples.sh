@@ -11,7 +11,14 @@ fi
 
 cd "$ROOT_DIR"
 
-./gradlew -Pzlink.useLocalBindings=true build
+./gradlew -Pzlink.useLocalBindings=true --no-daemon \
+  :zlink-framework-testkit:contractTest \
+  --tests '*SampleReleaseGateContractTest*'
+
+./gradlew -Pzlink.useLocalBindings=true --no-daemon --no-parallel \
+  :zlink-framework-testkit:fakeBackendTest \
+  --tests 'systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback'
+echo "java actor lifecycle sample gate completed"
 
 run_sample_with_retry() {
   local script="$1"

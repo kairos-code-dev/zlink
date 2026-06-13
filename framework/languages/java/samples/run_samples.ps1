@@ -44,7 +44,22 @@ function Invoke-SampleWithRetry {
 }
 
 $Gradle = if ($IsWindows) { Join-Path $RootDir "gradlew.bat" } else { Join-Path $RootDir "gradlew" }
-Invoke-Checked $Gradle @("-Pzlink.useLocalBindings=true", "build")
+Invoke-Checked $Gradle @(
+    "-Pzlink.useLocalBindings=true",
+    "--no-daemon",
+    ":zlink-framework-testkit:contractTest",
+    "--tests",
+    "*SampleReleaseGateContractTest*"
+)
+Invoke-Checked $Gradle @(
+    "-Pzlink.useLocalBindings=true",
+    "--no-daemon",
+    "--no-parallel",
+    ":zlink-framework-testkit:fakeBackendTest",
+    "--tests",
+    "systems.zlink.framework.testkit.ActorRuntimeFakeBackendTest.entrySpotDestroyActorRemovesEntryOwnedActorWithoutLeftCallback"
+)
+Write-Output "java actor lifecycle sample gate completed"
 
 foreach ($sample in @("TicTacToe", "Bingo")) {
     Invoke-SampleWithRetry (Join-Path $RootDir "java/$sample/run_sample.ps1")

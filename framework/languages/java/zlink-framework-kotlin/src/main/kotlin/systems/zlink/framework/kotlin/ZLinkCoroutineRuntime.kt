@@ -54,7 +54,7 @@ import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler
 
 suspend fun ZLinkEntrySpotContext.destroyActor(actor: ZLinkActor) {
-    destroyActorAsync(actor).await()
+    destroyActor(actor).await()
 }
 
 class ZLinkCoroutineRuntime : AutoCloseable {
@@ -429,31 +429,22 @@ abstract class ZLinkCoroutineSpot(
             onActorJoinSuspending(actor, request, cancellationToken)
         }
 
-    final override fun onPostActorJoined(
+    open override fun onJoinActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
-        coroutines.blocking {
-            onPostActorJoinedSuspending(actor, cancellationToken)
-        }
     }
 
-    final override fun onActorLeft(
+    open override fun onLeaveActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
-        coroutines.blocking {
-            onActorLeftSuspending(actor, cancellationToken)
-        }
     }
 
-    final override fun onActorDisconnected(
+    open override fun onDisconnectActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
-        coroutines.blocking {
-            onActorDisconnectedSuspending(actor, cancellationToken)
-        }
     }
 
     protected open suspend fun onCreateSuspending(request: Message): ZLinkSpotCreateResponse {
@@ -474,23 +465,6 @@ abstract class ZLinkCoroutineSpot(
         return ZLinkSpotActorJoinResponse.reject()
     }
 
-    protected open suspend fun onPostActorJoinedSuspending(
-        actor: ZLinkActor,
-        cancellationToken: CancellationToken,
-    ) {
-    }
-
-    protected open suspend fun onActorLeftSuspending(
-        actor: ZLinkActor,
-        cancellationToken: CancellationToken,
-    ) {
-    }
-
-    protected open suspend fun onActorDisconnectedSuspending(
-        actor: ZLinkActor,
-        cancellationToken: CancellationToken,
-    ) {
-    }
 }
 
 abstract class ZLinkCoroutineSession(

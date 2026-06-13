@@ -20,6 +20,7 @@ import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
 import systems.zlink.framework.configuration.ZLinkRegistrySpotRemoteAddressesOptions;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkWorkerOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
@@ -185,6 +186,11 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public void configureDispatch(Consumer<ZLinkDispatchOptions> configure) {
         configure.accept(registration.dispatchOptions());
+    }
+
+    @Override
+    public void configureWorkers(Consumer<ZLinkWorkerOptions> configure) {
+        configure.accept(registration.workers());
     }
 
     @Override

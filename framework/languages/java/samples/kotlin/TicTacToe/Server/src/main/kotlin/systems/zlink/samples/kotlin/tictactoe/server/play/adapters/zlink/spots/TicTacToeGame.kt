@@ -66,18 +66,27 @@ class TicTacToeGame(
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override suspend fun onPostActorJoinedSuspending(
+    override fun onJoinActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
-    override suspend fun onActorLeftSuspending(
+    override fun onLeaveActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
         if (actor is PlayActor) {
             players.removeIf { it.actor.actorId == actor.actorId }
+        }
+    }
+
+    override fun onDisconnectActor(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+        if (actor is PlayActor) {
+            actor.markDisconnected()
         }
     }
 
@@ -207,7 +216,7 @@ class TicTacToeGame(
         cleanupStarted = true
         for (slot in players.toList()) {
             slot.actor.markForDestroyAfterRoomLeave()
-            context.leaveActorAsync(slot.actor).await()
+            context.leaveActor(slot.actor).await()
         }
     }
 

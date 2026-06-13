@@ -62,6 +62,8 @@ public interface ZLinkFrameworkOptions {
 
     void configureDispatch(Consumer<ZLinkDispatchOptions> configure);
 
+    void configureWorkers(Consumer<ZLinkWorkerOptions> configure);
+
     void useVirtualThreadHandlers();
 
     void useHandlerExecutor(Executor executor);

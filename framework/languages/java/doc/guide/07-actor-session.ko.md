@@ -55,7 +55,7 @@ handler에서 받은 spot context로 호출한다.
 | `boundSession()` | 자기 client로 push (§4) |
 | `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...)`로 종결 |
 | `joinEntrySpot(spotNodeRid)` | target SpotNode의 Entry Spot으로 이동 |
-| `ZLinkEntrySpotContext.destroyActorAsync(actor)` | Entry Spot에 있는 actor를 종료 |
+| `ZLinkEntrySpotContext.destroyActor(actor)` | Entry Spot에 있는 actor를 종료 |
 
 `joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고, join reply를
 `replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
@@ -63,9 +63,9 @@ handler에서 받은 spot context로 호출한다.
 framework는 이 호출에 blocking helper를 제공하지 않는다.
 
 actor 객체를 끝내려면 actor가 Entry Spot에 있는 상태에서
-`ZLinkEntrySpotContext.destroyActorAsync(actor)`를 호출한다. 이 호출은 Entry Spot
-`onActorLeft(...)` callback을 한 번 실행한 뒤 native actor ref와 framework registry를
-정리한다. user Spot에 있는 actor는 바로 destroy할 수 없으므로 먼저 leave 또는
+`ZLinkEntrySpotContext.destroyActor(actor)`를 호출한다. 이 호출은 lifecycle callback을
+호출하지 않고 native actor ref와 framework registry를 정리한다. user Spot에 있는 actor는
+바로 destroy할 수 없으므로 먼저 leave 또는
 `joinEntrySpot(...)` 흐름을 완료해야 한다. Kotlin에서는
 `systems.zlink.framework.kotlin.destroyActor(actor)` suspending extension으로 같은 동작을
 호출할 수 있다.

@@ -226,11 +226,17 @@ public final class ZLinkFrameworkRuntime implements AutoCloseable {
                 }
             } finally {
                 try {
-                    if (spots != null) {
-                        spots.close();
+                    if (actors != null) {
+                        actors.close();
                     }
                 } finally {
-                    closeHandlerExecutor();
+                    try {
+                        if (spots != null) {
+                            spots.close();
+                        }
+                    } finally {
+                        closeHandlerExecutor();
+                    }
                 }
             }
         }

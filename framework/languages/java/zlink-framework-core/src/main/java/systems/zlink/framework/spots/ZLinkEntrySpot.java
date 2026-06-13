@@ -15,17 +15,22 @@ public interface ZLinkEntrySpot {
     default void onClosing() {
     }
 
-    default void onPostActorJoined(
+    default void onCreateActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
-    default void onActorLeft(
+    default void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
-    default void onActorDisconnected(
+    default void onLeaveActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+    }
+
+    default void onDisconnectActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }

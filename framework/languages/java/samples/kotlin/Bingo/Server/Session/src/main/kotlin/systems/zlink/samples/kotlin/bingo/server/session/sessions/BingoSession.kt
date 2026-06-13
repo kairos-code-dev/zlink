@@ -16,6 +16,12 @@ class BingoSession(
 ) : ZLinkCoroutineSession(coroutines) {
     override fun context(): ZLinkSessionContext = context
 
+    override suspend fun onDisconnectedSuspending() {
+        for (actor in context.actors().bound()) {
+            actor.notifyDisconnected().await()
+        }
+    }
+
     override suspend fun onDispatchSuspending(
         header: ZLinkStreamHeader,
         payload: Message,

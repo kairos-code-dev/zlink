@@ -10,6 +10,8 @@ class PlayActor(
     private var joinedRoomId: String? = null
     var destroyAfterEntrySpotJoin: Boolean = false
         private set
+    var disconnected: Boolean = false
+        private set
 
     override fun actorId(): String = actorId
 
@@ -24,5 +26,9 @@ class PlayActor(
 
     fun markForDestroyAfterRoomLeave() {
         destroyAfterEntrySpotJoin = true
+    }
+
+    fun markDisconnected() {
+        disconnected = true
     }
 }

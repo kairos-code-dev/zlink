@@ -73,18 +73,27 @@ class BingoRoomSpot(
         return ZLinkSpotActorJoinResponse.accept(Message.from(json.writeValueAsBytes(reply)))
     }
 
-    override suspend fun onPostActorJoinedSuspending(
+    override fun onJoinActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
     }
 
-    override suspend fun onActorLeftSuspending(
+    override fun onLeaveActor(
         actor: ZLinkActor,
         cancellationToken: CancellationToken,
     ) {
         if (actor is PlayerActor) {
             actors.remove(actor.actorId())
+        }
+    }
+
+    override fun onDisconnectActor(
+        actor: ZLinkActor,
+        cancellationToken: CancellationToken,
+    ) {
+        if (actor is PlayerActor) {
+            actor.markDisconnected()
         }
     }
 
@@ -192,7 +201,7 @@ class BingoRoomSpot(
         cleanupStarted = true
         for (actor in actors.values.toList()) {
             actor.markForDestroyAfterRoomLeave()
-            context.leaveActorAsync(actor).await()
+            context.leaveActor(actor).await()
         }
     }
 

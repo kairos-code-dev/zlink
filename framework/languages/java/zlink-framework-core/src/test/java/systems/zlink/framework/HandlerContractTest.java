@@ -121,27 +121,27 @@ final class HandlerContractTest {
             Message.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
-            "onPostActorJoined",
+            "onJoinActor",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
-            "onActorLeft",
+            "onLeaveActor",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkSpot.class.getMethod(
-            "onActorDisconnected",
+            "onDisconnectActor",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
-            "onPostActorJoined",
+            "onJoinActor",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
-            "onActorLeft",
+            "onLeaveActor",
             ZLinkActor.class,
             CancellationToken.class);
         ZLinkEntrySpot.class.getMethod(
-            "onActorDisconnected",
+            "onDisconnectActor",
             ZLinkActor.class,
             CancellationToken.class);
         assertFalse(hasMethod(ZLinkEntrySpot.class, "onActorJoin"));

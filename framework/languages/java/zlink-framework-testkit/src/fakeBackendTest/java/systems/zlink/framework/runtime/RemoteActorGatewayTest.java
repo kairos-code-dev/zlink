@@ -114,7 +114,7 @@ final class RemoteActorGatewayTest {
         }
 
         @Override
-        public void onActorDisconnected(
+        public void onDisconnectActor(
             ZLinkActor actor,
             CancellationToken cancellationToken) {
             disconnectCount++;

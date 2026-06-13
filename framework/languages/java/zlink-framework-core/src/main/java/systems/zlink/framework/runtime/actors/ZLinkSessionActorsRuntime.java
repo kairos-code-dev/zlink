@@ -183,7 +183,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                         defaultCodec);
                 long bindingToken = actors.bindSession(actor, boundSession);
                 boundSession.setBindingToken(bindingToken);
-                ZLinkSessionActor boundActor = new BoundActor(
+                BoundActor boundActor = new BoundActor(
                     stream,
                     sessionRid,
                     ref,
@@ -193,6 +193,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     routeReady,
                     localActorDispatcher,
                     nativeActorGatewayAttached);
+                boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 bound.add(boundActor);
                 return boundActor;
             });

@@ -46,6 +46,7 @@ import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
+import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
@@ -79,6 +80,8 @@ import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.spots.ZLinkWorkerCall;
+import systems.zlink.framework.spots.ZLinkWorkerTask;
 import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
@@ -146,6 +149,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
     private final Map<RoutingId, CompletionStage<ZLinkSpotCreateResult>> pendingSpotCreates =
         new HashMap<>();
     private volatile boolean closing;
+    private final ZLinkWorkerPool workerPool;
     private final ScheduledExecutorService timerExecutor = Executors.newScheduledThreadPool(1, task -> {
         Thread thread = new Thread(task, "zlink-java-spot-timer");
         thread.setDaemon(true);
@@ -199,6 +203,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             registration.handlerExecutor(),
             "handlerExecutor");
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
+        this.workerPool = new ZLinkWorkerPool(
+            registration.workers().minThreads(),
+            registration.workers().maxThreads(),
+            registration.workers().idleTimeout(),
+            registration.workers().maxQueueLength());
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         this.actorPacketHandlers = new HashMap<>(actorPacketHandlersByPacket(handlerCatalog));
@@ -554,6 +563,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
         attachedChannelDiscoveries.clear();
         timerExecutor.shutdownNow();
+        workerPool.close();
         for (ZLinkBackendSpotNode node : nodes) {
             node.close();
         }
@@ -570,6 +580,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     public void attachActorRuntime(ZLinkActorRuntime actorRuntime) {
         this.actorRuntime = actorRuntime;
+        this.actorRuntime.setCreatedNotifier(this::notifyEntrySpotActorCreated);
         this.actorRuntime.setDisconnectedNotifier(this::notifySpotActorDisconnected);
         this.actorRuntime.setSpotResolver(this::spotFor);
     }
@@ -814,8 +825,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         entrySpot.configure();
         entryContext.closeRegistration();
         entryContext.bindSubscriptions(backendSpot);
-        withCurrentOutbound(entryContext.outbound, () ->
-                ZLinkHandlerStages.fromRunnable(entrySpot::onInitialize))
+        entryContext.enqueueDispatch(() ->
+                withCurrentOutbound(entryContext.outbound, () ->
+                    ZLinkHandlerStages.fromRunnable(entrySpot::onInitialize)))
             .whenComplete((ignored, error) -> {
                 if (error != null) {
                     entryContext.closeTimers();
@@ -880,16 +892,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 ((DefaultSpotContext) spot.context()).outbound,
                 () -> joined
                     ? ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onPostActorJoined(actor, NONE_CANCELLATION))
+                        spot.onJoinActor(actor, NONE_CANCELLATION))
                     : ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onActorLeft(actor, NONE_CANCELLATION)));
+                        spot.onLeaveActor(actor, NONE_CANCELLATION)));
         }
         if (spotSurface instanceof ZLinkEntrySpot entrySpot) {
             return joined
                 ? ZLinkHandlerStages.fromRunnable(() ->
-                    entrySpot.onPostActorJoined(actor, NONE_CANCELLATION))
+                    entrySpot.onJoinActor(actor, NONE_CANCELLATION))
                 : ZLinkHandlerStages.fromRunnable(() ->
-                    entrySpot.onActorLeft(actor, NONE_CANCELLATION));
+                    entrySpot.onLeaveActor(actor, NONE_CANCELLATION));
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -901,14 +913,27 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 return withCurrentOutbound(
                     context.outbound,
                     () -> ZLinkHandlerStages.fromRunnable(() ->
-                        spot.onActorDisconnected(actor, NONE_CANCELLATION)));
+                        spot.onDisconnectActor(actor, NONE_CANCELLATION)));
             }
             return ZLinkHandlerStages.fromRunnable(() ->
-                spot.onActorDisconnected(actor, NONE_CANCELLATION));
+                spot.onDisconnectActor(actor, NONE_CANCELLATION));
         }
         if (spotSurface instanceof ZLinkEntrySpot entrySpot) {
             return ZLinkHandlerStages.fromRunnable(() ->
-                entrySpot.onActorDisconnected(actor, NONE_CANCELLATION));
+                entrySpot.onDisconnectActor(actor, NONE_CANCELLATION));
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private CompletionStage<Void> notifyEntrySpotActorCreated(
+        RoutingId nodeRid,
+        ZLinkActor actor) {
+        for (EntrySpotActivation activation : entrySpots) {
+            if (activation.context.nodeRid().equals(nodeRid)) {
+                return activation.context.enqueueDispatch(() ->
+                    ZLinkHandlerStages.fromRunnable(() ->
+                        activation.entrySpot.onCreateActor(actor, NONE_CANCELLATION)));
+            }
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -1370,6 +1395,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final RoutingId nodeRid;
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotOutbound outbound;
+        private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
         private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
         private final List<Class<?>> handlerTypes = new ArrayList<>();
         private final List<Class<?>> packetHandlerTypes = new ArrayList<>();
@@ -1406,15 +1432,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> destroyActorAsync(ZLinkActor actor) {
+        public CompletionStage<Void> destroyActor(ZLinkActor actor) {
             if (actorRuntime == null) {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "Entry Spot actor destroy requires the actor runtime"));
             }
             return actorRuntime.destroyFromEntrySpot(
                 nodeRid,
-                actor,
-                () -> notifySpotActorLifecycle(entrySpot, actor, false));
+                actor);
         }
 
         @Override
@@ -1448,7 +1473,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             Duration period,
             Class<?> handlerType,
             ZLinkTimerOptions options) {
-            DefaultSpotContext timerContext = new DefaultSpotContext(nodeRid, backendSpot);
+            // Timer contexts share the Entry Spot serial line so timer callbacks
+            // never overlap actor packets or lifecycle callbacks.
+            DefaultSpotContext timerContext =
+                new DefaultSpotContext(nodeRid, backendSpot, dispatchQueue);
             timerContext.setSpot(new EntrySpotTimerSurface(this));
             timerContexts.add(timerContext);
             return timerContext.addTimer(name, period, handlerType, options);
@@ -1457,6 +1485,20 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         void closeTimers() {
             timerContexts.forEach(DefaultSpotContext::closeTimers);
             timerContexts.clear();
+        }
+
+        CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation) {
+            return dispatchQueue.enqueue(operation);
+        }
+
+        @Override
+        public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
+            java.util.Objects.requireNonNull(work, "work");
+            // Completion callbacks enter the Entry Spot serial line through
+            // the handler executor: never on the worker thread, with the
+            // entry spot outbound context available.
+            return new DefaultZLinkWorkerCall<>(workerPool, work, operation ->
+                enqueueDispatch(() -> withCurrentOutbound(outbound, operation)));
         }
 
         void closeRegistration() {
@@ -1537,7 +1579,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> leaveActorAsync(
+        public CompletionStage<Void> leaveActor(
             ZLinkActor actor) {
             return CompletableFuture.completedFuture(null);
         }
@@ -1625,13 +1667,14 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
-                withCurrentOutbound(context.outbound, () ->
-                    invokeSpotRequestHandler(handler, entrySpot, payloadCopy))
-                    .thenAccept(reply -> received.reply(List.of(reply)))
-                    .whenComplete((ignored, error) -> {
-                        payloadCopy.close();
-                        received.close();
-                    });
+                context.enqueueDispatch(() ->
+                    withCurrentOutbound(context.outbound, () ->
+                        invokeSpotRequestHandler(handler, entrySpot, payloadCopy))
+                        .thenAccept(reply -> received.reply(List.of(reply)))
+                        .whenComplete((ignored, error) -> {
+                            payloadCopy.close();
+                            received.close();
+                        }));
                 return;
             }
             try (received) {
@@ -1639,9 +1682,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     return;
                 }
                 Message payloadCopy = Message.from(packet.payload());
-                withCurrentOutbound(context.outbound, () ->
-                    invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
-                    .whenComplete((ignored, error) -> payloadCopy.close());
+                context.enqueueDispatch(() ->
+                    withCurrentOutbound(context.outbound, () ->
+                        invokeSpotPacketHandler(handler, entrySpot, payloadCopy))
+                        .whenComplete((ignored, error) -> payloadCopy.close()));
             }
         }
 
@@ -1668,9 +1712,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         continue;
                     }
                     Message payloadCopy = Message.from(packet.payload());
-                    withCurrentOutbound(context.outbound, () ->
-                        invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy))
-                        .whenComplete((ignored, error) -> payloadCopy.close());
+                    context.enqueueDispatch(() ->
+                        withCurrentOutbound(context.outbound, () ->
+                            invokeSpotSubscriptionHandler(handler, entrySpot, payloadCopy))
+                            .whenComplete((ignored, error) -> payloadCopy.close()));
                 }
             } finally {
                 received.parts().forEach(Message::close);
@@ -1707,8 +1752,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             }
             if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
                 actorRuntime.markLeft(actor);
-                actorRuntime.submitActorDispatch(
-                    actor.actorId(),
+                context.enqueueDispatch(
                     () -> notifySpotActorLifecycle(entrySpot, actor, false));
                 return;
             }
@@ -1720,8 +1764,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 actorRef,
                 spotRid,
                 spotSurfaceFor(spotRid) instanceof ZLinkSpot spot ? spot : null);
-            actorRuntime.submitActorDispatch(
-                actor.actorId(),
+            context.enqueueDispatch(
                 () -> notifySpotActorLifecycle(entrySpot, actor, true));
         }
 
@@ -1782,8 +1825,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 Message payloadCopy = bodyPart == null
                     ? Message.from(new byte[0])
                     : Message.from(bodyPart.message());
-                actorRuntime.submitActorDispatch(
-                    actor.actorId(),
+                context.enqueueDispatch(
                     () -> dispatchActorPacket(
                         handler,
                         actor,
@@ -2008,7 +2050,8 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                         request.targetActor(),
                         backendSpot.routingId(),
                         null);
-                    return notifySpotActorLifecycle(entrySpot, actor.get(), true)
+                    return context.enqueueDispatch(() ->
+                            notifySpotActorLifecycle(entrySpot, actor.get(), true))
                         .thenApply(ignored -> Message.from(new byte[0]))
                         .whenComplete((reply, error) -> {
                             if (error != null) {
@@ -2075,8 +2118,9 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         @Override
         public void close() {
             try {
-                awaitClosing(withCurrentOutbound(context.outbound, () ->
-                    ZLinkHandlerStages.fromRunnable(entrySpot::onClosing)));
+                awaitClosing(context.enqueueDispatch(() ->
+                    withCurrentOutbound(context.outbound, () ->
+                        ZLinkHandlerStages.fromRunnable(entrySpot::onClosing))));
             } finally {
                 if (pendingActorHeader != null) {
                     pendingActorHeader.close();
@@ -2099,7 +2143,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private final ZLinkBackendSpot backendSpot;
         private final DefaultSpotOutbound outbound;
         private final List<ManagedTimer> timers = new ArrayList<>();
-        private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
+        private final ZLinkAsyncSerialQueue dispatchQueue;
         private final List<Class<?>> handlerTypes = new ArrayList<>();
         private final List<Class<?>> packetHandlerTypes = new ArrayList<>();
         private final List<SpotSubscriptionRegistration> subscriptionHandlerTypes = new ArrayList<>();
@@ -2110,8 +2154,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         private ZLinkSpot spot;
 
         DefaultSpotContext(RoutingId nodeRid, ZLinkBackendSpot backendSpot) {
+            this(nodeRid, backendSpot, new ZLinkAsyncSerialQueue());
+        }
+
+        DefaultSpotContext(
+            RoutingId nodeRid,
+            ZLinkBackendSpot backendSpot,
+            ZLinkAsyncSerialQueue dispatchQueue) {
             this.nodeRid = nodeRid;
             this.backendSpot = backendSpot;
+            this.dispatchQueue = dispatchQueue;
             this.outbound = new DefaultSpotOutbound(nodeRid, backendSpot);
         }
 
@@ -2160,7 +2212,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public CompletionStage<Void> leaveActorAsync(ZLinkActor actor) {
+        public CompletionStage<Void> leaveActor(ZLinkActor actor) {
             if (actor == null) {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                     "actor is required"));
@@ -2203,6 +2255,16 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
         CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation) {
             return dispatchQueue.enqueue(operation);
+        }
+
+        @Override
+        public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
+            java.util.Objects.requireNonNull(work, "work");
+            // Completion callbacks enter the Spot serial line through the
+            // handler executor, exactly like packet handlers: they never run
+            // on the worker thread and they see the spot outbound context.
+            return new DefaultZLinkWorkerCall<>(workerPool, work, operation ->
+                enqueueDispatch(() -> withCurrentOutbound(outbound, operation)));
         }
 
         void closeRegistration() {
@@ -2940,7 +3002,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             } finally {
                 requestParts.forEach(Message::close);
             }
-            return result;
+            // The backend reply callback completes the internal future on the
+            // backend socket thread. Hop to the handler executor so user
+            // continuations never run on the backend callback thread.
+            return result.thenApplyAsync(reply -> reply, handlerExecutor);
         }
     }
 

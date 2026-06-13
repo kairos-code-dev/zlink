@@ -32,6 +32,8 @@ public final class BingoSession implements ZLinkSession {
 
     @Override
     public void onDisconnected() {
+        context.actors().bound()
+            .forEach(actor -> await(actor.notifyDisconnected()));
     }
 
     @Override

@@ -82,17 +82,26 @@ public final class TicTacToeGame implements ZLinkSpot {
     }
 
     @Override
-    public void onPostActorJoined(
+    public void onJoinActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
     }
 
     @Override
-    public void onActorLeft(
+    public void onLeaveActor(
         ZLinkActor actor,
         CancellationToken cancellationToken) {
         if (actor instanceof PlayActor player) {
             actors.removeIf(existing -> existing.actorId().equals(player.actorId()));
+        }
+    }
+
+    @Override
+    public void onDisconnectActor(
+        ZLinkActor actor,
+        CancellationToken cancellationToken) {
+        if (actor instanceof PlayActor player) {
+            player.markDisconnected();
         }
     }
 
@@ -211,7 +220,7 @@ public final class TicTacToeGame implements ZLinkSpot {
         cleanupStarted = true;
         for (PlayActor actor : List.copyOf(actors)) {
             actor.markForDestroyAfterRoomLeave();
-            await(context.leaveActorAsync(actor));
+            await(context.leaveActor(actor));
         }
     }
 

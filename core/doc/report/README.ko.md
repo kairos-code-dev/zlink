@@ -2,10 +2,10 @@
 
 - **대상**: `core/` 런타임 + `framework/languages/{cpp,node,java,dotnet}` 프레임워크 계층 + `bindings/{c,cpp,dotnet,go,java,node,python,rust}` 바인딩 라이브러리
 - **방식**: 영역별 병렬 정밀 리뷰(신뢰 불가 입력 파싱·역직렬화 · 네이티브 interop · 동시성 · 리소스 해제 우선)
-- **상태**: 실행 순서에 따라 일부 framework 원격 DoS 항목 수정 진행 중.
+- **상태**: 실행 순서의 모든 항목 종결.
 
 > Core와 framework 리포트는 Codex 교차검증 결과를 본문에 포함한다.
-> 바인딩 리포트는 실제 바인딩 코드와 Claude 코드 리뷰 결과를 다시 대조해 보강했다.
+> 바인딩 리포트는 실제 바인딩 코드와 Codex 에이전트 리뷰 결과를 다시 대조해 보강했다. 이전 Claude 리뷰 기록은 당시 완료 항목의 검증 결과로 보존한다.
 > 실행 순서는 [2026-06-14-security-review-execution-plan.ko.md](2026-06-14-security-review-execution-plan.ko.md)에 정리한다.
 
 ## 인덱스 확인 기록
@@ -24,14 +24,15 @@
 - 2026-06-14: Java framework handler list 동시성 항목(F4)을 수정하고, stream-connector test 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: Node/TS framework JSON 입력 검증 후속 항목(C3/C4)을 수정하고, S3 타이머 누수 의심은 코드 대조 결과 보안 이슈가 아니므로 종결했다. build·typecheck·Node runtime gate 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: .NET framework D3/D4 수신 메시지 보관소와 Manual dispatch callback queue에 bounded 정책을 추가하고, stream connector test 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다.
-- 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
-- 2026-06-14: core 포트·zone id 파싱(#3)과 message/send API 가드(#6)를 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
-- 2026-06-14: core IPC bind의 검증 전 unlink 항목(#4)을 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
-- 2026-06-14: core WS/WSS buffering 항목(#2)의 `pending_message` 전체 사본을 제거하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
-- 2026-06-14: core decoder allocator 산술 오버플로 항목(#5)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
+- 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: core 포트·zone id 파싱(#3)과 message/send API 가드(#6)를 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: core IPC bind의 검증 전 unlink 항목(#4)을 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: core WS/WSS buffering 항목(#2)의 `pending_message` 전체 사본을 제거하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: core decoder allocator 산술 오버플로 항목(#5)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
 - 2026-06-14: core `maxmsgsize` 정책 항목(#7)은 기본값을 유지하고, 신뢰할 수 없는 listener에서 `ZLINK_OPT_MAXMSGSIZE`를 명시하도록 guide와 site 문서를 보강했다.
-- 2026-06-14: core command body length clamp 항목(#9)을 수정하고 core 빌드·단위 테스트 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. C++ binding 검증은 병렬 binding parity 변경의 `spot_node_t` 테스트 컴파일 오류로 실패했고, C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
-- 2026-06-14: core IPC 주소 길이 방어 항목(#10)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
+- 2026-06-14: core command body length clamp 항목(#9)을 수정하고 core 빌드·단위 테스트 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. 당시 C++ binding 검증은 병렬 binding parity 변경의 `spot_node_t` 테스트 컴파일 오류로 실패했고, C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: core IPC 주소 길이 방어 항목(#10)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. 당시 C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 실패했다.
+- 2026-06-14: 바인딩 6-1부터 6-8까지 모두 종결했다. C-BINDING-001은 `core/include/zlink/common.h`와 C 바인딩 `common.h`의 patch 값을 `6.0.4`로 맞춰 해결했고, core 공개 헤더 변경 후 `bindings/dev_sync_local_core_libs.sh`와 Python 바인딩 tests/samples로 동기화 검증을 마쳤다.
 
 ## 리포트 목록
 

@@ -43,6 +43,7 @@ C 바인딩은 별도 런타임 구현을 거의 두지 않고 core 공개 헤�
 
 - `cmake --build core/build` 통과.
 - `bindings/c/tests/run_tests.sh` 통과. C contract 7개와 sample 13개가 통과했다.
+- core 공개 헤더 변경 후 `bindings/dev_sync_local_core_libs.sh`를 실행했고, 동기화된 native library를 사용해 `bindings/python/tests/run_tests.sh`가 통과했다. Python 단위 테스트 81개와 sample 14개가 통과했다.
 - Codex 에이전트 리뷰에서 "추가 이슈 없음" 판정을 받았다.
 
 ## 결론

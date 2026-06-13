@@ -57,7 +57,7 @@
 | Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | Low (`Message.Data()` slice 수명) |
 | Java | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계와 Windows DLL 검색 전제 문서화 완료) |
 | Node | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | Low (callback handler slot 제한) |
-| Python | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | Medium (Windows DLL 검색) |
+| Python | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 추가 보안 수정 없음 (Windows DLL 검색 경계와 native view 수명 규칙 문서화 완료) |
 | Rust | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | Medium (`Context` thread-safety 계약 의존) |
 
 > 아래 §교차언어 공통 결함은 **framework 4개 언어** 한정 분석이다. Core 런타임은 별도 트러스트 모델(직접 와이어 디코드)이라 위 core 리포트를 참조.

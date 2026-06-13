@@ -116,6 +116,28 @@ Service and topology helpers are also surfaced as domain objects:
 `TopicMessage` and `SubscriptionEvent` carry `channel_name` for service-aware
 SPOT flows. Raw `SUB` / `XSUB` results leave that field empty.
 
+## Native Library Loading
+
+The Python binding loads the native zlink runtime through `ctypes`. Packaged
+native libraries are preferred when present, and source checkout builds are
+used by the development path. On Windows, OpenSSL dependency lookup may also
+consult the zlink library directory, `ZLINK_OPENSSL_BIN`, `OPENSSL_BIN`, and
+`PATH`.
+
+These paths assume a trusted process environment. Do not allow untrusted users
+to control DLL search environment variables, `PATH`, or the working directory
+for a privileged service process. Security-sensitive Windows deployments should
+place the required OpenSSL DLLs in the same trusted directory as the zlink
+native library and control ownership and write permissions for that directory.
+
+## Receive Buffer Lifetime
+
+`Message.data`, received message part `data`, and related receive objects may
+return a `memoryview` over native-owned storage. The view is valid only while
+the owning `Message`, `Received`, `ReceivedMultipart`, `TopicMessage`, or other
+receive owner remains open. Use `to_bytes()` or `to_bytes_list()` when the
+payload must outlive the receive object or cross an async/task boundary.
+
 ## Boundary Rules
 
 The Python binding fail-fast validates values before the native call when the

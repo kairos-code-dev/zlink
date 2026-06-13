@@ -908,20 +908,25 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure -R 'framework
 ## 19. 추가 작업: CAPI/core dispatch 보장과 framework gate 분리
 
 구현 후 점검에서 CAPI/core와 언어별 framework가 서로 다른 층의 직렬화를 맡는다는
-점을 더 명확히 해야 한다는 문제가 남았다. 이 항목은 위 설계 결정을 바꾸기 위한
-작업이 아니라, 하위 CAPI 보장과 상위 application callback gate를 분리해서 검증하기
-위한 후속 작업이다.
+점을 문서화하고 테스트로 고정할 필요가 남았다. 이 항목은 위 설계 결정을 바꾸기
+위한 작업이 아니라, 하위 CAPI 보장과 상위 application callback gate를 분리해서
+검증하기 위한 후속 작업이다.
 
-현재 core의 `spot_dispatch_worker_pool_t`는 native Spot handle 단위로 active 상태를
-관리한다. 같은 Spot이 이미 dispatch 중이면 새 worker가 같은 Spot의 dispatch cycle을
+현재 core의 Spot dispatch는 native Spot handle 단위의 동기 dispatch cycle을 직렬로
+진행한다. dispatch state는 실행 중인 cycle을 한 번만 worker pool에 올리고, worker
+pool은 같은 Spot이 이미 active 상태이면 새 worker가 같은 Spot의 dispatch cycle을
 동시에 실행하지 않고 dirty 상태로 표시한 뒤 다시 queue에 넣는다. 따라서 CAPI/core의
-책임은 같은 native Spot dispatch handler가 동시에 호출되지 않는다는 점을 공개 계약과
-테스트로 고정하는 데 있다.
+책임은 native dispatch cycle을 통해 들어온 같은 Spot의 dispatch handler가 동시에
+호출되지 않는다는 점을 공개 계약과 테스트로 고정하는 데 있다.
 
 반면 언어별 framework의 책임은 CAPI callback 함수가 반환된 뒤에도 계속된다. framework
 handler가 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 반환하면 CAPI는
 그 완료 시점을 알 수 없다. 같은 Entry Spot의 다음 application callback을 handler 완료
-전까지 시작하지 않는 비재진입 gate는 각 언어 framework가 유지해야 한다.
+전까지 시작하지 않는 비재진입 gate는 각 언어 framework가 유지해야 한다. 또한 request
+continuation이나 worker completion처럼 framework가 자체 thread 또는 executor에서 만든
+callback은 native Spot dispatch cycle을 거치지 않을 수 있다. 이런 callback도 같은 Entry
+Spot 실행 줄로 되돌려야 하므로 framework serial executor는 CAPI dispatch 직렬화를
+대체하는 장치가 아니라 더 넓은 application callback 진입점을 한 줄로 모으는 장치다.
 
 ### 19.1 CAPI/core 후속 확인
 
@@ -929,8 +934,13 @@ handler가 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 �
   호출되지 않는지 확인한다.
 - Entry Spot과 user Spot 모두 같은 native Spot dispatch worker active guard를 거치는지
   테스트 이름과 문서에서 분명히 구분한다.
-- `spot_dispatch_worker_pool_t`의 `_active`, `_dirty`, `_queued` 규칙이 Spot handle 단위
-  직렬 dispatch 보장이라는 점을 internals 문서에 정리한다.
+- dispatch state의 `running`, `active_info_valid`, `rearm_keys` 규칙과
+  `spot_dispatch_worker_pool_t`의 `_active`, `_dirty`, `_queued` 규칙이 함께 native Spot
+  handle 단위의 동기 dispatch cycle 직렬성을 만든다는 점을 internals 문서에 정리한다.
+- 현재 CAPI dispatch handler는 동기 반환 계약이며 비동기 완료 신호가 없다. 따라서 같은
+  native Spot 안에서도 application handler의 비동기 완료까지 기다리는 gate를 core에
+  넣지 않는다. 그런 gate는 명시적인 async ack 또는 continuation C ABI 계약을 먼저
+  정의한 뒤에만 검토한다.
 - stale actor location, actor generation, pending admission id, actor epoch 같은 상태
   재검증에 필요한 CAPI snapshot이나 오류 코드를 별도 draft에서 검토한다.
 
@@ -939,7 +949,9 @@ handler가 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 �
 - 언어별 Entry Spot serial executor는 CAPI dispatch 직렬화를 대체하는 장치가 아니라,
   application handler 완료 시점까지 비재진입을 유지하는 gate임을 문서화한다.
 - C++ framework의 lifecycle callback 경로가 actor packet handler처럼 같은 Entry Spot
-  serial executor를 통과하는지 추가 audit와 regression test로 닫는다.
+  serial executor를 통과하는지 추가 audit와 regression test로 닫는다. 이 항목은 core의
+  lifecycle dispatch cycle 보장이 없다는 뜻이 아니라, C++ framework가 별도 경로에서
+  lifecycle callback을 직접 실행하지 않는지 확인하기 위한 항목이다.
 - timer callback, request continuation, worker completion은 CAPI callback stack에서 직접
   사용자 callback을 실행하지 않고 owning Spot 실행 줄로 post하는지 확인한다.
 - detached callback 경로는 현재 actor epoch, current Spot, session binding, pending
@@ -949,8 +961,9 @@ handler가 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 �
 
 - admission burst benchmark의 legacy 비교군이 CAPI/core의 native dispatch 보장을 뜻하지
   않도록 baseline 파일과 해석 노트를 유지한다.
-- Node와 C++의 legacy 비교군은 "Entry Spot application callback gate 적용 전"의 비교
-  값이다. 이 값은 CAPI가 같은 native Spot dispatch handler를 병렬 호출한다는 뜻이
-  아니다.
+- C++ legacy 비교군은 caller thread가 handler를 직접 진행하는 inline 비교값이고, Node
+  legacy 비교군은 actor별 mailbox가 서로 다른 actor packet을 동시에 진행하는 비교값이다.
+  둘 다 "Entry Spot application callback gate 적용 전"의 값이며, CAPI가 같은 native Spot
+  dispatch handler를 병렬 호출한다는 뜻이 아니다.
 - 직렬 실행 적용 뒤 throughput 하락은 plan §1의 핵심 결정에 따른 구조적 비용으로 본다.
   이후 perf gate는 직렬 실행 의미를 만족하는 patched baseline을 기준으로 비교한다.

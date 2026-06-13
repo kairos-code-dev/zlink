@@ -42,6 +42,12 @@ pub enum AutoHwmRecalcReason {
 ///
 /// The public type owns context lifetime. Native context handles and option
 /// marshalling stay inside the private runtime implementation.
+///
+/// `Context` is `Send` and `Sync`. It may be shared across threads, for example
+/// with [`std::sync::Arc`], and those threads may create sockets from the same
+/// context. The context is terminated when the last owning `Context` value is
+/// dropped, so callers must keep an owner alive while another thread is creating
+/// or using sockets.
 pub struct Context {
     pub(crate) inner: Box<dyn ContextStorage>,
 }

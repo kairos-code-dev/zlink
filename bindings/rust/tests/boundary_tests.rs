@@ -1,12 +1,16 @@
 //! Boundary Validation Tests – verify fail-fast behavior for
 //! routing-id length, duration overflow, null checks, etc.
 
+use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::Duration;
 
 use zlink::{
     AutoConnectType, ConfigResult, Context, Discovery, Message, RoutingId, SpotNode, SpotNodeMode,
     SpotNodeOptions,
 };
+
+fn assert_send_sync<T: Send + Sync>() {}
 
 #[test]
 fn routing_id_max_length_accepted() {
@@ -74,6 +78,35 @@ fn duration_max_accepted() {
     let sock = ctx.pair_socket().unwrap();
     let result = sock.common_options().set_linger(max_ok);
     assert!(result.is_ok(), "i32::MAX ms duration must be accepted");
+}
+
+#[test]
+fn context_is_send_sync_and_shared_socket_creation_is_safe() {
+    assert_send_sync::<Context>();
+
+    let ctx = Arc::new(Context::new().unwrap());
+    let barrier = Arc::new(Barrier::new(5));
+    let mut workers = Vec::new();
+
+    for index in 0..4 {
+        let ctx = Arc::clone(&ctx);
+        let barrier = Arc::clone(&barrier);
+        workers.push(thread::spawn(move || {
+            barrier.wait();
+            let sock = ctx.pair_socket().unwrap();
+            sock.common_options()
+                .set_linger(Duration::from_millis(0))
+                .unwrap();
+            let endpoint = format!("inproc://rust-context-thread-safety-{index}");
+            sock.bind(&endpoint).unwrap();
+        }));
+    }
+
+    barrier.wait();
+
+    for worker in workers {
+        worker.join().unwrap();
+    }
 }
 
 #[test]

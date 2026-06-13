@@ -24,6 +24,14 @@ bindings/rust/target/doc/zlink/index.html
 - Domain objects (`Message`, error types, enums)
 - FFI internals (`zlink::ffi`) are private and excluded
 
+## Context Thread Safety
+
+`Context` is `Send` and `Sync`. Applications may share it across threads, for
+example with `std::sync::Arc`, and those threads may create sockets from the
+same context. The context is terminated when the last owning `Context` value is
+dropped. Keep an owning reference alive while another thread is creating or
+using sockets.
+
 ## Monitor Contract Note
 
 - `*_READY_CHANGED` monitor events are readiness edge/state notifications.

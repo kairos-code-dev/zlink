@@ -904,3 +904,53 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure -R 'framework
 11. 각 언어의 unit, contract, sample smoke가 통과한다.
 12. Entry Spot 병목을 피하는 설계 권장 사항과 worker offload 사용 예제가 guide에 짧게
    반영된다.
+
+## 19. 추가 작업: CAPI/core dispatch 보장과 framework gate 분리
+
+구현 후 점검에서 CAPI/core와 언어별 framework가 서로 다른 층의 직렬화를 맡는다는
+점을 더 명확히 해야 한다는 문제가 남았다. 이 항목은 위 설계 결정을 바꾸기 위한
+작업이 아니라, 하위 CAPI 보장과 상위 application callback gate를 분리해서 검증하기
+위한 후속 작업이다.
+
+현재 core의 `spot_dispatch_worker_pool_t`는 native Spot handle 단위로 active 상태를
+관리한다. 같은 Spot이 이미 dispatch 중이면 새 worker가 같은 Spot의 dispatch cycle을
+동시에 실행하지 않고 dirty 상태로 표시한 뒤 다시 queue에 넣는다. 따라서 CAPI/core의
+책임은 같은 native Spot dispatch handler가 동시에 호출되지 않는다는 점을 공개 계약과
+테스트로 고정하는 데 있다.
+
+반면 언어별 framework의 책임은 CAPI callback 함수가 반환된 뒤에도 계속된다. framework
+handler가 `Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 반환하면 CAPI는
+그 완료 시점을 알 수 없다. 같은 Entry Spot의 다음 application callback을 handler 완료
+전까지 시작하지 않는 비재진입 gate는 각 언어 framework가 유지해야 한다.
+
+### 19.1 CAPI/core 후속 확인
+
+- CAPI contract test를 추가해 같은 native Spot에 대해 dispatch handler가 동시에 두 번
+  호출되지 않는지 확인한다.
+- Entry Spot과 user Spot 모두 같은 native Spot dispatch worker active guard를 거치는지
+  테스트 이름과 문서에서 분명히 구분한다.
+- `spot_dispatch_worker_pool_t`의 `_active`, `_dirty`, `_queued` 규칙이 Spot handle 단위
+  직렬 dispatch 보장이라는 점을 internals 문서에 정리한다.
+- stale actor location, actor generation, pending admission id, actor epoch 같은 상태
+  재검증에 필요한 CAPI snapshot이나 오류 코드를 별도 draft에서 검토한다.
+
+### 19.2 framework 후속 확인
+
+- 언어별 Entry Spot serial executor는 CAPI dispatch 직렬화를 대체하는 장치가 아니라,
+  application handler 완료 시점까지 비재진입을 유지하는 gate임을 문서화한다.
+- C++ framework의 lifecycle callback 경로가 actor packet handler처럼 같은 Entry Spot
+  serial executor를 통과하는지 추가 audit와 regression test로 닫는다.
+- timer callback, request continuation, worker completion은 CAPI callback stack에서 직접
+  사용자 callback을 실행하지 않고 owning Spot 실행 줄로 post하는지 확인한다.
+- detached callback 경로는 현재 actor epoch, current Spot, session binding, pending
+  admission id를 다시 확인해야 한다는 규칙을 각 언어 guide에 짧게 남긴다.
+
+### 19.3 perf 기록 보정
+
+- admission burst benchmark의 legacy 비교군이 CAPI/core의 native dispatch 보장을 뜻하지
+  않도록 baseline 파일과 해석 노트를 유지한다.
+- Node와 C++의 legacy 비교군은 "Entry Spot application callback gate 적용 전"의 비교
+  값이다. 이 값은 CAPI가 같은 native Spot dispatch handler를 병렬 호출한다는 뜻이
+  아니다.
+- 직렬 실행 적용 뒤 throughput 하락은 plan §1의 핵심 결정에 따른 구조적 비용으로 본다.
+  이후 perf gate는 직렬 실행 의미를 만족하는 patched baseline을 기준으로 비교한다.

@@ -17,3 +17,15 @@ round 3: wall=27.11ms throughput=368897/s p50=16.247ms p95=23.620ms p99=24.237ms
 round 4: wall=28.72ms throughput=348154/s p50=19.218ms p95=24.116ms p99=24.378ms
 round 5: wall=26.77ms throughput=373611/s p50=16.311ms p95=23.873ms p99=25.200ms
 median: wall=28.72ms throughput=348154/s p50=19.218ms p95=24.116ms p99=25.200ms
+
+# 판정 노트 (plan §18 #8 escape clause):
+# - throughput: legacy-mailbox 976,313/s -> unified-serial 348,154/s (-64.3%).
+# - p95: legacy-mailbox 8.586ms -> unified-serial 24.116ms.
+# - legacy-mailbox는 actor별 mailbox가 서로 다른 actor packet을 동시에 진행하는 비교군이다.
+#   unified-serial은 모든 Entry Spot application callback을 하나의 serial executor로 통과시킨다.
+# - Node.js의 benchmark는 단일 event loop 안에서 Promise와 serial executor turn을 통해
+#   10,000 packet을 처리한다. 직렬화 뒤 per-packet latency에는 큐 체류시간이 포함되고,
+#   throughput은 단일 Entry Spot 실행 줄의 drain 속도를 측정한다.
+# - 이 차이는 plan §1의 핵심 결정인 "Entry Spot application callback은 일반 Spot처럼
+#   직렬 실행한다"를 적용한 구조적 비용이다. 이전 동작 대비 -10% throughput gate로
+#   판정하지 않고, 직렬 실행 의미를 만족하는 상태에서 future baseline으로 사용한다.

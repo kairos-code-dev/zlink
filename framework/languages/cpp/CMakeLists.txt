@@ -773,6 +773,13 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_http_perf_gate PROPERTIES
     LABELS "framework-http-perf;framework-regression;http"
     TIMEOUT 30)
+  add_executable(perf_cpp_framework_entry_spot_admission_burst
+    tests/Zlink.Framework.PerfTests/entry_spot_admission_burst.cpp)
+  target_link_libraries(perf_cpp_framework_entry_spot_admission_burst PRIVATE
+    zlink::framework
+    Threads::Threads)
+  target_include_directories(perf_cpp_framework_entry_spot_admission_burst PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   set_tests_properties(
     test_cpp_framework_app_host
     test_cpp_framework_http_integration

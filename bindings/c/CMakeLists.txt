@@ -128,6 +128,7 @@ if(ZLINK_C_BUILD_TESTS)
   endfunction()
 
   zlink_c_add_contract_test(test_c_contract_surface)
+  zlink_c_add_contract_test(test_c_common_header_version)
   zlink_c_add_contract_test(test_c_message_lifecycle)
   zlink_c_add_contract_test(test_c_option_error_contract)
   zlink_c_add_contract_test(test_c_behavior_contract)

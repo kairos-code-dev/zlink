@@ -19,6 +19,7 @@ cmake -S "${C_DIR}" -B "${BUILD_DIR}" \
 
 TEST_TARGETS=(
   test_c_contract_surface
+  test_c_common_header_version
   test_c_message_lifecycle
   test_c_option_error_contract
   test_c_behavior_contract

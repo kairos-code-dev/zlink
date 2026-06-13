@@ -51,7 +51,7 @@
 ### 바인딩 라이브러리 (언어별)
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
-| C | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | Low (버전 매크로 불일치) |
+| C | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | 추가 보안 수정 없음 (버전 매크로 불일치 수정 완료) |
 | C++ | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 추가 수정 없음 |
 | .NET | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계 문서화, 메시지 크기 변환 정책 수정 완료) |
 | Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 추가 보안 수정 없음 (`Message.Data()` slice 수명 규칙 문서화와 회귀 테스트 추가 완료) |

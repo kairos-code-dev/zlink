@@ -1813,8 +1813,9 @@ shutdown drain은 runtime에 둔다.
   직접 주입한다. 실제 SPOT dispatch pump에서 binding `spot_dispatch_event_t::timer_readable`
   이벤트를 받아 `recv()`를 호출하는 배선은 이후 SPOT/native dispatch 통합을 더 깊게 만들 때
   같은 runtime owner 안에서 붙인다. public API에는 변경이 필요 없다.
-- Entry Spot timer의 전역 직렬화 금지는 public 계약과 runtime reentry guard 수준에서 먼저
-  닫았다. 실제 Entry Spot executor 분리는 actor/stream relay goal에서 확장한다.
+- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
+  같은 Entry Spot 실행 줄에서 처리한다. 실제 Entry Spot executor 배선은 actor/stream
+  relay goal에서 확장한다.
 
 ### 재실행한 검증 명령
 

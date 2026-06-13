@@ -252,4 +252,5 @@ connector가 붙는 흐름을 포함한다. STREAM과 ActorGateway 기반 actor/
 - STREAM session에서 actor로 넘기는 요청은 route mesh channel이 아니라
   ActorGateway attach + logical actor handle을 사용한다.
 - user Spot timer는 같은 core SPOT dispatch boundary에서 순서 정책을 따르고, Entry
-  Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
+  Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
+  같은 Entry Spot 실행 줄에서 처리한다.

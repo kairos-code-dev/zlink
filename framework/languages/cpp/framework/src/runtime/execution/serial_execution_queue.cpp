@@ -29,6 +29,16 @@ bool serial_execution_queue_t::try_post (std::string name, std::function<void ()
     if (!work) {
         throw std::invalid_argument ("serial execution queue work is empty");
     }
+    return try_post_async (std::move (name), [work = std::move (work)] (auto complete) mutable {
+        complete (std::move (work));
+    });
+}
+
+bool serial_execution_queue_t::try_post_async (std::string name, async_work_t work)
+{
+    if (!work) {
+        throw std::invalid_argument ("serial execution queue work is empty");
+    }
     std::lock_guard<std::mutex> lock (_mutex);
     if (_closed || _queue.size () + _active >= _capacity) {
         return false;
@@ -41,6 +51,13 @@ bool serial_execution_queue_t::try_post (std::string name, std::function<void ()
 void serial_execution_queue_t::post (std::string name, std::function<void ()> work)
 {
     if (!try_post (std::move (name), std::move (work))) {
+        throw std::runtime_error ("serial execution queue is full or closed");
+    }
+}
+
+void serial_execution_queue_t::post_async (std::string name, async_work_t work)
+{
+    if (!try_post_async (std::move (name), std::move (work))) {
         throw std::runtime_error ("serial execution queue is full or closed");
     }
 }
@@ -108,25 +125,52 @@ void serial_execution_queue_t::drain_loop ()
             ++_active;
         }
 
+        auto name = item.name;
         try {
-            item.work ();
+            item.work ([this, name] (std::function<void ()> completion) mutable {
+                _executor.submit (
+                  [this, name = std::move (name),
+                   completion = std::move (completion)] () mutable {
+                      complete_one (std::move (name), std::move (completion));
+                  });
+            });
         }
         catch (...) {
-            if (_error_handler) {
-                _error_handler (item.name, std::current_exception ());
-            }
+            auto error = std::current_exception ();
+            item.work = {};
+            _executor.submit ([this, name = std::move (name), error] () mutable {
+                if (_error_handler) {
+                    _error_handler (name, error);
+                }
+                complete_one (std::move (name), [] {});
+            });
         }
-        complete_one ();
+        return;
     }
 }
 
-void serial_execution_queue_t::complete_one ()
+void serial_execution_queue_t::complete_one (std::string name, std::function<void ()> completion)
 {
-    std::lock_guard<std::mutex> lock (_mutex);
-    --_active;
-    if (_queue.empty () && _active == 0) {
+    try {
+        if (completion) {
+            completion ();
+        }
+    }
+    catch (...) {
+        if (_error_handler) {
+            _error_handler (name, std::current_exception ());
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (_mutex);
+        --_active;
         _draining = false;
-        _empty.notify_all ();
+        if (!_queue.empty ()) {
+            schedule_drain_locked ();
+        } else if (_queue.empty () && _active == 0) {
+            _empty.notify_all ();
+        }
     }
 }
 

@@ -29,6 +29,9 @@ enum class framework_error_kind_t
     request_protocol_error,
     request_failed,
     timeout,
+    worker_queue_full,
+    worker_timeout,
+    worker_failed,
     shutdown,
     disconnected,
     closed

@@ -13,8 +13,8 @@ spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상
 | | `spot_t` (room spot) | `entry_spot_t` (entry spot) |
 |--|--|--|
 | 개수 | 상태 단위마다 1개 | 노드당 1개 |
-| 직렬화 | **모든 요청** — actor 패킷·timer·join/leave가 단일 큐 | **actor별** — 같은 actor의 요청만 순서 보장, 다른 actor 요청은 동시 실행 가능 |
-| 공유 상태 접근 | 락 없이 안전 | **자체 동기화 필요** (actor 간 동시 접근 가능) |
+| 직렬화 | **모든 요청** — actor 패킷·timer·join/leave가 단일 큐 | **모든 callback** — actor 패킷·timer·join/leave가 Entry Spot 단일 큐 |
+| 공유 상태 접근 | 락 없이 안전 | Entry Spot 큐 안에서 락 없이 안전 |
 | 역할 | 도메인 상태 소유·처리 | 배정·매칭·할당 |
 
 ## 1.1 room spot 직렬화 — 큐 하나, 한 번에 하나
@@ -82,6 +82,19 @@ sequenceDiagram
 핸들러를 비동기로 쓰면서도 동기식 코드처럼 위에서 아래로 작성할 수 있는 이유는
 [3장 §5](./03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
 절대 겹치지 않는다"는 직렬성 보장을 더한 것이다.
+
+짧고 빠른 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `run_worker(...)`를
+사용한다. worker 함수는 Spot 상태를 직접 만지지 않고, 완료 뒤 `co_await` 지점에서
+다시 같은 Spot 실행 큐로 돌아와 상태를 갱신한다.
+
+```cpp
+auto score = co_await context
+  .run_worker ([snapshot] { return calculate_score (snapshot); })
+  .async ();
+if (score) {
+    current_score = score.value ();
+}
+```
 
 ## 2. 노드 선언
 
@@ -172,9 +185,10 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 entry spot은 룸에 들어가기 **전** 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
 `entry_spot_t`를 상속하며 **노드당 1개**만 생성된다.
 
-**실행 모델이 room spot과 다르다.** entry spot의 actor 패킷은 **actor별 순서만
-보장**한다 — 같은 actor의 연속 요청은 순서대로 처리되지만, 서로 다른 actor의 요청은
-**동시에 실행될 수 있다.** 따라서 entry spot 안의 공유 상태는 직접 동기화해야 한다.
+entry spot의 actor 패킷도 Entry Spot 실행 큐에서 직렬로 처리된다. 같은 actor의
+연속 요청 순서는 actor mailbox가 먼저 보존하고, 실제 application handler 실행은
+Entry Spot 실행 줄에서 한 번에 하나씩 진행된다. 따라서 entry spot 안의 admission
+상태는 handler 안에서 별도 lock 없이 갱신할 수 있다.
 
 ```cpp
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
@@ -189,11 +203,11 @@ class bingo_entry_spot_t : public zlink::framework::entry_spot_t
                                    zlink::framework::spot_actor_request_context_t &,
                                    const match_bingo_req_t &request)
     {
-        const auto room_id = rooms.allocate (request.mode);  // rooms는 내부적으로 thread-safe해야 함
+        const auto room_id = rooms.allocate (request.mode);
         return {room_id, rooms.get (room_id).snapshot ()};
     }
 
-    bingo_room_allocator_t rooms;   // 다른 actor 요청과 동시 접근 가능 → 자체 동기화 필요
+    bingo_room_allocator_t rooms;
 };
 ```
 
@@ -203,8 +217,8 @@ room spot(`spot_t`)과의 차이:
 |--|--|--|
 | 개수 | 노드당 1개 | 상태 단위마다 1개 |
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
-| 직렬화 범위 | **actor별** — 같은 actor 요청만 순서 보장 | **전체** — 모든 요청(actor 무관)이 단일 큐 |
-| 공유 상태 접근 | **자체 동기화 필요** | 락 없이 안전 |
+| 직렬화 범위 | **전체** — 모든 Entry Spot callback이 단일 큐 | **전체** — 모든 요청(actor 무관)이 단일 큐 |
+| 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전 | 락 없이 안전 |
 | actor join | `onJoinActor` / `onLeaveActor` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
 
 ## 5. Timer

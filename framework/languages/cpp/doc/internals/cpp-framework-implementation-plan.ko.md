@@ -755,8 +755,9 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot
 - 사용자는 native timer handle, poller slot, timer recv 순서를 직접 다루지 않는다.
 - user Spot timer는 같은 Spot의 packet/subscription/channel reply와 같은 CAPI SPOT dispatch
   event 후 recv 순서 정책을 따른다.
-- Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
-- 별도 실행 직렬화 queue를 추가하지 않는다.
+- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
+  같은 Entry Spot 실행 줄에서 처리한다.
+- Entry Spot application callback 직렬 실행 queue를 Spot runtime 안에서 소유한다.
 - timer failure event는 snapshot interval을 기다리지 않고 발생한다.
 
 검증:

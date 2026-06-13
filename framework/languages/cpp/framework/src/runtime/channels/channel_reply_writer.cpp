@@ -27,6 +27,12 @@ std::string error_code_name (framework_error_kind_t kind)
             return "request_protocol_error";
         case framework_error_kind_t::timeout:
             return "timeout";
+        case framework_error_kind_t::worker_queue_full:
+            return "worker_queue_full";
+        case framework_error_kind_t::worker_timeout:
+            return "worker_timeout";
+        case framework_error_kind_t::worker_failed:
+            return "worker_failed";
         case framework_error_kind_t::shutdown:
             return "shutdown";
         case framework_error_kind_t::disconnected:

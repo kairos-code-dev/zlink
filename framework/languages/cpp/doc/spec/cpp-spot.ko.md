@@ -169,7 +169,8 @@ public:
 
 - user Spot timer는 같은 user Spot의 packet, actor packet, subscription과 같은 CAPI
   SPOT dispatch event 후 recv 경계에서 순서 정책을 따른다.
-- Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다.
+- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
+  같은 Entry Spot 실행 줄에서 처리한다.
 - 같은 timer instance는 callback을 겹쳐 실행하지 않는다.
 - `skip_late_ticks`, `catch_up_bounded`, `delay_next_tick` 정책을 제공한다.
 - `fire_count` 누적값으로 missed tick을 계산하고 `skipped_ticks`와 `scheduled_index`에
@@ -190,7 +191,7 @@ Entry Spot과 user Spot의 actor packet 등록 표면은 같아도 실행 위치
 | Entry Spot actor packet | core actor ordering |
 | user Spot actor packet | CAPI SPOT dispatch event 후 recv 경계 |
 | user Spot packet / timer / subscription | CAPI SPOT dispatch event 후 recv 경계 |
-| Entry Spot timer | Entry Spot 전체 전역 직렬화 경계에 묶지 않음 |
+| Entry Spot timer | Entry Spot 실행 queue |
 
 user Spot join admission은 registry handler가 아니라 Spot member callback이다. callback은
 `on_actor_join(actor, message_t)` 형태이며, `spot_actor_join_response_t`로 accepted 여부와
@@ -274,8 +275,8 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
 - user Spot create/destroy, join/leave, actor join/left handler가 순서대로 호출된다.
 - 같은 user Spot 안의 packet, actor packet, subscription, timer callback은 CAPI SPOT
   dispatch event 후 recv 경계 기준 ordering을 따른다.
-- Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않고 같은 timer instance의 재진입만
-  막는다.
+- Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
+  같은 Entry Spot 실행 줄에서 처리하고, 같은 timer instance의 재진입도 막는다.
 - `publish(...)`, `request_to(...)`, actor packet handler가 typed DTO와 serializer registry를
   사용한다.
 - Spot remote address lookup은 Registry/discovery 결과를 사용하고 stale address를 계속

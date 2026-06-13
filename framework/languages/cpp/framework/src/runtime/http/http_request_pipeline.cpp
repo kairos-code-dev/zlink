@@ -512,6 +512,12 @@ const char *error_kind_name (framework_error_kind_t kind) noexcept
             return "request_protocol_error";
         case framework_error_kind_t::timeout:
             return "timeout";
+        case framework_error_kind_t::worker_queue_full:
+            return "worker_queue_full";
+        case framework_error_kind_t::worker_timeout:
+            return "worker_timeout";
+        case framework_error_kind_t::worker_failed:
+            return "worker_failed";
         case framework_error_kind_t::shutdown:
             return "shutdown";
         case framework_error_kind_t::request_failed:
@@ -530,7 +536,10 @@ http::status status_for_error (framework_error_kind_t kind) noexcept
         case framework_error_kind_t::request_target_not_found:
             return http::status::not_found;
         case framework_error_kind_t::timeout:
+        case framework_error_kind_t::worker_timeout:
             return http::status::gateway_timeout;
+        case framework_error_kind_t::worker_queue_full:
+            return http::status::too_many_requests;
         case framework_error_kind_t::shutdown:
             return http::status::service_unavailable;
         default:

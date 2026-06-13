@@ -239,8 +239,8 @@ class entry_spot_t : public zlink::framework::entry_spot_t
 | 기반 | 독립 클래스 | `entry_spot_t` 상속 | `spot_t` 상속 |
 | 수명 | transient (요청마다) | 노드와 동일 (영속) | 상태 단위와 동일 (영속) |
 | 개수 | 요청마다 새 인스턴스 | 노드당 1개 | 상태 단위마다 1개 |
-| 실행 | 동시 (worker 풀) | **actor별 직렬** — 다른 actor 간 동시 가능 | **전체 직렬** — 단일 큐, 모든 요청 순서 보장 |
-| 공유 상태 | 핸들러에 두지 않음 | **자체 동기화 필요** | 락 없이 안전 |
+| 실행 | 동시 (worker 풀) | **전체 직렬** — Entry Spot 단일 큐, 모든 callback 순서 보장 | **전체 직렬** — 단일 큐, 모든 요청 순서 보장 |
+| 공유 상태 | 핸들러에 두지 않음 | Entry Spot 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
 | 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
 | DI | `dependency_types` + 생성자 주입 | 없음 — `attach_channel_client`로 채널 연결 | 없음 — `attach_channel_client`로 채널 연결 |
@@ -273,10 +273,11 @@ handle (const create_game_http_req_t &request)
 
 ### 왜 co_await인가 — 스레드는 기다리지 않는다
 
-코루틴 핸들러는 **worker 풀**(기본 = CPU 코어 수,
-`options.handler_coroutine_workers(n)`으로 조정)에서 실행된다. 핸들러가
-`co_await`에 도달하면 코루틴만 멈추고(suspend), **worker 스레드는 풀로 돌아가
-다른 핸들러를 실행**한다. 응답이 도착하면 코루틴이 그 지점부터 재개(resume)된다.
+채널·HTTP 핸들러는 **worker 풀**(기본 = CPU 코어 수,
+`options.handler_coroutine_workers(n)`으로 조정)에서 실행된다. Spot과 Entry Spot
+application callback은 각 Spot의 직렬 실행 큐에서 시작한다. 핸들러가 `co_await`에
+도달하면 코루틴만 멈추고(suspend), 실행 스레드는 다른 큐 항목을 처리할 수 있다. 다만
+같은 Spot 큐는 그 handler 완료 전까지 다음 callback을 시작하지 않는다.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%

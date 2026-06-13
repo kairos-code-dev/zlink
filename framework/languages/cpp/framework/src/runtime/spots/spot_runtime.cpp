@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <memory>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 namespace zlink::framework
@@ -30,10 +32,9 @@ bool is_blank (const std::string &value)
 class spot_worker_scheduler_t final : public detail::worker_scheduler_t
 {
   public:
-    explicit spot_worker_scheduler_t (std::shared_ptr<runtime::offload_executor_t> workers) :
-        _workers (std::move (workers)),
-        _owner_executor (std::make_shared<runtime::offload_executor_t> (1)),
-        _owner_queue (std::make_shared<runtime::serial_execution_queue_t> (*_owner_executor))
+    spot_worker_scheduler_t (std::shared_ptr<runtime::offload_executor_t> workers,
+                             std::weak_ptr<detail::spot_context_state_t> owner) :
+        _workers (std::move (workers)), _owner (std::move (owner))
     {
     }
 
@@ -44,29 +45,76 @@ class spot_worker_scheduler_t final : public detail::worker_scheduler_t
 
     void post_owner (std::function<void ()> work) override
     {
-        if (_owner_queue) {
-            (void) _owner_queue->try_post ("worker-completion", std::move (work));
+        if (auto owner = _owner.lock ()) {
+            (void) owner->try_post_serial ("worker-completion", std::move (work));
         }
     }
 
   private:
     std::shared_ptr<runtime::offload_executor_t> _workers;
-    std::shared_ptr<runtime::offload_executor_t> _owner_executor;
-    std::shared_ptr<runtime::serial_execution_queue_t> _owner_queue;
+    std::weak_ptr<detail::spot_context_state_t> _owner;
 };
 
 std::shared_ptr<runtime::offload_executor_t> framework_worker_executor ()
 {
-    static auto executor = std::make_shared<runtime::offload_executor_t> (2, 1024);
+    const auto hardware_workers =
+      static_cast<std::size_t> (std::max (1u, std::thread::hardware_concurrency ()));
+    static auto executor = std::make_shared<runtime::offload_executor_t> (
+      0, hardware_workers * 2, 1024, std::chrono::seconds (30));
     return executor;
 }
 
-std::shared_ptr<detail::worker_scheduler_t> make_spot_worker_scheduler ()
+std::shared_ptr<detail::worker_scheduler_t>
+make_spot_worker_scheduler (const std::shared_ptr<detail::spot_context_state_t> &owner)
 {
-    return std::make_shared<spot_worker_scheduler_t> (framework_worker_executor ());
+    return std::make_shared<spot_worker_scheduler_t> (framework_worker_executor (), owner);
+}
+
+void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_t> &state)
+{
+    state->serial_executor = std::make_shared<runtime::offload_executor_t> (1);
+    state->serial_queue =
+      std::make_shared<runtime::serial_execution_queue_t> (*state->serial_executor);
+    state->worker_scheduler = make_spot_worker_scheduler (state);
 }
 
 } // namespace
+
+namespace detail
+{
+
+bool spot_context_state_t::try_post_serial (std::string name, std::function<void ()> work)
+{
+    if (!serial_queue) {
+        work ();
+        return true;
+    }
+    return serial_queue->try_post (std::move (name), std::move (work));
+}
+
+bool spot_context_state_t::try_post_serial_async (
+  std::string name,
+  runtime::serial_execution_queue_t::async_work_t work)
+{
+    if (!serial_queue) {
+        work ([] (std::function<void ()> completion) {
+            if (completion) {
+                completion ();
+            }
+        });
+        return true;
+    }
+    return serial_queue->try_post_async (std::move (name), std::move (work));
+}
+
+void spot_context_state_t::drain_serial ()
+{
+    if (serial_queue) {
+        serial_queue->drain ();
+    }
+}
+
+} // namespace detail
 
 node_rid_t::node_rid_t (std::string value) : _value (std::move (value))
 {
@@ -461,36 +509,65 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             && descriptor.topic == topic && descriptor.actor_type == actor_type) {
             auto owned_message = message;
             const auto handler_index = index;
-            return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
-              [this, handler_index, spot, actor, &services, &serializers,
-               owned_message = std::move (owned_message),
-               metadata =
-                 std::move (metadata)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
-                  _state->enter_callback ();
+            detail::task_completion_source_t<zlink::message_t> completion;
+            auto task = completion.task ();
+            auto state = _state;
+            const auto posted = state->try_post_serial_async (
+              "spot-handler",
+              [state, handler_index, spot, actor, &services, &serializers,
+               owned_message = std::move (owned_message), metadata = std::move (metadata),
+               completion] (auto complete) mutable {
+                  state->enter_callback ();
                   try {
-                      auto handler_task = _state->handler_invokers[handler_index](
+                      auto handler_task = state->handler_invokers[handler_index](
                         spot, actor, services, serializers, owned_message, metadata);
-                      auto result = result_t<zlink::message_t>::success (
-                        (co_await runtime::await_task_result (std::move (handler_task))).value ());
-                      _state->leave_callback ();
-                      co_return result;
+                      detail::observe_task_completion (
+                        handler_task,
+                        [state, completion, complete] (const result_t<zlink::message_t> &result) mutable {
+                            complete ([state, completion, result] () mutable {
+                                state->leave_callback ();
+                                if (result) {
+                                    completion.complete (
+                                      result_t<zlink::message_t>::success (result.value ()));
+                                    return;
+                                }
+                                const auto *error = result.error ();
+                                completion.complete (result_t<zlink::message_t>::failure (
+                                  result.error_kind (),
+                                  error != nullptr ? error->what () : "spot handler failed",
+                                  error != nullptr && error->is_retriable ()));
+                            });
+                        });
                   }
                   catch (const framework_exception_t &error) {
-                      _state->leave_callback ();
-                      co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
-                                                                     error.is_retriable ());
+                      complete ([state, completion, error] () mutable {
+                          state->leave_callback ();
+                          completion.complete (result_t<zlink::message_t>::failure (
+                            error.kind (), error.what (), error.is_retriable ()));
+                      });
                   }
                   catch (const std::exception &error) {
-                      _state->leave_callback ();
-                      co_return result_t<zlink::message_t>::failure (
-                        framework_error_kind_t::request_failed, error.what ());
+                      const auto message = std::string (error.what ());
+                      complete ([state, completion, message = std::move (message)] () mutable {
+                          state->leave_callback ();
+                          completion.complete (result_t<zlink::message_t>::failure (
+                            framework_error_kind_t::request_failed, std::move (message)));
+                      });
                   }
                   catch (...) {
-                      _state->leave_callback ();
-                      co_return result_t<zlink::message_t>::failure (
-                        framework_error_kind_t::request_failed, "spot handler threw an exception");
+                      complete ([state, completion] () mutable {
+                          state->leave_callback ();
+                          completion.complete (result_t<zlink::message_t>::failure (
+                            framework_error_kind_t::request_failed,
+                            "spot handler threw an exception"));
+                      });
                   }
               });
+            if (!posted) {
+                return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+                  framework_error_kind_t::request_rejected, "spot serial queue is full"));
+            }
+            return task;
         }
     }
     std::ostringstream error_message;
@@ -992,7 +1069,7 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
     context_state->spot_rid = rid;
     context_state->spot_name = spot_name;
     context_state->lifecycle = lifecycle;
-    context_state->worker_scheduler = make_spot_worker_scheduler ();
+    configure_spot_execution (context_state);
     spot_context_t context (context_state);
     entry_spot_context_t entry_context (context_state);
     std::optional<zlink::message_t> create_reply;
@@ -1059,7 +1136,7 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
     context_state->spot_rid = spot_rid;
     context_state->spot_name = spot_name;
     context_state->lifecycle = lifecycle;
-    context_state->worker_scheduler = make_spot_worker_scheduler ();
+    configure_spot_execution (context_state);
     spot_context_t context (context_state);
     entry_spot_context_t entry_context (context_state);
     std::optional<zlink::message_t> create_reply;

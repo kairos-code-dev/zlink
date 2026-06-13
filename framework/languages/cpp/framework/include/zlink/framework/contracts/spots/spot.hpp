@@ -14,6 +14,7 @@
 #include <zlink/framework/contracts/workers/worker.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <functional>
@@ -23,6 +24,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <tuple>
 #include <typeindex>
 #include <type_traits>
@@ -431,17 +433,36 @@ class spot_context_t
               detail::task_completion_source_t<result_type> completion;
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
+              auto completed = std::make_shared<std::atomic_bool> (false);
+              if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
+                  auto timeout_scheduler = scheduler;
+                  auto timeout_completion = completion;
+                  auto timeout_completed = completed;
+                  std::thread ([timeout_scheduler, timeout_completion, timeout_completed,
+                                timeout = *timeout] () mutable {
+                      std::this_thread::sleep_for (timeout);
+                      if (!timeout_completed->exchange (true)) {
+                          timeout_scheduler->post_owner ([timeout_completion] () mutable {
+                              timeout_completion.complete (result_t<result_type>::failure (
+                                framework_error_kind_t::worker_timeout, "worker task timed out"));
+                          });
+                      }
+                  }).detach ();
+              }
               const auto scheduled =
-                scheduler->try_schedule ([scheduler, shared_work, completion] () mutable {
+                scheduler->try_schedule ([scheduler, shared_work, completion, completed] () mutable {
                     auto result = detail::run_worker_body<result_type> (*shared_work);
-                    scheduler->post_owner ([completion, result = std::move (result)] () mutable {
-                        completion.complete (std::move (result));
-                    });
+                    if (!completed->exchange (true)) {
+                        scheduler->post_owner ([completion, result = std::move (result)] () mutable {
+                            completion.complete (std::move (result));
+                        });
+                    }
                 });
               if (!scheduled) {
+                  completed->store (true);
                   scheduler->post_owner ([completion] () mutable {
                       completion.complete (result_t<result_type>::failure (
-                        framework_error_kind_t::request_failed, "worker queue is full"));
+                        framework_error_kind_t::worker_queue_full, "worker queue is full"));
                   });
               }
               return task;

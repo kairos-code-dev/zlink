@@ -41,10 +41,10 @@ template <typename TResult, typename TWork> result_t<TResult> run_worker_body (T
         return result_t<TResult>::failure (error.kind (), error.what (), error.is_retriable ());
     }
     catch (const std::exception &error) {
-        return result_t<TResult>::failure (framework_error_kind_t::request_failed, error.what ());
+        return result_t<TResult>::failure (framework_error_kind_t::worker_failed, error.what ());
     }
     catch (...) {
-        return result_t<TResult>::failure (framework_error_kind_t::request_failed,
+        return result_t<TResult>::failure (framework_error_kind_t::worker_failed,
                                            "worker task threw an exception");
     }
 }

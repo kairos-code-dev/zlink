@@ -5,16 +5,30 @@
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 namespace
 {
+
+class test_spot_context_t : public zlink::framework::spot_context_t
+{
+  public:
+    explicit test_spot_context_t (
+      std::shared_ptr<zlink::framework::detail::spot_context_state_t> state) :
+        zlink::framework::spot_context_t (std::move (state))
+    {
+    }
+};
 
 struct player_actor_factory_t
 {
@@ -206,6 +220,61 @@ struct stage_spot_t : public zlink::framework::spot_t
     static inline int global_closing_count = 0;
     static inline bool reject_create = false;
     static inline std::string last_create_request;
+};
+
+struct serial_probe_spot_t : public zlink::framework::spot_t
+{
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        context.handlers ().add_actor_packet<&serial_probe_spot_t::on_move> ("serial.move");
+    }
+
+    void on_move (player_actor_factory_t &,
+                  zlink::framework::spot_actor_send_context_t &,
+                  const move_request_t &)
+    {
+        std::unique_lock lock (mutex);
+        ++running;
+        if (running > max_running) {
+            max_running = running;
+        }
+        ++starts;
+        if (starts == 1) {
+            first_started = true;
+            changed.notify_all ();
+            changed.wait (lock, [this] { return release_first; });
+        }
+        --running;
+        changed.notify_all ();
+    }
+
+    bool wait_first_started ()
+    {
+        std::unique_lock lock (mutex);
+        return changed.wait_for (lock, std::chrono::milliseconds (500),
+                                 [this] { return first_started; });
+    }
+
+    int starts_seen () const
+    {
+        std::lock_guard lock (mutex);
+        return starts;
+    }
+
+    void release ()
+    {
+        std::lock_guard lock (mutex);
+        release_first = true;
+        changed.notify_all ();
+    }
+
+    mutable std::mutex mutex;
+    std::condition_variable changed;
+    bool first_started = false;
+    bool release_first = false;
+    int running = 0;
+    int max_running = 0;
+    int starts = 0;
 };
 
 struct stage_wrapper_t
@@ -981,6 +1050,45 @@ int main ()
     if (!metadata_dispatch || actor.moved_value != 56 || stage_spot.last_trace_id != "trace-1"
         || stage_spot.saw_tenant_id) {
         return 40;
+    }
+
+    auto serial_state = std::make_shared<zlink::framework::detail::spot_context_state_t> ();
+    serial_state->serial_executor =
+      std::make_shared<zlink::framework::runtime::offload_executor_t> (1);
+    serial_state->serial_queue =
+      std::make_shared<zlink::framework::runtime::serial_execution_queue_t> (
+        *serial_state->serial_executor);
+    auto serial_context = test_spot_context_t (serial_state);
+    serial_probe_spot_t serial_spot;
+    serial_spot.configure (serial_context);
+    player_actor_factory_t serial_actor;
+    auto invoke_serial = [&] {
+        return serial_context.handlers ().invoke_actor_packet (
+          "serial.move", serial_spot, serial_actor, spot_provider, spot_serializers,
+          zlink::message_t::from (std::string ("1")));
+    };
+    std::optional<zlink::framework::result_t<zlink::message_t>> first_result;
+    std::optional<zlink::framework::result_t<zlink::message_t>> second_result;
+    std::thread first ([&] { first_result = invoke_serial (); });
+    if (!serial_spot.wait_first_started ()) {
+        serial_spot.release ();
+        first.join ();
+        return 49;
+    }
+    std::thread second ([&] { second_result = invoke_serial (); });
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    if (serial_spot.starts_seen () != 1) {
+        serial_spot.release ();
+        first.join ();
+        second.join ();
+        return 50;
+    }
+    serial_spot.release ();
+    first.join ();
+    second.join ();
+    if (!first_result || !*first_result || !second_result || !*second_result
+        || serial_spot.max_running != 1 || serial_spot.starts_seen () != 2) {
+        return 51;
     }
 
     stage_spot.onLeaveActor (actor);

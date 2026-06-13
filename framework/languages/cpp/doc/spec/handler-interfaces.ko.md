@@ -203,8 +203,9 @@ client.connect(endpoint); })`처럼 attach 설정 안에서 지정한다.
 
 SPOT timer는 CAPI timer 등록을 감싼 framework timer handle과 `timer_tick_t` metadata로
 설명한다. user Spot timer는 CAPI SPOT dispatch event 후 recv 경계에서 순서 정책을 따르고,
-Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다. C++ framework는 CAPI timer를
-사용하므로 timer callback 실행 직렬화를 위한 별도 queue나 자체 timer scheduler를 만들지 않는다.
+Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과 같은
+Entry Spot 실행 줄에서 처리한다. C++ framework는 CAPI timer를 감싸되 application callback
+실행 순서는 Spot runtime의 직렬 실행 큐가 정한다.
 
 Session actor relay는 application route mesh channel을 쓰지 않는다. STREAM session은
 `attach_actor_gateway(...)`로 local SpotNode에 붙고, packet relay는

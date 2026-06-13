@@ -6,9 +6,12 @@
 
 #include <zlink/framework/contracts/spots/spot.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <stdexcept>
 #include <string>
@@ -26,27 +29,53 @@ class controlled_worker_scheduler_t final : public zlink::framework::detail::wor
         if (queue_full) {
             return false;
         }
+        std::lock_guard lock (mutex);
         worker_jobs.push (std::move (work));
         return true;
     }
 
-    void post_owner (std::function<void ()> work) override { owner_jobs.push (std::move (work)); }
+    void post_owner (std::function<void ()> work) override
+    {
+        std::lock_guard lock (mutex);
+        owner_jobs.push (std::move (work));
+    }
 
     void run_worker_job ()
     {
-        auto job = std::move (worker_jobs.front ());
-        worker_jobs.pop ();
+        std::function<void ()> job;
+        {
+            std::lock_guard lock (mutex);
+            job = std::move (worker_jobs.front ());
+            worker_jobs.pop ();
+        }
         job ();
     }
 
     void run_owner_job ()
     {
-        auto job = std::move (owner_jobs.front ());
-        owner_jobs.pop ();
+        std::function<void ()> job;
+        {
+            std::lock_guard lock (mutex);
+            job = std::move (owner_jobs.front ());
+            owner_jobs.pop ();
+        }
         job ();
     }
 
+    std::size_t worker_job_count () const
+    {
+        std::lock_guard lock (mutex);
+        return worker_jobs.size ();
+    }
+
+    std::size_t owner_job_count () const
+    {
+        std::lock_guard lock (mutex);
+        return owner_jobs.size ();
+    }
+
     bool queue_full = false;
+    mutable std::mutex mutex;
     std::queue<std::function<void ()>> worker_jobs;
     std::queue<std::function<void ()>> owner_jobs;
 };
@@ -180,11 +209,11 @@ int main ()
         }
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     });
-    if (scheduler->worker_jobs.size () != 1 || !scheduler->owner_jobs.empty ()) {
+    if (scheduler->worker_job_count () != 1 || scheduler->owner_job_count () != 0) {
         return 10;
     }
     scheduler->run_worker_job ();
-    if (owner_thread != std::thread::id{} || scheduler->owner_jobs.size () != 1) {
+    if (owner_thread != std::thread::id{} || scheduler->owner_job_count () != 1) {
         return 11;
     }
     scheduler->run_owner_job ();
@@ -208,13 +237,14 @@ int main ()
     auto full_context = context_with_scheduler (full_scheduler);
     auto full_call = full_context.run_worker ([] { return 3; });
     auto full_task = full_call.async ();
-    if (!full_scheduler->worker_jobs.empty () || full_scheduler->owner_jobs.size () != 1) {
+    if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 1) {
         return 14;
     }
     full_scheduler->run_owner_job ();
     const auto full_result = full_task.result ();
     if (full_result
-        || full_result.error_kind () != zlink::framework::framework_error_kind_t::request_failed) {
+        || full_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::worker_queue_full) {
         return 15;
     }
 
@@ -226,16 +256,59 @@ int main ()
     full_callback_call.submit ([&] (zlink::framework::result_t<int> result) {
         full_callback_seen =
           !result
-          && result.error_kind () == zlink::framework::framework_error_kind_t::request_failed;
+          && result.error_kind () == zlink::framework::framework_error_kind_t::worker_queue_full;
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     });
-    if (full_callback_seen || !full_callback_scheduler->worker_jobs.empty ()
-        || full_callback_scheduler->owner_jobs.size () != 1) {
+    if (full_callback_seen || full_callback_scheduler->worker_job_count () != 0
+        || full_callback_scheduler->owner_job_count () != 1) {
         return 16;
     }
     full_callback_scheduler->run_owner_job ();
     if (!full_callback_seen) {
         return 17;
+    }
+
+    auto timeout_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
+    auto timeout_context = context_with_scheduler (timeout_scheduler);
+    auto timeout_call = timeout_context.run_worker ([] { return 9; });
+    auto timeout_task = timeout_call.timeout (std::chrono::milliseconds (5)).async ();
+    for (int attempt = 0; attempt < 50 && timeout_scheduler->owner_job_count () == 0; ++attempt) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    if (timeout_scheduler->worker_job_count () != 1 || timeout_scheduler->owner_job_count () != 1) {
+        return 18;
+    }
+    timeout_scheduler->run_owner_job ();
+    const auto timeout_result = timeout_task.result ();
+    if (timeout_result
+        || timeout_result.error_kind () != zlink::framework::framework_error_kind_t::worker_timeout) {
+        return 19;
+    }
+    timeout_scheduler->run_worker_job ();
+    if (timeout_scheduler->owner_job_count () != 0) {
+        return 20;
+    }
+
+    zlink::framework::runtime::offload_executor_t elastic_executor (
+      0, 2, 8, std::chrono::milliseconds (5));
+    if (elastic_executor.live_worker_count () != 0) {
+        return 21;
+    }
+    std::atomic_bool elastic_work_ran = false;
+    if (!elastic_executor.try_submit ([&] { elastic_work_ran.store (true); })) {
+        return 22;
+    }
+    for (int attempt = 0; attempt < 50 && !elastic_work_ran.load (); ++attempt) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    if (!elastic_work_ran.load ()) {
+        return 23;
+    }
+    for (int attempt = 0; attempt < 50 && elastic_executor.live_worker_count () != 0; ++attempt) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    if (elastic_executor.live_worker_count () != 0) {
+        return 24;
     }
 
     return 0;

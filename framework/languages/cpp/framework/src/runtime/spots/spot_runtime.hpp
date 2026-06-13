@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/execution/serial_execution_queue.hpp"
+
 #include <zlink/framework/contracts/actors/actor.hpp>
 
 #include <cstdint>
@@ -15,6 +18,8 @@
 
 namespace zlink::framework::detail
 {
+
+namespace runtime = zlink::framework::runtime;
 
 class spot_node_builder_state_t
 {
@@ -83,6 +88,10 @@ class spot_context_state_t
         }
     }
 
+    bool try_post_serial (std::string name, std::function<void ()> work);
+    bool try_post_serial_async (std::string name, runtime::serial_execution_queue_t::async_work_t work);
+    void drain_serial ();
+
     std::shared_ptr<spot_node_builder_state_t> node;
     node_rid_t node_rid;
     spot_rid_t spot_rid;
@@ -93,6 +102,8 @@ class spot_context_state_t
     std::vector<std::string> ordering_log;
     std::vector<std::shared_ptr<timer_state_t>> timers;
     std::shared_ptr<void> spot_instance;
+    std::shared_ptr<runtime::offload_executor_t> serial_executor;
+    std::shared_ptr<runtime::serial_execution_queue_t> serial_queue;
     std::shared_ptr<worker_scheduler_t> worker_scheduler;
     spot_lifecycle_callbacks_t lifecycle;
     std::map<std::type_index, std::function<void (void *, void *)>> onJoinActor_callbacks;

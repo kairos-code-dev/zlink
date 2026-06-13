@@ -366,6 +366,17 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
   attach된 channel client 경로를 선택한다.
 - actor context는 stream 객체를 직접 노출하지 않고, client로 보내는 `Send(...)`와
   request에 응답하는 `Reply(...)` 같은 의도 중심 API를 제공한다.
+- actor를 완전히 제거하는 public API는 Entry Spot context에만 둔다. user Spot
+  context는 actor를 Entry Spot으로 되돌리는 `leaveActor` 의미의 API까지만 제공한다.
+  application은 room/game/stage 정리가 끝난 뒤 user Spot에서 actor에 종료 표시를 남기고
+  `leaveActor`로 Entry Spot에 돌려보낸다. Entry Spot handler 또는 lifecycle callback은
+  그 표시를 확인한 뒤 언어별 Entry Spot destroy API를 호출한다.
+- Entry Spot destroy API는 actor registry, actor-session binding, native actor ref를
+  함께 정리한다. 이 작업은 actor 위치 이동이 아니므로 `onLeaveActor`나 다른 lifecycle
+  callback을 추가로 호출하지 않는다.
+- stream disconnect는 현재 session binding cleanup과 `onDisconnectActor` 의미만 가진다.
+  disconnect cleanup만으로 actor destroy가 실행되지 않는다. actor 수명 종료는 위의
+  Entry Spot destroy 경로에서만 application이 명시적으로 선택한다.
 
 자세한 contract와 샘플은
 [../bindings/dotnet/aspnet-core-spot.ko.md](../../languages/dotnet/doc/spec/aspnet-core-spot.ko.md)

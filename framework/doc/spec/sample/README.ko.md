@@ -9,10 +9,10 @@
 되지 않게 하기 위해서다.
 
 Bingo와 TicTacToe 공통 시나리오는 `.NET` 샘플에서 검증된 흐름을 반영한다.
-SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어별 framework를 구현할
-때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태 필드, 같은 smoke 검증
-순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을 읽었을 때 같은 framework
-기능을 같은 순서로 확인할 수 있어야 한다.
+SupportChat, DeliveryDispatch, Event 샘플은 추가 공통 샘플 시나리오이며, 언어별
+framework를 구현할 때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태
+필드, 같은 smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을
+읽었을 때 같은 framework 기능을 같은 순서로 확인할 수 있어야 한다.
 
 ## 샘플 목록
 
@@ -21,6 +21,7 @@ SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어�
 | [Bingo](./bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler 계약 명시 등록 | Protobuf |
 | [TicTacToe](./tictactoe/README.ko.md) | API 서버와 Play 서버만으로 가장 작은 실시간 게임 흐름을 보여 준다. | `Api` 역할 분리, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | 수동 endpoint 연결 | 선언형 등록 우선, 불가능하면 명시 등록 | MessagePack |
 | [SupportChat](./supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support`, `Registry` 분리 | Registry/Discovery 자동 연결 | typed handler와 domain event publisher | JSON |
+| [DeliveryDispatch](./deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 fanout, 고객 stream push를 확인한다. | `DispatchApi`, `DispatchCenter`, `Courier`, `Tracking`, `Session`, `Registry` 분리 | Registry/Discovery 자동 연결 | channel handler, fanout subscriber, Spot actor join | JSON |
 | [ShoppingMallCheckout](./event/shoppingmall-checkout.ko.md) | 단일 Commerce API 서버 타입에서 event-sourced 주문 workflow와 projection을 구성한다. | `CommerceApi`, `Registry`, `OrderEventStore`, `OrderReadModelStore`, `CommerceStateStore` 분리 | Registry/Discovery 자동 연결 | event-sourced OrderWorkflow Spot, projection adapter | JSON |
 | [GameQuest](./event/gamequest.ko.md) | stateless Game API action event를 ZLink fanout으로 받아 event sourced quest aggregate와 projection을 갱신한다. | `GameApi`, `QuestMission`, `Registry`, `QuestEventStore`, `QuestReadModelStore`, `GameplayStateStore` 분리 | Registry/Discovery 자동 연결 | fanout subscriber, event-sourced PlayerQuest Spot, projection adapter | JSON |
 
@@ -72,8 +73,8 @@ SupportChat과 Event 샘플은 추가 공통 샘플 시나리오이며, 언어�
   이용한 분리 gateway 구조를, TicTacToe는 수동 endpoint를 쓰는 직접 play 연결 구조를 맡는다.
 - codec도 같은 기능을 반복해서 보여 주지 않는다. Bingo는 cross-language schema가 분명한
   Protobuf payload를 맡고, TicTacToe는 작은 실시간 game packet에 적합한 MessagePack
-  payload를 맡는다. SupportChat, ShoppingMallCheckout, GameQuest는 읽기 쉬운 JSON payload를
-  기본으로 둔다.
+  payload를 맡는다. SupportChat, DeliveryDispatch, ShoppingMallCheckout, GameQuest는 읽기
+  쉬운 JSON payload를 기본으로 둔다.
 - 식별자는 도메인 의미가 드러나게 이름 붙인다. 예를 들어 TicTacToe에서 client가 받는
   값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`이며, room Spot
   routing id는 각 언어의 routing id 생성 API로 `RoomId` 문자열에서 만든다.

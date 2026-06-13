@@ -636,7 +636,71 @@ client는 자기 card를 제출한 뒤 번호 추첨을 요청하지 않는다. 
 card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보낸 Notify와 state로
 확인한다.
 
-## 15. 완료 기준
+## 15. Disconnect와 actor destroy 흐름
+
+Bingo 샘플은 stream disconnect와 actor destroy를 서로 다른 lifecycle로 보여 주어야 한다.
+disconnect는 client stream session과 bound session 정리이고, actor destroy는 Play 서버의
+actor 객체와 native actor ref를 제거하는 종료 작업이다. Session 서버 연결이 끊겼다는
+이유만으로 room Spot에서 actor를 제거하거나 actor를 destroy하면 안 된다.
+
+### 15.1 Disconnect 흐름
+
+client stream이 끊기면 Session 서버는 현재 stream session에 묶인 actor binding을 닫는다.
+이때 Play 서버 actor는 즉시 destroy되지 않는다. actor가 room에 들어가 있었다면 room state는
+그대로 유지되고, Play 서버는 actor가 다시 bound session을 얻을 수 있는 상태로 둔다.
+disconnect callback은 logging, bound session cleanup, 재접속 가능 상태 표시처럼 stream
+연결에 한정된 작업만 맡는다.
+
+언어별 샘플은 disconnect hook을 비워 두지 말고, 적어도 현재 actor/session 정리가 실행되는
+경로가 드러나게 해야 한다. disconnect hook 안에서 room leave와 actor destroy를 직접 호출하지
+않는다. room leave와 actor destroy는 아래의 게임 종료 흐름에서만 실행한다.
+
+### 15.2 게임 종료 후 actor destroy 흐름
+
+room Spot이 `BingoGameEndedNotify`를 양쪽 client에 전송한 뒤에는 room에 남아 있는 player
+actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야 한다.
+
+1. actor 객체 생성이 끝나면 framework는 `onCreateActor`를 한 번 호출한다.
+2. room Spot은 종료 cleanup이 한 번만 시작되도록 guard를 둔다.
+3. room Spot은 각 player actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
+4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
+5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
+   Spot `onJoinActor`를 호출한다.
+6. Entry Spot `onJoinActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
+   Entry Spot context의 `destroyActor`를 호출한다.
+7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
+   native actor ref, framework registry, bound session binding을 정리한다.
+8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
+   lifecycle callback을 다시 호출하면 안 된다.
+
+```mermaid
+sequenceDiagram
+    participant R as Room Spot
+    participant A as Player Actor
+    participant E as Entry Spot
+    participant N as Native Actor
+
+    R->>A: Mark destroy after Entry Spot join
+    R->>R: leaveActor(A)
+    R->>R: onLeaveActor(A)
+    A->>E: onJoinActor(A)
+    E->>E: destroyActor(A)
+    E->>N: Destroy native actor ref
+    E->>E: Remove actor registry and session binding
+```
+
+client self-check는 `BingoGameEndedNotify` 수신까지만 검증한다. actor destroy는 client가
+직접 관찰하는 protocol 메시지가 아니므로 server-side evidence로 확인한다. 언어별
+`run_sample` 또는 sample regression은 Play 서버 로그, fake backend call, runtime event,
+또는 framework 테스트 중 하나로 아래 사실을 확인해야 한다.
+
+- room Spot `onLeaveActor`가 각 player actor마다 실행된다.
+- Entry Spot destroy가 각 player actor마다 완료된다.
+- Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
+  추가로 실행되지 않는다.
+- disconnect cleanup만으로 actor destroy가 실행되지 않는다.
+
+## 16. 완료 기준
 
 - client 두 개가 각각 Session 서버에 하나의 stream 연결만 연다.
 - Session, API, Play 서버는 Registry/Discovery로 서로를 자동 발견한다.
@@ -649,5 +713,10 @@ card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보�
   서버에서 갱신한다.
 - 승자가 나오면 room state가 `Finished`가 되고 `Winners`가 채워진다.
 - `BingoNumberDrawnNotify`와 `BingoGameEndedNotify`가 bound session을 통해 두 client에 전달된다.
+- stream disconnect는 bound session을 정리하지만 actor를 즉시 destroy하지 않는다.
+- 게임 종료 후 room Spot은 actor를 Entry Spot으로 leave시키고, Entry Spot은 actor를
+  destroy한다.
+- actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
+  정리한다.
 - client는 API 서버나 Play 서버 endpoint를 직접 사용하지 않는다.
 - handler 등록은 typed handler 계약을 구성 코드에서 명시 등록하는 방식을 사용한다.

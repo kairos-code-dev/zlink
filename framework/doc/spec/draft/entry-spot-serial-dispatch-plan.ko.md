@@ -93,6 +93,23 @@ callback 또는 비동기 완료 continuation을 원래 Spot 직렬 실행 줄 �
 9. 회귀 테스트로 순서, 재진입, request continuation 위치, worker completion 위치,
    blocking 금지를 확인한다.
 
+## 3.1 현재 저장소 상태
+
+이 draft는 구현 전 계획으로 시작했지만, 현재 작업 tree에는 일부 언어의 구현과
+테스트가 이미 들어와 있다. 이후 작업은 아래 상태를 기준으로 남은 언어와 문서를
+맞춘다.
+
+| 언어 | 현재 확인한 상태 | 남은 정리 |
+|------|------------------|-----------|
+| `.NET` | `IZLinkSpotContext`와 `IZLinkEntrySpotContext`에 `RunWorker(...)`가 있고, `IZLinkWorkerCall<T>`는 `Async(...)`와 `Submit(...)` terminator를 가진다. `WorkerQueueFull`, `WorkerTimedOut`, `WorkerFailed` 오류 분류와 worker pool 테스트도 있다. Entry Spot public destroy API는 `DestroyActorAsync(...)`다. | Entry Spot serial gate와 request continuation 위치가 모든 callback 종류에 적용되는지 테스트를 넓히고, guide/spec의 이전 예외 문구를 제거한다. |
+| Node.js | `ZLinkSpotContext`와 `ZLinkEntrySpotContext`에 closure 기반 `runWorker(...)`가 있고, `submit()`과 `onCompleted(...)` terminator, worker option, queue full, timeout, late completion 테스트가 있다. public 주석은 CPU 작업을 별도 worker thread에서 실행한다고 보장하지 않는다. | serial executor 경로가 native callback과 request continuation 전체에 일관되게 적용되는지 유지하고, Node guide/spec에 closure 기반 deferral의 한계를 반영한다. |
+| Java / Kotlin | `ZLinkWorkerTask<T>`가 `throws Exception`을 표현하고, `ZLinkWorkerCall<T>`는 `CompletionStage<T> submit()`과 callback `submit(...)`을 가진다. worker pool, worker 오류 예외, Entry Spot worker completion 테스트가 있다. | Entry Spot serial queue 적용 범위를 actor packet, lifecycle, timer, backend request callback까지 문서와 테스트에서 닫는다. Kotlin guide는 blocking adapter와 coroutine suspension의 차이를 분명히 한다. |
+| C++ | Entry Spot `destroyActor(...)`, coroutine executor, 일부 내부 offload executor가 있다. `spot_context_t`와 `entry_spot_context_t`에는 public `run_worker(...)` 표면과 `worker_call_t<T>` builder의 첫 contract test가 들어왔다. | `run_worker(...)`를 실제 Spot 직렬 executor와 bounded elastic worker pool에 연결하고, queue full 실패, timeout 뒤 late completion drop, callback `task_t<void>` gate 의미를 unit test로 닫는다. |
+
+따라서 이 문서의 남은 목적은 새 아이디어를 더 넓히는 것이 아니라, 이미 들어온
+언어의 의미를 공통 규칙으로 정리하고 아직 덜 구현된 언어가 같은 계약을 따라오게
+하는 것이다.
+
 ## 4. 비목표
 
 - core C API의 Spot dispatch 계약을 이 계획에서 바꾸지 않는다.
@@ -313,9 +330,12 @@ worker submit 실패와 실행 실패는 아래처럼 전달한다.
 
 queue full도 callback terminator에서는 worker thread나 submit 호출 thread에서 사용자
 `onError`를 직접 호출하지 않는다. 오류 callback은 성공 callback과 마찬가지로 원래 Spot
-dispatcher에서 실행한다. `.NET` 구현은 `ZLinkFrameworkErrorKind` 같은 framework error
-분류에 `WorkerQueueFull`, `WorkerTimedOut`, `WorkerFailed`에 해당하는 값을 추가할지
-검토한다. 다른 언어도 같은 세 가지 오류 의미를 자기 예외/결과 타입으로 투영한다.
+dispatcher에서 실행한다. `.NET`은 `ZLinkFrameworkErrorKind.WorkerQueueFull`,
+`WorkerTimedOut`, `WorkerFailed`로 이 세 가지 오류를 표현한다. Node.js도 같은 의미를
+`ZLinkFrameworkErrorKind` 값으로 노출한다. Java는 `ZLinkWorkerQueueFullException`,
+`ZLinkWorkerTimeoutException`, `ZLinkWorkerFailedException`으로 투영한다. C++는 이 세
+가지 의미를 `result_t<T>` 오류 또는 framework 예외 타입 중 어느 쪽으로 노출할지
+public surface 확정 단계에서 결정해야 한다.
 
 설정 예시는 아래와 같다.
 
@@ -355,7 +375,8 @@ worker_options_t{
 
 ### 10.1 .NET
 
-`IZLinkSpotContext`와 `IZLinkEntrySpotContext`에 같은 builder를 추가한다.
+현재 public context에는 같은 builder가 있다. 이 계획은 아래 표면을 공통 계약의
+`.NET` 투영으로 유지한다.
 
 ```csharp
 public interface IZLinkSpotContext
@@ -383,12 +404,15 @@ public interface IZLinkWorkerCall<TResult>
 }
 ```
 
-`Async(...)`를 `await`한 뒤 이어지는 코드는 같은 Spot dispatcher에서 재개되어야 한다.
-`Submit(...)`의 `onCompleted`와 `onError`도 같은 Spot dispatcher에서 실행된다.
+`Async(...)`는 gated awaitable terminator다. handler가 이 값을 `await`하거나 반환하면
+같은 Spot의 다음 callback은 완료 전까지 시작하지 않는다. `Submit(...)`은 detached
+callback terminator다. `onCompleted`와 `onError`는 worker thread나 submit 호출 thread에서
+직접 실행되지 않고 같은 Spot dispatcher에 들어간 뒤 실행된다.
 
 ### 10.2 Java / Kotlin
 
-`ZLinkSpotContext`와 `ZLinkEntrySpotContext`에 같은 builder를 추가한다.
+현재 public context에는 같은 builder가 있다. 이 계획은 아래 표면을 Java/Kotlin 투영으로
+유지한다.
 
 ```java
 public interface ZLinkSpotContext {
@@ -421,7 +445,8 @@ coroutine suspension을 사용한다.
 
 ### 10.3 Node.js / TypeScript
 
-`ZLinkSpotContext`와 `ZLinkEntrySpotContext`에 같은 builder를 추가한다.
+현재 TypeScript contract에는 같은 builder가 있다. 이 계획은 아래 표면을 Node.js 투영으로
+유지한다.
 
 ```ts
 interface ZLinkSpotContext {
@@ -451,8 +476,9 @@ interface ZLinkWorkerCall<T> {
 
 Node.js의 closure는 `worker_threads`로 그대로 전달할 수 없다. 따라서 위 closure 기반
 `runWorker(...)`는 기본 public 계약에서는 Spot queue 점유를 풀기 위한 비동기 deferral로
-본다. CPU 작업을 실제 worker thread로 넘기는 표면은 별도 task registration 또는 module
-path 기반 API로 따로 검토한다.
+본다. `maxThreads`와 `maxQueueLength`는 동시에 진행시키는 deferral 수와 대기열을
+제한하는 의미로 투영한다. CPU 작업을 실제 worker thread로 넘기는 표면은 별도 task
+registration 또는 module path 기반 API로 따로 검토한다.
 
 Node 구현은 closure를 main event loop에서 오래 실행하면 안 된다. public 계약의 핵심은
 완료 callback이 Spot dispatcher에서 실행된다는 점이며, CPU offload를 보장하는 계약은
@@ -460,7 +486,8 @@ Node 구현은 closure를 main event loop에서 오래 실행하면 안 된다. 
 
 ### 10.4 C++
 
-C++는 성공과 실패를 `result_t<T>` 하나로 받는 callback terminator를 우선한다.
+C++에는 아직 이 draft의 public `run_worker(...)` builder가 없다. 아래 표면은 구현 전
+후보이며, 성공과 실패를 `result_t<T>` 하나로 받는 callback terminator를 우선한다.
 
 ```cpp
 auto call = context.run_worker([] {
@@ -511,8 +538,8 @@ Actor가 user Spot으로 이동한 뒤에는 user Spot 실행 줄이 그 Actor�
 
 ### 12.1 .NET
 
-현재 `.NET` framework에는 Entry Spot activation과 gate가 있으며, 일부 drain 경로가
-작업 목록을 만든 뒤 함께 기다릴 수 있다. 구현은 아래 방향으로 맞춘다.
+현재 `.NET` framework에는 `RunWorker(...)`, worker pool 옵션, worker 오류 분류,
+`DestroyActorAsync(...)` public 표면이 있다. 구현 점검은 아래 방향으로 맞춘다.
 
 - Entry Spot 전용 dispatcher 또는 mailbox를 명확한 소유 모듈로 둔다.
 - actor join, actor packet, route packet, subscription, timer, lifecycle callback을
@@ -525,6 +552,11 @@ Actor가 user Spot으로 이동한 뒤에는 user Spot 실행 줄이 그 Actor�
   돌아온 뒤 실행한다.
 - worker pool은 기본 단일 elastic bounded pool을 사용하고, host 옵션으로 `minThreads`,
   `maxThreads`, `idleTimeout`, `maxQueueLength`를 설정한다.
+- `WorkerQueueFull`, `WorkerTimedOut`, `WorkerFailed`가 awaitable terminator와 callback
+  terminator에서 같은 의미로 전달되는지 확인한다.
+- `IZLinkEntrySpotContext.DestroyActorAsync(...)`가 public 이름이다. 이전 draft나 guide에
+  `destroyActor(...)` 같은 표기가 남아 있으면 `.NET` 문서에서는 `DestroyActorAsync(...)`로
+  정리한다.
 - Entry Spot dispatch 문맥에서 `.Result`, `.Wait()`, blocking bridge 사용을 감지할 수
   있으면 runtime guard 또는 analyzer/test로 막는다.
 - `ConfigureAwait(false)`는 사용하더라도 Entry Spot 상태를 만지는 continuation은
@@ -552,10 +584,13 @@ Node는 JavaScript event loop 덕분에 한 thread에서 실행되는 것처럼 
   continuation은 queue 안에서 실행되게 한다.
 - `runWorker(...).submit()`과 `runWorker(...).onCompleted(...)`의 완료 처리는 Entry Spot
   queue에 들어간 뒤 실행한다.
-- worker runtime은 기본 단일 elastic bounded pool 의미를 따른다. Node 구현은 worker
-  thread 비용을 고려해 같은 설정 의미를 더 보수적으로 투영할 수 있다.
-- CPU를 오래 잡는 동기 작업은 framework가 해결할 수 없으므로 guide에서 user Spot 또는
-  worker 분리를 권장한다.
+- worker runtime은 기본 단일 bounded deferral scheduler 의미를 따른다. Node의 closure
+  기반 `runWorker(...)`는 CPU 작업을 별도 worker thread에서 실행하지 않으므로
+  `maxThreads`는 실제 worker thread 수가 아니라 동시에 진행시킬 deferral 수로 설명한다.
+- CPU를 오래 잡는 동기 작업은 closure 기반 `runWorker(...)`로 해결할 수 없으므로 guide에서
+  user Spot 분리, 별도 process, 또는 request 기반 service 위임을 권장한다.
+- `WorkerQueueFull`, `WorkerTimedOut`, `WorkerFailed`가 `ZLinkFrameworkErrorKind`로
+  전달되고, timeout 뒤 late completion이 사용자 callback을 다시 실행하지 않는지 유지한다.
 
 대상 파일군:
 
@@ -574,7 +609,14 @@ C++ framework는 callback/result 표면과 coroutine 표면을 함께 가질 수
 - `task_t` coroutine resume은 Entry Spot executor를 통해 일어나야 한다.
 - `run_worker(...).submit(...)` callback과 `co_await run_worker(...).async()` 뒤 resume은
   Entry Spot executor에서 실행한다.
-- worker runtime은 기본 단일 elastic bounded pool을 사용한다.
+- worker runtime은 기본 단일 elastic bounded pool을 사용한다. 현재 내부 coroutine/offload
+  executor가 있더라도, public `run_worker(...)` 계약은 queue full 실패, timeout, late
+  completion drop, dispatcher 재진입까지 포함하는 별도 표면으로 확정한다.
+- `submit(...)` callback이 `task_t<void>`를 반환하면 executor는 그 task 완료를 callback
+  완료로 관찰한다. 이 규칙이 없으면 callback 안의 coroutine이 끝나기 전에 같은 Spot의
+  다음 callback이 시작될 수 있어 비재진입 의미가 깨진다.
+- C++ 오류 전달은 `result_t<T>` 오류 값으로 통일할지, framework 예외 타입으로 투영할지
+  public header를 확정하기 전에 결정한다.
 - `.result()` 같은 blocking bridge를 Entry Spot dispatch 문맥에서 호출하지 못하게
   guard한다.
 - 일반 Spot과 Entry Spot이 같은 dispatcher 추상화를 공유하되, user Spot별 queue와 Entry
@@ -589,8 +631,9 @@ C++ framework는 callback/result 표면과 coroutine 표면을 함께 가질 수
 
 ### 12.4 Java / Kotlin
 
-Java framework는 `CompletionStage`를 내부 완료 표현으로 사용한다. 구현은 아래 방향으로
-맞춘다.
+Java framework는 `CompletionStage`를 내부 완료 표현으로 사용한다. 현재
+`ZLinkWorkerTask<T>`는 checked exception을 표현할 수 있고, `ZLinkWorkerCall<T>`는
+awaitable `submit()`과 callback `submit(...)`을 가진다. 구현 점검은 아래 방향으로 맞춘다.
 
 - Entry Spot actor packet, actor join, lifecycle, timer를 Entry Spot serial queue로
   통합한다.
@@ -600,6 +643,9 @@ Java framework는 `CompletionStage`를 내부 완료 표현으로 사용한다. 
   사용자 코드를 실행한다.
 - worker pool은 기본 단일 elastic bounded pool을 사용하고, framework registration에서
   thread와 queue 한도를 설정한다.
+- `ZLinkWorkerQueueFullException`, `ZLinkWorkerTimeoutException`,
+  `ZLinkWorkerFailedException`이 awaitable terminator와 callback terminator에서 같은
+  의미로 전달되는지 확인한다.
 - handler가 직접 값을 반환하든 `CompletionStage`를 반환하든 runtime은 하나의 stage로
   정규화하고, 그 stage 완료 전에는 같은 Entry Spot의 다음 callback을 시작하지 않는다.
 - Java blocking `await()` adapter는 connector나 sample client 편의 표면에만 허용하고,
@@ -645,9 +691,9 @@ Java framework는 `CompletionStage`를 내부 완료 표현으로 사용한다. 
   - `framework/languages/dotnet/doc/spec/aspnet-core-actor.ko.md`
   - `framework/languages/dotnet/doc/spec/session-actor-dispatch.ko.md`
   - `framework/languages/dotnet/doc/spec/handler-interfaces.ko.md`
-  - `IZLinkEntrySpotContext.destroyActor(...)`와 guide/spec의 `DestroyActorAsync(...)`
-    표기 불일치를 함께 정리한다. `.NET` async terminator 규칙상 public 메서드는
-    `DestroyActorAsync(...)`가 맞는 후보로 본다.
+  - 현재 public `IZLinkEntrySpotContext`는 `DestroyActorAsync(...)`를 가진다. 구현 전
+    draft나 오래된 guide에 `destroyActor(...)`처럼 lower camel 표기가 남아 있으면
+    `.NET` 문서에서는 `DestroyActorAsync(...)`로 정리하고, contract test로 재발을 막는다.
 - Node.js
   - `framework/languages/node/doc/spec/nestjs-spot.ko.md`
   - `framework/languages/node/doc/spec/nestjs-actor.ko.md`
@@ -712,6 +758,8 @@ guide에는 내부 queue 구현을 자세히 설명하지 않는다. 대신 사�
 | worker queue full | worker queue가 가득 차면 Spot dispatcher를 기다리게 하지 않고 submit 실패로 끝난다 |
 | worker idle shrink | 작업이 없으면 기본 worker thread가 idle timeout 뒤 줄어든다 |
 | worker timeout late completion | timeout 뒤 늦게 끝난 worker 결과가 Spot callback을 다시 실행하지 않는다 |
+| worker 오류 투영 | queue full, timeout, worker exception이 각 언어의 정해진 오류 타입이나 오류 kind로 전달된다 |
+| worker terminator 단일성 | 같은 worker call에서 awaitable terminator와 callback terminator를 둘 다 호출하면 실패한다 |
 | detached callback 상태 재검증 | request 제출 뒤 다른 callback이 상태를 바꾼 경우 completion callback이 stale 상태를 감지한다 |
 | user Spot 분리 | Actor가 user Spot으로 이동한 뒤 user Spot 상태는 user Spot queue에서 보호되고 Entry Spot queue와 섞이지 않는다 |
 | failure cleanup | request 실패, timeout, handler 예외 뒤에도 Entry Spot dispatcher가 다음 작업을 처리한다 |
@@ -741,8 +789,8 @@ guide에는 내부 queue 구현을 자세히 설명하지 않는다. 대신 사�
 - contract/sample regression
   - NestJS Spot/Actor handler가 `Promise` 기반으로만 작성되는지 확인한다.
   - Bingo/TicTacToe sample smoke에서 Entry Spot request continuation 순서를 기록한다.
-  - Node의 closure 기반 `runWorker(...)`가 CPU thread offload를 보장한다고 문서나 타입에서
-    말하지 않는지 확인한다.
+  - Node의 closure 기반 `runWorker(...)`가 CPU 작업을 별도 worker thread에서 실행한다고
+    문서나 타입에서 말하지 않는지 확인한다.
 
 ### 14.4 C++ 테스트
 
@@ -802,6 +850,7 @@ dotnet test framework/languages/dotnet/tests/Zlink.Framework.ContractTests/Zlink
 dotnet test framework/languages/dotnet/tests/Zlink.Framework.E2ETests/Zlink.Framework.E2ETests.csproj --no-restore
 
 # Node.js
+npm run build --prefix framework/languages/node
 npm test --prefix framework/languages/node
 node --test framework/languages/node/test/contract/*.test.js
 

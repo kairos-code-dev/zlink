@@ -615,6 +615,12 @@ disconnect 정리는 best-effort다. 같은 actor가 이미 새 stream에 붙었
 늦은 정리가 새 binding token을 지우면 안 된다. stale binding이 남으면 `SessionProxy`
 send/request가 binding token 검증에 실패하고 명확한 error를 돌려준다.
 
+disconnect unbind는 actor-session binding만 정리한다. room leave, Entry Spot 복귀,
+actor destroy는 disconnect cleanup에서 자동으로 실행하지 않는다. actor를 끝내야 하는
+시점은 application의 room/game/stage lifecycle이 결정하며, 그때 user Spot에서
+`leaveActor`로 actor를 Entry Spot에 돌려보낸 뒤 Entry Spot context의 destroy API를
+호출한다.
+
 ### 10.3 직접 dispatch 흐름 (정책)
 
 session callback 안에서 정책 code는 아래 흐름을 따른다 (framework가 builder로 자동
@@ -999,6 +1005,7 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | local actor handle | `BindActorHandleAsync(...)`가 local `SpotNode` actor runtime의 handle을 만들고 session binding metadata를 전달한다. |
 | binding update failure rollback | actor-session binding 갱신이 실패하면 helper가 실패하고 local binding table의 같은 token entry를 제거한다. |
 | disconnect unbind | stream close 뒤 같은 `sessionId + bindingToken` entry만 actor-session binding에서 제거한다. |
+| disconnect does not destroy | stream close 또는 stale unbind가 room leave나 Entry Spot destroy를 자동으로 실행하지 않는다. |
 | stale unbind 차단 | 이전 stream의 늦은 unbind가 새 binding token을 가진 actor-session binding을 지우지 못한다. |
 | stale session binding 차단 | target session server가 binding token이 맞지 않는 `SessionProxy` message를 거부한다. |
 | reconnect binding 교체 | 같은 actor가 다른 session server에 연결하면 새 actor-session binding이 사용된다. |

@@ -525,7 +525,78 @@ flowchart LR
 잘못된 turn, 이미 사용한 cell, 끝난 room에
 대한 요청은 `PlaceMarkRes` 대신 오류 response를 반환한다.
 
-## 15. Bingo와의 차이
+## 15. Disconnect와 actor destroy 흐름
+
+TicTacToe 샘플은 Play 서버가 stream session, actor, room Spot을 함께 호스팅한다. 따라서
+disconnect와 actor destroy 흐름도 Play 서버 안에서 짧게 드러나야 한다. disconnect는
+stream 연결 정리이고, actor destroy는 room lifecycle이 끝난 뒤 Entry Spot에서 actor를
+제거하는 작업이다. 두 동작을 같은 callback에서 섞으면 재접속 가능 상태와 actor lifetime을
+구분하기 어렵다.
+
+### 15.1 Disconnect 흐름
+
+client stream이 끊기면 Play session은 현재 session에 붙어 있던 actor client reference나
+bound session을 정리한다. disconnect callback은 actor가 더 이상 이 stream으로 push를 받을
+수 없다는 사실만 actor에 반영한다. disconnect callback이 room leave나 actor destroy를 직접
+실행하면 안 된다.
+
+이 샘플은 disconnect cleanup을 눈에 보이게 구현해야 한다. 언어별 표현은 달라도 아래 동작은
+같아야 한다.
+
+- Play session은 disconnect callback에서 현재 session의 actor binding 또는 client reference를
+  제거한다.
+- actor 객체는 actor runtime에 남아 있고, room에 들어가 있었다면 room membership도 유지된다.
+- 이후 같은 actor id로 다시 인증하면 기존 actor를 재사용하거나 같은 의미의 actor 상태로
+  복구할 수 있어야 한다.
+
+### 15.2 게임 종료 후 actor destroy 흐름
+
+room Spot이 승리 또는 draw를 감지해 최종 `GameStateNotify`를 전송한 뒤에는 room에 남은
+actor를 정리한다. 정리 순서는 모든 언어 샘플에서 아래와 같아야 한다.
+
+1. actor 객체 생성이 끝나면 framework는 `onCreateActor`를 한 번 호출한다.
+2. room Spot은 종료 cleanup이 한 번만 실행되도록 guard를 둔다.
+3. room Spot은 각 actor에 “Entry Spot으로 돌아오면 destroy한다”는 표시를 남긴다.
+4. room Spot은 `leaveActor`로 actor를 room에서 내보낸다.
+5. framework는 room `onLeaveActor`를 호출한 뒤 actor를 Entry Spot으로 이동시키고 Entry
+   Spot `onJoinActor`를 호출한다.
+6. Entry Spot `onJoinActor` 또는 Entry Spot handler는 actor의 destroy 표시를 확인하고
+   Entry Spot context의 `destroyActor`를 호출한다.
+7. `destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 호출하지 않고 actor 객체,
+   native actor ref, framework registry, bound session binding을 정리한다.
+8. 같은 actor에 대한 중복 destroy나 destroy 중 재진입은 성공 no-op이어야 하며,
+   lifecycle callback을 다시 호출하면 안 된다.
+
+```mermaid
+sequenceDiagram
+    participant S as Play Session
+    participant A as Play Actor
+    participant R as Game Room
+    participant E as Entry Spot
+
+    S->>A: Disconnect stream client
+    S->>A: Clear current client binding
+    R->>A: Mark destroy after Entry Spot join
+    R->>R: leaveActor(A)
+    R->>R: onLeaveActor(A)
+    A->>E: onJoinActor(A)
+    E->>E: destroyActor(A)
+    E->>E: Remove actor registry and session binding
+```
+
+client self-check는 최종 `GameStateNotify`까지 검증한다. actor destroy는 client protocol
+메시지가 아니므로 server-side evidence로 확인한다. 언어별 `run_sample` 또는 sample
+regression은 Play 서버 로그, fake backend call, runtime event, 또는 framework 테스트 중
+하나로 아래 사실을 확인해야 한다.
+
+- disconnect callback이 actor의 current stream binding을 정리한다.
+- disconnect cleanup만으로 actor destroy가 실행되지 않는다.
+- 게임 종료 후 room Spot `onLeaveActor`가 각 actor마다 실행된다.
+- Entry Spot destroy가 각 actor마다 완료된다.
+- Entry Spot destroy 과정에서 Entry Spot `onLeaveActor`나 다른 lifecycle callback이
+  추가로 실행되지 않는다.
+
+## 16. Bingo와의 차이
 
 | 항목 | TicTacToe | Bingo |
 |------|-----------|-------|
@@ -533,11 +604,11 @@ flowchart LR
 | client API 요청 | API 서버로 직접 보낸다. | Session stream 하나로 보낸다. |
 | 게임 stream 연결 | Play 서버에 직접 연결한다. | Session 서버 연결 하나만 유지한다. |
 | Session 서버 | 별도 프로세스 없음. Play 서버가 session과 room을 함께 소유한다. | 별도 Session 서버가 client stream과 actor binding을 소유한다. |
-| Play 서버 | stream session, actor, room을 함께 호스팅한다. | actor, Entry Spot, room Spot을 호스팅한다. |
+| Play 서버 | stream session, actor, Entry Spot, room Spot을 함께 호스팅한다. | actor, Entry Spot, room Spot을 호스팅한다. |
 | 주요 목적 | 작은 직접 play 연결 구조 | 분리된 session gateway 구조 |
 | Handler 등록 | 선언형 등록 우선 | typed handler 계약 명시 등록 |
 
-## 16. 완료 기준
+## 17. 완료 기준
 
 - API 역할과 Play 역할이 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - 별도 Session 서버 프로세스는 없다.
@@ -551,6 +622,11 @@ flowchart LR
 - join한 actor 자신에게 self-join notify를 보내지 않는다.
 - 정상 move마다 요청한 client에는 `PlaceMarkRes`가, 상대 client에는 `GameStateNotify`가 전달된다.
 - 게임 종료 시 `GameState.Status`와 `GameState.Winner`가 양쪽 client에 전달된다.
+- stream disconnect는 current client binding을 정리하지만 actor를 즉시 destroy하지 않는다.
+- 게임 종료 후 room Spot은 actor를 Entry Spot으로 leave시키고, Entry Spot은 actor를
+  destroy한다.
+- actor destroy는 `onLeaveActor`를 호출하지 않고 actor registry와 native actor ref를
+  정리한다.
 - request/reply는 message name이 아니라 stream request sequence로 매칭된다.
 - handler 등록은 가능한 언어에서 선언형 방식을 사용한다.
 - smoke test는 room 생성, 두 client 인증, join, 최소 한 판 종료까지 검증한다.

@@ -559,6 +559,10 @@ export class ZLinkStreamBindingRuntime {
     this.routes.unbind(actorId, context, bindingToken);
   }
 
+  unbindActor(actorId: string): void {
+    this.routes.unbindActor(actorId);
+  }
+
   cleanup(context: DefaultZLinkSessionContext): void {
     this.routes.cleanup(context);
   }
@@ -708,6 +712,14 @@ class ZLinkActorSessionBindingRegistry {
     }
     this.routes.delete(actorId);
     context.unbindLocal(actorId, bindingToken);
+  }
+
+  unbindActor(actorId: string): void {
+    const route = this.routes.get(actorId);
+    if (route === undefined) {
+      return;
+    }
+    this.unbind(actorId, route.context, route.bindingToken);
   }
 
   cleanup(context: DefaultZLinkSessionContext): void {

@@ -1,0 +1,9 @@
+=== BASELINE (unmodified code) 2026-06-12T21:59:05+09:00 node v22.22.0 ===
+entry-spot admission burst (legacy-mailbox dispatch)
+actors=200 packetsPerActor=50 totalPackets=10000 rounds=5
+round 1: wall=23.76ms throughput=420824/s p50=13.141ms p95=18.050ms p99=18.172ms
+round 2: wall=17.36ms throughput=576115/s p50=10.689ms p95=13.844ms p99=13.947ms
+round 3: wall=9.56ms throughput=1046251/s p50=5.647ms p95=8.401ms p99=8.589ms
+round 4: wall=8.05ms throughput=1242404/s p50=3.324ms p95=6.047ms p99=6.261ms
+round 5: wall=10.24ms throughput=976313/s p50=5.787ms p95=8.586ms p99=8.744ms
+median: wall=10.24ms throughput=976313/s p50=5.787ms p95=8.586ms p99=8.744ms

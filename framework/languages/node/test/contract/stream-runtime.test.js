@@ -159,6 +159,24 @@ test('bound session send and disconnect use current binding token and stale toke
   assert.equal(runtime.find('actor-a'), undefined);
 });
 
+test('stream binding runtime can remove actor binding during actor destroy cleanup', async () => {
+  const runtime = new framework.ZLinkStreamBindingRuntime();
+  const context = runtime.createSessionContext(fakeStream('session-destroy', 'rid-destroy'));
+  const actor = await context.actors.bind({ nodeRid: 'node-a', actorId: 'actor-destroy', generation: 1 });
+
+  assert.equal(runtime.find('actor-destroy'), actor);
+  assert.equal(context.actors.find('actor-destroy'), actor);
+
+  runtime.unbindActor('actor-destroy');
+
+  assert.equal(runtime.find('actor-destroy'), undefined);
+  assert.equal(context.actors.find('actor-destroy'), undefined);
+  await assert.rejects(
+    () => runtime.sendBoundSession('actor-destroy', { after: 'destroy' }, 'AfterDestroy', new Map()),
+    { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+  );
+});
+
 test('stream session and bound session require packetName for structural payloads', async () => {
   const written = [];
   const sent = [];

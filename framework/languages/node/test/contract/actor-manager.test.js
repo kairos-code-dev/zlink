@@ -34,6 +34,94 @@ test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantic
   assert.deepEqual(events, ['create:alice', 'configure:alice']);
 });
 
+test('ZLinkActorManager create notifies Entry Spot after native actor creation', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+    configure() {
+      events.push(`configure:${this.actorId}`);
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      events.push(`create:${actorId}`);
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      return { nodeRid: 'node-a', actorId, generation: 1n };
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: node,
+    async actorCreatedNotifier(nodeRid, actor) {
+      events.push(`entryCreate:${nodeRid}:${actor.actorId}`);
+    }
+  });
+
+  const actor = await manager.create('alice', 'player');
+  assert.equal(await manager.getOrCreate('alice', 'player'), actor);
+
+  assert.deepEqual(events, [
+    'create:alice',
+    'configure:alice',
+    'createNative:alice',
+    'entryCreate:node-a:alice'
+  ]);
+});
+
+test('ZLinkActorManager clears failed create state when Entry Spot create callback fails', async () => {
+  const events = [];
+  class PlayerFactory {
+    create(actorId, context) {
+      events.push(`create:${actorId}`);
+      return { actorId, context };
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      return { nodeRid: 'node-a', actorId, generation: BigInt(events.length) };
+    }
+  });
+  let failCreateCallback = true;
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: node,
+    async actorCreatedNotifier(_nodeRid, actor) {
+      events.push(`entryCreate:${actor.actorId}`);
+      if (failCreateCallback) {
+        throw new Error('entry create failed');
+      }
+    }
+  });
+
+  await assert.rejects(
+    () => manager.create('alice', 'player'),
+    /creation failed/
+  );
+  assert.equal(await manager.find('alice'), undefined);
+
+  failCreateCallback = false;
+  const actor = await manager.create('alice', 'player');
+
+  assert.equal(actor.actorId, 'alice');
+  assert.deepEqual(events, [
+    'create:alice',
+    'createNative:alice',
+    'entryCreate:alice',
+    'create:alice',
+    'createNative:alice',
+    'entryCreate:alice'
+  ]);
+});
+
 test('ZLinkActorManager wires actor context boundSession through runtime factory', async () => {
   const sent = [];
   const boundSession = {
@@ -77,6 +165,54 @@ test('ZLinkActorManager wires actor context boundSession through runtime factory
   await actor.context.boundSession.disconnect();
 
   assert.deepEqual(sent, [{ ready: true }, 'disconnect']);
+});
+
+test('bound session disconnect does not destroy actor manager state or native actor', async () => {
+  const events = [];
+  const boundSession = {
+    send() {
+      throw new Error('not used');
+    },
+    async disconnect() {
+      events.push('disconnectSession');
+    }
+  };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    createActor(actorId) {
+      events.push(`createNative:${actorId}`);
+      return { nodeRid: 'node-a', actorId, generation: 1n };
+    },
+    async destroyActor(actorRef) {
+      events.push(`destroyNative:${actorRef.actorId}`);
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: node,
+    boundSessionFactory(actorId) {
+      assert.equal(actorId, 'alice');
+      return boundSession;
+    }
+  });
+
+  const actor = await manager.create('alice', 'player');
+
+  await actor.context.boundSession.disconnect();
+
+  assert.equal(await manager.find('alice'), actor);
+  assert.equal(manager.getState('alice').nativeActorRef.actorId, 'alice');
+  assert.deepEqual(events, ['createNative:alice', 'disconnectSession']);
 });
 
 test('unbound actor context boundSession fails retriably until a session is bound', async () => {
@@ -456,7 +592,10 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
     }
   });
   const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', PlayerFactory]])
+    actorFactories: new Map([['player', PlayerFactory]]),
+    actorDestroyedCleanup(actorId) {
+      events.push(`cleanup:${actorId}`);
+    }
   });
 
   const actor = await manager.create('alice', 'player');
@@ -464,45 +603,42 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   manager.getState('alice').setJoinedSpot('stage-1');
 
   await assert.rejects(
-    () => manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
-      events.push(`left:${leftActor.actorId}`);
-    }),
+    () => manager.destroyActor(node, 'node-a', actor),
     { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
   );
   assert.equal(await manager.find('alice'), actor);
 
   manager.getState('alice').clearJoinedSpot();
-  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
-    events.push(`left:${leftActor.actorId}`);
-    await manager.destroyActor(node, 'node-a', actor, async (nestedActor) => {
-      events.push(`left:${nestedActor.actorId}:reentrant`);
-    });
-  });
-  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
-    events.push(`left:${leftActor.actorId}:duplicate`);
-  });
+  await manager.destroyActor(node, 'node-a', actor);
+  await manager.destroyActor(node, 'node-a', actor);
   assert.equal(await manager.find('alice'), undefined);
+  const router = new framework.ZLinkActorDispatchRouter(manager);
+  await assert.rejects(
+    () => router.submit('alice', () => 'unexpected'),
+    { kind: framework.ZLinkFrameworkErrorKind.ActorRouteNotFound }
+  );
 
   const recreated = await manager.create('alice', 'player');
   manager.getState('alice').ensureNativeActorRef(node);
-  await manager.destroyActor(node, 'node-a', actor, async (leftActor) => {
-    events.push(`left:${leftActor.actorId}:stale`);
-  });
+  await manager.destroyActor(node, 'node-a', actor);
   assert.equal(await manager.find('alice'), recreated);
 
   assert.deepEqual(events, [
     'createNative:alice',
-    'left:alice',
     'destroyNative:alice:1',
+    'cleanup:alice',
     'createNative:alice'
   ]);
 });
 
-test('ZLinkEntrySpotActivation destroyActor invokes Entry Spot left before destroy hook', async () => {
+test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle callbacks', async () => {
   const events = [];
   class EntrySpot {
-    async onActorLeft(actor) {
-      events.push(`entryLeft:${actor.actorId}`);
+    async onCreateActor(actor) {
+      events.push(`entryCreate:${actor.actorId}`);
+    }
+    async onLeaveActor(actor) {
+      events.push(`entryLeave:${actor.actorId}`);
     }
   }
   const nativeSpot = {
@@ -514,20 +650,18 @@ test('ZLinkEntrySpotActivation destroyActor invokes Entry Spot left before destr
     nativeSpot,
     nodeRid: 'node-a',
     spotNodeName: 'node-a',
-    async destroyActor(nodeRid, actor, beforeDestroy) {
+    async destroyActor(nodeRid, actor) {
       events.push(`destroyHook:${nodeRid}:${actor.actorId}`);
-      await beforeDestroy(actor);
-      events.push(`destroyAfterLeft:${actor.actorId}`);
     }
   });
 
   await activation.create();
+  await activation.notifyCreateActor({ actorId: 'alice' });
   await activation.context.destroyActor({ actorId: 'alice' });
 
   assert.deepEqual(events, [
-    'destroyHook:node-a:alice',
-    'entryLeft:alice',
-    'destroyAfterLeft:alice'
+    'entryCreate:alice',
+    'destroyHook:node-a:alice'
   ]);
 });
 
@@ -610,13 +744,13 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
     registry,
     spot: {
       name: 'game',
-      async onPostActorJoined(joinedActor) {
+      async onJoinActor(joinedActor) {
         events.push(`joined:game:${joinedActor.actorId}`);
       },
-      async onActorLeft(leftActor) {
+      async onLeaveActor(leftActor) {
         events.push(`left:game:${leftActor.actorId}`);
       },
-      async onActorDisconnected(disconnectedActor) {
+      async onDisconnectActor(disconnectedActor) {
         events.push(`disconnected:game:${disconnectedActor.actorId}`);
       }
     }
@@ -624,9 +758,9 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
 
   await dispatcher.dispatchSend(actor, 'move', 'left');
   const reply = await dispatcher.dispatchRequest(actor, 'move', 'right');
-  await dispatcher.notifyPostActorJoined(actor);
-  await dispatcher.notifyActorLeft(actor);
-  await dispatcher.notifyActorDisconnected(actor);
+  await dispatcher.notifyJoinActor(actor);
+  await dispatcher.notifyLeaveActor(actor);
+  await dispatcher.notifyDisconnectActor(actor);
 
   assert.equal(reply, 'ok');
   assert.deepEqual(events, [
@@ -665,7 +799,7 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
           ? { accepted: true, reply: acceptReply }
           : { accepted: false, reply: rejectReply };
       },
-      async onPostActorJoined(joinedActor) {
+      async onJoinActor(joinedActor) {
         events.push(`post:${joinedActor.actorId}`);
       }
     }
@@ -709,7 +843,7 @@ test('ZLinkSpotActorDispatcher rejects actor join by default when onActorJoin is
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
     spot: {
-      async onPostActorJoined(joinedActor) {
+      async onJoinActor(joinedActor) {
         events.push(`post:${joinedActor.actorId}`);
       }
     }

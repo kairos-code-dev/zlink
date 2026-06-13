@@ -27,5 +27,8 @@ export enum ZLinkFrameworkErrorKind {
   RequestTargetNotFound = 'requestTargetNotFound',
   RequestRejected = 'requestRejected',
   RequestProtocolError = 'requestProtocolError',
-  RequestFailed = 'requestFailed'
+  RequestFailed = 'requestFailed',
+  WorkerQueueFull = 'workerQueueFull',
+  WorkerTimedOut = 'workerTimedOut',
+  WorkerFailed = 'workerFailed'
 }

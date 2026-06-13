@@ -46,8 +46,8 @@ type BingoNotificationPublisherLike = Pick<
 class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
   readonly context?: ZLinkSpotContext;
   readonly roomId: string;
-  private readonly notifications: BingoNotificationPublisherLike;
-  private readonly game: BingoRoomGameType;
+  private notifications: BingoNotificationPublisherLike;
+  private game: BingoRoomGameType;
   private cleanupStarted = false;
 
   constructor(
@@ -66,6 +66,11 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     this.roomId = contextOrRoomId ?? 'bingo-room';
     this.notifications = notifications ?? createNoopNotificationPublisher();
     this.game = new BingoRoomGame(this.roomId, settings ?? createRoomSettings(undefined, 0));
+  }
+
+  configureRoom(settings: BingoRoomSettings, notifications: BingoNotificationPublisherLike): void {
+    this.notifications = notifications;
+    this.game = new BingoRoomGame(this.roomId, settings);
   }
 
   async onActorJoin(actor: PlayerActorType, request: Message): Promise<ZLinkSpotActorJoinResponse> {
@@ -95,16 +100,16 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     }
   }
 
-  async onPostActorJoined(actor: PlayerActorType): Promise<void> {
+  async onJoinActor(actor: PlayerActorType): Promise<void> {
     void actor;
   }
 
-  async onActorLeft(actor: PlayerActorType): Promise<void> {
+  async onLeaveActor(actor: PlayerActorType): Promise<void> {
     void actor;
   }
 
-  async onActorDisconnected(actor: PlayerActorType): Promise<void> {
-    void actor;
+  async onDisconnectActor(actor: PlayerActorType): Promise<void> {
+    actor.markDisconnected();
   }
 
   async submitCard(actor: PlayerActorType | BingoActor, request: SubmitBingoCardReq): Promise<SubmitBingoCardRes> {

@@ -7,6 +7,8 @@ type BingoSessionActor = {
 };
 
 type BingoSessionContext = {
+  actorId?: string | null;
+  displayName?: string | null;
   actors: {
     bound: BingoSessionActor[];
   };
@@ -29,6 +31,12 @@ class BingoSession {
 
     const actor = this.requireSingleBoundActor(`relaying packet '${header.name}'`);
     return await actor.relay(header, payload);
+  }
+
+  onDisconnected(): void {
+    this.context.actorId = null;
+    this.context.displayName = null;
+    this.context.actors.bound.length = 0;
   }
 
   requireSingleBoundActor(action: string): BingoSessionActor {

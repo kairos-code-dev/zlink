@@ -4,6 +4,7 @@ export * from './runtime/handlers';
 export * from './runtime/host';
 export * from './runtime/actors';
 export * from './runtime/spots';
+export * from './runtime/workers';
 export * from './runtime/streams';
 export * from './runtime/registry';
 export * from './runtime/diagnostics';

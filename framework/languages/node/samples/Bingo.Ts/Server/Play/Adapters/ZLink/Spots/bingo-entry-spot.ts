@@ -30,10 +30,10 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     const matched = await this.roomDirectory.allocate(request.mode);
     const joinRequest = createProtobufMessage(bingoRoomJoinReq(matched.roomId, actor.actorId, actor.displayName));
     try {
-      const joined = await matched.room.onActorJoin(actor, joinRequest);
+      const joined = await actor.context.joinSpot(matched.roomId, joinRequest).submit();
       const reply: BingoJoinReply = joined.reply === undefined ? {} : readProtobufMessage(joined.reply) as BingoJoinReply;
       joined.reply?.close();
-      if (!joined.accepted) {
+      if (joined.resultCode !== 0) {
         throw new Error(reply.error ?? `Room ${matched.roomId} rejected actor '${actor.actorId}'.`);
       }
       return matchBingoRes(matched.roomId, reply.state);
@@ -42,19 +42,23 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
     }
   }
 
-  async onPostActorJoined(actor: PlayerActorType): Promise<void> {
+  async onJoinActor(actor: PlayerActorType): Promise<void> {
     if (!actor.destroyAfterEntrySpotJoin) {
       return;
     }
     await this.context?.destroyActor(actor);
   }
 
-  async onActorLeft(actor: PlayerActorType): Promise<void> {
+  async onCreateActor(actor: PlayerActorType): Promise<void> {
     void actor;
   }
 
-  async onActorDisconnected(actor: PlayerActorType): Promise<void> {
+  async onLeaveActor(actor: PlayerActorType): Promise<void> {
     void actor;
+  }
+
+  async onDisconnectActor(actor: PlayerActorType): Promise<void> {
+    actor.markDisconnected();
   }
 }
 

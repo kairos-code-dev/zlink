@@ -6,7 +6,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const zlink = require('../../../../bindings/node/dist');
-const framework = require('../packages/framework/dist');
+const framework = require('../packages/framework/dist/internal');
 const backend = require('../packages/framework/dist/runtime/backend');
 const connector = require('../packages/stream-connector/dist');
 
@@ -52,7 +52,7 @@ async function nodeClientToDotnetChannelServer(tempDir) {
     monitor.close();
 
     const registration = framework.createFrameworkRegistration({
-      clientServerChannels: {
+      channels: {
         profiles: { client: { manualConnections: [endpoint] } }
       }
     });
@@ -111,7 +111,7 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
       monitor.close();
 
       const registration = framework.createFrameworkRegistration({
-        clientServerChannels: {
+        channels: {
           profiles: { publisher: { bind: endpoint } }
         }
       });

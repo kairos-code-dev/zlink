@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const docRoot = path.join(workspaceRoot, 'doc');
+const samplesRoot = path.join(workspaceRoot, 'samples');
 
 const guideFiles = [
   '01-overview.ko.md',
@@ -131,6 +132,41 @@ test('node documentation keeps fanout and route client public surface aligned wi
   assert.deepEqual(offenders.sort(), []);
 });
 
+test('node actor destroy docs keep Entry Spot ownership and disconnect isolation', () => {
+  const docs = actorDestroyDocumentationFiles();
+  const offenders = [];
+  const forbidden = [
+    [/destroyActorAsync\b/, 'lower camel async destroy name'],
+    [/destroy_actor\b/, 'snake case destroy name'],
+    [/\bOnActorLeft\b/, 'legacy PascalCase left callback'],
+    [/\bonActorLeft\b/, 'legacy lower camel left callback'],
+    [/\bon_actor_left\b/, 'legacy snake case left callback'],
+    [/\bOnCreateActor\b/, 'legacy PascalCase create callback'],
+    [/\bon_actor_created\b/, 'legacy snake case create callback'],
+    [/\bonPostActorJoined\b/, 'legacy post actor joined callback'],
+    [/disconnect\s*->\s*destroy/i, 'disconnect-to-destroy arrow wording'],
+    [/disconnect[^.\n]*자동[^.\n]*destroy/, 'automatic disconnect destroy wording'],
+    [/disconnect[^.\n]*destroy[^.\n]*자동/, 'automatic disconnect destroy wording'],
+    [/자동[^.\n]*삭제/, 'automatic deletion wording']
+  ];
+
+  for (const file of docs) {
+    const content = fs.readFileSync(file, 'utf8');
+    const relative = path.relative(workspaceRoot, file);
+    for (const [pattern, reason] of forbidden) {
+      if (pattern.test(content)) {
+        offenders.push(`${relative}: ${reason}`);
+      }
+    }
+  }
+
+  const actorSpec = fs.readFileSync(path.join(docRoot, 'spec', 'nestjs-actor.ko.md'), 'utf8');
+  assert.equal(actorSpec.includes('Entry Spot context 는 `destroyActor(actor, signal?)` 를 제공한다'), true);
+  assert.equal(actorSpec.includes('user Spot context 에는'), true);
+  assert.equal(actorSpec.includes('destroy 나 user Spot leave 를 자동으로 만들지 않는다'), true);
+  assert.deepEqual(offenders.sort(), []);
+});
+
 test('node interface catalog names resolve in public package declarations', () => {
   const frameworkDeclarations = packageDeclarations('framework');
   const nestjsDeclarations = packageDeclarations('nestjs');
@@ -185,6 +221,18 @@ test('node interface catalog names resolve in public package declarations', () =
 
   assert.deepEqual(missing, []);
 });
+
+function actorDestroyDocumentationFiles() {
+  const officialDocs = [
+    ...allMarkdownFiles(path.join(docRoot, 'guide')),
+    ...allMarkdownFiles(path.join(docRoot, 'spec')),
+    ...allMarkdownFiles(path.join(docRoot, 'internals')),
+    path.join(docRoot, 'README.ko.md')
+  ];
+  const sampleReadmes = allMarkdownFiles(samplesRoot)
+    .filter((file) => path.basename(file) === 'README.ko.md');
+  return [...officialDocs, ...sampleReadmes];
+}
 
 function allMarkdownFiles(root) {
   const files = [];

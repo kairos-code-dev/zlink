@@ -429,9 +429,9 @@ export interface ZLinkEntrySpot {
 
   onClosing?(): Promise<void>;
 
-  onPostActorJoined?(actor: ZLinkActor): Promise<void>;
+  onJoinActor?(actor: ZLinkActor): Promise<void>;
 
-  onActorLeft?(actor: ZLinkActor): Promise<void>;
+  onLeaveActor?(actor: ZLinkActor): Promise<void>;
 }
 ```
 
@@ -567,8 +567,8 @@ export interface ZLinkEntrySpotActorRequestHandler<
 ```
 
 > 코드 기준: Entry Spot lifecycle(join/left)은 handler interface 가 아니라
-> `ZLinkEntrySpot.onPostActorJoined(...)` / `onActorLeft(...)` 멤버 callback 으로 선언한다.
-> actor disconnected 도 `ZLinkEntrySpot.onActorDisconnected(...)` 멤버 callback 으로 선언한다.
+> `ZLinkEntrySpot.onJoinActor(...)` / `onLeaveActor(...)` 멤버 callback 으로 선언한다.
+> actor disconnected 도 `ZLinkEntrySpot.onDisconnectActor(...)` 멤버 callback 으로 선언한다.
 
 #### lifecycle callback 의미
 
@@ -660,7 +660,7 @@ user Spot handler 는 spot 객체와 actor 객체를 함께 받는다. room/game
 ##### actor join/leave lifecycle callback
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후 후속 처리는
-Spot 멤버 `onPostActorJoined(actor)` 와 `onActorLeft(actor)` 로 선언한다.
+Spot 멤버 `onJoinActor(actor)` 와 `onLeaveActor(actor)` 로 선언한다.
 user Spot 에 actor 가 들어올지 결정하는 admission 은 `onActorJoin(actor, request)` 가
 맡는다. Entry Spot 은 기본 진입 지점이므로 `onActorJoin` 이 없다.
 
@@ -670,13 +670,13 @@ export class MatchSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onPostActorJoined(actor: PlayerActor): Promise<void> {}
+  async onJoinActor(actor: PlayerActor): Promise<void> {}
 
-  async onActorLeft(actor: PlayerActor): Promise<void> {}
+  async onLeaveActor(actor: PlayerActor): Promise<void> {}
 }
 ```
 
-`onPostActorJoined(...)` / `onActorLeft(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
+`onJoinActor(...)` / `onLeaveActor(...)` 는 join/leave commit 이 끝난 뒤 동일 실행
 문맥에서 호출된다. disconnected handler 는 join/leave 와 별개이며 actor membership 을 바꾸지
 않는다. `notifyDisconnected(...)` 로 대상 actor 를 명시하면 호출된다.
 
@@ -960,20 +960,20 @@ export interface ZLinkActorManager {
 export interface ZLinkSpot {
   onActorJoin?(actor: ZLinkActor, request: Message, signal?: AbortSignal):
     Promise<ZLinkSpotActorJoinResponse>;
-  onPostActorJoined?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onActorLeft?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onJoinActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
 }
 ```
 
 Entry Spot 은 admission 대상이 아니므로 `onActorJoin` 을 노출하지 않는다. user Spot 의
 `onActorJoin` 이 `accepted: true` 를 반환할 때만 actor 위치를 commit 하고
-`onPostActorJoined` 를 호출한다. `accepted: false` 이면 위치를 바꾸지 않고 reply
+`onJoinActor` 를 호출한다. `accepted: false` 이면 위치를 바꾸지 않고 reply
 `Message` 만 caller 에게 돌려준다.
 
 actor join callback 이 accept 응답을 반환하면 framework 가 join commit 을 수행한다.
 application callback 은 별도 `joinActor(...)` 를 호출하지 않는다. `leaveActor(...)` 는 현재
 user Spot 에서 actor 를 Entry Spot 으로 되돌리는 편의 API 다. 성공하면 source Spot 의
-`onActorLeft` 와 Entry Spot 의 `onPostActorJoined` callback 이 호출된다. 실패하면 actor 위치와
+`onLeaveActor` 와 Entry Spot 의 `onJoinActor` callback 이 호출된다. 실패하면 actor 위치와
 framework state 는 기존을 유지하고 lifecycle callback 은 호출되지 않는다.
 
 - actor context 는 현재 client session 의 식별만 `boundSession` 으로 노출한다. session rid /

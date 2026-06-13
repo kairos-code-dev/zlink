@@ -53,6 +53,9 @@ interface FrameworkRuntimeHost {
   onApplicationBootstrap(): Promise<void>;
   onApplicationShutdown(): Promise<void>;
   setActorManager?(actorManager: unknown): void;
+  setSpotManager?(spotManager: unknown): void;
+  createActorManagerOptions?(): object;
+  createSpotManagerOptions?(): object;
 }
 
 interface RegistryRuntime {
@@ -78,6 +81,7 @@ interface FrameworkModule {
   readonly DefaultZLinkSpotManager: new (options: Record<string, unknown>) => unknown;
   readonly DefaultZLinkSpotOutbound: new (...args: unknown[]) => unknown;
   readonly ZLinkSpotSerialExecutor: new () => unknown;
+  readonly ZLinkSpotWorkerRuntime: new (options?: unknown) => unknown;
   readonly ZLinkRegistrySpotRemoteAddressResolver: new (options: { readonly registration: ZLinkFrameworkRegistration }) => ZLinkSpotRemoteAddressResolver;
   createFrameworkRegistration(options: ZLinkFrameworkRegistrationOptions): ZLinkFrameworkRegistration;
   hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
@@ -1515,9 +1519,10 @@ interface ConditionalClientProviderSpec {
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
   {
     token: ZLINK_SPOT_MANAGER,
-    requiresRuntime: false,
+    requiresRuntime: true,
     isEnabled: (registration) => framework.hasSpotNode(registration),
-    create: (registration, _runtime, moduleRef, discovery) => createSpotManager(registration, moduleRef, discovery)
+    create: (registration, runtime, moduleRef, discovery) =>
+      createSpotManager(registration, requireRuntime(runtime), moduleRef, discovery)
   },
   {
     token: ZLINK_SPOT_OUTBOUND,
@@ -1541,6 +1546,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
       const host = requireRuntime(runtime);
       const actorManager = new framework.DefaultZLinkActorManager({
         actorFactories: registration.actorFactories,
+        ...host.createActorManagerOptions?.(),
         boundSessionFactory: host.boundSessionFactory.create.bind(host.boundSessionFactory),
         providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
       });
@@ -1690,15 +1696,20 @@ function providerToken(provider: Provider): InjectionToken {
 
 function createSpotManager(
   registration: ZLinkFrameworkRegistration,
+  runtime: FrameworkRuntimeHost,
   moduleRef: ModuleRef | undefined,
   discovery: DiscoveryService | undefined
 ): unknown {
-  return new framework.DefaultZLinkSpotManager({
+  const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
-    providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery)
+    ...runtime.createSpotManagerOptions?.(),
+    providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),
+    workerRuntime: new framework.ZLinkSpotWorkerRuntime(registration.worker)
   });
+  runtime.setSpotManager?.(manager);
+  return manager;
 }
 
 async function createSpotOutbound(

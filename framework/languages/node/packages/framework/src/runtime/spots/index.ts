@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type {
   Message,
   RoutingId,
@@ -13,6 +14,7 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
+  ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotContext,
   ZLinkSpotCreateResult,
@@ -47,17 +49,31 @@ import { ZLINK_BACKEND_SPOT_NODE_MODE_ALL } from '../backend/contracts';
 import type { ZLinkSpotPublisherClientTransport } from '../channels';
 import { encodeChannelPublishEnvelopeParts } from '../channels/channel-envelope';
 import { ZLinkAsyncSubmitter } from '../messaging';
+import type { ZLinkWorkerCall } from '../../contracts';
+import { DefaultZLinkWorkerCall, deliverOnSerial, ZLinkSpotWorkerRuntime } from '../workers';
+import {
+  ZLinkActorPacketKind,
+  ZLinkSpotActorDispatcher,
+  ZLinkSpotActorHandlerRegistryRuntime
+} from '../actors';
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly nodeRid?: RoutingId;
+  readonly entryNodeRid?: RoutingId;
+  readonly entryNodeRidProvider?: () => RoutingId | undefined;
+  readonly entrySpotCallbacks?: {
+    onJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+    onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  };
   readonly actorCountProvider?: (spotRid: RoutingId) => number;
   readonly channelClient?: ZLinkChannelClient;
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly remoteAddressResolver?: ZLinkSpotRemoteAddressResolver;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly workerRuntime?: ZLinkSpotWorkerRuntime;
 }
 
 export interface ZLinkSpotNodeRuntimeManagerOptions {
@@ -69,7 +85,6 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     node: ZLinkBackendSpotNode,
     entryNodeRid: RoutingId,
     actor: ZLinkActor,
-    beforeDestroy: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>,
     signal?: AbortSignal
   ) => Promise<void>;
 }
@@ -79,8 +94,11 @@ export class ZLinkSpotNodeRuntimeManager {
   private readonly entryActivations = new Map<string, ZLinkEntrySpotActivation>();
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
+  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
 
-  constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
+  constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {
+    this.workerRuntime = new ZLinkSpotWorkerRuntime(options.registration.worker);
+  }
 
   async start(): Promise<void> {
     if (this.options.registration.spotNodes.size === 0) {
@@ -105,6 +123,37 @@ export class ZLinkSpotNodeRuntimeManager {
 
   get nodesByName(): ReadonlyMap<string, ZLinkBackendSpotNode> {
     return this.nodes;
+  }
+
+  get primaryNode(): ZLinkBackendSpotNode | undefined {
+    return this.nodes.values().next().value;
+  }
+
+  notifyEntrySpotActorCreated(
+    nodeRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const activation = [...this.entryActivations.values()].find(
+      (entryActivation) => entryActivation.nodeRid === nodeRid
+    );
+    return activation?.notifyCreateActor(actor, signal) ?? Promise.resolve();
+  }
+
+  notifyPrimaryEntrySpotActorJoined(
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const activation = this.primaryEntryActivation();
+    return activation?.notifyJoinActor(actor, signal) ?? Promise.resolve();
+  }
+
+  notifyPrimaryEntrySpotActorLeft(
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const activation = this.primaryEntryActivation();
+    return activation?.notifyLeaveActor(actor, signal) ?? Promise.resolve();
   }
 
   async dispose(): Promise<void> {
@@ -145,11 +194,12 @@ export class ZLinkSpotNodeRuntimeManager {
       spotNodeName,
       providerResolver: this.options.providerResolver,
       actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
-      destroyActor: (nodeRid, actor, beforeDestroy, signal) => {
+      workerRuntime: this.workerRuntime,
+      destroyActor: (nodeRid, actor, signal) => {
         if (this.options.actorDestroyer === undefined) {
           throw new ZLinkConfigurationException('Entry Spot actor destroy runtime is not started.');
         }
-        return this.options.actorDestroyer(node, nodeRid, actor, beforeDestroy, signal);
+        return this.options.actorDestroyer(node, nodeRid, actor, signal);
       }
     });
     try {
@@ -161,6 +211,10 @@ export class ZLinkSpotNodeRuntimeManager {
       throw error;
     }
     this.entryActivations.set(spotNodeName, activation);
+  }
+
+  private primaryEntryActivation(): ZLinkEntrySpotActivation | undefined {
+    return this.entryActivations.values().next().value;
   }
 
   publishSpot(
@@ -312,10 +366,10 @@ interface ZLinkEntrySpotActivationOptions {
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
   readonly providerResolver?: ZLinkProviderResolver;
+  readonly workerRuntime?: ZLinkSpotWorkerRuntime;
   readonly destroyActor?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
-    beforeDestroy: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>,
     signal?: AbortSignal
   ) => Promise<void>;
 }
@@ -324,13 +378,18 @@ export class ZLinkEntrySpotActivation {
   private readonly serial = new ZLinkSpotSerialExecutor();
   private readonly timers = new ZLinkSpotTimerRegistry();
   private readonly handlers = new DefaultZLinkSpotHandlerRegistry();
-  private readonly outbound = new DefaultZLinkSpotOutbound(new ZLinkSpotSerialExecutor());
+  private readonly outbound: DefaultZLinkSpotOutbound;
+  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
   private initialized = false;
 
   entrySpot: ZLinkEntrySpot;
   readonly context: ZLinkEntrySpotContext;
 
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
+    // Entry Spot follows the user Spot rule: outbound, timers, lifecycle and
+    // actor packet dispatch all share the one per-activation serial executor.
+    this.outbound = new DefaultZLinkSpotOutbound(this.serial);
+    this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.context = this.createContext();
     this.entrySpot = undefined as unknown as ZLinkEntrySpot;
     for (const handler of options.actorRequestHandlers ?? []) {
@@ -338,6 +397,19 @@ export class ZLinkEntrySpotActivation {
         this.handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
       }
     }
+  }
+
+  /**
+   * The Entry Spot serial dispatch line. All Entry Spot application
+   * callbacks (lifecycle, actor packets, timers, request continuations,
+   * worker completions) run through this executor one at a time.
+   */
+  get serialExecutor(): ZLinkSpotSerialExecutor {
+    return this.serial;
+  }
+
+  get nodeRid(): RoutingId {
+    return this.options.nodeRid;
   }
 
   async create(): Promise<void> {
@@ -369,6 +441,21 @@ export class ZLinkEntrySpotActivation {
     }
   }
 
+  notifyCreateActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, signal));
+  }
+
+  notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    return this.serial.execute(() => this.entrySpot.onJoinActor?.(actor, signal));
+  }
+
+  notifyLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    return this.serial.execute(() => this.entrySpot.onLeaveActor?.(actor, signal));
+  }
+
   private createContext(): ZLinkEntrySpotContext {
     const activation = this;
     return {
@@ -384,7 +471,6 @@ export class ZLinkEntrySpotActivation {
         return activation.options.destroyActor(
           activation.options.nodeRid,
           actor,
-          (leftActor, leftSignal) => activation.notifyActorLeftForDestroy(leftActor, leftSignal),
           signal
         );
       },
@@ -400,19 +486,18 @@ export class ZLinkEntrySpotActivation {
           periodMs,
           options,
           handlerType,
-          new ZLinkSpotSerialExecutor(),
+          activation.serial,
           activation.entrySpot,
           activation.options.providerResolver,
           signal
         );
+      },
+      runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> {
+        return new DefaultZLinkWorkerCall(activation.workerRuntime, activation.serial, work);
       }
     };
   }
 
-  private notifyActorLeftForDestroy(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
-    throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onActorLeft?.(actor, signal));
-  }
 }
 
 export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherClientTransport {
@@ -439,6 +524,8 @@ interface SpotActivation {
   readonly spot: ZLinkSpot;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly timers: ZLinkSpotTimerRegistry;
+  readonly actors: Map<string, ZLinkActor>;
+  readonly actorHandlers: ZLinkSpotActorHandlerRegistryRuntime;
   readonly actorCount: () => number;
 }
 
@@ -452,9 +539,11 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private readonly factories: ReadonlySet<Type<ZLinkSpot>>;
   private readonly activations = new Map<RoutingId, SpotActivation>();
   private readonly pending = new Map<RoutingId, PendingSpotActivation>();
+  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.factories = new Set(options.spotFactories);
+    this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
   }
 
   async create<TSpot extends ZLinkSpot>(
@@ -530,20 +619,74 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       return false;
     }
     this.activations.delete(spotRid);
-    if (activation.serial.isExecuting) {
-      void activation.serial.execute(() => this.closeActivationInsideSerial(activation, signal));
+    if (activation.serial.isCurrentTurn) {
+      void activation.serial.post(() => this.closeActivationInsideSerial(activation, signal));
       return true;
     }
     await this.closeActivation(activation, signal);
     return true;
   }
 
-  async executeOnSpot<T>(spotRid: RoutingId, operation: (spot: ZLinkSpot) => Promise<T> | T): Promise<T> {
+  async executeOnSpot<TSpot extends ZLinkSpot, TResult>(
+    spotType: Type<TSpot>,
+    spotRid: RoutingId,
+    operation: (spot: TSpot) => Promise<TResult> | TResult,
+    signal?: AbortSignal
+  ): Promise<TResult> {
+    throwIfAborted(signal);
     const activation = this.activations.get(spotRid);
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
-    return activation.serial.execute(() => operation(activation.spot));
+    if (activation.spotType !== spotType) {
+      throw new ZLinkConfigurationException(`Spot '${spotRid}' has a different spot type.`);
+    }
+    return activation.serial.execute(() => operation(activation.spot as TSpot));
+  }
+
+  hasActiveSpot(spotRid: RoutingId): boolean {
+    return this.activations.has(spotRid);
+  }
+
+  async admitActorJoin(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    request: Message,
+    commit: (spot: ZLinkSpot) => Promise<void> | void,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotActorJoinResponse> {
+    throwIfAborted(signal);
+    const activation = this.activations.get(spotRid);
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
+    }
+    const dispatcher = this.createActorDispatcher(activation);
+    return dispatcher.admitActorJoin(actor, request, async () => {
+      await this.options.entrySpotCallbacks?.onLeaveActor(actor, signal);
+      await commit(activation.spot);
+      activation.actors.set(actor.actorId, actor);
+    });
+  }
+
+  async leaveActor(
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const activation = this.activations.get(spotRid);
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
+    }
+    await activation.serial.execute(async () => {
+      await activation.spot.onLeaveActor?.(actor, signal);
+      activation.actors.delete(actor.actorId);
+    });
+    const entryNodeRid = this.options.entryNodeRidProvider?.() ?? this.options.entryNodeRid ?? this.options.nodeRid;
+    if (entryNodeRid === undefined) {
+      throw new ZLinkConfigurationException('Spot actor leave requires an Entry Spot node routing id.');
+    }
+    await actor.context.joinEntrySpot(entryNodeRid).submit(signal);
   }
 
   private async createActivation<TSpot extends ZLinkSpot>(
@@ -555,9 +698,16 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     this.requireRegisteredFactory(spotType);
     const serial = new ZLinkSpotSerialExecutor();
     const handlers = new DefaultZLinkSpotHandlerRegistry();
+    const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     for (const handler of this.options.spotActorRequestHandlers ?? []) {
       if (handler.spotType === spotType) {
         handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
+        actorHandlers.addPacket({
+          kind: ZLinkActorPacketKind.Request,
+          packetName: handler.packetName,
+          actorType: handler.actorType,
+          handlerType: handler.handlerType
+        });
       }
     }
     const timers = new ZLinkSpotTimerRegistry();
@@ -577,13 +727,16 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       value: context
     });
 
+    const actors = new Map<string, ZLinkActor>();
     const activation: SpotActivation = {
       spotRid,
       spotType,
       spot,
       serial,
       timers,
-      actorCount: () => this.options.actorCountProvider?.(spotRid) ?? 0
+      actors,
+      actorHandlers,
+      actorCount: () => actors.size + (this.options.actorCountProvider?.(spotRid) ?? 0)
     };
 
     try {
@@ -622,9 +775,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       routingId: spotRid,
       handlers,
       outbound,
-      async leaveActor() {
-        throw new ZLinkConfigurationException('Spot actor runtime is not started.');
-      },
+      leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => this.leaveActor(spotRid, actor, signal),
       close: (signal?: AbortSignal) => this.close(spotRid, signal),
       addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
         name: string,
@@ -638,7 +789,9 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
           throw new ZLinkConfigurationException('Spot timer cannot be registered before spot activation.');
         }
         return timers.add(name, periodMs, options, handlerType, serial, spot, this.options.providerResolver, signal);
-      }
+      },
+      runWorker: <T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> =>
+        new DefaultZLinkWorkerCall(this.workerRuntime, serial, work)
     };
   }
 
@@ -658,6 +811,15 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     if (!this.factories.has(spotType)) {
       throw new ZLinkConfigurationException('Spot type is not registered as a spot factory.');
     }
+  }
+
+  private createActorDispatcher(activation: SpotActivation): ZLinkSpotActorDispatcher {
+    return new ZLinkSpotActorDispatcher({
+      registry: activation.actorHandlers,
+      spot: activation.spot,
+      providerResolver: this.options.providerResolver,
+      serial: activation.serial
+    });
   }
 
   private allocateSpotRid(): RoutingId {
@@ -959,21 +1121,63 @@ export interface ZLinkSpotRoutedRequestOptions extends ZLinkSpotRoutedSendOption
   readonly timeoutMs?: number;
 }
 
+interface ZLinkSpotSerialTurnContext {
+  readonly executor: ZLinkSpotSerialExecutor;
+  readonly turnId: number;
+}
+
+const spotSerialTurnStorage = new AsyncLocalStorage<ZLinkSpotSerialTurnContext>();
+
 export class ZLinkSpotSerialExecutor {
   private tail: Promise<unknown> = Promise.resolve();
   private depth = 0;
+  private turnSequence = 0;
+  private activeTurnId = 0;
 
   get isExecuting(): boolean {
     return this.depth > 0;
   }
 
+  get isCurrentTurn(): boolean {
+    const current = spotSerialTurnStorage.getStore();
+    return current !== undefined
+      && current.executor === this
+      && current.turnId === this.activeTurnId
+      && this.depth > 0;
+  }
+
+  /**
+   * Runs `operation` in serial order, one turn at a time. A call made from
+   * within the currently active turn of this executor is re-entrant and runs
+   * as part of that turn instead of queueing (which would deadlock a turn
+   * that awaits the nested result).
+   */
   execute<T>(operation: () => Promise<T> | T): Promise<T> {
+    if (this.isCurrentTurn) {
+      return Promise.resolve().then(operation);
+    }
+    return this.post(operation);
+  }
+
+  /**
+   * Always enqueues `operation` as its own serial turn, even when called
+   * from within the currently active turn. Detached completion callbacks use
+   * this so they never run inline inside another callback's turn.
+   */
+  post<T>(operation: () => Promise<T> | T): Promise<T> {
     const wrapped = async () => {
       this.depth += 1;
+      this.turnSequence += 1;
+      const turnId = this.turnSequence;
+      this.activeTurnId = turnId;
       try {
-        return await operation();
+        return await spotSerialTurnStorage.run(
+          { executor: this, turnId },
+          async () => operation()
+        );
       } finally {
         this.depth -= 1;
+        this.activeTurnId = 0;
       }
     };
     const next = this.tail.then(wrapped, wrapped);
@@ -1017,9 +1221,23 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
-      return serial.execute(() => inner.submit<TReply>(signal));
+      const pending = startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
+      return deliverOnSerial(serial, pending);
     }
   };
+}
+
+/**
+ * Starts an outbound request in Spot serial order without gating the serial
+ * line on the request round trip. When already running inside the Spot line
+ * (a handler turn), the request starts immediately as part of that turn;
+ * otherwise the start is enqueued as its own serial turn.
+ */
+function startRequestOnSerial<TReply>(
+  serial: ZLinkSpotSerialExecutor,
+  begin: () => Promise<{ pending: Promise<TReply> }> | { pending: Promise<TReply> }
+): Promise<TReply> {
+  return serial.execute(begin).then((startedRequest) => startedRequest.pending);
 }
 
 async function createProviderInstance<T>(
@@ -1027,13 +1245,16 @@ async function createProviderInstance<T>(
   resolver: ZLinkProviderResolver | undefined,
   fallbackArg?: unknown
 ): Promise<T> {
-  const created = await resolver?.create?.(type);
-  if (created !== undefined) {
-    return created;
-  }
   const existing = resolver?.get?.(type);
   if (existing !== undefined) {
     return existing;
+  }
+  if (fallbackArg !== undefined) {
+    return new (type as new (arg: unknown) => T)(fallbackArg);
+  }
+  const created = await resolver?.create?.(type);
+  if (created !== undefined) {
+    return created;
   }
   return fallbackArg === undefined
     ? new (type as new () => T)()
@@ -1081,14 +1302,17 @@ function wrapRoutedSpotRequestCall<TRequest>(
       return this;
     },
     submit<TReply>(signal?: AbortSignal) {
-      return serial.execute(async () => {
+      const pending = startRequestOnSerial<TReply>(serial, async () => {
         const remoteAddress = await resolver.resolve(spotRid, signal);
-        return transport.requestToSpot<TRequest, TReply>(remoteAddress, request, {
-          packetName: selectedPacketName,
-          timeoutMs: selectedTimeoutMs,
-          signal
-        });
+        return {
+          pending: transport.requestToSpot<TRequest, TReply>(remoteAddress, request, {
+            packetName: selectedPacketName,
+            timeoutMs: selectedTimeoutMs,
+            signal
+          })
+        };
       });
+      return deliverOnSerial(serial, pending);
     }
   };
 }

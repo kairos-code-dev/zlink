@@ -1,7 +1,9 @@
 const { Inject } = require('@nestjs/common');
+const { ZLINK_SPOT_MANAGER } = require('@zlink-systems/nestjs');
 const { BingoNotificationPublisher } = require('../../Adapters/ZLink/Notifications/bingo-notification-publisher');
 const { createRoomSettings } = require('../../Domain/Bingo/bingo-room-models');
 const { BingoRoomSpot } = require('../../Adapters/ZLink/Spots/bingo-room-spot');
+import type { ZLinkSpotManager } from '../../../../../../packages/framework/dist';
 import type { BingoNotificationPublisher as BingoNotificationPublisherType } from '../../Adapters/ZLink/Notifications/bingo-notification-publisher';
 import type { BingoRoomSpot as BingoRoomSpotType } from '../../Adapters/ZLink/Spots/bingo-room-spot';
 import type { BingoRoomSettings } from '../../Domain/Bingo/bingo-room-models';
@@ -21,7 +23,10 @@ class BingoRoomAllocator {
   private roomSeq: number;
   private readonly rooms: Map<string, BingoRoomSpotType>;
 
-  constructor(private readonly notifications: BingoNotificationPublisherType) {
+  constructor(
+    private readonly notifications: BingoNotificationPublisherType,
+    private readonly spotManager: ZLinkSpotManager
+  ) {
     this.notifications = notifications;
     this.currentRoomId = null;
     this.currentRoomSettings = null;
@@ -43,7 +48,11 @@ class BingoRoomAllocator {
       this.currentRoomId = `bingo-room-${String(this.roomSeq).padStart(3, '0')}`;
       this.currentRoomSettings = settings;
       this.reservedSeats = 0;
-      this.rooms.set(this.currentRoomId, new BingoRoomSpot(this.currentRoomId, settings, this.notifications));
+      await this.spotManager.getOrCreate(BingoRoomSpot, this.currentRoomId);
+      await this.spotManager.executeOnSpot<BingoRoomSpotType, void>(BingoRoomSpot, this.currentRoomId, (room) => {
+        room.configureRoom(settings, this.notifications);
+        this.rooms.set(this.currentRoomId!, room);
+      });
     }
 
     this.reservedSeats += 1;
@@ -64,9 +73,17 @@ class BingoRoomAllocator {
     }
     return room;
   }
+
+  async executeInRoom<TResult>(
+    roomId: string,
+    operation: (room: BingoRoomSpotType) => TResult | Promise<TResult>
+  ): Promise<TResult> {
+    return await this.spotManager.executeOnSpot<BingoRoomSpotType, TResult>(BingoRoomSpot, roomId, operation);
+  }
 }
 
 Inject(BingoNotificationPublisher)(BingoRoomAllocator, undefined, 0);
+Inject(ZLINK_SPOT_MANAGER)(BingoRoomAllocator, undefined, 1);
 
 export { BingoRoomAllocator };
 export type { BingoRoomAllocation };

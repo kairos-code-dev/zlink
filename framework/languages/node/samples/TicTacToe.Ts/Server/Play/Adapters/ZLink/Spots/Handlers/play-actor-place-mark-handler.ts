@@ -1,7 +1,6 @@
-const { Inject, Injectable } = require('@nestjs/common');
-const { PacketNames, gameStateNotify, placeMarkRes } = require('../../../../../../Shared/Contracts/messages');
-const { TicTacToeGameCreator } = require('../../../../Application/GameCreation/tictactoe-game-creator');
-import type { TicTacToeGameCreator as TicTacToeGameCreatorType } from '../../../../Application/GameCreation/tictactoe-game-creator';
+const { Injectable } = require('@nestjs/common');
+const { TicTacToeGameSpot } = require('../tictactoe-game-spot');
+import type { ZLinkActor } from '../../../../../../../../packages/framework/dist';
 import type {
   PlaceMarkInternalReq,
   PlaceMarkRes
@@ -9,27 +8,13 @@ import type {
 
 @Injectable()
 class PlayActorPlaceMarkHandler {
-  constructor(@Inject(TicTacToeGameCreator) private readonly games: TicTacToeGameCreatorType) {}
-
   async handle(request: PlaceMarkInternalReq): Promise<PlaceMarkRes> {
     if (request.actor.roomId === undefined) {
       throw new Error(`Actor '${request.actor.actorId}' has not joined a room.`);
     }
-    const room = this.games.require(request.actor.roomId);
-    const change = room.match.placeMark(request.actor.actorId, request.cell);
-    const state = change.state;
-    for (const joined of room.match.players.values()) {
-      if (joined.actorId === request.actor.actorId) {
-        continue;
-      }
-      await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
-    }
-    if (state.status === 'Won' || state.status === 'Draw' || state.status === 'TurnTimedOut') {
-      setImmediate(() => {
-        void this.games.cleanupFinishedRoom(room);
-      });
-    }
-    return placeMarkRes(room.roomId, request.actor.actorId, request.cell, state);
+    const actor = request.actor as unknown as ZLinkActor & typeof request.actor;
+    const spot = actor.context.getSpot(TicTacToeGameSpot) as InstanceType<typeof TicTacToeGameSpot>;
+    return await spot.placeMark(actor, request.cell);
   }
 }
 

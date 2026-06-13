@@ -89,6 +89,7 @@ async function bootstrap(): Promise<void> {
     socket.on('error', () => {});
     socket.once('close', () => {
       context.closed = true;
+      session.onDisconnected();
     });
     socket.on('data', (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);

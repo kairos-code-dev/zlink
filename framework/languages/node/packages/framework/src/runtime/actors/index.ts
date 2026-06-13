@@ -36,6 +36,14 @@ import type {
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
   readonly joinCoordinator?: ZLinkActorJoinCoordinator;
+  readonly nativeActorNode?: ZLinkBackendSpotNode;
+  readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
+  readonly actorCreatedNotifier?: (
+    nodeRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ) => Promise<void>;
+  readonly actorDestroyedCleanup?: (actorId: string) => void;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
   readonly providerResolver?: ZLinkProviderResolver;
 }
@@ -109,15 +117,9 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     node: ZLinkBackendSpotNode,
     entryNodeRid: RoutingId,
     actor: ZLinkActor,
-    beforeDestroyOrSignal?: ((actor: ZLinkActor, signal?: AbortSignal) => Promise<void>) | AbortSignal,
     signal?: AbortSignal
   ): Promise<void> {
-    const beforeDestroy = typeof beforeDestroyOrSignal === 'function'
-      ? beforeDestroyOrSignal
-      : undefined;
-    const destroySignal = typeof beforeDestroyOrSignal === 'function'
-      ? signal
-      : beforeDestroyOrSignal;
+    const destroySignal = signal;
     throwIfAborted(destroySignal);
     const state = this.states.get(actor.actorId);
     if (state === undefined || state.actor === undefined || state.actor !== actor) {
@@ -129,14 +131,19 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         `Actor '${actor.actorId}' must leave its current SPOT before destroy.`
       );
     }
+    if (state.nativeActorRef === undefined) {
+      state.clearAfterDestroy();
+      this.states.delete(actor.actorId);
+      return;
+    }
     const actorRef = state.beginDestroy(entryNodeRid);
     if (actorRef === undefined) {
       return;
     }
 
     try {
-      await beforeDestroy?.(actor, destroySignal);
       await node.destroyActor(actorRef, 0, destroySignal);
+      this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
     } catch (error) {
@@ -188,7 +195,25 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       this.options.boundSessionFactory
     );
     const actor = await factory.create(actorId, context, signal);
-    state.bindActor(actor, context);
+    try {
+      state.bindActor(actor, context);
+      if (this.options.nativeActorNode !== undefined) {
+        const actorRef = state.ensureNativeActorRef(this.options.nativeActorNode);
+        await this.options.actorCreatedNotifier?.(
+          toFrameworkRoutingId(actorRef.nodeRid),
+          actor,
+          signal
+        );
+      } else {
+        const nodeRid = this.options.actorCreatedNodeRidProvider?.();
+        if (nodeRid !== undefined) {
+          await this.options.actorCreatedNotifier?.(nodeRid, actor, signal);
+        }
+      }
+    } catch (error) {
+      state.clearAfterDestroy();
+      throw error;
+    }
     return actor;
   }
 
@@ -587,10 +612,26 @@ export interface ZLinkActorDispatchSnapshot {
   readonly isJoined: boolean;
 }
 
+export interface ZLinkActorDispatchRouterOptions {
+  /**
+   * The Entry Spot serial executor. When provided, packets for actors that
+   * have not joined a user Spot (the entry path) run through this executor,
+   * so Entry Spot actor packet dispatch shares the one Entry Spot serial
+   * line with lifecycle, timer and continuation callbacks. User-Spot-joined
+   * actors keep the per-actor mailbox dispatch behavior.
+   */
+  readonly entryExecutor?: {
+    execute<T>(operation: () => Promise<T> | T): Promise<T>;
+  };
+}
+
 export class ZLinkActorDispatchRouter {
   private readonly mailboxes = new ZLinkActorDispatchMailboxSet();
 
-  constructor(private readonly manager: Pick<DefaultZLinkActorManager, 'getState'>) {}
+  constructor(
+    private readonly manager: Pick<DefaultZLinkActorManager, 'getState'>,
+    private readonly options: ZLinkActorDispatchRouterOptions = {}
+  ) {}
 
   submit<T>(
     actorId: string,
@@ -598,6 +639,9 @@ export class ZLinkActorDispatchRouter {
   ): Promise<T> {
     return this.mailboxes.submit(actorId, () => {
       const snapshot = this.createSnapshot(actorId);
+      if (!snapshot.isJoined && this.options.entryExecutor !== undefined) {
+        return this.options.entryExecutor.execute(() => operation(snapshot));
+      }
       return operation(snapshot);
     });
   }
@@ -736,21 +780,21 @@ export class ZLinkSpotActorDispatcher {
         return result;
       }
       await commit();
-      await this.options.spot.onPostActorJoined?.(actor);
+      await this.options.spot.onJoinActor?.(actor);
       return result;
     });
   }
 
-  notifyPostActorJoined(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onPostActorJoined?.(actor));
+  notifyJoinActor(actor: ZLinkActor): Promise<void> {
+    return this.execute(() => this.options.spot.onJoinActor?.(actor));
   }
 
-  notifyActorLeft(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onActorLeft?.(actor));
+  notifyLeaveActor(actor: ZLinkActor): Promise<void> {
+    return this.execute(() => this.options.spot.onLeaveActor?.(actor));
   }
 
-  notifyActorDisconnected(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onActorDisconnected?.(actor));
+  notifyDisconnectActor(actor: ZLinkActor): Promise<void> {
+    return this.execute(() => this.options.spot.onDisconnectActor?.(actor));
   }
 
   private requirePacket(

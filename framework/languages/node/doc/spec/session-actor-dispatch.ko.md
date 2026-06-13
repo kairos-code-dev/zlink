@@ -795,14 +795,14 @@ class ZLinkEntrySpotRuntime {
 
   actorJoined(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     return this.lifecycleQueue.run(
-      (s) => this.entrySpot.onPostActorJoined?.(actor, s),
+      (s) => this.entrySpot.onJoinActor?.(actor, s),
       signal,
     );
   }
 
   actorLeft(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     return this.lifecycleQueue.run(
-      (s) => this.entrySpot.onActorLeft?.(actor, s),
+      (s) => this.entrySpot.onLeaveActor?.(actor, s),
       signal,
     );
   }

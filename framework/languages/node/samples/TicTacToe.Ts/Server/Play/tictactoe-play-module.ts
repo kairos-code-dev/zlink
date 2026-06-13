@@ -4,6 +4,7 @@ const { ZLinkModule, ZLINK_CHANNEL_CLIENT, zlinkDiscoverProviders, zlinkFramewor
 const { SampleNames } = require('../Configuration/sample-settings');
 const { PlayActorFactory } = require('./Adapters/ZLink/Actors/play-actor-factory');
 const { PlayEntrySpot } = require('./Adapters/ZLink/Spots/play-entry-spot');
+const { TicTacToeGameSpot } = require('./Adapters/ZLink/Spots/tictactoe-game-spot');
 const { TicTacToeGameCreator } = require('./Application/GameCreation/tictactoe-game-creator');
 const { PlaySessionFactory } = require('./Adapters/ZLink/Sessions/play-session-factory');
 const { PLAY_STREAM_ENDPOINT } = require('./play-tokens');
@@ -29,7 +30,8 @@ function createTicTacToePlayModule(config: {
             .bind(config.playStreamEndpoint)
             .registerSession(PlaySessionFactory))
           .spotNode(SampleNames.playSpotNode, (spot) => spot
-            .entrySpot(PlayEntrySpot))
+            .entrySpot(PlayEntrySpot)
+            .spotFactory(TicTacToeGameSpot))
           .build()
       })
     ],

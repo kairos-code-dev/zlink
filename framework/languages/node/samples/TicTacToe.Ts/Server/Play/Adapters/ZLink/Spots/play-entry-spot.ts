@@ -1,8 +1,3 @@
-const { Inject } = require('@nestjs/common');
-const { ModuleRef } = require('@nestjs/core');
-const { PlayActorJoinGameHandler } = require('./Handlers/play-actor-join-game-handler');
-const { TicTacToeGameCreator } = require('../../../Application/GameCreation/tictactoe-game-creator');
-import type { ModuleRef as NestModuleRef } from '@nestjs/core';
 import type {
   ZLinkActor,
   ZLinkEntrySpot,
@@ -12,46 +7,42 @@ import type {
   JoinGameRes,
   TicTacToeActor
 } from '../../../../../Shared/Contracts/messages';
-import type { TicTacToeGameCreator as TicTacToeGameCreatorType, TicTacToeRoom } from '../../../Application/GameCreation/tictactoe-game-creator';
 
 class PlayEntrySpot implements ZLinkEntrySpot {
   readonly context!: ZLinkEntrySpotContext;
-  private joinHandler: InstanceType<typeof PlayActorJoinGameHandler> | null;
-
-  constructor(
-    private readonly moduleRef: NestModuleRef,
-    private readonly games: TicTacToeGameCreatorType
-  ) {
-    this.moduleRef = moduleRef;
-    this.games = games;
-    this.joinHandler = null;
-    this.games.setFinishedRoomCleaner((room) => this.cleanupFinishedRoom(room));
-  }
 
   async join(actor: TicTacToeActor, roomId: string): Promise<JoinGameRes> {
-    this.joinHandler ??= await this.moduleRef.create(PlayActorJoinGameHandler);
-    return await this.joinHandler.handle({ actor, roomId });
+    const joined = await toZLinkActor(actor).context.joinSpot(roomId).submit();
+    const reply = joined.reply === undefined ? {} : JSON.parse(joined.reply.getString('utf8')) as Partial<JoinGameRes & { error: string }>;
+    joined.reply?.close();
+    if (joined.resultCode !== 0) {
+      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
+    }
+    return reply as JoinGameRes;
   }
 
-  async onActorDisconnected(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  async onDisconnectActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     void signal;
     const player = toTicTacToeActor(actor);
     player.markDisconnected();
   }
 
-  async onPostActorJoined(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  async onCreateActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    void actor;
+    void signal;
+  }
+
+  async onJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     if (isDestroyMarked(actor)) {
       await this.context.destroyActor(actor, signal);
     }
   }
 
-  async cleanupFinishedRoom(room: TicTacToeRoom): Promise<void> {
-    for (const player of room.match.players.values()) {
-      player.actor.markForDestroyAfterRoomLeave();
-      room.match.players.delete(player.actorId);
-      await this.onPostActorJoined(toZLinkActor(player.actor));
-    }
+  async onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    void actor;
+    void signal;
   }
+
 }
 
 function toZLinkActor(actor: TicTacToeActor): ZLinkActor {
@@ -73,8 +64,5 @@ function toTicTacToeActor(actor: ZLinkActor): TicTacToeActor {
 function isDestroyMarked(actor: ZLinkActor): boolean {
   return (actor as Partial<TicTacToeActor>).destroyAfterEntrySpotJoin === true;
 }
-
-Inject(ModuleRef)(PlayEntrySpot, undefined, 0);
-Inject(TicTacToeGameCreator)(PlayEntrySpot, undefined, 1);
 
 export { PlayEntrySpot };

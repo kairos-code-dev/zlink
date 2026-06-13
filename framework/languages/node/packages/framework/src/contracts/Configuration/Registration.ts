@@ -50,6 +50,23 @@ export interface ZLinkFrameworkRegistration {
   readonly hasRegistrySpotRemoteAddresses: boolean;
   readonly spotRemoteAddressResolverType?: Type;
   readonly registrySpotRemoteAddresses?: ZLinkRegistrySpotRemoteAddressesRegistration;
+  readonly worker?: ZLinkWorkerOptions;
+}
+
+/**
+ * Worker offload pool settings (single elastic bounded pool semantics).
+ *
+ * The Node runtime projects these settings conservatively onto the
+ * closure-based `runWorker(...)` deferral: `maxThreads` bounds the number of
+ * concurrently in-flight jobs and `maxQueueLength` bounds the pending queue
+ * (queue full fails the submit with `WorkerQueueFull`). `minThreads` and
+ * `idleTimeoutMs` are accepted and validated for cross-language option parity.
+ */
+export interface ZLinkWorkerOptions {
+  readonly minThreads?: number;
+  readonly maxThreads?: number;
+  readonly idleTimeoutMs?: number;
+  readonly maxQueueLength?: number;
 }
 
 export interface ZLinkRegistrySpotRemoteAddressesRegistration {
@@ -73,6 +90,7 @@ export interface ZLinkFrameworkRegistrationOptions {
     readonly namespace: string;
     readonly routerChannelId?: string;
   };
+  readonly worker?: ZLinkWorkerOptions;
 }
 
 export interface ZLinkDiscoveryOptions {
@@ -250,7 +268,8 @@ export function createFrameworkRegistration(
     hasSpotRemoteAddressResolver: options.spotRemoteAddressResolver !== undefined,
     hasRegistrySpotRemoteAddresses: options.registrySpotRemoteAddresses !== undefined,
     spotRemoteAddressResolverType: options.spotRemoteAddressResolver,
-    registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery)
+    registrySpotRemoteAddresses: normalizeRegistrySpotRemoteAddresses(options.registrySpotRemoteAddresses, options.discovery),
+    worker: options.worker === undefined ? undefined : { ...options.worker }
   };
   validateFrameworkRegistration(registration, options);
   return registration;
@@ -283,6 +302,11 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 
   useDiscovery(): ZLinkDiscoveryBuilder {
     return new DefaultDiscoveryBuilder(this.options.discovery);
+  }
+
+  configureWorker(options: ZLinkWorkerOptions): this {
+    this.options.worker = { ...this.options.worker, ...options };
+    return this;
   }
 
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
@@ -345,7 +369,8 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       routeChannels: this.options.routeChannels,
       streamNodes: this.options.streamNodes,
       spotNodes: this.options.spotNodes,
-      spotFactories: this.options.spotFactories
+      spotFactories: this.options.spotFactories,
+      worker: this.options.worker
     };
   }
 
@@ -596,6 +621,7 @@ interface MutableFrameworkRegistrationOptions {
   streamNodes: Record<string, MutableStreamNodeOptions>;
   spotNodes: Record<string, MutableSpotNodeOptions>;
   spotFactories: Type<ZLinkSpot>[];
+  worker?: ZLinkWorkerOptions;
 }
 
 interface MutableDiscoveryOptions {
@@ -741,6 +767,42 @@ export function validateFrameworkRegistration(
   validateSpotNodes(registration);
   validateRouteChannels(registration.routeChannelOptions);
   validateStreamNodes(registration);
+  validateWorkerOptions(registration.worker);
+}
+
+function validateWorkerOptions(worker: ZLinkWorkerOptions | undefined): void {
+  if (worker === undefined) {
+    return;
+  }
+  requireNonNegativeInteger('Worker minThreads', worker.minThreads);
+  requirePositiveInteger('Worker maxThreads', worker.maxThreads);
+  requireNonNegativeInteger('Worker idleTimeoutMs', worker.idleTimeoutMs);
+  requirePositiveInteger('Worker maxQueueLength', worker.maxQueueLength);
+  if (
+    worker.minThreads !== undefined
+    && worker.maxThreads !== undefined
+    && worker.minThreads > worker.maxThreads
+  ) {
+    throw new ZLinkConfigurationException('Worker minThreads must not exceed maxThreads.');
+  }
+}
+
+function requireNonNegativeInteger(label: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isInteger(value) || value < 0) {
+    throw new ZLinkConfigurationException(`${label} must be a non-negative integer.`);
+  }
+}
+
+function requirePositiveInteger(label: string, value: number | undefined): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ZLinkConfigurationException(`${label} must be a positive integer.`);
+  }
 }
 
 export function hasSpotNode(registration: ZLinkFrameworkRegistration): boolean {

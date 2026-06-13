@@ -637,7 +637,7 @@ test('ZLinkModule.forRoot creates Spot factories through NestJS DI', async () =>
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
   const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
   const created = await spotManager.create(StageSpot);
-  const marker = await spotManager.executeOnSpot(created.spotRid, (spot) => spot.dependency.marker);
+  const marker = await spotManager.executeOnSpot(StageSpot, created.spotRid, (spot) => spot.dependency.marker);
 
   assert.equal(marker, 'spot-di');
 
@@ -1844,8 +1844,8 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     async onClosing() {
       calls.push('entry:onClosing');
     }
-    async onActorLeft(actor) {
-      calls.push(`entry:onActorLeft:${actor.actorId}`);
+    async onLeaveActor(actor) {
+      calls.push(`entry:onLeaveActor:${actor.actorId}`);
     }
   }
   const entrySpotFacade = {
@@ -1947,9 +1947,8 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
 
   await runtime.start();
   runtime.setActorManager({
-    async destroyActor(node, nodeRid, actor, beforeDestroy) {
+    async destroyActor(node, nodeRid, actor) {
       calls.push(`actorManager:destroy:${node.routingId}:${nodeRid}:${actor.actorId}`);
-      await beforeDestroy(actor);
       calls.push(`actorManager:destroyed:${actor.actorId}`);
     }
   });
@@ -1970,7 +1969,6 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
     'entry:configure:entry-rid:node-entry',
     'entry:onInitialize',
     'actorManager:destroy:node-entry:node-entry:player-1',
-    'entry:onActorLeft:player-1',
     'actorManager:destroyed:player-1',
     'entry:onClosing',
     'entry:dispose',

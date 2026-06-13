@@ -51,6 +51,7 @@ test('node topology samples mirror dotnet role layout', () => {
       'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler.ts',
       'Server/Play/Adapters/ZLink/Spots/Handlers/tictactoe-game-timer-handler.ts',
       'Server/Play/Adapters/ZLink/Spots/play-entry-spot.ts',
+      'Server/Play/Adapters/ZLink/Spots/tictactoe-game-spot.ts',
       'Server/Play/main.ts',
       'Shared/Contracts/messages.ts'
     ],
@@ -99,6 +100,64 @@ test('node topology samples mirror dotnet role layout', () => {
   }
 
   assert.deepEqual(missing, []);
+});
+
+test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow', () => {
+  const files = {
+    bingoModule: readSample('Bingo.Ts', 'Server/Play/bingo-play-module.ts'),
+    bingoEntry: readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Spots/bingo-entry-spot.ts'),
+    bingoRoom: readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Spots/bingo-room-spot.ts'),
+    bingoAllocator: readSample('Bingo.Ts', 'Server/Play/Application/RoomAllocation/bingo-room-allocator.ts'),
+    bingoMatch: readSample('Bingo.Ts', 'Server/Play/Adapters/ZLink/Handlers/match-bingo-channel-handler.ts'),
+    ticTacToeModule: readSample('TicTacToe.Ts', 'Server/Play/tictactoe-play-module.ts'),
+    ticTacToeEntry: readSample('TicTacToe.Ts', 'Server/Play/Adapters/ZLink/Spots/play-entry-spot.ts'),
+    ticTacToeGame: readSample('TicTacToe.Ts', 'Server/Play/Adapters/ZLink/Spots/tictactoe-game-spot.ts'),
+    ticTacToeCreate: readSample('TicTacToe.Ts', 'Server/Play/Adapters/ZLink/Handlers/create-game-handler.ts'),
+    ticTacToeMove: readSample('TicTacToe.Ts', 'Server/Play/Adapters/ZLink/Spots/Handlers/play-actor-place-mark-handler.ts')
+  };
+  const missing = [];
+  const violations = [];
+  for (const [name, content, text] of [
+    ['Bingo module', files.bingoModule, '.spotFactory(BingoRoomSpot)'],
+    ['Bingo allocator', files.bingoAllocator, 'ZLINK_SPOT_MANAGER'],
+    ['Bingo allocator', files.bingoAllocator, '.getOrCreate(BingoRoomSpot'],
+    ['Bingo allocator', files.bingoAllocator, '.executeOnSpot<BingoRoomSpotType'],
+    ['Bingo match', files.bingoMatch, 'ZLINK_ACTOR_MANAGER'],
+    ['Bingo entry', files.bingoEntry, 'actor.context.joinSpot(matched.roomId'],
+    ['Bingo entry', files.bingoEntry, 'onCreateActor'],
+    ['Bingo entry', files.bingoEntry, 'onJoinActor'],
+    ['Bingo entry', files.bingoEntry, 'destroyActor(actor'],
+    ['Bingo room', files.bingoRoom, 'onActorJoin'],
+    ['Bingo room', files.bingoRoom, 'onLeaveActor'],
+    ['Bingo room', files.bingoRoom, 'context?.leaveActor(actor'],
+    ['TicTacToe module', files.ticTacToeModule, '.spotFactory(TicTacToeGameSpot)'],
+    ['TicTacToe create', files.ticTacToeCreate, 'ZLINK_SPOT_MANAGER'],
+    ['TicTacToe create', files.ticTacToeCreate, '.getOrCreate(TicTacToeGameSpot'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'context.joinSpot(roomId)'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'onCreateActor'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'onJoinActor'],
+    ['TicTacToe entry', files.ticTacToeEntry, 'destroyActor(actor'],
+    ['TicTacToe game', files.ticTacToeGame, 'onActorJoin'],
+    ['TicTacToe game', files.ticTacToeGame, 'onLeaveActor'],
+    ['TicTacToe game', files.ticTacToeGame, 'context?.leaveActor(player.actor'],
+    ['TicTacToe move', files.ticTacToeMove, 'context.getSpot(TicTacToeGameSpot)']
+  ]) {
+    if (!content.includes(text)) {
+      missing.push(`${name}:${text}`);
+    }
+  }
+  for (const [name, content, pattern] of [
+    ['Bingo entry', files.bingoEntry, /\.onActorJoin\s*\(/],
+    ['TicTacToe entry', files.ticTacToeEntry, /cleanupFinishedRoom|\.onJoinActor\s*\(/],
+    ['TicTacToe move', files.ticTacToeMove, /TicTacToeGameCreator|cleanupFinishedRoom/]
+  ]) {
+    if (pattern.test(content)) {
+      violations.push(name);
+    }
+  }
+
+  assert.deepEqual(missing, []);
+  assert.deepEqual(violations, []);
 });
 
 test('node client flow files use ClientScenario names', () => {
@@ -263,6 +322,7 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
   const match = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Domain', 'TicTacToe', 'tictactoe-match.ts'), 'utf8');
   const joinHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-join-game-handler.ts'), 'utf8');
   const moveHandler = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'Handlers', 'play-actor-place-mark-handler.ts'), 'utf8');
+  const gameSpot = fs.readFileSync(path.join(samplesRoot, 'TicTacToe.Ts', 'Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'tictactoe-game-spot.ts'), 'utf8');
   const required = [
     [board, 'class TicTacToeBoard'],
     [match, 'class TicTacToeMatch'],
@@ -270,7 +330,8 @@ test('TicTacToe TypeScript sample mirrors dotnet game state contract', () => {
     [match, "this.status = 'Won'"],
     [match, "this.status = 'TurnTimedOut'"],
     [joinHandler, 'gameStateNotify(state)'],
-    [moveHandler, 'gameStateNotify(state)'],
+    [moveHandler, 'context.getSpot(TicTacToeGameSpot)'],
+    [gameSpot, 'gameStateNotify(state)'],
     [client, "payload.state.status === 'InProgress'"],
     [client, "stateOf(client1FinalMove).status === 'Won'"],
     [readme, '`Won`']
@@ -940,13 +1001,13 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [playModule, '.spotFactory(BingoRoomSpot)'],
     [roomSpot, 'implements ZLinkSpot<PlayerActorType>'],
     [roomSpot, 'onActorJoin(actor: PlayerActorType'],
-    [roomSpot, 'onPostActorJoined(actor: PlayerActorType'],
-    [roomSpot, 'onActorLeft(actor: PlayerActorType'],
-    [roomSpot, 'onActorDisconnected(actor: PlayerActorType'],
+    [roomSpot, 'onJoinActor(actor: PlayerActorType'],
+    [roomSpot, 'onLeaveActor(actor: PlayerActorType'],
+    [roomSpot, 'onDisconnectActor(actor: PlayerActorType'],
     [entrySpot, 'implements ZLinkEntrySpot<PlayerActorType>'],
-    [entrySpot, 'onPostActorJoined(actor: PlayerActorType'],
-    [entrySpot, 'onActorLeft(actor: PlayerActorType'],
-    [entrySpot, 'onActorDisconnected(actor: PlayerActorType'],
+    [entrySpot, 'onJoinActor(actor: PlayerActorType'],
+    [entrySpot, 'onLeaveActor(actor: PlayerActorType'],
+    [entrySpot, 'onDisconnectActor(actor: PlayerActorType'],
     [matchHandler, 'zlinkEntrySpotActorRequestHandler'],
     [matchHandler, 'entrySpot: () => BingoEntrySpot'],
     [matchHandler, 'actor: () => PlayerActor'],
@@ -974,6 +1035,60 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
 
   assert.deepEqual(missing, []);
   assert.deepEqual(violations, []);
+});
+
+test('node TypeScript samples keep actor destroy in Entry Spot after room leave', () => {
+  const cases = [
+    {
+      sample: 'Bingo.Ts',
+      actor: ['Server', 'Play', 'Adapters', 'ZLink', 'Actors', 'player-actor.ts'],
+      entrySpot: ['Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'bingo-entry-spot.ts'],
+      userSpot: ['Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'bingo-room-spot.ts'],
+      readme: ['README.ko.md']
+    },
+    {
+      sample: 'TicTacToe.Ts',
+      actor: ['Server', 'Play', 'Adapters', 'ZLink', 'Actors', 'play-actor.ts'],
+      entrySpot: ['Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'play-entry-spot.ts'],
+      userSpot: ['Server', 'Play', 'Adapters', 'ZLink', 'Spots', 'tictactoe-game-spot.ts'],
+      readme: ['README.ko.md']
+    }
+  ];
+  const missing = [];
+
+  for (const sample of cases) {
+    const actor = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.actor), 'utf8');
+    const entrySpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.entrySpot), 'utf8');
+    const userSpot = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.userSpot), 'utf8');
+    const readme = fs.readFileSync(path.join(samplesRoot, sample.sample, ...sample.readme), 'utf8');
+    const runSample = fs.readFileSync(path.join(samplesRoot, sample.sample, 'run_sample.sh'), 'utf8');
+
+    for (const [label, content, text] of [
+      ['actor', actor, 'destroyAfterEntrySpotJoin'],
+      ['actor', actor, 'markForDestroyAfterRoomLeave'],
+      ['actor', actor, 'markDisconnected'],
+      ['entrySpot', entrySpot, 'onJoinActor'],
+      ['entrySpot', entrySpot, 'destroyActor'],
+      ['entrySpot', entrySpot, 'onDisconnectActor'],
+      ['userSpot', userSpot, 'leaveActor'],
+      ['userSpot', userSpot, 'markForDestroyAfterRoomLeave'],
+      ['userSpot', userSpot, 'onDisconnectActor'],
+      ['readme', readme, '`leaveActor`'],
+      ['readme', readme, '`destroyActor`'],
+      ['readme', readme, '`onDisconnectActor`'],
+      ['readme', readme, 'client self-check'],
+      ['runner', runSample, 'node "${SCRIPT_DIR}/dist/Client/main.js"']
+    ]) {
+      if (!content.includes(text)) {
+        missing.push(`${sample.sample}:${label}:${text}`);
+      }
+    }
+    if (userSpot.includes('destroyActor')) {
+      missing.push(`${sample.sample}:userSpot:destroyActor`);
+    }
+  }
+
+  assert.deepEqual(missing, []);
 });
 
 test('node sample runners own server process orchestration', () => {
@@ -1091,6 +1206,7 @@ test('node run_samples.sh executes every sample self-check', () => {
     encoding: 'utf8'
   });
 
+  assert.match(output, /node actor lifecycle sample gate completed/);
   for (const sample of requiredSamples) {
     assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
   }
@@ -1236,6 +1352,10 @@ function assertOrdered(name, content, snippets) {
     assert.notEqual(index, -1, `${name} is missing ordered scenario snippet: ${snippet}`);
     offset = index + snippet.length;
   }
+}
+
+function readSample(sample, relative) {
+  return fs.readFileSync(path.join(samplesRoot, sample, relative), 'utf8');
 }
 
 function escapeRegExp(value) {

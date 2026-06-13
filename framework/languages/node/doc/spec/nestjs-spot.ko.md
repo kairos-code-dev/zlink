@@ -285,11 +285,11 @@ export class StageEntrySpot implements ZLinkEntrySpot {
     this.context.handlers.addHandler(JoinStageHandler);
   }
 
-  async onPostActorJoined(actor: StageActor): Promise<void> {
+  async onJoinActor(actor: StageActor): Promise<void> {
     await this.recordEntryJoin(actor);
   }
 
-  async onActorLeft(actor: StageActor): Promise<void> {
+  async onLeaveActor(actor: StageActor): Promise<void> {
     await this.recordEntryLeave(actor);
   }
 }
@@ -320,11 +320,11 @@ export class StageSpot implements ZLinkSpot {
       : { accepted: false, reply: admission.reply };
   }
 
-  async onPostActorJoined(actor: StageActor): Promise<void> {
+  async onJoinActor(actor: StageActor): Promise<void> {
     await this.attachStageActor(actor);
   }
 
-  async onActorLeft(actor: StageActor): Promise<void> {
+  async onLeaveActor(actor: StageActor): Promise<void> {
     await this.detachStageActor(actor);
   }
 }
@@ -346,9 +346,9 @@ handler 로 매핑할 수 있다.
 
 join / leave lifecycle 은 Spot 멤버 callback 으로 정의한다. user Spot 은
 `onActorJoin(actor, request)` 로 admission 을 결정하고, accept 된 뒤에만
-`onPostActorJoined(actor)` 를 실행한다. Entry Spot 은 admission 대상이 아니므로
-`onActorJoin` 이 없고, 기본 진입 commit 뒤 `onPostActorJoined(actor)` 와
-`onActorLeft(actor)` 만 실행한다.
+`onJoinActor(actor)` 를 실행한다. Entry Spot 은 admission 대상이 아니므로
+`onActorJoin` 이 없고, 기본 진입 commit 뒤 `onJoinActor(actor)` 와
+`onLeaveActor(actor)` 만 실행한다.
 
 handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. dotnet
 `IZLinkSpotHandlerRegistry` 와 1:1 대응한다.
@@ -359,7 +359,7 @@ handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. d
 | `addSubscribe(Handler, topic)` | `AddSubscribe<THandler>(topic)` | topic subscription handler |
 | `addHandler(Handler)` | `AddHandler<THandler>()` | spot-local handler |
 | `addHandler(Handler, packetName)` | `AddHandler<THandler>(packetName)` | 이름을 명시한 spot-local handler |
-| `onActorDisconnected(actor)` | `OnActorDisconnectedAsync(...)` | disconnect 후 callback |
+| `onDisconnectActor(actor)` | `onDisconnectActor(...)` | disconnect 후 callback |
 
 ### 4.2 SPOT 실행 queue와 actor mailbox
 

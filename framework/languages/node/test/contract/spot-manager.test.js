@@ -429,11 +429,11 @@ test('spot outbound requestToChannel completion runs on the spot serial executor
   });
   const created = await manager.create(StageSpot);
   let outbound;
-  await manager.executeOnSpot(created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
     outbound = spot.context.outbound;
   });
 
-  const first = manager.executeOnSpot(created.spotRid, async () => {
+  const first = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -476,11 +476,11 @@ test('spot outbound routed send and request resolve remote address inside serial
   });
   const created = await manager.create(StageSpot);
   let outbound;
-  await manager.executeOnSpot(created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
     outbound = spot.context.outbound;
   });
 
-  const first = manager.executeOnSpot(created.spotRid, async () => {
+  const first = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -506,7 +506,7 @@ test('spot outbound routed calls require resolver and runtime transport', async 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create(StageSpot);
   let outbound;
-  await manager.executeOnSpot(created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
     outbound = spot.context.outbound;
   });
 
@@ -520,7 +520,7 @@ test('spot outbound routed calls require resolver and runtime transport', async 
     remoteAddressResolver: { async resolve() { throw new Error('not used'); } }
   });
   const second = await managerWithoutTransport.create(StageSpot);
-  await managerWithoutTransport.executeOnSpot(second.spotRid, (spot) => {
+  await managerWithoutTransport.executeOnSpot(StageSpot, second.spotRid, (spot) => {
     outbound = spot.context.outbound;
   });
 
@@ -558,7 +558,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create(StageSpot);
-  const blockingTurn = manager.executeOnSpot(created.spotRid, async () => {
+  const blockingTurn = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -642,21 +642,21 @@ test('spot timer rejects invalid options', async () => {
   const created = await manager.create(StageSpot);
 
   await assert.rejects(
-    () => manager.executeOnSpot(created.spotRid, (spot) => spot.context.addTimer('', 1, Handler)),
+    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) => spot.context.addTimer('', 1, Handler)),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(created.spotRid, (spot) => spot.context.addTimer('bad-period', 0, Handler)),
+    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) => spot.context.addTimer('bad-period', 0, Handler)),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(created.spotRid, (spot) =>
+    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) =>
       spot.context.addTimer('bad-policy', 1, Handler, { overrunPolicy: 'unsupported' })
     ),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(created.spotRid, (spot) =>
+    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) =>
       spot.context.addTimer('bad-catchup', 1, Handler, {
         overrunPolicy: framework.ZLinkTimerOverrunPolicy.CatchUpBounded,
         maxCatchUpTicks: 0

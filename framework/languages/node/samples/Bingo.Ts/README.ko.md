@@ -58,6 +58,12 @@ framework builder, channel client, stream connector처럼 공개된 API만 사�
 - 첫 match 는 waiting room 을 만들고, 두 번째 match 는 같은 room 에 join해 자동으로 game 을 시작한다.
 - client 는 `SubmitBingoCardReq` 로 3 x 3 card 를 제출하고 draw request 를 보내지 않는다.
 - Play room Spot timer 가 번호를 뽑고 `BingoNumberDrawnNotify`, `BingoGameEndedNotify` 를 보낸다.
+- game 이 끝나면 room Spot 은 actor 에 정리 의도를 표시하고 `leaveActor` 로 Entry Spot 에
+  돌려보낸다.
+- Entry Spot 은 actor 가 다시 들어온 뒤 `destroyActor` 를 호출한다. destroy 는
+  `onLeaveActor` 를 추가로 호출하지 않는다.
+- `onDisconnectActor` 는 연결 끊김 상태만 표시한다. disconnect 는 room leave 나 actor destroy 로
+  처리하지 않는다.
 - TypeScript 컴파일이 통과한 산출물을 Node 로 실행한다.
 
 ## 회귀 테스트

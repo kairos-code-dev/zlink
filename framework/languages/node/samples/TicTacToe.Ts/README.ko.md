@@ -62,6 +62,12 @@ scenario 가 Play stream endpoint 에 접속할 때만 사용한다.
 - 최종 status 는 `.NET` 샘플과 같은 `Won` 이고 winner 는 `p1` 이다.
 - move 요청 client 는 `PlaceMarkRes` 로 결과를 받고 상대 client 는 `GameStateNotify` 로
   같은 state 를 받는다.
+- game 이 끝나면 room Spot 은 actor 에 정리 의도를 표시하고 `leaveActor` 로 Entry Spot 에
+  돌려보낸다.
+- Entry Spot 은 actor 가 다시 들어온 뒤 `destroyActor` 를 호출한다. destroy 는
+  `onLeaveActor` 를 추가로 호출하지 않는다.
+- `onDisconnectActor` 는 연결 끊김 상태만 표시한다. disconnect 는 room leave 나 actor destroy 로
+  처리하지 않는다.
 - runner 는 서버 endpoint 가 열릴 때까지 기다린 뒤 client self-check 를 진행한다.
 
 ## 회귀 테스트

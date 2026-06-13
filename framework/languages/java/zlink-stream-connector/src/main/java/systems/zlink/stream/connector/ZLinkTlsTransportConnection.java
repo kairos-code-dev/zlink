@@ -1,6 +1,7 @@
 package systems.zlink.stream.connector;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -15,6 +16,7 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import java.net.URI;
 import java.time.Duration;
@@ -24,6 +26,7 @@ import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadFactory;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLException;
 
 final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnection {
@@ -66,10 +69,12 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
             .handler(new ChannelInitializer<SocketChannel>() {
                 @Override
                 protected void initChannel(SocketChannel channel) {
-                    channel.pipeline().addLast(sslContext.newHandler(
+                    channel.pipeline().addLast(createSslHandler(
+                        sslContext,
                         channel.alloc(),
                         endpoint.getHost(),
-                        port));
+                        port,
+                        skipServerCertificateValidation));
                     channel.pipeline().addLast(new FrameDecoder(maxReceivePayloadSize));
                     channel.pipeline().addLast(new InboundHandler(connection));
                 }
@@ -97,6 +102,21 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
                 });
         });
         return result;
+    }
+
+    static SslHandler createSslHandler(
+        SslContext sslContext,
+        ByteBufAllocator allocator,
+        String host,
+        int port,
+        boolean skipServerCertificateValidation) {
+        SslHandler handler = sslContext.newHandler(allocator, host, port);
+        if (!skipServerCertificateValidation) {
+            SSLParameters parameters = handler.engine().getSSLParameters();
+            parameters.setEndpointIdentificationAlgorithm("HTTPS");
+            handler.engine().setSSLParameters(parameters);
+        }
+        return handler;
     }
 
     @Override

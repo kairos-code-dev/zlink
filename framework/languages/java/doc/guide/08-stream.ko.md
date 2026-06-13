@@ -133,6 +133,9 @@ while (running) {
   큐에 넣고 다음 읽기로 넘어간다.
 - 기본값으로 heartbeat와 자동 reconnect가 켜져 있다. disconnect 시 대기 중인
   모든 request가 실패하고 reconnect 후 자동 재전송되지 않는다(재전송은 응용 책임).
+- `tls://`와 `wss://`는 기본값으로 서버 인증서와 호스트명을 검증한다.
+  `skipServerCertificateValidation`은 테스트용 자체 서명 인증서에만 쓰며, 운영 환경에서는
+  사용하지 않는다.
 
 connector는 server framework와 별도 모듈이며 TCP/TLS/WS/WSS, manual dispatch,
 reconnect, codec helper를 제공한다.

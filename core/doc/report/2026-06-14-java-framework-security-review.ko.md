@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/java/{zlink-framework-core,-spring-boot-starter,zlink-stream-connector,-codecs,-json,-msgpack,-protobuf}/src/main/java`
-- **상태**: 2026-06-14 원격 DoS 항목(F1, F2) 수정 완료. F3, F4, F5와 부록 항목은 후속 순서에서 별도 확인.
+- **상태**: 2026-06-14 원격 DoS 항목(F1, F2)과 TLS 항목(F3, F5) 종결. F4와 부록 항목은 후속 순서에서 별도 확인.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **바인딩 범위 주의**: 본 계층에 **네이티브 바인딩 없음**(`native`/`System.loadLibrary`/`MemorySegment`/`Pointer`/JNA grep 0건;
@@ -16,10 +16,10 @@
 |---|--------|------|------|------|
 | F1 | High | DoS / 무제한 수신 할당 + int 오버플로 | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191`, `ZLinkStreamWireProtocol.java:138` | **수정 완료(2026-06-14)** |
 | F2 | Medium | DoS / LZ4 압축 폭탄 | `ZLinkStreamLz4Pickler.java:53` | **수정 완료(2026-06-14)** |
-| F3 | Medium | TLS 호스트명 검증 미설정(Netty) | `ZLinkTlsTransportConnection.java:54,68` | 확인(버전 확인 권장) |
+| F3 | Medium | TLS 호스트명 검증 미설정(Netty) | `ZLinkTlsTransportConnection.java:54,68` | 수정 완료(2026-06-14) |
 | F4 | Low | 동시성 / 비-thread-safe 핸들러 리스트 | `DefaultZLinkStreamConnector.java:43-45` | 확인 |
 | S1~S3 | — | (부록) | — | 의심 |
-| F5 | (footgun) | TLS 인증서 전체 신뢰 옵션 | `DefaultZLinkStreamConnector.java:472-509` | 확인(opt-in) |
+| F5 | (footgun) | TLS 인증서 전체 신뢰 옵션 | `DefaultZLinkStreamConnector.java:472-509` | 문서 경고 완료(2026-06-14) |
 
 > ⚠️ **아래 §Codex 교차검증이 최종 판정이다.** F1~F4 전부 확인, F2 범위 확대, trust-all TLS 옵션 추가.
 
@@ -104,6 +104,13 @@ send 경로는 `maxSendPayloadSize` 강제(`DefaultZLinkStreamConnector.encodePa
 
 `SslContextBuilder.forClient().build()` + `sslContext.newHandler(channel.alloc(), host, port)`. Netty는 엔진에 `SSLParameters.setEndpointIdentificationAlgorithm("HTTPS")`(또는 `SslContextBuilder.endpointIdentificationAlgorithm`)를 설정해야만 RFC 2818 호스트명 검증을 수행하는데 **둘 다 미설정** → `skipServerCertificateValidation=false`라도 체인은 검증되나 **호스트명 미검증** → 다른 호스트용 CA-valid 인증서로 MITM. (WebSocket 경로는 JDK `HttpClient`로 기본 호스트명 검증 → TLS-transport 한정.)
 **수정**: `SslHandler`/엔진에 endpoint identification `HTTPS` 설정. *사용 중인 Netty 버전 기본값 대조 권장.*
+**처리 결과(2026-06-14)**: TLS transport의 `SslHandler` 생성 경로에서
+`skipServerCertificateValidation=false`일 때 `SSLParameters.setEndpointIdentificationAlgorithm("HTTPS")`
+를 설정하도록 수정했다. skip 옵션을 켠 테스트용 연결은 기존처럼 이 설정을 넣지 않는다.
+회귀 테스트는 handler helper를 직접 확인해 기본 경로에 `HTTPS` endpoint identification이 있고,
+skip 경로에는 없는지 검증한다.
+Claude 리뷰에서 실제 TLS pipeline이 이 helper를 사용하고, WSS 계층에는 같은 Netty 패턴이
+남아 있지 않으며, F3 종결 blocker가 없다는 "추가 이슈 없음" 판정을 받았다.
 
 ### F4 — 동시성: 핸들러 리스트가 비-thread-safe
 - `DefaultZLinkStreamConnector.java:43-45` · **확인**
@@ -120,6 +127,11 @@ send 경로는 `maxSendPayloadSize` 강제(`DefaultZLinkStreamConnector.encodePa
 
 opt-in 옵션이라 자체 취약점은 아니나, 활성화 시 **모든 서버 인증서를 무조건 신뢰**(체인·호스트명 검증 전무) → 완전한 MITM 노출. F3(호스트명만 미검증)보다 강한 우회다.
 **수정**: 옵션 활성화 지점에 강한 경고 문서화, 프로덕션 가드(예: 명시적 `allowInsecure` + 경고 로그) 검토.
+**처리 결과(2026-06-14)**: 정식 stream connector spec과 사용자 guide에
+`skipServerCertificateValidation=true`가 TLS/WSS 서버 인증서 검증을 우회하며 운영 환경에서
+사용하면 안 된다는 경고를 추가했다. 옵션 기본값은 여전히 `false`다.
+Claude 리뷰에서 F5 문서 경고가 정식 spec과 guide에 반영되었고, 기본값 `false`가 유지됨을
+확인받았다.
 
 ---
 

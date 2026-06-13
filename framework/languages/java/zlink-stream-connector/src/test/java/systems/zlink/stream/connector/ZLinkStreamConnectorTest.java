@@ -3,9 +3,14 @@ package systems.zlink.stream.connector;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.handler.ssl.SslHandler;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -455,6 +460,43 @@ final class ZLinkStreamConnectorTest {
 
             TcpStreamConnectorTestServer.awaitCondition(
                 () -> connector.state() == ZLinkStreamConnectionState.DISCONNECTED);
+        }
+    }
+
+    @Test
+    void tlsHandlerEnablesHttpsEndpointIdentificationUnlessValidationIsSkipped() throws Exception {
+        var sslContext = SslContextBuilder.forClient()
+            .trustManager(InsecureTrustManagerFactory.INSTANCE)
+            .build();
+
+        SslHandler verified = ZLinkTlsTransportConnection.createSslHandler(
+            sslContext,
+            UnpooledByteBufAllocator.DEFAULT,
+            "localhost",
+            443,
+            false);
+        try {
+            assertEquals(
+                "HTTPS",
+                verified.engine()
+                    .getSSLParameters()
+                    .getEndpointIdentificationAlgorithm());
+        } finally {
+            verified.engine().closeOutbound();
+        }
+
+        SslHandler skipped = ZLinkTlsTransportConnection.createSslHandler(
+            sslContext,
+            UnpooledByteBufAllocator.DEFAULT,
+            "localhost",
+            443,
+            true);
+        try {
+            assertNull(skipped.engine()
+                .getSSLParameters()
+                .getEndpointIdentificationAlgorithm());
+        } finally {
+            skipped.engine().closeOutbound();
         }
     }
 

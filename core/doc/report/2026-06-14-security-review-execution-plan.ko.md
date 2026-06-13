@@ -34,7 +34,7 @@
 | 2-3 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F1/F2 수정·테스트·Claude 추가 이슈 없음 |
 | 2-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 종결 | 2026-06-14: D1/D2/D5 수정·관련 테스트 통과·Claude 추가 이슈 없음 |
 | 3-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 종결 | 2026-06-14: CR2/H1 수정·관련 테스트 통과·Claude 추가 이슈 없음 |
-| 3-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | TLS 항목 |
+| 3-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F3 수정·F5 문서 경고·stream connector test 통과·Claude 추가 이슈 없음 |
 | 4 | [2026-06-13-core-src-security-review.ko.md](2026-06-13-core-src-security-review.ko.md) | 대기 | - |
 | 5-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
 | 5-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |

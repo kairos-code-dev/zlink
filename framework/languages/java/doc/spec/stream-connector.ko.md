@@ -126,7 +126,8 @@ public final class ZLinkStreamReconnectOptions {
 ```
 
 `skipServerCertificateValidation`은 테스트용 자체 서명 인증서에만 사용한다. 운영
-기본값은 `false`다.
+기본값은 `false`다. 이 값을 `true`로 바꾸면 TLS transport와 WSS transport 모두 서버
+인증서를 신뢰하지 않고 통과시키므로, 운영 환경에서는 사용하면 안 된다.
 
 ## 5. Transport와 codec
 
@@ -161,6 +162,8 @@ URI scheme에서 transport를 추론한다.
 | `wss://` | `WEB_SOCKET_SECURE` |
 
 `transport`를 명시했는데 endpoint scheme과 어긋나면 configuration error다.
+TLS transport는 기본값에서 서버 인증서 체인과 호스트명을 모두 검증한다. 호스트명 검증은
+`HTTPS` endpoint identification 규칙을 사용한다.
 
 ## 6. Packet 모델
 

@@ -4,6 +4,11 @@
 #include "testutil_unity.hpp"
 
 #include <cstring>
+#include <string>
+#if defined(ZLINK_HAVE_IPC)
+#include <stdio.h>
+#include <unistd.h>
+#endif
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -279,6 +284,64 @@ void test_matrix_ipc ()
     test_transport_matrix ("ipc");
 }
 
+void test_ipc_regular_file_bind_does_not_unlink ()
+{
+#if defined(ZLINK_HAVE_IPC)
+    if (!is_transport_available ("ipc"))
+        TEST_IGNORE_MESSAGE ("ipc is not available");
+
+    std::string path = make_random_ipc_path ();
+    FILE *file = fopen (path.c_str (), "w");
+    TEST_ASSERT_NOT_NULL (file);
+    TEST_ASSERT_EQUAL_INT (0, fclose (file));
+
+    const std::string endpoint = std::string ("ipc://") + path;
+    void *server = create_sync_socket (ZLINK_SOCKET_PAIR);
+    errno = 0;
+    const int rc = zlink_bind (server, endpoint.c_str ());
+    const int saved_errno = errno;
+    close_sync_socket (server);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_ADDR_IN_USE, rc);
+    TEST_ASSERT_EQUAL_INT (EADDRINUSE, saved_errno);
+    TEST_ASSERT_EQUAL_INT (0, access (path.c_str (), F_OK));
+    unlink (path.c_str ());
+#else
+    TEST_IGNORE_MESSAGE ("ipc is not available");
+#endif
+}
+
+void test_ipc_overlong_endpoint_does_not_unlink ()
+{
+#if defined(ZLINK_HAVE_IPC)
+    if (!is_transport_available ("ipc"))
+        TEST_IGNORE_MESSAGE ("ipc is not available");
+
+    std::string path = "/tmp/zlink-ipc-preserve-";
+    path += std::to_string (static_cast<unsigned long long> (getpid ()));
+    path += "-";
+    path.append (96, 'a');
+
+    FILE *file = fopen (path.c_str (), "w");
+    TEST_ASSERT_NOT_NULL (file);
+    TEST_ASSERT_EQUAL_INT (0, fclose (file));
+
+    const std::string endpoint = std::string ("ipc://") + path;
+    void *server = create_sync_socket (ZLINK_SOCKET_PAIR);
+    errno = 0;
+    const int rc = zlink_bind (server, endpoint.c_str ());
+    const int saved_errno = errno;
+    close_sync_socket (server);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_INTERNAL_ERROR, rc);
+    TEST_ASSERT_EQUAL_INT (ENAMETOOLONG, saved_errno);
+    TEST_ASSERT_EQUAL_INT (0, access (path.c_str (), F_OK));
+    unlink (path.c_str ());
+#else
+    TEST_IGNORE_MESSAGE ("ipc is not available");
+#endif
+}
+
 void test_matrix_ws ()
 {
     test_transport_matrix ("ws");
@@ -302,6 +365,8 @@ int main ()
     RUN_TEST (test_matrix_tcp);
     RUN_TEST (test_matrix_inproc);
     RUN_TEST (test_matrix_ipc);
+    RUN_TEST (test_ipc_regular_file_bind_does_not_unlink);
+    RUN_TEST (test_ipc_overlong_endpoint_does_not_unlink);
     RUN_TEST (test_matrix_ws);
     RUN_TEST (test_matrix_wss);
     RUN_TEST (test_matrix_tls);

@@ -22,6 +22,7 @@
 - 2026-06-14: Java framework TLS 항목(F3, F5)을 수정·문서화하고, stream-connector test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core 포트·zone id 파싱(#3)과 message/send API 가드(#6)를 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
+- 2026-06-14: core IPC bind의 검증 전 unlink 항목(#4)을 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 
 ## 리포트 목록
 

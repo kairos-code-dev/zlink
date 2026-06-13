@@ -23,7 +23,7 @@
 | 1 | **High** | DoS / 스택 오버플로 | `core/src/runtime/utils/generic_mtrie_impl.hpp`, 보조: `trie.cpp`, `radix_tree.cpp` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | 확인 | repo 고유 |
 | 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | **수정 완료(2026-06-14)** | upstream 파생 |
-| 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | 확인 | repo 고유 순서 |
+| 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | **수정 완료(2026-06-14)** | repo 고유 순서 |
 | 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | 확인, 현실 도달성 낮음 | upstream 파생 |
 | 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | 확인, 기본값 정책 사안 | upstream 동작 |
@@ -354,6 +354,13 @@ Claude 리뷰에서 같은 `atoi` 포트 파싱 패턴이 PGM transport와 SPOT 
   `C-BINDING-001` 버전 매크로 기대값 불일치와 동일하다.
 
 Claude 리뷰:
+- 2026-06-14: 실제 `asio_ipc_listener.cpp`와 `test_transport_matrix`를 대조한 결과, resolve 검증 전
+  unlink가 제거되었고 abstract name은 unlink하지 않으며, 파일시스템 경로는 현재 uid 소유 Unix socket일
+  때만 삭제한다고 확인했다.
+- 일반 파일과 긴 경로 회귀 테스트가 등록된 `test_transport_matrix`에서 실행된다고 확인했다.
+- 결론: "추가 이슈 없음."
+
+Claude 리뷰:
 - 2026-06-14 1차 리뷰에서 #3/#6 자체는 닫혔으나, 같은 패턴으로 PGM port 파싱, SPOT control
   endpoint port 파싱, `zlink_msg_refcnt`, 처리 기록 문구를 추가 확인하라고 지적했다.
 - 2026-06-14 2차 리뷰에서 PGM/SPOT port parser의 `atoi` 제거, `zlink_msg_refcnt`의 `check()` 가드,
@@ -366,7 +373,7 @@ Claude 리뷰:
 - **분류**: 파일시스템 / 권한 / TOCTOU
 - **위치**: `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118`
 - **출처**: pre-resolve unlink 순서는 repo 고유
-- **상태**: ✅ 확인
+- **상태**: ✅ 2026-06-14 수정 완료
 
 ### 코드
 
@@ -391,6 +398,23 @@ int rc = address.resolve (addr.c_str ());   // 길이/abstract 검증은 그 다
 
 - `resolve` 검증을 **먼저** 수행, 대상이 프로세스가 소유해야 할 소켓임을 확인한 **후에만** `unlink`.
 - 와일드카드 경로처럼 mkdtemp(0700) 디렉터리에 바인드하는 방식 고려.
+
+### 처리 기록 (2026-06-14)
+
+`asio_ipc_listener_t::set_local_address`가 `ipc_address_t::resolve`로 path 길이와 abstract name을 먼저
+검증한 뒤에만 기존 파일시스템 경로를 확인하도록 바꾸었다. abstract IPC name은 unlink하지 않는다.
+파일시스템 경로가 이미 있으면 `lstat`으로 대상이 Unix socket인지 확인하고, 현재 uid가 소유한 socket일
+때만 삭제한다. 일반 파일, symlink, 다른 타입의 파일은 `EADDRINUSE`로 거부하므로 잘못된 bind 요청이
+임의 파일을 지우지 않는다.
+
+검증:
+- `cmake --build core/build --target test_transport_matrix -j2`: 통과.
+- `ctest --test-dir core/build -R '^test_transport_matrix$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 원인은 기존
+  `C-BINDING-001` 버전 매크로 기대값 불일치와 동일하다.
 
 ---
 

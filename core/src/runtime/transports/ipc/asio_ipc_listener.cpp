@@ -24,6 +24,7 @@
 #ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <stddef.h>
 #endif
@@ -68,6 +69,31 @@ boost::asio::local::stream_protocol::endpoint make_ipc_endpoint (const zlink::ip
     memcpy (endpoint.data (), addr_.addr (), addr_.addrlen ());
     endpoint.resize (addr_.addrlen ());
     return endpoint;
+}
+
+int unlink_existing_ipc_socket (const std::string &addr_)
+{
+    if (addr_.empty () || addr_[0] == '@')
+        return 0;
+
+    struct stat st;
+    if (::lstat (addr_.c_str (), &st) != 0) {
+        if (errno == ENOENT)
+            return 0;
+        return -1;
+    }
+
+    if (!S_ISSOCK (st.st_mode)) {
+        errno = EADDRINUSE;
+        return -1;
+    }
+
+    if (st.st_uid != ::getuid ()) {
+        errno = EACCES;
+        return -1;
+    }
+
+    return ::unlink (addr_.c_str ());
 }
 
 size_t parse_stream_accept_concurrency ()
@@ -115,9 +141,6 @@ int zlink::asio_ipc_listener_t::set_local_address (const char *addr_)
             return -1;
     }
 
-    ::unlink (addr.c_str ());
-    _filename.clear ();
-
     ipc_address_t address;
     int rc = address.resolve (addr.c_str ());
     if (rc != 0) {
@@ -126,6 +149,13 @@ int zlink::asio_ipc_listener_t::set_local_address (const char *addr_)
         errno = tmp_errno;
         return -1;
     }
+    if (unlink_existing_ipc_socket (addr) != 0) {
+        const int tmp_errno = errno;
+        cleanup_tmp_dir (_tmp_socket_dirname);
+        errno = tmp_errno;
+        return -1;
+    }
+    _filename.clear ();
 
     std::string resolved_endpoint;
     address.to_string (resolved_endpoint);

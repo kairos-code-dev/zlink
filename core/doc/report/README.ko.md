@@ -22,6 +22,7 @@
 - 2026-06-14: Java framework TLS 항목(F3, F5)을 수정·문서화하고, stream-connector test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: C++ framework Unreal 동시성·teardown 항목(H2/H3)을 수정하고, stream connector·Unreal connector·contract header test 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. layout contract 실행은 SPOT timer 문서 문구 불일치로 실패했으며 이번 Unreal 변경 경로와는 별도다.
 - 2026-06-14: Java framework handler list 동시성 항목(F4)을 수정하고, stream-connector test 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다.
+- 2026-06-14: Node/TS framework JSON 입력 검증 후속 항목(C3/C4)을 수정하고, S3 타이머 누수 의심은 코드 대조 결과 보안 이슈가 아니므로 종결했다. build·typecheck·Node runtime gate 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core 포트·zone id 파싱(#3)과 message/send API 가드(#6)를 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core IPC bind의 검증 전 unlink 항목(#4)을 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
@@ -42,7 +43,7 @@
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
 | C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | Medium (쿠키 경로 스코프와 런타임 동시성 후보 남음, 인바운드 프레임 DoS·리다이렉트 자격증명 유출·Unreal 동시성/teardown은 2026-06-14 수정 완료) |
-| Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS: 2026-06-14 수정 완료) |
+| Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 추가 보안 수정 없음 (인바운드/WS DoS, LZ4, JSON 입력 검증은 2026-06-14 수정 완료. S3 타이머 누수 의심은 보안 이슈 아님) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 추가 보안 수정 없음 (부록의 codec naming 정확성 후보는 별도 품질 항목) |
 | .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | Medium (무제한 메시지 적재·디스패치 큐 남음, 인바운드/WS/LZ4 DoS는 2026-06-14 수정 완료) |
 

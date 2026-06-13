@@ -48,7 +48,7 @@ export function toJson<T>(value: T, messageType?: Function): ZlinkStreamEncodedP
 
 export function fromJson<T>(payload: ZlinkStreamEncodedPayload): T {
   ensureJson(payload);
-  return JSON.parse(new TextDecoder().decode(payload.payload), codecOptions.reviver) as T;
+  return JSON.parse(new TextDecoder().decode(payload.payload), safeJsonReviver) as T;
 }
 
 function ensureJson(payload: ZlinkStreamEncodedPayload): void {
@@ -75,4 +75,18 @@ function inferMessageType(value: unknown): Function | undefined {
   }
   const constructor = Object.getPrototypeOf(value)?.constructor;
   return constructor === Object ? undefined : constructor;
+}
+
+function safeJsonReviver(this: unknown, key: string, value: unknown): unknown {
+  if (isPrototypeKey(key)) {
+    throw new Error(`JSON payload key '${key}' is not allowed.`);
+  }
+  if (codecOptions.reviver !== undefined) {
+    return codecOptions.reviver.call(this, key, value);
+  }
+  return value;
+}
+
+function isPrototypeKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }

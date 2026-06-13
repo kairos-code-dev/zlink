@@ -114,7 +114,7 @@ export function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
   if (parts.length < 2 || parts[1].data().length === 0) {
     return undefined as TReply;
   }
-  return JSON.parse(parts[1].data().toString()) as TReply;
+  return parseWireJson(parts[1].data().toString()) as TReply;
 }
 
 export function decodeChannelEnvelope(parts: readonly Message[]): ZLinkChannelEnvelope {
@@ -150,7 +150,7 @@ function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHea
   if (parts.length === 0) {
     throw new ZLinkConfigurationException('Channel envelope header part is missing.');
   }
-  return JSON.parse(parts[0].data().toString()) as ZLinkChannelEnvelopeHeader;
+  return validateChannelHeader(parseWireJson(parts[0].data().toString()));
 }
 
 function resolveChannelPacketName(payload: unknown): string {
@@ -161,4 +161,72 @@ function resolveChannelPacketName(payload: unknown): string {
     }
   }
   throw new ZLinkConfigurationException('Channel packetName is required when the payload type cannot provide one.');
+}
+
+function parseWireJson(payload: string): unknown {
+  return JSON.parse(payload, (key, value) => {
+    if (isPrototypeKey(key)) {
+      throw new ZLinkConfigurationException(`Channel JSON key '${key}' is not allowed.`);
+    }
+    return value;
+  });
+}
+
+function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
+  if (!isRecord(value)) {
+    throw new ZLinkConfigurationException('Channel envelope header must be a JSON object.');
+  }
+  const header = value as Record<string, unknown>;
+  const kind = requireChannelMessageKind(header.kind);
+  const contentType = requireString(header.contentType, 'contentType');
+  if (contentType !== JSON_CONTENT_TYPE) {
+    throw new ZLinkConfigurationException(`Channel envelope contentType '${contentType}' is not supported.`);
+  }
+  return {
+    kind,
+    channelName: requireString(header.channelName, 'channelName'),
+    messageName: requireString(header.messageName, 'messageName'),
+    contentType,
+    correlationId: requireNullableString(header.correlationId, 'correlationId'),
+    deadline: requireNullableString(header.deadline, 'deadline'),
+    topic: requireNullableString(header.topic, 'topic'),
+    errorCode: requireNullableString(header.errorCode, 'errorCode'),
+    errorMessage: requireNullableString(header.errorMessage, 'errorMessage'),
+    source: header.source === undefined ? undefined : requireNullableString(header.source, 'source')
+  };
+}
+
+function requireChannelMessageKind(value: unknown): ZLinkChannelMessageKind {
+  if (
+    value === ZLinkChannelMessageKind.Request ||
+    value === ZLinkChannelMessageKind.Response ||
+    value === ZLinkChannelMessageKind.Command ||
+    value === ZLinkChannelMessageKind.Publish ||
+    value === ZLinkChannelMessageKind.Error
+  ) {
+    return value;
+  }
+  throw new ZLinkConfigurationException('Channel envelope kind is not supported.');
+}
+
+function requireString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string') {
+    throw new ZLinkConfigurationException(`Channel envelope ${fieldName} must be a string.`);
+  }
+  return value;
+}
+
+function requireNullableString(value: unknown, fieldName: string): string | null {
+  if (value === null || typeof value === 'string') {
+    return value;
+  }
+  throw new ZLinkConfigurationException(`Channel envelope ${fieldName} must be a string or null.`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPrototypeKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }

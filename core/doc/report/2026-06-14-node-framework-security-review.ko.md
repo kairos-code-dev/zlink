@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/node/packages/{framework,nestjs,stream-connector,stream-connector-json,-msgpack,-protobuf}/src`
-- **상태**: 2026-06-14 원격 DoS 항목(C1, C2, S1, S2) 수정 완료. C3, C4, S3는 후속 순서에서 별도 확인.
+- **상태**: 2026-06-14 C1, C2, C3, C4, S1, S2 수정 완료. S3는 코드 대조 결과 보안 이슈가 아니므로 종결.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **네이티브 바인딩 범위 주의**: 프레임워크는 `@zlink-systems/zlink`(`bindings/node`)의 **N-API/node-addon-api**
@@ -16,11 +16,11 @@
 |---|--------|------|------|------|
 | C1 | High | DoS / 무제한 버퍼링 | `stream-connector/.../NodeDuplexStreamConnection.ts:65-77` | **수정 완료(2026-06-14)** |
 | C2 | High | DoS / 무제한 버퍼링 | `stream-connector/.../WebSocketFrameCodec.ts:29-46`, `NodeWebSocketConnection.ts:111-118` | **수정 완료(2026-06-14)** |
-| C3 | Medium | 신뢰 불가 역직렬화 / 입력 검증 부재 | `stream-connector-json/src/index.ts:51` | **NEEDS-NUANCE (하향)** |
-| C4 | Medium | 신뢰 불가 역직렬화 / 입력 검증 부재 | `framework/.../channels/channel-envelope.ts:117,153`, `nestjs/src/index.ts:1409,1412` | **NEEDS-NUANCE (하향)** |
+| C3 | Medium | 신뢰 불가 역직렬화 / 입력 검증 부재 | `stream-connector-json/src/index.ts:51` | **수정 완료(2026-06-14)** |
+| C4 | Medium | 신뢰 불가 역직렬화 / 입력 검증 부재 | `framework/.../channels/channel-envelope.ts:117,153`, `nestjs/src/index.ts:1409,1412` | **수정 완료(2026-06-14)** |
 | S1 | Medium | DoS / LZ4 압축 폭탄 | `stream-connector/.../Compression/ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` | **수정 완료(2026-06-14)** |
 | S2 | Low | DoS / 핸드셰이크 헤더 무제한 | `stream-connector/.../WebSocketHandshake.ts:68` | **수정 완료(2026-06-14)** |
-| S3 | Low | 리소스 누수(대체로 클린) | `ZlinkStreamConnector` 타이머 | 의심 |
+| S3 | Low | 리소스 누수(대체로 클린) | `ZlinkStreamConnector` 타이머 | **보안 이슈 아님(2026-06-14)** |
 
 > ⚠️ **아래 §Codex 교차검증이 최종 판정이다.** C3/C4는 "프로토타입 오염"에서 "신뢰 불가 JSON 미검증"으로 하향.
 
@@ -63,6 +63,24 @@ Claude 리뷰:
 
 core runtime과 `core/include` public header는 수정하지 않았으므로 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
 
+후속 항목(C3, C4, S3)도 같은 날 현재 코드와 다시 대조한 뒤 처리했다.
+
+- stream connector JSON codec은 와이어 JSON을 파싱할 때 `__proto__`, `constructor`, `prototype` 키를 거부한다. 사용자 `reviver`는 유지하되 위험 키 검사를 먼저 적용한다.
+- framework channel envelope는 header JSON을 객체로 확인하고 `kind`, `contentType`, 문자열/nullable 문자열 필드를 검증한 뒤 사용한다. reply body JSON도 같은 위험 키를 거부한다.
+- NestJS handler payload decode는 Buffer, Uint8Array, string 입력을 파싱할 때 같은 위험 키를 거부한다.
+- S3는 `close()`가 heartbeat interval과 receive loop abort를 정리하고, receive loop 오류 경로도 heartbeat와 pending request를 정리하는 것을 확인했다. Immediate dispatch의 1ms delay는 유휴 효율 후보일 뿐 이번 보안 수정 범위의 리소스 누수는 아니다.
+
+후속 검증:
+
+- `npm run build` (`framework/languages/node`)
+- `npm run typecheck` (`framework/languages/node`)
+- `timeout 120s node --test test/contract/stream-connector-json.test.js test/contract/channel-client.test.js` (`framework/languages/node`, 27 tests pass)
+- `timeout 180s npm run test` (`framework/languages/node`, pass)
+
+Codex 에이전트 리뷰:
+
+- 2026-06-14: C3, C4, S3의 코드와 테스트를 직접 대조했고 "추가 이슈 없음" 판정을 받았다. 리뷰 에이전트도 `timeout 120s node --test test/contract/stream-connector-json.test.js test/contract/channel-client.test.js`를 실행해 27개 테스트 통과를 확인했다.
+
 ---
 
 ## CONFIRMED
@@ -97,7 +115,7 @@ if (frame.fin) { this.messageQueue.push(concatParts(this.currentMessageParts)); 
 **처리 결과(2026-06-14)**: WebSocket frame decode, 단편 메시지 조립, 메시지 큐 누적량을 `maxReceivePayloadSize`로 제한했다. 단일 프레임, continuation 누적, 큐 누적 회귀 테스트를 추가했다.
 
 ### C3 — JSON 코덱이 신뢰 불가 입력을 검증 없이 역직렬화 (← 초판 "프로토타입 오염", §Codex로 하향)
-- **분류**: 신뢰 불가 역직렬화(입력 검증 부재) · **NEEDS-NUANCE · repo 고유(소비자 의존)**
+- **분류**: 신뢰 불가 역직렬화(입력 검증 부재) · **수정 완료 · repo 고유(소비자 의존)**
 - **위치**: `stream-connector-json/src/index.ts:51`
 
 > 🟡 **§Codex 정정**: `JSON.parse`는 악의 reviver 없이는 프로토타입을 오염시키지 않고, read 경로에 병합 sink가 없어 **프로토타입 오염은 미입증**. 아래는 "신뢰 불가 JSON이 검증 없이 소비자에 도달"이라는 약화된 우려로 읽을 것.
@@ -108,9 +126,10 @@ return JSON.parse(new TextDecoder().decode(payload.payload), codecOptions.revive
 
 `JSON.parse`는 악의 reviver 없이는 `Object.prototype`을 오염시키지 않는다. 디코드 객체가 attacker-제어 `__proto__`/`constructor` 키를 운반할 수 있고, downstream에서 **unsafe 병합**(`Object.assign`/spread/deep-merge)을 한다면 오염이 전파될 수 있으나 — **현 read 경로에는 그런 병합 sink가 미발견(§Codex)**. 즉 가설적 위험이다. 노출된 `reviver` 훅(`:19-21`)이 모든 키에 실행되므로 잘못 설정된 앱 reviver가 주입 지점이 될 수는 있다.
 **수정**: 디코드 객체는 신뢰 불가임을 문서화, `__proto__`/`constructor`/`prototype` 키 거부 또는 헤더 객체에 `Object.create(null)` 프레이밍.
+**처리 결과(2026-06-14)**: stream connector JSON codec에서 와이어 JSON의 `__proto__`, `constructor`, `prototype` 키를 거부한다. 사용자 `reviver`는 표준 `JSON.parse` 동작을 유지하되 위험 키 검사 뒤에 호출한다. 회귀 테스트는 위험 키 입력이 거부되고 전역 객체가 오염되지 않는지 확인한다.
 
 ### C4 — 프레임워크 채널 + nestjs 디코드의 동일 미검증 역직렬화 (← 초판 "프로토타입 오염", §Codex로 하향)
-- **분류**: 신뢰 불가 역직렬화(입력 검증 부재) · **NEEDS-NUANCE · repo 고유**
+- **분류**: 신뢰 불가 역직렬화(입력 검증 부재) · **수정 완료 · repo 고유**
 - **위치**: `framework/src/runtime/channels/channel-envelope.ts:117,153`, `nestjs/src/index.ts:1409,1412`
 
 > 🟡 **§Codex 정정**: 헤더는 필드 단위 소비, 페이로드는 plain value/Buffer 전달이라 병합 sink 없음 → **프로토타입 오염 미입증**. 헤더 구조와 enum 검증 부재라는 약화된 우려로 유지.
@@ -122,6 +141,7 @@ return JSON.parse(parts[0].data().toString()) as ZLinkChannelEnvelopeHeader; // 
 
 네이티브 채널 계층(원격 출처)으로 전달된 바이트를 헤더/엔벨로프 객체로 파싱 후 타입 검증 없이 필드 읽기(`header.kind`, `header.correlationId`). 적대적 헤더가 예상 외 타입/`__proto__` 주입 가능.
 **수정**: 디코드 헤더 구조와 enum(`kind`, `contentType`)을 검증한 뒤 사용하고, 헤더는 null-prototype 파싱으로 만든다.
+**처리 결과(2026-06-14)**: channel envelope header는 JSON 객체, `kind` enum, `contentType`, 문자열/nullable 문자열 필드를 검증한 뒤 사용한다. channel reply body와 NestJS handler payload decode는 와이어 JSON의 위험 키를 거부한다. 회귀 테스트는 잘못된 reply header kind와 위험 키가 들어간 reply body가 공개 channel request 흐름에서 실패하는지 확인한다.
 
 ---
 
@@ -147,6 +167,7 @@ const resultLength = data.length + resultDiff;          // resultDiff는 u32 와
 
 ### S3 — 하트비트 타이머 누수 (대체로 클린)
 - `ZlinkStreamConnector`가 `close()`/`stopHeartbeat()`/`stopReceiveLoop()`/`failPending`에서 타이머 정리. 누수 미발견. 단 `runReceiveLoop`가 Immediate 모드에서 `delay(1, signal)`(1ms)로 busy-poll(유휴 시 CPU spin) — 효율 이슈(보안 아님).
+**처리 결과(2026-06-14)**: 코드 대조 결과 heartbeat interval과 receive loop abort 정리 경로가 확인되어 보안 수정 없이 종결했다. 1ms delay는 효율 개선 후보로만 남긴다.
 
 ---
 
@@ -166,4 +187,4 @@ const resultLength = data.length + resultDiff;          // resultDiff는 u32 와
 ## 처리 우선순위
 1. **C1 + C2**(인바운드 프레임/WS 무제한 크기) — 단일 최고가치 수정: `maxReceivePayloadSize` 도입 후 `NodeDuplexStreamConnection.tryReadFrame`·`WebSocketFrameCodec`·단편 조립기에서 강제.
 2. **S1** — LZ4 `resultLength` 할당 전 clamp.
-3. **C3/C4** — 신뢰 불가 JSON 헤더/엔벨로프 파싱 하드닝: 구조와 enum 검증이 주된 수정이고, null-prototype/`__proto__` 거부는 심층방어다. **§Codex로 프로토타입 오염은 미입증이므로 우선순위 하**.
+3. **C3/C4** — 2026-06-14 신뢰 불가 JSON 헤더/엔벨로프 파싱 하드닝 완료. 구조와 enum 검증을 적용하고, `__proto__`/`constructor`/`prototype` 키를 거부한다. **§Codex로 프로토타입 오염은 미입증이므로 입력 검증 강화로 종결했다**.

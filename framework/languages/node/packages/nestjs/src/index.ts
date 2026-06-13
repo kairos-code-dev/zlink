@@ -1406,12 +1406,25 @@ function handlerKeyName(handlerKey: InjectionToken): string {
 
 function decodePayload(payload: Buffer | Uint8Array | string | unknown): unknown {
   if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
-    return JSON.parse(Buffer.from(payload).toString());
+    return parseWireJson(Buffer.from(payload).toString());
   }
   if (typeof payload === 'string') {
-    return JSON.parse(payload);
+    return parseWireJson(payload);
   }
   return payload;
+}
+
+function parseWireJson(payload: string): unknown {
+  return JSON.parse(payload, (key, value) => {
+    if (isPrototypeKey(key)) {
+      throw new framework.ZLinkConfigurationException(`NestJS handler JSON key '${key}' is not allowed.`);
+    }
+    return value;
+  });
+}
+
+function isPrototypeKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }
 
 function hasNestHandlerDiscovery(options: ZLinkModuleOptions): boolean {

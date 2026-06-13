@@ -15,6 +15,16 @@ test('stream connector json codec encodes and decodes json payloads', () => {
   );
 });
 
+test('stream connector json codec rejects prototype mutation keys from wire payloads', () => {
+  const payload = {
+    codec: connector.ZlinkStreamCodec.Json,
+    payload: new TextEncoder().encode('{"safe":true,"__proto__":{"polluted":true}}')
+  };
+
+  assert.throws(() => json.fromJson(payload), /not allowed/);
+  assert.equal({}.polluted, undefined);
+});
+
 test('stream connector json codec writes json payload frame through connector', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({

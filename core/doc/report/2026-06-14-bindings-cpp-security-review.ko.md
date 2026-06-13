@@ -3,7 +3,7 @@
 - 작성일: 2026-06-14
 - 대상 범위: `bindings/cpp/src/Runtime/Native/native_message_parts.hpp`
 - 검토 방식: 메시지 part 이동, 실패 시 복구, close 경로를 코드 기준으로 확인했다.
-- 상태: 추가 수정 없음
+- 상태: 2026-06-14 추가 수정 없음. Codex 에이전트 리뷰 통과.
 
 ## 요약
 
@@ -29,6 +29,11 @@ C++ 바인딩은 core C API의 `zlink_msg_t`를 RAII 객체로 감싼다. 이번
 작은 multipart는 stack 기반 경로를 사용할 수 있게 되어 할당 비용을 줄이는 구조다. 실패 복구 로직은 정상 경로 비용을 크게 늘리지 않는다.
 
 성능상 새로 확인된 병목은 없다. 다만 core C API의 메시지 복사·이동 비용은 C++ 바인딩이 그대로 물려받는다.
+
+검증:
+
+- `bindings/cpp/tests/run_tests.sh` 통과. C++ contract 15개와 sample smoke 19개가 통과했다.
+- Codex 에이전트 리뷰에서 "추가 이슈 없음" 판정을 받았다.
 
 ## 결론
 

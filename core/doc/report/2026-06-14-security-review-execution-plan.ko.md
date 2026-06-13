@@ -49,7 +49,7 @@
 | 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 종결 | 2026-06-14: Message.Data slice 수명 규칙 문서화와 회귀 테스트 추가, Go test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-6 | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | 종결 | 2026-06-14: version macro patch 값 정렬과 common.h direct include 회귀 테스트 추가, core build와 C tests/samples 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-7 | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | 종결 | 2026-06-14: callback family별 handler slot 제한 문서화, Node build/typecheck/rebuild/test 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-8 | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 대기 | - |
+| 6-8 | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 종결 | 2026-06-14: 추가 수정 없음, C++ contract/sample smoke 통과, Codex 에이전트 추가 이슈 없음 |
 
 ## 실행 순서
 

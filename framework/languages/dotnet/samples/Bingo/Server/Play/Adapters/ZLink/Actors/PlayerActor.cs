@@ -12,6 +12,10 @@ internal sealed class PlayerActor(
 
     public string RoomId { get; private set; } = string.Empty;
 
+    public bool DestroyAfterEntrySpotJoin { get; private set; }
+
+    public bool Disconnected { get; private set; }
+
     public IZLinkActorContext Context { get; } = context;
 
     public void SetDisplayName(string displayName)
@@ -24,4 +28,13 @@ internal sealed class PlayerActor(
         RoomId = roomId;
     }
 
+    public void MarkForDestroyAfterRoomLeave()
+    {
+        DestroyAfterEntrySpotJoin = true;
+    }
+
+    public void MarkDisconnected()
+    {
+        Disconnected = true;
+    }
 }

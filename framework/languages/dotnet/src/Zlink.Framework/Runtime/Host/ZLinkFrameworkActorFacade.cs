@@ -64,6 +64,15 @@ internal sealed class ZLinkFrameworkActorFacade(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask DestroyActorAsync(
+        RoutingId entrySpotNodeRid,
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        await actorSessionManager.DestroyActorAsync(entrySpotNodeRid, actor, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask JoinActorToSpotAsync(
         ZLinkSpotActivation activation,
         IZLinkActor actor,

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](./12-grpc-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 인터페이스 카탈로그 — 모든 계약을 코드로
+# 11. 인터페이스 카탈로그 — 모든 계약을 코드로
 
 > 이 챕터는 framework adapter 가 노출하는 **모든 public 계약 인터페이스**를 한곳에
 > 모아, 각 인터페이스가 실제로 어떻게 쓰이는지 코드와 함께 보여 준다. 개념·사용
@@ -84,7 +84,7 @@ var room = await client
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkRouteClient` | router channel 이름 + target `RoutingId` 로 특정 노드를 직접 지정하는 client. `Send(...)` / `Request(...)` |
-| `IZLinkSendCall` | route send 종결자(`PacketName` → `Submit`) |
+| `IZLinkSendCall` | route send 종결자(`PacketName` → `Async(ct)`) |
 | `IZLinkRequestCall` | route request 종결자(`PacketName` · `Timeout` → `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel 의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
 | `IZLinkRouteRequestHandler<TRequest, TReply>` | route mesh channel 의 요청 수신 handler. `HandleAsync(req, ZLinkRouteRequestContext, ct) → ValueTask<TReply>` |
@@ -103,7 +103,7 @@ await publisher
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFanoutClient` | pub/sub publish 표면. `Publish(channelName, topic, message)` (인자 3개) |
-| `IZLinkPublishCall` | publish 종결자(`PacketName` → `Submit`) |
+| `IZLinkPublishCall` | publish 종결자(`PacketName` → `Async(ct)`) |
 
 검증: `ChannelContracts.Fanout_client_publishes_events_to_a_topic`.
 
@@ -185,12 +185,12 @@ await events
 
 | gRPC 패턴 | ZLink 대체 | 표면 / 챕터 |
 |-----------|------------|-------------|
-| Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([04](./04-channel-messaging.ko.md)) |
-| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Async` ([04](./04-channel-messaging.ko.md)) |
-| Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([04](./04-channel-messaging.ko.md)) |
-| Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([07](./07-stream.ko.md), §5) |
-| Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([08](./08-registry.ko.md), §6) |
-| Interceptor | handler filter | `IZLinkHandlerFilter` ([04](./04-channel-messaging.ko.md) §5, §1.4) |
+| Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([4](./04-channel-messaging.ko.md)) |
+| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Async` ([4](./04-channel-messaging.ko.md)) |
+| Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([4](./04-channel-messaging.ko.md)) |
+| Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([7](./07-stream.ko.md), §5) |
+| Service discovery(DNS/xDS) | Registry + Discovery | `UseDiscovery` + `IZLinkRegistryQuery` ([8](./08-registry.ko.md), §6) |
+| Interceptor | handler filter | `IZLinkHandlerFilter` ([4](./04-channel-messaging.ko.md) §5, §1.4) |
 | Deadline/timeout | request timeout | `IZLinkRequestCall.Timeout(...)` (§1.1) |
 | Metadata/trailer | metadata 정책 | `ConfigureMetadata` + `IZLinkMessageMetadataPolicy` (§2.1, §5.2) |
 
@@ -409,17 +409,17 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
             ZLinkSpotActorJoinResult.Accept(new JoinedRoom(join.RoomId).Encode()));
     }
 
-    public ValueTask OnPostActorJoinedAsync(
+    public ValueTask onJoinActor(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
-    public ValueTask OnActorLeftAsync(
+    public ValueTask onLeaveActor(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
 
-    public ValueTask OnActorDisconnectedAsync(
+    public ValueTask onDisconnectActor(
         PlayerActor actor,
         CancellationToken ct)
         => ValueTask.CompletedTask;
@@ -438,9 +438,9 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnActorJoinAsync`/`OnPostActorJoinedAsync`/`OnActorLeftAsync`/`OnClosingAsync`) |
+| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnActorJoinAsync`/`onJoinActor`/`onLeaveActor`/`OnClosingAsync`) |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
-| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `LeaveActorAsync` + `CloseAsync` + `AddTimer` |
+| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `leaveActor` + `CloseAsync` + `AddTimer` |
 | `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe(`AddPacket`, `AddSubscribe`) |
@@ -496,14 +496,14 @@ public sealed class RoomRequestHandler
 | `IZLinkSpot<TActor>.OnActorJoinAsync(...)` | user spot join 요청 callback. 기본 계약은 `(TActor, Message)` |
 | `IZLinkSpotActorSendHandler<TSpot, TActor, TMessage>` | user spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkSpotActorRequestHandler<TSpot, TActor, TRequest, TReply>` | user spot actor 요청 handler. context 뒤에 request |
-| `IZLinkSpot<TActor>.OnPostActorJoinedAsync(...)` | user spot actor join commit 이후 lifecycle |
-| `IZLinkSpot<TActor>.OnActorLeftAsync(...)` | user spot actor leave lifecycle |
-| `IZLinkSpot<TActor>.OnActorDisconnectedAsync` | user spot actor disconnect notification. membership 은 변경하지 않음 |
+| `IZLinkSpot<TActor>.onJoinActor(...)` | user spot actor join commit 이후 lifecycle |
+| `IZLinkSpot<TActor>.onLeaveActor(...)` | user spot actor leave lifecycle |
+| `IZLinkSpot<TActor>.onDisconnectActor` | user spot actor disconnect notification. membership 은 변경하지 않음 |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler. context 뒤에 request |
-| `IZLinkEntrySpot<TActor>.OnPostActorJoinedAsync(...)` | Entry Spot actor join lifecycle |
-| `IZLinkEntrySpot<TActor>.OnActorLeftAsync(...)` | Entry Spot actor leave lifecycle |
-| `IZLinkEntrySpot<TActor>.OnActorDisconnectedAsync` | Entry Spot actor disconnect notification. membership 은 변경하지 않음 |
+| `IZLinkEntrySpot<TActor>.onJoinActor(...)` | Entry Spot actor join lifecycle |
+| `IZLinkEntrySpot<TActor>.onLeaveActor(...)` | Entry Spot actor leave lifecycle |
+| `IZLinkEntrySpot<TActor>.onDisconnectActor` | Entry Spot actor disconnect notification. membership 은 변경하지 않음 |
 
 검증: `SpotContracts.Spot_handlers_receive_the_spot_instance_and_actor_when_the_contract_requires_it`.
 
@@ -622,8 +622,8 @@ actor 로 relay 할지, 거절할지, 로그만 남길지는 application session
 | `IZLinkSessionActor` | session-bound actor handle. `RelayAsync`, `NotifyDisconnectedAsync` 로 대상 actor 에게 명시 동작을 보냄 |
 | `IZLinkSessionPacketHandler<TSessionContext>` | session 이 직접 처리할 packet handler. payload 는 session callback 과 같은 borrowed lifetime |
 | `IZLinkSessionPacketDispatcher<TSessionContext>` | 등록된 session packet handler 만 호출하고 미등록 packet 은 `false` 반환 |
-| `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Submit`) |
-| `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Submit`) |
+| `IZLinkSessionSendCall` | session push 종결자(`Metadata`/`PacketName`/`Compress` → `Async()`) |
+| `IZLinkSessionReplyCall` | session reply 종결자(`Metadata`/`Compress` → `Async()`) |
 | `IZLinkSessionActor` | session relay 용 actor handle(`ActorId`, `Ref`, `RelayAsync`, `NotifyDisconnectedAsync`) |
 | `IZLinkStream` | raw stream write(`Write(Message, SendFlags)`) / `CloseAsync`. 보통은 `Send`/`Reply` 를 쓴다 |
 
@@ -647,7 +647,7 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkBoundSession` | actor 에 묶인 client 로의 단방향 push. `Send<TMessage>(message)` + `DisconnectAsync`. (요청 표면 없음 — push 는 단방향) |
-| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Submit`) |
+| `IZLinkBoundSessionSendCall` | bound session push 종결자(`PacketName`/`Metadata` → `Async(ct)`) |
 | `IZLinkMessageMetadataPolicy` | metadata key 전달 허용 여부(`CanForward`) |
 
 검증: `StreamContracts.Bound_session_sends_to_the_bound_session_without_exposing_stream_transport`.

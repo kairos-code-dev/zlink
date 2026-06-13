@@ -15,6 +15,146 @@ namespace Zlink.Framework.E2ETests;
 public sealed class ActorLifecycleTests : SpotTestSupport
 {
     [Fact]
+    public async Task EntrySpot_DestroyActorAsync_Removes_EntryOwned_Actor_Without_Left_Callback()
+    {
+        var spotNode = GetFreeTcpEndpoint();
+
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton<ActorIntegrationRecorder>();
+        builder.Services.AddScoped<ActorDispatchHandler>();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.AddActorFactory<TestActorFactory>("test");
+            options.AddSpotMesh("game.stage", mesh =>
+            {
+                mesh.AddNode("actor-destroy-node", spot =>
+                {
+                    spot.EnableRouter(router =>
+                    {
+                        router.BindRouter(spotNode);
+                    });
+                    spot.AddEntrySpot<ActorLifecycleEntrySpot>();
+                    spot.AddSpotFactory<ActorStageSpot>();
+                });
+            });
+        });
+
+        using var host = builder.Build();
+        await host.StartAsync();
+
+        var manager = host.Services.GetRequiredService<IZLinkSpotManager>();
+        var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
+        var recorder = host.Services.GetRequiredService<ActorIntegrationRecorder>();
+        var entrySpot = (ActorLifecycleEntrySpot)actorRuntime
+            .GetSpotNodeRuntime("actor-destroy-node")
+            .EntrySpotActivation!
+            .EntrySpot;
+
+        var entryCreateBeforeEntryOwnedCreate = recorder.EntrySpotActorCreates.Count;
+        var entryLeftBeforeEntryOwnedDestroy = recorder.EntrySpotActorLeaves.Count;
+        var entryOwned = (TestActor)(await actorRuntime.CreateLocalActorAsync(
+            "actor-entry-destroy",
+            "test")).Actor;
+        await entrySpot.Context.DestroyActorAsync(entryOwned);
+        await entrySpot.Context.DestroyActorAsync(entryOwned);
+        Assert.Null(await actorRuntime.FindActorAsync("actor-entry-destroy"));
+        Assert.Equal(
+            entryCreateBeforeEntryOwnedCreate + 1,
+            recorder.EntrySpotActorCreates.Count);
+        Assert.Contains("entry-created:actor-entry-destroy", recorder.EntrySpotActorCreates);
+        Assert.Equal(
+            entryLeftBeforeEntryOwnedDestroy,
+            recorder.EntrySpotActorLeaves.Count);
+
+        using (var payload = global::Systems.Zlink.Message.From("after-destroy"))
+        {
+            var ex = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                async () => await actorRuntime.SubmitActorByIdAsync(
+                    "actor-entry-destroy",
+                    new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Raw,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        "dispatch",
+                        ZlinkStreamMetadata.Empty),
+                    payload));
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, ex.Kind);
+        }
+
+        var recreated = (TestActor)(await actorRuntime.CreateLocalActorAsync(
+            "actor-entry-destroy",
+            "test")).Actor;
+        await entrySpot.Context.DestroyActorAsync(entryOwned);
+        Assert.Equal(
+            entryLeftBeforeEntryOwnedDestroy,
+            recorder.EntrySpotActorLeaves.Count);
+        Assert.Same(recreated, await actorRuntime.FindActorAsync("actor-entry-destroy"));
+        await entrySpot.Context.DestroyActorAsync(recreated);
+        Assert.Equal(
+            entryLeftBeforeEntryOwnedDestroy,
+            recorder.EntrySpotActorLeaves.Count);
+
+        var reentrant = (TestActor)(await actorRuntime.CreateLocalActorAsync(
+            "actor-entry-destroy-reentrant",
+            "test")).Actor;
+        var entryLeftBeforeReentrantDestroy = recorder.EntrySpotActorLeaves.Count;
+        await entrySpot.Context.DestroyActorAsync(reentrant);
+        Assert.Null(await actorRuntime.FindActorAsync("actor-entry-destroy-reentrant"));
+        Assert.Equal(
+            entryLeftBeforeReentrantDestroy,
+            recorder.EntrySpotActorLeaves.Count);
+
+        var room = await manager.CreateAsync<ActorStageSpot>();
+        var roomActor = (TestActor)(await actorRuntime.CreateLocalActorAsync(
+            "actor-room-destroy",
+            "test")).Actor;
+        var stream = new TestStream("session-destroy");
+        var sessionRid = RoutingId.From(Encoding.UTF8.GetBytes("session-destroy"));
+        await actorRuntime.AttachActorAsync(roomActor, stream);
+        actorRuntime.BindActorSession(roomActor.ActorId, sessionRid, "native:destroy-test");
+        Assert.True(actorRuntime.TryGetActorBoundSession(roomActor.ActorId, out _));
+
+        _ = await actorRuntime.JoinActorAsync(
+            room.SpotRid,
+            roomActor,
+            EncodeJoin(new JoinStageRequest("room-destroy")));
+
+        var directDestroyError = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await entrySpot.Context.DestroyActorAsync(roomActor));
+        Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, directDestroyError.Kind);
+        Assert.Same(roomActor, await actorRuntime.FindActorAsync(roomActor.ActorId));
+        Assert.True(actorRuntime.TryGetActorBoundSession(roomActor.ActorId, out _));
+
+        await actorRuntime.DisconnectActorAsync(roomActor, stream);
+        Assert.Same(roomActor, await actorRuntime.FindActorAsync(roomActor.ActorId));
+        Assert.Equal(0, recorder.DisconnectCount);
+
+        var roomSpot = (ActorStageSpot)actorRuntime
+            .GetSpotNodeRuntime("actor-destroy-node")
+            .Spots
+            .Single(activation => activation.SpotRid == room.SpotRid)
+            .Spot;
+        await roomSpot.leaveActor(roomActor, CancellationToken.None);
+        await RetryAsync(
+            () => recorder.SpotActorLeaves.Any(item => item.StartsWith(
+                $"{roomActor.ActorId}@",
+                StringComparison.Ordinal)),
+            TimeSpan.FromSeconds(5));
+
+        var spotLeftCountBeforeDestroy = recorder.SpotActorLeaves.Count;
+        var entryLeftCountBeforeDestroy = recorder.EntrySpotActorLeaves.Count;
+        await entrySpot.Context.DestroyActorAsync(roomActor);
+
+        Assert.Null(await actorRuntime.FindActorAsync(roomActor.ActorId));
+        Assert.False(actorRuntime.TryGetActorBoundSession(roomActor.ActorId, out _));
+        Assert.Equal(spotLeftCountBeforeDestroy, recorder.SpotActorLeaves.Count);
+        Assert.Equal(entryLeftCountBeforeDestroy, recorder.EntrySpotActorLeaves.Count);
+
+        await host.StopAsync();
+    }
+
+    [Fact]
     public async Task SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext()
     {
         var spotNode = GetFreeTcpEndpoint();

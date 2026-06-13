@@ -15,7 +15,18 @@ internal sealed class PlayEntrySpot(
         Context.Handlers.AddHandler<PlayActorJoinGameHandler>();
     }
 
-    public ValueTask OnPostActorJoinedAsync(
+    public ValueTask onCreateActor(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        logger.LogInformation(
+            "entry spot: actor created. actor={ActorId}",
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask onJoinActor(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -23,16 +34,39 @@ internal sealed class PlayEntrySpot(
         logger.LogInformation(
             "entry spot: actor joined. actor={ActorId}",
             actor.ActorId);
-        return ValueTask.CompletedTask;
+        if (!actor.DestroyAfterEntrySpotJoin)
+        {
+            return;
+        }
+
+        logger.LogInformation(
+            "entry spot: actor destroy requested. actor={ActorId}",
+            actor.ActorId);
+        await Context.DestroyActorAsync(actor, cancellationToken);
+        logger.LogInformation(
+            "entry spot: actor destroy completed. actor={ActorId}",
+            actor.ActorId);
     }
 
-    public ValueTask OnActorLeftAsync(
+    public ValueTask onLeaveActor(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "entry spot: actor left. actor={ActorId}",
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask onDisconnectActor(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.MarkDisconnected();
+        logger.LogInformation(
+            "entry spot: actor disconnected. actor={ActorId}",
             actor.ActorId);
         return ValueTask.CompletedTask;
     }

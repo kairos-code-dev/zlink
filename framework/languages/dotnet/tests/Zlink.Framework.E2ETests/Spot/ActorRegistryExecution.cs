@@ -95,7 +95,7 @@ public sealed class ActorRegistryExecutionTests : SpotTestSupport
         Assert.Contains($"joined:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);
 
         var currentSpot = actor.Spot ?? throw new InvalidOperationException("Actor is not joined.");
-        await currentSpot.Context.LeaveActorAsync(actor);
+        await currentSpot.Context.leaveActor(actor);
 
         Assert.Null(actor.Spot);
         Assert.Contains($"left:registry-actor:{second.SpotRid.ToHex()}", recorder.Events);

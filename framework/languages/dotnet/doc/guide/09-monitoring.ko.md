@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Registry](./08-registry.ko.md) | [다음: 기능 맵](./10-feature-map.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Monitoring — runtime 이벤트 관찰
+# 9. Monitoring — runtime 이벤트 관찰
 
 > 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
 > 소유한다.

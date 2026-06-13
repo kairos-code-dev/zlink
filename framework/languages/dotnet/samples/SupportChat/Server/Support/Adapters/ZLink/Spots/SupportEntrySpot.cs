@@ -17,7 +17,19 @@ internal sealed class SupportEntrySpot(
         Context.Handlers.AddHandler<SetAgentAvailableHandler>();
     }
 
-    public ValueTask OnPostActorJoinedAsync(
+    public ValueTask onCreateActor(
+        SupportUserActor actor,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        logger.LogInformation(
+            "support entry: actor created. actor={ActorId}, role={Role}",
+            actor.ActorId,
+            actor.Role);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask onJoinActor(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
@@ -29,7 +41,7 @@ internal sealed class SupportEntrySpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnActorLeftAsync(
+    public ValueTask onLeaveActor(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {

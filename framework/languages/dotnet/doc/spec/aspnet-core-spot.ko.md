@@ -313,7 +313,7 @@ handler 로 매핑할 수 있다.
 역시 같은 Spot 안에서 같은 actor 타입에 대해 하나씩만 허용한다.
 
 join / leave lifecycle 은 Entry Spot 과 user Spot 의 Spot 멤버 method 로
-정의한다. `OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 는 join /
+정의한다. `onJoinActor(...)` 와 `onLeaveActor(...)` 는 join /
 leave commit 이 끝난 뒤 같은 실행 문맥에서 호출된다. 그래서
 admission[^admission] 을 결정하는 hook 이 아니라는 점에 주의한다.
 
@@ -1197,11 +1197,11 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 | `TimerTests.SpotTimer_CancelAsync_Stops_Managed_Timer_Loop` | `CancelAsync()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다. |
 | `PublisherTests.OutboundOnly_SpotPublisherClient_Publishes_To_TargetChannel` | 외부 publisher client가 target SPOT channel로 publish한다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join, 이동, packet dispatch가 현재 spot 실행 문맥에서 실행된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 Entry Spot 전체 실행 줄에 막히지 않고 actor별 순서를 지킨다. |
-| `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. |
+| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot actor packet은 actor가 달라도 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
+| `EntryMailboxExecutionTests.EntrySpot_PacketHandlers_Are_Serialized_On_EntrySpot_Line` | Entry Spot 일반 packet handler가 user Spot과 같은 방식으로 등록되며 Entry Spot 직렬 실행 줄에서 실행된다. |
 | `TimerTests.EntrySpotTimer_Does_Not_Block_EntrySpot_Callbacks_Globally` | 긴 Entry Spot timer callback이 다른 Entry Spot callback을 전역으로 막지 않는다. |
 | `TimerTests.EntrySpotTimer_Does_Not_Reenter_Same_Timer` | Entry Spot timer는 전역 queue에 묶이지 않아도 같은 timer callback을 겹쳐 실행하지 않는다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native `ActorReadable` batch 안에서도 서로 다른 Entry Spot actor packet이 병렬로 진행된다. |
+| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native `ActorReadable` batch 안의 Entry Spot actor packet이 batch 순서 그대로 직렬 실행된다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.

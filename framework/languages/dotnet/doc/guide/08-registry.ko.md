@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: STREAM](./07-stream.ko.md) | [다음: Monitoring — runtime 이벤트](./09-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Registry — 구동과 topology 조회
+# 8. Registry — 구동과 topology 조회
 
 > 정식 계약은 [spec/aspnet-core-registry](../spec/aspnet-core-registry.ko.md)가
 > 소유한다. 이 챕터는 Registry 를 띄우고 topology 를 조회하는 사용법이다.

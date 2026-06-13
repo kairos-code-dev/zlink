@@ -146,7 +146,7 @@ options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 
 > **재접속 이전성은 framework 기본기.** 다른 Session 서버로 다시 붙어도
 > `BindAsync(actor, ...)` 가 actor id 기준으로 멱등하게 이어지며,
-> actor 인스턴스와 spot membership 은 유지된다([06](../06-actor-session.ko.md) §4).
+> actor 인스턴스와 spot membership 은 유지된다([6](../06-actor-session.ko.md) §4).
 > 즉 **Redis 세션 라우팅 캐시가 응용에서 빠진다.**
 
 > **다국어 배치.** 위 코드는 `.NET` binding 예시지만, ZLink 은 언어 중립 wire
@@ -214,6 +214,7 @@ options.AddSpotMesh("play", mesh => mesh.AddNode("play-node", n =>
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -231,6 +232,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버

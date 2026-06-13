@@ -38,7 +38,7 @@ public abstract partial class SpotTestSupport
                 ZLinkSpotActorJoinResult.Accept(new RegistryJoinReply(joinRequest.RoomId).ToJson()));
         }
 
-        public ValueTask OnPostActorJoinedAsync(
+        public ValueTask onJoinActor(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {
@@ -48,7 +48,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnActorLeftAsync(
+        public ValueTask onLeaveActor(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {

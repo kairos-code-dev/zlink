@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: SPOT](./05-spot.ko.md) | [다음: STREAM — 외부 client](./07-stream.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Actor · Session Actor Dispatch
+# 6. Actor · Session Actor Dispatch
 
 > 정식 계약은 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와
 > [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)가 소유한다.
@@ -36,6 +36,7 @@ None
         +-- bind session --> Entry Spot + bound
         |     +-- JoinSpot --> user Spot + bound
         |           +-- leave (framework) --> Entry Spot + bound
+        +-- DestroyActorAsync (Entry Spot) --> None
         +-- disconnect/unbind (framework) --> Entry/user Spot 유지
 ```
 
@@ -43,6 +44,12 @@ framework 가 자동으로 관리하는 것: Entry Spot 생성/소멸, user Spot
 으로 leave. session disconnect 는 actor membership 을 바꾸지 않는다. actor 에게
 끊김을 알려야 하면 응용이 대상 actor 를 선택해서
 `NotifyDisconnectedAsync(...)` 를 호출한다.
+
+actor 객체를 끝내려면 actor 를 Entry Spot 에 둔 뒤
+`IZLinkEntrySpotContext.DestroyActorAsync(actor)` 를 호출한다. 이 호출은 lifecycle callback 을
+호출하지 않고 native actor ref, framework registry, bound session mapping 을 정리한다.
+user Spot 에 있는 actor 를 직접 destroy 할 수 없으므로 room 안에서는 먼저 leave 를
+완료해야 한다.
 
 ## 2. actor 등록과 작성
 
@@ -201,6 +208,7 @@ client 는 STREAM 하나만 유지하고, Play 서버가 보내는 메시지도 
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   participant C as Client
   participant S as Session 서버
   participant P as Play 서버(actor)

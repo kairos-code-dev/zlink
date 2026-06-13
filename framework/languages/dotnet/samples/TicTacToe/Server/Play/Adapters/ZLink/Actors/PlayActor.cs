@@ -13,6 +13,10 @@ internal sealed class PlayActor(
 
     public string RoomId { get; private set; } = string.Empty;
 
+    public bool DestroyAfterEntrySpotJoin { get; private set; }
+
+    public bool Disconnected { get; private set; }
+
     public void JoinRoom(string roomId)
     {
         if (string.IsNullOrWhiteSpace(roomId))
@@ -33,4 +37,13 @@ internal sealed class PlayActor(
         return RoomId;
     }
 
+    public void MarkForDestroyAfterRoomLeave()
+    {
+        DestroyAfterEntrySpotJoin = true;
+    }
+
+    public void MarkDisconnected()
+    {
+        Disconnected = true;
+    }
 }

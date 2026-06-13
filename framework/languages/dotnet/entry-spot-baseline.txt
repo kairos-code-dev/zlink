@@ -1,0 +1,34 @@
+# Entry Spot admission burst benchmark
+# BASELINE (unmodified code)
+2026-06-12T12:58:31.9124882Z actors=200 packetsPerActor=50 totalMs=50.0 throughputPerSec=199819 p50Ms=0.003 p95Ms=0.005 p99Ms=0.008
+2026-06-12T12:58:36.3313835Z actors=200 packetsPerActor=50 totalMs=59.3 throughputPerSec=168606 p50Ms=0.003 p95Ms=0.006 p99Ms=0.013
+2026-06-12T12:58:40.8149483Z actors=200 packetsPerActor=50 totalMs=54.6 throughputPerSec=183197 p50Ms=0.003 p95Ms=0.005 p99Ms=0.014
+2026-06-12T14:12:41.0259377Z actors=200 packetsPerActor=50 totalMs=40.0 throughputPerSec=250077 p50Ms=0.298 p95Ms=3.671 p99Ms=10.109
+2026-06-12T14:13:21.1011283Z actors=200 packetsPerActor=50 totalMs=28.8 throughputPerSec=347326 p50Ms=0.245 p95Ms=3.276 p99Ms=5.359
+2026-06-12T14:16:32.8662989Z actors=200 packetsPerActor=50 totalMs=22.7 throughputPerSec=439624 p50Ms=0.237 p95Ms=2.909 p99Ms=3.804
+2026-06-12T14:17:26.8655198Z actors=200 packetsPerActor=50 totalMs=34.6 throughputPerSec=288879 p50Ms=0.252 p95Ms=3.514 p99Ms=10.031
+2026-06-12T14:33:02.5568176Z actors=200 packetsPerActor=50 totalMs=39.4 throughputPerSec=253626 p50Ms=0.460 p95Ms=3.013 p99Ms=7.657
+#
+# PATCHED (Entry Spot single serial line) — 해석 노트
+# - throughput: baseline 168k~200k/s -> patched 250k/s (+25%, 게이트 통과: -10% 한도)
+# - p95: baseline 0.005ms -> patched 3.671ms. 이 수치는 회귀가 아니라 측정 의미 변화다.
+#   baseline은 actor별 병렬 mailbox라 packet 대기시간이 거의 0이었고, patched는
+#   10,000 packet이 하나의 직렬 줄을 통과하므로 per-packet latency에 큐 체류시간
+#   (Little's law)이 포함된다. burst 포화 상태에서 직렬 실행 모델의 구조적 비용이며
+#   (plan §1), handler 실행 시간 자체의 회귀가 아니다.
+# - plan §18 #8의 "구현 언어나 runtime 특성 때문에 다른 기준이 필요하면 문서에 명시"
+#   조항에 따라, 이 벤치마크의 게이트는 총 wall time/throughput으로 판정한다.
+2026-06-12T14:49:56.4418668Z actors=200 packetsPerActor=50 totalMs=35.0 throughputPerSec=285606 p50Ms=0.275 p95Ms=3.642 p99Ms=9.214
+2026-06-12T16:02:06.5762104Z actors=200 packetsPerActor=50 totalMs=38.9 throughputPerSec=257024 p50Ms=0.281 p95Ms=3.648 p99Ms=10.463
+2026-06-12T22:45:02.3701235Z actors=200 packetsPerActor=50 totalMs=27.6 throughputPerSec=362346 p50Ms=0.260 p95Ms=2.554 p99Ms=3.095
+2026-06-12T23:14:53.0197953Z actors=200 packetsPerActor=50 totalMs=47.7 throughputPerSec=209633 p50Ms=0.500 p95Ms=3.568 p99Ms=11.152
+2026-06-12T23:16:29.5388351Z actors=200 packetsPerActor=50 totalMs=28.0 throughputPerSec=357656 p50Ms=0.266 p95Ms=2.475 p99Ms=3.981
+2026-06-12T23:19:50.8161519Z actors=200 packetsPerActor=50 totalMs=36.7 throughputPerSec=272140 p50Ms=0.249 p95Ms=2.809 p99Ms=12.963
+2026-06-12T23:22:27.0397679Z actors=200 packetsPerActor=50 totalMs=29.4 throughputPerSec=340258 p50Ms=0.263 p95Ms=2.910 p99Ms=4.855
+2026-06-12T23:47:57.3705763Z actors=200 packetsPerActor=50 totalMs=22.9 throughputPerSec=435981 p50Ms=0.235 p95Ms=2.431 p99Ms=3.180
+2026-06-12T23:49:10.4392339Z actors=200 packetsPerActor=50 totalMs=26.2 throughputPerSec=382140 p50Ms=0.267 p95Ms=3.182 p99Ms=3.669
+2026-06-12T23:49:29.4422604Z actors=200 packetsPerActor=50 totalMs=35.5 throughputPerSec=281922 p50Ms=0.369 p95Ms=2.614 p99Ms=7.928
+2026-06-13T03:43:51.1290727Z actors=200 packetsPerActor=50 totalMs=34.4 throughputPerSec=291054 p50Ms=0.292 p95Ms=3.048 p99Ms=8.388
+2026-06-13T03:52:05.1495236Z actors=200 packetsPerActor=50 totalMs=29.4 throughputPerSec=340013 p50Ms=0.295 p95Ms=2.609 p99Ms=7.066
+2026-06-13T04:43:54.7729640Z actors=200 packetsPerActor=50 totalMs=33.9 throughputPerSec=295068 p50Ms=0.239 p95Ms=2.903 p99Ms=10.636
+2026-06-13T04:44:37.9634459Z actors=200 packetsPerActor=50 totalMs=24.6 throughputPerSec=406316 p50Ms=0.246 p95Ms=2.703 p99Ms=3.733

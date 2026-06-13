@@ -117,8 +117,8 @@ options.AddClientServerChannel("risk", c => c.EnableClient());
 ```
 
 주문 라우팅·리스크 점검은 channel messaging(`Request`/`Send` + `Timeout`)으로,
-리테일/알고 client 수용은 STREAM 으로 받는다([04](../04-channel-messaging.ko.md),
-[07](../07-stream.ko.md)). 단 **마이크로초 매칭 핫루프는 이 channel 경로 밖**에서
+리테일/알고 client 수용은 STREAM 으로 받는다([4](../04-channel-messaging.ko.md),
+[7](../07-stream.ko.md)). 단 **마이크로초 매칭 핫루프는 이 channel 경로 밖**에서
 Disruptor/Aeron 으로 남긴다.
 
 ## 4. 양쪽 코드 비교 — "주문 제출 → 매칭 → 시세"
@@ -188,6 +188,7 @@ Disruptor/Aeron 으로 남긴다.
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw
@@ -204,6 +205,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as algo client
   participant GW as order gw

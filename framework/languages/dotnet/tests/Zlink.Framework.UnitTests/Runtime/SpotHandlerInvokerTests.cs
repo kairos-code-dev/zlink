@@ -30,7 +30,7 @@ public sealed class SpotHandlerInvokerTests
     }
 
     [Fact]
-    public void CreateSpotLifecycleDescriptors_Uses_OnActorLeftAsync_Hook()
+    public void CreateSpotLifecycleDescriptors_Uses_onLeaveActor_Hook()
     {
         var descriptor = ZLinkSpotActorAttributedDescriptorFactory
             .CreateSpotLifecycleDescriptors(ZLinkSpotActorHandlerSurface.UserSpot, typeof(MemberLifecycleSpot))
@@ -108,7 +108,7 @@ public sealed class SpotHandlerInvokerTests
 
         public string? JoinedActorId { get; private set; }
 
-        public ValueTask OnPostActorJoinedAsync(
+        public ValueTask onJoinActor(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {
@@ -117,7 +117,7 @@ public sealed class SpotHandlerInvokerTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnActorLeftAsync(
+        public ValueTask onLeaveActor(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {
@@ -136,7 +136,7 @@ public sealed class SpotHandlerInvokerTests
     {
         public IZLinkSpotContext Context => throw new NotSupportedException();
 
-        public ValueTask OnPostActorJoinedAsync(
+        public ValueTask onJoinActor(
             MemberLifecycleActor actor,
             CancellationToken cancellationToken)
         {

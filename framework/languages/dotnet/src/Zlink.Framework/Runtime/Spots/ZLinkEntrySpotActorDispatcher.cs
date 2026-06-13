@@ -5,15 +5,16 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkEntrySpotActorDispatcher
 {
-    private static readonly int MaxConcurrentDispatches = Math.Max(1, Environment.ProcessorCount);
-
     public static async Task DispatchAsync(
         ZLinkFrameworkRuntime runtime,
         ZLinkEntrySpotActivation? activation,
         IReadOnlyList<ZLinkBackendActorPart> parts,
         CancellationToken cancellationToken)
     {
-        var dispatchTasks = new ZLinkBoundedTaskSet(MaxConcurrentDispatches);
+        // Entry Spot packets execute one at a time in arrival order. The
+        // handler invocation itself is gated on the Entry Spot serial
+        // execution line; awaiting each packet here keeps the enqueue order
+        // identical to the native batch order.
         int i = 0;
         while (i < parts.Count)
         {
@@ -31,20 +32,17 @@ internal static class ZLinkEntrySpotActorDispatcher
                 continue;
             }
 
-            await dispatchTasks.AddAsync(
-                    DispatchPacketAndDisposeBodyAsync(
-                        runtime,
-                        activation,
-                        actorState,
-                        actor,
-                        frame.SourceSessionRid,
-                        frame.Header,
-                        frame.Body,
-                        cancellationToken))
+            await DispatchPacketAndDisposeBodyAsync(
+                    runtime,
+                    activation,
+                    actorState,
+                    actor,
+                    frame.SourceSessionRid,
+                    frame.Header,
+                    frame.Body,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
-
-        await dispatchTasks.DrainAsync().ConfigureAwait(false);
     }
 
     private static async Task DispatchPacketAndDisposeBodyAsync(

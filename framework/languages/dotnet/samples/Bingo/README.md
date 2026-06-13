@@ -52,4 +52,6 @@ connector client. The client flow is self-checking. It fails if the two
 connector clients do not authenticate as distinct actors, match into one room,
 automatically start after the second player submits a card, drive the game with
 number requests, produce the expected winner, or deliver push notifications to
-the bound client sessions.
+the bound client sessions. After the game finishes, the server self-check also
+verifies that room actors leave the room Spot, return to Entry Spot, and are
+destroyed from the Entry Spot context.

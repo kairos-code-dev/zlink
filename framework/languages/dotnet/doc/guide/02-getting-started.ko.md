@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: 핵심 개념 — .NET 표면 멘탈 모델](./03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Getting Started — 처음 한 번 띄워 보기
+# 2. Getting Started — 처음 한 번 띄워 보기
 
 > 이 문서는 "두 개의 `ASP.NET Core` 앱을 띄워 서로 호출되는 것까지" 가는 가장
 > 짧은 경로를 다룬다. 등록 시그니처와 옵션 전체는

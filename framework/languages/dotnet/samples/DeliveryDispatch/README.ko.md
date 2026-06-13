@@ -5,6 +5,10 @@
 기다린다. 내부 역할은 ZLink channel, fanout, spot, stream session을 사용해서
 배차 요청, 배송원 제안, timeout 재배정, 상태 fanout을 처리한다.
 
+공통 시나리오 기준은
+[`framework/doc/spec/sample/deliverydispatch/README.ko.md`](../../../../doc/spec/sample/deliverydispatch/README.ko.md)에
+있다. 이 README는 .NET 구현의 실행 방법과 현재 구현 구성을 설명한다.
+
 이 샘플의 직접 모델은 음식 배달, 퀵 배송, 택배 같은 배송 서비스다. 같은 구조는
 택시 호출, 현장 출동, 방문 서비스처럼 “요청을 만들고 수행자를 배정한 뒤 상태를
 실시간으로 고객에게 보여주는” 도메인에도 적용할 수 있다.

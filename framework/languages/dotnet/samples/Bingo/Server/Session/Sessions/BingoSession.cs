@@ -23,10 +23,12 @@ internal sealed class BingoSession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
-        return ValueTask.CompletedTask;
+        foreach (var actor in Context.Actors.Bound)
+        {
+            await actor.NotifyDisconnectedAsync(cancellationToken);
+        }
     }
 
     public ValueTask OnErrorAsync(

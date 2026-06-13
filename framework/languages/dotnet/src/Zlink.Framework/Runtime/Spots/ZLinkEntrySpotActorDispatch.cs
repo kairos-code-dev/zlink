@@ -63,6 +63,13 @@ internal sealed class ZLinkEntrySpotActorDispatch(string spotNodeName)
             && _activation.TryResolveActorJoined(actorType, out descriptor);
     }
 
+    public bool TryResolveCreated(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        descriptor = null;
+        return _activation is not null
+            && _activation.TryResolveActorCreated(actorType, out descriptor);
+    }
+
     public bool TryResolveLeft(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         descriptor = null;

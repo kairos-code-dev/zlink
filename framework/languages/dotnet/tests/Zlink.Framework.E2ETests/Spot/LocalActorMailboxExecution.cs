@@ -15,7 +15,7 @@ namespace Zlink.Framework.E2ETests;
 public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
 {
     [Fact]
-    public async Task LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors()
+    public async Task LocalActorPackets_Are_Serialized_On_The_EntrySpot_Line()
     {
         var spotNode = GetFreeTcpEndpoint();
 
@@ -45,7 +45,6 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
         await host.StartAsync();
 
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
         var actorA = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("local-actor-a", "registry")).Actor;
         var actorB = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("local-actor-b", "registry")).Actor;
@@ -54,6 +53,7 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
 
         Task? actorABlocked = null;
         Task? actorASecond = null;
+        Task? actorBPacket = null;
         try
         {
             actorABlocked = SubmitEntrySpotStringAsync(
@@ -68,15 +68,20 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
                 actorA,
                 "local-record",
                 "after-a");
-            var actorBPacket = SubmitEntrySpotStringAsync(
+            actorBPacket = SubmitEntrySpotStringAsync(
                 actorRuntime,
                 actorB,
                 "local-record",
                 "record-b");
 
-            await actorBPacket.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Contains("local-record:local-actor-b:record-b", mailboxRecorder.Events);
+            // The Entry Spot line is held by the blocking handler: local actor
+            // packets are serialized regardless of which actor they target.
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            Assert.DoesNotContain(
+                mailboxRecorder.Events,
+                e => e.StartsWith("local-record:", StringComparison.Ordinal));
             Assert.False(actorASecond.IsCompleted, "same actor packet ran before the blocking packet completed.");
+            Assert.False(actorBPacket.IsCompleted, "other actor packet ran before the blocking packet completed.");
         }
         finally
         {
@@ -85,7 +90,20 @@ public sealed class LocalActorMailboxExecutionTests : SpotTestSupport
 
         await actorABlocked!.WaitAsync(TimeSpan.FromSeconds(5));
         await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains("local-record:local-actor-a:after-a", mailboxRecorder.Events);
+        await actorBPacket!.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var events = mailboxRecorder.Events.ToArray();
+        Assert.Contains("local-record:local-actor-a:after-a", events);
+        Assert.Contains("local-record:local-actor-b:record-b", events);
+
+        var blockEnd = Array.IndexOf(events, "local-block-end:local-actor-a:block-a");
+        Assert.True(blockEnd >= 0, "blocking handler end event missing.");
+        Assert.True(
+            blockEnd < Array.IndexOf(events, "local-record:local-actor-a:after-a"),
+            "queued same-actor packet ran before the blocking handler completed.");
+        Assert.True(
+            blockEnd < Array.IndexOf(events, "local-record:local-actor-b:record-b"),
+            "queued other-actor packet ran before the blocking handler completed.");
 
         await actorRuntime.DisconnectActorAsync(actorA, new TestStream("local-session-a"));
         await actorRuntime.DisconnectActorAsync(actorB, new TestStream("local-session-b"));

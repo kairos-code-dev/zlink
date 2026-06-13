@@ -8,7 +8,7 @@ namespace Zlink.Framework.E2ETests.Spot;
 public sealed class EntryMailboxExecutionTests : SpotTestSupport
 {
     [Fact]
-    public async Task EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors()
+    public async Task EntrySpot_ActorPackets_Are_Serialized_Across_Actors()
     {
         var spotNode = GetFreeTcpEndpoint();
 
@@ -39,7 +39,6 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         await host.StartAsync();
 
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
         var actorA = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-actor-a", "registry")).Actor;
         var actorB = (RegistryTestActor)(await actorRuntime.CreateLocalActorAsync("entry-actor-b", "registry")).Actor;
@@ -48,6 +47,7 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
 
         Task? actorABlocked = null;
         Task? actorASecond = null;
+        Task? actorBPacket = null;
         try
         {
             actorABlocked = SubmitEntrySpotStringAsync(
@@ -62,15 +62,20 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
                 actorA,
                 "entry-record",
                 "after-a");
-            var actorBPacket = SubmitEntrySpotStringAsync(
+            actorBPacket = SubmitEntrySpotStringAsync(
                 actorRuntime,
                 actorB,
                 "entry-record",
                 "record-b");
 
-            await actorBPacket.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Contains("record:entry-actor-b:record-b", mailboxRecorder.Events);
+            // The Entry Spot line is held by the blocking handler: no other
+            // callback may run — neither for the same actor nor for another actor.
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            Assert.DoesNotContain(
+                mailboxRecorder.Events,
+                e => e.StartsWith("record:", StringComparison.Ordinal));
             Assert.False(actorASecond.IsCompleted, "same actor packet ran before the blocking packet completed.");
+            Assert.False(actorBPacket.IsCompleted, "other actor packet ran before the blocking packet completed.");
         }
         finally
         {
@@ -79,7 +84,21 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
 
         await actorABlocked!.WaitAsync(TimeSpan.FromSeconds(5));
         await actorASecond!.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains("record:entry-actor-a:after-a", mailboxRecorder.Events);
+        await actorBPacket!.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var events = mailboxRecorder.Events.ToArray();
+        Assert.Contains("record:entry-actor-a:after-a", events);
+        Assert.Contains("record:entry-actor-b:record-b", events);
+
+        // The blocking handler completes before any queued record handler starts.
+        var blockEnd = Array.IndexOf(events, "block-end:entry-actor-a:block-a");
+        Assert.True(blockEnd >= 0, "blocking handler end event missing.");
+        Assert.True(
+            blockEnd < Array.IndexOf(events, "record:entry-actor-a:after-a"),
+            "queued same-actor packet ran before the blocking handler completed.");
+        Assert.True(
+            blockEnd < Array.IndexOf(events, "record:entry-actor-b:record-b"),
+            "queued other-actor packet ran before the blocking handler completed.");
 
         await actorRuntime.DisconnectActorAsync(actorA, new TestStream("entry-session-a"));
         await actorRuntime.DisconnectActorAsync(actorB, new TestStream("entry-session-b"));
@@ -88,7 +107,7 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
     }
 
     [Fact]
-    public async Task EntrySpot_PacketHandlers_Are_Dispatched_Without_EntrySpot_Serialization()
+    public async Task EntrySpot_PacketHandlers_Are_Serialized_On_EntrySpot_Line()
     {
         var spotNode = GetFreeTcpEndpoint();
 
@@ -136,22 +155,28 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
             .InvokePacketAsync(recordDescriptor!, record, CancellationToken.None)
             .AsTask();
 
-        await RetryAsync(
-            () => recorder.Events.Contains($"record:record:{activation.SpotRid.ToHex()}"),
-            TimeSpan.FromSeconds(5));
-        Assert.DoesNotContain("block-end:block", recorder.Events);
+        // The Entry Spot line is held: the record handler must not run.
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        Assert.DoesNotContain(
+            $"record:record:{activation.SpotRid.ToHex()}",
+            recorder.Events);
+        Assert.False(recordDispatch.IsCompleted, "packet handler ran while the Entry Spot line was held.");
 
         recorder.ReleaseBlocking.TrySetResult();
         await Task.WhenAll(blockingDispatch, recordDispatch).WaitAsync(TimeSpan.FromSeconds(5));
-        await RetryAsync(
-            () => recorder.Events.Contains("block-end:block"),
-            TimeSpan.FromSeconds(5));
+
+        var events = recorder.Events.ToArray();
+        var blockEnd = Array.IndexOf(events, "block-end:block");
+        var recordIndex = Array.IndexOf(events, $"record:record:{activation.SpotRid.ToHex()}");
+        Assert.True(blockEnd >= 0, "blocking handler end event missing.");
+        Assert.True(recordIndex >= 0, "record handler event missing.");
+        Assert.True(blockEnd < recordIndex, "record handler ran before the blocking handler completed.");
 
         await host.StopAsync();
     }
 
     [Fact]
-    public async Task EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel()
+    public async Task EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially()
     {
         var spotNode = GetFreeTcpEndpoint();
 
@@ -182,7 +207,6 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         await host.StartAsync();
 
         var actorRuntime = host.Services.GetRequiredService<ZLinkFrameworkRuntime>();
-        var registryRecorder = host.Services.GetRequiredService<EntrySpotActorRegistryRecorder>();
         var mailboxRecorder = host.Services.GetRequiredService<EntrySpotMailboxRecorder>();
         var activation = actorRuntime
             .GetSpotNodeRuntime("entry-native-batch-node")
@@ -209,9 +233,11 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         try
         {
             await mailboxRecorder.BlockingStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await RetryAsync(
-                () => mailboxRecorder.Events.Contains("record:entry-native-b:record-b"),
-                TimeSpan.FromSeconds(5));
+
+            // The blocking handler holds the Entry Spot line: no later batch
+            // entry may run, regardless of which actor it belongs to.
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+            Assert.DoesNotContain("record:entry-native-b:record-b", mailboxRecorder.Events);
             Assert.DoesNotContain("record:entry-native-a:after-a", mailboxRecorder.Events);
         }
         finally
@@ -220,7 +246,16 @@ public sealed class EntryMailboxExecutionTests : SpotTestSupport
         }
 
         await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Contains("record:entry-native-a:after-a", mailboxRecorder.Events);
+
+        var events = mailboxRecorder.Events.ToArray();
+        var blockEnd = Array.IndexOf(events, "block-end:entry-native-a:block-a");
+        var recordB = Array.IndexOf(events, "record:entry-native-b:record-b");
+        var afterA = Array.IndexOf(events, "record:entry-native-a:after-a");
+        Assert.True(blockEnd >= 0, "blocking handler end event missing.");
+        Assert.True(recordB >= 0, "other-actor record event missing.");
+        Assert.True(afterA >= 0, "same-actor record event missing.");
+        Assert.True(blockEnd < recordB, "batch entry ran before the blocking handler completed.");
+        Assert.True(recordB < afterA, "batch entries did not run in batch order.");
 
         await actorRuntime.DisconnectActorAsync(actorA, new TestStream("entry-native-session-a"));
         await actorRuntime.DisconnectActorAsync(actorB, new TestStream("entry-native-session-b"));

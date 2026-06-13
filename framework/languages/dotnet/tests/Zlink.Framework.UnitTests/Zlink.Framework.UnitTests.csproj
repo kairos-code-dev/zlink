@@ -51,6 +51,7 @@
     <Compile Include="Runtime/SpotHandlerInvokerTests.cs" />
     <Compile Include="Runtime/RequestFailureMappingTests.cs" />
     <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs" />
+    <Compile Include="Runtime/WorkerPoolTests.cs" />
     <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs" />
     <Compile Include="Samples/Regression.cs" />
     <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs" />

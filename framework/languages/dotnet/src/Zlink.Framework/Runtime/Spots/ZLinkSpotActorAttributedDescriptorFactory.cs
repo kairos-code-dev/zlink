@@ -4,9 +4,10 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotActorAttributedDescriptorFactory
 {
-    private const string PostActorJoinedMethodName = "OnPostActorJoinedAsync";
-    private const string ActorLeftMethodName = "OnActorLeftAsync";
-    private const string ActorDisconnectedMethodName = "OnActorDisconnectedAsync";
+    private const string ActorCreatedMethodName = "onCreateActor";
+    private const string PostActorJoinedMethodName = "onJoinActor";
+    private const string ActorLeftMethodName = "onLeaveActor";
+    private const string ActorDisconnectedMethodName = "onDisconnectActor";
 
     public static IEnumerable<ZLinkSpotActorPacketDescriptor> CreatePacketDescriptors(
         ZLinkSpotActorHandlerSurface surface,
@@ -51,7 +52,26 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
         var contract = GetSpotActorContract(surface, spotType);
         foreach (var method in EnumerateSpotLifecycleMethods(spotType, contract?.ContractType))
         {
-            if (method.Name == PostActorJoinedMethodName)
+            if (method.Name == ActorCreatedMethodName)
+            {
+                if (contract is null)
+                {
+                    throw new InvalidOperationException(
+                        $"SPOT actor lifecycle hook '{spotType}' must implement IZLinkEntrySpot<TActor>.");
+                }
+
+                if (surface != ZLinkSpotActorHandlerSurface.EntrySpot)
+                {
+                    throw new InvalidOperationException(
+                        $"SPOT actor lifecycle hook '{spotType}' method '{ActorCreatedMethodName}' is only valid on Entry Spot.");
+                }
+
+                yield return new ZLinkSpotActorInferredHandlerDescriptor
+                {
+                    Created = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
+                };
+            }
+            else if (method.Name == PostActorJoinedMethodName)
             {
                 if (contract is null)
                 {
@@ -184,10 +204,19 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
         var declaredMethods = spotType
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(method => method.DeclaringType == spotType
-                && (method.Name == PostActorJoinedMethodName
+                && (method.Name == ActorCreatedMethodName
+                    || method.Name == PostActorJoinedMethodName
                     || method.Name == ActorLeftMethodName
                     || method.Name == ActorDisconnectedMethodName))
             .ToArray();
+
+        foreach (var method in EnumerateLifecycleMethod(
+                     declaredMethods,
+                     contractType,
+                     ActorCreatedMethodName))
+        {
+            yield return method;
+        }
 
         foreach (var method in EnumerateLifecycleMethod(
                      declaredMethods,

@@ -111,21 +111,21 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
     }
 
-    ValueTask OnPostActorJoinedAsync(
+    ValueTask onJoinActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorLeftAsync(
+    ValueTask onLeaveActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorDisconnectedAsync(
+    ValueTask onDisconnectActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -194,7 +194,7 @@ public interface IZLinkSpotContext
 
     IZLinkSpotOutbound Outbound { get; }
 
-    ValueTask LeaveActorAsync(
+    ValueTask leaveActor(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
@@ -207,6 +207,9 @@ public interface IZLinkSpotContext
         ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
+
+    IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        Func<CancellationToken, TResult> work);
 }
 
 public interface IZLinkEntrySpot
@@ -231,21 +234,28 @@ public interface IZLinkEntrySpot
 public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     where TActor : IZLinkActor
 {
-    ValueTask OnPostActorJoinedAsync(
+    ValueTask onCreateActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorLeftAsync(
+    ValueTask onJoinActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorDisconnectedAsync(
+    ValueTask onLeaveActor(
+        TActor actor,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask onDisconnectActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -263,12 +273,19 @@ public interface IZLinkEntrySpotContext
 
     IZLinkSpotOutbound Outbound { get; }
 
+    ValueTask DestroyActorAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default);
+
     ValueTask<IZLinkTimer> AddTimer<THandler>(
         string name,
         TimeSpan period,
         ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
+
+    IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        Func<CancellationToken, TResult> work);
 }
 
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>

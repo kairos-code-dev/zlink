@@ -19,6 +19,8 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
 
+    public IZLinkWorkerOptions Worker => _registration.WorkerOptions;
+
     public void AddHandlersFromAssemblyOf<TMarker>()
     {
         AddHandlersFromAssembly(typeof(TMarker).Assembly);

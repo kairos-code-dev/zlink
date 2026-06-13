@@ -43,7 +43,7 @@ public abstract partial class SpotTestSupport
             return ZLinkSpotActorJoinResult.Accept(reply.ToJson());
         }
 
-        public ValueTask OnPostActorJoinedAsync(
+        public ValueTask onJoinActor(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -53,7 +53,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnActorLeftAsync(
+        public ValueTask onLeaveActor(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -63,7 +63,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnActorDisconnectedAsync(
+        public ValueTask onDisconnectActor(
             TestActor actor,
             CancellationToken cancellationToken)
         {
@@ -96,13 +96,13 @@ public abstract partial class SpotTestSupport
             return new JoinStageReply(request.RoomId);
         }
 
-        internal async ValueTask LeaveActorAsync(
+        internal async ValueTask leaveActor(
             TestActor actor,
             CancellationToken cancellationToken)
         {
             using var _ = EnterScope("leave");
 
-            await Context.LeaveActorAsync(actor, cancellationToken);
+            await Context.leaveActor(actor, cancellationToken);
             actor.DetachSpot(this);
             actor.CurrentRoomId = null;
         }
@@ -113,6 +113,44 @@ public abstract partial class SpotTestSupport
             {
                 Interlocked.Decrement(ref spot._inFlight);
             }
+        }
+    }
+
+    public sealed class ActorLifecycleEntrySpot(
+        IZLinkEntrySpotContext context,
+        ActorIntegrationRecorder recorder) : IZLinkEntrySpot<TestActor>
+    {
+        public IZLinkEntrySpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+        }
+
+        public ValueTask onCreateActor(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.EntrySpotActorCreates.Enqueue($"entry-created:{actor.ActorId}");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask onJoinActor(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.EntrySpotActorJoins.Enqueue($"entry-joined:{actor.ActorId}");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask onLeaveActor(
+            TestActor actor,
+            CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            recorder.EntrySpotActorLeaves.Enqueue($"entry-left:{actor.ActorId}");
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -135,6 +173,8 @@ public abstract partial class SpotTestSupport
         public ActorStageSpot? Spot { get; private set; }
 
         public string? CurrentRoomId { get; set; }
+
+        public bool DestroyAgainOnEntryLeft { get; set; }
 
         public void Configure()
         {

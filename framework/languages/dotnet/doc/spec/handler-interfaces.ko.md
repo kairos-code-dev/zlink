@@ -335,14 +335,14 @@ public interface IZLinkSpot<TActor> : IZLinkSpot
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject());
     }
 
-    ValueTask OnPostActorJoinedAsync(
+    ValueTask onJoinActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnActorLeftAsync(
+    ValueTask onLeaveActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -410,7 +410,7 @@ public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbou
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
 
-    ValueTask LeaveActorAsync(
+    ValueTask leaveActor(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
 
@@ -526,7 +526,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
-    ValueTask OnActorDisconnectedAsync(
+    ValueTask onDisconnectActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -561,7 +561,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
 public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot
     where TActor : IZLinkActor
 {
-    ValueTask OnActorDisconnectedAsync(
+    ValueTask onDisconnectActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -584,8 +584,8 @@ core 는 JSON, Protobuf, MessagePack 같은 serializer 를 고르지 않는다. 
 를 만들어 `ZLinkSpotActorJoinResult` 에 담아 반환한다.
 
 `Accepted` 가 `true` 이면 framework 는 actor join 을 commit 하고, commit 이 끝난 뒤
-`OnPostActorJoinedAsync(...)` 를 호출한다. `Accepted` 가 `false` 이면 framework 는
-join 을 거부하고 actor 위치를 바꾸지 않으며 `OnPostActorJoinedAsync(...)` 를 호출하지
+`onJoinActor(...)` 를 호출한다. `Accepted` 가 `false` 이면 framework 는
+join 을 거부하고 actor 위치를 바꾸지 않으며 `onJoinActor(...)` 를 호출하지
 않는다.
 
 `OnCreateAsync(...)` 는 생성 요청이 넘긴 단일 `Message`를 spot 상태로
@@ -700,7 +700,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkEntrySpot<TActor>.OnActorDisconnectedAsync
+public interface IZLinkEntrySpot<TActor>.onDisconnectActor
     where TEntrySpot : class, IZLinkEntrySpot
     where TActor : IZLinkActor
 {
@@ -812,7 +812,7 @@ public sealed class PlaceMarkHandler
 
 actor 가 Entry Spot 또는 user Spot 에 들어오거나 빠져나간 직후의 후속
 처리는 Spot 멤버 callback 으로 선언한다. Entry Spot 과 user Spot 모두
-`OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 를 기본 구현으로 가진다.
+`onJoinActor(...)` 와 `onLeaveActor(...)` 를 기본 구현으로 가진다.
 필요한 Spot 만 actor 타입을 구체화한 public instance method 를 직접 선언한다.
 framework 는 Spot descriptor 를 바인딩할 때 이 method 를 찾아 callback 으로
 사용한다.
@@ -824,11 +824,11 @@ user Spot 에 actor 가 들어올 수 있는지를 판단하는 admission 처리
 Entry Spot lifecycle callback 은 아래 method 를 Entry Spot class 에 선언한다.
 
 ```csharp
-public ValueTask OnPostActorJoinedAsync(
+public ValueTask onJoinActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 
-public ValueTask OnActorLeftAsync(
+public ValueTask onLeaveActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 ```
@@ -836,11 +836,11 @@ public ValueTask OnActorLeftAsync(
 user Spot lifecycle callback 도 같은 method 이름을 사용한다.
 
 ```csharp
-public ValueTask OnPostActorJoinedAsync(
+public ValueTask onJoinActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 
-public ValueTask OnActorLeftAsync(
+public ValueTask onLeaveActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 ```
@@ -850,7 +850,7 @@ actor disconnected notification 은 별도 handler 를 등록하지 않는다. S
 아래 callback 을 override 한다.
 
 ```csharp
-public ValueTask OnActorDisconnectedAsync(
+public ValueTask onDisconnectActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 ```
@@ -858,7 +858,7 @@ public ValueTask OnActorDisconnectedAsync(
 Entry Spot 도 같은 callback 이름을 사용한다.
 
 ```csharp
-public ValueTask OnActorDisconnectedAsync(
+public ValueTask onDisconnectActor(
     PlayerActor actor,
     CancellationToken cancellationToken);
 ```
@@ -869,7 +869,7 @@ generic Spot interface 의 기본 구현은 아무 작업도 하지 않는다.
 public interface IZLinkSpot<TActor> : IZLinkSpot
     where TActor : IZLinkActor
 {
-    ValueTask OnActorDisconnectedAsync(
+    ValueTask onDisconnectActor(
         TActor actor,
         CancellationToken cancellationToken)
     {
@@ -883,7 +883,7 @@ actor disconnected callback 은 join/leave lifecycle 과 별개다. session 이
 `NotifyDisconnectedAsync(...)` 로 대상 actor 를 명시하면 호출된다. 이
 callback 은 actor membership 을 바꾸지 않는다.
 
-`OnPostActorJoinedAsync(...)` 와 `OnActorLeftAsync(...)` 는 호출 시점이
+`onJoinActor(...)` 와 `onLeaveActor(...)` 는 호출 시점이
 정해져 있다. join/leave commit 이 끝난 뒤, 동일한 실행 문맥에서 호출된다.
 
 이 callback 의 역할도 한정된다. admission 을 결정하는 hook 이 아니다.
@@ -1369,10 +1369,10 @@ actor join, actor factory, stream-attached actor 모델은 현재 draft
 - `IZLinkSpotContext.AddHandler<THandler>()`
 - `IZLinkSpotContext.AddActorPacket<THandler, TActor>()`
 - `IZLinkSpot<TActor>.OnActorJoinAsync(...)`
-- `IZLinkSpot<TActor>.OnPostActorJoinedAsync(...)`
-- `IZLinkSpot<TActor>.OnActorLeftAsync(...)`
-- `IZLinkEntrySpot<TActor>.OnPostActorJoinedAsync(...)`
-- `IZLinkEntrySpot<TActor>.OnActorLeftAsync(...)`
+- `IZLinkSpot<TActor>.onJoinActor(...)`
+- `IZLinkSpot<TActor>.onLeaveActor(...)`
+- `IZLinkEntrySpot<TActor>.onJoinActor(...)`
+- `IZLinkEntrySpot<TActor>.onLeaveActor(...)`
 - stream session 의 actor dispatch 표면인 `IZLinkSessionContext`
 
 `stage-wrapper-on-spot.ko.md` 는 이 계약 위에서 room/stage wrapper 를
@@ -1451,8 +1451,8 @@ actor packet 실행 계약은 다음과 같이 둔다.
   다른 message handler 를 각각 등록할 수 있어야 한다.
 - `on_join` / `on_leave` commit 이후 callback 도 마찬가지다. Entry Spot
   과 user Spot 에 각각 별도로 선언할 수 있어야 한다. `OnActorJoinAsync(...)`
-  는 join admission 요청 처리이고, `OnPostActorJoinedAsync(...)` /
-  `OnActorLeftAsync(...)` 는 commit 이후의 lifecycle callback 이라는 점에
+  는 join admission 요청 처리이고, `onJoinActor(...)` /
+  `onLeaveActor(...)` 는 commit 이후의 lifecycle callback 이라는 점에
   주의한다.
 - `JoinSpot(...)` 이나 `OnActorJoinAsync(...)` 가 actor 의 현재 `Spot` 을
   바꾸는 경우가 있다. 이때 framework 는 actor session state 갱신과 이후
@@ -1594,7 +1594,7 @@ public interface IZLinkSpotContext : IZLinkSpotHandlerRegistry, IZLinkSpotOutbou
 {
     RoutingId SpotRid { get; }
     RoutingId NodeRid { get; }
-    ValueTask LeaveActorAsync(
+    ValueTask leaveActor(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
     ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -1642,7 +1642,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 `OnActorJoinAsync(...)` 가 `Accepted=true` 를 반환하면 framework 는 join commit 을
 수행한다. `Accepted=false` 를 반환하면 join 을 거절하고 post-joined callback 을 호출하지
 않는다. application callback 은 별도의 `JoinActorAsync(...)` 를 호출하지 않는다.
-`LeaveActorAsync(...)` 는 현재 user Spot 에서 actor 를 Entry Spot 으로 되돌리는
+`leaveActor(...)` 는 현재 user Spot 에서 actor 를 Entry Spot 으로 되돌리는
 편의 API 다. 이 호출이 성공하면 source Spot 의 `ActorLeft` 와 Entry Spot 의
 post-joined lifecycle callback 이 호출된다. 실패하면 actor 위치와 framework state 는
 기존 상태를 유지하고 lifecycle callback 은 호출되지 않는다.
@@ -1682,7 +1682,7 @@ stream header 에 metadata 를 추가하거나 payload 압축을 켜야 하면
 호출은 명확한 실패로 처리된다.
 
 actor 위치 변경은 join commit 이 성공한 뒤에만 반영한다. `JoinSpot(...)` 성공은
-target user Spot 으로 이동하고, `JoinEntrySpot(...)` 또는 `LeaveActorAsync(...)`
+target user Spot 으로 이동하고, `JoinEntrySpot(...)` 또는 `leaveActor(...)`
 성공은 Entry Spot 으로 이동한다. 실패한 join/leave 는 source Spot membership 을
 그대로 둔다.
 

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: 인터페이스 카탈로그](./11-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
+# 12. ZLink 을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > ZLink 은 단순 RPC 라이브러리가 아니라, `.NET` 백엔드에서 **논리 channel, 연결
 > 수명, 동적 상태 노드(SPOT), pub/sub, discovery 를 한 framework 안에서 묶어 주는
@@ -243,6 +243,7 @@ Registry 한 겹으로 들어온다. broker 와 WS edge 는 요구가 단순한 
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant A as order-service
   participant SA as Envoy local
@@ -256,6 +257,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant A as order-service
   participant B as payment-service
@@ -272,7 +274,7 @@ sequenceDiagram
 | RPC deadline | `Request(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
 | service discovery(Eureka/xDS) | `UseDiscovery(...AddRegistryEndpoint...)`  + Registry | [08-registry](./08-registry.ko.md) |
-| interceptor | `IZLinkHandlerFilter` | [04](./04-channel-messaging.ko.md) §5 |
+| interceptor | `IZLinkHandlerFilter` | [4](./04-channel-messaging.ko.md) §5 |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay 는 broker 유지 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [09-monitoring](./09-monitoring.ko.md) |
 | 양방향 streaming | STREAM session | 외부 client 수용. HTTP edge 정책은 별도 |

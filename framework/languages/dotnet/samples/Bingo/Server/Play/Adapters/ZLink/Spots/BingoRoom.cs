@@ -23,6 +23,7 @@ internal sealed class BingoRoom(
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
     private readonly BingoRoomGame _game = new(context.SpotRid.ToHex(), DefaultSettings);
     private IZLinkTimer? _drawTimer;
+    private bool _cleanupStarted;
 
     public IZLinkSpotContext Context { get; } = context;
 
@@ -41,7 +42,7 @@ internal sealed class BingoRoom(
         }
     }
 
-    public ValueTask OnPostActorJoinedAsync(
+    public ValueTask onJoinActor(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
@@ -53,13 +54,27 @@ internal sealed class BingoRoom(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnActorLeftAsync(
+    public ValueTask onLeaveActor(
         PlayerActor actor,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
+        _actors.Remove(actor.ActorId);
         logger.LogInformation(
             "bingo room: actor left. room={RoomId}, actor={ActorId}",
+            Context.SpotRid.ToHex(),
+            actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask onDisconnectActor(
+        PlayerActor actor,
+        CancellationToken cancellationToken)
+    {
+        _ = cancellationToken;
+        actor.MarkDisconnected();
+        logger.LogInformation(
+            "bingo room: actor disconnected. room={RoomId}, actor={ActorId}",
             Context.SpotRid.ToHex(),
             actor.ActorId);
         return ValueTask.CompletedTask;
@@ -172,6 +187,21 @@ internal sealed class BingoRoom(
         }
 
         await notifications.PublishAsync(eventMapper.Map(change.Events, _actors), cancellationToken);
+    }
+
+    internal async ValueTask LeaveFinishedActorsAsync(CancellationToken cancellationToken)
+    {
+        if (_cleanupStarted || _game.Status != BingoRoomStatus.Finished)
+        {
+            return;
+        }
+
+        _cleanupStarted = true;
+        foreach (var actor in _actors.Values.ToArray())
+        {
+            actor.MarkForDestroyAfterRoomLeave();
+            await Context.leaveActor(actor, cancellationToken);
+        }
     }
 
     public void ApplySettings(BingoRoomSettings settings)

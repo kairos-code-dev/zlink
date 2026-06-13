@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Channel Messaging](./04-channel-messaging.ko.md) | [다음: Actor · Session Actor Dispatch](./06-actor-session.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# SPOT — room · stage · zone
+# 5. SPOT — room · stage · zone
 
 > 정식 계약은 [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md),
 > [spec/spot-node](../spec/spot-node.ko.md), [spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가
@@ -338,7 +338,7 @@ public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherC
         ZLinkSpotCreateResult stage = await spots.CreateAsync<StageSpot>(ct);
 
         await publisher
-            .Publish("game.stage", "stage.state.updated",
+            .PublishSpot("game.stage", "stage.state.updated",
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
             .Async(ct);
 
@@ -419,7 +419,7 @@ app.MapPost("/stage/publish", async (
     CancellationToken ct) =>
 {
     await spotPublisher
-        .Publish("game.stage", "stage.state.updated",
+        .PublishSpot("game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
         .Async(ct);
     return Results.Accepted();

@@ -238,6 +238,8 @@ public interface IZLinkFrameworkOptions
 
     IZLinkCodecRegistryBuilder Codecs { get; }
 
+    IZLinkWorkerOptions Worker { get; }
+
     void AddHandlersFromAssemblyOf<TMarker>();
 
     void AddHandlersFromAssemblyOf(Type markerType);

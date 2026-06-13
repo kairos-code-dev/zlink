@@ -159,3 +159,8 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Probe/Bingo.Probe.csproj" -- \
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
   --stream-endpoint "${BINGO_STREAM_ENDPOINT}"
+
+grep -q "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play.log"
+grep -q "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play.log"
+grep -q "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play.log"
+grep -q "entry spot: actor destroy completed. actor=player-2" "${LOG_DIR}/play.log"

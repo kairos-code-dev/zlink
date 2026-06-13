@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Channel Messaging — request · send · pub/sub](./04-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 핵심 개념 — .NET 표면 멘탈 모델
+# 3. 핵심 개념 — .NET 표면 멘탈 모델
 
 > 개념의 정식 의미는 공통 스펙([interaction-model](../../../../doc/spec/interaction-model.ko.md),
 > [message-model](../../../../doc/spec/message-model.ko.md),

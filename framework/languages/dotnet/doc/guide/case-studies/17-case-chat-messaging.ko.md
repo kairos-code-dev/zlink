@@ -141,7 +141,7 @@ options.AddSpotMesh("rooms", mesh => mesh.AddNode("room-node", n =>
 > 연결 레지스트리("누가 어디 붙었나")를 응용이 직접 조회하지 않는다. session↔actor
 > binding 은 framework 가 들고, room membership 과 fan-out 순서는 room SPOT 이
 > 소유한다. 다른 actor 의 client 로 보내려면 해당 actor 가 자기 `BoundSession` 으로
-> push 한다([06](../06-actor-session.ko.md) §4). presence 는 같은 room SPOT 상태 변화나
+> push 한다([6](../06-actor-session.ko.md) §4). presence 는 같은 room SPOT 상태 변화나
 > 별도 pub/sub 토픽으로 표현할 수 있다.
 
 ## 4. 양쪽 코드 비교 — "room 에 한 마디"
@@ -197,6 +197,7 @@ room 에 한 마디 보내는 흐름이다.
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant GW as WS gateway
@@ -213,6 +214,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+%%{init: {'theme': 'base', 'themeVariables': {'signalTextColor': '#000000', 'actorTextColor': '#000000', 'noteTextColor': '#000000', 'actorBkg': '#ffffff', 'actorBorder': '#555555', 'activationBorderColor': '#555555'}}}%%
   autonumber
   participant C as client
   participant S as Session 서버

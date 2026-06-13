@@ -17,6 +17,7 @@ internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRo
         if (change.ShouldStopDrawTimer)
         {
             spot.StopDrawTimerAfterTick();
+            await spot.LeaveFinishedActorsAsync(cancellationToken);
         }
     }
 }

@@ -191,6 +191,16 @@ internal sealed class ZLinkSpotRuntimeManager(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask NotifyEntrySpotActorCreatedAsync(
+        ZLinkFrameworkRuntimeState state,
+        IZLinkActor actor,
+        RoutingId? targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        await _entrySpotActors.NotifyCreatedAsync(state, actor, targetNodeRid, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask NotifyEntrySpotActorLeftAsync(
         ZLinkFrameworkRuntimeState state,
         IZLinkActor actor,

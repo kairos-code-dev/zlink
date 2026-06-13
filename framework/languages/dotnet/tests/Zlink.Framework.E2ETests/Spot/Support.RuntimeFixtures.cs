@@ -89,6 +89,12 @@ public abstract partial class SpotTestSupport
 
         public ConcurrentQueue<string> SpotActorLeaves { get; } = new();
 
+        public ConcurrentQueue<string> EntrySpotActorJoins { get; } = new();
+
+        public ConcurrentQueue<string> EntrySpotActorCreates { get; } = new();
+
+        public ConcurrentQueue<string> EntrySpotActorLeaves { get; } = new();
+
         public volatile bool ConcurrentViolation;
 
         public int DisconnectCount;

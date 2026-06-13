@@ -29,7 +29,7 @@ public abstract partial class SpotTestSupport
             Context.Handlers.AddActorPacket<LocalActorRecordingHandler, RegistryTestActor>("local-record");
         }
 
-        public ValueTask OnPostActorJoinedAsync(
+        public ValueTask onJoinActor(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {
@@ -39,7 +39,7 @@ public abstract partial class SpotTestSupport
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask OnActorLeftAsync(
+        public ValueTask onLeaveActor(
             RegistryTestActor actor,
             CancellationToken cancellationToken)
         {
@@ -199,6 +199,21 @@ public abstract partial class SpotTestSupport
             _ = context;
             _ = cancellationToken;
             return ValueTask.FromResult(new EntrySpotOrderReply($"order:{request.Value}"));
+        }
+    }
+
+    public sealed class EntrySpotGatedOrdersRequestHandler(EntrySpotCallbackRecorder recorder)
+        : IZLinkRequestHandler<EntrySpotOrderRequest, EntrySpotOrderReply>
+    {
+        public async ValueTask<EntrySpotOrderReply> HandleAsync(
+            EntrySpotOrderRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            recorder.BlockingStarted.TrySetResult();
+            await recorder.ReleaseBlocking.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new EntrySpotOrderReply($"order:{request.Value}");
         }
     }
 

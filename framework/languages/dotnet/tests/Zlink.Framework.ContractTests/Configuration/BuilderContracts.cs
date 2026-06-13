@@ -1,4 +1,5 @@
 using Zlink.Framework.ContractTests.Support;
+using Zlink.Framework.Contracts.Workers;
 
 namespace Zlink.Framework.ContractTests.Configuration;
 
@@ -210,6 +211,10 @@ public sealed class BuilderContracts
 
         IZLinkCodecRegistryBuilder IZLinkFrameworkOptions.Codecs => Codecs;
 
+        public WorkerOptions Worker { get; } = new();
+
+        IZLinkWorkerOptions IZLinkFrameworkOptions.Worker => Worker;
+
         public MetadataPolicyBuilder Metadata { get; } = new();
 
         public DiscoveryBuilder Discovery { get; } = new();
@@ -316,6 +321,17 @@ public sealed class BuilderContracts
         public void AddJson() { }
 
         public void AddMessagePack() { }
+    }
+
+    private sealed class WorkerOptions : IZLinkWorkerOptions
+    {
+        public int MinThreads { get; set; }
+
+        public int MaxThreads { get; set; }
+
+        public TimeSpan IdleTimeout { get; set; }
+
+        public int MaxQueueLength { get; set; }
     }
 
     private sealed class MetadataPolicyBuilder : IZLinkMetadataPolicyBuilder

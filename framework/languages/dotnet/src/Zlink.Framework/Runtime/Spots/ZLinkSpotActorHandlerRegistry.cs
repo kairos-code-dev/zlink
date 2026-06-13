@@ -48,6 +48,8 @@ internal sealed class ZLinkSpotActorInferredHandlerDescriptor
 {
     public ZLinkSpotActorPacketDescriptor? Packet { get; init; }
 
+    public ZLinkSpotActorLifecycleDescriptor? Created { get; init; }
+
     public ZLinkSpotActorLifecycleDescriptor? Joined { get; init; }
 
     public ZLinkSpotActorLifecycleDescriptor? Left { get; init; }
@@ -60,6 +62,7 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     private readonly ZLinkSpotActorHandlerSurface _surface;
     private readonly Type? _expectedSpotType;
     private readonly Dictionary<(ZLinkMessageKind Kind, Type ActorType, string Name), ZLinkSpotActorPacketDescriptor> _packets = [];
+    private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _created = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _joined = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _left = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _disconnected = [];
@@ -129,6 +132,11 @@ internal sealed class ZLinkSpotActorHandlerRegistry
                          _surface,
                          _expectedSpotType))
             {
+                if (descriptor.Created is { } created)
+                {
+                    AddLifecycleDescriptor(_created, created);
+                }
+
                 if (descriptor.Joined is { } joined)
                 {
                     AddLifecycleDescriptor(_joined, joined);
@@ -178,6 +186,11 @@ internal sealed class ZLinkSpotActorHandlerRegistry
 
         descriptor = null;
         return false;
+    }
+
+    public bool TryResolveCreated(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        return TryResolveLifecycle(_created, actorType, out descriptor);
     }
 
     public bool TryResolveJoined(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)

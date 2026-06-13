@@ -41,4 +41,16 @@ internal sealed class ZLinkActorSessionRegistry
             }
         }
     }
+
+    public void RemoveIfCurrent(string actorId, ZLinkActorRuntimeState state)
+    {
+        lock (_gate)
+        {
+            if (_states.TryGetValue(actorId, out var existing)
+                && ReferenceEquals(existing, state))
+            {
+                _states.Remove(actorId);
+            }
+        }
+    }
 }

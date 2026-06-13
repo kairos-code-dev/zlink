@@ -31,6 +31,8 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
     public bool ContextInvalidated { get; private set; }
 
+    public bool IsDestroying { get; private set; }
+
     public ulong CurrentActorGeneration
         => NativeActorRef is { Generation: not 0 } actorRef
             ? actorRef.Generation
@@ -88,6 +90,46 @@ internal sealed class ZLinkActorRuntimeState(string actorId)
 
         session = default;
         return false;
+    }
+
+    public ZLinkActorBoundSession? ClearAfterDestroy()
+    {
+        ZLinkActorBoundSession? boundSession;
+        lock (_sessionGate)
+        {
+            boundSession = _boundSession;
+            _boundSession = null;
+        }
+
+        SessionId = null;
+        Stream = null;
+        NativeActorRef = null;
+        Activation = null;
+        CurrentDispatch = null;
+        Context = null;
+        Actor = null;
+        ActorType = null;
+        IsConfigured = false;
+        IsDestroying = false;
+        ContextInvalidated = true;
+        _actorCreationTask = null;
+        return boundSession;
+    }
+
+    public bool TryBeginDestroy()
+    {
+        if (IsDestroying)
+        {
+            return false;
+        }
+
+        IsDestroying = true;
+        return true;
+    }
+
+    public void ResetDestroying()
+    {
+        IsDestroying = false;
     }
 
     public IZLinkSpot GetJoinedSpot()

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Actor · Session Actor Dispatch](./06-actor-session.ko.md) | [다음: Registry — topology 조회](./08-registry.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# STREAM — 외부 client 받기
+# 7. STREAM — 외부 client 받기
 
 > 서버 측 정식 계약은 [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md),
 > client connector 는 [samples/streaming-client](./samples/streaming-client.ko.md)와

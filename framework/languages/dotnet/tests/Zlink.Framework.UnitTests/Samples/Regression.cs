@@ -19,6 +19,90 @@ public sealed class RegressionTests
     }
 
     [Fact]
+    public void Bingo_And_TicTacToe_Samples_Implement_Actor_Lifecycle_Spec()
+    {
+        AssertActorLifecycleSpec(
+            ResolveSampleRoot("Bingo"),
+            "Server/Play/Adapters/ZLink/Spots/BingoEntrySpot.cs",
+            "Server/Play/Adapters/ZLink/Spots/BingoRoom.cs",
+            "Server/Play/Adapters/ZLink/Actors/PlayerActor.cs",
+            "Server/Session/Sessions/BingoSession.cs");
+        AssertActorLifecycleSpec(
+            ResolveSampleRoot("TicTacToe"),
+            "Server/Play/Adapters/ZLink/Spots/PlayEntrySpot.cs",
+            "Server/Play/Adapters/ZLink/Spots/TicTacToeGame.cs",
+            "Server/Play/Adapters/ZLink/Actors/PlayActor.cs",
+            "Server/Play/Adapters/ZLink/Sessions/PlaySession.cs");
+    }
+
+    [Fact]
+    public void Aggregate_Sample_Runners_Keep_Actor_Lifecycle_Runtime_Gate()
+    {
+        var samplesRoot = ResolveSamplesRoot();
+        var bashRunner = File.ReadAllText(Path.Combine(samplesRoot, "run_samples.sh"));
+        var powerShellRunner = File.ReadAllText(Path.Combine(samplesRoot, "run_samples.ps1"));
+
+        Assert.Contains(
+            "ActorLifecycleTests.EntrySpot_DestroyActorAsync_Removes_EntryOwned_Actor_Without_Left_Callback",
+            bashRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("dotnet actor lifecycle sample gate completed", bashRunner, StringComparison.Ordinal);
+        Assert.Contains(
+            "ActorLifecycleTests.EntrySpot_DestroyActorAsync_Removes_EntryOwned_Actor_Without_Left_Callback",
+            powerShellRunner,
+            StringComparison.Ordinal);
+        Assert.Contains("dotnet actor lifecycle sample gate completed", powerShellRunner, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DotNet_Docs_Keep_Actor_Destroy_Entry_Owned()
+    {
+        var dotnetRoot = ResolveDotnetRoot();
+        var docs = EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "guide"))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "spec")))
+            .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetRoot, "doc", "internals")))
+            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.md", SearchOption.AllDirectories))
+            .Concat(Directory.EnumerateFiles(Path.Combine(dotnetRoot, "samples"), "README.ko.md", SearchOption.AllDirectories))
+            .ToArray();
+        var offenders = new List<string>();
+        (string Needle, string Reason)[] forbidden =
+        [
+            ("destroyActor(", "lower camel destroy API"),
+            ("destroyActorAsync", "lower camel async destroy API"),
+            ("destroy_actor", "snake case destroy API"),
+            ("OnActorLeft", "legacy PascalCase left callback"),
+            ("onActorLeft", "legacy lower camel left callback"),
+            ("on_actor_left", "legacy snake case left callback"),
+            ("OnCreateActor", "legacy PascalCase create callback"),
+            ("on_actor_created", "legacy snake case create callback"),
+            ("onPostActorJoined", "legacy post actor joined callback"),
+            ("disconnect -> destroy", "disconnect-to-destroy arrow wording"),
+            ("자동 삭제", "automatic deletion wording")
+        ];
+
+        foreach (var file in docs)
+        {
+            var text = File.ReadAllText(file);
+            foreach (var (needle, reason) in forbidden)
+            {
+                if (text.Contains(needle, StringComparison.Ordinal))
+                {
+                    offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
+                }
+            }
+        }
+
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetRoot, "doc", "spec", "aspnet-core-actor.ko.md"));
+        var actorGuide = File.ReadAllText(Path.Combine(dotnetRoot, "doc", "guide", "06-actor-session.ko.md"));
+        Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
+        Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
+        Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
+        Assert.Contains("lifecycle callback 을", actorGuide, StringComparison.Ordinal);
+        Assert.Contains("호출하지 않고 native actor ref", actorGuide, StringComparison.Ordinal);
+        Assert.Empty(offenders.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void TicTacToe_SessionGateway_Sample_Is_Removed()
     {
         var samplesRoot = ResolveSamplesRoot();
@@ -273,10 +357,54 @@ public sealed class RegressionTests
         }
     }
 
+    private static void AssertActorLifecycleSpec(
+        string sampleRoot,
+        string entrySpotRelativePath,
+        string userSpotRelativePath,
+        string actorRelativePath,
+        string sessionRelativePath)
+    {
+        var entrySpot = File.ReadAllText(Path.Combine(sampleRoot, entrySpotRelativePath));
+        var userSpot = File.ReadAllText(Path.Combine(sampleRoot, userSpotRelativePath));
+        var actor = File.ReadAllText(Path.Combine(sampleRoot, actorRelativePath));
+        var session = File.ReadAllText(Path.Combine(sampleRoot, sessionRelativePath));
+
+        Assert.Contains("onCreateActor", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("onJoinActor", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("onLeaveActor", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("onDisconnectActor", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("DestroyActorAsync", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("DestroyAfterEntrySpotJoin", entrySpot, StringComparison.Ordinal);
+        Assert.Contains("MarkDisconnected", entrySpot, StringComparison.Ordinal);
+
+        Assert.Contains("onLeaveActor", userSpot, StringComparison.Ordinal);
+        Assert.Contains("onDisconnectActor", userSpot, StringComparison.Ordinal);
+        Assert.Contains("leaveActor", userSpot, StringComparison.Ordinal);
+        Assert.Contains("MarkForDestroyAfterRoomLeave", userSpot, StringComparison.Ordinal);
+        Assert.Contains("MarkDisconnected", userSpot, StringComparison.Ordinal);
+        Assert.DoesNotContain("DestroyActorAsync", userSpot, StringComparison.Ordinal);
+
+        Assert.Contains("DestroyAfterEntrySpotJoin", actor, StringComparison.Ordinal);
+        Assert.Contains("MarkForDestroyAfterRoomLeave", actor, StringComparison.Ordinal);
+        Assert.Contains("MarkDisconnected", actor, StringComparison.Ordinal);
+        Assert.Contains("Disconnected", actor, StringComparison.Ordinal);
+
+        Assert.Contains("OnDisconnectedAsync", session, StringComparison.Ordinal);
+        Assert.Contains("NotifyDisconnectedAsync", session, StringComparison.Ordinal);
+    }
+
     private static IEnumerable<string> EnumerateSourceFiles(string root)
     {
         return Directory
             .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+    }
+
+    private static IEnumerable<string> EnumerateMarkdownFiles(string root)
+    {
+        return Directory
+            .EnumerateFiles(root, "*.md", SearchOption.AllDirectories)
             .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
     }
@@ -315,6 +443,11 @@ public sealed class RegressionTests
 
     private static string ResolveSamplesRoot()
     {
+        return Path.Combine(ResolveDotnetRoot(), "samples");
+    }
+
+    private static string ResolveDotnetRoot()
+    {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (current is not null)
@@ -328,7 +461,7 @@ public sealed class RegressionTests
 
             if (Directory.Exists(candidate))
             {
-                return candidate;
+                return Directory.GetParent(candidate)!.FullName;
             }
 
             current = current.Parent;

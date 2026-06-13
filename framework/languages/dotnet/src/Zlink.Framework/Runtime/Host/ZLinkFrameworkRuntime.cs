@@ -23,6 +23,8 @@ internal sealed partial class ZLinkFrameworkRuntime
     private readonly ZLinkFrameworkChannelFacade _channelFacade;
     private readonly ZLinkFrameworkSpotFacade _spotFacade;
     private readonly ZLinkFrameworkSessionBindings _sessionBindings = new();
+    private readonly object _workerPoolGate = new();
+    private ZLinkWorkerPool? _workerPool;
     private ZLinkFrameworkRuntimeState? _state;
 
     public ZLinkFrameworkRuntime(
@@ -61,6 +63,17 @@ internal sealed partial class ZLinkFrameworkRuntime
     public ZLinkFrameworkRegistration Registration => _registration;
 
     internal IServiceProvider Services => _services;
+
+    internal ZLinkWorkerPool WorkerPool
+    {
+        get
+        {
+            lock (_workerPoolGate)
+            {
+                return _workerPool ??= _registration.WorkerOptions.CreatePool();
+            }
+        }
+    }
 
     internal IZLinkRouteClient RouteClient => _services.GetRequiredService<IZLinkRouteClient>();
 
@@ -125,6 +138,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             await stateToDispose.DisposeAsync();
         }
+
+        ZLinkWorkerPool? workerPoolToDispose;
+        lock (_workerPoolGate)
+        {
+            workerPoolToDispose = _workerPool;
+            _workerPool = null;
+        }
+
+        workerPoolToDispose?.Dispose();
 
         if (_registryRuntime is not null)
         {

@@ -96,6 +96,16 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
+    public IZLinkWorkerCall<TResult> RunWorker<TResult>(
+        Func<CancellationToken, TResult> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        return new ZLinkWorkerCall<TResult>(
+            _runtime.WorkerPool,
+            work,
+            callback => QueueSerialized((_, ct) => callback(ct)));
+    }
+
     public async ValueTask SubmitActorAsync(
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,

@@ -30,6 +30,15 @@ internal sealed partial class ZLinkFrameworkRuntime
             cancellationToken);
     }
 
+    internal async ValueTask DestroyActorAsync(
+        RoutingId entrySpotNodeRid,
+        IZLinkActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        await _actors.DestroyActorAsync(entrySpotNodeRid, actor, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal async ValueTask JoinActorToSpotAsync(
         ZLinkSpotActivation activation,
         IZLinkActor actor,
@@ -59,7 +68,25 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         string actorType,
         CancellationToken cancellationToken = default)
-        => await _actors.CreateLocalActorAsync(actorId, actorType, cancellationToken);
+    {
+        var result = await _actors.CreateLocalActorAsync(actorId, actorType, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Created)
+        {
+            var state = GetOrCreateActorState(result.Actor.ActorId);
+            var nativeRef = state.NativeActorRef
+                ?? throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor '{result.Actor.ActorId}' does not have a native Actor ref after creation.");
+            await NotifyEntrySpotActorCreatedAsync(
+                    result.Actor,
+                    nativeRef.NodeRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return result;
+    }
 
     internal async ValueTask<CreateActorResult> CreateActorAsync(
         string actorId,
@@ -149,6 +176,19 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         string bindingToken)
     {
+        GetOrCreateActorState(actorId).UnbindSession(bindingToken);
+        ActorBoundSessions.Unregister(this, actorId, bindingToken);
+    }
+
+    internal void RemoveActorSessionBinding(
+        string actorId,
+        string bindingToken)
+    {
+        if (TryGetSessionActorContext(actorId, bindingToken, out var context))
+        {
+            UnbindSessionActor(actorId, context, bindingToken);
+        }
+
         GetOrCreateActorState(actorId).UnbindSession(bindingToken);
         ActorBoundSessions.Unregister(this, actorId, bindingToken);
     }

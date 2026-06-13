@@ -21,6 +21,7 @@ sealed class TicTacToeGame(
     private readonly string _roomId = DecodeRoomId(context.SpotRid);
     private readonly TicTacToeMatch _match = new(DecodeRoomId(context.SpotRid), TurnTimeout);
     private IZLinkTimer? _gameTick;
+    private bool _cleanupStarted;
 
     public IZLinkSpotContext Context { get; } = context;
 
@@ -29,7 +30,7 @@ sealed class TicTacToeGame(
         Context.Handlers.AddHandler<PlayActorPlaceMarkHandler>();
     }
 
-    public ValueTask OnPostActorJoinedAsync(
+    public ValueTask onJoinActor(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
@@ -41,13 +42,27 @@ sealed class TicTacToeGame(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnActorLeftAsync(
+    public ValueTask onLeaveActor(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
             "game spot: actor left. actor={ActorId}, roomId={RoomId}",
+            actor.ActorId,
+            _roomId);
+        _actors.Remove(actor.ActorId);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask onDisconnectActor(
+        PlayActor actor,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        actor.MarkDisconnected();
+        logger.LogInformation(
+            "game spot: actor disconnected. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
             _roomId);
         return ValueTask.CompletedTask;
@@ -131,10 +146,30 @@ sealed class TicTacToeGame(
         var change = _match.Tick(DateTimeOffset.UtcNow);
         if (!change.HasChanged)
         {
+            await LeaveFinishedActorsAsync(change.State, cancellationToken);
             return;
         }
 
         await BroadcastAsync(change.State, null, cancellationToken);
+        await LeaveFinishedActorsAsync(change.State, cancellationToken);
+    }
+
+    private async ValueTask LeaveFinishedActorsAsync(
+        GameState state,
+        CancellationToken cancellationToken)
+    {
+        if (_cleanupStarted || !IsTerminal(state))
+        {
+            return;
+        }
+
+        _cleanupStarted = true;
+        var actors = _actors.Values.ToArray();
+        foreach (var actor in actors)
+        {
+            actor.MarkForDestroyAfterRoomLeave();
+            await Context.leaveActor(actor, cancellationToken);
+        }
     }
 
     private ValueTask BroadcastAsync(
@@ -182,6 +217,11 @@ sealed class TicTacToeGame(
             await sendAsync(recipient);
         }
     }
+
+    private static bool IsTerminal(GameState state) =>
+        string.Equals(state.Status, "Won", StringComparison.Ordinal)
+        || string.Equals(state.Status, "Draw", StringComparison.Ordinal)
+        || string.Equals(state.Status, "TurnTimedOut", StringComparison.Ordinal);
 
     private static string DecodeRoomId(RoutingId spotRid)
     {

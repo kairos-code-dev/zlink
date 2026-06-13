@@ -162,7 +162,7 @@ user Spot 문맥 안에서 동작하므로, session 끊김을 actor 에 알려�
 application 이 session callback 에서 대상 actor 를 고른 뒤
 `IZLinkSessionActor.NotifyDisconnectedAsync(...)` 를 호출한다.
 framework 는 그 actor 의 현재 Spot 실행 문맥에서 별도 handler 를
-등록하지 않고 Spot 의 `OnActorDisconnectedAsync(...)` callback 을 호출하며,
+등록하지 않고 Spot 의 `onDisconnectActor(...)` callback 을 호출하며,
 actor 를 room 에서 자동으로 leave 시키지 않는다.
 
 ### 3.2 `IZLinkActorFactory`
@@ -248,7 +248,8 @@ None
         +--(bind session)-> Entry Spot + bound to session
         |     +--(JoinSpot)-> user Spot + bound to session
         |           +--(leave: framework)-> Entry Spot + bound
-        +--(disconnect / unbind: framework)-> destroy -> None
+        +--(DestroyActorAsync: Entry Spot)-> None
+        +--(disconnect / unbind: framework)-> Entry/user Spot 유지
 ```
 
 framework가 처리하는 시퀀스는 다음과 같다.
@@ -297,6 +298,8 @@ core 모델에서 비롯된 핵심 제약은 다음과 같다.
   STREAM session binding 은 서로 독립된 상태 전이로 본다.
 - **destroy 는 actor 가 Entry Spot 에 있을 때만 가능하다.** session disconnect 는
   destroy 나 user Spot leave 를 자동으로 만들지 않는다.
+- Entry Spot destroy 는 `onLeaveActor(...)` 또는 다른 lifecycle callback 을 호출하지
+  않고 actor 상태만 정리한다. 같은 actor instance 에 대한 중복 destroy 는 성공으로 끝난다.
 - **discovery[^discovery] actor remote address publish 는 user Spot join 성공 뒤에
   갱신된다.** actor 를 생성하기만 해서는 active route 가 공개되지 않는다.
   session bind / unbind 도 active route 를 새로 만들거나 지우지 않는다.
@@ -525,8 +528,8 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
 ```
 
 Entry Spot 과 user Spot 어느 쪽이든 lifecycle callback 을 Spot 멤버 method 로
-선언할 수 있다. `OnPostActorJoinedAsync(actor, cancellationToken)` 와
-`OnActorLeftAsync(actor, cancellationToken)` 는 join / leave 가 commit 된 직후 같은 실행
+선언할 수 있다. `onJoinActor(actor, cancellationToken)` 와
+`onLeaveActor(actor, cancellationToken)` 는 join / leave 가 commit 된 직후 같은 실행
 문맥에서 호출된다. callback 이름이 membership 변화의 의미를 이미 나타내므로 별도
 kind/result 인자는 전달하지 않는다.
 
@@ -660,7 +663,7 @@ public sealed class TicTacToeGameSpot(IZLinkSpotContext context) : IZLinkSpot<Pl
 ```
 
 join admission method 는 Spot 멤버로 직접 선언한다. 반환값의 `Accepted` 가 `true` 일
-때만 framework 가 join 을 commit 하고 `OnPostActorJoinedAsync(...)` 를 호출한다.
+때만 framework 가 join 을 commit 하고 `onJoinActor(...)` 를 호출한다.
 `Accepted=false` 이면 actor 위치는 바뀌지 않고 post-joined callback 도 실행되지 않는다.
 method 시그니처 검증은 startup validation 단계에서 이루어진다. 자세한 시그니처는
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) §5.7 에서 다룬다.
@@ -799,7 +802,7 @@ sequenceDiagram
     S->>G: Conditional unbind by session token
     opt application decides to notify this actor
         S->>G: actor.NotifyDisconnectedAsync()
-        G->>Act: Spot OnActorDisconnectedAsync callback
+        G->>Act: Spot onDisconnectActor callback
     end
 ```
 
@@ -1102,8 +1105,8 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | --- | --- |
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenActorFactoryNameIsDuplicated` | actor factory 이름이 중복되면 startup validation에서 예외로 막는다. |
 | `ActorRegistryExecutionTests.EntrySpot_And_UserSpot_ActorPacketRegistries_Dispatch_ActorPackets` | Entry Spot과 user Spot의 actor packet handler와 lifecycle callback이 정상적으로 dispatch된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot에서 같은 actor의 packet은 순서대로 실행되고, 서로 다른 actor의 packet은 병렬로 진행된다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot dispatch batch가 actor별 순서를 보존하면서도 다른 actor를 전역으로 막지 않는다. |
+| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Across_Actors` | Entry Spot에서 모든 actor packet은 Entry Spot 직렬 실행 줄에서 순서대로 실행된다. |
+| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_Serially` | native Entry Spot dispatch batch가 batch 순서를 보존하며 직렬로 실행된다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
 | `RemoteSessionRelayTests.SessionActorDispatch_Relays_Stream_Request_And_Routes_Request_To_Bound_Actor_By_Sequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
 | `LocalSessionRelayTests.LocalSessionActorDispatch_Relays_Stream_Request_And_Replies_From_Request_Handler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |

@@ -2,6 +2,15 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkEntrySpotActivation
 {
+    /// <summary>
+    /// Runs the operation on the Entry Spot serial execution line. Every
+    /// application callback of this Entry Spot (lifecycle, actor packets,
+    /// route packets, subscriptions, timers, worker completions) goes through
+    /// this single line, one at a time, and each handler is awaited to
+    /// completion before the next callback starts. Calls that already run on
+    /// the line execute inline so gated callbacks can nest without
+    /// deadlocking.
+    /// </summary>
     private async ValueTask ExecuteAsync(
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
@@ -13,19 +22,10 @@ internal sealed partial class ZLinkEntrySpotActivation
             return;
         }
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var previous = Current.Value;
-        Current.Value = this;
-        try
-        {
-            using var _ = ZLinkSpotAmbientContext.Push(this);
-            await operation(this, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Current.Value = previous;
-            _gate.Release();
-        }
+        await _serial.RunAsync(
+                ct => RunOnLineAsync(operation, ct),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask ExecuteAsync<TState>(
@@ -40,66 +40,37 @@ internal sealed partial class ZLinkEntrySpotActivation
             return;
         }
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var previous = Current.Value;
-        Current.Value = this;
-        try
-        {
-            using var _ = ZLinkSpotAmbientContext.Push(this);
-            await operation(this, state, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            Current.Value = previous;
-            _gate.Release();
-        }
+        var capturedOperation = operation;
+        var capturedState = state;
+        await _serial.RunAsync(
+                ct => RunOnLineAsync(
+                    (activation, innerCt) => capturedOperation(activation, capturedState, innerCt),
+                    ct),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private async ValueTask InvokeActorPacketWithoutLifecycleGateAsync(
-        ZLinkSpotActorPacketDescriptor descriptor,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
-        CancellationToken cancellationToken)
+    private void QueueSerialized(
+        Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation)
     {
-        var previous = Current.Value;
-        Current.Value = this;
-        try
-        {
-            using var _ = ZLinkSpotAmbientContext.Push(this);
-            await _handlerExecutor.InvokeActorPacketAsync(
-                    descriptor,
-                    actor,
-                    header,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            Current.Value = previous;
-        }
+        _serial.TryPost(ct => RunOnLineAsync(operation, ct), out _);
     }
 
-    private async ValueTask<ZLinkActorReply> InvokeActorPacketForReplyWithoutLifecycleGateAsync(
-        ZLinkSpotActorPacketDescriptor descriptor,
-        IZLinkActor actor,
-        ZlinkStreamHeader header,
-        Message body,
+    private async ValueTask RunOnLineAsync(
+        Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
         CancellationToken cancellationToken)
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
         var previous = Current.Value;
         Current.Value = this;
         try
         {
             using var _ = ZLinkSpotAmbientContext.Push(this);
-            return await _handlerExecutor.InvokeActorPacketForReplyAsync(
-                    descriptor,
-                    actor,
-                    header,
-                    body,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            await operation(this, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -121,11 +92,13 @@ internal sealed partial class ZLinkEntrySpotActivation
             typeof(THandler),
             EntrySpot.GetType(),
             _stopSource.Token,
-            async (descriptor, tick, ct) =>
-            {
-                using var _ = ZLinkSpotAmbientContext.Push(this);
-                await _invoker.InvokeTimerAsync(descriptor, tick, ct).ConfigureAwait(false);
-            },
+            (descriptor, tick, ct) => ExecuteAsync(
+                static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
+                    state.Descriptor,
+                    state.Tick,
+                    innerCt),
+                (Descriptor: descriptor, Tick: tick),
+                ct),
             PublishTimerFailureAsync,
             cancellationToken);
     }
@@ -151,68 +124,22 @@ internal sealed partial class ZLinkEntrySpotActivation
 
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
     {
-        if (!await _routeDrainGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-        {
-            return;
-        }
-
-        var dispatchTasks = new List<Task>();
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var received = Received.Create();
-                if (!_nativeSpot.RecvRoute(received, RecvFlags.DontWait))
-                {
-                    received.Dispose();
-                    break;
-                }
-
-                dispatchTasks.Add(DispatchRouteAsync(received, cancellationToken).AsTask());
-            }
-
-        }
-        finally
-        {
-            _routeDrainGate.Release();
-        }
-
-        await Task.WhenAll(dispatchTasks).ConfigureAwait(false);
+        await ExecuteAsync(
+            static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
-        if (!await _actorJoinDrainGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-        {
-            return;
-        }
-
-        try
-        {
-            using var _ = ZLinkSpotAmbientContext.Push(this);
-            await _dispatcher.DispatchActorJoinDrainAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _actorJoinDrainGate.Release();
-        }
+        await ExecuteAsync(
+            static (activation, ct) => activation._dispatcher.DispatchActorJoinDrainAsync(ct),
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
-        using var _ = ZLinkSpotAmbientContext.Push(this);
-        await _dispatcher
-            .DispatchSubscriptionsAsync(cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask DispatchRouteAsync(
-        Received received,
-        CancellationToken cancellationToken)
-    {
-        using (ZLinkSpotAmbientContext.Push(this))
-        {
-            await _dispatcher.DispatchRouteAsync(received, cancellationToken).ConfigureAwait(false);
-        }
+        await ExecuteAsync(
+            static (activation, ct) => activation._dispatcher.DispatchSubscriptionsAsync(ct),
+            cancellationToken).ConfigureAwait(false);
     }
 }

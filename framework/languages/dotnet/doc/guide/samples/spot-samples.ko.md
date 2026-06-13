@@ -1071,7 +1071,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
         };
     }
 
-    internal async ValueTask LeaveActorAsync(
+    internal async ValueTask leaveActor(
         string actorId,
         CancellationToken cancellationToken = default)
     {
@@ -1080,7 +1080,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
             return;
         }
 
-        await Context.LeaveActorAsync(actor, cancellationToken);
+        await Context.leaveActor(actor, cancellationToken);
         PublishSampleState();
     }
 
@@ -1152,7 +1152,7 @@ public sealed class SampleSpot(IZLinkSpotContext context) : IZLinkSpot
 
         foreach (string actorId in expiredActors)
         {
-            await LeaveActorAsync(actorId, cancellationToken);
+            await leaveActor(actorId, cancellationToken);
         }
     }
 }

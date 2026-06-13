@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <string>
 
 #include "core/options.hpp"
@@ -22,6 +23,28 @@
 #ifndef MSG_ERRQUEUE
 #define MSG_ERRQUEUE 0x2000
 #endif
+
+namespace
+{
+bool parse_pgm_port (const char *text_, uint16_t *port_out_)
+{
+    if (!text_ || !*text_)
+        return false;
+    for (const char *it = text_; *it != '\0'; ++it) {
+        if (*it < '0' || *it > '9')
+            return false;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long value = strtoul (text_, &end, 10);
+    if (errno != 0 || end == text_ || *end != '\0' || value == 0 || value > 65535UL)
+        return false;
+
+    *port_out_ = static_cast<uint16_t> (value);
+    return true;
+}
+}
 
 zlink::pgm_socket_t::pgm_socket_t (bool receiver_, const options_t &options_) :
     sock (NULL),
@@ -51,7 +74,10 @@ int zlink::pgm_socket_t::init_address (const char *network_,
         return -1;
     }
 
-    *port_number = atoi (port_delim + 1);
+    if (!parse_pgm_port (port_delim + 1, port_number)) {
+        errno = EINVAL;
+        return -1;
+    }
 
     char network[256];
     if (port_delim - network_ >= (int) sizeof (network) - 1) {

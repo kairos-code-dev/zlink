@@ -3,6 +3,8 @@
 #include "utils/precompiled.hpp"
 #include <string>
 #include <cstring>
+#include <limits.h>
+#include <stdlib.h>
 
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
@@ -17,10 +19,51 @@
 #include <netdb.h>
 #include <ctype.h>
 #include <unistd.h>
-#include <stdlib.h>
 #endif
 
 #include "utils/ip_resolver.hpp"
+
+namespace
+{
+bool parse_port_number (const std::string &text_, uint16_t *port_out_)
+{
+    if (text_.empty ())
+        return false;
+    for (std::string::const_iterator it = text_.begin (), end = text_.end (); it != end; ++it) {
+        if (*it < '0' || *it > '9')
+            return false;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long value = strtoul (text_.c_str (), &end, 10);
+    if (errno != 0 || end == text_.c_str () || *end != '\0' || value > 65535)
+        return false;
+
+    *port_out_ = static_cast<uint16_t> (value);
+    return true;
+}
+
+bool parse_zone_id_number (const std::string &text_, uint32_t *zone_id_out_)
+{
+    if (text_.empty ())
+        return false;
+    for (std::string::const_iterator it = text_.begin (), end = text_.end (); it != end; ++it) {
+        if (*it < '0' || *it > '9')
+            return false;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long value = strtoul (text_.c_str (), &end, 10);
+    if (errno != 0 || end == text_.c_str () || *end != '\0' || value == 0
+        || value > static_cast<unsigned long> (UINT32_MAX))
+        return false;
+
+    *zone_id_out_ = static_cast<uint32_t> (value);
+    return true;
+}
+}
 
 int zlink::ip_addr_t::family () const
 {
@@ -212,9 +255,9 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
             //  connectable address it could be used to connect to port 0.
             port = 0;
         } else {
-            //  Parse the port number (0 is not a valid port).
-            port = static_cast<uint16_t> (atoi (port_str.c_str ()));
-            if (port == 0) {
+            //  Parse the port number. Port 0 is allowed only through the
+            //  explicit "0" case above.
+            if (!parse_port_number (port_str, &port) || port == 0) {
                 errno = EINVAL;
                 return -1;
             }
@@ -254,7 +297,10 @@ int zlink::ip_resolver_t::resolve (ip_addr_t *ip_addr_, const char *name_)
         if (isalpha (if_str.at (0))) {
             zone_id = do_if_nametoindex (if_str.c_str ());
         } else {
-            zone_id = static_cast<uint32_t> (atoi (if_str.c_str ()));
+            if (!parse_zone_id_number (if_str, &zone_id)) {
+                errno = EINVAL;
+                return -1;
+            }
         }
 
         if (zone_id == 0) {

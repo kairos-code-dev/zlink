@@ -17,8 +17,14 @@ int zlink::send_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
         return -1;
     }
 
-    const size_t size = zlink_msg_size (msg_);
-    const int rc = socket->send (reinterpret_cast<msg_t *> (msg_), flags_);
+    msg_t *msg = reinterpret_cast<msg_t *> (msg_);
+    if (!msg || !msg->check ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t size = msg->size ();
+    const int rc = socket->send (msg, flags_);
     if (rc < 0)
         return -1;
 
@@ -36,8 +42,14 @@ int zlink::send_msg_routed_internal (void *socket_,
         return -1;
     }
 
-    const size_t size = zlink_msg_size (msg_);
-    const int rc = socket->send_routed (target_rid_, reinterpret_cast<msg_t *> (msg_), flags_);
+    msg_t *msg = reinterpret_cast<msg_t *> (msg_);
+    if (!msg || !msg->check ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t size = msg->size ();
+    const int rc = socket->send_routed (target_rid_, msg, flags_);
     if (rc < 0)
         return -1;
 

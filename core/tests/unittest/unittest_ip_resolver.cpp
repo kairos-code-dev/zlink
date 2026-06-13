@@ -332,8 +332,25 @@ static void test_parse_ipv4_port_garbage ()
 
     resolver_opts.expect_port (true);
 
-    //  The code doesn't validate that the port doesn't contain garbage
-    test_resolve (resolver_opts, "1.2.3.4:567bad", "1.2.3.4", 567);
+    test_resolve (resolver_opts, "1.2.3.4:567bad", NULL);
+}
+
+static void test_parse_ipv4_port_out_of_range ()
+{
+    zlink::ip_resolver_options_t resolver_opts;
+
+    resolver_opts.expect_port (true);
+
+    test_resolve (resolver_opts, "1.2.3.4:65536", NULL);
+}
+
+static void test_parse_ipv4_port_negative ()
+{
+    zlink::ip_resolver_options_t resolver_opts;
+
+    resolver_opts.expect_port (true);
+
+    test_resolve (resolver_opts, "1.2.3.4:-1", NULL);
 }
 
 static void test_parse_ipv4_port_missing ()
@@ -537,6 +554,24 @@ static void test_parse_ipv6_scope_zero ()
     resolver_opts.ipv6 (true);
 
     test_resolve (resolver_opts, "3000:4:5::1:234%0", NULL);
+}
+
+static void test_parse_ipv6_scope_garbage ()
+{
+    zlink::ip_resolver_options_t resolver_opts;
+
+    resolver_opts.ipv6 (true);
+
+    test_resolve (resolver_opts, "3000:4:5::1:234%2bad", NULL);
+}
+
+static void test_parse_ipv6_scope_negative ()
+{
+    zlink::ip_resolver_options_t resolver_opts;
+
+    resolver_opts.ipv6 (true);
+
+    test_resolve (resolver_opts, "3000:4:5::1:234%-1", NULL);
 }
 
 static void test_parse_ipv6_scope_int_port ()
@@ -880,6 +915,8 @@ int main (void)
     RUN_TEST (test_parse_ipv4_port);
     RUN_TEST (test_parse_ipv4_port0);
     RUN_TEST (test_parse_ipv4_port_garbage);
+    RUN_TEST (test_parse_ipv4_port_out_of_range);
+    RUN_TEST (test_parse_ipv4_port_negative);
     RUN_TEST (test_parse_ipv4_port_missing);
     RUN_TEST (test_parse_ipv4_port_bad);
     RUN_TEST (test_parse_ipv4_port_brackets);
@@ -902,6 +939,8 @@ int main (void)
     RUN_TEST (test_parse_ipv4_in_ipv6_port);
     RUN_TEST (test_parse_ipv6_scope_int);
     RUN_TEST (test_parse_ipv6_scope_zero);
+    RUN_TEST (test_parse_ipv6_scope_garbage);
+    RUN_TEST (test_parse_ipv6_scope_negative);
     RUN_TEST (test_parse_ipv6_scope_int_port);
     RUN_TEST (test_parse_ipv6_scope_if);
     RUN_TEST (test_parse_ipv6_scope_if_port);

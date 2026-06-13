@@ -22,10 +22,10 @@
 |---|--------|------|------|------|------|
 | 1 | **High** | DoS / 스택 오버플로 | `core/src/runtime/utils/generic_mtrie_impl.hpp`, 보조: `trie.cpp`, `radix_tree.cpp` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | 확인 | repo 고유 |
-| 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | 확인 | upstream 파생 |
+| 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | 확인 | repo 고유 순서 |
 | 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | 확인, 현실 도달성 낮음 | upstream 파생 |
-| 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | send/API 한정 확인 | repo 고유 |
+| 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | 확인, 기본값 정책 사안 | upstream 동작 |
 | 8 | - | 동시성 / 미스 웨이크업 | `core/src/runtime/core/mailbox.cpp:121-143` | **반박됨, 수정 제외** | repo 고유 |
 | 9 | Low | 방어적 길이 clamp 누락 | `core/src/runtime/core/msg.cpp:623` | ZMP 원격 도달 불가, 방어 수정 권장 | upstream 파생 |
@@ -301,7 +301,7 @@ ZMP `maxmsgsize` 검사는 이 할당의 **하류**라 WS/WSS 전송 버퍼를 �
 - **분류**: 입력검증 / 잘못된 엔드포인트 해석
 - **위치**: `core/src/runtime/utils/ip_resolver.cpp:216` (포트), `:257` (zone_id)
 - **출처**: upstream 파생
-- **상태**: ✅ 확인
+- **상태**: ✅ 2026-06-14 수정 완료
 
 ### 코드
 
@@ -333,6 +333,31 @@ zone_id = static_cast<uint32_t> (atoi (if_str.c_str ()));
 ### 수정 방향
 
 `atoi` → `strtol`로 교체하고 `errno`·전체 소비(`*endptr == '\0'`)·`0 <= v <= 65535` 검사를 추가(`ws_address_t::parse_url`를 모델로). zone_id는 `strtoul` + 범위 검사.
+
+### 처리 기록 (2026-06-14)
+
+`ip_resolver_t::resolve`의 포트와 숫자 zone id 파싱을 digit-only 검사 후 `strtoul`로 변환하도록 바꾸었다.
+포트는 `1..65535`만 숫자 파서 경로에서 허용하고, 기존 명시적 `"0"`·`"*"` 처리만 포트 0을 허용한다.
+zone id는 0, 음수, 후행 문자가 있는 값, `uint32_t` 범위를 넘는 값을 거부한다.
+Claude 리뷰에서 같은 `atoi` 포트 파싱 패턴이 PGM transport와 SPOT control endpoint helper에도
+남아 있음을 확인해, 두 경로도 같은 방식으로 숫자 전체 소비와 범위 검사를 적용했다.
+
+검증:
+- `cmake --build core/build --target unittest_ip_resolver test_socket_null -j2`: 통과.
+- `ctest --test-dir core/build -R '^(unittest_ip_resolver|test_socket_null)$' --output-on-failure`: 통과.
+- `cmake --build core/build --target unittest_ip_resolver test_socket_null unittest_spot_data_plane_protocol -j2`: 통과.
+- `ctest --test-dir core/build -R '^(unittest_ip_resolver|test_socket_null|unittest_spot_data_plane_protocol)$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 원인은 기존
+  `C-BINDING-001` 버전 매크로 기대값 불일치와 동일하다.
+
+Claude 리뷰:
+- 2026-06-14 1차 리뷰에서 #3/#6 자체는 닫혔으나, 같은 패턴으로 PGM port 파싱, SPOT control
+  endpoint port 파싱, `zlink_msg_refcnt`, 처리 기록 문구를 추가 확인하라고 지적했다.
+- 2026-06-14 2차 리뷰에서 PGM/SPOT port parser의 `atoi` 제거, `zlink_msg_refcnt`의 `check()` 가드,
+  처리 기록 문구 수정을 실제 코드와 테스트로 확인했고, "추가 이슈 없음"이라고 판정했다.
 
 ---
 
@@ -407,7 +432,7 @@ alloc_assert (_buf);
   - `core/src/api/message/message_api.cpp:11-80`
   - `core/src/runtime/core/send_internal.cpp:20,39`
 - **출처**: repo 고유 plumbing
-- **상태**: ✅ send 측과 public message API 한정 확인. recv 측은 반박됨.
+- **상태**: ✅ 2026-06-14 수정 완료. recv 측은 반박됨.
 
 recv 경로는 `recv_internal.cpp:56`이 `socket_->recv()`를 호출하고, 그 내부
 `socket_base_msg.cpp:309-312`가 `!msg_ || !msg_->check()`를 검사하므로 이 항목에서 제외한다.
@@ -458,6 +483,34 @@ recv 쪽 소켓 내부에는 이미 `check()` 패턴이 있고, `zlink_msg_adopt
 - public message API는 함수 성격에 맞춰 NULL 가드를 추가한다. `data()`/`size()`는 오류 반환값이
   제한적이므로 `errno = EFAULT`와 `NULL`/`0` 반환 정책을 명확히 해야 한다.
 - 이 수정은 잘못된 호출을 실패로 바꾸는 하드닝이다. 정상 호출의 기능은 바뀌지 않는다.
+
+### 처리 기록 (2026-06-14)
+
+`send_msg_internal`과 `send_msg_routed_internal`이 socket 검사 뒤, `msg_t::size()`를 호출하기 전에
+`msg_ == NULL`과 `msg_t::check()`를 확인하도록 바꾸었다. 유효하지 않은 메시지는 `EFAULT`와 `-1`로
+실패한다. public message API도 NULL 또는 닫힌 메시지에 대해 `ZLINK_CONFIG_INVALID_HANDLE`,
+`NULL`, `0`, 또는 `-1`을 반환하고 `errno = EFAULT`를 설정한다. Claude 리뷰에서 같은 public message
+API 경계인 `zlink_msg_refcnt`도 닫힌 메시지의 union을 읽을 수 있다고 확인해, 같은 `check()` 가드를
+적용했다. `init*` 함수는 메시지를 새로 만드는 함수이므로 NULL만 확인하고 `check()`를 요구하지 않는다.
+
+검증:
+- `test_socket_null`에 NULL message handle, NULL move/copy source·destination, 닫힌 message의
+  `close`/`data`/`size`/`refcnt` 회귀 테스트를 추가했다.
+- `cmake --build core/build --target unittest_ip_resolver test_socket_null -j2`: 통과.
+- `ctest --test-dir core/build -R '^(unittest_ip_resolver|test_socket_null)$' --output-on-failure`: 통과.
+- `cmake --build core/build --target unittest_ip_resolver test_socket_null unittest_spot_data_plane_protocol -j2`: 통과.
+- `ctest --test-dir core/build -R '^(unittest_ip_resolver|test_socket_null|unittest_spot_data_plane_protocol)$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 원인은 기존
+  `C-BINDING-001` 버전 매크로 기대값 불일치와 동일하다.
+
+Claude 리뷰:
+- 2026-06-14 1차 리뷰에서 #3/#6 자체는 닫혔으나, 같은 패턴으로 PGM port 파싱, SPOT control
+  endpoint port 파싱, `zlink_msg_refcnt`, 처리 기록 문구를 추가 확인하라고 지적했다.
+- 2026-06-14 2차 리뷰에서 PGM/SPOT port parser의 `atoi` 제거, `zlink_msg_refcnt`의 `check()` 가드,
+  처리 기록 문구 수정을 실제 코드와 테스트로 확인했고, "추가 이슈 없음"이라고 판정했다.
 
 ---
 

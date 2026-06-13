@@ -125,6 +125,25 @@ inline std::string node_id_string (uint32_t node_id_)
     return std::string (buf);
 }
 
+inline bool parse_decimal_port (const char *text_, unsigned long min_, unsigned long max_,
+                                unsigned long *port_out_)
+{
+    if (!text_ || !*text_ || !port_out_)
+        return false;
+    for (const char *it = text_; *it != '\0'; ++it) {
+        if (*it < '0' || *it > '9')
+            return false;
+    }
+
+    char *end = NULL;
+    const unsigned long port = std::strtoul (text_, &end, 10);
+    if (!end || end == text_ || *end != '\0' || port < min_ || port > max_)
+        return false;
+
+    *port_out_ = port;
+    return true;
+}
+
 inline bool
 derive_fixed_port_endpoint (const std::string &endpoint_, const char *scheme_, std::string *out_)
 {
@@ -136,12 +155,12 @@ derive_fixed_port_endpoint (const std::string &endpoint_, const char *scheme_, s
     if (port_sep == std::string::npos || port_sep <= scheme_len)
         return false;
 
-    const int port = atoi (endpoint_.c_str () + port_sep + 1);
-    if (port <= 0 || port > 64535)
+    unsigned long port = 0;
+    if (!parse_decimal_port (endpoint_.c_str () + port_sep + 1, 1UL, 64535UL, &port))
         return false;
 
     char buf[32];
-    snprintf (buf, sizeof (buf), "%d", port + 1000);
+    snprintf (buf, sizeof (buf), "%lu", port + 1000UL);
     *out_ = endpoint_.substr (0, port_sep + 1) + buf;
     return true;
 }

@@ -288,6 +288,25 @@ void test_bootstrap_descriptor_republish_resumes_after_topology_change ()
       zlink::spot_data_plane_protocol_t::should_publish_bootstrap_descriptor (&runtime, true, 3));
 }
 
+void test_peer_ctrl_bind_endpoint_rejects_garbage_port ()
+{
+    std::string out;
+    TEST_ASSERT_FALSE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "tcp://127.0.0.1:8080abc", 1, &out));
+    TEST_ASSERT_FALSE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "tcp://127.0.0.1:-1", 1, &out));
+    TEST_ASSERT_FALSE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "tcp://127.0.0.1:64536", 1, &out));
+}
+
+void test_peer_ctrl_bind_endpoint_preserves_valid_fixed_port ()
+{
+    std::string out;
+    TEST_ASSERT_TRUE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "tcp://127.0.0.1:8080", 1, &out));
+    TEST_ASSERT_EQUAL_STRING ("tcp://127.0.0.1:9080", out.c_str ());
+}
+
 }
 
 int main (int argc, char **argv)
@@ -304,5 +323,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_ready_endpoint_helper_tracks_endpoint_local_readiness);
     RUN_TEST (test_bootstrap_descriptor_republish_stops_after_ready_topology_stabilizes);
     RUN_TEST (test_bootstrap_descriptor_republish_resumes_after_topology_change);
+    RUN_TEST (test_peer_ctrl_bind_endpoint_rejects_garbage_port);
+    RUN_TEST (test_peer_ctrl_bind_endpoint_preserves_valid_fixed_port);
     return UNITY_END ();
 }

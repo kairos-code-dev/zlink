@@ -381,7 +381,9 @@ connector_options_t connector_t::options () const
 
 std::size_t connector_t::pending_dispatch_count () const
 {
-    return detail::state_from (_state)->dispatch_queue.size ();
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    return state->dispatch_queue.size ();
 }
 
 codec_registry_t &connector_t::codecs ()

@@ -20,6 +20,7 @@
 - 2026-06-14: .NET framework 원격 DoS 1차 항목(D1, D2, D5)을 수정하고, stream-connector test와 framework LZ4 회귀 테스트 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. D3/D4는 실행 순서 5-4에서 계속 처리한다.
 - 2026-06-14: C++ framework 인증·HTTP 항목(CR2, H1)을 수정하고, HTTP client test·contract header test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: Java framework TLS 항목(F3, F5)을 수정·문서화하고, stream-connector test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
+- 2026-06-14: C++ framework Unreal 동시성·teardown 항목(H2/H3)을 수정하고, stream connector·Unreal connector·contract header test 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. layout contract 실행은 SPOT timer 문서 문구 불일치로 실패했으며 이번 Unreal 변경 경로와는 별도다.
 - 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core 포트·zone id 파싱(#3)과 message/send API 가드(#6)를 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core IPC bind의 검증 전 unlink 항목(#4)을 수정하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
@@ -39,7 +40,7 @@
 ### Framework 계층 (언어별)
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
-| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | High (Unreal 동시성·teardown 남음, 인바운드 프레임 DoS와 리다이렉트 자격증명 유출은 2026-06-14 수정 완료) |
+| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | Medium (쿠키 경로 스코프와 런타임 동시성 후보 남음, 인바운드 프레임 DoS·리다이렉트 자격증명 유출·Unreal 동시성/teardown은 2026-06-14 수정 완료) |
 | Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS: 2026-06-14 수정 완료) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | Low (동시성 핸들러 리스트 남음, 인바운드 DoS와 TLS 호스트명 검증은 2026-06-14 수정 완료) |
 | .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | Medium (무제한 메시지 적재·디스패치 큐 남음, 인바운드/WS/LZ4 DoS는 2026-06-14 수정 완료) |

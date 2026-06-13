@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -78,61 +79,75 @@ class FZLinkStreamConnectorRuntime
   public:
     explicit FZLinkStreamConnectorRuntime (UZLinkStreamConnector &Owner) :
 #if __has_include("CoreMinimal.h")
-        _owner (&Owner)
+        Pending (std::make_shared<pending_state_t> (&Owner))
 #else
-        _owner (&Owner)
+        Pending (std::make_shared<pending_state_t> (&Owner))
 #endif
     {
     }
 
     void DetachOwner ()
     {
+        Connector.close ();
+        std::lock_guard<std::mutex> lock (Pending->Mutex);
 #if __has_include("CoreMinimal.h")
-        _owner.Reset ();
+        Pending->Owner.Reset ();
 #else
-        _owner = nullptr;
+        Pending->Owner = nullptr;
 #endif
-        CancelCallbacks = true;
-        PendingPackets.clear ();
-        PendingRequests.clear ();
-        PendingStates.clear ();
+        Pending->CancelCallbacks = true;
+        Pending->Packets.clear ();
+        Pending->Requests.clear ();
+        Pending->States.clear ();
+        Pending->LastConnectionState = EZLinkStreamConnectionState::Closed;
     }
 
     void Connect (const FString &Endpoint)
     {
-        CancelCallbacks = false;
+        Connector.close ();
+        {
+            std::lock_guard<std::mutex> lock (Pending->Mutex);
+            Pending->CancelCallbacks = false;
+            Pending->Packets.clear ();
+            Pending->Requests.clear ();
+            Pending->States.clear ();
+        }
         zlink::stream_connector::connector_options_t options;
         options.endpoint = to_utf8 (Endpoint);
         options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
         Connector = zlink::stream_connector::connector_factory_t::create (std::move (options));
+        auto pending = Pending;
         Connector.on_connection_state_changed (
-          [this] (const zlink::stream_connector::connection_state_changed_t &event) {
-              EnqueueState (to_unreal_state (event.current));
+          [pending] (const zlink::stream_connector::connection_state_changed_t &event) {
+              EnqueueState (pending, to_unreal_state (event.current));
           });
 
-        LastConnectionState = EZLinkStreamConnectionState::Connecting;
-        EnqueueState (EZLinkStreamConnectionState::Connecting);
+        SetLastState (EZLinkStreamConnectionState::Connecting);
+        EnqueueState (Pending, EZLinkStreamConnectionState::Connecting);
 
         const auto connected = Connector.connect ();
         if (connected) {
-            LastConnectionState = EZLinkStreamConnectionState::Connected;
-            EnqueueState (EZLinkStreamConnectionState::Connected);
+            SetLastState (EZLinkStreamConnectionState::Connected);
+            EnqueueState (Pending, EZLinkStreamConnectionState::Connected);
             return;
         }
 
-        LastConnectionState = EZLinkStreamConnectionState::Disconnected;
-        EnqueueState (EZLinkStreamConnectionState::Disconnected);
+        SetLastState (EZLinkStreamConnectionState::Disconnected);
+        EnqueueState (Pending, EZLinkStreamConnectionState::Disconnected);
     }
 
     void Close ()
     {
-        CancelCallbacks = true;
         Connector.close ();
-        PendingPackets.clear ();
-        PendingRequests.clear ();
-        PendingStates.clear ();
-        LastConnectionState = EZLinkStreamConnectionState::Closed;
-        EnqueueState (EZLinkStreamConnectionState::Closed);
+        {
+            std::lock_guard<std::mutex> lock (Pending->Mutex);
+            Pending->CancelCallbacks = true;
+            Pending->Packets.clear ();
+            Pending->Requests.clear ();
+            Pending->States.clear ();
+            Pending->LastConnectionState = EZLinkStreamConnectionState::Closed;
+        }
+        EnqueueState (Pending, EZLinkStreamConnectionState::Closed);
     }
 
     void SendJson (const FName &PacketName, const FString &JsonPayload)
@@ -168,46 +183,61 @@ class FZLinkStreamConnectorRuntime
         if (Options.bCompress) {
             request.compress ();
         }
-        request.submit ([this] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t>
-                                  result) {
-            if (!result || CancelCallbacks) {
+        auto pending = Pending;
+        request.submit ([pending] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t>
+                                     result) {
+            if (!result) {
                 return;
             }
-            PendingRequests.push_back (ToUnrealPacket (result.value ()));
+            FZLinkStreamPacket packet = ToUnrealPacket (result.value ());
+            std::lock_guard<std::mutex> lock (pending->Mutex);
+            if (pending->CancelCallbacks) {
+                return;
+            }
+            pending->Requests.push_back (std::move (packet));
         });
     }
 
     void Dispatch ()
     {
         Connector.dispatch ();
-        UZLinkStreamConnector *owner = Owner ();
+        std::vector<EZLinkStreamConnectionState> pending_states;
+        std::vector<FZLinkStreamPacket> pending_packets;
+        std::vector<FZLinkStreamPacket> pending_requests;
+        bool cancel_callbacks = false;
+        UZLinkStreamConnector *owner = nullptr;
+        {
+            std::lock_guard<std::mutex> lock (Pending->Mutex);
+            owner = Owner ();
+            cancel_callbacks = Pending->CancelCallbacks;
+            pending_states.swap (Pending->States);
+            if (!cancel_callbacks) {
+                pending_packets.swap (Pending->Packets);
+                pending_requests.swap (Pending->Requests);
+            } else {
+                Pending->Packets.clear ();
+                Pending->Requests.clear ();
+            }
+        }
         if (!owner) {
-            PendingPackets.clear ();
-            PendingRequests.clear ();
-            PendingStates.clear ();
             return;
         }
 
-        while (!PendingStates.empty ()) {
-            const auto state = PendingStates.front ();
-            PendingStates.erase (PendingStates.begin ());
-            LastConnectionState = state;
+        for (const auto state : pending_states) {
+            {
+                std::lock_guard<std::mutex> lock (Pending->Mutex);
+                Pending->LastConnectionState = state;
+            }
             owner->OnConnectionStateChanged.Broadcast (state);
         }
-        if (CancelCallbacks) {
-            PendingPackets.clear ();
-            PendingRequests.clear ();
+        if (cancel_callbacks) {
             return;
         }
-        while (!PendingPackets.empty ()) {
-            auto packet = std::move (PendingPackets.front ());
-            PendingPackets.erase (PendingPackets.begin ());
+        for (auto &packet : pending_packets) {
             owner->OnPacketReceived.Broadcast (packet);
             owner->OnPacketReceivedNative.Broadcast (packet);
         }
-        while (!PendingRequests.empty ()) {
-            auto packet = std::move (PendingRequests.front ());
-            PendingRequests.erase (PendingRequests.begin ());
+        for (auto &packet : pending_requests) {
             owner->OnRequestCompleted.Broadcast (packet);
             owner->OnRequestCompletedNative.Broadcast (packet);
         }
@@ -217,12 +247,20 @@ class FZLinkStreamConnectorRuntime
 
     int PendingDispatchCount () const
     {
-        return static_cast<int> (PendingStates.size () + PendingPackets.size ()
-                                 + PendingRequests.size ()
-                                 + Connector.pending_dispatch_count ());
+        std::size_t local_count = 0;
+        {
+            std::lock_guard<std::mutex> lock (Pending->Mutex);
+            local_count = Pending->States.size () + Pending->Packets.size ()
+                          + Pending->Requests.size ();
+        }
+        return static_cast<int> (local_count + Connector.pending_dispatch_count ());
     }
 
-    EZLinkStreamConnectionState LastState () const { return LastConnectionState; }
+    EZLinkStreamConnectionState LastState () const
+    {
+        std::lock_guard<std::mutex> lock (Pending->Mutex);
+        return Pending->LastConnectionState;
+    }
 
   private:
     zlink::stream_connector::packet_t MakePacket (const FName &PacketName,
@@ -241,7 +279,7 @@ class FZLinkStreamConnectorRuntime
         return packet;
     }
 
-    FZLinkStreamPacket ToUnrealPacket (const zlink::stream_connector::packet_t &packet)
+    static FZLinkStreamPacket ToUnrealPacket (const zlink::stream_connector::packet_t &packet)
     {
         FZLinkStreamPacket converted;
 #if __has_include("CoreMinimal.h")
@@ -265,31 +303,47 @@ class FZLinkStreamConnectorRuntime
         return converted;
     }
 
-    void EnqueueState (EZLinkStreamConnectionState State)
+    struct pending_state_t
     {
-        PendingStates.push_back (State);
+#if __has_include("CoreMinimal.h")
+        explicit pending_state_t (UZLinkStreamConnector *owner) : Owner (owner) {}
+        TWeakObjectPtr<UZLinkStreamConnector> Owner;
+#else
+        explicit pending_state_t (UZLinkStreamConnector *owner) : Owner (owner) {}
+        UZLinkStreamConnector *Owner;
+#endif
+        mutable std::mutex Mutex;
+        bool CancelCallbacks = false;
+        EZLinkStreamConnectionState LastConnectionState = EZLinkStreamConnectionState::Created;
+        std::vector<EZLinkStreamConnectionState> States;
+        std::vector<FZLinkStreamPacket> Packets;
+        std::vector<FZLinkStreamPacket> Requests;
+    };
+
+    static void EnqueueState (const std::shared_ptr<pending_state_t> &PendingState,
+                              EZLinkStreamConnectionState State)
+    {
+        std::lock_guard<std::mutex> lock (PendingState->Mutex);
+        PendingState->States.push_back (State);
+    }
+
+    void SetLastState (EZLinkStreamConnectionState State)
+    {
+        std::lock_guard<std::mutex> lock (Pending->Mutex);
+        Pending->LastConnectionState = State;
     }
 
     UZLinkStreamConnector *Owner () const
     {
 #if __has_include("CoreMinimal.h")
-        return _owner.Get ();
+        return Pending->Owner.Get ();
 #else
-        return _owner;
+        return Pending->Owner;
 #endif
     }
 
-#if __has_include("CoreMinimal.h")
-    TWeakObjectPtr<UZLinkStreamConnector> _owner;
-#else
-    UZLinkStreamConnector *_owner;
-#endif
     zlink::stream_connector::connector_t Connector;
-    bool CancelCallbacks = false;
-    EZLinkStreamConnectionState LastConnectionState = EZLinkStreamConnectionState::Created;
-    std::vector<EZLinkStreamConnectionState> PendingStates;
-    std::vector<FZLinkStreamPacket> PendingPackets;
-    std::vector<FZLinkStreamPacket> PendingRequests;
+    std::shared_ptr<pending_state_t> Pending;
 };
 
 } // namespace UE::ZLinkStreamConnector::Private

@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/cpp/{framework,connector,extensions,http-client}` (zlink core 위의 상위 래퍼 계층)
-- **상태**: CR1, CR2, H1 종결. H2/H3/M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
+- **상태**: CR1, CR2, H1, H2, H3 종결. M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **신뢰 모델**: stream-connector는 원격 서버에 대한 **클라이언트**이며, 인바운드 프레임의 신뢰 불가 주체는 서버다.
@@ -15,8 +15,8 @@
 | CR1 | **Critical** | DoS / 무제한 할당 | `connector/core/.../zlink_stream_calls.cpp:235,307`, `stream_connection.cpp:351` | 수정 완료(2026-06-14) |
 | CR2 | **Critical** | 자격증명 유출(CWE-200) | `http-client/src/client.cpp:186,193`, `request_performer.cpp:149`, `url.cpp:110` | 수정 완료(2026-06-14) |
 | H1 | High | DoS / 무제한 응답 본문 | `http-client/.../request_performer.cpp:294,302` | 수정 완료(2026-06-14) |
-| H2 | High | 동시성 / data race·UAF | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:108,191,268` | 확인 |
-| H3 | High | 리소스 누수 / teardown | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:88` | 확인 |
+| H2 | High | 동시성 / data race·UAF | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:108,191,268` | 수정 완료(2026-06-14) |
+| H3 | High | 리소스 누수 / teardown | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:88` | 수정 완료(2026-06-14) |
 | H4 | ~~High~~ → **Low** | 동시성 / drain-semantics | `framework/src/runtime/dispatch/offload_executor.cpp:65-78`, `runtime/execution/serial_execution_queue.cpp` | ❌ **반박(하향)** |
 | M1 | Medium | 쿠키 경로 스코프 | `http-client/.../cookie_jar.cpp:84` | 확인 |
 | M2 | Medium | 동시성 / 수명(잠복) | `framework/.../channels/route_handler_invoker.cpp:26` | 확인(잠복) |
@@ -136,6 +136,44 @@
 
 `~UZLinkStreamConnector` → `DetachOwner()`가 큐만 비우고 `Connector.close()`를 호출하지 않음 → 살아있는 소켓·pending async read·`this` 캡처 state_handler가 암묵 소멸, 큐된 IO-스레드 콜백이 소멸 중 발화 가능(H2 유발).
 **수정**: `DetachOwner()`에서 큐 정리 전 `Connector.close()`.
+
+**처리 기록(2026-06-14)**:
+- Unreal runtime callback이 runtime 객체의 raw `this`를 캡처하지 않도록, owner 참조와 pending 큐를
+  `std::shared_ptr<pending_state_t>`로 묶었다. state callback과 request callback은 이 shared pending
+  state만 캡처한다.
+- `pending_state_t` 안의 mutex가 `States`, `Packets`, `Requests`, `CancelCallbacks`,
+  `LastConnectionState` 접근을 보호한다.
+- request callback은 결과 payload를 Unreal packet으로 변환한 뒤 mutex 안에서 cancel 상태를 다시 확인하고
+  pending request 큐에 넣는다.
+- `Dispatch()`는 mutex 안에서 pending 큐를 로컬 벡터로 옮긴 뒤 lock 밖에서 Unreal delegate를 호출한다.
+  delegate 실행 중 재진입하거나 callback이 새 이벤트를 enqueue해도 같은 `std::vector`를 동시에 읽고 쓰지
+  않는다.
+- `PendingDispatchCount()`는 Unreal-local pending count와 core connector dispatch count를 서로 다른 lock
+  구간에서 계산한다. core `connector_t::pending_dispatch_count()`도 `transport_mutex`를 잡고
+  `dispatch_queue.size()`를 읽도록 수정했다.
+- `DetachOwner()`는 owner 참조와 큐를 정리하기 전에 `Connector.close()`를 호출한다. 명시적 `Close()`를
+  호출하지 않고 `UZLinkStreamConnector`가 소멸해도 core connector teardown 경로를 지난다.
+- 실행 검증:
+  - `cmake --build framework/languages/cpp/build --target test_unreal_stream_connector -j2` 성공.
+  - `cmake --build framework/languages/cpp/build --target test_cpp_stream_connector test_unreal_stream_connector -j2` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_unreal_stream_connector$' --output-on-failure` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_stream_connector$' --output-on-failure` 성공.
+  - `cmake --build framework/languages/cpp/build --target test_cpp_framework_contract_headers test_cpp_framework_layout_contract -j2` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_framework_contract_headers$' --output-on-failure` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_framework_layout_contract$' --output-on-failure` 실패. 실패 사유는 SPOT timer 문서 문구 두 개가 layout contract의 기대 문구와 맞지 않는 문제이며, Unreal connector 변경 경로와는 별도다.
+- core runtime 또는 `core/include` public header 수정은 없으므로 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
+
+Codex 에이전트 리뷰:
+- 2026-06-14 1차 리뷰에서 `PendingDispatchCount()`가 Unreal-local mutex를 잡은 채 core
+  `Connector.pending_dispatch_count()`를 호출하며, core `dispatch_queue.size()`도 `transport_mutex`
+  없이 읽는 잔여 data race를 지적했다.
+- 지적 반영 후 core `connector_t::pending_dispatch_count()`는 `transport_mutex` 아래
+  `dispatch_queue.size()`를 읽고, Unreal `PendingDispatchCount()`는 Unreal-local count 계산과 core count
+  조회를 서로 다른 lock 구간으로 분리했다.
+- 2026-06-14 재리뷰에서 state/request callback이 shared `pending_state_t`를 캡처하고, pending vectors,
+  `CancelCallbacks`, `LastConnectionState`가 mutex로 보호되며, `DetachOwner()`와 `Close()`가
+  `Connector.close()`를 mutex 밖에서 호출해 lock-order deadlock을 만들지 않는다고 확인했다.
+- 결론: "추가 이슈 없음."
 
 ### H4 — ~~프레임워크 executor drain 순서 race~~ → **Low (Codex 반박, 하향)**
 - `framework/src/runtime/dispatch/offload_executor.cpp:65-78`, `framework/src/runtime/execution/serial_execution_queue.cpp` · **하향 · repo 고유**

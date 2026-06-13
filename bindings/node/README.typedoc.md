@@ -28,3 +28,11 @@ bindings/node/typedoc/html/index.html
 - Message and result types (`Message`, `Received`, `SendResult`)
 - Constants and enums (`SocketType`, `SocketOption`)
 - Internal symbols marked `@internal` are excluded
+
+## Callback Handler Capacity
+
+Native callback delivery uses fixed thread-safe-function slots. The binding
+supports up to eight concurrently attached handlers for each callback family:
+stream packet handlers, send-ready handlers, socket monitor handlers, and
+timer fire handlers. Close the owning socket, monitor, or timer before
+attaching more handlers in the same family.

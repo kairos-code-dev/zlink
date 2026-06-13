@@ -70,6 +70,15 @@ Not part of the canonical stream API contract:
 length-prefixed stream framing such as `len32be` is only a sample helper and
 is not exposed as a public `StreamSocket` method.
 
+## Callback Handler Capacity
+
+Callback handlers that cross from native dispatch threads into JavaScript use
+fixed native thread-safe-function slots. The binding currently supports up to
+eight concurrently attached handlers for each callback family: stream packet
+handlers, send-ready handlers, socket monitor handlers, and timer fire
+handlers. Attaching a ninth handler in the same family throws an error until an
+existing owner is closed and its slot is released.
+
 ## Service Surface
 
 - `new Discovery(ctx, serviceType, serviceName)`

@@ -132,6 +132,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       );
     }
     if (state.nativeActorRef === undefined) {
+      this.options.actorDestroyedCleanup?.(actor.actorId);
       state.clearAfterDestroy();
       this.states.delete(actor.actorId);
       return;

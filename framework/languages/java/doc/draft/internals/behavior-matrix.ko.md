@@ -44,7 +44,7 @@
 | channel request handler | local server ingress 기준 dispatch |
 | outbound dealer receive | reply correlation 전용 |
 | Spot user handler | 같은 Spot 실행 문맥에서 직렬화 |
-| Entry Spot actor packet | actor mailbox 순서, Entry Spot 전역 queue에 묶지 않음 |
+| Entry Spot actor packet | Entry Spot 실행 줄에서 직렬화 |
 | STREAM session callback | 같은 session 안에서 직렬화 |
 | actor/session relay | ActorGateway 경로 사용 |
 

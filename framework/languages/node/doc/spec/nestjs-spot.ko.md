@@ -269,9 +269,9 @@ routing id 같은 native 설정을 적용한다. 이 설정은 actor 생성과 r
 
 Entry Spot 클래스는 `ZLinkEntrySpot` 을 구현한다. `configure()` 안에서 Entry
 단계의 handler 를 등록한다. Entry Spot 과 user Spot 은 등록할 수 있는 기능
-표면이 같다. 차이는 실행 정책이다. user Spot 은 같은 spot 으로 들어온 callback
-을 하나의 실행 줄에서 직렬로 처리하고, Entry Spot 은 공용 입구이므로 actor
-packet 이나 일반 packet 을 Entry Spot 전체 실행 줄에 묶지 않는다.
+표면이 같다. 실행 정책도 Spot 단위 직렬 실행을 따른다. Entry Spot 으로 들어온
+actor packet, 일반 packet, lifecycle callback, timer callback 은 하나의 실행 줄에서
+순서대로 처리된다.
 
 ```ts
 @Injectable()
@@ -364,7 +364,7 @@ handler registry 표면(`context.handlers`) 의 메서드는 다음과 같다. d
 ### 4.2 SPOT 실행 queue와 actor mailbox
 
 이 소절은 "같은 user Spot 안의 callback 은 왜 한 줄로 실행되는가" 와 "Entry Spot
-의 actor packet 은 왜 actor 단위로 갈라지는가" 두 질문을 묶어서 정리한다.
+callback 도 왜 같은 실행 줄을 쓰는가" 두 질문을 묶어서 정리한다.
 
 user Spot 은 room, game, stage 같은 하나의 상태 객체로 본다. 따라서 user Spot
 안에서 실행되는 callback 은 같은 Spot 실행 queue 에서 순서대로 처리한다.
@@ -380,18 +380,17 @@ dotnet 의 `ZLinkSpotSerialExecutor`(직렬 실행 큐) 에 대응한다. 여기
 상태를 바꾸더라도 두 handler 가 동시에 실행되지 않는다. 즉 application 은 user
 Spot 인스턴스의 상태를 일일이 별도 lock 으로 보호하지 않아도 된다.
 
-Entry Spot 은 사정이 조금 다르다. Entry Spot 은 특정 room 상태를 소유하는 곳이
-아니라, 모든 actor 가 처음 거쳐 가는 공용 입구이기 때문이다. 그래서 Entry Spot
-actor packet 은 Entry Spot 전체 queue 가 아니라, 대상 actor 의 mailbox 로
-들어간다. 같은 actor 의 packet 은 순서대로 실행되지만, 서로 다른 actor 의 packet
-은 굳이 기다릴 필요 없이 병렬로 진행된다.
+Entry Spot 은 특정 room 상태를 소유하는 곳이 아니라, 모든 actor 가 처음 거쳐 가는
+공용 입구다. 그래도 Entry Spot application callback 은 같은 Entry Spot 실행 줄에서
+직렬로 실행된다. 같은 actor 의 packet 뿐 아니라 서로 다른 actor 의 packet 도 앞선
+Entry Spot callback 이 끝난 뒤 시작한다.
 
 정리하면 다음과 같다.
 
 | 대상 | 실행 줄 |
 | --- | --- |
-| Entry Spot actor packet | actor별 mailbox |
-| Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 문맥 |
+| Entry Spot actor packet | Entry Spot 실행 queue |
+| Entry Spot initialize / closing / lifecycle callback | Entry Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
 
@@ -535,19 +534,18 @@ ZLinkModule.forRoot({
 현재 core spec 기준으로 이미 다음과 같은 점이 정해져 있다.
 
 - 같은 user `Spot` 의 dispatch callback delivery 는 직렬화된다.
-- Entry Spot 은 user Spot 과 같은 handler / callback 등록 표면을 갖지만, Entry
-  Spot 전체 실행 줄로 packet callback 을 직렬화하지 않는다. 여러 actor 와 입장
-  요청이 공유하는 입구이기 때문에 서로 관계없는 요청을 한 줄로 세우지 않는다.
+- Entry Spot 은 user Spot 과 같은 handler / callback 등록 표면을 갖고, Entry Spot
+  callback 을 Entry Spot 실행 줄에서 직렬로 실행한다. 여러 actor 와 입장 요청이
+  공유하는 입구이므로 admission 상태가 동시에 변경되지 않아야 한다.
 - subscribe, routed, **channel reply** completion 은 모두 같은 spot execution
   context 안에서 처리된다.
 - timer 는 native timer 를 직접 노출하지 않고, framework runtime 이 만든 managed
   timer 를 사용한다.
 - managed timer tick 은 user Spot 에서는 routed, subscribe, channel reply 와
   동일한 직렬 실행 경로로 들어온다.
-- Entry Spot timer callback 은 Entry Spot 전체 직렬 실행 줄에 묶지 않는다. Entry
-  Spot 은 여러 actor 가 공유하는 입구이므로 timer 하나가 관계없는 Entry Spot
-  callback 을 전역으로 막으면 안 된다. 단일 timer instance 안에서는 이전 callback
-  이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
+- Entry Spot timer callback 은 Entry Spot actor packet, lifecycle callback, channel
+  reply completion 과 같은 직렬 실행 줄에서 실행된다. 단일 timer instance 안에서도
+  이전 callback 이 끝나기 전에 다음 callback 을 겹쳐 실행하지 않는다.
 
 여기서 핵심은 channel reply completion 과 timer callback 이 모두 같은 spot 실행
 계약 안에 포함된다는 점이다.
@@ -575,9 +573,9 @@ dispatch event 종류와 drain 대상은 아래처럼 정리된다(하부 dispat
 | `channelReplyReadable` | `ChannelDealer` | `drainChannelReplyFrom(subject)` |
 
 timer 는 이 low-level dispatch table 에 직접 기대지 않는다. 대신 framework
-runtime 이 만든 managed timer tick 을 user Spot 문맥에서는 같은 spot queue 로
-enqueue 해서 처리한다. Entry Spot timer 는 같은 등록 표면을 쓰지만 Entry Spot
-전체 queue 로 enqueue 하지 않는다.
+runtime 이 만든 managed timer tick 을 Spot 문맥에서는 같은 spot queue 로 enqueue
+해서 처리한다. Entry Spot timer 도 Entry Spot actor packet, lifecycle callback,
+request continuation 과 같은 실행 줄에서 처리한다.
 
 즉 framework 문서에서 "같은 spot 문맥" 이라고 설명하는 부분은 새 semantics 를
 정의하는 작업이 아니다. 기존 core 계약과 framework 가 소유한 timer dispatch 를
@@ -1023,7 +1021,7 @@ capability 를 켠 SpotNode 를 `attachActorGateway: spotNodeName` 으로 참조
   left handler 는 각 context 의 registry(`context.handlers`)에 등록한다.
   join / leave lifecycle 을 Spot 메서드 override 만으로 설명하지 않는다.
 - Entry Spot 과 user Spot 은 packet, subscription, timer, channel outbound, actor
-  handler 등록 표면을 맞춘다. 실행 직렬화 정책만 서로 다르다.
+  handler 등록 표면과 Spot 단위 직렬 실행 정책을 맞춘다.
 - `ZLinkSpotManager` 는 생성과 조회를 함께 가진다. `find(...)`, `list(...)` 는
   별도 query 서비스로 분리하지 않고 manager 에 남긴다.
 - subscriber concurrency 와 backpressure 는 per-handler 나 per-topic API 가 아니라,
@@ -1129,7 +1127,7 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `spot timer cancel stops managed timer loop` | `cancel()` 뒤 managed timer loop 가 추가 callback 을 실행하지 않는다. |
 | `outbound-only spot publisher client publishes to target channel` | 외부 publisher client 가 target SPOT channel 로 publish 한다. |
 | `spot actor join/move/submit run through spot execution context` | actor join, 이동, packet dispatch 가 현재 spot 실행 문맥에서 실행된다. |
-| `entrySpot actor packets are serialized per actor and parallel across actors` | Entry Spot actor packet 이 Entry Spot 전체 실행 줄에 막히지 않고 actor별 순서를 지킨다. |
-| `entrySpot packet handlers are dispatched without entrySpot serialization` | Entry Spot 일반 packet handler 가 user Spot 과 같은 방식으로 등록되며 Entry Spot 전체 직렬 실행 줄에 묶이지 않는다. |
-| `entrySpot timer does not block entrySpot callbacks globally` | 긴 Entry Spot timer callback 이 다른 Entry Spot callback 을 전역으로 막지 않는다. |
-| `entrySpot timer does not reenter same timer` | Entry Spot timer 는 전역 queue 에 묶이지 않아도 같은 timer callback 을 겹쳐 실행하지 않는다. |
+| `entrySpot actor packets share entry serial execution` | Entry Spot actor packet 이 같은 Entry Spot 실행 줄에서 순서대로 실행된다. |
+| `entrySpot packet handlers use entrySpot serialization` | Entry Spot 일반 packet handler 가 user Spot 처럼 Spot 단위 직렬 실행 줄을 사용한다. |
+| `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
+| `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |

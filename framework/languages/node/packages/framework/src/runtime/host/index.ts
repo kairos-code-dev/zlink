@@ -195,6 +195,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   createSpotManagerOptions(): object {
     return {
       nodeRid: undefined,
+      nodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
       entryNodeRid: undefined,
       entryNodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
       entrySpotCallbacks: {

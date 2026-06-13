@@ -103,6 +103,6 @@ actor를 지원하려면 SpotNode에는 Entry Spot과 user Spot factory가 함�
 Entry Spot은 actor 생성 직후의 기본 위치이며, 인증이나 target user Spot 선택 같은
 입구 로직을 맡는다. user Spot은 room, stage, zone 같은 도메인 상태를 보관한다.
 
-Entry Spot timer는 Entry Spot 전체를 막는 전역 queue에 묶지 않는다. user Spot
-timer는 같은 Spot의 packet, subscription, actor handler와 같은 실행 문맥 안에서
-직렬화한다.
+Entry Spot timer는 Entry Spot의 actor packet, actor lifecycle callback, request
+continuation과 같은 직렬 실행 줄에서 실행된다. user Spot timer도 같은 Spot의 packet,
+subscription, actor handler와 같은 실행 문맥 안에서 직렬화한다.

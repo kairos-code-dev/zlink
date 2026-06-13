@@ -43,6 +43,23 @@ await spot.context.outbound
 `context.addTimer(...)` 로 timer 를 등록한다. timer callback 도 Spot 실행 문맥에서
 처리되어 Spot 상태를 보호한다.
 
+## 4. worker deferral
+
+짧은 local 작업을 Spot 실행 문맥 밖으로 잠시 넘겨야 하면 `context.runWorker(...)`
+를 사용한다. worker 함수는 Spot 상태를 직접 바꾸지 않고, 완료 callback 에서 Spot
+실행 문맥으로 돌아온 뒤 상태를 갱신한다.
+
+```ts
+context.runWorker(() => calculateScore(snapshot))
+  .onCompleted((score) => {
+    this.currentScore = score;
+  });
+```
+
+Node.js 의 `runWorker(...)` 는 closure 를 `worker_threads` 로 옮겨 실행한다고
+보장하지 않는다. 오래 걸리는 CPU 작업이나 재시도가 필요한 작업은 별도 ZLink
+service/server 로 요청한다.
+
 ## 회귀 테스트
 
 Spot lifecycle, serial executor, timer, outbound 는 `test/contract/spot-manager.test.js`

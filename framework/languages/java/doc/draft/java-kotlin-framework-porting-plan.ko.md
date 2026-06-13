@@ -184,8 +184,9 @@ capability를 조합한다.
 - user spot factory
 
 Spot timer는 일반 scheduler helper가 아니라 Spot lifecycle에 묶인 timer handle로
-구현한다. user Spot timer callback은 같은 Spot 실행 경로 안에서 직렬화한다.
-Entry Spot timer는 Entry Spot 전체를 막는 전역 queue에 묶지 않는다.
+구현한다. user Spot timer callback은 같은 Spot 실행 경로 안에서 직렬화한다. Entry
+Spot timer callback도 Entry Spot의 actor packet, lifecycle callback, request
+continuation과 같은 직렬 실행 줄에서 실행한다.
 
 ### 4.5 5단계: STREAM session과 actor/session relay
 

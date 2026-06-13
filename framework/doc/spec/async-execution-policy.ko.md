@@ -31,6 +31,17 @@ request는 두 단계로 본다.
 - request packet submit은 send와 같은 비동기 submit 경로를 사용한다.
 - reply 대기는 request timeout 정책을 따른다.
 
+Spot과 Entry Spot application callback은 Spot 단위 직렬 실행 줄에서 시작한다. handler가
+`Task`, `CompletionStage`, `Promise`, `task_t` 같은 완료 값을 반환하면 framework는 그
+완료 값이 끝날 때까지 같은 Spot의 다음 callback을 시작하지 않는다. callback 안에서
+blocking wait로 완료 값을 기다리는 것은 금지한다.
+
+짧고 빠른 local 작업을 callback 밖으로 넘겨야 할 때는 언어별 `RunWorker(...)`,
+`runWorker(...)`, `run_worker(...)` 표면을 사용한다. worker 함수는 Spot 상태를 직접
+만지지 않는다. 완료 callback이나 awaitable continuation은 원래 Spot의 직렬 실행 줄로
+돌아온 뒤 실행된다. 큰 CPU 작업, 긴 I/O, 재시도와 scale-out이 필요한 작업은 worker
+pool이 아니라 ZLink request로 별도 service나 server에 위임한다.
+
 ## 2. Public API 원칙
 
 framework public API는 각 언어의 표준 비동기 표현을 사용하되, fluent operation은

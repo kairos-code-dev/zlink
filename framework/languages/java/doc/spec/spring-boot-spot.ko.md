@@ -100,9 +100,9 @@ actor를 지원하려면 SpotNode에는 Entry Spot과 user Spot factory가 함�
 Entry Spot은 actor 생성 직후의 기본 위치이며, 인증이나 target user Spot 선택 같은
 입구 로직을 맡는다. user Spot은 room, stage, zone 같은 도메인 상태를 보관한다.
 
-Entry Spot timer는 Entry Spot 전체를 막는 전역 queue에 묶지 않는다. user Spot
-timer는 같은 Spot의 packet, subscription, actor handler와 같은 실행 문맥 안에서
-직렬화한다.
+Entry Spot timer는 Entry Spot의 actor packet, actor lifecycle callback, request
+continuation과 같은 직렬 실행 줄에서 실행된다. user Spot timer도 같은 Spot의 packet,
+subscription, actor handler와 같은 실행 문맥 안에서 직렬화한다.
 
 user Spot의 message dispatch는 Spot 단위 실행 문맥 하나를 기준으로 직렬화한다.
 route packet, subscription packet, user Spot actor packet, actor lifecycle callback,
@@ -112,9 +112,9 @@ framework managed timer callback은 같은 Spot 안에서 동시에 실행되지
 적용된다. Kotlin handler는 framework 소유 coroutine adapter에서 실행되고, adapter가
 반환한 `CompletionStage`가 Spot serial queue의 완료 기준이 된다.
 
-Entry Spot은 user Spot과 다르게 Entry Spot 전체 전역 queue를 만들지 않는다. Entry
-Spot의 actor packet handler와 actor lifecycle member callback은 actor id별 serial
-execution을 따른다.
-Entry Spot timer도 Entry Spot 전체 dispatch를 막는 전역 queue에 묶지 않는다. 이 구분은
-Entry Spot이 actor 입구 역할을 하고, user Spot이 room, stage, zone 같은 도메인 상태를
-보관한다는 실행 모델을 유지하기 위한 것이다.
+Entry Spot은 user Spot처럼 Spot 단위 직렬 실행 줄을 가진다. Entry Spot의 actor packet
+handler, actor lifecycle member callback, timer callback은 같은 Entry Spot 안에서 동시에
+실행되지 않는다. handler가 `CompletionStage`를 반환하면 framework는 그 stage가 끝난 뒤
+같은 Entry Spot의 다음 dispatch를 시작한다. 이 구분은 Entry Spot이 actor 입구 역할을 하고,
+user Spot이 room, stage, zone 같은 도메인 상태를 보관한다는 실행 모델을 유지하기 위한
+것이다.

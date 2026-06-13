@@ -112,6 +112,11 @@ framework route는 이미 zlink multipart message를 기본 단위로 다루므�
 이 중 무엇을 필수로 할지는 구현 전에 더 줄여야 한다.
 지금 단계에서는 "어떤 종류의 정보가 필요한가"를 먼저 정리한다.
 
+Spot worker offload에서 생긴 실패도 `error-code`에 보존한다. queue가 가득 찬 경우,
+timeout이 난 경우, worker 함수가 예외를 낸 경우는 같은 `request_failed`로 뭉개지 않고
+언어별 public 오류 분류로 전달되어야 한다. 이 구분이 있어야 caller가 재시도, 사용자
+응답, 별도 service 위임 같은 후속 처리를 선택할 수 있다.
+
 하지만 다시 강조하면, 이 필드들이 그대로 application handler 인자로
 드러나는 것은 아니다. 현재 스펙은 아래 구분을 기본으로 본다.
 

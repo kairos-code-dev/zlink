@@ -138,7 +138,7 @@ Spot queue 가 반드시 필요한 직렬화 경계다.
 | 입력 경로 | 실행 위치 |
 | --- | --- |
 | stream session → Entry/local actor | actor별로 순서를 보존한 뒤 현재 actor 위치로 dispatch |
-| Entry Spot actor packet | actor별 mailbox |
+| Entry Spot actor packet | Entry Spot 실행 queue |
 | stream session → user Spot actor | user Spot 실행 queue |
 | user Spot actor packet | user Spot 실행 queue |
 | user Spot packet / timer / subscription | user Spot 실행 queue |
@@ -1474,8 +1474,9 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 | `ActorBindingTests.BindActorAsync_DoesNot_Create_LocalActor` | logical actor binding 은 session attach 중 local actor 를 새로 만들지 않는다. |
 | `ActorBindingTests.SessionActorBind_WithoutRoute_Is_LocalOnly` | route 없는 bind overload 는 local actor 에만 붙고 remote fallback 을 수행하지 않는다. |
 | `RemoteProxyDisconnectTests.BoundSessionDisconnect_FromRemoteActor_Closes_Client_Without_Session_Disconnect_Callback` | remote actor 가 `boundSession.disconnect(...)` 를 호출해도 session host 에서 같은 close 의미가 유지된다. |
-| `EntryMailboxExecutionTests.EntrySpot_ActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | Entry Spot actor packet이 actor별 순서를 지키되, 서로 다른 actor를 전역으로 막지 않는다. |
-| `EntryMailboxExecutionTests.EntrySpot_NativeActorReadableBatch_Dispatches_Actors_In_Parallel` | native Entry Spot actor batch도 actor별 순서 규칙을 거쳐 dispatch된다. |
+| `entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap` | backend callback 이 서로 다른 task 문맥에서 도착해도 Entry Spot 실행 줄에서 등록 순서대로 겹치지 않고 실행된다. |
+| `entry spot does not start the next callback before the previous handler promise settles` | handler Promise 가 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
+| `entry spot timer ticks and actor packets share one serial line` | Entry Spot timer 와 actor packet 이 같은 Entry Spot 실행 줄을 사용한다. |
 | `LocalActorMailboxExecutionTests.LocalActorPackets_Are_Serialized_Per_Actor_And_Parallel_Across_Actors` | user Spot에 들어가지 않은 actor packet도 actor별 순서를 지키되 서로 다른 actor 사이에서는 병렬로 실행될 수 있다. |
 | `ActorRegistryExecutionTests.ActorDispatch_Rechecks_CurrentLocation_After_Waiting_For_ActorMailbox` | 같은 actor의 앞 packet이 join을 마치고 나면, 대기 중이던 다음 packet이 새 user Spot 위치로 dispatch된다. |
 | `ActorLifecycleTests.SpotActorJoin_Move_And_Submit_Run_Through_SpotExecutionContext` | actor join 이후의 dispatch가 현재 spot 실행 문맥에서 실행된다. |

@@ -67,6 +67,27 @@ test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', asyn
   assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
 });
 
+test('ZLinkSpotManager resolves context nodeRid lazily from provider', async () => {
+  let nodeRid = 'node-before-start';
+  let capturedContext;
+  class StageSpot {
+    constructor(context) {
+      capturedContext = context;
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [StageSpot],
+    nodeRidProvider: () => nodeRid
+  });
+  const created = await manager.getOrCreate(StageSpot, 'stage-lazy-node');
+
+  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
+  assert.equal(capturedContext.nodeRid, 'node-before-start');
+  nodeRid = 'node-after-start';
+  assert.equal(capturedContext.nodeRid, 'node-after-start');
+});
+
 test('ZLinkSpotManager passes empty Message to onCreate without payload', async () => {
   const requests = [];
   class StageSpot {

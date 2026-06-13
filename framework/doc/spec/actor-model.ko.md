@@ -201,36 +201,36 @@ Spot은 여러 actor가 공유하는 입구이므로 서로 관계없는 packet 
 
 ### 5.2 실행 순서 모델
 
-actor packet dispatch는 **actor 상태**와 **Spot 상태** 중 무엇을 보호해야 하는지에
-따라 다른 실행 줄을 탄다. 이 구분을 두지 않으면 Entry Spot이 모든 actor의 공용 입구가
-되어 서로 관계없는 actor까지 한 줄로 기다리게 된다.
+actor packet dispatch는 먼저 actor별 입력 순서를 보존한 뒤, 현재 actor 위치에 맞는
+Spot 실행 줄로 들어간다. Entry Spot도 application callback을 하나의 실행 줄에서
+처리하므로 admission 상태를 별도 lock 없이 일관되게 갱신할 수 있다.
 
 기본 규칙은 아래와 같다.
 
 | 입력 경로 | 실행 줄 | 이유 |
 | --- | --- | --- |
 | STREAM session에서 Entry/local actor로 전달되는 packet | actor별 순서 보존 뒤 현재 actor 위치로 dispatch | 같은 actor의 packet 순서는 지키되, 최종 handler 실행 위치는 Entry Spot 또는 local actor registry가 결정한다 |
-| Entry Spot packet / actor packet | packet dispatch 또는 actor별 mailbox | Entry Spot은 여러 actor가 공유하는 입구이므로 전역 직렬화하면 병목이 된다 |
-| Entry Spot timer | 독립 runtime task | Entry Spot 전체 queue에 묶지 않는다. 같은 timer instance callback은 겹치지 않는다 |
+| Entry Spot packet / actor packet | Entry Spot 실행 queue | Entry Spot admission 상태를 한 번에 하나의 callback만 변경하게 한다 |
+| Entry Spot timer | Entry Spot 실행 queue | Entry Spot의 packet, lifecycle callback, request continuation과 같은 실행 줄을 쓴다. 같은 timer instance callback은 겹치지 않는다 |
 | user Spot 안의 actor packet | user Spot 실행 queue | room, game, stage 같은 Spot 상태를 actor handler가 함께 다루므로 handler는 Spot 단위 순서를 지킨다 |
 | user Spot packet / timer / subscription | user Spot 실행 queue | 같은 Spot 인스턴스의 상태를 한 번에 하나의 callback만 변경하게 한다 |
 | Entry Spot lifecycle / join / leave callback | Entry Spot 실행 문맥 | Entry Spot registry와 lifecycle 상태를 일관되게 다룬다 |
 
-actor별 순서 규칙은 같은 actor 안에서만 순서를 보장한다. 예를 들어 `actor A`의 packet
-1, 2는 순서대로 dispatch되어야 하지만, `actor B`의 packet은 `actor A` handler가 끝날
-때까지 기다릴 필요가 없다. actor가 user Spot에 들어간 뒤에는 packet handler 실행을
-user Spot queue에서 한다.
+actor별 순서 규칙은 같은 actor 안에서 입력 순서를 보장한다. Entry Spot 또는 user Spot
+application handler를 호출할 때는 해당 Spot 실행 queue에서 다시 직렬화한다. 그래서
+`actor A` handler가 실행 중이면 같은 Entry Spot으로 들어온 `actor B` handler도 앞선
+callback이 완료될 때까지 기다린다.
 
 user Spot 실행 queue는 Spot 인스턴스 하나의 상태를 보호한다. 같은 게임방 안에서
 `actor A`와 `actor B`가 모두 board 상태를 바꿀 수 있다면, 두 actor의 handler는 같은
 Spot queue에서 순서대로 실행되어야 한다.
 
 Entry Spot은 user Spot처럼 room 상태를 소유하는 곳이 아니라 actor가 처음 지나가는
-공용 입구다. 따라서 Entry Spot packet과 actor packet은 Entry Spot 전체 queue에 쌓지
-않는다. Entry Spot 자체의 초기화, 종료, lifecycle callback처럼 Entry Spot registry
-상태를 다루는 작업만 Entry Spot 실행 문맥에서 직렬화한다.
-Entry Spot timer도 전역 queue에 쌓지 않는다. timer에서 room, stage, match 상태를
-직접 바꿔야 한다면 그 상태를 소유하는 user Spot으로 옮겨야 한다.
+공용 입구다. 그래도 Entry Spot의 packet, actor packet, lifecycle callback, timer
+callback은 같은 Entry Spot 실행 줄에서 직렬화한다. handler가 완료 값을 반환하면 그
+완료 값이 끝나기 전까지 같은 Entry Spot의 다음 callback은 시작하지 않는다. timer에서
+room, stage, match 상태를 직접 바꿔야 한다면 그 상태를 소유하는 user Spot으로 옮겨야
+한다.
 
 ### 5.3 lifecycle callback 공개 방식
 

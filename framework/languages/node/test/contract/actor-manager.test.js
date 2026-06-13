@@ -631,6 +631,38 @@ test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stal
   ]);
 });
 
+test('DefaultZLinkActorManager runs destroy cleanup for local actors without native refs', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    async destroyActor(actorRef) {
+      events.push(`destroyNative:${actorRef.actorId}`);
+    }
+  });
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    actorDestroyedCleanup(actorId) {
+      events.push(`cleanup:${actorId}`);
+    }
+  });
+
+  const actor = await manager.create('local-alice', 'player');
+  await manager.destroyActor(node, 'node-a', actor);
+
+  assert.equal(await manager.find('local-alice'), undefined);
+  assert.deepEqual(events, ['cleanup:local-alice']);
+});
+
 test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle callbacks', async () => {
   const events = [];
   class EntrySpot {

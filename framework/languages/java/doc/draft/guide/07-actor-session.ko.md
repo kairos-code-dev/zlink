@@ -96,10 +96,11 @@ public final class PlayerEntrySpot implements ZLinkEntrySpot {
 
 | 대상 | 실행 라인 |
 |------|-----------|
-| Entry Spot actor packet | actor별 mailbox(같은 actor 순서 보장, actor끼리 병렬) |
+| Entry Spot actor packet | Entry Spot의 단일 실행 큐(직렬) |
 | user Spot actor packet / packet / timer / subscription | 그 user Spot의 단일 실행 큐(직렬) |
 
-그래서 user Spot 안의 room 상태 같은 가변 상태는 lock 없이 만질 수 있다.
+그래서 Entry Spot의 admission 상태와 user Spot 안의 room 상태 같은 가변 상태는 각
+Spot 실행 큐 안에서 lock 없이 만질 수 있다.
 
 > **응답 body는 반환값으로.** actor request handler는 응답 body를 직접 보내지
 > 않고 반환한 `TReply`로 정한다. `context`의 reply는 metadata/compression 같은

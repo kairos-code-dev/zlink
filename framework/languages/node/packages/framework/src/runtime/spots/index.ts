@@ -61,6 +61,7 @@ export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly nodeRid?: RoutingId;
+  readonly nodeRidProvider?: () => RoutingId | undefined;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
   readonly entrySpotCallbacks?: {
@@ -769,9 +770,12 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     serial: ZLinkSpotSerialExecutor,
     getSpot: () => ZLinkSpot | undefined
   ): ZLinkSpotContext {
+    const options = this.options;
     return {
       spotRid,
-      nodeRid: this.options.nodeRid ?? '',
+      get nodeRid() {
+        return options.nodeRidProvider?.() ?? options.nodeRid ?? '';
+      },
       routingId: spotRid,
       handlers,
       outbound,

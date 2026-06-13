@@ -710,9 +710,8 @@ awaitable `submit()`과 callback `submit(...)`을 가진다. 구현 점검은 �
   - `framework/languages/java/doc/spec/handler-interfaces.ko.md`
   - `framework/languages/java/doc/internals/lifecycle-and-failure-semantics.ko.md`
 
-현재 Java spec에는 Entry Spot이 전역 queue를 만들지 않는다는 취지의 문구가 있다.
-구현 완료 시 이 문구는 제거하고, Entry Spot도 Spot과 같은 직렬 실행 규칙을 따른다는
-문장으로 바꾼다.
+Java spec의 이전 예외 문구는 제거한다. 정식 spec은 Entry Spot도 Spot과 같은 직렬 실행
+규칙을 따른다고 설명해야 한다.
 
 ### 13.3 Guide 문서
 

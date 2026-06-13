@@ -1249,8 +1249,8 @@ context 만 다룬다는 원칙을 함께 검증한다.
 | --- | --- |
 | `actorFactoryNameIsDuplicated` | actor factory 이름(actorType)이 중복되면 startup validation에서 예외로 막는다. |
 | `entrySpotAndUserSpotActorPacketRegistriesDispatch` | Entry Spot과 user Spot에 등록한 actor packet handler와 disconnected handler가 정상적으로 dispatch된다. |
-| `entrySpotActorPacketsSerializedPerActorAndParallelAcrossActors` | Entry Spot에서 같은 actor의 packet은 순서대로 실행되고, 서로 다른 actor의 packet은 병렬로 진행된다. |
-| `entrySpotNativeActorReadableBatchDispatchesActorsInParallel` | native Entry Spot dispatch batch가 actor별 순서를 보존하면서도 다른 actor를 전역으로 막지 않는다. |
+| `entry spot callbacks from mixed setImmediate/queueMicrotask backend callbacks keep enqueue order without overlap` | Entry Spot callback 이 backend task 문맥과 무관하게 Entry Spot 실행 줄에서 순서대로 실행된다. |
+| `entry spot does not start the next callback before the previous handler promise settles` | Entry Spot handler Promise 가 끝나기 전에는 같은 Entry Spot 의 다음 callback 이 시작되지 않는다. |
 | `spotActorJoinMoveAndSubmitRunThroughSpotExecutionContext` | actor가 spot을 옮긴 뒤 stale spot 문맥으로 dispatch되지 않는다. |
 | `sessionActorDispatchRelaysStreamRequestAndRoutesBySequence` | stream session에서 bound actor로 request가 전달되고, sequence별 reply 순서가 맞는다. |
 | `localSessionActorDispatchRepliesFromRequestHandler` | local actor relay 도 request handler 반환값으로 stream response 를 작성한다. |

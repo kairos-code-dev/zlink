@@ -101,10 +101,22 @@ public final class PlayerEntrySpot implements ZLinkEntrySpot {
 
 | 대상 | 실행 라인 |
 |------|-----------|
-| Entry Spot actor packet | actor별 mailbox(같은 actor 순서 보장, actor끼리 병렬) |
+| Entry Spot actor packet / lifecycle / timer | Entry Spot의 단일 실행 큐(직렬) |
 | user Spot actor packet / packet / timer / subscription | 그 user Spot의 단일 실행 큐(직렬) |
 
-그래서 user Spot 안의 room 상태 같은 가변 상태는 lock 없이 만질 수 있다.
+그래서 Entry Spot의 actor admission 상태와 user Spot 안의 room 상태 같은 가변 상태는
+각 Spot 실행 큐 안에서 lock 없이 만질 수 있다.
+
+짧은 local 작업을 Spot 실행 큐 밖에서 처리해야 하면 `context.runWorker(...)`를 사용한다.
+worker 함수는 Spot 상태를 직접 만지지 않고, 완료 callback에서 상태를 갱신한다.
+
+```java
+context.runWorker(() -> ScoreCalculator.calculate(snapshot))
+    .submit(result -> {
+        currentScore = result;
+        return CompletableFuture.completedFuture(null);
+    });
+```
 
 > **응답 body는 반환값으로.** actor request handler는 응답 body를 직접 보내지
 > 않고 반환한 `TReply`로 정한다. `context`의 reply는 metadata/compression 같은

@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/framework/contracts/channels/call.hpp>
 #include <zlink/framework/contracts/detail/message_payload.hpp>
+#include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
@@ -22,6 +23,7 @@ namespace detail
 {
 class actor_gateway_state_t;
 class actor_gateway_runtime_t;
+class spot_node_runtime_t;
 } // namespace detail
 
 class actor_ref_t
@@ -95,6 +97,20 @@ class actor_join_entry_spot_call_t
     using base_t::timeout;
 };
 
+class relay_request_call_t : private detail::call_facade_t<relay_request_call_t, zlink::message_t>
+{
+  private:
+    using base_t = detail::call_facade_t<relay_request_call_t, zlink::message_t>;
+
+  public:
+    explicit relay_request_call_t (result_t<zlink::message_t> result) : base_t (std::move (result))
+    {
+    }
+
+    using base_t::async;
+    using base_t::timeout;
+};
+
 class bound_session_t
 {
   public:
@@ -108,7 +124,8 @@ class bound_session_t
 
     template <typename TMessage> send_call_t send (const TMessage &message)
     {
-        return send_erased (detail::to_message_payload (message, 0));
+        return send_erased (detail::message_name<TMessage> (),
+                            detail::to_message_payload (message, 0));
     }
 
     send_call_t send_raw (const zlink::message_t &payload);
@@ -124,7 +141,7 @@ class bound_session_t
                               std::string actor_id,
                               std::uint64_t generation);
 
-    send_call_t send_erased (const zlink::message_t &payload);
+    send_call_t send_erased (std::string packet_name, const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     std::string _actor_id;
@@ -174,8 +191,11 @@ class actor_context_t
     actor_join_entry_spot_call_t join_entry_spot (node_rid_t spot_node_rid);
 
   private:
+    friend class spot_node_builder_t;
+    friend class detail::spot_node_runtime_t;
     friend class session_actor_t;
     friend class session_actor_manager_t;
+    friend class detail::actor_gateway_runtime_t;
     explicit actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                               actor_ref_t actor_ref);
 
@@ -202,6 +222,8 @@ class session_actor_t
     actor_context_t context () const;
     bound_session_t bound_session () const;
     relay_call_t relay (const stream_header_t &header, const zlink::message_t &payload);
+    relay_request_call_t relay_request (const stream_header_t &header,
+                                        const zlink::message_t &payload);
     relay_call_t notify_disconnected ();
 
   private:

@@ -27,8 +27,10 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -44,6 +46,45 @@ static_assert (
     zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
 namespace
 {
+
+class callback_latch_t
+{
+  public:
+    void signal ()
+    {
+        {
+            std::lock_guard<std::mutex> lock (_mutex);
+            _ready = true;
+        }
+        _changed.notify_all ();
+    }
+
+    bool wait_for (std::chrono::milliseconds timeout)
+    {
+        std::unique_lock<std::mutex> lock (_mutex);
+        return _changed.wait_for (lock, timeout, [this] { return _ready; });
+    }
+
+  private:
+    std::mutex _mutex;
+    std::condition_variable _changed;
+    bool _ready = false;
+};
+
+bool dispatch_until (zlink::stream_connector::connector_t &connector,
+                     callback_latch_t &latch,
+                     std::chrono::milliseconds timeout)
+{
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    do {
+        connector.dispatch ();
+        if (latch.wait_for (std::chrono::milliseconds (1))) {
+            return true;
+        }
+    } while (std::chrono::steady_clock::now () < deadline);
+    connector.dispatch ();
+    return latch.wait_for (std::chrono::milliseconds (0));
+}
 
 struct login_request_t
 {
@@ -119,6 +160,26 @@ request_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &
                    .timeout (std::chrono::milliseconds (100))
                    .async ();
     co_return reply;
+}
+
+zlink::stream_e2e_client::task_t<int> delayed_coroutine_child ()
+{
+    auto value = co_await zlink::stream_e2e_client::task_t<int> (
+      [] (std::function<void (zlink::stream_connector::result_t<int>)> callback) {
+          std::thread ([callback = std::move (callback)] () mutable {
+              callback (zlink::stream_connector::result_t<int>::success (41));
+          }).detach ();
+      });
+    co_return value;
+}
+
+zlink::stream_e2e_client::task_t<int> await_delayed_coroutine_child ()
+{
+    auto value = co_await delayed_coroutine_child ();
+    if (!value) {
+        co_return value;
+    }
+    co_return value.value () + 1;
 }
 
 struct server_frame_t
@@ -201,6 +262,13 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
 
 int main ()
 {
+    {
+        auto nested = await_delayed_coroutine_child ().result ();
+        if (!nested || nested.value () != 42) {
+            return 76;
+        }
+    }
+
     {
         zlink::stream_connector::detail::packet_name_resolver_t resolver;
         if (resolver.resolve (std::type_index (typeid (login_request_t)), "explicit.name")
@@ -402,21 +470,173 @@ int main ()
         return 2;
     }
 
+    {
+        zlink::stream_connector::connector_options_t lifecycle_options;
+        lifecycle_options.dispatch_mode =
+          zlink::stream_connector::dispatch_mode_t::immediate;
+        bool connect_lifetime_seen = false;
+        callback_latch_t connect_lifetime_latch;
+        {
+            auto lifecycle_connector =
+              zlink::stream_connector::connector_factory_t::create (lifecycle_options);
+            lifecycle_connector.connect (
+              [&] (zlink::stream_connector::result_t<void> result) {
+                  connect_lifetime_seen =
+                    !result
+                    && result.error_code ()
+                         == zlink::stream_connector::error_code_t::configuration_error;
+                  connect_lifetime_latch.signal ();
+              });
+        }
+        if (!connect_lifetime_latch.wait_for (std::chrono::milliseconds (100))
+            || !connect_lifetime_seen) {
+            return 97;
+        }
+
+        bool close_lifetime_seen = false;
+        callback_latch_t close_lifetime_latch;
+        {
+            auto lifecycle_connector =
+              zlink::stream_connector::connector_factory_t::create (lifecycle_options);
+            lifecycle_connector.close ([&] (zlink::stream_connector::result_t<void> result) {
+                close_lifetime_seen = static_cast<bool> (result);
+                close_lifetime_latch.signal ();
+            });
+        }
+        if (!close_lifetime_latch.wait_for (std::chrono::milliseconds (100))
+            || !close_lifetime_seen) {
+            return 98;
+        }
+
+        boost::asio::io_context async_connect_io;
+        boost::asio::ip::tcp::acceptor async_connect_acceptor (
+          async_connect_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto async_connect_endpoint =
+          std::string ("tcp://127.0.0.1:")
+          + std::to_string (async_connect_acceptor.local_endpoint ().port ());
+        callback_latch_t async_connect_server_latch;
+        std::thread async_connect_server_thread ([&] {
+            boost::asio::ip::tcp::socket accepted (async_connect_io);
+            boost::system::error_code error;
+            async_connect_acceptor.accept (accepted, error);
+            async_connect_server_latch.signal ();
+        });
+        lifecycle_options.endpoint = async_connect_endpoint;
+        auto async_connect_connector =
+          zlink::stream_connector::connector_factory_t::create (lifecycle_options);
+        bool async_connect_seen = false;
+        callback_latch_t async_connect_latch;
+        const auto async_connect_started = std::chrono::steady_clock::now ();
+        async_connect_connector.connect ([&] (zlink::stream_connector::result_t<void> result) {
+            async_connect_seen = static_cast<bool> (result);
+            async_connect_latch.signal ();
+        });
+        const auto async_connect_submit_elapsed =
+          std::chrono::steady_clock::now () - async_connect_started;
+        if (async_connect_submit_elapsed > std::chrono::milliseconds (50)) {
+            async_connect_connector.close ();
+            boost::system::error_code ignored;
+            async_connect_acceptor.close (ignored);
+            async_connect_server_thread.join ();
+            return 99;
+        }
+        if (!async_connect_latch.wait_for (std::chrono::milliseconds (100))
+            || !async_connect_seen || !async_connect_connector.is_connected ()) {
+            async_connect_connector.close ();
+            boost::system::error_code ignored;
+            async_connect_acceptor.close (ignored);
+            async_connect_server_thread.join ();
+            return 100;
+        }
+        async_connect_connector.close ();
+        async_connect_server_latch.wait_for (std::chrono::milliseconds (100));
+        async_connect_server_thread.join ();
+
+        boost::asio::io_context websocket_connect_io;
+        boost::asio::ip::tcp::acceptor websocket_connect_acceptor (
+          websocket_connect_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto websocket_connect_endpoint =
+          std::string ("ws://127.0.0.1:")
+          + std::to_string (websocket_connect_acceptor.local_endpoint ().port ()) + "/stream";
+        callback_latch_t websocket_connect_server_latch;
+        std::thread websocket_connect_server_thread ([&] {
+            auto accepted = std::make_shared<boost::asio::ip::tcp::socket> (
+              websocket_connect_io);
+            boost::system::error_code accept_error;
+            websocket_connect_acceptor.async_accept (
+              *accepted, [&] (boost::system::error_code error) {
+                  accept_error = error;
+                  websocket_connect_server_latch.signal ();
+              });
+            websocket_connect_io.run_for (std::chrono::milliseconds (200));
+            if (accept_error || !accepted->is_open ()) {
+                websocket_connect_server_latch.signal ();
+                return;
+            }
+            boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket (
+              std::move (*accepted));
+            boost::system::error_code error;
+            websocket.accept (error);
+            websocket_connect_server_latch.signal ();
+            boost::system::error_code ignored;
+            boost::beast::get_lowest_layer (websocket).close (ignored);
+        });
+        zlink::stream_connector::connector_options_t websocket_connect_options;
+        websocket_connect_options.endpoint = websocket_connect_endpoint;
+        websocket_connect_options.transport =
+          zlink::stream_connector::transport_t::websocket;
+        websocket_connect_options.dispatch_mode =
+          zlink::stream_connector::dispatch_mode_t::immediate;
+        auto websocket_connect_connector =
+          zlink::stream_connector::connector_factory_t::create (websocket_connect_options);
+        bool websocket_connect_seen = false;
+        callback_latch_t websocket_connect_latch;
+        const auto websocket_connect_started = std::chrono::steady_clock::now ();
+        websocket_connect_connector.connect (
+          [&] (zlink::stream_connector::result_t<void> result) {
+              websocket_connect_seen = static_cast<bool> (result);
+              websocket_connect_latch.signal ();
+          });
+        const auto websocket_connect_submit_elapsed =
+          std::chrono::steady_clock::now () - websocket_connect_started;
+        if (websocket_connect_submit_elapsed > std::chrono::milliseconds (50)) {
+            websocket_connect_connector.close ();
+            boost::system::error_code ignored;
+            websocket_connect_acceptor.close (ignored);
+            websocket_connect_server_thread.join ();
+            return 101;
+        }
+        if (!websocket_connect_latch.wait_for (std::chrono::milliseconds (100))
+            || !websocket_connect_seen || !websocket_connect_connector.is_connected ()) {
+            websocket_connect_connector.close ();
+            boost::system::error_code ignored;
+            websocket_connect_acceptor.close (ignored);
+            websocket_connect_server_thread.join ();
+            return 102;
+        }
+        websocket_connect_connector.close ();
+        websocket_connect_server_latch.wait_for (std::chrono::milliseconds (100));
+        websocket_connect_server_thread.join ();
+    }
+
     connector.codecs ().add_json<login_request_t> ();
     if (!connector.codecs ().supports (zlink::stream_connector::codec_t::json)) {
         return 3;
     }
 
     bool callback_seen = false;
-    connector.send (login_request_t{})
-      .metadata ("trace", "t1")
-      .compress ()
-      .submit ([&] (zlink::stream_connector::result_t<void> result) {
-          callback_seen = static_cast<bool> (result);
-      });
-    if (!callback_seen) {
-        return 4;
-    }
+    callback_latch_t send_callback_latch;
+	connector.send (login_request_t{})
+	  .metadata ("trace", "t1")
+	  .compress ()
+	  .submit ([&] (zlink::stream_connector::result_t<void> result) {
+	      callback_seen = static_cast<bool> (result);
+          send_callback_latch.signal ();
+	  });
+    dispatch_until (connector, send_callback_latch, std::chrono::milliseconds (100));
+	if (!callback_seen) {
+	    return 4;
+	}
     auto runtime = zlink::stream_connector::detail::connector_runtime_t::from (connector);
     if (runtime.sent_packets ().size () != 1
         || runtime.sent_packets ()[0].name != login_request_t::packet_name
@@ -552,6 +772,42 @@ int main ()
         return 8;
     }
 
+    bool pending_wait_callback_seen = false;
+    callback_latch_t pending_wait_latch;
+    connector.wait_for<zlink::stream_connector::packet_t> ("server.wait.callback")
+      .timeout (std::chrono::milliseconds (100))
+      .submit ([&] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t> result) {
+          pending_wait_callback_seen =
+            result && result.value ().payload.to_string () == "wait-callback";
+          pending_wait_latch.signal ();
+      });
+    runtime.receive_packet (
+      zlink::stream_connector::packet_t{"server.wait.callback",
+                                        {},
+                                        zlink::stream_connector::codec_t::raw,
+                                        false,
+                                        zlink::message_t::from (
+                                          std::string ("wait-callback"))});
+    dispatch_until (connector, pending_wait_latch, std::chrono::milliseconds (100));
+    if (!pending_wait_callback_seen) {
+        return 83;
+    }
+
+    bool pending_wait_timeout_seen = false;
+    callback_latch_t pending_wait_timeout_latch;
+    connector.wait_for<zlink::stream_connector::packet_t> ("server.wait.missing")
+      .timeout (std::chrono::milliseconds (5))
+      .submit ([&] (zlink::stream_connector::result_t<zlink::stream_connector::packet_t> result) {
+          pending_wait_timeout_seen =
+            !result
+            && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;
+          pending_wait_timeout_latch.signal ();
+      });
+    dispatch_until (connector, pending_wait_timeout_latch, std::chrono::milliseconds (100));
+    if (!pending_wait_timeout_seen) {
+        return 84;
+    }
+
     zlink::stream_connector::connector_options_t immediate_options;
     immediate_options.endpoint = endpoint;
     immediate_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
@@ -593,19 +849,22 @@ int main ()
     auto send_after_close =
       connector.send (login_request_t{}).packet_name ("after.close").submit ();
     if (send_after_close
-        || send_after_close.error_code () != zlink::stream_connector::error_code_t::disconnected) {
+        || send_after_close.error_code () != zlink::stream_connector::error_code_t::closed) {
         return 13;
     }
     bool request_after_close_callback_seen = false;
-    connector.request<login_reply_t> (login_request_t{})
-      .packet_name ("after.close.request")
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
-          request_after_close_callback_seen =
-            !result && result.error_code () == zlink::stream_connector::error_code_t::disconnected;
-      });
-    if (!request_after_close_callback_seen) {
-        return 59;
-    }
+    callback_latch_t request_after_close_latch;
+	connector.request<login_reply_t> (login_request_t{})
+	  .packet_name ("after.close.request")
+	  .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+	      request_after_close_callback_seen =
+	        !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
+          request_after_close_latch.signal ();
+	  });
+    dispatch_until (connector, request_after_close_latch, std::chrono::milliseconds (100));
+	if (!request_after_close_callback_seen) {
+	    return 59;
+	}
     auto missing_endpoint = zlink::stream_connector::connector_factory_t::create (
       zlink::stream_connector::connector_options_t{});
     if (missing_endpoint.connect ()
@@ -759,22 +1018,26 @@ int main ()
     });
     zlink::stream_connector::connector_options_t callback_response_options;
     callback_response_options.endpoint = callback_response_endpoint;
+    callback_response_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto callback_response_connector =
       zlink::stream_connector::connector_factory_t::create (callback_response_options);
     if (!callback_response_connector.connect ()) {
         return 60;
     }
     bool request_callback_response_seen = false;
+    callback_latch_t request_callback_response_latch;
     callback_response_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.response.request")
       .timeout (std::chrono::milliseconds (100))
       .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_response_seen = static_cast<bool> (result);
-      });
-    callback_response_thread.join ();
-    if (!request_callback_response_seen) {
-        return 61;
-    }
+          request_callback_response_latch.signal ();
+	    });
+	    callback_response_thread.join ();
+    request_callback_response_latch.wait_for (std::chrono::milliseconds (100));
+	    if (!request_callback_response_seen) {
+	        return 61;
+	    }
     callback_response_connector.close ();
 
     zlink::stream_socket_t callback_timeout_server (context);
@@ -794,12 +1057,14 @@ int main ()
     zlink::stream_connector::connector_options_t callback_timeout_options;
     callback_timeout_options.endpoint = callback_timeout_endpoint;
     callback_timeout_options.request_timeout = std::chrono::milliseconds (5);
+    callback_timeout_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto callback_timeout_connector =
       zlink::stream_connector::connector_factory_t::create (callback_timeout_options);
     if (!callback_timeout_connector.connect ()) {
         return 62;
     }
     bool request_callback_timeout_seen = false;
+    callback_latch_t request_callback_timeout_latch;
     callback_timeout_connector.request<login_reply_t> (login_request_t{})
       .packet_name ("callback.timeout.request")
       .timeout (std::chrono::milliseconds (5))
@@ -807,12 +1072,73 @@ int main ()
           request_callback_timeout_seen =
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;
-      });
-    callback_timeout_thread.join ();
+          request_callback_timeout_latch.signal ();
+	    });
+	    callback_timeout_thread.join ();
+    request_callback_timeout_latch.wait_for (std::chrono::milliseconds (100));
     if (!request_callback_timeout_seen || !callback_timeout_request_seen) {
         return 63;
     }
     callback_timeout_connector.close ();
+
+    zlink::stream_socket_t close_cleanup_server (context);
+    close_cleanup_server.options ().notify (false);
+    close_cleanup_server.bind ("tcp://127.0.0.1:0");
+    const auto close_cleanup_endpoint = close_cleanup_server.options ().last_endpoint ();
+    callback_latch_t close_cleanup_request_latch;
+    callback_latch_t close_cleanup_release_latch;
+    std::thread close_cleanup_thread ([&close_cleanup_server,
+                                       &close_cleanup_request_latch,
+                                       &close_cleanup_release_latch] {
+        zlink::received_t inbound;
+        if (close_cleanup_server.recv (inbound) != 0) {
+            return;
+        }
+        close_cleanup_request_latch.signal ();
+        close_cleanup_release_latch.wait_for (std::chrono::milliseconds (100));
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t close_cleanup_options;
+    close_cleanup_options.endpoint = close_cleanup_endpoint;
+    close_cleanup_options.request_timeout = std::chrono::milliseconds (1000);
+    close_cleanup_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+    auto close_cleanup_connector =
+      zlink::stream_connector::connector_factory_t::create (close_cleanup_options);
+    if (!close_cleanup_connector.connect ()) {
+        close_cleanup_release_latch.signal ();
+        close_cleanup_thread.join ();
+        return 80;
+    }
+    bool close_cleanup_seen = false;
+    callback_latch_t close_cleanup_callback_latch;
+    const auto close_cleanup_submit_started = std::chrono::steady_clock::now ();
+    close_cleanup_connector.request<login_reply_t> (login_request_t{})
+      .packet_name ("close.cleanup.request")
+      .timeout (std::chrono::milliseconds (1000))
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+          close_cleanup_seen =
+            !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
+          close_cleanup_callback_latch.signal ();
+      });
+    const auto close_cleanup_submit_elapsed =
+      std::chrono::steady_clock::now () - close_cleanup_submit_started;
+    if (close_cleanup_submit_elapsed > std::chrono::milliseconds (50)) {
+        close_cleanup_release_latch.signal ();
+        close_cleanup_thread.join ();
+        return 96;
+    }
+    if (!close_cleanup_request_latch.wait_for (std::chrono::milliseconds (100))) {
+        close_cleanup_release_latch.signal ();
+        close_cleanup_thread.join ();
+        return 81;
+    }
+    close_cleanup_connector.close ();
+    close_cleanup_release_latch.signal ();
+    close_cleanup_thread.join ();
+    close_cleanup_callback_latch.wait_for (std::chrono::milliseconds (100));
+    if (!close_cleanup_seen) {
+        return 82;
+    }
 
     zlink::stream_socket_t coroutine_server (context);
     coroutine_server.options ().notify (false);
@@ -848,6 +1174,7 @@ int main ()
     });
     zlink::stream_connector::connector_options_t coroutine_options;
     coroutine_options.endpoint = coroutine_endpoint;
+    coroutine_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
     auto coroutine_connector =
       zlink::stream_connector::connector_factory_t::create (coroutine_options);
     if (!coroutine_connector.connect ()) {
@@ -887,7 +1214,8 @@ int main ()
         if (error) {
             return;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+        callback_latch_t partial_frame_delay;
+        partial_frame_delay.wait_for (std::chrono::milliseconds (2));
         socket.write_some (boost::asio::buffer (frame.data () + 3, frame.size () - 3), error);
         partial_write_seen = !error;
     });
@@ -1172,13 +1500,14 @@ int main ()
       std::string ("tcp://127.0.0.1:") + std::to_string (reconnect_success_port);
     std::atomic_bool reconnect_success_connecting{false};
     std::atomic_bool reconnect_success_send_seen{false};
+    callback_latch_t reconnect_success_connecting_latch;
     std::thread reconnect_success_server_thread ([&reconnect_success_io, reconnect_success_port,
                                                   &reconnect_success_connecting,
-                                                  &reconnect_success_send_seen] {
-        while (!reconnect_success_connecting) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (20));
+                                                  &reconnect_success_send_seen,
+                                                  &reconnect_success_connecting_latch] {
+        reconnect_success_connecting_latch.wait_for (std::chrono::milliseconds (100));
+        callback_latch_t retry_delay_latch;
+        retry_delay_latch.wait_for (std::chrono::milliseconds (20));
         boost::asio::ip::tcp::acceptor acceptor (reconnect_success_io);
         acceptor.open (boost::asio::ip::tcp::v4 ());
         acceptor.set_option (boost::asio::socket_base::reuse_address (true));
@@ -1212,19 +1541,23 @@ int main ()
           reconnect_success_states.push_back (state.current);
           if (state.current == zlink::stream_connector::connection_state_t::connecting) {
               reconnect_success_connecting = true;
+              reconnect_success_connecting_latch.signal ();
           }
       });
-    if (!reconnect_success_connector.connect ()
-        || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
-                      zlink::stream_connector::connection_state_t::reconnecting)
-             == reconnect_success_states.end ()
-        || reconnect_success_states.back ()
-             != zlink::stream_connector::connection_state_t::connected) {
-        return 67;
-    }
-    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
-        return 68;
-    }
+	    if (!reconnect_success_connector.connect ()
+	        || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
+	                      zlink::stream_connector::connection_state_t::reconnecting)
+	             == reconnect_success_states.end ()
+	        || reconnect_success_states.back ()
+	             != zlink::stream_connector::connection_state_t::connected) {
+	        reconnect_success_server_thread.join ();
+	        return 67;
+	    }
+	    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
+	        reconnect_success_connector.close ();
+	        reconnect_success_server_thread.join ();
+	        return 68;
+	    }
     reconnect_success_connector.close ();
     reconnect_success_server_thread.join ();
     if (!reconnect_success_send_seen) {

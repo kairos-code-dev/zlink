@@ -69,6 +69,7 @@ endif()
 
 add_library(zlink_framework STATIC
   framework/src/runtime/channels/channel_packet_dispatcher.cpp
+  framework/src/runtime/channels/channel_host_service.cpp
   framework/src/runtime/channels/channel_bundle_factory.cpp
   framework/src/runtime/channels/channel_pending_requests.cpp
   framework/src/runtime/channels/channel_message_pump.cpp
@@ -112,6 +113,7 @@ add_library(zlink_framework STATIC
   framework/src/runtime/registry/registry_runtime.cpp
   framework/src/runtime/spots/spot_runtime.cpp
   framework/src/runtime/streams/stream_runtime.cpp
+  framework/src/runtime/streams/stream_host_service.cpp
   framework/src/runtime/timers/timer_runtime.cpp
   framework/src/runtime/transport/endpoint.cpp)
 add_library(zlink::framework ALIAS zlink_framework)
@@ -156,7 +158,17 @@ endif()
 
 add_library(zlink_http_client STATIC
   http-client/src/client.cpp
-  http-client/src/runtime/http_client_runtime.cpp)
+  http-client/src/runtime/compression.cpp
+  http-client/src/runtime/connection_opener.cpp
+  http-client/src/runtime/connection_pool.cpp
+  http-client/src/runtime/cookie_jar.cpp
+  http-client/src/runtime/coroutine_scheduler.cpp
+  http-client/src/runtime/request_performer.cpp
+  http-client/src/runtime/retry_policy.cpp
+  http-client/src/runtime/runtime_errors.cpp
+  http-client/src/runtime/http_client_runtime.cpp
+  http-client/src/runtime/text.cpp
+  http-client/src/runtime/url.cpp)
 add_library(zlink::http_client ALIAS zlink_http_client)
 set_target_properties(zlink_http_client PROPERTIES EXPORT_NAME http_client)
 target_compile_features(zlink_http_client PUBLIC cxx_std_20)
@@ -671,6 +683,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     zlink::stream_connector
     GTest::gtest
     GTest::gmock)
+  target_include_directories(test_cpp_framework_sample_parity PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   add_test(NAME test_cpp_framework_sample_parity
     COMMAND test_cpp_framework_sample_parity)
   set_tests_properties(test_cpp_framework_sample_parity PROPERTIES
@@ -872,7 +886,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_zlink_connector_test(
     test_cpp_stream_connector
     tests/Systems.Zlink.Stream.Connector.Tests/test_cpp_stream_connector.cpp
-    "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed")
+    "connector-unit;connector-integration;connector-e2e;connector-contract;connector-protocol;connector-transport;connector-typed;connector-coroutine;connector-dispatch;connector-timeout")
   target_link_libraries(test_cpp_stream_connector PRIVATE
     zlink::stream_connector_codecs
     zlink::stream_e2e_client)
@@ -903,6 +917,27 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     COMMAND sample_stream_e2e_client)
   set_tests_properties(sample_stream_e2e_client PROPERTIES
     LABELS "connector-e2e"
+    TIMEOUT 30)
+
+  add_executable(connector_perf_client
+    connector/perf/connector_perf_client.cpp)
+  target_include_directories(connector_perf_client PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/connector/core/src)
+  target_link_libraries(connector_perf_client PRIVATE
+    zlink::stream_e2e_client)
+  add_custom_target(connector_perf_smoke
+    DEPENDS connector_perf_client)
+  add_test(NAME connector_perf_smoke
+    COMMAND connector_perf_client
+      --clients 100
+      --workers 2
+      --duration 5s
+      --warmup 0s
+      --request-timeout-ms 100
+      --loopback
+      --report ${CMAKE_CURRENT_BINARY_DIR}/connector-perf-smoke.json)
+  set_tests_properties(connector_perf_smoke PROPERTIES
+    LABELS "connector-perf-smoke;connector-perf-scale"
     TIMEOUT 30)
 
   add_zlink_http_client_test(
@@ -937,6 +972,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   function(add_zlink_framework_sample target_name source_file label)
     add_executable(${target_name} ${source_file})
     target_link_libraries(${target_name} PRIVATE ${ARGN})
+    target_include_directories(${target_name} PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
     add_test(NAME sample_smoke_${target_name} COMMAND ${target_name})
     set_tests_properties(sample_smoke_${target_name} PROPERTIES
       LABELS "${label};framework-sample-smoke"

@@ -18,6 +18,7 @@ namespace zlink::framework
 namespace detail
 {
 class channel_runtime_manager_t;
+class spot_node_runtime_t;
 class zlink_builder_state_t;
 } // namespace detail
 
@@ -64,6 +65,7 @@ class zlink_builder_t
   private:
     friend class detail::channel_runtime_manager_t;
     friend class detail::registry_runtime_t;
+    friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
     std::shared_ptr<detail::zlink_builder_state_t> _state;
 };

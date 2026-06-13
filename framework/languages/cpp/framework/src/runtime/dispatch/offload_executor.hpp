@@ -2,6 +2,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstddef>
 #include <functional>
 #include <mutex>
 #include <queue>
@@ -14,12 +15,13 @@ namespace zlink::framework::runtime
 class offload_executor_t
 {
   public:
-    explicit offload_executor_t (std::size_t worker_count = 1);
+    explicit offload_executor_t (std::size_t worker_count = 1, std::size_t max_queue_length = 0);
     ~offload_executor_t ();
 
     offload_executor_t (const offload_executor_t &) = delete;
     offload_executor_t &operator= (const offload_executor_t &) = delete;
 
+    bool try_submit (std::function<void ()> work);
     void submit (std::function<void ()> work);
     void drain ();
     bool drained () const;
@@ -32,6 +34,7 @@ class offload_executor_t
     std::condition_variable _empty;
     std::queue<std::function<void ()>> _queue;
     std::vector<std::thread> _workers;
+    std::size_t _max_queue_length = 0;
     bool _stopping = false;
     std::size_t _active = 0;
 };

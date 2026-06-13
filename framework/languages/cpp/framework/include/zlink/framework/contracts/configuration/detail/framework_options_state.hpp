@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/registry/registry.hpp>
+#include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -84,6 +85,7 @@ template <typename TSession> std::string stream_session_name ()
 
 using manual_connection_map_t =
   std::map<std::string, std::map<std::string, std::vector<std::string>>>;
+using stream_session_factory_t = std::function<packet_stream_session_t &(service_provider_t &)>;
 
 inline std::vector<std::string>
 manual_connections_for (const manual_connection_map_t &connections_by_node,
@@ -110,6 +112,18 @@ inline bool has_manual_connections (const manual_connection_map_t &connections_b
 
 template <typename TSession, typename TDependencies> struct injected_stream_session_registrar_t;
 
+template <typename TDependency> void ensure_stream_dependency_registered (service_collection_t &services)
+{
+    if (services.contains (std::type_index (typeid (TDependency)))) {
+        return;
+    }
+    if constexpr (static_dependency_types<TDependency>
+                  || std::is_default_constructible_v<TDependency>) {
+        injected_stream_session_registrar_t<
+          TDependency, typename handler_dependencies_t<TDependency>::type>::add (services);
+    }
+}
+
 template <typename TSession, typename... TDependencies>
 struct injected_stream_session_registrar_t<TSession, dependency_list_t<TDependencies...>>
 {
@@ -118,6 +132,7 @@ struct injected_stream_session_registrar_t<TSession, dependency_list_t<TDependen
         if (services.contains (std::type_index (typeid (TSession)))) {
             return;
         }
+        (ensure_stream_dependency_registered<TDependencies> (services), ...);
         if constexpr (sizeof...(TDependencies) == 0) {
             services.add_scoped<TSession> ();
         } else {
@@ -312,6 +327,7 @@ struct framework_options_state_t
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
     std::map<std::string, std::string> route_mesh_spot_route_egress_targets;
+    std::map<std::string, stream_session_factory_t> stream_session_factories;
     http_options_builder_t http;
     message_metadata_policy_t metadata_policy;
     dispatch_options_t dispatch;

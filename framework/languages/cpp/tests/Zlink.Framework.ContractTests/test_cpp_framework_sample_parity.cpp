@@ -54,6 +54,11 @@ std::filesystem::path cpp_language_root ()
     return path;
 }
 
+std::filesystem::path repository_root ()
+{
+    return cpp_language_root ().parent_path ().parent_path ().parent_path ();
+}
+
 bool has_suffix (const std::filesystem::path &path, const std::string &suffix)
 {
     const auto value = path.string ();
@@ -112,9 +117,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot.on_actor_join (
-      player_actor,
-      to_stream_payload (bingo_room_join_req_t{allocated.room_id, authenticated.actor_id,
-                                               authenticated.display_name}));
+      player_actor, to_stream_payload (bingo_room_join_req_t{
+                      allocated.room_id, authenticated.actor_id, authenticated.display_name}));
     ASSERT_TRUE (joined.accepted);
     ASSERT_TRUE (joined.reply);
     bingo_room_join_res_t join_reply;
@@ -136,10 +140,9 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
-    const auto second_joined =
-      room_spot.on_actor_join (
-        second_actor,
-        to_stream_payload (bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
+    const auto second_joined = room_spot.on_actor_join (
+      second_actor,
+      to_stream_payload (bingo_room_join_req_t{allocated.room_id, "player-2", "Player 2"}));
     ASSERT_TRUE (second_joined.accepted);
     const auto submitted =
       room_spot.submit_card (player_actor,
@@ -173,8 +176,8 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     sample_topology_t topology;
     tictactoe_game_creator_t creator;
-    create_game_handler_t rooms (creator, topology);
-    const auto created = rooms.handle ({"tictactoe-game"});
+    const create_game_res_t created{creator.create_room_id (), topology.stream_endpoint,
+                                    "tictactoe-game"};
     EXPECT_EQ (created.play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
@@ -185,27 +188,15 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
                "InProgress");
 
     entry_spot_t entry_spot;
-    entry_spot.room.create ({created.game_name});
-    zlink::framework::spot_actor_request_context_t join_context{
-      join_game_req_t::packet_name, "application/json", {}, {}};
-    player_actor_t first_actor{sample_names_t::x_actor_id};
-    EXPECT_EQ (entry_spot.join_game (first_actor, join_context,
-                                     {entry_spot.room.snapshot ().room_id})
-                 .state.x_actor_id,
-               sample_names_t::x_actor_id);
-    player_actor_t opponent_actor{sample_names_t::o_actor_id};
-    const auto joined =
-      entry_spot.join_game (opponent_actor, join_context, {entry_spot.room.snapshot ().room_id});
-    EXPECT_EQ (joined.state.o_actor_id, sample_names_t::o_actor_id);
-
-    tictactoe_game_spot_t game_spot (created.room_id);
-    game_spot.create ({created.game_name});
-    const auto x_join = game_spot.on_actor_join (
-      player_actor_t{sample_names_t::x_actor_id}, to_stream_payload (join_game_req_t{created.room_id}));
+    tictactoe_game_spot_t game_spot;
+    ASSERT_TRUE (game_spot.on_create (zlink::message_t::from (created.room_id)).accepted);
+    const auto x_join =
+      game_spot.on_actor_join (player_actor_t{sample_names_t::x_actor_id},
+                               to_stream_payload (join_game_req_t{created.room_id}));
     ASSERT_TRUE (x_join.accepted);
-    const auto game_join = game_spot.on_actor_join (
-      player_actor_t{sample_names_t::o_actor_id},
-      to_stream_payload (join_game_req_t{created.room_id}));
+    const auto game_join =
+      game_spot.on_actor_join (player_actor_t{sample_names_t::o_actor_id},
+                               to_stream_payload (join_game_req_t{created.room_id}));
     ASSERT_TRUE (game_join.accepted);
     zlink::framework::spot_actor_request_context_t place_context{
       place_mark_req_t::packet_name, "application/json", {}, {}};
@@ -391,6 +382,151 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
     EXPECT_NE (tictactoe_readme.find ("HTTP `POST /games`"), std::string::npos);
     EXPECT_NE (tictactoe_readme.find ("`zlink::http_client`"), std::string::npos);
     EXPECT_NE (tictactoe_readme.find ("`POST /games`를 호출"), std::string::npos);
+
+    const auto top_level_readme = read_file (cpp_root / "samples/README.ko.md");
+    EXPECT_NE (top_level_readme.find ("full client/server self-check"), std::string::npos)
+      << "C++ sample overview must describe full self-check scope";
+    EXPECT_NE (top_level_readme.find ("TicTacToe sample-local script"), std::string::npos)
+      << "C++ sample overview must name the TicTacToe full self-check";
+    EXPECT_NE (top_level_readme.find ("Bingo sample-local script"), std::string::npos)
+      << "C++ sample overview must name the Bingo full self-check";
+
+    const auto tictactoe_runner = read_file (cpp_root / "samples/TicTacToe/run_sample.sh");
+    EXPECT_NE (tictactoe_runner.find ("full client/server self-check completed"),
+               std::string::npos)
+      << "TicTacToe runner must report the public client/server self-check";
+    EXPECT_NE (tictactoe_runner.find ("\n\"$CLIENT_BIN\""), std::string::npos)
+      << "TicTacToe runner must execute the public client binary";
+    EXPECT_EQ (tictactoe_runner.find ("full e2e completed"), std::string::npos)
+      << "TicTacToe runner should name the specific client/server self-check, not a broad e2e";
+
+    const auto bingo_runner = read_file (cpp_root / "samples/Bingo/run_sample.sh");
+    EXPECT_EQ (bingo_runner.find ("full e2e completed"), std::string::npos)
+      << "Bingo runner must not claim full e2e completion";
+    EXPECT_NE (bingo_runner.find ("full client/server self-check completed"), std::string::npos)
+      << "Bingo runner must report the public client/server self-check";
+    EXPECT_NE (bingo_runner.find ("\n\"$CLIENT_BIN\""), std::string::npos)
+      << "Bingo runner must execute the public client binary";
+}
+
+TEST (CppFrameworkSampleParity, CommonSampleSpecsDocumentActorDestroyLifecycle)
+{
+    const auto root = repository_root ();
+    const std::vector<std::string> common_specs{"framework/doc/spec/sample/bingo/README.ko.md",
+                                                "framework/doc/spec/sample/tictactoe/README.ko.md"};
+
+    for (const auto &spec_path : common_specs) {
+        const auto spec = read_file (root / spec_path);
+        EXPECT_NE (spec.find ("`onCreateActor`를 한 번 호출"), std::string::npos)
+          << spec_path << " must document actor creation lifecycle";
+        EXPECT_NE (spec.find ("`leaveActor`로 actor를 room에서 내보낸다"), std::string::npos)
+          << spec_path << " must document room leave before destroy";
+        EXPECT_NE (spec.find ("Entry Spot context의 `destroyActor`를 호출한다"), std::string::npos)
+          << spec_path << " must document Entry Spot-owned destroy";
+        EXPECT_NE (spec.find ("`destroyActor`는 `onLeaveActor`나 다른 lifecycle callback을 "
+                              "호출하지 않고"),
+                   std::string::npos)
+          << spec_path << " must document destroy callback isolation";
+        EXPECT_NE (spec.find ("disconnect cleanup만으로 actor destroy가 실행되지 않는다"),
+                   std::string::npos)
+          << spec_path << " must document disconnect isolation";
+        EXPECT_NE (spec.find ("actor를 즉시 destroy하지 않는다"), std::string::npos)
+          << spec_path << " must keep disconnect separate from actor lifetime";
+    }
+}
+
+TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
+{
+    const auto cpp_root = cpp_language_root ();
+    struct sample_lifecycle_case_t
+    {
+        std::string entry_spot_path;
+        std::string user_spot_path;
+        std::string actor_path;
+        std::string session_path;
+        std::string readme_path;
+        std::string runner_path;
+    };
+    const std::vector<sample_lifecycle_case_t> cases{
+      {"samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_entry_spot.hpp",
+       "samples/Bingo/Server/Play/Adapters/ZLink/Spots/bingo_room_spot.hpp",
+       "samples/Bingo/Server/Play/Adapters/ZLink/Actors/player_actor.hpp",
+       "samples/Bingo/Server/Session/Sessions/bingo_session.hpp", "samples/Bingo/README.ko.md",
+       "samples/Bingo/run_sample.sh"},
+      {"samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_entry_spot.hpp",
+       "samples/TicTacToe/Server/Play/Adapters/ZLink/Spots/tictactoe_game_spot.hpp",
+       "samples/TicTacToe/Server/Play/Adapters/ZLink/Actors/player_actor.hpp",
+       "samples/TicTacToe/Server/Play/Adapters/ZLink/Sessions/play_session.hpp",
+       "samples/TicTacToe/README.ko.md", "samples/TicTacToe/run_sample.sh"}};
+
+    for (const auto &sample : cases) {
+        const auto entry = read_file (cpp_root / sample.entry_spot_path);
+        const auto user = read_file (cpp_root / sample.user_spot_path);
+        const auto actor = read_file (cpp_root / sample.actor_path);
+        const auto session = read_file (cpp_root / sample.session_path);
+        const auto readme = read_file (cpp_root / sample.readme_path);
+        const auto runner = read_file (cpp_root / sample.runner_path);
+
+        EXPECT_NE (entry.find ("onCreateActor"), std::string::npos)
+          << sample.entry_spot_path << " must show actor creation callback";
+        EXPECT_NE (entry.find ("onJoinActor"), std::string::npos)
+          << sample.entry_spot_path << " must show Entry Spot re-entry callback";
+        EXPECT_NE (entry.find ("onLeaveActor"), std::string::npos)
+          << sample.entry_spot_path << " must show Entry Spot leave callback";
+        EXPECT_NE (entry.find ("onDisconnectActor"), std::string::npos)
+          << sample.entry_spot_path << " must show Entry Spot disconnect callback";
+        EXPECT_NE (entry.find (".destroyActor ("), std::string::npos)
+          << sample.entry_spot_path << " must destroy actors from Entry Spot context";
+        EXPECT_NE (entry.find ("destroy_after_entry_spot_join"), std::string::npos)
+          << sample.entry_spot_path << " must guard destroy after Entry Spot re-entry";
+        EXPECT_NE (entry.find ("mark_disconnected"), std::string::npos)
+          << sample.entry_spot_path << " must mark actor disconnect state";
+        EXPECT_NE (user.find (".leaveActor ("), std::string::npos)
+          << sample.user_spot_path << " must return actors to Entry Spot with leaveActor";
+        EXPECT_NE (user.find ("onDisconnectActor"), std::string::npos)
+          << sample.user_spot_path << " must show user Spot disconnect callback";
+        EXPECT_NE (user.find ("mark_for_destroy_after_room_leave"), std::string::npos)
+          << sample.user_spot_path << " must mark destroy intent before leaveActor";
+        EXPECT_NE (user.find ("mark_disconnected"), std::string::npos)
+          << sample.user_spot_path << " must mark actor disconnect state";
+        EXPECT_EQ (user.find ("destroyActor"), std::string::npos)
+          << sample.user_spot_path << " must not destroy actors from user Spot";
+        EXPECT_NE (actor.find ("destroy_after_entry_spot_join"), std::string::npos)
+          << sample.actor_path << " must hold destroy-after-entry-join state";
+        EXPECT_NE (actor.find ("mark_for_destroy_after_room_leave"), std::string::npos)
+          << sample.actor_path << " must expose room cleanup destroy marker";
+        EXPECT_NE (actor.find ("mark_disconnected"), std::string::npos)
+          << sample.actor_path << " must expose disconnect cleanup state";
+        EXPECT_NE (session.find ("on_disconnected"), std::string::npos)
+          << sample.session_path << " must implement session disconnect cleanup";
+        EXPECT_NE (session.find ("unbind_session"), std::string::npos)
+          << sample.session_path << " must detach actor binding on disconnect";
+        EXPECT_EQ (session.find ("leaveActor"), std::string::npos)
+          << sample.session_path << " must not leave rooms on disconnect";
+        EXPECT_EQ (session.find ("destroyActor"), std::string::npos)
+          << sample.session_path << " must not destroy actors on disconnect";
+
+        EXPECT_NE (readme.find ("`onCreateActor`"), std::string::npos)
+          << sample.readme_path << " must document actor creation callback";
+        EXPECT_NE (readme.find ("`leaveActor`"), std::string::npos)
+          << sample.readme_path << " must document room leave responsibility";
+        EXPECT_NE (readme.find ("`destroyActor`"), std::string::npos)
+          << sample.readme_path << " must document Entry Spot destroy responsibility";
+        EXPECT_NE (readme.find ("`onLeaveActor`를 호출하지 않는다"), std::string::npos)
+          << sample.readme_path << " must document destroy callback isolation";
+        EXPECT_NE (readme.find ("actor lookup에서 사라지는지"), std::string::npos)
+          << sample.readme_path << " must document post-destroy registry cleanup evidence";
+        EXPECT_NE (readme.find ("같은 actor id 재생성"), std::string::npos)
+          << sample.readme_path << " must document post-destroy recreate evidence";
+
+        EXPECT_NE (runner.find ("test_cpp_framework_sample_parity"), std::string::npos)
+          << sample.runner_path << " must run sample parity gate";
+        EXPECT_NE (runner.find ("test_cpp_framework_spot_runtime"), std::string::npos)
+          << sample.runner_path << " must run actor lifecycle runtime gate";
+        EXPECT_NE (runner.find ("test_cpp_framework_ActorGateway_actor_session_relay"),
+                   std::string::npos)
+          << sample.runner_path << " must run ActorGateway registry cleanup gate";
+    }
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGateway)
@@ -417,7 +553,6 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_router"), std::string::npos);
-    EXPECT_NE (play_factory.find (".accept_routes_from_channel"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
                std::string::npos);
     EXPECT_NE (play_factory.find (".register_session<play_session_t> ()"), std::string::npos);
@@ -432,24 +567,18 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_EQ (api_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"),
-               std::string::npos);
+    EXPECT_NE (create_game_handler.find ("zlink::framework::channel_client_t"), std::string::npos);
     EXPECT_NE (create_game_handler.find ("sample_names_t::play_channel"), std::string::npos);
-    EXPECT_NE (create_game_handler.find ("create_game_req_t{game_name}"),
-               std::string::npos);
-    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t>"),
-               std::string::npos);
-    EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"),
-               std::string::npos);
-    EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"),
-               std::string::npos);
+    EXPECT_NE (create_game_handler.find ("create_game_req_t{game_name}"), std::string::npos);
+    EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t>"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add<create_game_handler_t> (\"play\")"), std::string::npos);
+    EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);
     EXPECT_FALSE (std::filesystem::exists (
       tictactoe_root / "Server/Play/Application/GameCreation/create_game_room_handler.hpp"));
     EXPECT_EQ (client_main.find ("#include <zlink/http_client.hpp>"), std::string::npos);
     EXPECT_EQ (client_main.find (".post (\"/games\")"), std::string::npos);
     EXPECT_NE (client.find ("#include <zlink/http_client.hpp>"), std::string::npos);
-    EXPECT_NE (client.find (
-                 "zlink::http_client::client_t::create (options.api_http_endpoint)"),
+    EXPECT_NE (client.find ("zlink::http_client::client_t::create (options.api_http_endpoint)"),
                std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
     EXPECT_NE (client.find (".fetch<create_game_http_res_t> ()"), std::string::npos);

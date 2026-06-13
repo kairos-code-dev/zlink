@@ -85,7 +85,7 @@ class create_game_http_handler_t
 
 > SPOT 안의 게임 룸 상태를 처리하는 SPOT 핸들러는 구조가 다르다 —
 > `spot_t`/`entry_spot_t`를 상속하고 `configure()`로 등록하는 패턴이며
-> [3장 §4.2](./03-concepts.ko.md)와 [6장](./06-spot.ko.md)에서 다룬다.
+> [3장 §4.2](./03-concepts.ko.md)와 [8장](./08-spot.ko.md)에서 다룬다.
 
 ## 4. 앱 조립과 실행
 
@@ -140,9 +140,9 @@ $ curl -s -X POST http://127.0.0.1:8080/games \
     .enable_server ("tcp://0.0.0.0:5555")
     .use_handler_group ("api");
   ```
-  자세한 내용은 5장(채널 메시징)에서 다룬다.
+  자세한 내용은 7장(채널 메시징)에서 다룬다.
 - endpoint·포트를 하드코딩하지 않고 설정으로 빼는 방법은
-  [4. Configuration](./04-configuration.ko.md).
+  [4. Configuration](./05-configuration.ko.md).
 - 실제로 동작하는 전체 구성은 `samples/TicTacToe`가 정본이다 —
   `run_sample.sh`로 서버(Api·Play)와 클라이언트를 한 번에 띄울 수 있다.
 

@@ -20,6 +20,10 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
 
         options.codecs ()
           .add_protobuf ()
+          .add_protobuf<authenticate_player_req_t> ()
+          .add_protobuf<authenticate_player_res_t> ()
+          .add_protobuf<match_bingo_api_req_t> ()
+          .add_protobuf<match_bingo_api_res_t> ()
           .add_protobuf<allocate_bingo_room_req_t> ()
           .add_protobuf<allocate_bingo_room_res_t> ();
 
@@ -29,7 +33,8 @@ inline zlink::framework::app_t &add_bingo_api_server (zlink::framework::app_t &a
           .enable_server (topology.api_channel_endpoint)
           .use_handler_group ("api");
 
-        options.add_client_server_channel (sample_names_t::play_channel).enable_client ();
+        options.add_client_server_channel (sample_names_t::play_channel)
+          .enable_client (topology.play_channel_endpoint);
     });
     return app;
 }

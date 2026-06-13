@@ -5,6 +5,7 @@
 #include <zlink/codec/json.hpp>
 #include <nlohmann/json.hpp>
 #include <cstdint>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -61,6 +62,35 @@ struct ensure_player_actor_res_t
     std::string actor_id;
     std::string actor_type;
     actor_ref_snapshot_t actor;
+};
+
+struct remote_actor_packet_req_t
+{
+    static constexpr const char *packet_name = "RemoteActorPacketReq";
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    unsigned long long actor_generation = 0;
+    int header_kind = 0;
+    int header_codec = 0;
+    int header_flags = 0;
+    bool request_seq_present = false;
+    unsigned long long request_seq = 0;
+    std::string relayed_packet_name;
+    std::map<std::string, std::string> metadata;
+    std::vector<unsigned char> payload;
+};
+
+struct remote_actor_packet_res_t
+{
+    static constexpr const char *packet_name = "RemoteActorPacketRes";
+    bool actor_ref_present = false;
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    unsigned long long actor_generation = 0;
+    bool has_reply = false;
+    std::vector<unsigned char> reply_payload;
 };
 
 struct match_bingo_req_t
@@ -262,6 +292,60 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_res_t &va
     value.actor_id = json.value ("actorId", "");
     value.actor_type = json.value ("actorType", "");
     value.actor = json.value ("actor", actor_ref_snapshot_t{});
+}
+
+inline void to_json (nlohmann::json &json, const remote_actor_packet_req_t &value)
+{
+    json = {{"actorNodeRid", value.actor_node_rid},
+            {"actorType", value.actor_type},
+            {"actorId", value.actor_id},
+            {"actorGeneration", value.actor_generation},
+            {"headerKind", value.header_kind},
+            {"headerCodec", value.header_codec},
+            {"headerFlags", value.header_flags},
+            {"requestSeqPresent", value.request_seq_present},
+            {"requestSeq", value.request_seq},
+            {"packetName", value.relayed_packet_name},
+            {"metadata", value.metadata},
+            {"payload", value.payload}};
+}
+
+inline void from_json (const nlohmann::json &json, remote_actor_packet_req_t &value)
+{
+    value.actor_node_rid = json.value ("actorNodeRid", "");
+    value.actor_type = json.value ("actorType", "");
+    value.actor_id = json.value ("actorId", "");
+    value.actor_generation = json.value ("actorGeneration", 0ULL);
+    value.header_kind = json.value ("headerKind", 0);
+    value.header_codec = json.value ("headerCodec", 0);
+    value.header_flags = json.value ("headerFlags", 0);
+    value.request_seq_present = json.value ("requestSeqPresent", false);
+    value.request_seq = json.value ("requestSeq", 0ULL);
+    value.relayed_packet_name = json.value ("packetName", "");
+    value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
+    value.payload = json.value ("payload", std::vector<unsigned char>{});
+}
+
+inline void to_json (nlohmann::json &json, const remote_actor_packet_res_t &value)
+{
+    json = {{"actorRefPresent", value.actor_ref_present},
+            {"actorNodeRid", value.actor_node_rid},
+            {"actorType", value.actor_type},
+            {"actorId", value.actor_id},
+            {"actorGeneration", value.actor_generation},
+            {"hasReply", value.has_reply},
+            {"replyPayload", value.reply_payload}};
+}
+
+inline void from_json (const nlohmann::json &json, remote_actor_packet_res_t &value)
+{
+    value.actor_ref_present = json.value ("actorRefPresent", false);
+    value.actor_node_rid = json.value ("actorNodeRid", "");
+    value.actor_type = json.value ("actorType", "");
+    value.actor_id = json.value ("actorId", "");
+    value.actor_generation = json.value ("actorGeneration", 0ULL);
+    value.has_reply = json.value ("hasReply", false);
+    value.reply_payload = json.value ("replyPayload", std::vector<unsigned char>{});
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_req_t &value)

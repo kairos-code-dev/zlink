@@ -6,9 +6,13 @@
 
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/execution/serial_execution_queue.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
+#include <sstream>
 #include <utility>
 
 namespace zlink::framework
@@ -21,6 +25,45 @@ bool is_blank (const std::string &value)
 {
     return std::all_of (value.begin (), value.end (),
                         [] (unsigned char ch) { return std::isspace (ch) != 0; });
+}
+
+class spot_worker_scheduler_t final : public detail::worker_scheduler_t
+{
+  public:
+    explicit spot_worker_scheduler_t (std::shared_ptr<runtime::offload_executor_t> workers) :
+        _workers (std::move (workers)),
+        _owner_executor (std::make_shared<runtime::offload_executor_t> (1)),
+        _owner_queue (std::make_shared<runtime::serial_execution_queue_t> (*_owner_executor))
+    {
+    }
+
+    bool try_schedule (std::function<void ()> work) override
+    {
+        return _workers && _workers->try_submit (std::move (work));
+    }
+
+    void post_owner (std::function<void ()> work) override
+    {
+        if (_owner_queue) {
+            (void) _owner_queue->try_post ("worker-completion", std::move (work));
+        }
+    }
+
+  private:
+    std::shared_ptr<runtime::offload_executor_t> _workers;
+    std::shared_ptr<runtime::offload_executor_t> _owner_executor;
+    std::shared_ptr<runtime::serial_execution_queue_t> _owner_queue;
+};
+
+std::shared_ptr<runtime::offload_executor_t> framework_worker_executor ()
+{
+    static auto executor = std::make_shared<runtime::offload_executor_t> (2, 1024);
+    return executor;
+}
+
+std::shared_ptr<detail::worker_scheduler_t> make_spot_worker_scheduler ()
+{
+    return std::make_shared<spot_worker_scheduler_t> (framework_worker_executor ());
 }
 
 } // namespace
@@ -75,11 +118,30 @@ spot_context_t::spot_context_t () : _state (std::make_shared<detail::spot_contex
 spot_context_t::spot_context_t (std::shared_ptr<detail::spot_context_state_t> state) :
     _state (std::move (state))
 {
+    if (_state) {
+        _worker_scheduler = _state->worker_scheduler;
+    }
 }
 
 spot_context_t::~spot_context_t () = default;
 spot_context_t::spot_context_t (spot_context_t &&) noexcept = default;
 spot_context_t &spot_context_t::operator= (spot_context_t &&) noexcept = default;
+
+entry_spot_context_t::entry_spot_context_t () = default;
+
+entry_spot_context_t::entry_spot_context_t (const spot_context_t &context) :
+    spot_context_t (context._state)
+{
+}
+
+entry_spot_context_t::entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state) :
+    spot_context_t (std::move (state))
+{
+}
+
+entry_spot_context_t::~entry_spot_context_t () = default;
+entry_spot_context_t::entry_spot_context_t (entry_spot_context_t &&) noexcept = default;
+entry_spot_context_t &entry_spot_context_t::operator= (entry_spot_context_t &&) noexcept = default;
 
 node_rid_t spot_context_t::node_rid () const
 {
@@ -116,6 +178,172 @@ task_t<bool> spot_context_t::close_erased ()
         co_return result_t<bool>::success (true);
     }
     co_return result_t<bool>::success (_state->close_now ());
+}
+
+task_t<actor_ref_t> spot_context_t::leaveActor_erased (
+  const actor_ref_t &actor_ref,
+  std::type_index actor_type,
+  void *actor,
+  std::function<void (void *, const actor_ref_t &)> update_actor_ref)
+{
+    if (!_state || !_state->node || actor_ref.empty ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
+    }
+    if (_state->node_rid.empty () || actor_ref.node_rid ().value () != _state->node_rid.value ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor is not owned by this SPOT node"));
+    }
+    if (!_state->node->snapshot.entry_spot_name) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "entry spot is not registered"));
+    }
+
+    const auto key =
+      std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ());
+    const auto found_location = _state->node->actor_spot_rids.find (key);
+    if (found_location == _state->node->actor_spot_rids.end ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::success (actor_ref));
+    }
+    if (found_location->second.value () != _state->spot_rid.value ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor is not joined to this SPOT"));
+    }
+
+    const auto found_generation = _state->node->actor_generations.find (key);
+    if (found_generation != _state->node->actor_generations.end ()
+        && found_generation->second != actor_ref.generation ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
+    }
+
+    const auto entry_rid =
+      _state->node->spot_rids_by_name.find (*_state->node->snapshot.entry_spot_name);
+    if (entry_rid == _state->node->spot_rids_by_name.end ()) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "entry spot is not created"));
+    }
+    const auto entry_context =
+      _state->node->spot_contexts_by_rid.find (std::string (entry_rid->second.value ()));
+    if (entry_context == _state->node->spot_contexts_by_rid.end ()
+        || !entry_context->second._state->spot_instance) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::spot_route_not_found, "entry spot context is not registered"));
+    }
+
+    try {
+        auto &source_state = *_state;
+        source_state.actor_count = source_state.actor_count == 0 ? 0 : source_state.actor_count - 1;
+        _state->node->actor_spot_rids.erase (found_location);
+        _state->node->actor_generations.erase (key);
+        const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
+        if (source_left != source_state.onLeaveActor_callbacks.end ()
+            && source_state.spot_instance) {
+            source_state.enter_callback ();
+            source_left->second (source_state.spot_instance.get (), actor);
+            source_state.leave_callback ();
+        }
+
+        auto &entry_state = *entry_context->second._state;
+        const auto committed =
+          actor_ref_t (node_rid_t::from_string (std::string (_state->node_rid.value ())),
+                       std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
+                       actor_ref.generation () + 1);
+        _state->node->actor_spot_rids[key] = entry_state.spot_rid;
+        _state->node->actor_generations[key] = committed.generation ();
+        entry_state.actor_count++;
+        if (update_actor_ref) {
+            update_actor_ref (actor, committed);
+        }
+        if (_state->node->update_actor_registry_ref) {
+            auto updated = _state->node->update_actor_registry_ref (committed);
+            if (!updated) {
+                const auto *error = updated.error ();
+                return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+                  updated.error_kind (),
+                  error != nullptr ? error->what () : "actor registry ref update failed"));
+            }
+        }
+
+        const auto entry_joined = entry_state.onJoinActor_callbacks.find (actor_type);
+        if (entry_joined != entry_state.onJoinActor_callbacks.end () && entry_state.spot_instance) {
+            entry_state.enter_callback ();
+            entry_joined->second (entry_state.spot_instance.get (), actor);
+            entry_state.leave_callback ();
+        }
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::success (committed));
+    }
+    catch (const framework_exception_t &error) {
+        return task_t<actor_ref_t> (
+          result_t<actor_ref_t>::failure (error.kind (), error.what (), error.is_retriable ()));
+    }
+    catch (const std::exception &error) {
+        return task_t<actor_ref_t> (
+          result_t<actor_ref_t>::failure (framework_error_kind_t::request_failed, error.what ()));
+    }
+    catch (...) {
+        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+          framework_error_kind_t::request_failed, "actor leave callback failed"));
+    }
+}
+
+task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor,
+                                                        std::type_index actor_type,
+                                                        void *actor_instance)
+{
+    (void) actor_type;
+    (void) actor_instance;
+    if (!_state || !_state->node || actor.empty ()) {
+        return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                                      "actor ref is empty"));
+    }
+    if (actor.node_rid ().empty () || actor.node_rid ().value () != _state->node_rid.value ()) {
+        return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                                      "actor is not owned by this Entry SPOT"));
+    }
+
+    const auto key = std::string (actor.actor_type ()) + ":" + std::string (actor.actor_id ());
+    const auto found_location = _state->node->actor_spot_rids.find (key);
+    if (found_location != _state->node->actor_spot_rids.end ()
+        && found_location->second.value () != _state->spot_rid.value ()) {
+        return task_t<void> (
+          result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                   "actor must leave its current SPOT before destroy"));
+    }
+
+    const auto found_generation = _state->node->actor_generations.find (key);
+    if (found_generation != _state->node->actor_generations.end ()
+        && found_generation->second != actor.generation ()) {
+        return task_t<void> (result_t<void>::success ());
+    }
+    if (_state->node->destroying_actors.contains (key)) {
+        return task_t<void> (result_t<void>::success ());
+    }
+
+    if (found_location != _state->node->actor_spot_rids.end ()) {
+        _state->node->destroying_actors.insert (key);
+        _state->node->actor_spot_rids.erase (found_location);
+        _state->node->actor_generations.erase (key);
+        _state->node->actor_created_keys.erase (key);
+        _state->node->actor_instances.erase (key);
+        if (_state->actor_count > 0) {
+            _state->actor_count--;
+        }
+        if (_state->node->destroy_actor_registry) {
+            auto cleanup = _state->node->destroy_actor_registry (actor);
+            _state->node->destroying_actors.erase (key);
+            if (!cleanup) {
+                const auto *error = cleanup.error ();
+                return task_t<void> (result_t<void>::failure (
+                  cleanup.error_kind (),
+                  error != nullptr ? error->what () : "actor registry cleanup failed"));
+            }
+        } else {
+            _state->node->destroying_actors.erase (key);
+        }
+    }
+
+    return task_t<void> (result_t<void>::success ());
 }
 
 send_call_t spot_context_t::publish_erased (std::string topic)
@@ -252,6 +480,11 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                       co_return result_t<zlink::message_t>::failure (error.kind (), error.what (),
                                                                      error.is_retriable ());
                   }
+                  catch (const std::exception &error) {
+                      _state->leave_callback ();
+                      co_return result_t<zlink::message_t>::failure (
+                        framework_error_kind_t::request_failed, error.what ());
+                  }
                   catch (...) {
                       _state->leave_callback ();
                       co_return result_t<zlink::message_t>::failure (
@@ -260,8 +493,20 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
               });
         }
     }
+    std::ostringstream error_message;
+    error_message << "spot handler is not registered: packet='" << packet_name << "', topic='"
+                  << topic << "', actor_type='" << actor_type.name () << "', registered=[";
+    for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
+        if (index > 0) {
+            error_message << "; ";
+        }
+        const auto &descriptor = _state->handlers[index];
+        error_message << "packet='" << descriptor.packet_name << "', topic='" << descriptor.topic
+                      << "', actor_type='" << descriptor.actor_type.name () << "'";
+    }
+    error_message << "]";
     return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-      framework_error_kind_t::handler_not_found, "spot handler is not registered"));
+      framework_error_kind_t::handler_not_found, error_message.str ()));
 }
 
 spot_node_builder_t::spot_node_builder_t () :
@@ -480,10 +725,20 @@ spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_nam
     return *this;
 }
 
-spot_node_builder_t &spot_node_builder_t::add_actor_factory_erased (std::string actor_type,
-                                                                    std::type_index factory_type)
+spot_node_builder_t &spot_node_builder_t::add_actor_factory_erased (
+  std::string actor_type,
+  std::type_index actor_instance_type,
+  std::function<std::shared_ptr<void> (std::string)> create_instance,
+  std::function<void (void *, const actor_ref_t &, void *)> configure_instance)
 {
-    const auto [_, inserted] = _state->actor_factories.emplace (actor_type, factory_type);
+    if (!create_instance || !configure_instance) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "actor factory callback must not be empty");
+    }
+    const auto [_, inserted] = _state->actor_factories.emplace (
+      actor_type, detail::spot_node_builder_state_t::actor_factory_registration_t{
+                    actor_instance_type, std::move (create_instance),
+                    std::move (configure_instance)});
     if (!inserted) {
         throw framework_exception_t (framework_error_kind_t::actor_already_exists,
                                      "duplicate actor factory registration");
@@ -608,9 +863,107 @@ spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_stat
 {
 }
 
+void spot_node_runtime_t::on_destroy_actor (
+  std::function<result_t<void> (const actor_ref_t &)> destroy_actor)
+{
+    _state->destroy_actor_registry = std::move (destroy_actor);
+}
+
+void spot_node_runtime_t::on_actor_ref_updated (
+  std::function<result_t<void> (const actor_ref_t &)> update_actor)
+{
+    _state->update_actor_registry_ref = std::move (update_actor);
+}
+
+result_t<std::optional<zlink::message_t>>
+spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
+                                         actor_context_t actor_context,
+                                         std::string_view packet_name,
+                                         const zlink::message_t &message,
+                                         service_provider_t &services,
+                                         serializer_registry_t &serializers,
+                                         spot_actor_message_metadata_t metadata)
+{
+    if (actor_ref.empty ()) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor ref is empty");
+    }
+
+    const auto actor_type_key = std::string (actor_ref.actor_type ());
+    const auto found_factory = _state->actor_factories.find (actor_type_key);
+    if (found_factory == _state->actor_factories.end ()) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor factory is not registered");
+    }
+
+    const auto key = actor_key (actor_ref);
+    auto &actor_instance = _state->actor_instances[key];
+    if (!actor_instance) {
+        actor_instance =
+          found_factory->second.create_instance (std::string (actor_ref.actor_id ()));
+        if (!actor_instance) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor factory returned null");
+        }
+    }
+    found_factory->second.configure_instance (actor_instance.get (), actor_ref, &actor_context);
+
+    auto found_location = _state->actor_spot_rids.find (key);
+    if (found_location == _state->actor_spot_rids.end ()) {
+        if (!_state->snapshot.entry_spot_name) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot is not registered");
+        }
+        const auto entry_rid = _state->spot_rids_by_name.find (*_state->snapshot.entry_spot_name);
+        if (entry_rid == _state->spot_rids_by_name.end ()) {
+            return result_t<std::optional<zlink::message_t>>::failure (
+              framework_error_kind_t::spot_route_not_found, "entry spot is not created");
+        }
+        _state->actor_spot_rids[key] = entry_rid->second;
+        _state->actor_generations[key] = actor_ref.generation ();
+        found_location = _state->actor_spot_rids.find (key);
+    }
+
+    const auto found_generation = _state->actor_generations.find (key);
+    if (found_generation != _state->actor_generations.end ()
+        && found_generation->second != actor_ref.generation ()) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::actor_stale_generation, "actor generation is stale");
+    }
+
+    auto context = find_context (found_location->second);
+    if (!context || !context->_state->spot_instance) {
+        return result_t<std::optional<zlink::message_t>>::failure (
+          framework_error_kind_t::spot_route_not_found, "actor spot context is not registered");
+    }
+
+    auto reply =
+      spot_handler_registry_t (context->_state)
+        .invoke_erased (spot_handler_kind_t::actor_packet, packet_name, {},
+                        found_factory->second.actor_type, context->_state->spot_instance.get (),
+                        actor_instance.get (), services, serializers, message, std::move (metadata))
+        .result ();
+    if (!reply) {
+        const auto *error = reply.error ();
+        return result_t<std::optional<zlink::message_t>>::failure (
+          reply.error_kind (), error != nullptr ? error->what () : "actor packet relay failed");
+    }
+    return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));
+}
+
 spot_node_runtime_t spot_node_runtime_t::from (const spot_node_builder_t &builder)
 {
     return spot_node_runtime_t (builder._state);
+}
+
+std::optional<spot_node_runtime_t> spot_node_runtime_t::from (const zlink_builder_t &builder,
+                                                              const std::string &spot_node_name)
+{
+    const auto found = builder._state->spot_nodes.find (spot_node_name);
+    if (found == builder._state->spot_nodes.end ()) {
+        return std::nullopt;
+    }
+    return spot_node_runtime_t (found->second);
 }
 
 spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)
@@ -639,7 +992,9 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
     context_state->spot_rid = rid;
     context_state->spot_name = spot_name;
     context_state->lifecycle = lifecycle;
+    context_state->worker_scheduler = make_spot_worker_scheduler ();
     spot_context_t context (context_state);
+    entry_spot_context_t entry_context (context_state);
     std::optional<zlink::message_t> create_reply;
 
     if (lifecycle.create_instance) {
@@ -648,7 +1003,9 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
             throw framework_exception_t (framework_error_kind_t::spot_create_failed,
                                          "SPOT factory returned null");
         }
-        if (lifecycle.configure) {
+        if (lifecycle.configure_entry) {
+            lifecycle.configure_entry (context_state->spot_instance.get (), entry_context);
+        } else if (lifecycle.configure) {
             lifecycle.configure (context_state->spot_instance.get (), context);
         }
         const auto response = lifecycle.on_create
@@ -702,7 +1059,9 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
     context_state->spot_rid = spot_rid;
     context_state->spot_name = spot_name;
     context_state->lifecycle = lifecycle;
+    context_state->worker_scheduler = make_spot_worker_scheduler ();
     spot_context_t context (context_state);
+    entry_spot_context_t entry_context (context_state);
     std::optional<zlink::message_t> create_reply;
 
     if (lifecycle.create_instance) {
@@ -711,7 +1070,9 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
             throw framework_exception_t (framework_error_kind_t::spot_create_failed,
                                          "SPOT factory returned null");
         }
-        if (lifecycle.configure) {
+        if (lifecycle.configure_entry) {
+            lifecycle.configure_entry (context_state->spot_instance.get (), entry_context);
+        } else if (lifecycle.configure) {
             lifecycle.configure (context_state->spot_instance.get (), context);
         }
         const auto response = lifecycle.on_create

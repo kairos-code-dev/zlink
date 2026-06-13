@@ -3,16 +3,16 @@
 
 #include <zlink/http_client/contracts/client.hpp>
 
+#include "runtime/cookie_jar.hpp"
+
 #include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 namespace zlink::http_client::detail
 {
@@ -45,26 +45,6 @@ struct http_request_t
     std::map<std::string, std::string> headers;
     std::optional<std::chrono::milliseconds> timeout;
     std::function<void (std::string_view)> sink;
-};
-
-struct cookie_t
-{
-    std::string host;
-    std::string name;
-    std::string value;
-    std::string path;
-    bool secure = false;
-};
-
-class cookie_jar_t
-{
-  public:
-    void store (const std::string &host, const std::string &set_cookie_header);
-    std::string header_for (const std::string &host, const std::string &path, bool secure) const;
-
-  private:
-    mutable std::mutex _mutex;
-    std::vector<cookie_t> _cookies;
 };
 
 class connection_pool_t;

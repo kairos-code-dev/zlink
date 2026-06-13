@@ -22,10 +22,21 @@ namespace detail
 {
 result_t<zlink::message_t>
 submit_request (std::shared_ptr<void> state, packet_t packet, std::chrono::milliseconds timeout);
+void submit_request_async (std::shared_ptr<void> state,
+                           packet_t packet,
+                           std::chrono::milliseconds timeout,
+                           std::function<void (result_t<zlink::message_t>)> callback);
 result_t<packet_t> submit_wait (std::shared_ptr<void> state,
                                 std::string packet_name,
                                 std::function<bool (const packet_t &)> predicate,
                                 std::chrono::milliseconds timeout);
+void submit_wait_async (std::shared_ptr<void> state,
+                        std::string packet_name,
+                        std::function<bool (const packet_t &)> predicate,
+                        std::chrono::milliseconds timeout,
+                        std::function<void (result_t<packet_t>)> callback);
+void post_runtime_operation (std::function<void ()> operation);
+void schedule_delivery (std::shared_ptr<void> state, std::function<void ()> callback);
 } // namespace detail
 
 class send_call_t
@@ -130,7 +141,25 @@ template <typename TReply> class request_call_t
     /// Sends the request and invokes the callback with the decoded reply result.
     void submit (std::function<void (result_t<TReply>)> callback)
     {
-        callback (submit ());
+        if (!_state) {
+            if (callback) {
+                callback (result_t<TReply>::failure (error_code_t::configuration_error,
+                                                     "request call has no connector"));
+            }
+            return;
+        }
+        auto state = _state;
+        auto packet = std::move (_packet);
+        const auto timeout = _timeout;
+        detail::submit_request_async (
+          state, std::move (packet), timeout,
+          [callback = std::move (callback)] (result_t<zlink::message_t> reply) mutable {
+              erased_result_t erased (std::move (reply));
+              auto result = erased.template as<TReply> ();
+              if (callback) {
+                  callback (std::move (result));
+              }
+          });
     }
 
   private:
@@ -247,7 +276,51 @@ template <typename TMessage> class wait_call_t
     /// Waits for a matching packet and invokes the callback with the decoded result.
     void submit (std::function<void (result_t<TMessage>)> callback)
     {
-        callback (submit ());
+        if (!_state) {
+            if (callback) {
+                callback (result_t<TMessage>::failure (error_code_t::configuration_error,
+                                                       "wait call has no connector"));
+            }
+            return;
+        }
+
+        std::function<bool (const packet_t &)> packet_predicate;
+        if (_predicate) {
+            packet_predicate = [predicate = _predicate] (const packet_t &packet) {
+                if constexpr (std::is_same_v<TMessage, packet_t>) {
+                    return predicate (packet);
+                } else {
+                    TMessage message{};
+                    detail::apply_packet_payload (message, packet.payload, 0);
+                    return predicate (message);
+                }
+            };
+        }
+
+        auto state = _state;
+        auto packet_name = std::move (_packet_name);
+        const auto timeout = _timeout;
+        detail::submit_wait_async (
+          state, std::move (packet_name), std::move (packet_predicate), timeout,
+          [callback = std::move (callback)] (result_t<packet_t> packet) mutable {
+              result_t<TMessage> result =
+                result_t<TMessage>::failure (error_code_t::configuration_error,
+                                             "stream connector wait failed");
+              if (!packet) {
+                  result = result_t<TMessage>::failure (
+                    packet.error_code (),
+                    packet.error () ? packet.error ()->message : "stream connector wait failed");
+              } else if constexpr (std::is_same_v<TMessage, packet_t>) {
+                  result = result_t<TMessage>::success (std::move (packet.value ()));
+              } else {
+                  TMessage message{};
+                  detail::apply_packet_payload (message, packet.value ().payload, 0);
+                  result = result_t<TMessage>::success (std::move (message));
+              }
+              if (callback) {
+                  callback (std::move (result));
+              }
+          });
     }
 
   private:

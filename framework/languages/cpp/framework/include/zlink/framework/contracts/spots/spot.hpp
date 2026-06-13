@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
+#include <zlink/framework/contracts/workers/worker.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -30,6 +31,9 @@
 
 namespace zlink::framework
 {
+
+class actor_context_t;
+class actor_ref_t;
 
 class spot_t
 {
@@ -411,7 +415,53 @@ class spot_context_t
                                        std::type_index (typeid (TPayload)));
     }
 
+    template <typename TWork> auto run_worker (TWork work)
+    {
+        using result_type = std::invoke_result_t<TWork>;
+        auto scheduler = _worker_scheduler;
+        return worker_call_t<result_type> (
+          [scheduler, work = std::move (work)] (
+            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+              (void) timeout;
+              if (!scheduler) {
+                  return task_t<result_type> (result_t<result_type>::failure (
+                    framework_error_kind_t::request_failed, "worker runtime is not configured"));
+              }
+
+              detail::task_completion_source_t<result_type> completion;
+              auto task = completion.task ();
+              auto shared_work = std::make_shared<TWork> (std::move (work));
+              const auto scheduled =
+                scheduler->try_schedule ([scheduler, shared_work, completion] () mutable {
+                    auto result = detail::run_worker_body<result_type> (*shared_work);
+                    scheduler->post_owner ([completion, result = std::move (result)] () mutable {
+                        completion.complete (std::move (result));
+                    });
+                });
+              if (!scheduled) {
+                  scheduler->post_owner ([completion] () mutable {
+                      completion.complete (result_t<result_type>::failure (
+                        framework_error_kind_t::request_failed, "worker queue is full"));
+                  });
+              }
+              return task;
+          });
+    }
+
     std::vector<spot_packet_descriptor_t> packet_registry () const;
+
+    template <typename TActor>
+    task_t<actor_ref_t> leaveActor (const actor_ref_t &actor_ref, TActor &actor)
+    {
+        return leaveActor_erased (
+          actor_ref, std::type_index (typeid (TActor)), &actor,
+          [] (void *actor_instance, const actor_ref_t &committed) {
+              auto &typed_actor = *static_cast<TActor *> (actor_instance);
+              if constexpr (requires { typed_actor.set_actor_ref (committed); }) {
+                  typed_actor.set_actor_ref (committed);
+              }
+          });
+    }
 
     template <typename THandler>
     timer_t
@@ -421,8 +471,9 @@ class spot_context_t
                                  std::type_index (typeid (THandler)));
     }
 
-  private:
+  protected:
     friend class spot_node_builder_t;
+    friend class entry_spot_context_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::timer_runtime_t;
 
@@ -447,6 +498,11 @@ class spot_context_t
     send_call_t send_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
     erased_request_call_t request_to_erased (node_rid_t node_rid, spot_rid_t spot_rid);
     spot_context_t &register_packet_erased (std::string packet_name, std::type_index payload_type);
+    task_t<actor_ref_t>
+    leaveActor_erased (const actor_ref_t &actor_ref,
+                       std::type_index actor_type,
+                       void *actor,
+                       std::function<void (void *, const actor_ref_t &)> update_actor_ref);
     timer_t add_timer_erased (std::string name,
                               std::chrono::milliseconds period,
                               timer_options_t options,
@@ -454,6 +510,34 @@ class spot_context_t
     task_t<bool> close_erased ();
 
     std::shared_ptr<detail::spot_context_state_t> _state;
+    std::shared_ptr<detail::worker_scheduler_t> _worker_scheduler;
+};
+
+class entry_spot_context_t : public spot_context_t
+{
+  public:
+    entry_spot_context_t ();
+    ~entry_spot_context_t ();
+
+    entry_spot_context_t (entry_spot_context_t &&) noexcept;
+    entry_spot_context_t &operator= (entry_spot_context_t &&) noexcept;
+    entry_spot_context_t (const entry_spot_context_t &) = default;
+    entry_spot_context_t &operator= (const entry_spot_context_t &) = default;
+
+    explicit entry_spot_context_t (const spot_context_t &context);
+
+    template <typename TActor>
+    task_t<void> destroyActor (const actor_ref_t &actor_ref, TActor &actor)
+    {
+        return destroyActor_erased (actor_ref, std::type_index (typeid (TActor)), &actor);
+    }
+
+  private:
+    friend class detail::spot_node_runtime_t;
+    explicit entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
+
+    task_t<void>
+    destroyActor_erased (const actor_ref_t &actor_ref, std::type_index actor_type, void *actor);
 };
 
 struct spot_create_result_t
@@ -616,6 +700,7 @@ class spot_handler_registry_t
 
   private:
     friend class spot_context_t;
+    friend class detail::spot_node_runtime_t;
     explicit spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state);
 
     spot_handler_registry_t &add_handler_erased (spot_handler_kind_t kind,
@@ -647,6 +732,7 @@ struct spot_lifecycle_callbacks_t
 {
     std::function<std::shared_ptr<void> ()> create_instance;
     std::function<void (void *, spot_context_t &)> configure;
+    std::function<void (void *, entry_spot_context_t &)> configure_entry;
     std::function<spot_create_response_t (void *, const zlink::message_t &)> on_create;
     std::function<void (void *)> on_initialize;
     std::function<void (void *)> on_closing;
@@ -654,6 +740,12 @@ struct spot_lifecycle_callbacks_t
 
 template <typename TSpot>
 concept has_configure_callback = requires (TSpot & spot, spot_context_t &context)
+{
+    spot.configure (context);
+};
+
+template <typename TSpot>
+concept has_entry_configure_callback = requires (TSpot & spot, entry_spot_context_t &context)
 {
     spot.configure (context);
 };
@@ -769,8 +861,54 @@ class spot_node_builder_t
     template <typename TActorFactory>
     spot_node_builder_t &add_actor_factory (std::string actor_type)
     {
-        return add_actor_factory_erased (std::move (actor_type),
-                                         std::type_index (typeid (TActorFactory)));
+        static_assert (std::is_default_constructible_v<TActorFactory>,
+                       "C++ actor factories must be default constructible");
+        if constexpr (requires (TActorFactory & factory, std::string actor_id) {
+                          factory.create (std::move (actor_id));
+                      }) {
+            using actor_type_t =
+              std::remove_cvref_t<decltype (std::declval<TActorFactory &> ().create (
+                std::declval<std::string> ()))>;
+            return add_actor_factory_erased (
+              std::move (actor_type), std::type_index (typeid (actor_type_t)),
+              [] (std::string actor_id) -> std::shared_ptr<void> {
+                  TActorFactory factory;
+                  return std::static_pointer_cast<void> (
+                    std::make_shared<actor_type_t> (factory.create (std::move (actor_id))));
+              },
+              [] (void *actor, const actor_ref_t &actor_ref, void *actor_context) {
+                  auto &typed_actor = *static_cast<actor_type_t *> (actor);
+                  if constexpr (requires { typed_actor.set_actor_ref (actor_ref); }) {
+                      typed_actor.set_actor_ref (actor_ref);
+                  }
+                  if constexpr (requires {
+                                    typed_actor.set_actor_context (
+                                      *static_cast<actor_context_t *> (actor_context));
+                                }) {
+                      typed_actor.set_actor_context (
+                        *static_cast<actor_context_t *> (actor_context));
+                  }
+              });
+        } else {
+            return add_actor_factory_erased (
+              std::move (actor_type), std::type_index (typeid (TActorFactory)),
+              [] (std::string) -> std::shared_ptr<void> {
+                  return std::static_pointer_cast<void> (std::make_shared<TActorFactory> ());
+              },
+              [] (void *actor, const actor_ref_t &actor_ref, void *actor_context) {
+                  auto &typed_actor = *static_cast<TActorFactory *> (actor);
+                  if constexpr (requires { typed_actor.set_actor_ref (actor_ref); }) {
+                      typed_actor.set_actor_ref (actor_ref);
+                  }
+                  if constexpr (requires {
+                                    typed_actor.set_actor_context (
+                                      *static_cast<actor_context_t *> (actor_context));
+                                }) {
+                      typed_actor.set_actor_context (
+                        *static_cast<actor_context_t *> (actor_context));
+                  }
+              });
+        }
     }
 
     spot_node_builder_t &
@@ -796,8 +934,11 @@ class spot_node_builder_t
 
     spot_node_builder_t &
     add_spot_factory (std::string spot_name, std::type_index spot_type, bool entry_spot);
-    spot_node_builder_t &add_actor_factory_erased (std::string actor_type,
-                                                   std::type_index factory_type);
+    spot_node_builder_t &add_actor_factory_erased (
+      std::string actor_type,
+      std::type_index actor_instance_type,
+      std::function<std::shared_ptr<void> (std::string)> create_instance,
+      std::function<void (void *, const actor_ref_t &, void *)> configure_instance);
 
     template <typename TSpot>
     void register_lifecycle (std::string spot_name,
@@ -814,7 +955,12 @@ class spot_node_builder_t
             };
         }
         if (callbacks.create_instance) {
-            if constexpr (detail::has_configure_callback<TSpot>) {
+            if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
+                          && detail::has_entry_configure_callback<TSpot>) {
+                callbacks.configure_entry = [] (void *spot, entry_spot_context_t &context) {
+                    static_cast<TSpot *> (spot)->configure (context);
+                };
+            } else if constexpr (detail::has_configure_callback<TSpot>) {
                 callbacks.configure = [] (void *spot, spot_context_t &context) {
                     static_cast<TSpot *> (spot)->configure (context);
                 };

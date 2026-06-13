@@ -105,7 +105,22 @@ template <typename TReply> class coroutine_auto_request_call_t
         return result_t<TReply>::success (codec_traits<TReply>::decode (result.value ()));
     }
 
-    task_t<TReply> async () { return task_t<TReply> (submit ()); }
+    task_t<TReply> async ()
+    {
+        return task_t<TReply> (
+          [inner = std::move (_inner)] (std::function<void (result_t<TReply>)> callback) mutable {
+              inner.submit ([callback = std::move (callback)] (result_t<zlink::message_t> result) mutable {
+                  if (!result) {
+                      callback (result_t<TReply>::failure (
+                        result.error_code (),
+                        result.error () ? result.error ()->message : "stream request failed"));
+                      return;
+                  }
+                  callback (result_t<TReply>::success (
+                    codec_traits<TReply>::decode (result.value ())));
+              });
+          });
+    }
 
   private:
     coroutine_request_call_t<zlink::message_t> _inner;

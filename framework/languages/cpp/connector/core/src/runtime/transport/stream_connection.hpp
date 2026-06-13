@@ -5,9 +5,11 @@
 #include "runtime/transport/transport_connection.hpp"
 
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/system/error_code.hpp>
 
 #include <optional>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +33,11 @@ void write_bytes (connector_state_t &state, const std::vector<std::uint8_t> &byt
 std::unique_ptr<stream_connection_t> connect_tls (boost::asio::io_context &io_context,
                                                   const endpoint_parts_t &endpoint,
                                                   bool skip_server_certificate_validation);
+void connect_tls_async (
+  boost::asio::io_context &io_context,
+  endpoint_parts_t endpoint,
+  bool skip_server_certificate_validation,
+  std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback);
 #endif
 
 } // namespace zlink::stream_connector::detail

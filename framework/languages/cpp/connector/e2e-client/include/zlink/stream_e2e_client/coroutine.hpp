@@ -58,7 +58,18 @@ class coroutine_send_call_t
 
     result_t<void> submit () { return _inner.submit (); }
 
-    task_t<void> async () { return task_t<void> (submit ()); }
+    void submit (std::function<void (result_t<void>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
+
+    task_t<void> async ()
+    {
+        return task_t<void> (
+          [inner = std::move (_inner)] (std::function<void (result_t<void>)> callback) mutable {
+              inner.submit (std::move (callback));
+          });
+    }
 
   private:
     send_call_t _inner;
@@ -110,7 +121,18 @@ template <typename TReply> class coroutine_request_call_t
 
     result_t<TReply> submit () { return _inner.submit (); }
 
-    task_t<TReply> async () { return task_t<TReply> (submit ()); }
+    void submit (std::function<void (result_t<TReply>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
+
+    task_t<TReply> async ()
+    {
+        return task_t<TReply> (
+          [inner = std::move (_inner)] (std::function<void (result_t<TReply>)> callback) mutable {
+              inner.submit (std::move (callback));
+          });
+    }
 
   private:
     request_call_t<TReply> _inner;
@@ -141,7 +163,18 @@ template <typename TMessage> class coroutine_wait_call_t
 
     result_t<TMessage> submit () { return _inner.submit (); }
 
-    task_t<TMessage> async () { return task_t<TMessage> (submit ()); }
+    void submit (std::function<void (result_t<TMessage>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
+
+    task_t<TMessage> async ()
+    {
+        return task_t<TMessage> (
+          [inner = std::move (_inner)] (std::function<void (result_t<TMessage>)> callback) mutable {
+              inner.submit (std::move (callback));
+          });
+    }
 
   private:
     wait_call_t<TMessage> _inner;
@@ -151,6 +184,50 @@ class coroutine_connector_t
 {
   public:
     explicit coroutine_connector_t (connector_t &connector) : _connector (&connector) {}
+
+    class lifecycle_call_t
+    {
+      public:
+        using operation_t = std::function<void (std::function<void (result_t<void>)>)>;
+
+        lifecycle_call_t (std::function<result_t<void> ()> submit_operation,
+                          operation_t operation) :
+            _submit_operation (std::move (submit_operation)), _operation (std::move (operation))
+        {
+        }
+
+        result_t<void> submit ()
+        {
+            _last_result = _submit_operation ();
+            return *_last_result;
+        }
+
+        explicit operator bool ()
+        {
+            return static_cast<bool> (submit ());
+        }
+
+        error_code_t error_code ()
+        {
+            if (!_last_result) {
+                _last_result = _submit_operation ();
+            }
+            return _last_result->error_code ();
+        }
+
+        task_t<void> async ()
+        {
+            return task_t<void> (
+              [operation = std::move (_operation)] (std::function<void (result_t<void>)> callback) mutable {
+                  operation (std::move (callback));
+              });
+        }
+
+      private:
+        std::function<result_t<void> ()> _submit_operation;
+        operation_t _operation;
+        std::optional<result_t<void>> _last_result;
+    };
 
     template <typename TMessage> coroutine_send_call_t send (const TMessage &message)
     {
@@ -198,9 +275,23 @@ class coroutine_connector_t
           _connector->wait_for<TMessage> (std::move (packet_name), timeout));
     }
 
-    result_t<void> connect () { return _connector->connect (); }
+    lifecycle_call_t connect ()
+    {
+        return lifecycle_call_t (
+          [connector = _connector] { return connector->connect (); },
+          [connector = _connector] (std::function<void (result_t<void>)> callback) {
+              connector->connect (std::move (callback));
+          });
+    }
 
-    result_t<void> close () { return _connector->close (); }
+    lifecycle_call_t close ()
+    {
+        return lifecycle_call_t (
+          [connector = _connector] { return connector->close (); },
+          [connector = _connector] (std::function<void (result_t<void>)> callback) {
+              connector->close (std::move (callback));
+          });
+    }
 
   private:
     connector_t *_connector;

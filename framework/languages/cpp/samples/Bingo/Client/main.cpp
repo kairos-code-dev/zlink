@@ -16,7 +16,7 @@ int main (int argc, char **argv)
     connector_options.endpoint = options.stream_endpoint;
     connector_options.connect_timeout = options.connect_timeout;
     connector_options.request_timeout = options.request_timeout;
-    connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+    connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
 
     auto core_client1 = zlink::stream_connector::connector_factory_t::create (
       connector_options);

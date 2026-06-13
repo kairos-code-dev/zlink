@@ -530,7 +530,21 @@ request_builder_t::resolve_body_and_headers () const
     return {std::nullopt, std::move (headers)};
 }
 
-zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () const
+detail::http_request_t
+request_builder_t::make_request (std::function<void (std::string_view)> sink) const
+{
+    auto [body, headers] = resolve_body_and_headers ();
+    return {.method = _method,
+            .path = resolve_target (),
+            .body = std::move (body),
+            .body_provider = _body_provider,
+            .headers = std::move (headers),
+            .timeout = _timeout,
+            .sink = std::move (sink)};
+}
+
+zlink::framework::task_t<raw_http_response_t>
+request_builder_t::dispatch_request (detail::http_request_t request) const
 {
     if (!_client._runtime) {
         return zlink::framework::task_t<raw_http_response_t> (
@@ -538,18 +552,15 @@ zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () c
             zlink::framework::framework_error_kind_t::closed, "HTTP client is not initialized"));
     }
 
-    auto [body, headers] = resolve_body_and_headers ();
-    detail::http_request_t request{.method = _method,
-                                   .path = resolve_target (),
-                                   .body = std::move (body),
-                                   .body_provider = _body_provider,
-                                   .headers = std::move (headers),
-                                   .timeout = _timeout,
-                                   .sink = nullptr};
     if (_client._runtime->uses_coroutines ()) {
         return _client._runtime->submit (std::move (request));
     }
     return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
+}
+
+zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () const
+{
+    return dispatch_request (make_request (nullptr));
 }
 
 zlink::framework::task_t<raw_http_response_t>
@@ -560,24 +571,7 @@ request_builder_t::download (std::function<void (std::string_view)> sink) const
           zlink::framework::framework_error_kind_t::request_protocol_error,
           "HTTP request download sink is required");
     }
-    if (!_client._runtime) {
-        return zlink::framework::task_t<raw_http_response_t> (
-          zlink::framework::result_t<raw_http_response_t>::failure (
-            zlink::framework::framework_error_kind_t::closed, "HTTP client is not initialized"));
-    }
-
-    auto [body, headers] = resolve_body_and_headers ();
-    detail::http_request_t request{.method = _method,
-                                   .path = resolve_target (),
-                                   .body = std::move (body),
-                                   .body_provider = _body_provider,
-                                   .headers = std::move (headers),
-                                   .timeout = _timeout,
-                                   .sink = std::move (sink)};
-    if (_client._runtime->uses_coroutines ()) {
-        return _client._runtime->submit (std::move (request));
-    }
-    return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
+    return dispatch_request (make_request (std::move (sink)));
 }
 
 } // namespace zlink::http_client

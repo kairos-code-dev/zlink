@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include <zlink/http_client/contracts/coroutines.hpp>
+#include <zlink/http_client/contracts/types.hpp>
 #include <zlink/codec/json.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
-#include <zlink/framework/contracts/errors/result.hpp>
 
 #include <chrono>
-#include <coroutine>
 #include <functional>
 #include <map>
 #include <memory>
@@ -20,88 +20,13 @@
 namespace zlink::http_client
 {
 
-inline constexpr int version_major = 0;
-inline constexpr int version_minor = 2;
-inline constexpr int version_patch = 0;
-
-enum class http_method_t
-{
-    get,
-    post,
-    put,
-    delete_,
-    patch,
-    head,
-    options
-};
-
-struct http_response_metadata_t
-{
-    int status = 0;
-    std::map<std::string, std::string> headers;
-};
-
-template <typename T> struct http_response_t
-{
-    int status = 0;
-    std::map<std::string, std::string> headers;
-    T body;
-    std::string raw_body;
-};
-
-struct raw_http_response_t
-{
-    int status = 0;
-    std::map<std::string, std::string> headers;
-    std::string body;
-};
-
 class request_builder_t;
 class client_builder_t;
-
-class coroutine_execute_scheduler_t
-{
-  public:
-    virtual ~coroutine_execute_scheduler_t () = default;
-
-    virtual void execute (std::function<void ()> work) = 0;
-};
-
-class coroutine_resume_scheduler_t
-{
-  public:
-    virtual ~coroutine_resume_scheduler_t () = default;
-
-    virtual void resume (std::function<void ()> continuation) = 0;
-    virtual void resume (std::coroutine_handle<> continuation)
-    {
-        resume ([continuation] { continuation.resume (); });
-    }
-};
-
-class framework_resume_scheduler_t final : public coroutine_resume_scheduler_t
-{
-  public:
-    using post_t = std::function<void (std::function<void ()>)>;
-
-    explicit framework_resume_scheduler_t (post_t post) : _post (std::move (post))
-    {
-        if (!_post) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_protocol_error,
-              "HTTP client framework resume scheduler post function is required");
-        }
-    }
-
-    void resume (std::function<void ()> continuation) override { _post (std::move (continuation)); }
-
-  private:
-    post_t _post;
-};
 
 namespace detail
 {
 class http_client_runtime_t;
+struct http_request_t;
 }
 
 class client_t
@@ -290,6 +215,8 @@ class request_builder_t
     std::string resolve_target () const;
     std::pair<std::optional<std::string>, std::map<std::string, std::string>>
     resolve_body_and_headers () const;
+    detail::http_request_t make_request (std::function<void (std::string_view)> sink) const;
+    zlink::framework::task_t<raw_http_response_t> dispatch_request (detail::http_request_t request) const;
 
     client_t _client;
     http_method_t _method;

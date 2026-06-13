@@ -2,8 +2,13 @@
 
 #include <zlink/framework/contracts/configuration/app.hpp>
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/channels/channel_host_service.hpp"
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/http/http_host_service.hpp"
+#include "runtime/spots/spot_runtime.hpp"
+#include "runtime/streams/stream_host_service.hpp"
 
 #include <atomic>
 #include <csignal>
@@ -15,6 +20,25 @@
 
 namespace zlink::framework::detail
 {
+
+bool has_server_channel (const std::vector<channel_snapshot_t> &channels)
+{
+    for (const auto &channel : channels) {
+        if (channel.server.enabled && !channel.server.bind_endpoints.empty ()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+spot_actor_message_metadata_t project_stream_metadata (const stream_header_t &header)
+{
+    spot_actor_message_metadata_t metadata;
+    for (const auto &[key, value] : header.metadata ().values ()) {
+        metadata.values.emplace (key, value);
+    }
+    return metadata;
+}
 
 class app_state_t
 {
@@ -157,9 +181,22 @@ serializer_registry_t &app_t::_serializers () noexcept
 
 app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t &)> configure)
 {
+    detail::channel_runtime_t::from (_state->zlink.message_bus ())
+      .bind_serializers (_state->serializers);
     if (!_state->services.contains (std::type_index (typeid (logger_factory_t)))) {
         _state->services.add_singleton<logger_factory_t> (
           std::make_unique<logger_factory_t> (_state->logging.factory ()));
+    }
+    if (!_state->services.contains (std::type_index (typeid (detail::actor_gateway_runtime_t)))) {
+        _state->services.add_singleton<detail::actor_gateway_runtime_t> ();
+    }
+    if (!_state->services.contains (std::type_index (typeid (session_actor_manager_t)))) {
+        _state->services.add_factory<session_actor_manager_t> (
+          [] (service_provider_t &provider) {
+              return std::make_unique<session_actor_manager_t> (
+                provider.get_required<detail::actor_gateway_runtime_t> ().manager ());
+          },
+          service_lifetime_t::scoped);
     }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
@@ -170,6 +207,54 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    const auto channel_snapshot = _state->zlink.channels ();
+    if (detail::has_server_channel (channel_snapshot)) {
+        add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
+          _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
+    }
+    const auto stream_snapshot = _state->zlink.streams ();
+    for (const auto &spot_node : _state->zlink.spot_nodes ()) {
+        if (!spot_node.actor_gateway_enabled) {
+            continue;
+        }
+        auto runtime = detail::spot_node_runtime_t::from (_state->zlink, spot_node.name);
+        if (!runtime) {
+            continue;
+        }
+        if (spot_node.entry_spot_name) {
+            try {
+                (void) runtime->create_spot (*spot_node.entry_spot_name);
+            }
+            catch (const framework_exception_t &) {
+            }
+        }
+        if (!_state->services.contains (std::type_index (typeid (detail::spot_node_runtime_t)))) {
+            _state->services.add_singleton<detail::spot_node_runtime_t> (
+              std::make_unique<detail::spot_node_runtime_t> (*runtime));
+        }
+        auto framework_provider = _state->services.build_provider ();
+        auto &actor_gateway = framework_provider.get_required<detail::actor_gateway_runtime_t> ();
+        runtime->on_destroy_actor ([&actor_gateway] (const actor_ref_t &actor_ref) {
+            return actor_gateway.destroy_actor (actor_ref);
+        });
+        runtime->on_actor_ref_updated ([&actor_gateway] (const actor_ref_t &actor_ref) {
+            return actor_gateway.update_actor_ref (actor_ref);
+        });
+        actor_gateway.on_relay (
+          [runtime = *runtime, services = &_state->services, serializers = &_state->serializers] (
+            const actor_ref_t &actor_ref, actor_context_t actor_context,
+            const stream_header_t &header, const zlink::message_t &payload) mutable {
+              auto provider = services->build_provider ();
+              return runtime.relay_actor_packet (
+                actor_ref, std::move (actor_context), header.packet_name (), payload, provider,
+                *serializers, detail::project_stream_metadata (header));
+          });
+    }
+    if (!stream_snapshot.empty ()) {
+        add_hosted_service (std::make_unique<runtime::stream_host_service_t> (
+          detail::stream_runtime_t::from (_state->zlink), stream_snapshot,
+          options.stream_session_factories ()));
+    }
     if (!http_snapshot.endpoints.empty ()) {
         add_hosted_service (
           std::make_unique<runtime::http_host_service_t> (http_snapshot, _state->health));

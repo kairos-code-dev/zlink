@@ -52,14 +52,22 @@ class http_host_service_t::listener_t
 
     void run ()
     {
-        _parsed = parse_http_endpoint (_endpoint->uri);
-        tcp::resolver resolver (_io);
-        const auto endpoints = resolver.resolve (_parsed.host, _parsed.port);
-        _acceptor.open (endpoints.begin ()->endpoint ().protocol ());
-        _acceptor.set_option (tcp::acceptor::reuse_address (true));
-        _acceptor.bind (endpoints.begin ()->endpoint ());
-        _acceptor.listen ();
-        configure_tls_context ();
+        try {
+            _parsed = parse_http_endpoint (_endpoint->uri);
+            tcp::resolver resolver (_io);
+            const auto endpoints = resolver.resolve (_parsed.host, _parsed.port);
+            _acceptor.open (endpoints.begin ()->endpoint ().protocol ());
+            _acceptor.set_option (tcp::acceptor::reuse_address (true));
+            _acceptor.bind (endpoints.begin ()->endpoint ());
+            _acceptor.listen ();
+            configure_tls_context ();
+        }
+        catch (const boost::system::system_error &) {
+            if (_stop->load (std::memory_order_acquire)) {
+                return;
+            }
+            throw;
+        }
 
         while (!_stop->load (std::memory_order_acquire)) {
             beast::error_code ec;

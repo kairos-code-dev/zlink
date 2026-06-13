@@ -1259,7 +1259,10 @@ class stream_node_options_builder_t
     {
         detail::injected_stream_session_registrar_t<
           TSession, typename detail::handler_dependencies_t<TSession>::type>::add (*_services);
-        set_session_name (detail::stream_session_name<TSession> ());
+        auto session_name = detail::stream_session_name<TSession> ();
+        _options->stream_session_factories[session_name] = [] (service_provider_t &provider)
+          -> packet_stream_session_t & { return provider.get_required<TSession> (); };
+        set_session_name (std::move (session_name));
         apply ();
         return *this;
     }
@@ -1444,6 +1447,12 @@ class zlink_framework_options_t
     monitoring_builder_t &monitoring () noexcept { return *_monitoring; }
 
     http_options_builder_t &http () noexcept { return _options->http; }
+
+    const std::map<std::string, detail::stream_session_factory_t> &
+    stream_session_factories () const noexcept
+    {
+        return _options->stream_session_factories;
+    }
 
     template <typename TFilter> zlink_framework_options_t &use_filter ()
     {

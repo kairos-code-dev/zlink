@@ -47,7 +47,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
 
     if (header.value ().kind == runtime::messaging::message_kind_t::request) {
         auto reply = _runtime.dispatch_request (
-          channel_name, header.value ().topic.value_or ("Channel"), header.value ().message_name,
+          channel_name, header.value ().topic.value_or (""), header.value ().message_name,
           services, serializers, handlers, body.value ());
         channel_reply_writer_t writer;
         if (!reply) {
@@ -67,7 +67,7 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
 
     if (header.value ().kind == runtime::messaging::message_kind_t::command) {
         auto result = _runtime.dispatch_send (
-          std::move (channel_name), header.value ().topic.value_or ("Channel"),
+          std::move (channel_name), header.value ().topic.value_or (""),
           header.value ().message_name, services, serializers, handlers, body.value ());
         if (!result) {
             return result_t<runtime::messaging::message_parts_t>::failure (

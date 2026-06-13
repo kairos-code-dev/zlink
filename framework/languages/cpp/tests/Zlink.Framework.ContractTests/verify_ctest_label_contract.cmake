@@ -43,10 +43,15 @@ set(required_labels
   connector-integration
   connector-e2e
   connector-contract
+  connector-coroutine
+  connector-dispatch
   connector-protocol
   connector-transport
   connector-typed
+  connector-timeout
   connector-package
+  connector-perf-smoke
+  connector-perf-scale
   connector-unreal-contract
   connector-unreal-compile
   connector-unreal-smoke

@@ -34,10 +34,13 @@
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
+#include <zlink/framework/contracts/workers/worker.hpp>
 #include <zlink/framework/extensions.hpp>
 #include <zlink/framework/extensions/extension_boundaries.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/http_client/contracts/client.hpp>
+#include <zlink/http_client/contracts/coroutines.hpp>
+#include <zlink/http_client/contracts/types.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
 #include <zlink/stream_connector_throwing.hpp>
@@ -66,6 +69,30 @@
 #include <type_traits>
 #include <vector>
 
+struct contract_actor_t;
+
+template <typename TContext>
+concept has_destroyActor = requires (TContext &context,
+                                      const zlink::framework::actor_ref_t &actor_ref,
+                                      contract_actor_t &actor)
+{
+    context.destroyActor (actor_ref, actor);
+};
+
+template <typename TContext>
+concept has_leaveActor = requires (TContext &context,
+                                    const zlink::framework::actor_ref_t &actor_ref,
+                                    contract_actor_t &actor)
+{
+    context.leaveActor (actor_ref, actor);
+};
+
+template <typename TContext>
+concept has_run_worker = requires (TContext &context)
+{
+    context.run_worker ([] { return 1; });
+};
+
 static_assert (zlink::framework::version_major == 0);
 static_assert (zlink::http_client::version_major == 0);
 static_assert (zlink::stream_connector::version_major == 0);
@@ -93,6 +120,8 @@ static_assert (!has_blocking_submit<zlink::framework::send_call_t>);
 static_assert (!has_callback_async<zlink::framework::send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::relay_call_t>);
 static_assert (!has_callback_async<zlink::framework::relay_call_t, void>);
+static_assert (!has_blocking_submit<zlink::framework::relay_request_call_t>);
+static_assert (!has_callback_async<zlink::framework::relay_request_call_t, zlink::message_t>);
 static_assert (!has_blocking_submit<zlink::framework::stream_write_call_t>);
 static_assert (!has_callback_async<zlink::framework::stream_write_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::route_send_call_t>);
@@ -180,8 +209,9 @@ struct contract_spot_t : public zlink::framework::spot_t
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
-    void on_post_actor_joined (contract_actor_t &) {}
-    void on_actor_left (contract_actor_t &) {}
+    void onCreateActor (contract_actor_t &) {}
+    void onJoinActor (contract_actor_t &) {}
+    void onLeaveActor (contract_actor_t &) {}
 };
 
 void to_json (nlohmann::json &json, const named_request_t &value)
@@ -475,6 +505,40 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().close ()),
                  zlink::framework::task_t<bool>>);
+static_assert (has_run_worker<zlink::framework::spot_context_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().run_worker (
+                   [] { return 1; })),
+                 zlink::framework::worker_call_t<int>>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::worker_call_t<int> &> ()
+                                          .timeout (std::chrono::milliseconds (1))),
+                              zlink::framework::worker_call_t<int> &>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::worker_call_t<int> &> ()
+                                          .async ()),
+                              zlink::framework::task_t<int>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::worker_call_t<int> &> ().submit (
+                   std::declval<std::function<zlink::framework::task_t<void> (
+                     zlink::framework::result_t<int>)>> ())),
+                 void>);
+static_assert (has_leaveActor<zlink::framework::spot_context_t>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ()
+                                          .leaveActor (
+                                            std::declval<const zlink::framework::actor_ref_t &> (),
+                                            std::declval<contract_actor_t &> ())),
+                              zlink::framework::task_t<zlink::framework::actor_ref_t>>);
+static_assert (!has_destroyActor<zlink::framework::spot_context_t>);
+static_assert (has_destroyActor<zlink::framework::entry_spot_context_t>);
+static_assert (has_run_worker<zlink::framework::entry_spot_context_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ().run_worker (
+                   [] { return 1; })),
+                 zlink::framework::worker_call_t<int>>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ()
+                                          .destroyActor (
+                                            std::declval<const zlink::framework::actor_ref_t &> (),
+                                            std::declval<contract_actor_t &> ())),
+                              zlink::framework::task_t<void>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
                    "stage", std::declval<zlink::message_t> ())),

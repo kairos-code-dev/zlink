@@ -2,10 +2,13 @@
 
 #include "runtime/dispatch/offload_executor.hpp"
 
+#include <stdexcept>
+
 namespace zlink::framework::runtime
 {
 
-offload_executor_t::offload_executor_t (std::size_t worker_count)
+offload_executor_t::offload_executor_t (std::size_t worker_count, std::size_t max_queue_length) :
+    _max_queue_length (max_queue_length)
 {
     if (worker_count == 0) {
         worker_count = 1;
@@ -23,14 +26,22 @@ offload_executor_t::~offload_executor_t ()
 
 void offload_executor_t::submit (std::function<void ()> work)
 {
+    if (!try_submit (std::move (work))) {
+        throw std::runtime_error ("offload executor queue is full or stopped");
+    }
+}
+
+bool offload_executor_t::try_submit (std::function<void ()> work)
+{
     {
         std::lock_guard lock (_mutex);
-        if (_stopping) {
-            return;
+        if (_stopping || (_max_queue_length != 0 && _queue.size () >= _max_queue_length)) {
+            return false;
         }
         _queue.push (std::move (work));
     }
     _ready.notify_one ();
+    return true;
 }
 
 void offload_executor_t::drain ()

@@ -4,12 +4,32 @@
 #include <string>
 #include <utility>
 
+#include <zlink/framework.hpp>
+
 namespace zlink::samples::tictactoe
 {
 
 struct player_actor_t
 {
     std::string actor_id;
+    mutable unsigned long long generation = 1;
+    mutable bool destroy_after_entry_spot_join = false;
+    mutable bool disconnected = false;
+    mutable zlink::framework::actor_context_t context;
+
+    void set_actor_ref (const zlink::framework::actor_ref_t &actor_ref) const
+    {
+        generation = actor_ref.generation ();
+    }
+
+    void set_actor_context (zlink::framework::actor_context_t actor_context) const
+    {
+        context = std::move (actor_context);
+    }
+
+    void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
+
+    void mark_disconnected () const { disconnected = true; }
 };
 
 struct player_actor_factory_t

@@ -60,7 +60,7 @@ bound_session_t &bound_session_t::operator= (bound_session_t &&) noexcept = defa
 
 send_call_t bound_session_t::send_raw (const zlink::message_t &payload)
 {
-    return send_erased (payload);
+    return send_erased ("actor.push", payload);
 }
 
 send_call_t bound_session_t::disconnect ()
@@ -77,7 +77,7 @@ send_call_t bound_session_t::disconnect ()
     return send_call_t (result_t<void>::success ());
 }
 
-send_call_t bound_session_t::send_erased (const zlink::message_t &payload)
+send_call_t bound_session_t::send_erased (std::string packet_name, const zlink::message_t &payload)
 {
     const auto found = _state->actors_by_id.find (_actor_id);
     if (found != _state->actors_by_id.end () && found->second.disconnected) {
@@ -92,11 +92,15 @@ send_call_t bound_session_t::send_erased (const zlink::message_t &payload)
         return send_call_t (result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
                                                      "actor generation is stale"));
     }
-    stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw,
-                            stream_header_flags_t::none, std::nullopt, std::string ("actor.push"));
+    stream_header_t header (stream_message_kind_t::send, stream_codec_t::message_pack,
+                            stream_header_flags_t::none, std::nullopt, packet_name);
     _state->bound_session_pushes.push_back (
       detail::relayed_frame_t{found->second.ref, header, payload});
-    return send_call_t (result_t<void>::success ());
+    const auto sink = _state->bound_session_sinks.find (_actor_id);
+    if (sink == _state->bound_session_sinks.end ()) {
+        return send_call_t (result_t<void>::success ());
+    }
+    return send_call_t (sink->second (std::move (packet_name), payload));
 }
 
 actor_context_t::actor_context_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
@@ -238,7 +242,11 @@ relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink:
         return relay_call_t (result_t<void>::failure (framework_error_kind_t::disconnected,
                                                       "actor session is disconnected"));
     }
-    if (found == _state->actors_by_id.end () || !found->second.bound) {
+    if (found == _state->actors_by_id.end ()) {
+        return relay_call_t (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                                      "actor route is not found"));
+    }
+    if (!found->second.bound) {
         return relay_call_t (result_t<void>::failure (
           framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
     }
@@ -246,8 +254,61 @@ relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink:
         return relay_call_t (result_t<void>::failure (
           framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
     }
+    if (_state->relay_dispatcher) {
+        auto dispatched = relay_request (header, payload).async ().result ();
+        if (!dispatched) {
+            return relay_call_t (result_t<void>::failure (
+              dispatched.error_kind (),
+              dispatched.error () ? dispatched.error ()->what () : "actor relay failed"));
+        }
+        return relay_call_t (result_t<void>::success ());
+    }
     _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
     return relay_call_t (result_t<void>::success ());
+}
+
+relay_request_call_t session_actor_t::relay_request (const stream_header_t &header,
+                                                     const zlink::message_t &payload)
+{
+    if (_ref.empty ()) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "session actor is not bound"));
+    }
+    const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
+    if (found != _state->actors_by_id.end () && found->second.disconnected) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::disconnected, "actor session is disconnected"));
+    }
+    if (found == _state->actors_by_id.end ()) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::actor_route_not_found, "actor route is not found"));
+    }
+    if (!found->second.bound) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::actor_session_not_bound, "actor session is not bound"));
+    }
+    if (found->second.ref.generation () != _ref.generation ()) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::actor_stale_generation, "actor generation is stale"));
+    }
+    if (!_state->relay_dispatcher) {
+        _state->relayed_frames.push_back (detail::relayed_frame_t{_ref, header, payload});
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::actor_dispatch_handler_not_found,
+          "actor relay dispatcher is not configured"));
+    }
+    auto dispatched = _state->relay_dispatcher (_ref, context (), header, payload);
+    if (!dispatched) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          dispatched.error_kind (),
+          dispatched.error () ? dispatched.error ()->what () : "actor relay failed"));
+    }
+    if (!dispatched.value ()) {
+        return relay_request_call_t (result_t<zlink::message_t>::failure (
+          framework_error_kind_t::request_protocol_error, "actor relay request has no reply"));
+    }
+    return relay_request_call_t (
+      result_t<zlink::message_t>::success (std::move (*dispatched.value ())));
 }
 
 relay_call_t session_actor_t::notify_disconnected ()
@@ -393,6 +454,72 @@ bool actor_gateway_runtime_t::actor_disconnected (std::string actor_id) const
     return found != _state->actors_by_id.end () && found->second.disconnected;
 }
 
+actor_context_t actor_gateway_runtime_t::actor_context (const actor_ref_t &actor_ref) const
+{
+    return actor_context_t (_state, actor_ref);
+}
+
+result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &actor_ref)
+{
+    if (actor_ref.empty ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                        "actor ref is empty");
+    }
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    if (found == _state->actors_by_id.end ()) {
+        return result_t<void>::success ();
+    }
+    if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_type_mismatch,
+                                        "actor id is already bound to another type");
+    }
+    if (found->second.ref.generation () > actor_ref.generation ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
+                                        "actor generation is stale");
+    }
+    found->second.ref = actor_ref;
+    return result_t<void>::success ();
+}
+
+result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_ref)
+{
+    if (actor_ref.empty ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                        "actor ref is empty");
+    }
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    if (found == _state->actors_by_id.end ()) {
+        return result_t<void>::success ();
+    }
+    if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+        return result_t<void>::failure (framework_error_kind_t::actor_type_mismatch,
+                                        "actor id is already bound to another type");
+    }
+    if (found->second.ref.generation () != actor_ref.generation ()) {
+        return result_t<void>::success ();
+    }
+    _state->bound_session_sinks.erase (std::string (actor_ref.actor_id ()));
+    _state->actors_by_id.erase (found);
+    return result_t<void>::success ();
+}
+
+void actor_gateway_runtime_t::bind_session_stream (std::string actor_id, stream_t stream)
+{
+    _state->bound_session_sinks[actor_id] =
+      [stream = std::move (stream)] (std::string packet_name,
+                                     const zlink::message_t &payload) mutable {
+          stream_header_t header (stream_message_kind_t::send, stream_codec_t::message_pack,
+                                  stream_header_flags_t::none, std::nullopt,
+                                  std::move (packet_name));
+          return stream.write_packet (header, payload).async ().result ();
+      };
+}
+
+void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id)
+{
+    _state->bound_session_sinks.erase (actor_id);
+}
+
 void actor_gateway_runtime_t::on_join_spot (
   actor_gateway_state_t::join_spot_dispatcher_t dispatcher)
 {
@@ -403,6 +530,11 @@ void actor_gateway_runtime_t::on_join_entry_spot (
   actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher)
 {
     _state->join_entry_spot_dispatcher = std::move (dispatcher);
+}
+
+void actor_gateway_runtime_t::on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher)
+{
+    _state->relay_dispatcher = std::move (dispatcher);
 }
 
 } // namespace zlink::framework::detail

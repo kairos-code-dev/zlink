@@ -3,6 +3,7 @@
 #include <zlink/framework.hpp>
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
+#include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_message_pump.hpp"
 #include "runtime/channels/channel_receive_loop.hpp"
@@ -16,6 +17,7 @@
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
 #include "runtime/channels/route_receive_pump.hpp"
 #include "runtime/backend/native_route_backend.hpp"
+#include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 
 #include <zlink.hpp>
@@ -23,7 +25,10 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -120,6 +125,58 @@ template <typename T> void add_int_serializer (zlink::framework::serializer_regi
     serializers.add<T> (
       [] (const T &value) { return zlink::message_t::from (std::to_string (value.value)); },
       [] (const zlink::message_t &message) { return T{std::stoi (message.to_string ())}; });
+}
+
+std::string unique_inproc_endpoint (const char *base)
+{
+    static std::atomic<unsigned> counter{0};
+    std::ostringstream stream;
+    stream << "inproc://" << (base ? base : "framework-channel") << "-"
+           << counter.fetch_add (1, std::memory_order_relaxed);
+    return stream.str ();
+}
+
+std::string unique_tcp_endpoint ()
+{
+    static std::atomic<unsigned> counter{0};
+    std::ostringstream stream;
+    stream << "tcp://127.0.0.1:" << 27500u + counter.fetch_add (1, std::memory_order_relaxed);
+    return stream.str ();
+}
+
+bool wait_for_monitor_event (zlink::socket_monitor_t &monitor, uint64_t event_type,
+                             std::chrono::milliseconds timeout)
+{
+    zlink::poller_t poller;
+    poller.add (monitor, zlink::poll_event_flag_t::pollin, 1);
+
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto remaining = deadline - std::chrono::steady_clock::now ();
+        const auto remaining_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (remaining);
+        zlink::poll_event_t event;
+        if (poller.wait (&event, 1, remaining_ms) != 1) {
+            continue;
+        }
+        const std::optional<zlink::monitor_event_t> monitor_event =
+          monitor.recv (zlink::recv_flags_t::dontwait);
+        if (monitor_event && static_cast<uint64_t> (monitor_event->event) == event_type) {
+            return true;
+        }
+    }
+    return false;
+}
+
+zlink::framework::runtime::messaging::message_parts_t
+copy_message_parts (const std::vector<zlink::message_t> &parts)
+{
+    std::vector<zlink::message_t> copied;
+    copied.reserve (parts.size ());
+    for (const auto &part : parts) {
+        copied.push_back (zlink::message_t::from (part.to_string ()));
+    }
+    return zlink::framework::runtime::messaging::message_parts_t (std::move (copied));
 }
 
 } // namespace
@@ -291,6 +348,8 @@ int main ()
     zlink::framework::handler_registry_t handlers;
     handlers.on_request<local_handler_t, request_t, reply_t> (
       "local", "request", &local_handler_t::handle_request, {.packet_name = "request"});
+    handlers.on_request<local_handler_t, request_t, reply_t> (
+      "hosted", "request", &local_handler_t::handle_request, {.packet_name = "request"});
     handlers.on_send<local_handler_t, event_t> ("local", "send", &local_handler_t::handle_send,
                                                 {.packet_name = "event"});
 
@@ -329,6 +388,25 @@ int main ()
         return 19;
     }
 
+    request_header.topic.reset ();
+    request_header.correlation_id = "corr-no-topic";
+    auto no_topic_request_parts = envelope_codec.encode_raw_body_parts (
+      request_header, zlink::message_t::from (std::string ("25")));
+    const auto no_topic_packet_reply = packet_dispatcher.dispatch_server_message (
+      "local", no_topic_request_parts, provider, serializers, handlers);
+    if (!no_topic_packet_reply) {
+        return 76;
+    }
+    const auto no_topic_packet_reply_body =
+      envelope_codec.decode_body (no_topic_packet_reply.value ());
+    if (!no_topic_packet_reply_body
+        || serializers.get<reply_t> ().deserialize (no_topic_packet_reply_body.value ()).value
+             != 125) {
+        return 77;
+    }
+
+    request_header.topic = "request";
+    request_header.correlation_id = "corr-1";
     request_header.message_name = "missing";
     auto missing_parts = envelope_codec.encode_raw_body_parts (
       request_header, zlink::message_t::from (std::string ("24")));
@@ -344,6 +422,152 @@ int main ()
         || packet_error_header.value ().error_code.value_or ("") != "handler_not_found") {
         return 21;
     }
+
+    zlink::context_t native_context;
+    zlink::router_socket_t native_server (native_context);
+    zlink::dealer_socket_t native_client (native_context);
+    zlink::socket_monitor_t native_server_monitor = native_server.monitor_open ();
+    zlink::socket_monitor_t native_client_monitor = native_client.monitor_open ();
+    const auto native_endpoint = unique_inproc_endpoint ("framework-channel-request");
+    native_server.bind (native_endpoint);
+    native_client.connect (native_endpoint);
+    if (!wait_for_monitor_event (
+          native_server_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+          std::chrono::milliseconds (2000))
+        || !wait_for_monitor_event (
+          native_client_monitor, static_cast<uint64_t> (zlink::monitor_event::connection_ready),
+          std::chrono::milliseconds (2000))) {
+        return 75;
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+    zlink::framework::runtime::messaging::client_call_codec_t client_codec;
+    auto native_header = client_codec.create_envelope (
+      zlink::framework::runtime::messaging::message_kind_t::request, "local", "request",
+      std::chrono::milliseconds (1000), std::string ("request"));
+    auto native_request_parts =
+      client_codec.encode_envelope_parts (native_header, request_t{26}, serializers);
+
+    auto native_server_done = std::async (std::launch::async, [&] () -> int {
+        zlink::received_t native_received;
+        if (native_server.recv (native_received) != 0 || !native_received.request_seq ()
+            || native_received.parts ().size () != native_request_parts.size ()) {
+            return 76;
+        }
+        const auto native_dispatch_reply = packet_dispatcher.dispatch_server_message (
+          "local", copy_message_parts (native_received.parts ()), provider, serializers, handlers);
+        if (!native_dispatch_reply) {
+            return 77;
+        }
+        if (native_dispatch_reply.value ().size () != 2) {
+            return 78;
+        }
+        zlink::message_t reply_header =
+          zlink::message_t::from (native_dispatch_reply.value ()[0].to_string ());
+        zlink::message_t reply_body =
+          zlink::message_t::from (native_dispatch_reply.value ()[1].to_string ());
+        native_received.reply ().message (reply_header).message (reply_body).submit ();
+        return 0;
+    });
+
+    zlink::message_t native_request_header =
+      zlink::message_t::from (native_request_parts[0].to_string ());
+    zlink::message_t native_request_body =
+      zlink::message_t::from (native_request_parts[1].to_string ());
+    auto native_client_future =
+      native_client.request ()
+        .message (native_request_header)
+        .message (native_request_body)
+        .timeout (std::chrono::milliseconds (2000))
+        .async ();
+    const auto native_client_reply =
+      copy_message_parts (native_client_future.get ());
+    const int native_server_result = native_server_done.get ();
+    if (native_server_result != 0) {
+        return native_server_result;
+    }
+    const auto decoded_native_reply = client_codec.decode_envelope_reply<reply_t> (
+      native_client_reply, serializers, "native channel reply was empty",
+      "native channel reply decode failed", "native channel request");
+    if (!decoded_native_reply || decoded_native_reply.value ().value != 126) {
+        return 79;
+    }
+
+    zlink::framework::zlink_builder_t native_bus_builder;
+    const auto native_bus_endpoint = unique_tcp_endpoint ();
+    native_bus_builder.channel (
+      "native-bus", [native_bus_endpoint] (zlink::framework::channel_builder_t &channel) {
+          channel.enable_client ([native_bus_endpoint] (zlink::framework::capability_builder_t &client) {
+              client.connect (native_bus_endpoint);
+          });
+      });
+    zlink::framework::detail::channel_runtime_t::from (
+      native_bus_builder.message_bus ())
+      .bind_serializers (serializers);
+
+    zlink::context_t native_bus_server_context;
+    zlink::router_socket_t native_bus_server (native_bus_server_context);
+    zlink::socket_monitor_t native_bus_server_monitor = native_bus_server.monitor_open ();
+    native_bus_server.bind (native_bus_endpoint);
+    auto native_bus_server_done = std::async (std::launch::async, [&] () -> int {
+        zlink::received_t native_received;
+        if (native_bus_server.recv (native_received) != 0 || !native_received.request_seq ()) {
+            return 80;
+        }
+        const auto native_dispatch_reply = packet_dispatcher.dispatch_server_message (
+          "local", copy_message_parts (native_received.parts ()), provider, serializers, handlers);
+        if (!native_dispatch_reply || native_dispatch_reply.value ().size () != 2) {
+            return 81;
+        }
+        zlink::message_t reply_header =
+          zlink::message_t::from (native_dispatch_reply.value ()[0].to_string ());
+        zlink::message_t reply_body =
+          zlink::message_t::from (native_dispatch_reply.value ()[1].to_string ());
+        native_received.reply ().message (reply_header).message (reply_body).submit ();
+        return 0;
+    });
+    auto native_bus_reply =
+      native_bus_builder.request_client ("native-bus")
+        .request<request_t, reply_t> (request_t{27})
+        .packet_name ("request")
+        .timeout (std::chrono::milliseconds (2000))
+        .async ()
+        .result ();
+    const int native_bus_server_result = native_bus_server_done.get ();
+    if (native_bus_server_result != 0) {
+        return native_bus_server_result;
+    }
+    if (!native_bus_reply || native_bus_reply.value ().value != 127) {
+        return 82;
+    }
+
+    zlink::framework::zlink_builder_t hosted_builder;
+    const auto hosted_endpoint = unique_tcp_endpoint ();
+    hosted_builder.channel ("hosted", [hosted_endpoint] (zlink::framework::channel_builder_t &channel) {
+        channel.enable_server ([hosted_endpoint] (zlink::framework::capability_builder_t &server) {
+            server.bind (hosted_endpoint);
+        });
+        channel.enable_client ([hosted_endpoint] (zlink::framework::capability_builder_t &client) {
+            client.connect (hosted_endpoint);
+        });
+    });
+    zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
+      .bind_serializers (serializers);
+    zlink::framework::runtime::channel_host_service_t hosted_service (
+      hosted_builder.message_bus (), hosted_builder.channels (), handlers, serializers);
+    hosted_service.start (provider);
+    auto hosted_reply =
+      hosted_builder.request_client ("hosted")
+        .request<request_t, reply_t> (request_t{28})
+        .packet_name ("request")
+        .timeout (std::chrono::milliseconds (2000))
+        .async ()
+        .result ();
+    hosted_service.stop ();
+    if (!hosted_reply || hosted_reply.value ().value != 128) {
+        return 83;
+    }
+
     zlink::framework::detail::channel_reply_writer_t reply_writer;
     const zlink::framework::framework_error_kind_t reply_error_kinds[] = {
       zlink::framework::framework_error_kind_t::route_not_connected,
@@ -882,6 +1106,16 @@ int main ()
         || !public_request_header.value ().deadline) {
         return 61;
     }
+    auto missing_peer_reply =
+      public_route_client
+        .request<request_t, reply_t> (
+          "public.route", zlink::routing_id_t::from (std::string ("target-node")), request_t{50})
+        .packet_name ("typed.client.request")
+        .timeout (std::chrono::milliseconds (10))
+        .async ().result ();
+    if (missing_peer_reply || public_route.pending_request_count () != 1) {
+        return 72;
+    }
     public_route.set_request_backend (
       [&envelope_codec,
        &serializers] (const zlink::routing_id_t &target,
@@ -924,7 +1158,7 @@ int main ()
         .timeout (std::chrono::milliseconds (50))
         .async ().result ();
     if (!public_typed_reply || public_typed_reply.value ().value != 351
-        || public_route.outbound_packets ().size () != 3
+        || public_route.outbound_packets ().size () != 4
         || public_route.pending_request_count () != 1) {
         return 62;
     }

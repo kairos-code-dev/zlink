@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -85,10 +86,43 @@ template <typename TStream> class websocket_stream_connection_t final : public s
         return copied;
     }
 
+    void async_read_some (
+      std::size_t max_size,
+      std::function<void (boost::system::error_code, std::vector<std::uint8_t>)> completion) override
+    {
+        (void) max_size;
+        auto buffer = std::make_shared<beast::flat_buffer> ();
+        _stream.async_read (
+          *buffer,
+          [buffer, completion = std::move (completion)] (boost::system::error_code error,
+                                                         std::size_t) mutable {
+              auto text = beast::buffers_to_string (buffer->data ());
+              std::vector<std::uint8_t> bytes (text.begin (), text.end ());
+              if (completion) {
+                  completion (error, std::move (bytes));
+              }
+          });
+    }
+
     void write (const std::vector<std::uint8_t> &bytes) override
     {
         _stream.binary (true);
         _stream.write (asio::buffer (bytes));
+    }
+
+    void async_write (std::vector<std::uint8_t> bytes,
+                      std::function<void (boost::system::error_code)> completion) override
+    {
+        auto buffer = std::make_shared<std::vector<std::uint8_t>> (std::move (bytes));
+        _stream.binary (true);
+        _stream.async_write (
+          asio::buffer (*buffer),
+          [buffer, completion = std::move (completion)] (boost::system::error_code error,
+                                                         std::size_t) mutable {
+              if (completion) {
+                  completion (error);
+              }
+          });
     }
 
     void shutdown_and_close () override
@@ -154,6 +188,48 @@ std::unique_ptr<stream_connection_t> connect_websocket (boost::asio::io_context 
     return std::make_unique<websocket_stream_connection_t<tcp::socket>> (std::move (stream));
 }
 
+void connect_websocket_async (
+  boost::asio::io_context &io_context,
+  websocket_endpoint_parts_t endpoint,
+  std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback)
+{
+    auto resolver = std::make_shared<tcp::resolver> (io_context);
+    auto stream = std::make_shared<websocket::stream<tcp::socket>> (io_context);
+    const auto host = endpoint.host;
+    const auto port = endpoint.port;
+    resolver->async_resolve (
+      host, port,
+      [resolver, stream, endpoint = std::move (endpoint), callback = std::move (callback)] (
+        boost::system::error_code error, tcp::resolver::results_type endpoints) mutable {
+          if (error) {
+              callback (error, nullptr);
+              return;
+          }
+          asio::async_connect (
+            stream->next_layer (), endpoints,
+            [stream, endpoint = std::move (endpoint), callback = std::move (callback)] (
+              boost::system::error_code connect_error, const tcp::endpoint &) mutable {
+                if (connect_error) {
+                    callback (connect_error, nullptr);
+                    return;
+                }
+                stream->binary (true);
+                stream->async_handshake (
+                  endpoint.host, endpoint.target,
+                  [stream, callback = std::move (callback)] (
+                    boost::system::error_code handshake_error) mutable {
+                      if (handshake_error) {
+                          callback (handshake_error, nullptr);
+                          return;
+                      }
+                      callback (
+                        {}, std::make_unique<websocket_stream_connection_t<tcp::socket>> (
+                              std::move (*stream)));
+                  });
+            });
+      });
+}
+
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
 std::unique_ptr<stream_connection_t>
 connect_websocket_secure (boost::asio::io_context &io_context,
@@ -179,6 +255,72 @@ connect_websocket_secure (boost::asio::io_context &io_context,
     stream.handshake (endpoint.host, endpoint.target);
     return std::make_unique<websocket_stream_connection_t<ssl::stream<tcp::socket>>> (
       std::move (stream));
+}
+
+void connect_websocket_secure_async (
+  boost::asio::io_context &io_context,
+  websocket_endpoint_parts_t endpoint,
+  bool skip_server_certificate_validation,
+  std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback)
+{
+    auto context = std::make_shared<ssl::context> (ssl::context::tls_client);
+    context->set_default_verify_paths ();
+    auto stream =
+      std::make_shared<websocket::stream<ssl::stream<tcp::socket>>> (io_context, *context);
+    SSL_set_tlsext_host_name (stream->next_layer ().native_handle (), endpoint.host.c_str ());
+    if (skip_server_certificate_validation) {
+        stream->next_layer ().set_verify_mode (ssl::verify_none);
+    } else {
+        stream->next_layer ().set_verify_mode (ssl::verify_peer);
+        stream->next_layer ().set_verify_callback (ssl::host_name_verification (endpoint.host));
+    }
+
+    const auto host = endpoint.host;
+    const auto port = endpoint.port;
+    auto resolver = std::make_shared<tcp::resolver> (io_context);
+    resolver->async_resolve (
+      host, port,
+      [resolver, context, stream, endpoint = std::move (endpoint),
+       callback = std::move (callback)] (boost::system::error_code error,
+                                         tcp::resolver::results_type endpoints) mutable {
+          if (error) {
+              callback (error, nullptr);
+              return;
+          }
+          asio::async_connect (
+            beast::get_lowest_layer (*stream), endpoints,
+            [context, stream, endpoint = std::move (endpoint), callback = std::move (callback)] (
+              boost::system::error_code connect_error, const tcp::endpoint &) mutable {
+                if (connect_error) {
+                    callback (connect_error, nullptr);
+                    return;
+                }
+                stream->next_layer ().async_handshake (
+                  ssl::stream_base::client,
+                  [context, stream, endpoint = std::move (endpoint),
+                   callback = std::move (callback)] (
+                    boost::system::error_code tls_error) mutable {
+                      if (tls_error) {
+                          callback (tls_error, nullptr);
+                          return;
+                      }
+                      stream->binary (true);
+                      stream->async_handshake (
+                        endpoint.host, endpoint.target,
+                        [context, stream, callback = std::move (callback)] (
+                          boost::system::error_code websocket_error) mutable {
+                            if (websocket_error) {
+                                callback (websocket_error, nullptr);
+                                return;
+                            }
+                            callback (
+                              {}, std::make_unique<
+                                    websocket_stream_connection_t<ssl::stream<tcp::socket>>> (
+                                    std::move (*stream)));
+                        });
+                  });
+            });
+      });
 }
 #endif
 

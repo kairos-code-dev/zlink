@@ -124,7 +124,18 @@ namespace zlink::stream_connector::codecs {
 
         /// Sends the encoded request and invokes the callback with the decoded reply result.
         void submit(std::function<void (result_t<TReply>)> callback) {
-            callback(submit());
+            _inner.submit([callback = std::move(callback)](result_t<zlink::message_t> result) mutable {
+                if (!callback) {
+                    return;
+                }
+                if (!result) {
+                    callback(result_t<TReply>::failure(
+                        result.error_code(),
+                        result.error() ? result.error()->message : "stream request failed"));
+                    return;
+                }
+                callback(result_t<TReply>::success(codec_traits<TReply>::decode(result.value())));
+            });
         }
 
     private:

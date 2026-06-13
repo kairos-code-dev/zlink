@@ -15,6 +15,7 @@ $ApiBin = Join-Path $BinDir "sample_cpp_framework_bingo_api.exe"
 $PlayBin = Join-Path $BinDir "sample_cpp_framework_bingo_play.exe"
 $SessionBin = Join-Path $BinDir "sample_cpp_framework_bingo_session.exe"
 $ClientBin = Join-Path $BinDir "sample_cpp_framework_bingo_client.exe"
+$CTestBin = if ($env:CTEST_BIN) { $env:CTEST_BIN } else { "ctest" }
 
 foreach ($Binary in @($RegistryBin, $ApiBin, $PlayBin, $SessionBin, $ClientBin)) {
     if (-not (Test-Path $Binary)) {
@@ -22,18 +23,37 @@ foreach ($Binary in @($RegistryBin, $ApiBin, $PlayBin, $SessionBin, $ClientBin))
     }
 }
 
-& $RegistryBin
+& $CTestBin --test-dir $BuildDir `
+    -R "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_bingo_(registry|api|play|session)" `
+    --output-on-failure
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $ApiBin
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$LogDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
+$Processes = @()
+try {
+    $Processes += Start-Process -FilePath $RegistryBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "registry.log") -RedirectStandardError (Join-Path $LogDir "registry.err") -PassThru
+    $Processes += Start-Process -FilePath $ApiBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "api.log") -RedirectStandardError (Join-Path $LogDir "api.err") -PassThru
+    $Processes += Start-Process -FilePath $PlayBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "play.log") -RedirectStandardError (Join-Path $LogDir "play.err") -PassThru
+    $Processes += Start-Process -FilePath $SessionBin -ArgumentList "--sample.host.keepRunning", "true" -RedirectStandardOutput (Join-Path $LogDir "session.log") -RedirectStandardError (Join-Path $LogDir "session.err") -PassThru
+    Start-Sleep -Seconds 2
 
-& $PlayBin
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $ClientBin *> (Join-Path $LogDir "client.log")
+    if ($LASTEXITCODE -ne 0) {
+        Get-Content (Join-Path $LogDir "client.log") -ErrorAction SilentlyContinue
+        Get-Content (Join-Path $LogDir "session.err") -ErrorAction SilentlyContinue
+        Get-Content (Join-Path $LogDir "play.err") -ErrorAction SilentlyContinue
+        Get-Content (Join-Path $LogDir "api.err") -ErrorAction SilentlyContinue
+        Get-Content (Join-Path $LogDir "registry.err") -ErrorAction SilentlyContinue
+        exit $LASTEXITCODE
+    }
+}
+finally {
+    foreach ($Process in $Processes) {
+        if (-not $Process.HasExited) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
 
-& $SessionBin
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-Write-Host "bingo server role smoke completed"
-Write-Host "bingo client executable present: $ClientBin"
-Write-Host "full client/server self-check is not run: current C++ sample channel requests use the local framework runtime and do not complete across separate sample processes."
+Write-Host "bingo full client/server self-check completed"
+Write-Host "bingo actor lifecycle sample gate completed"

@@ -72,7 +72,9 @@ enum class error_code_t
     tls_validation_failed,
     decompression_failed,
     user_callback_failed,
-    remote_error
+    remote_error,
+    closed,
+    canceled
 };
 
 enum class connection_state_t

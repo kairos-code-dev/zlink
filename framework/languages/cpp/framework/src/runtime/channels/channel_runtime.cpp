@@ -3,11 +3,14 @@
 #include "channel_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
+#include <zlink.hpp>
 
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
+#include "runtime/messaging/envelope_codec.hpp"
 
+#include <thread>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -318,6 +321,11 @@ channel_runtime_t::outbound_calls () const
     return _state->outbound_calls;
 }
 
+void channel_runtime_t::bind_serializers (serializer_registry_t &serializers) noexcept
+{
+    _state->serializers = &serializers;
+}
+
 void channel_runtime_t::drain () noexcept
 {
     pending_operation_controller_t (*_state).drain ();
@@ -502,6 +510,13 @@ message_bus_t::erased_request_result_t::erased_request_result_t (framework_excep
 {
 }
 
+message_bus_t::erased_request_result_t::erased_request_result_t (
+  zlink::message_t reply, serializer_registry_t &serializers) :
+    _error (framework_error_kind_t::request_failed, ""), _reply (std::move (reply)),
+    _serializers (&serializers)
+{
+}
+
 message_bus_t::message_bus_t () : _state (std::make_shared<detail::channel_runtime_state_t> ())
 {
 }
@@ -530,10 +545,13 @@ std::size_t message_bus_t::pending_limit () const noexcept
 message_bus_t::erased_request_result_t
 message_bus_t::submit_request (std::string channel_name,
                                std::string packet_name,
+                               std::type_index request_type,
+                               const void *request,
                                std::chrono::milliseconds timeout,
                                const request_call_t<zlink::message_t>::metadata_map_t &metadata)
 {
     detail::channel_runtime_t runtime (_state);
+    const auto *client = detail::client_capability (*_state, channel_name);
     _state->outbound_calls.push_back (
       {"request", channel_name, "", std::move (packet_name), timeout, metadata});
     auto reservation = runtime.reserve_outbound_request (channel_name);
@@ -541,6 +559,80 @@ message_bus_t::submit_request (std::string channel_name,
         return erased_request_result_t (framework_exception_t (
           reservation.error_kind (),
           reservation.error () ? reservation.error ()->what () : "channel request failed"));
+    }
+    if (_state->serializers != nullptr && client != nullptr && !client->connect_endpoints.empty ()) {
+        try {
+            runtime::messaging::client_call_codec_t codec;
+            auto header = codec.create_envelope (runtime::messaging::message_kind_t::request,
+                                                 channel_name,
+                                                 _state->outbound_calls.back ().packet_name,
+                                                 timeout);
+            header.metadata = metadata;
+            runtime::messaging::envelope_codec_t envelope;
+            auto parts =
+              envelope.encode_parts (header, request_type, request, *_state->serializers);
+
+            zlink::context_t context;
+            zlink::dealer_socket_t dealer (context);
+            dealer.channel_name (channel_name);
+            for (const auto &endpoint : client->connect_endpoints) {
+                dealer.connect (endpoint);
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+
+            zlink::message_t request_header =
+              zlink::message_t::from (parts[0].to_string ());
+            zlink::message_t request_body =
+              zlink::message_t::from (parts[1].to_string ());
+            auto native_reply =
+              dealer.request ()
+                .message (request_header)
+                .message (request_body)
+                .timeout (timeout)
+                .async ()
+                .get ();
+            auto completion = runtime.complete_outbound_reply (reservation.value ());
+            if (!completion) {
+                return erased_request_result_t (framework_exception_t (
+                  completion.error_kind (),
+                  completion.error () ? completion.error ()->what () : "channel request failed"));
+            }
+
+            runtime::messaging::message_parts_t reply_parts (std::move (native_reply));
+            auto reply_header = envelope.decode_header (reply_parts);
+            if (!reply_header) {
+                return erased_request_result_t (framework_exception_t (
+                  reply_header.error_kind (),
+                  reply_header.error () ? reply_header.error ()->what ()
+                                        : "channel reply header decode failed"));
+            }
+            if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+                return erased_request_result_t (framework_exception_t (
+                  framework_error_kind_t::request_failed,
+                  reply_header.value ().error_message.value_or ("channel request failed")));
+            }
+            auto body = envelope.decode_body (reply_parts);
+            if (!body) {
+                return erased_request_result_t (framework_exception_t (
+                  body.error_kind (),
+                  body.error () ? body.error ()->what () : "channel reply body decode failed"));
+            }
+            return erased_request_result_t (body.value (), *_state->serializers);
+        }
+        catch (const framework_exception_t &error) {
+            runtime.drain ();
+            return erased_request_result_t (error);
+        }
+        catch (const std::exception &error) {
+            runtime.drain ();
+            return erased_request_result_t (
+              framework_exception_t (framework_error_kind_t::request_failed, error.what ()));
+        }
+        catch (...) {
+            runtime.drain ();
+            return erased_request_result_t (framework_exception_t (
+              framework_error_kind_t::request_failed, "channel native request failed"));
+        }
     }
     runtime.drain ();
     return erased_request_result_t (

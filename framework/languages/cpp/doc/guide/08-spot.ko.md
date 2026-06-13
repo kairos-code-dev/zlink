@@ -146,8 +146,8 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
           to_stream_payload (bingo_room_join_res_t{snapshot ()}));
     }
 
-    void on_post_actor_joined (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
-    void on_actor_left (const player_actor_t &actor) { leave (actor.actor.actor_id); }
+    void onJoinActor (const player_actor_t &actor) { /* 입장 완료 후 알림 */ }
+    void onLeaveActor (const player_actor_t &actor) { leave (actor.actor.actor_id); }
 };
 ```
 
@@ -157,8 +157,8 @@ class bingo_room_spot_t : public zlink::framework::spot_t,
 |----|------|
 | `configure(context)` | spot 생성 시 — 핸들러/타이머 등록 |
 | `on_actor_join(actor, msg)` | 입장 요청 — `accept(reply)`/`reject(reply)` 반환 |
-| `on_post_actor_joined(actor)` | 입장 확정 후 |
-| `on_actor_left(actor)` | 퇴장 |
+| `onJoinActor(actor)` | 입장 확정 후 |
+| `onLeaveActor(actor)` | 퇴장 |
 
 핸들러 메서드는 동기 반환 또는 `task_t<...>` 코루틴 둘 다 가능하다.
 코루틴 중에도 spot 큐 직렬성은 유지된다([§1.1](#11-실행-컨텍스트-직렬화--큐-하나-한-번에-하나)).
@@ -205,7 +205,7 @@ room spot(`spot_t`)과의 차이:
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
 | 직렬화 범위 | **actor별** — 같은 actor 요청만 순서 보장 | **전체** — 모든 요청(actor 무관)이 단일 큐 |
 | 공유 상태 접근 | **자체 동기화 필요** | 락 없이 안전 |
-| actor join | `on_post_actor_joined` / `on_actor_left` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
+| actor join | `onJoinActor` / `onLeaveActor` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
 
 ## 5. Timer
 

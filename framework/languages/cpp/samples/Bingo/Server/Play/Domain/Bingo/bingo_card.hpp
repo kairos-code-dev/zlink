@@ -23,6 +23,10 @@ class bingo_card_t
         std::array<bool, 16> seen{};
         for (std::size_t i = 0; i < numbers.size (); ++i) {
             const auto number = numbers[i];
+            if (i == free_cell_index && number == 0) {
+                _numbers[i] = number;
+                continue;
+            }
             if (number < 1 || number > 15) {
                 throw std::runtime_error ("bingo card number must be between 1 and 15");
             }

@@ -10,15 +10,135 @@
 
 #include <boost/asio/connect.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/steady_timer.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <stdexcept>
 #include <thread>
 #include <utility>
 
 namespace zlink::stream_connector::detail
 {
+
+namespace
+{
+
+std::mutex &shared_runtime_config_mutex ()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::size_t &shared_runtime_worker_count ()
+{
+    static std::size_t worker_count = 4;
+    return worker_count;
+}
+
+bool &shared_runtime_started ()
+{
+    static bool started = false;
+    return started;
+}
+
+class shared_operation_runner_t
+{
+  public:
+    shared_operation_runner_t ()
+    {
+        std::size_t worker_count = 4;
+        {
+            std::lock_guard<std::mutex> lock (shared_runtime_config_mutex ());
+            worker_count = shared_runtime_worker_count ();
+            shared_runtime_started () = true;
+        }
+        for (auto index = 0u; index < worker_count; ++index) {
+            _workers.emplace_back ([this] { _io_context.run (); });
+        }
+    }
+
+    ~shared_operation_runner_t ()
+    {
+        _work.reset ();
+        _io_context.stop ();
+        for (auto &worker : _workers) {
+            if (worker.joinable ()) {
+                worker.join ();
+            }
+        }
+    }
+
+    void post (std::function<void ()> operation)
+    {
+        boost::asio::post (_io_context, [operation = std::move (operation)] () mutable {
+            try {
+                operation ();
+            }
+            catch (const std::exception &) {
+            }
+            catch (...) {
+            }
+        });
+    }
+
+    void post_after (std::chrono::milliseconds delay, std::function<void ()> operation)
+    {
+        auto timer = std::make_shared<boost::asio::steady_timer> (_io_context);
+        timer->expires_after (delay);
+        timer->async_wait (
+          [timer, operation = std::move (operation)] (const boost::system::error_code &error) mutable {
+              if (error) {
+                  return;
+              }
+              try {
+                  operation ();
+              }
+              catch (const std::exception &) {
+              }
+              catch (...) {
+              }
+          });
+    }
+
+    boost::asio::io_context &io_context () noexcept
+    {
+        return _io_context;
+    }
+
+  private:
+    boost::asio::io_context _io_context;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> _work{
+      boost::asio::make_work_guard (_io_context)};
+    std::vector<std::thread> _workers;
+};
+
+shared_operation_runner_t &shared_operation_runner ()
+{
+    static shared_operation_runner_t runner;
+    return runner;
+}
+
+} // namespace
+
+boost::asio::io_context &shared_io_context ()
+{
+    return shared_operation_runner ().io_context ();
+}
+
+bool configure_shared_runtime_worker_count (std::size_t worker_count)
+{
+    if (worker_count == 0) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock (shared_runtime_config_mutex ());
+    if (shared_runtime_started ()) {
+        return false;
+    }
+    shared_runtime_worker_count () = worker_count;
+    return true;
+}
 
 std::shared_ptr<connector_state_t> state_from (const std::shared_ptr<void> &state)
 {
@@ -42,9 +162,41 @@ void deliver_received_packet (connector_state_t &state, packet_t packet)
     }
     if (state.options.dispatch_mode == dispatch_mode_t::immediate) {
         dispatch_packet (state, packet);
+        state.state_changed.notify_all ();
         return;
     }
     state.dispatch_queue.push_back (std::move (packet));
+    state.state_changed.notify_all ();
+}
+
+void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<void ()> callback)
+{
+    if (!callback) {
+        return;
+    }
+    if (state->options.dispatch_mode == dispatch_mode_t::immediate) {
+        callback ();
+        return;
+    }
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    state->delivery_queue.push_back (std::move (callback));
+    state->state_changed.notify_all ();
+}
+
+void schedule_delivery (std::shared_ptr<void> state, std::function<void ()> callback)
+{
+    schedule_delivery (state_from (state), std::move (callback));
+}
+
+void post_runtime_operation (std::function<void ()> operation)
+{
+    shared_operation_runner ().post (std::move (operation));
+}
+
+void post_runtime_operation_after (std::chrono::milliseconds delay,
+                                   std::function<void ()> operation)
+{
+    shared_operation_runner ().post_after (delay, std::move (operation));
 }
 
 void connector_runtime_t::receive_packet (packet_t packet)
@@ -77,6 +229,7 @@ void change_state (std::shared_ptr<connector_state_t> state,
             handler ();
         }
     }
+    state->state_changed.notify_all ();
 }
 
 } // namespace zlink::stream_connector::detail
@@ -178,7 +331,16 @@ result_t<void> send_call_t::submit ()
 
 void send_call_t::submit (std::function<void (result_t<void>)> callback)
 {
-    callback (submit ());
+    if (!_state) {
+        if (callback) {
+            callback (result_t<void>::failure (error_code_t::configuration_error,
+                                               "send call has no connector"));
+        }
+        return;
+    }
+    auto state = detail::state_from (_state);
+    auto packet = std::move (_packet);
+    detail::submit_send_async (state, std::move (packet), std::move (callback));
 }
 
 connector_t::connector_t () : connector_t (connector_options_t{})
@@ -227,46 +389,210 @@ codec_registry_t &connector_t::codecs ()
     return _codecs;
 }
 
-result_t<void> connector_t::connect ()
+namespace
 {
-    auto state = detail::state_from (_state);
+
+struct parsed_endpoint_options_t
+{
+    std::optional<detail::endpoint_parts_t> tcp;
+    std::optional<detail::endpoint_parts_t> tls;
+    std::optional<detail::websocket_endpoint_parts_t> websocket;
+    std::optional<detail::websocket_endpoint_parts_t> websocket_secure;
+};
+
+result_t<parsed_endpoint_options_t>
+parse_connect_options (const std::shared_ptr<detail::connector_state_t> &state)
+{
     if (state->options.endpoint.empty ()) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "stream connector endpoint is required");
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error, "stream connector endpoint is required");
     }
     if (!detail::stream_transport_factory_t::is_supported (state->options.transport)) {
-        return result_t<void>::failure (
+        return result_t<parsed_endpoint_options_t>::failure (
           error_code_t::configuration_error,
           "stream connector does not support the configured transport in this build");
     }
-    const auto tcp_endpoint = state->options.transport == transport_t::tcp
-                                ? detail::parse_tcp_endpoint (state->options.endpoint)
-                                : std::optional<detail::endpoint_parts_t>{};
-    const auto tls_endpoint = state->options.transport == transport_t::tls
-                                ? detail::parse_tls_endpoint (state->options.endpoint)
-                                : std::optional<detail::endpoint_parts_t>{};
-    const auto websocket_endpoint = state->options.transport == transport_t::websocket
-                                      ? detail::parse_websocket_endpoint (state->options.endpoint)
-                                      : std::optional<detail::websocket_endpoint_parts_t>{};
-    const auto websocket_secure_endpoint =
-      state->options.transport == transport_t::websocket_secure
-        ? detail::parse_websocket_secure_endpoint (state->options.endpoint)
-        : std::optional<detail::websocket_endpoint_parts_t>{};
-    if (state->options.transport == transport_t::tcp && !tcp_endpoint) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "stream connector endpoint must use tcp://host:port");
+    parsed_endpoint_options_t parsed;
+    parsed.tcp = state->options.transport == transport_t::tcp
+                   ? detail::parse_tcp_endpoint (state->options.endpoint)
+                   : std::optional<detail::endpoint_parts_t>{};
+    parsed.tls = state->options.transport == transport_t::tls
+                   ? detail::parse_tls_endpoint (state->options.endpoint)
+                   : std::optional<detail::endpoint_parts_t>{};
+    parsed.websocket = state->options.transport == transport_t::websocket
+                         ? detail::parse_websocket_endpoint (state->options.endpoint)
+                         : std::optional<detail::websocket_endpoint_parts_t>{};
+    parsed.websocket_secure = state->options.transport == transport_t::websocket_secure
+                                ? detail::parse_websocket_secure_endpoint (state->options.endpoint)
+                                : std::optional<detail::websocket_endpoint_parts_t>{};
+    if (state->options.transport == transport_t::tcp && !parsed.tcp) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error, "stream connector endpoint must use tcp://host:port");
     }
-    if (state->options.transport == transport_t::tls && !tls_endpoint) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "stream connector endpoint must use tls://host:port");
+    if (state->options.transport == transport_t::tls && !parsed.tls) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error, "stream connector endpoint must use tls://host:port");
     }
-    if (state->options.transport == transport_t::websocket && !websocket_endpoint) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "stream connector endpoint must use ws://host:port/path");
+    if (state->options.transport == transport_t::websocket && !parsed.websocket) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error,
+          "stream connector endpoint must use ws://host:port/path");
     }
-    if (state->options.transport == transport_t::websocket_secure && !websocket_secure_endpoint) {
-        return result_t<void>::failure (error_code_t::configuration_error,
-                                        "stream connector endpoint must use wss://host:port/path");
+    if (state->options.transport == transport_t::websocket_secure && !parsed.websocket_secure) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error,
+          "stream connector endpoint must use wss://host:port/path");
+    }
+    return result_t<parsed_endpoint_options_t>::success (std::move (parsed));
+}
+
+void complete_connect_callback (std::shared_ptr<detail::connector_state_t> state,
+                                std::function<void (result_t<void>)> callback,
+                                result_t<void> result)
+{
+    detail::schedule_delivery (
+      state, [callback = std::move (callback), result = std::move (result)] () mutable {
+          if (callback) {
+              callback (std::move (result));
+          }
+      });
+}
+
+void connect_tcp_async (std::shared_ptr<detail::connector_state_t> state,
+                        detail::endpoint_parts_t endpoint,
+                        std::function<void (result_t<void>)> callback)
+{
+    state->close_requested.store (false);
+    detail::change_state (state, connection_state_t::connecting);
+    auto resolver = std::make_shared<boost::asio::ip::tcp::resolver> (state->io_context);
+    resolver->async_resolve (
+      endpoint.host, endpoint.port,
+      [state, resolver, callback = std::move (callback)] (
+        boost::system::error_code error,
+        boost::asio::ip::tcp::resolver::results_type endpoints) mutable {
+          if (error) {
+              detail::change_state (
+                state, connection_state_t::disconnected,
+                error_t{error_code_t::connect_timeout, error.message ()});
+              complete_connect_callback (
+                state, std::move (callback),
+                result_t<void>::failure (error_code_t::connect_timeout, error.message ()));
+              return;
+          }
+          auto socket = std::make_shared<boost::asio::ip::tcp::socket> (state->io_context);
+          boost::asio::async_connect (
+            *socket, endpoints,
+            [state, socket, callback = std::move (callback)] (
+              boost::system::error_code connect_error,
+              const boost::asio::ip::tcp::endpoint &) mutable {
+                if (connect_error) {
+                    detail::change_state (
+                      state, connection_state_t::disconnected,
+                      error_t{error_code_t::connect_timeout, connect_error.message ()});
+                    complete_connect_callback (
+                      state, std::move (callback),
+                      result_t<void>::failure (error_code_t::connect_timeout,
+                                               connect_error.message ()));
+                    return;
+                }
+                {
+                    std::lock_guard<std::mutex> lock (state->transport_mutex);
+                    state->connection = detail::make_tcp_connection (std::move (*socket));
+                    const auto now = std::chrono::steady_clock::now ();
+                    state->last_heartbeat_sent = now;
+                    state->last_inbound_received = now;
+                }
+                detail::change_state (state, connection_state_t::connected);
+                complete_connect_callback (state, std::move (callback),
+                                           result_t<void>::success ());
+            });
+      });
+}
+
+void complete_async_transport_connect (
+  std::shared_ptr<detail::connector_state_t> state,
+  std::function<void (result_t<void>)> callback,
+  boost::system::error_code error,
+  std::unique_ptr<detail::stream_connection_t> connection)
+{
+    if (error) {
+        detail::change_state (state, connection_state_t::disconnected,
+                              error_t{error_code_t::connect_timeout, error.message ()});
+        complete_connect_callback (
+          state, std::move (callback),
+          result_t<void>::failure (error_code_t::connect_timeout, error.message ()));
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        state->connection = std::move (connection);
+        const auto now = std::chrono::steady_clock::now ();
+        state->last_heartbeat_sent = now;
+        state->last_inbound_received = now;
+    }
+    detail::change_state (state, connection_state_t::connected);
+    complete_connect_callback (state, std::move (callback), result_t<void>::success ());
+}
+
+void connect_websocket_plain_async (std::shared_ptr<detail::connector_state_t> state,
+                                    detail::websocket_endpoint_parts_t endpoint,
+                                    std::function<void (result_t<void>)> callback)
+{
+    state->close_requested.store (false);
+    detail::change_state (state, connection_state_t::connecting);
+    detail::connect_websocket_async (
+      state->io_context, std::move (endpoint),
+      [state, callback = std::move (callback)] (
+        boost::system::error_code error,
+        std::unique_ptr<detail::stream_connection_t> connection) mutable {
+          complete_async_transport_connect (state, std::move (callback), error,
+                                            std::move (connection));
+      });
+}
+
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+void connect_tls_transport_async (std::shared_ptr<detail::connector_state_t> state,
+                                  detail::endpoint_parts_t endpoint,
+                                  std::function<void (result_t<void>)> callback)
+{
+    state->close_requested.store (false);
+    detail::change_state (state, connection_state_t::connecting);
+    detail::connect_tls_async (
+      state->io_context, std::move (endpoint), state->options.skip_server_certificate_validation,
+      [state, callback = std::move (callback)] (
+        boost::system::error_code error,
+        std::unique_ptr<detail::stream_connection_t> connection) mutable {
+          complete_async_transport_connect (state, std::move (callback), error,
+                                            std::move (connection));
+      });
+}
+
+void connect_websocket_secure_transport_async (
+  std::shared_ptr<detail::connector_state_t> state,
+  detail::websocket_endpoint_parts_t endpoint,
+  std::function<void (result_t<void>)> callback)
+{
+    state->close_requested.store (false);
+    detail::change_state (state, connection_state_t::connecting);
+    detail::connect_websocket_secure_async (
+      state->io_context, std::move (endpoint), state->options.skip_server_certificate_validation,
+      [state, callback = std::move (callback)] (
+        boost::system::error_code error,
+        std::unique_ptr<detail::stream_connection_t> connection) mutable {
+          complete_async_transport_connect (state, std::move (callback), error,
+                                            std::move (connection));
+      });
+}
+#endif
+
+result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
+{
+    state->close_requested.store (false);
+    auto parsed = parse_connect_options (state);
+    if (!parsed) {
+        return result_t<void>::failure (parsed.error_code (),
+                                        parsed.error () ? parsed.error ()->message
+                                                        : "stream connector endpoint is invalid");
     }
 
     const auto max_attempts = state->options.reconnect.enabled
@@ -281,11 +607,11 @@ result_t<void> connector_t::connect ()
         try {
             if (state->options.transport == transport_t::websocket) {
                 state->connection =
-                  detail::connect_websocket (state->io_context, *websocket_endpoint);
+                  detail::connect_websocket (state->io_context, *parsed.value ().websocket);
             } else if (state->options.transport == transport_t::websocket_secure) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
                 state->connection = detail::connect_websocket_secure (
-                  state->io_context, *websocket_secure_endpoint,
+                  state->io_context, *parsed.value ().websocket_secure,
                   state->options.skip_server_certificate_validation);
 #else
                 throw std::runtime_error ("stream connector WSS support requires OpenSSL");
@@ -293,14 +619,15 @@ result_t<void> connector_t::connect ()
             } else if (state->options.transport == transport_t::tls) {
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
                 state->connection =
-                  detail::connect_tls (state->io_context, *tls_endpoint,
+                  detail::connect_tls (state->io_context, *parsed.value ().tls,
                                        state->options.skip_server_certificate_validation);
 #else
                 throw std::runtime_error ("stream connector TLS support requires OpenSSL");
 #endif
             } else {
                 boost::asio::ip::tcp::resolver resolver (state->io_context);
-                auto endpoints = resolver.resolve (tcp_endpoint->host, tcp_endpoint->port);
+                auto endpoints =
+                  resolver.resolve (parsed.value ().tcp->host, parsed.value ().tcp->port);
                 boost::asio::ip::tcp::socket socket (state->io_context);
                 boost::asio::connect (socket, endpoints);
                 state->connection = detail::make_tcp_connection (std::move (socket));
@@ -318,7 +645,10 @@ result_t<void> connector_t::connect ()
                 state->connection->close (ignored);
             }
             if (attempt < max_attempts) {
-                std::this_thread::sleep_for (retry_delay);
+                std::mutex retry_mutex;
+                std::condition_variable retry_ready;
+                std::unique_lock<std::mutex> retry_lock (retry_mutex);
+                retry_ready.wait_for (retry_lock, retry_delay);
                 retry_delay =
                   std::min (state->options.reconnect.max_delay,
                             std::chrono::milliseconds (static_cast<int> (
@@ -332,16 +662,161 @@ result_t<void> connector_t::connect ()
     return result_t<void>::failure (error_code_t::connect_timeout, last_error);
 }
 
-result_t<void> connector_t::close ()
+} // namespace
+
+result_t<void> connector_t::connect ()
+{
+    return connect_state (detail::state_from (_state));
+}
+
+void connector_t::connect (std::function<void (result_t<void>)> callback)
 {
     auto state = detail::state_from (_state);
-    if (state->connection && state->connection->is_open ()) {
-        state->connection->shutdown_and_close ();
+    auto parsed = parse_connect_options (state);
+    if (!parsed) {
+        detail::schedule_delivery (
+          state, [callback = std::move (callback),
+                  result = result_t<void>::failure (
+                    parsed.error_code (),
+                    parsed.error () ? parsed.error ()->message
+                                    : "stream connector endpoint is invalid")] () mutable {
+              if (callback) {
+                  callback (std::move (result));
+              }
+          });
+        return;
     }
-    detail::change_state (state, connection_state_t::closed);
-    state->pending_requests.clear ();
-    state->dispatch_queue.clear ();
+    if (state->options.transport == transport_t::tcp) {
+        connect_tcp_async (state, *parsed.value ().tcp, std::move (callback));
+        return;
+    }
+    if (state->options.transport == transport_t::websocket) {
+        connect_websocket_plain_async (state, *parsed.value ().websocket, std::move (callback));
+        return;
+    }
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+    if (state->options.transport == transport_t::tls) {
+        connect_tls_transport_async (state, *parsed.value ().tls, std::move (callback));
+        return;
+    }
+    if (state->options.transport == transport_t::websocket_secure) {
+        connect_websocket_secure_transport_async (
+          state, *parsed.value ().websocket_secure, std::move (callback));
+        return;
+    }
+#endif
+    detail::post_runtime_operation ([state, callback = std::move (callback)] () mutable {
+        auto result = connect_state (state);
+        detail::schedule_delivery (
+          state, [callback = std::move (callback), result = std::move (result)] () mutable {
+              if (callback) {
+                  callback (std::move (result));
+              }
+          });
+    });
+}
+
+namespace
+{
+
+result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
+{
+    state->close_requested.store (true);
+    state->state_changed.notify_all ();
+    std::vector<std::function<void ()>> closed_write_callbacks;
+    std::vector<std::function<void ()>> closed_send_callbacks;
+    std::vector<std::function<void ()>> closed_request_callbacks;
+    std::vector<std::function<void ()>> closed_wait_callbacks;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (state->connection && state->connection->is_open ()) {
+            state->connection->shutdown_and_close ();
+        }
+        detail::change_state (state, connection_state_t::closed);
+        while (!state->pending_sends.empty ()) {
+            auto send = std::move (state->pending_sends.front ());
+            state->pending_sends.pop_front ();
+            if (send.callback) {
+                closed_send_callbacks.push_back (
+                  [callback = std::move (send.callback)] () mutable {
+                      callback (result_t<void>::failure (error_code_t::closed,
+                                                         "stream connector is closed"));
+                  });
+            }
+        }
+        while (!state->pending_writes.empty ()) {
+            auto write = std::move (state->pending_writes.front ());
+            state->pending_writes.pop_front ();
+            if (write.callback) {
+                closed_write_callbacks.push_back (
+                  [callback = std::move (write.callback)] () mutable {
+                      callback (result_t<void>::failure (error_code_t::closed,
+                                                         "stream connector is closed"));
+                  });
+            }
+        }
+        for (auto &[_, request] : state->pending_requests) {
+            if (request.callback) {
+                closed_request_callbacks.push_back (
+                  [callback = std::move (request.callback)] () mutable {
+                      callback (result_t<zlink::message_t>::failure (
+                        error_code_t::closed, "stream connector is closed"));
+                  });
+            }
+        }
+        for (auto &[_, wait] : state->pending_waits) {
+            if (wait.callback) {
+                closed_wait_callbacks.push_back (
+                  [callback = std::move (wait.callback)] () mutable {
+                      callback (result_t<packet_t>::failure (error_code_t::closed,
+                                                             "stream connector is closed"));
+                  });
+            }
+        }
+        state->pending_waits.clear ();
+        state->pending_requests.clear ();
+        state->pending_sends.clear ();
+        state->pending_writes.clear ();
+        state->read_in_progress = false;
+        state->inbound_buffer.clear ();
+        state->dispatch_queue.clear ();
+        state->delivery_queue.clear ();
+        state->state_changed.notify_all ();
+    }
+    for (auto &delivery : closed_write_callbacks) {
+        delivery ();
+    }
+    for (auto &delivery : closed_send_callbacks) {
+        detail::schedule_delivery (state, std::move (delivery));
+    }
+    for (auto &delivery : closed_request_callbacks) {
+        detail::schedule_delivery (state, std::move (delivery));
+    }
+    for (auto &delivery : closed_wait_callbacks) {
+        detail::schedule_delivery (state, std::move (delivery));
+    }
     return result_t<void>::success ();
+}
+
+} // namespace
+
+result_t<void> connector_t::close ()
+{
+    return close_state (detail::state_from (_state));
+}
+
+void connector_t::close (std::function<void (result_t<void>)> callback)
+{
+    auto state = detail::state_from (_state);
+    detail::post_runtime_operation ([state, callback = std::move (callback)] () mutable {
+        auto result = close_state (state);
+        detail::schedule_delivery (
+          state, [callback = std::move (callback), result = std::move (result)] () mutable {
+              if (callback) {
+                  callback (std::move (result));
+              }
+          });
+    });
 }
 
 result_t<void> connector_t::dispatch ()

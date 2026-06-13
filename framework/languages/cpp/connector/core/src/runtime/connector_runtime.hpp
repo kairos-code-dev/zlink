@@ -7,8 +7,11 @@
 
 #include <boost/asio.hpp>
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -20,22 +23,55 @@
 namespace zlink::stream_connector::detail
 {
 
+boost::asio::io_context &shared_io_context ();
+bool configure_shared_runtime_worker_count (std::size_t worker_count);
+
+struct pending_send_t
+{
+    packet_t packet;
+    std::function<void (result_t<void>)> callback;
+};
+
+struct pending_write_t
+{
+    std::vector<std::uint8_t> frame;
+    std::function<void (result_t<void>)> callback;
+};
+
 struct pending_request_t
 {
     std::uint64_t request_seq = 0;
     packet_t packet;
+    std::function<void (result_t<zlink::message_t>)> callback;
+};
+
+struct pending_wait_t
+{
+    std::uint64_t wait_id = 0;
+    std::string packet_name;
+    std::function<bool (const packet_t &)> predicate;
+    std::function<void (result_t<packet_t>)> callback;
 };
 
 class connector_state_t
 {
   public:
-    explicit connector_state_t (connector_options_t options) : options (std::move (options)) {}
+    explicit connector_state_t (connector_options_t options) :
+        options (std::move (options)), io_context (shared_io_context ())
+    {
+    }
 
     connector_options_t options;
     connection_state_t state = connection_state_t::created;
     std::uint64_t next_request_seq = 1;
+    std::uint64_t next_wait_id = 1;
     std::map<std::uint64_t, pending_request_t> pending_requests;
+    std::map<std::uint64_t, pending_wait_t> pending_waits;
+    std::deque<pending_send_t> pending_sends;
+    std::deque<pending_write_t> pending_writes;
+    std::vector<std::uint8_t> inbound_buffer;
     std::deque<packet_t> dispatch_queue;
+    std::deque<std::function<void ()>> delivery_queue;
     std::vector<packet_t> sent_packets;
     std::map<std::string, std::vector<std::function<void (const packet_t &)>>> packet_handlers;
     std::vector<std::function<void (const connection_state_changed_t &)>> state_handlers;
@@ -46,11 +82,17 @@ class connector_state_t
     bool message_pack_enabled = false;
     bool protobuf_enabled = false;
     bool lz4_enabled = false;
+    std::atomic_bool close_requested{false};
+    bool send_in_progress = false;
+    bool write_in_progress = false;
+    bool request_pump_scheduled = false;
+    bool read_in_progress = false;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
-    boost::asio::io_context io_context;
+    boost::asio::io_context &io_context;
     std::unique_ptr<stream_connection_t> connection;
     std::mutex transport_mutex;
+    std::condition_variable state_changed;
 };
 
 class connector_runtime_t
@@ -69,6 +111,10 @@ class connector_runtime_t
 };
 
 result_t<void> submit_send (std::shared_ptr<connector_state_t> state, packet_t packet);
+void submit_send_async (std::shared_ptr<connector_state_t> state,
+                        packet_t packet,
+                        std::function<void (result_t<void>)> callback);
+void start_read_loop (std::shared_ptr<connector_state_t> state);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
 result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
                                  std::chrono::milliseconds timeout);
@@ -77,6 +123,10 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                                     std::function<bool (const packet_t &)> predicate,
                                     std::chrono::milliseconds timeout);
 void deliver_received_packet (connector_state_t &state, packet_t packet);
+void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<void ()> callback);
+void post_runtime_operation (std::function<void ()> operation);
+void post_runtime_operation_after (std::chrono::milliseconds delay,
+                                   std::function<void ()> operation);
 void change_state (std::shared_ptr<connector_state_t> state,
                    connection_state_t next,
                    std::optional<error_t> error = std::nullopt);

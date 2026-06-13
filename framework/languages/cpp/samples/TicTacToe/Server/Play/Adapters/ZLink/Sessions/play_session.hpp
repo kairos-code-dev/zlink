@@ -3,6 +3,8 @@
 
 #include "Handlers/authenticate_play_session_handler.hpp"
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
+
 #include <optional>
 #include <string>
 
@@ -14,11 +16,13 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
-                                          authenticate_play_session_handler_t>;
+                                          authenticate_play_session_handler_t,
+                                          zlink::framework::detail::actor_gateway_runtime_t>;
 
     play_session_t (zlink::framework::session_actor_manager_t &actors,
-                    authenticate_play_session_handler_t &authenticate) :
-        _actors (actors), _authenticate (authenticate)
+                    authenticate_play_session_handler_t &authenticate,
+                    zlink::framework::detail::actor_gateway_runtime_t &gateway) :
+        _actors (actors), _authenticate (authenticate), _gateway (gateway)
     {
     }
 
@@ -30,6 +34,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
         if (_bound_actor_id) {
+            _gateway.unbind_session_stream (*_bound_actor_id);
             _actors.unbind_session (*_bound_actor_id);
             _bound_actor_id.reset ();
         }
@@ -49,12 +54,18 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
         if (_authenticate.can_handle (header)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
+            _gateway.bind_session_stream (*_bound_actor_id, stream);
             co_return;
         }
 
         auto actor = require_bound_actor (std::string ("dispatching packet '")
                                           + std::string (header.packet_name ()) + "'");
         if (!actor) {
+            co_return;
+        }
+        if (header.kind () == zlink::framework::stream_message_kind_t::request) {
+            auto reply = co_await actor.value ().relay_request (header, payload).async ();
+            co_await stream.reply_packet (header, reply).async ();
             co_return;
         }
         co_await actor.value ().relay (header, payload).async ();
@@ -82,6 +93,7 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::session_actor_manager_t &_actors;
     authenticate_play_session_handler_t &_authenticate;
+    zlink::framework::detail::actor_gateway_runtime_t &_gateway;
     std::optional<std::string> _bound_actor_id;
 };
 

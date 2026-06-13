@@ -311,6 +311,11 @@ stream_write_call_t stream_t::write_packet (const stream_header_t &header,
               return task_t<void> (result_t<void>::failure (
                 framework_error_kind_t::disconnected, "STREAM session is disconnected"));
           }
+          if (state->transport_writer) {
+              const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
+              const auto written = state->transport_writer (submitted_header, submitted_payload);
+              return task_t<void> (written);
+          }
           state->written_headers.push_back (submitted_header);
           state->written_payloads.push_back (submitted_payload);
           return task_t<void> (result_t<void>::success ());
@@ -725,6 +730,13 @@ result_t<void> stream_runtime_t::dispatch_error (packet_stream_session_t &sessio
     return dispatch_serial (stream, "error", [&] { return session.on_error (stream, error); });
 }
 
+void stream_runtime_t::attach_transport_writer (
+  stream_t &stream,
+  std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)> writer) const
+{
+    stream._state->transport_writer = std::move (writer);
+}
+
 std::vector<std::string> stream_runtime_t::serial_log (const stream_t &stream) const
 {
     return {stream._state->serial_log.begin (), stream._state->serial_log.end ()};
@@ -733,6 +745,11 @@ std::vector<std::string> stream_runtime_t::serial_log (const stream_t &stream) c
 std::vector<stream_header_t> stream_runtime_t::written_headers (const stream_t &stream) const
 {
     return stream._state->written_headers;
+}
+
+std::vector<zlink::message_t> stream_runtime_t::written_payloads (const stream_t &stream) const
+{
+    return stream._state->written_payloads;
 }
 
 } // namespace zlink::framework::detail

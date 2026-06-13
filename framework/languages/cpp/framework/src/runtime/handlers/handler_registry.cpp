@@ -46,6 +46,20 @@ handler_key_t make_handler_key (std::string_view channel_name,
     return {std::string (channel_name), std::string (topic), std::string (packet_name)};
 }
 
+const handler_entry_t *
+find_by_channel_packet (const std::map<handler_key_t, handler_entry_t> &handlers,
+                        std::string_view channel_name,
+                        std::string_view packet_name)
+{
+    for (const auto &[_, entry] : handlers) {
+        if (entry.descriptor.channel_name == channel_name
+            && entry.descriptor.packet_name == packet_name) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
 class handler_registry_state_t
 {
   public:
@@ -171,14 +185,20 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
 {
     const auto found =
       _state->handlers.find (detail::make_handler_key (channel_name, topic, packet_name));
-    if (found == _state->handlers.end ()) {
+    const detail::handler_entry_t *entry = nullptr;
+    if (found != _state->handlers.end ()) {
+        entry = &found->second;
+    } else if (topic.empty ()) {
+        entry = detail::find_by_channel_packet (_state->handlers, channel_name, packet_name);
+    }
+    if (entry == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::handler_not_found, "handler is not registered"));
     }
     auto owned_message = std::make_shared<zlink::message_t> (message);
     auto filters = _state->filters;
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
-      [this, entry = &found->second, filters = std::move (filters), &services, &serializers,
+      [this, entry, filters = std::move (filters), &services, &serializers,
        owned_message =
          std::move (owned_message)] () -> boost::asio::awaitable<result_t<zlink::message_t>> {
           result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (

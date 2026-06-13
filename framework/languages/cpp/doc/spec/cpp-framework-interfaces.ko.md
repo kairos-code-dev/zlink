@@ -1360,7 +1360,7 @@ public:
     spot_handler_registry_t &add_actor_packet(std::string packet_name = {});
 
     template <auto Method>
-    spot_handler_registry_t &on_actor_disconnected();
+    spot_handler_registry_t &onDisconnectActor();
 
     template <typename TSpot>
     result_t<message_t> invoke_packet(std::string_view packet_name,
@@ -1413,10 +1413,10 @@ discovery view만 연결하므로 실행 capability가 아니다. `enable_router
 
 `.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
 맡는다. 다만 actor lifecycle은 registry 등록 표면이 아니다. user Spot은
-`on_actor_join(actor, message_t)`, `on_post_actor_joined(actor)`, `on_actor_left(actor)`
+`on_actor_join(actor, message_t)`, `onJoinActor(actor)`, `onLeaveActor(actor)`
 member callback을 직접 제공한다. Entry Spot은 admission 단계가 없으므로
-`on_actor_join(...)`을 갖지 않고, commit 이후 callback인 `on_post_actor_joined(actor)`와
-`on_actor_left(actor)`만 제공한다.
+`on_actor_join(...)`을 갖지 않고, commit 이후 callback인 `onJoinActor(actor)`와
+`onLeaveActor(actor)`만 제공한다.
 일반 Spot 타입은 `zlink::framework::spot_t`를 상속해야 하고, Entry Spot 타입은
 `zlink::framework::entry_spot_t`를 상속해야 한다. 이름이나 파일 위치로 역할을 추론하지 않는다.
 `add_spot<TSpot>()`와 `add_entry_spot<TEntrySpot>()`가 이 계약을 compile-time으로 확인한다.
@@ -1433,9 +1433,9 @@ public:
       const zlink::framework::spot_actor_request_context_t &context,
       const start_bingo_game_req_t &request);
 
-    void on_post_actor_joined(const player_actor_t &actor);
+    void onJoinActor(const player_actor_t &actor);
 
-    void on_actor_left(const player_actor_t &actor);
+    void onLeaveActor(const player_actor_t &actor);
 
     void configure(zlink::framework::spot_context_t &context)
     {
@@ -1454,7 +1454,7 @@ public:
 actor join admission member는 actor와 `message_t` request를 받으며,
 `spot_actor_join_response_t`로 accepted 여부와 optional reply `message_t`를 돌려준다.
 accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
-`on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
+`onJoinActor(actor)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
 post-joined callback도 호출하지 않는다. 예전 change-result 값 객체와 change kind는
 commit 이후 callback 이름으로 의미가 분리되어 더 이상 필요하지 않다.
 actor packet member는 actor, `spot_actor_request_context_t` 또는 `spot_actor_send_context_t`,

@@ -17,11 +17,11 @@ codec으로 등록한다. HTTP JSON request와 response는 HTTP route의 외부 
 
 ## 실행
 
-CMake sample smoke 는 각 role 실행 파일을 빌드하고 기본 실행 경로를 확인한다. 현재 C++
-sample channel request 는 별도 process 사이에서 full client/server self-check 를 완료하지
-않고 local framework runtime 안에서 완료된다. 그래서 sample-local script 는 full e2e 를
-성공한 것처럼 표시하지 않고, 가능한 서버 role smoke 와 client 실행 파일 존재 확인만
-수행한다.
+CMake sample smoke 는 각 role 실행 파일을 빌드하고 기본 실행 경로를 확인한다.
+TicTacToe sample-local script 는 Play 서버와 API 서버를 별도 process로 계속 실행한 뒤
+public client 실행 파일로 full client/server self-check 를 수행한다. Bingo sample-local script 는
+Registry, API, Play, Session 서버를 별도 process로 계속 실행한 뒤 public client 실행 파일로
+full client/server self-check 를 수행한다.
 
 Linux 또는 WSL:
 

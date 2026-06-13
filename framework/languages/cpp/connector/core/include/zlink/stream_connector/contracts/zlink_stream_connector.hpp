@@ -48,8 +48,14 @@ class connector_t
     /// Opens the stream connection and blocks until it succeeds or fails.
     result_t<void> connect ();
 
+    /// Starts opening the stream connection and returns before completion is known.
+    void connect (std::function<void (result_t<void>)> callback);
+
     /// Closes the stream connection and clears pending requests and received packets.
     result_t<void> close ();
+
+    /// Starts closing the stream connection and returns before completion is delivered.
+    void close (std::function<void (result_t<void>)> callback);
 
     /// Runs one pending On(...) callback when manual dispatch mode is used.
     ///

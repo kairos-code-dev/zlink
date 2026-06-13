@@ -73,16 +73,17 @@ void dispatch_packet (connector_state_t &state, const packet_t &packet)
     }
 }
 
-void drain_available_pushes (connector_state_t &state)
+std::vector<packet_t> drain_available_pushes (connector_state_t &state)
 {
+    std::vector<packet_t> packets;
     while (state.connection && state.connection->is_open ()) {
         boost::system::error_code error;
         if (state.connection->available (error) == 0 || error) {
-            return;
+            return packets;
         }
-        auto packet = read_stream_packet (state);
-        deliver_received_packet (state, std::move (packet));
+        packets.push_back (read_stream_packet (state));
     }
+    return packets;
 }
 
 } // namespace zlink::stream_connector::detail

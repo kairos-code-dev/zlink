@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Actors/player_actor.hpp"
+#include "../../../../Configuration/sample_names.hpp"
 #include "../../../Application/RoomAllocation/bingo_room_allocator.hpp"
 
 #include <zlink/framework.hpp>
@@ -16,37 +17,76 @@ namespace zlink::samples::bingo
 class bingo_entry_spot_t : public zlink::framework::entry_spot_t
 {
   public:
-    void configure (zlink::framework::spot_context_t &context)
+    void configure (zlink::framework::entry_spot_context_t &context)
     {
+        _context = context;
         context.handlers ().add_actor_packet<&bingo_entry_spot_t::match_bingo> ();
     }
 
-    match_bingo_res_t match_bingo (const player_actor_t &actor,
-                                   zlink::framework::spot_actor_request_context_t &,
-                                   const match_bingo_req_t &request)
+    void configure (zlink::framework::spot_context_t &context)
+    {
+        zlink::framework::entry_spot_context_t entry_context (context);
+        configure (entry_context);
+    }
+
+    zlink::framework::task_t<match_bingo_res_t>
+    match_bingo (const player_actor_t &actor,
+                 zlink::framework::spot_actor_request_context_t &,
+                 const match_bingo_req_t &request)
     {
         const auto room_id = rooms.allocate (request.mode);
-        auto &room = rooms.get (room_id);
         const auto display_name =
           actor.display_name.empty () ? actor.actor.actor_id : actor.display_name;
-        room.join (actor.actor.actor_id, display_name);
-        return {room_id, room.snapshot ()};
+        const auto spot_rid = zlink::framework::spot_rid_t::from_string (
+          std::string (sample_names_t::room_spot_node) + ":" + room_id);
+        auto joined =
+          co_await actor.context
+            .join_spot (spot_rid,
+                        to_stream_payload (
+                          bingo_room_join_req_t{room_id, actor.actor.actor_id, display_name}))
+            .async ();
+        bingo_room_join_res_t reply;
+        from_stream_payload (joined.reply, reply);
+        co_return match_bingo_res_t{room_id, reply.state};
     }
 
-    void on_post_actor_joined (const player_actor_t &actor)
+    void onCreateActor (const player_actor_t &actor)
+    {
+        created_actor_ids.push_back (actor.actor.actor_id);
+    }
+
+    void onJoinActor (const player_actor_t &actor)
     {
         joined_actor_ids.push_back (actor.actor.actor_id);
+        if (!actor.destroy_after_entry_spot_join) {
+            return;
+        }
+        (void) _context.destroyActor (actor_ref_for (actor),
+                                      const_cast<player_actor_t &> (actor));
     }
 
-    void on_actor_left (const player_actor_t &actor)
+    void onLeaveActor (const player_actor_t &actor)
     {
         joined_actor_ids.erase (
           std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor.actor_id),
           joined_actor_ids.end ());
     }
 
+    void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
+
     bingo_room_allocator_t rooms;
+    std::vector<std::string> created_actor_ids;
     std::vector<std::string> joined_actor_ids;
+
+  private:
+    static zlink::framework::actor_ref_t actor_ref_for (const player_actor_t &actor)
+    {
+        return zlink::framework::actor_ref_t (
+          zlink::framework::node_rid_t::from_string (sample_names_t::room_spot_node),
+          sample_names_t::player_actor_type, actor.actor.actor_id, actor.actor.generation);
+    }
+
+    zlink::framework::entry_spot_context_t _context;
 };
 
 } // namespace zlink::samples::bingo

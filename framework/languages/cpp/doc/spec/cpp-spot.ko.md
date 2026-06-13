@@ -195,9 +195,23 @@ Entry Spot과 user Spot의 actor packet 등록 표면은 같아도 실행 위치
 user Spot join admission은 registry handler가 아니라 Spot member callback이다. callback은
 `on_actor_join(actor, message_t)` 형태이며, `spot_actor_join_response_t`로 accepted 여부와
 optional reply `message_t`를 돌려준다. accepted가 `true`일 때만 actor 위치를 user Spot으로
-commit하고 `on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 actor 위치를
+commit하고 `onJoinActor(actor)`를 호출한다. accepted가 `false`이면 actor 위치를
 바꾸지 않고 post-joined callback도 호출하지 않는다. Entry Spot에는 admission callback이
-없고, commit 이후 `on_post_actor_joined(actor)`와 `on_actor_left(actor)`만 둔다.
+없고, commit 이후 `onJoinActor(actor)`와 `onLeaveActor(actor)`만 둔다.
+
+actor 수명을 끝내는 API는 Entry Spot context에만 둔다. user Spot context에는 destroy
+API가 없다. actor가 user Spot에 있으면 먼저 user Spot에서 leave를 완료해 Entry Spot으로
+되돌린 뒤 아래 API를 호출한다.
+
+```cpp
+zlink::framework::task_t<void> destroy =
+  entry_context.destroyActor(actor_ref, actor);
+```
+
+`destroyActor(actor_ref, actor)`는 actor가 현재 Entry Spot에 있을 때만 성공한다. 성공한
+호출은 lifecycle callback을 호출하지 않고 actor membership을 지운다. 같은 actor instance에
+대한 중복 호출은 성공으로 끝난다. 이전 generation의 stale actor ref는 새 actor를 지우지
+않는다.
 
 Spot create callback은 단일 `message_t` request를 받는다. payload 없이 create하면 빈
 `message_t`를 전달한다. C++에서는 기본 생성 가능한 Spot을 자동 생성하고, 생성자 인자가

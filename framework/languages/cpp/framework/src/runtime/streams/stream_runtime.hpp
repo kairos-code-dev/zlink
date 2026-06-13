@@ -4,8 +4,10 @@
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -28,6 +30,9 @@ class stream_state_t
     std::deque<std::string> serial_log;
     std::vector<stream_header_t> written_headers;
     std::vector<zlink::message_t> written_payloads;
+    std::mutex transport_writer_mutex;
+    std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
+      transport_writer;
 };
 
 class stream_runtime_state_t
@@ -58,9 +63,14 @@ class stream_runtime_t
     result_t<void> dispatch_error (packet_stream_session_t &session,
                                    stream_t &stream,
                                    const stream_error_t &error) const;
+    void attach_transport_writer (
+      stream_t &stream,
+      std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)> writer)
+      const;
 
     std::vector<std::string> serial_log (const stream_t &stream) const;
     std::vector<stream_header_t> written_headers (const stream_t &stream) const;
+    std::vector<zlink::message_t> written_payloads (const stream_t &stream) const;
 
   private:
     result_t<void> dispatch_serial (stream_t &stream,

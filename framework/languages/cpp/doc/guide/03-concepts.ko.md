@@ -206,8 +206,8 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t,
     // 수명주기 훅 (선택 구현)
     zlink::framework::spot_actor_join_response_t
     on_actor_join (const player_actor_t &actor, const zlink::message_t &msg);
-    void on_post_actor_joined (const player_actor_t &actor);
-    void on_actor_left (const player_actor_t &actor);
+    void onJoinActor (const player_actor_t &actor);
+    void onLeaveActor (const player_actor_t &actor);
 };
 ```
 

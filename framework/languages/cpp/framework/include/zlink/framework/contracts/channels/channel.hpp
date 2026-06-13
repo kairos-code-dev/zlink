@@ -258,9 +258,10 @@ class message_bus_t
           [state, channel_name = std::move (channel_name), request = std::move (request)] (
             const std::string &packet_name, std::chrono::milliseconds timeout,
             const typename request_call_t<TReply>::metadata_map_t &metadata) {
-              (void) request;
               return task_t<TReply> (message_bus_t (state)
-                                       .submit_request (channel_name, packet_name, timeout, metadata)
+                                       .submit_request (channel_name, packet_name,
+                                                        std::type_index (typeid (TRequest)),
+                                                        &request, timeout, metadata)
                                        .template as<TReply> ());
           });
     }
@@ -307,15 +308,33 @@ class message_bus_t
     {
       public:
         explicit erased_request_result_t (framework_exception_t error);
+        erased_request_result_t (zlink::message_t reply, serializer_registry_t &serializers);
 
         template <typename TReply> result_t<TReply> as () const
         {
+            if (_reply) {
+                if (_serializers == nullptr) {
+                    return result_t<TReply>::failure (
+                      framework_error_kind_t::request_protocol_error,
+                      "channel request has no serializer registry");
+                }
+                try {
+                    return result_t<TReply>::success (
+                      _serializers->get<TReply> ().deserialize (*_reply));
+                }
+                catch (const framework_exception_t &error) {
+                    return result_t<TReply>::failure (error.kind (), error.what (),
+                                                      error.is_retriable ());
+                }
+            }
             return result_t<TReply>::failure (_error.kind (), _error.what (),
                                               _error.is_retriable ());
         }
 
       private:
         framework_exception_t _error;
+        std::optional<zlink::message_t> _reply;
+        serializer_registry_t *_serializers = nullptr;
     };
 
     explicit message_bus_t (std::shared_ptr<detail::channel_runtime_state_t> state);
@@ -323,6 +342,8 @@ class message_bus_t
     erased_request_result_t
     submit_request (std::string channel_name,
                     std::string packet_name,
+                    std::type_index request_type,
+                    const void *request,
                     std::chrono::milliseconds timeout,
                     const request_call_t<zlink::message_t>::metadata_map_t &metadata);
     result_t<void> submit_send (std::string channel_name,

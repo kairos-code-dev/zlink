@@ -26,6 +26,10 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - callback submit
 - coroutine submit
 - user Spot 생성과 room spot node 구성
+- `onCreateActor`, room join, room leave callback 흐름
+- room user Spot의 `leaveActor` 호출과 Entry Spot 복귀
+- Entry Spot의 `destroyActor` 호출
+- destroy는 `onLeaveActor`를 호출하지 않는다
 - SPOT timer 등록
 - monitoring source 등록
 - offload handler option
@@ -41,14 +45,17 @@ Play stream에 직접 연결하는 흐름은 TicTacToe 샘플이 맡는다.
 - `sample_cpp_framework_bingo_session`: STREAM endpoint와 session packet dispatch
 - `sample_cpp_framework_bingo_client`: Stream Connector 기반 client flow와 push payload self-check
 
-client 실행 파일은 Stream Connector public API로 request reply와 push notification을
+client scenario 실행 파일은 Stream Connector public API로 request reply와 push notification을
 검증하는 시나리오를 담고 있다. 서버 실행 파일들은 Registry, API, Play, Session 역할을
 각각 보여 주며, 테스트 전용 fake 서버나 E2E 전용 sample target은 샘플 트리에 두지 않는다.
-script 실행 결과는 서버 role smoke 결과와 client 실행 파일 존재 여부를 표준 출력으로
-보여 준다. 현재 C++ sample channel request 는 별도 process 사이의 full 실행이 아니라
-local framework runtime 안에서 완료되는 구조라서, full client/server 검증은 제공하지
-않는다. client scenario 는 public client 실행 파일 안에 남겨 두되, runner 가 성공한
-full e2e처럼 표시하지 않는다.
+script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
+표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
+Entry Spot에서만 `destroyActor`를 호출하는지 확인하고, runtime test로 `leaveActor` 후
+Entry Spot destroy와 destroy가 `onLeaveActor`를 호출하지 않는다라는 callback isolation을
+검증한다. 같은 gate는 destroy 뒤 actor lookup에서 사라지는지와 같은 actor id 재생성이
+가능한지도 확인한다. runner는 Registry, API, Play, Session 서버를 별도 process로 계속
+실행한 뒤 public client 실행 파일로 authenticate, match, card submit, server draw, winner
+판단 흐름을 검증한다.
 
 ## 실행과 설정
 
@@ -73,5 +80,6 @@ Windows PowerShell에서는 아래 script 를 실행한다.
 .\framework\languages\cpp\samples\Bingo\run_sample.ps1
 ```
 
-script 는 Registry, API, Play, Session 서버 실행 파일을 smoke 모드로 실행한다. full
-client/server self-check 는 현재 실행 파일 조합으로 완료되지 않으므로 실행하지 않는다.
+script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행한다. 그 다음
+Registry, API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
+실행 파일로 full client/server self-check 를 수행한다.

@@ -58,9 +58,9 @@ Spot은 상태와 동작을 함께 감싸는 단위이므로 handler class를 �
 actor lifecycle은 handler registry 등록 대상이 아니다. user Spot의 join admission은
 `on_actor_join(actor, message_t)` member callback이 처리하고, 반환값은 accepted 여부와
 optional reply `message_t`를 담는다. accepted가 `true`일 때만 actor 위치를 user Spot으로
-commit하고 `on_post_actor_joined(actor)`를 호출한다. accepted가 `false`이면 위치를 바꾸지
+commit하고 `onJoinActor(actor)`를 호출한다. accepted가 `false`이면 위치를 바꾸지
 않고 post-joined callback도 호출하지 않는다. Entry Spot에는 admission callback이 없으며,
-commit 이후 `on_post_actor_joined(actor)`와 `on_actor_left(actor)`만 둔다.
+commit 이후 `onJoinActor(actor)`와 `onLeaveActor(actor)`만 둔다.
 
 create callback도 request를 단일 `message_t`로 받는다. create result는 `existing`,
 `created`, `rejected` state와 optional reply `message_t`를 담는다. `spot_context_t::close()`는

@@ -685,10 +685,10 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
       "`add_handler<&TSpot::method>()`",
       "`add_subscribe<&TSpot::method>(topic)`",
       "`add_actor_packet<&TSpot::method>()`",
-      "`on_actor_disconnected(actor)`",
+      "`onDisconnectActor(actor)`",
       "`on_actor_join(actor, message_t)`",
-      "`on_post_actor_joined(actor)`",
-      "`on_actor_left(actor)`",
+      "`onJoinActor(actor)`",
+      "`onLeaveActor(actor)`",
       "`spot_context_t::close()`",
       "`spot_create_result_t`",
       "Entry Spot",
@@ -721,6 +721,100 @@ bool implementation_plan_goal11_covers_spot_runtime (const std::filesystem::path
         }
     }
 
+    return ok;
+}
+
+bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
+{
+    const auto path = root.parent_path ().parent_path () / "doc/spec/actor-model.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    bool ok = true;
+    const std::string required[] = {
+      "`leaveActor`와 `destroyActor`는 서로 다른 책임이다",
+      "`leaveActor`는 actor 위치를 user",
+      "Entry Spot에 돌아온 actor의 수명을 끝내는 작업",
+      "actor registry, actor-session",
+      "native actor ref",
+      "`onCreateActor` callback을 한 번 호출한다",
+      "`destroyActor`는 위치 이동이 아니라 actor 수명 종료",
+      "다른 lifecycle callback을 호출하지 않고",
+      "stream disconnect는",
+      "`onDisconnectActor`만 의미하며",
+      "disconnect cleanup만으로 actor destroy가 실행되지 않는다",
+      "| leaveActor | user Spot",
+      "| destroyActor | Entry Spot actor 정리",
+      "| disconnect | current stream binding 해제"};
+    for (const auto &needle : required) {
+        if (text.find (needle) == std::string::npos) {
+            std::cerr << "actor model lacks actor destroy lifecycle contract: " << needle
+                      << '\n';
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::path &root)
+{
+    const auto path = root.parent_path ().parent_path () / "doc/spec/framework-api.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    bool ok = true;
+    const std::string required[] = {
+      "actor를 완전히 제거하는 public API는 Entry Spot context에만 둔다",
+      "user Spot",
+      "`leaveActor` 의미의 API까지만",
+      "Entry Spot handler 또는 lifecycle callback은",
+      "언어별 Entry Spot destroy API를 호출한다",
+      "actor registry, actor-session binding, native actor ref를",
+      "`onLeaveActor`나 다른 lifecycle",
+      "stream disconnect는 현재 session binding cleanup",
+      "disconnect cleanup만으로 actor destroy가 실행되지 않는다"};
+    for (const auto &needle : required) {
+        if (text.find (needle) == std::string::npos) {
+            std::cerr << "framework API spec lacks actor destroy lifecycle contract: "
+                      << needle << '\n';
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool session_actor_dispatch_documents_disconnect_destroy_boundary (
+  const std::filesystem::path &root)
+{
+    const auto path =
+      root.parent_path ().parent_path () / "doc/spec/session-actor-dispatch.ko.md";
+    std::ifstream input (path);
+    std::ostringstream buffer;
+    buffer << input.rdbuf ();
+    const auto text = buffer.str ();
+
+    bool ok = true;
+    const std::string required[] = {
+      "disconnect unbind는 actor-session binding만 정리한다",
+      "room leave, Entry Spot 복귀,",
+      "actor destroy는 disconnect cleanup에서 자동으로 실행하지 않는다",
+      "user Spot에서",
+      "`leaveActor`로 actor를 Entry Spot에 돌려보낸 뒤",
+      "Entry Spot context의 destroy API를",
+      "| disconnect does not destroy |",
+      "room leave나 Entry Spot destroy를 자동으로 실행하지 않는다"};
+    for (const auto &needle : required) {
+        if (text.find (needle) == std::string::npos) {
+            std::cerr
+              << "session actor dispatch spec lacks disconnect/destroy boundary contract: "
+              << needle << '\n';
+            ok = false;
+        }
+    }
     return ok;
 }
 
@@ -1610,7 +1704,7 @@ bool client_sample_uses_e2e_connector (const std::filesystem::path &root,
     ok &= file_contains (path, "zlink/stream_e2e_client");
     ok &= file_contains (path, "stream_e2e_client::use");
     ok &= file_contains (path, "connector_factory_t::create");
-    ok &= file_contains (path, "dispatch_mode_t::manual");
+    ok &= file_contains (path, "dispatch_mode_t::immediate");
     if (!ok) {
         std::cerr << "client sample does not wrap the stream connector with e2e client: "
                   << path << '\n';
@@ -2519,6 +2613,9 @@ int main ()
     ok &= implementation_plan_goal9_covers_channel_messaging (root);
     ok &= implementation_plan_goal10_covers_backpressure_reliability (root);
     ok &= implementation_plan_goal11_covers_spot_runtime (root);
+    ok &= actor_model_documents_actor_destroy_lifecycle (root);
+    ok &= framework_api_documents_actor_destroy_lifecycle (root);
+    ok &= session_actor_dispatch_documents_disconnect_destroy_boundary (root);
     ok &= implementation_plan_goal12_covers_spot_timer (root);
     ok &= implementation_plan_goal13_covers_stream_framework (root);
     ok &= implementation_plan_goal14_covers_actor_gateway (root);

@@ -14,6 +14,11 @@ namespace zlink::samples::bingo
 class bingo_room_game_t
 {
   public:
+    bingo_room_game_t ()
+    {
+        _game.attach_players (&_state.players);
+    }
+
     explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)}
     {
         _game.attach_players (&_state.players);
@@ -53,6 +58,13 @@ class bingo_room_game_t
     }
 
     bool should_draw () const noexcept { return _game.all_cards_submitted (_state.players); }
+
+    void set_room_id_if_empty (std::string room_id)
+    {
+        if (_state.room_id.empty ()) {
+            _state.room_id = std::move (room_id);
+        }
+    }
 
     std::optional<number_drawn_notify_t> draw_next () { return _game.draw_next (_state); }
 

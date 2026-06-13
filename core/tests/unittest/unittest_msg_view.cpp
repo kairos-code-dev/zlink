@@ -111,6 +111,67 @@ void test_init_view_from_zcmsg ()
     TEST_ASSERT_EQUAL_INT (1, free_counter);
 }
 
+static void init_command_msg (zlink::msg_t &msg_, const size_t size_, const unsigned char flags_)
+{
+    TEST_ASSERT_EQUAL_INT (0, msg_.init_size (size_));
+    msg_.set_flags (flags_);
+}
+
+void test_command_body_size_for_well_formed_commands ()
+{
+    zlink::msg_t ping;
+    zlink::msg_t pong;
+    zlink::msg_t subscribe;
+    zlink::msg_t cancel;
+
+    init_command_msg (ping, 7, zlink::msg_t::command | zlink::msg_t::ping);
+    init_command_msg (pong, 5, zlink::msg_t::command | zlink::msg_t::pong);
+    init_command_msg (subscribe, 13, zlink::msg_t::command | zlink::msg_t::subscribe);
+    init_command_msg (cancel, 9, zlink::msg_t::command | zlink::msg_t::cancel);
+
+    TEST_ASSERT_EQUAL_UINT (2, (unsigned int) ping.command_body_size ());
+    TEST_ASSERT_EQUAL_PTR (static_cast<unsigned char *> (ping.data ()) + 5, ping.command_body ());
+    TEST_ASSERT_EQUAL_UINT (0, (unsigned int) pong.command_body_size ());
+    TEST_ASSERT_EQUAL_PTR (static_cast<unsigned char *> (pong.data ()) + 5, pong.command_body ());
+    TEST_ASSERT_EQUAL_UINT (3, (unsigned int) subscribe.command_body_size ());
+    TEST_ASSERT_EQUAL_PTR (static_cast<unsigned char *> (subscribe.data ()) + 10,
+                           subscribe.command_body ());
+    TEST_ASSERT_EQUAL_UINT (2, (unsigned int) cancel.command_body_size ());
+    TEST_ASSERT_EQUAL_PTR (static_cast<unsigned char *> (cancel.data ()) + 7, cancel.command_body ());
+
+    TEST_ASSERT_EQUAL_INT (0, cancel.close ());
+    TEST_ASSERT_EQUAL_INT (0, subscribe.close ());
+    TEST_ASSERT_EQUAL_INT (0, pong.close ());
+    TEST_ASSERT_EQUAL_INT (0, ping.close ());
+}
+
+void test_command_body_size_clamps_malformed_commands ()
+{
+    zlink::msg_t ping;
+    zlink::msg_t subscribe;
+    zlink::msg_t cancel;
+    zlink::msg_t inproc_subscribe;
+
+    init_command_msg (ping, 4, zlink::msg_t::command | zlink::msg_t::ping);
+    init_command_msg (subscribe, 9, zlink::msg_t::command | zlink::msg_t::subscribe);
+    init_command_msg (cancel, 6, zlink::msg_t::command | zlink::msg_t::cancel);
+    init_command_msg (inproc_subscribe, 3, zlink::msg_t::subscribe);
+
+    TEST_ASSERT_EQUAL_UINT (0, (unsigned int) ping.command_body_size ());
+    TEST_ASSERT_NULL (ping.command_body ());
+    TEST_ASSERT_EQUAL_UINT (0, (unsigned int) subscribe.command_body_size ());
+    TEST_ASSERT_NULL (subscribe.command_body ());
+    TEST_ASSERT_EQUAL_UINT (0, (unsigned int) cancel.command_body_size ());
+    TEST_ASSERT_NULL (cancel.command_body ());
+    TEST_ASSERT_EQUAL_UINT (3, (unsigned int) inproc_subscribe.command_body_size ());
+    TEST_ASSERT_EQUAL_PTR (inproc_subscribe.data (), inproc_subscribe.command_body ());
+
+    TEST_ASSERT_EQUAL_INT (0, inproc_subscribe.close ());
+    TEST_ASSERT_EQUAL_INT (0, cancel.close ());
+    TEST_ASSERT_EQUAL_INT (0, subscribe.close ());
+    TEST_ASSERT_EQUAL_INT (0, ping.close ());
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -122,6 +183,8 @@ int main (void)
     RUN_TEST (test_init_view_vsm_fallback_copy);
     RUN_TEST (test_init_view_invalid_range);
     RUN_TEST (test_init_view_from_zcmsg);
+    RUN_TEST (test_command_body_size_for_well_formed_commands);
+    RUN_TEST (test_command_body_size_clamps_malformed_commands);
 
     zlink::shutdown_network ();
     return UNITY_END ();

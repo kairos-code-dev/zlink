@@ -119,8 +119,10 @@ void zlink::xpub_t::xread_activated (pipe_t *pipe_)
             if (msg.is_subscribe () || msg.is_cancel ()) {
                 data = static_cast<unsigned char *> (msg.command_body ());
                 size = msg.command_body_size ();
-                subscribe = msg.is_subscribe ();
-                is_subscribe_or_cancel = true;
+                if (data || size) {
+                    subscribe = msg.is_subscribe ();
+                    is_subscribe_or_cancel = true;
+                }
             } else if (msg.size () > 0 && (*msg_data == 0 || *msg_data == 1)) {
                 data = msg_data + 1;
                 size = msg.size () - 1;

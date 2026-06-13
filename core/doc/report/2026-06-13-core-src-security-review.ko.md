@@ -28,7 +28,7 @@
 | 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | **문서 보강 완료(2026-06-14)** | upstream 동작 |
 | 8 | - | 동시성 / 미스 웨이크업 | `core/src/runtime/core/mailbox.cpp:121-143` | **반박됨, 수정 제외** | repo 고유 |
-| 9 | Low | 방어적 길이 clamp 누락 | `core/src/runtime/core/msg.cpp:623` | ZMP 원격 도달 불가, 방어 수정 권장 | upstream 파생 |
+| 9 | Low | 방어적 길이 clamp 누락 | `core/src/runtime/core/msg.cpp:623` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 10 | Low | IPC 주소 길이 방어 누락 | `core/src/runtime/transports/ipc/ipc_address.cpp:13,73` | 호출자 제공 sockaddr 경로 한정 | upstream 파생 |
 
 ### 질문에 대한 결론
@@ -711,7 +711,7 @@ lost wakeup, 이중 소비, UAF로 볼 근거가 없다. 이 항목은 오탐으
 - **분류**: 정수 언더플로 방어 / 원격 도달 미입증
 - **위치**: `core/src/runtime/core/msg.cpp:623-651`
 - **출처**: upstream 파생
-- **상태**: ZMP 원격 경로로는 도달 불가. 코드 자체의 방어 clamp는 권장.
+- **상태**: ✅ 2026-06-14 수정 완료. ZMP 원격 경로로는 도달 불가하며, 내부 malformed 메시지에 대한 방어 clamp를 추가함.
 
 ### 코드
 
@@ -747,6 +747,36 @@ ZMP 디코더는 subscribe/cancel 플래그가 다른 플래그와 함께 오는
 
 `command_body_size`에 방어적 clamp를 넣는다. 정상 메시지는 결과가 바뀌지 않고, 비정상 내부 메시지만
 0 길이로 제한된다.
+
+### 처리 기록 (2026-06-14)
+
+`msg_t::command_body_size()`가 command name prefix보다 짧은 malformed ping, pong, subscribe,
+cancel 메시지를 만나면 0을 반환하도록 바꾸었다. 같은 조건에서 `command_body()`도 prefix 뒤 포인터를
+만들지 않고 `NULL`을 반환한다. XPUB는 이 `NULL`/0 조합을 구독 명령으로 적용하지 않는다. 정상
+command 메시지와 inproc subscribe/cancel 메시지는 기존 결과를 유지한다.
+
+검증:
+- `cmake --build core/build --target unittest_msg_view -j2`: 통과.
+- `ctest --test-dir core/build -R '^unittest_msg_view$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다. 스크립트가
+  생성한 native 산출물은 검증 후 커밋하지 않도록 되돌렸다.
+- `bindings/cpp/tests/run_tests.sh`: 실패. 병렬로 진행 중인 binding parity 변경에서
+  `bindings/cpp/tests/contract/test_cpp_contract_service.cpp`가 `zlink::spot_node_t` 이름을 찾지 못해
+  컴파일이 중단된다. 이번 core #9 변경 파일과는 별도 경로다.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 위치는
+  `bindings/c/tests/test_c_contract_surface.c`의 `ZLINK_VERSION_PATCH == 3` 기대값이며, 이미 별도
+  C 바인딩 리포트의 `C-BINDING-001`에 기록된 버전 매크로 불일치와 같은 문제다.
+
+Codex 에이전트 리뷰:
+- 2026-06-14: 실제 `msg.cpp`, `xpub.cpp`, `unittest_msg_view.cpp`를 대조한 결과,
+  prefix보다 짧은 command에서 `command_body_size()` 언더플로가 닫혔고, `command_body()`가
+  `NULL`을 반환하며, XPUB가 `NULL`/0 malformed subscribe/cancel을 구독 처리에서 제외한다고 확인했다.
+- 정상 empty topic command는 prefix 길이를 만족해 `data != NULL`, `size == 0`으로 계속 처리되며,
+  inproc subscribe/cancel 동작도 유지된다고 확인했다.
+- `command_body()` 소비자는 XPUB 한 곳뿐이고 `*_cmd_name_size` 직접 차감 패턴이 남아 있지 않다고
+  확인했다.
+- 결론: "추가 이슈 없음."
 
 ---
 

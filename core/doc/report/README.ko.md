@@ -26,6 +26,7 @@
 - 2026-06-14: core WS/WSS buffering 항목(#2)의 `pending_message` 전체 사본을 제거하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core decoder allocator 산술 오버플로 항목(#5)을 수정하고 core/C++ binding 검증 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 - 2026-06-14: core `maxmsgsize` 정책 항목(#7)은 기본값을 유지하고, 신뢰할 수 없는 listener에서 `ZLINK_OPT_MAXMSGSIZE`를 명시하도록 guide와 site 문서를 보강했다.
+- 2026-06-14: core command body length clamp 항목(#9)을 수정하고 core 빌드·단위 테스트 통과 및 Codex 에이전트 "추가 이슈 없음" 판정을 확인했다. C++ binding 검증은 병렬 binding parity 변경의 `spot_node_t` 테스트 컴파일 오류로 실패했고, C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 
 ## 리포트 목록
 

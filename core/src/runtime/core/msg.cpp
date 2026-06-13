@@ -620,16 +620,32 @@ bool zlink::msg_t::is_close_cmd () const
     return (_u.base.flags & CMD_TYPE_MASK) == close_cmd;
 }
 
+namespace
+{
+size_t command_body_size_after_prefix (const zlink::msg_t &msg_, const size_t prefix_size_)
+{
+    const size_t size = msg_.size ();
+    return size >= prefix_size_ ? size - prefix_size_ : 0;
+}
+
+unsigned char *command_body_after_prefix (zlink::msg_t *msg_, const size_t prefix_size_)
+{
+    if (msg_->size () < prefix_size_)
+        return NULL;
+    return static_cast<unsigned char *> (msg_->data ()) + prefix_size_;
+}
+}
+
 size_t zlink::msg_t::command_body_size () const
 {
     if (this->is_ping () || this->is_pong ())
-        return this->size () - ping_cmd_name_size;
+        return command_body_size_after_prefix (*this, ping_cmd_name_size);
     else if (!(this->flags () & msg_t::command) && (this->is_subscribe () || this->is_cancel ()))
         return this->size ();
     else if (this->is_subscribe ())
-        return this->size () - sub_cmd_name_size;
+        return command_body_size_after_prefix (*this, sub_cmd_name_size);
     else if (this->is_cancel ())
-        return this->size () - cancel_cmd_name_size;
+        return command_body_size_after_prefix (*this, cancel_cmd_name_size);
 
     return 0;
 }
@@ -639,14 +655,14 @@ void *zlink::msg_t::command_body ()
     unsigned char *data = NULL;
 
     if (this->is_ping () || this->is_pong ())
-        data = static_cast<unsigned char *> (this->data ()) + ping_cmd_name_size;
+        data = command_body_after_prefix (this, ping_cmd_name_size);
     //  With inproc, command flag is not set for sub/cancel
     else if (!(this->flags () & msg_t::command) && (this->is_subscribe () || this->is_cancel ()))
         data = static_cast<unsigned char *> (this->data ());
     else if (this->is_subscribe ())
-        data = static_cast<unsigned char *> (this->data ()) + sub_cmd_name_size;
+        data = command_body_after_prefix (this, sub_cmd_name_size);
     else if (this->is_cancel ())
-        data = static_cast<unsigned char *> (this->data ()) + cancel_cmd_name_size;
+        data = command_body_after_prefix (this, cancel_cmd_name_size);
 
     return data;
 }

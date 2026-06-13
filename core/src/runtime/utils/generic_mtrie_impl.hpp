@@ -26,14 +26,40 @@ template <typename T> generic_mtrie_t<T>::~generic_mtrie_t ()
 {
     LIBZLINK_DELETE (_pipes);
 
+    std::list<generic_mtrie_t *> stack;
     if (_count == 1) {
         zlink_assert (_next.node);
-        LIBZLINK_DELETE (_next.node);
+        stack.push_back (_next.node);
     } else if (_count > 1) {
         for (unsigned short i = 0; i != _count; ++i) {
-            LIBZLINK_DELETE (_next.table[i]);
+            if (_next.table[i])
+                stack.push_back (_next.table[i]);
         }
         free (_next.table);
+    }
+    _count = 0;
+    _live_nodes = 0;
+    _next.node = NULL;
+
+    while (!stack.empty ()) {
+        generic_mtrie_t *node = stack.back ();
+        stack.pop_back ();
+
+        LIBZLINK_DELETE (node->_pipes);
+        if (node->_count == 1) {
+            zlink_assert (node->_next.node);
+            stack.push_back (node->_next.node);
+        } else if (node->_count > 1) {
+            for (unsigned short i = 0; i != node->_count; ++i) {
+                if (node->_next.table[i])
+                    stack.push_back (node->_next.table[i]);
+            }
+            free (node->_next.table);
+        }
+        node->_count = 0;
+        node->_live_nodes = 0;
+        node->_next.node = NULL;
+        LIBZLINK_DELETE (node);
     }
 }
 
@@ -525,24 +551,29 @@ template <typename T>
 template <typename Arg>
 void generic_mtrie_t<T>::visit_values (void (*func_) (value_t *value_, Arg arg_), Arg arg_) const
 {
-    if (_pipes) {
-        for (typename pipes_t::const_iterator it = _pipes->begin (), end = _pipes->end ();
-             it != end; ++it)
-            func_ (*it, arg_);
-    }
+    std::list<const generic_mtrie_t *> stack;
+    stack.push_back (this);
 
-    if (_count == 0)
-        return;
+    while (!stack.empty ()) {
+        const generic_mtrie_t *node = stack.back ();
+        stack.pop_back ();
 
-    if (_count == 1) {
-        if (_next.node)
-            _next.node->visit_values (func_, arg_);
-        return;
-    }
+        if (node->_pipes) {
+            for (typename pipes_t::const_iterator it = node->_pipes->begin (),
+                                                  end = node->_pipes->end ();
+                 it != end; ++it)
+                func_ (*it, arg_);
+        }
 
-    for (unsigned short i = 0; i != _count; ++i) {
-        if (_next.table[i])
-            _next.table[i]->visit_values (func_, arg_);
+        if (node->_count == 1) {
+            if (node->_next.node)
+                stack.push_back (node->_next.node);
+        } else if (node->_count > 1) {
+            for (unsigned short i = node->_count; i != 0; --i) {
+                if (node->_next.table[i - 1])
+                    stack.push_back (node->_next.table[i - 1]);
+            }
+        }
     }
 }
 

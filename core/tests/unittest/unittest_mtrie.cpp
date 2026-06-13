@@ -8,6 +8,8 @@
 
 #include <utils/generic_mtrie_impl.hpp>
 
+#include <string>
+
 #include <unity.h>
 
 void setUp ()
@@ -415,6 +417,35 @@ void test_rm_with_callback_duplicate_uniq_only ()
     mtrie.rm (&pipes[1], check_count, &count, true);
 }
 
+void test_visit_values_deep_single_chain ()
+{
+    int pipe = 0;
+    std::string topic (20000, 'a');
+    zlink::generic_mtrie_t<int> mtrie;
+    const zlink::generic_mtrie_t<int>::prefix_t topic_data =
+      reinterpret_cast<zlink::generic_mtrie_t<int>::prefix_t> (topic.data ());
+
+    TEST_ASSERT_TRUE (mtrie.add (topic_data, topic.size (), &pipe));
+
+    int count = 0;
+    mtrie.visit_values (mtrie_count, &count);
+
+    TEST_ASSERT_EQUAL_INT (1, count);
+}
+
+void test_destroy_deep_single_chain ()
+{
+    int pipe = 0;
+    std::string topic (20000, 'b');
+    const zlink::generic_mtrie_t<int>::prefix_t topic_data =
+      reinterpret_cast<zlink::generic_mtrie_t<int>::prefix_t> (topic.data ());
+
+    {
+        zlink::generic_mtrie_t<int> mtrie;
+        TEST_ASSERT_TRUE (mtrie.add (topic_data, topic.size (), &pipe));
+    }
+}
+
 int main (void)
 {
     setup_test_environment ();
@@ -446,6 +477,8 @@ int main (void)
     RUN_TEST (test_rm_with_callback_multiple_reverse_order);
     RUN_TEST (test_rm_with_callback_duplicate);
     RUN_TEST (test_rm_with_callback_duplicate_uniq_only);
+    RUN_TEST (test_visit_values_deep_single_chain);
+    RUN_TEST (test_destroy_deep_single_chain);
 
     return UNITY_END ();
 }

@@ -20,6 +20,7 @@
 - 2026-06-14: .NET framework 원격 DoS 1차 항목(D1, D2, D5)을 수정하고, stream-connector test와 framework LZ4 회귀 테스트 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. D3/D4는 실행 순서 5-4에서 계속 처리한다.
 - 2026-06-14: C++ framework 인증·HTTP 항목(CR2, H1)을 수정하고, HTTP client test·contract header test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: Java framework TLS 항목(F3, F5)을 수정·문서화하고, stream-connector test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
+- 2026-06-14: core mtrie 재귀 소멸·순회 항목(#1)을 비재귀화하고 core/C++ binding 검증 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. C binding 검증은 별도 C-BINDING-001 버전 매크로 불일치 때문에 아직 실패한다.
 
 ## 리포트 목록
 

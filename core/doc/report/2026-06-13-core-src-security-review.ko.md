@@ -20,7 +20,7 @@
 
 | # | 심각도 | 분류 | 위치 | 상태 | 출처 |
 |---|--------|------|------|------|------|
-| 1 | **High** | DoS / 스택 오버플로 | `core/src/runtime/utils/generic_mtrie_impl.hpp`, 보조: `trie.cpp`, `radix_tree.cpp` | 확인 | upstream 파생 |
+| 1 | **High** | DoS / 스택 오버플로 | `core/src/runtime/utils/generic_mtrie_impl.hpp`, 보조: `trie.cpp`, `radix_tree.cpp` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | 확인 | repo 고유 |
 | 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | 확인 | upstream 파생 |
 | 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | 확인 | repo 고유 순서 |
@@ -114,7 +114,7 @@ listener에서 상한을 설정하도록 문서와 샘플을 정리하는 쪽이
   - `core/src/runtime/utils/radix_tree.cpp:209` (`free_nodes`)
   - `core/src/runtime/utils/radix_tree.cpp:549-567` (`visit_keys`)
 - **출처**: upstream(libzmq) 파생 — libzmq에도 동일 결함 존재
-- **상태**: ✅ 재귀 확인 / ✅ 원격 구독 경로는 mtrie로 재조준됨
+- **상태**: ✅ 2026-06-14 수정 완료 / ✅ 원격 구독 경로는 mtrie로 재조준됨
 
 trie/radix는 재귀 코드가 남아 있지만, 원격 SUB 바이트가 직접 닿는 경로로 확인되지는 않았다.
 XSUB 구독은 로컬 `xsub.cpp:252`의 `xsend`가 공급한다. 반면 원격 SUB 바이트는
@@ -223,6 +223,32 @@ N을 수만 단위로 키우면 콜 스택을 초과해 **프로세스 크래시
 - 같은 패치에 구독 의미를 바꾸는 길이 상한을 넣지 않는다. 상한은 공개 동작과 호환성에 영향을 주므로
   별도 설계와 테스트가 필요하다.
 - trie/radix 비재귀화는 후속 하드닝으로 분리한다.
+
+### 처리 기록 (2026-06-14)
+
+`generic_mtrie_t` 소멸자와 `visit_values`를 명시적 힙 스택 기반 반복 처리로 바꾸었다. 이 변경은
+구독 prefix의 의미와 방문 순서를 유지하면서, 깊은 단일 체인에서도 C++ 호출 스택을 prefix 깊이만큼
+사용하지 않게 만든다. trie/radix 재귀는 원격 구독 경로로 확인되지 않았으므로 이 패치에 섞지 않고
+후속 방어 하드닝으로 남겼다.
+
+검증:
+- `cmake --build core/build --target unittest_mtrie -j2`: 통과.
+- `ctest --test-dir core/build -R '^unittest_mtrie$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 위치는
+  `bindings/c/tests/test_c_contract_surface.c`의 `ZLINK_VERSION_PATCH == 3` 기대값이며,
+  이미 별도 C 바인딩 리포트의 `C-BINDING-001`에 기록된 버전 매크로 불일치와 같은 문제다. mtrie
+  변경 경로와는 무관하지만, C 바인딩 검증은 해당 항목을 처리할 때 다시 통과시켜야 한다.
+
+Claude 리뷰:
+- 2026-06-14: 실제 `generic_mtrie_impl.hpp`와 회귀 테스트를 대조한 결과, 소멸자에서 자식 노드를
+  지우기 전에 `_count`와 child 포인터를 비워 재귀 소멸이 다시 발생하지 않음을 확인했다.
+- `visit_values`는 역순 push와 LIFO pop으로 기존 pre-order 방문 순서를 유지하며, mtrie 경로에
+  깊은 prefix 재귀 패턴이 남아 있지 않다고 판정했다.
+- C binding 실패는 `ZLINK_VERSION_PATCH` 기대값 불일치로 mtrie 변경과 무관하다고 확인했다.
+- 결론: "추가 이슈 없음."
 
 ---
 

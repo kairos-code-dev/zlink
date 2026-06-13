@@ -166,4 +166,8 @@ connector.send(std::move(packet)).submit();
 
 ## 크기 제한
 
-`max_send_payload_size`(기본 64 KB)와 `max_metadata_size`(기본 8 KB)를 넘으면 `frame_too_large` 오류를 반환한다. 오류가 반환되는 시점은 transport write 전이다.
+`max_send_payload_size`(기본 64 KB)와 `max_metadata_size`(기본 8 KB)를 넘으면
+`frame_too_large` 오류를 반환한다. 오류가 반환되는 시점은 transport write 전이다.
+
+서버에서 받는 push와 reply payload에는 `max_receive_payload_size`(기본 64 KB)가 적용된다. 큰
+payload를 받을 수 있는 connector는 옵션에서 이 값을 명시적으로 올린다.

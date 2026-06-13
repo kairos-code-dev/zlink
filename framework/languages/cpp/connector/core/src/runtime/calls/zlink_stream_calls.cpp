@@ -121,8 +121,8 @@ read_exact_until (connector_state_t &state, std::size_t size, steady_clock_t::ti
     std::size_t offset = 0;
     while (offset < size) {
         if (state.close_requested.load ()) {
-            return result_t<std::vector<std::uint8_t>>::failure (
-              error_code_t::closed, "stream connector is closed");
+            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::closed,
+                                                                 "stream connector is closed");
         }
         if (steady_clock_t::now () >= deadline) {
             return result_t<std::vector<std::uint8_t>>::failure (
@@ -157,6 +157,27 @@ read_exact_until (connector_state_t &state, std::size_t size, steady_clock_t::ti
     return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
 }
 
+result_t<void> validate_inbound_frame_limits (const connector_state_t &state,
+                                              std::size_t header_size,
+                                              std::size_t payload_size)
+{
+    if (!frame_codec_t::validate_receive_frame_size (header_size, payload_size, state.options)) {
+        return result_t<void>::failure (error_code_t::frame_too_large,
+                                        "Inbound stream frame exceeds configured limits.");
+    }
+    return result_t<void>::success ();
+}
+
+std::optional<error_t> take_inbound_error (connector_state_t &state)
+{
+    if (!state.inbound_error) {
+        return std::nullopt;
+    }
+    auto error = std::move (*state.inbound_error);
+    state.inbound_error.reset ();
+    return error;
+}
+
 result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &state,
                                                          message_kind_t kind,
                                                          const packet_t &packet,
@@ -181,8 +202,8 @@ result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &stat
             payload_message = &*compressed_payload;
         }
         catch (const std::exception &ex) {
-            return result_t<std::vector<std::uint8_t>>::failure (
-              error_code_t::compression_failed, ex.what ());
+            return result_t<std::vector<std::uint8_t>>::failure (error_code_t::compression_failed,
+                                                                 ex.what ());
         }
     }
     auto payload = message_to_bytes (*payload_message);
@@ -225,6 +246,11 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
     const auto payload_size =
       (static_cast<std::size_t> (prefix[2]) << 24) | (static_cast<std::size_t> (prefix[3]) << 16)
       | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
+    if (auto limits = validate_inbound_frame_limits (state, header_size, payload_size); !limits) {
+        return result_t<packet_t>::failure (
+          limits.error_code (),
+          limits.error () ? limits.error ()->message : "stream connector frame is too large");
+    }
     auto header_bytes = read_exact_until (state, header_size, deadline);
     if (!header_bytes) {
         return result_t<packet_t>::failure (header_bytes.error_code (),
@@ -297,21 +323,25 @@ std::optional<result_t<inbound_frame_t>> try_take_inbound_frame (connector_state
     if (state.inbound_buffer.size () < 6) {
         return std::nullopt;
     }
-    const auto header_size = static_cast<std::size_t> (
-      (state.inbound_buffer[0] << 8) | state.inbound_buffer[1]);
-    const auto payload_size =
-      (static_cast<std::size_t> (state.inbound_buffer[2]) << 24)
-      | (static_cast<std::size_t> (state.inbound_buffer[3]) << 16)
-      | (static_cast<std::size_t> (state.inbound_buffer[4]) << 8)
-      | static_cast<std::size_t> (state.inbound_buffer[5]);
+    const auto header_size =
+      static_cast<std::size_t> ((state.inbound_buffer[0] << 8) | state.inbound_buffer[1]);
+    const auto payload_size = (static_cast<std::size_t> (state.inbound_buffer[2]) << 24)
+                              | (static_cast<std::size_t> (state.inbound_buffer[3]) << 16)
+                              | (static_cast<std::size_t> (state.inbound_buffer[4]) << 8)
+                              | static_cast<std::size_t> (state.inbound_buffer[5]);
+    if (auto limits = validate_inbound_frame_limits (state, header_size, payload_size); !limits) {
+        return result_t<inbound_frame_t>::failure (
+          limits.error_code (),
+          limits.error () ? limits.error ()->message : "stream connector frame is too large");
+    }
     const auto frame_size = 6 + header_size + payload_size;
     if (state.inbound_buffer.size () < frame_size) {
         return std::nullopt;
     }
 
-    std::vector<std::uint8_t> header_bytes (
-      state.inbound_buffer.begin () + 6,
-      state.inbound_buffer.begin () + 6 + static_cast<std::ptrdiff_t> (header_size));
+    std::vector<std::uint8_t> header_bytes (state.inbound_buffer.begin () + 6,
+                                            state.inbound_buffer.begin () + 6
+                                              + static_cast<std::ptrdiff_t> (header_size));
     std::vector<std::uint8_t> payload_bytes (
       state.inbound_buffer.begin () + 6 + static_cast<std::ptrdiff_t> (header_size),
       state.inbound_buffer.begin () + static_cast<std::ptrdiff_t> (frame_size));
@@ -328,8 +358,7 @@ std::optional<result_t<inbound_frame_t>> try_take_inbound_frame (connector_state
     auto header = decoded.value ();
     auto packet = decode_packet (state, header, std::move (payload_bytes));
     if (!packet) {
-        return result_t<inbound_frame_t>::failure (packet.error_code (),
-                                                   packet.error ()->message);
+        return result_t<inbound_frame_t>::failure (packet.error_code (), packet.error ()->message);
     }
     return result_t<inbound_frame_t>::success (
       inbound_frame_t{header.kind, header.request_seq, std::move (packet.value ())});
@@ -349,12 +378,12 @@ void complete_pending_request (std::shared_ptr<connector_state_t> state,
         callback = std::move (found->second.callback);
         state->pending_requests.erase (found);
     }
-    schedule_delivery (
-      state, [callback = std::move (callback), result = std::move (result)] () mutable {
-          if (callback) {
-              callback (std::move (result));
-          }
-      });
+    schedule_delivery (state,
+                       [callback = std::move (callback), result = std::move (result)] () mutable {
+                           if (callback) {
+                               callback (std::move (result));
+                           }
+                       });
 }
 
 void schedule_request_pump (std::shared_ptr<connector_state_t> state);
@@ -446,12 +475,17 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
             for (const auto &[request_seq, _] : state->pending_requests) {
                 request_ids.push_back (request_seq);
             }
+            boost::system::error_code ignored;
+            if (state->connection) {
+                state->connection->close (ignored);
+            }
         }
+        publish_error (*state, *transport_error);
+        change_state (state, connection_state_t::disconnected, *transport_error);
         for (auto request_seq : request_ids) {
-            complete_pending_request (
-              state, request_seq,
-              result_t<zlink::message_t>::failure (transport_error->code,
-                                                   transport_error->message));
+            complete_pending_request (state, request_seq,
+                                      result_t<zlink::message_t>::failure (
+                                        transport_error->code, transport_error->message));
         }
     } else if (reschedule) {
         schedule_request_pump (state);
@@ -470,25 +504,24 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
         state->read_in_progress = true;
         connection = state->connection.get ();
     }
-    connection->async_read_some (
-      8192, [state] (boost::system::error_code error, std::vector<std::uint8_t> bytes) mutable {
-          std::optional<error_t> transport_error;
-          {
-              std::lock_guard<std::mutex> lock (state->transport_mutex);
-              state->read_in_progress = false;
-              if (error) {
-                  transport_error = error_t{state->close_requested.load () ? error_code_t::closed
-                                                                           : error_code_t::disconnected,
-                                            state->close_requested.load ()
-                                              ? "stream connector is closed"
-                                              : error.message ()};
-              } else if (!bytes.empty ()) {
-                  state->inbound_buffer.insert (state->inbound_buffer.end (), bytes.begin (),
-                                                bytes.end ());
-              }
-          }
-          process_inbound_buffer (state, std::move (transport_error));
-      });
+    connection->async_read_some (8192, [state] (boost::system::error_code error,
+                                                std::vector<std::uint8_t> bytes) mutable {
+        std::optional<error_t> transport_error;
+        {
+            std::lock_guard<std::mutex> lock (state->transport_mutex);
+            state->read_in_progress = false;
+            if (error) {
+                transport_error = error_t{
+                  state->close_requested.load () ? error_code_t::closed
+                                                 : error_code_t::disconnected,
+                  state->close_requested.load () ? "stream connector is closed" : error.message ()};
+            } else if (!bytes.empty ()) {
+                state->inbound_buffer.insert (state->inbound_buffer.end (), bytes.begin (),
+                                              bytes.end ());
+            }
+        }
+        process_inbound_buffer (state, std::move (transport_error));
+    });
 }
 
 void start_next_async_write (std::shared_ptr<connector_state_t> state);
@@ -499,8 +532,7 @@ void enqueue_async_write (std::shared_ptr<connector_state_t> state,
 {
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
-        state->pending_writes.push_back (
-          pending_write_t{std::move (frame), std::move (callback)});
+        state->pending_writes.push_back (pending_write_t{std::move (frame), std::move (callback)});
     }
     start_next_async_write (std::move (state));
 }
@@ -536,8 +568,8 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
             immediate_failure =
               result_t<void>::failure (error_code_t::closed, "stream connector is closed");
         } else if (!is_transport_connected (*state)) {
-            immediate_failure = result_t<void>::failure (
-              error_code_t::disconnected, "stream connector is not connected");
+            immediate_failure = result_t<void>::failure (error_code_t::disconnected,
+                                                         "stream connector is not connected");
         } else {
             connection = state->connection.get ();
         }
@@ -551,25 +583,23 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
     try {
         connection->async_write (
           std::move (write.frame),
-          [state, callback = std::move (write.callback)] (
-            boost::system::error_code error) mutable {
+          [state, callback = std::move (write.callback)] (boost::system::error_code error) mutable {
               if (error) {
-                  finish_async_write (
-                    state, std::move (callback),
-                    result_t<void>::failure (
-                      state->close_requested.load () ? error_code_t::closed
-                                                     : error_code_t::send_failed,
-                      state->close_requested.load () ? "stream connector is closed"
-                                                     : error.message ()));
+                  finish_async_write (state, std::move (callback),
+                                      result_t<void>::failure (state->close_requested.load ()
+                                                                 ? error_code_t::closed
+                                                                 : error_code_t::send_failed,
+                                                               state->close_requested.load ()
+                                                                 ? "stream connector is closed"
+                                                                 : error.message ()));
                   return;
               }
               finish_async_write (state, std::move (callback), result_t<void>::success ());
           });
     }
     catch (const std::exception &ex) {
-        finish_async_write (
-          state, std::move (write.callback),
-          result_t<void>::failure (error_code_t::send_failed, ex.what ()));
+        finish_async_write (state, std::move (write.callback),
+                            result_t<void>::failure (error_code_t::send_failed, ex.what ()));
     }
 }
 
@@ -587,12 +617,12 @@ void finish_async_send (std::shared_ptr<connector_state_t> state,
         }
         state->send_in_progress = false;
     }
-    schedule_delivery (
-      state, [callback = std::move (callback), result = std::move (result)] () mutable {
-          if (callback) {
-              callback (std::move (result));
-          }
-      });
+    schedule_delivery (state,
+                       [callback = std::move (callback), result = std::move (result)] () mutable {
+                           if (callback) {
+                               callback (std::move (result));
+                           }
+                       });
     start_next_async_send (state);
 }
 
@@ -622,14 +652,13 @@ void start_next_async_send (std::shared_ptr<connector_state_t> state)
             immediate_failure =
               result_t<void>::failure (error_code_t::closed, "stream connector is closed");
         } else if (!is_transport_connected (*state)) {
-            immediate_failure = result_t<void>::failure (
-              error_code_t::disconnected, "stream connector is not connected");
+            immediate_failure = result_t<void>::failure (error_code_t::disconnected,
+                                                         "stream connector is not connected");
         } else if (auto validation = validate_packet_limits (*state, send.packet); !validation) {
             publish_error (*state, *validation.error ());
             immediate_failure = result_t<void>::failure (
               validation.error_code (),
-              validation.error () ? validation.error ()->message
-                                  : "stream send validation failed");
+              validation.error () ? validation.error ()->message : "stream send validation failed");
         } else if (auto encoded =
                      encode_packet_frame (*state, message_kind_t::send, send.packet, std::nullopt);
                    !encoded) {
@@ -647,18 +676,17 @@ void start_next_async_send (std::shared_ptr<connector_state_t> state)
         return;
     }
 
-    enqueue_async_write (
-      state, std::move (frame),
-      [state, packet = std::move (send.packet),
-       callback = std::move (send.callback)] (result_t<void> result) mutable {
-          if (!result) {
-              finish_async_send (state, std::move (packet), std::move (callback),
-                                 std::move (result));
-              return;
-          }
-          finish_async_send (state, std::move (packet), std::move (callback),
-                             result_t<void>::success ());
-      });
+    enqueue_async_write (state, std::move (frame),
+                         [state, packet = std::move (send.packet),
+                          callback = std::move (send.callback)] (result_t<void> result) mutable {
+                             if (!result) {
+                                 finish_async_send (state, std::move (packet), std::move (callback),
+                                                    std::move (result));
+                                 return;
+                             }
+                             finish_async_send (state, std::move (packet), std::move (callback),
+                                                result_t<void>::success ());
+                         });
 }
 
 } // namespace
@@ -771,21 +799,20 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (state->close_requested.load ()) {
-            immediate_result = result_t<zlink::message_t>::failure (
-              error_code_t::closed, "stream connector is closed");
+            immediate_result = result_t<zlink::message_t>::failure (error_code_t::closed,
+                                                                    "stream connector is closed");
         } else if (!is_transport_connected (*state)) {
             immediate_result = result_t<zlink::message_t>::failure (
               error_code_t::disconnected, "stream connector is not connected");
         } else if (auto validation = validate_packet_limits (*state, packet); !validation) {
             publish_error (*state, *validation.error ());
             immediate_result = result_t<zlink::message_t>::failure (
-              validation.error_code (),
-              validation.error () ? validation.error ()->message
-                                  : "stream request validation failed");
+              validation.error_code (), validation.error () ? validation.error ()->message
+                                                            : "stream request validation failed");
         } else {
             seq = state->next_request_seq++;
-            state->pending_requests.emplace (
-              seq, pending_request_t{seq, packet, std::move (callback)});
+            state->pending_requests.emplace (seq,
+                                             pending_request_t{seq, packet, std::move (callback)});
             if (auto encoded = encode_packet_frame (*state, message_kind_t::request, packet, seq);
                 !encoded) {
                 auto found = state->pending_requests.find (seq);
@@ -803,19 +830,17 @@ void submit_request_async (std::shared_ptr<void> state_handle,
     }
 
     if (immediate_result) {
-        schedule_delivery (
-          state,
-          [callback = std::move (callback), result = std::move (*immediate_result)] () mutable {
-                  if (callback) {
-                      callback (std::move (result));
-                  }
-              });
+        schedule_delivery (state, [callback = std::move (callback),
+                                   result = std::move (*immediate_result)] () mutable {
+            if (callback) {
+                callback (std::move (result));
+            }
+        });
         return;
     }
 
     enqueue_async_write (
-      state, std::move (outbound_frame),
-      [state, seq, timeout] (result_t<void> written) mutable {
+      state, std::move (outbound_frame), [state, seq, timeout] (result_t<void> written) mutable {
           if (!written) {
               complete_pending_request (
                 state, seq,
@@ -827,8 +852,8 @@ void submit_request_async (std::shared_ptr<void> state_handle,
           post_runtime_operation_after (timeout, [state, seq] {
               complete_pending_request (
                 state, seq,
-                result_t<zlink::message_t>::failure (
-                  error_code_t::request_timeout, "stream connector request timed out"));
+                result_t<zlink::message_t>::failure (error_code_t::request_timeout,
+                                                     "stream connector request timed out"));
           });
           schedule_request_pump (state);
       });
@@ -844,6 +869,11 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
                 if (!is_control_packet (packet)) {
                     state->dispatch_queue.push_back (std::move (packet));
                 }
+            }
+            if (auto inbound_error = take_inbound_error (*state)) {
+                publish_error (*state, *inbound_error);
+                change_state (state, connection_state_t::disconnected, *inbound_error);
+                return result_t<void>::failure (inbound_error->code, inbound_error->message);
             }
             heartbeat_monitor_t monitor (state->options.heartbeat);
             const auto now = steady_clock_t::now ();
@@ -868,15 +898,15 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
             auto packet = std::move (packets.front ());
             packets.pop_front ();
             if (auto wait = take_matching_wait (*state, packet)) {
-                deliveries.push_back ([wait = std::move (*wait), packet = std::move (packet)] () mutable {
-                    if (wait.callback) {
-                        wait.callback (result_t<packet_t>::success (std::move (packet)));
-                    }
-                });
+                deliveries.push_back (
+                  [wait = std::move (*wait), packet = std::move (packet)] () mutable {
+                      if (wait.callback) {
+                          wait.callback (result_t<packet_t>::success (std::move (packet)));
+                      }
+                  });
             } else {
-                deliveries.push_back ([state, packet = std::move (packet)] {
-                    dispatch_packet (*state, packet);
-                });
+                deliveries.push_back (
+                  [state, packet = std::move (packet)] { dispatch_packet (*state, packet); });
             }
         }
     }
@@ -903,6 +933,12 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
                         state->dispatch_queue.push_back (std::move (packet));
                     }
                 }
+                if (auto inbound_error = take_inbound_error (*state)) {
+                    publish_error (*state, *inbound_error);
+                    change_state (state, connection_state_t::disconnected, *inbound_error);
+                    return result_t<packet_t>::failure (inbound_error->code,
+                                                        inbound_error->message);
+                }
             }
             if (!state->dispatch_queue.empty ()) {
                 auto packet = std::move (state->dispatch_queue.front ());
@@ -917,8 +953,8 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
                 return result_t<packet_t>::failure (error_code_t::disconnected,
                                                     "stream connector is not connected");
             }
-            const auto next_check = std::min (deadline, steady_clock_t::now ()
-                                                          + std::chrono::milliseconds (1));
+            const auto next_check =
+              std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
             state->state_changed.wait_until (lock, next_check, [&] {
                 return !state->dispatch_queue.empty () || !is_transport_connected (*state);
             });
@@ -946,9 +982,15 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                         state->dispatch_queue.push_back (std::move (packet));
                     }
                 }
+                if (auto inbound_error = take_inbound_error (*state)) {
+                    publish_error (*state, *inbound_error);
+                    change_state (state, connection_state_t::disconnected, *inbound_error);
+                    return result_t<packet_t>::failure (inbound_error->code,
+                                                        inbound_error->message);
+                }
             }
-            for (auto iter = state->dispatch_queue.begin ();
-                 iter != state->dispatch_queue.end (); ++iter) {
+            for (auto iter = state->dispatch_queue.begin (); iter != state->dispatch_queue.end ();
+                 ++iter) {
                 if ((packet_name.empty () || iter->name == packet_name)
                     && (!predicate || predicate (*iter))) {
                     auto packet = std::move (*iter);
@@ -964,8 +1006,8 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                 return result_t<packet_t>::failure (error_code_t::disconnected,
                                                     "stream connector is not connected");
             }
-            const auto next_check = std::min (deadline, steady_clock_t::now ()
-                                                          + std::chrono::milliseconds (1));
+            const auto next_check =
+              std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
             state->state_changed.wait_until (lock, next_check, [&] {
                 return !state->dispatch_queue.empty () || !is_transport_connected (*state);
             });
@@ -1007,6 +1049,7 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
 
     auto state = std::static_pointer_cast<connector_state_t> (state_handle);
     std::optional<packet_t> matched_packet;
+    std::optional<error_t> inbound_error;
     std::uint64_t wait_id = 0;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -1015,6 +1058,11 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
                 if (!is_control_packet (packet)) {
                     state->dispatch_queue.push_back (std::move (packet));
                 }
+            }
+            inbound_error = take_inbound_error (*state);
+            if (inbound_error) {
+                publish_error (*state, *inbound_error);
+                change_state (state, connection_state_t::disconnected, *inbound_error);
             }
         }
         for (auto iter = state->dispatch_queue.begin (); iter != state->dispatch_queue.end ();
@@ -1026,7 +1074,7 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
                 break;
             }
         }
-        if (!matched_packet) {
+        if (!matched_packet && !inbound_error) {
             if (state->close_requested.load ()) {
                 matched_packet = packet_t{};
             } else {
@@ -1042,22 +1090,31 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
         start_read_loop (state);
     }
 
+    if (inbound_error) {
+        schedule_delivery (
+          state, [callback = std::move (callback), error = std::move (*inbound_error)] () mutable {
+              if (callback) {
+                  callback (result_t<packet_t>::failure (error.code, error.message));
+              }
+          });
+        return;
+    }
+
     if (matched_packet) {
         if (state->close_requested.load () && matched_packet->name.empty ()) {
-            schedule_delivery (
-              state, [callback = std::move (callback)] () mutable {
-                  if (callback) {
-                      callback (result_t<packet_t>::failure (error_code_t::closed,
-                                                             "stream connector is closed"));
-                  }
-              });
+            schedule_delivery (state, [callback = std::move (callback)] () mutable {
+                if (callback) {
+                    callback (result_t<packet_t>::failure (error_code_t::closed,
+                                                           "stream connector is closed"));
+                }
+            });
         } else {
-            schedule_delivery (
-              state, [callback = std::move (callback), packet = std::move (*matched_packet)] () mutable {
-                  if (callback) {
-                      callback (result_t<packet_t>::success (std::move (packet)));
-                  }
-              });
+            schedule_delivery (state, [callback = std::move (callback),
+                                       packet = std::move (*matched_packet)] () mutable {
+                if (callback) {
+                    callback (result_t<packet_t>::success (std::move (packet)));
+                }
+            });
         }
         return;
     }
@@ -1073,13 +1130,12 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
             callback = std::move (found->second.callback);
             state->pending_waits.erase (found);
         }
-        schedule_delivery (
-          state, [callback = std::move (callback)] () mutable {
-              if (callback) {
-                  callback (result_t<packet_t>::failure (
-                    error_code_t::request_timeout, "stream connector wait timed out"));
-              }
-          });
+        schedule_delivery (state, [callback = std::move (callback)] () mutable {
+            if (callback) {
+                callback (result_t<packet_t>::failure (error_code_t::request_timeout,
+                                                       "stream connector wait timed out"));
+            }
+        });
     });
 }
 

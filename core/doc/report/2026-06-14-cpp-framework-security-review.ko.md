@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/cpp/{framework,connector,extensions,http-client}` (zlink core 위의 상위 래퍼 계층)
-- **상태**: 리포트 전용. **코드 수정 없음.**
+- **상태**: CR1 수정 완료. CR2/H1/H2/H3/M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **신뢰 모델**: stream-connector는 원격 서버에 대한 **클라이언트**이며, 인바운드 프레임의 신뢰 불가 주체는 서버다.
@@ -12,7 +12,7 @@
 
 | # | 심각도 | 분류 | 위치 | 상태 |
 |---|--------|------|------|------|
-| CR1 | **Critical** | DoS / 무제한 할당 | `connector/core/.../zlink_stream_calls.cpp:235,307`, `stream_connection.cpp:351` | 확인 |
+| CR1 | **Critical** | DoS / 무제한 할당 | `connector/core/.../zlink_stream_calls.cpp:235,307`, `stream_connection.cpp:351` | 수정 완료(2026-06-14) |
 | CR2 | **Critical** | 자격증명 유출(CWE-200) | `http-client/src/client.cpp:186,193`, `request_performer.cpp:149`, `url.cpp:110` | 확인 |
 | H1 | High | DoS / 무제한 응답 본문 | `http-client/.../request_performer.cpp:294,302` | 확인 |
 | H2 | High | 동시성 / data race·UAF | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:108,191,268` | 확인 |
@@ -63,6 +63,20 @@
 
 **트리거**: 악의적/탈취 서버(또는 평문 endpoint MITM)가 `payload_size = 0xFFFFFFFF` 전송 → 최대 4GiB 할당/누적 → OOM.
 **수정**: 할당 전 `header_size > max_metadata_size`·`payload_size > max_send_payload_size`(또는 별도 `max_receive_*`) 거부, `inbound_buffer` 크기 cap 후 연결 중단.
+
+**처리 기록(2026-06-14)**:
+- `connector_options_t`에 `max_receive_payload_size`를 추가했다. 기본값은 64 KiB이며, 큰 서버 push 또는 reply가 필요한 connector는 옵션에서 명시적으로 올린다.
+- `frame_codec_t::validate_receive_frame_size`를 추가하고, 동기 request 경로(`read_packet_frame`), async read loop(`try_take_inbound_frame`), 동기 drain 경로(`read_stream_packet`)에서 prefix 파싱 직후 호출하도록 바꿨다.
+- `payload_size`가 상한을 넘으면 payload buffer를 만들기 전에 `frame_too_large`로 실패한다. async read loop는 연결을 닫고 pending request를 같은 오류로 완료한다.
+- `wait_for`/`receive`가 쓰는 drain 경로도 같은 오류를 `inbound_error`로 보관한 뒤 public 호출자에게 `frame_too_large`를 반환한다.
+- 회귀 테스트는 `test_cpp_stream_connector`에 추가했다. 작은 수신 상한으로 동기 request, async request, `wait_for` 경로의 oversize prefix 거부를 검증한다.
+- 실행 검증:
+  - `cmake --build framework/languages/cpp/build --target test_cpp_stream_connector -j2` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_stream_connector$' --output-on-failure` 성공.
+  - `cmake --build framework/languages/cpp/build --target test_cpp_framework_contract_headers -j2` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_framework_contract_headers$' --output-on-failure` 성공.
+- core runtime 또는 `core/include` public header 수정은 없으므로 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
+- Claude 리뷰에서 CR1에 대해 "추가 이슈 없음" 판정을 받았다.
 
 ### CR2 — 교차 호스트 HTTP 리다이렉트 시 자격증명을 공격자 호스트로 유출
 - **분류**: HTTP 리다이렉트 / 자격증명 노출(CWE-200) · **확인 · repo 고유**
@@ -144,7 +158,7 @@
 ---
 
 ## 처리 우선순위
-1. **CR1**(인바운드 프레임 크기 검증 + 버퍼 cap) + **CR2**(교차호스트 리다이렉트 auth 제거) — 둘 다 원격 트리거.
+1. **CR2**(교차호스트 리다이렉트 auth 제거) — 원격 트리거. CR1은 2026-06-14에 수정 완료.
 2. **H1**(응답 body_limit), **H2/H3**(Unreal IO 스레드 race + close-on-destruct; request 콜백도 동일 패턴 — Codex ADDITIONAL).
 3. **M1**(쿠키 경계 + host+name dedupe 경로 무시), **M2/M3**(프레임워크 교차스레드 캡처/맵), **M4**(엔진 dangling 런타임).
 4. ~~H4~~ executor drain — **Codex 반박으로 Low 격하**, 선택적 정리.

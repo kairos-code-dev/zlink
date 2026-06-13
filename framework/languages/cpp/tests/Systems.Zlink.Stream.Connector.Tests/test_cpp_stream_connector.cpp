@@ -40,10 +40,9 @@
 #include <vector>
 
 static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for (
-      "packet", std::chrono::milliseconds (1))),
-    zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
+  std::is_same_v<decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for (
+                   "packet", std::chrono::milliseconds (1))),
+                 zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
 namespace
 {
 
@@ -101,30 +100,27 @@ struct auto_payload_t
     std::string text;
 };
 
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for<auto_payload_t> ()),
-    zlink::stream_connector::wait_call_t<auto_payload_t>>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::stream_connector::connector_t &> ()
+                                          .wait_for<auto_payload_t> ()),
+                              zlink::stream_connector::wait_call_t<auto_payload_t>>);
 template <typename T> concept has_core_async_terminator = requires (T value)
 {
     value.async ();
 };
 static_assert (!has_core_async_terminator<zlink::stream_connector::send_call_t>);
-static_assert (
-  !has_core_async_terminator<zlink::stream_connector::request_call_t<auto_payload_t>>);
+static_assert (!has_core_async_terminator<zlink::stream_connector::request_call_t<auto_payload_t>>);
 static_assert (!has_core_async_terminator<zlink::stream_connector::wait_call_t<auto_payload_t>>);
 static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
-                .wait_for<auto_payload_t> ()
-                .async ()),
-    zlink::stream_e2e_client::task_t<auto_payload_t>>);
-static_assert (std::is_same_v<
-               decltype (zlink::stream_e2e_client::codecs::request<auto_payload_t> (
-                            std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
-                            std::declval<auto_payload_t> ())
-                           .async ()),
-               zlink::stream_e2e_client::task_t<auto_payload_t>>);
+  std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
+                             .wait_for<auto_payload_t> ()
+                             .async ()),
+                 zlink::stream_e2e_client::task_t<auto_payload_t>>);
+static_assert (
+  std::is_same_v<decltype (zlink::stream_e2e_client::codecs::request<auto_payload_t> (
+                             std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
+                             std::declval<auto_payload_t> ())
+                             .async ()),
+                 zlink::stream_e2e_client::task_t<auto_payload_t>>);
 
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
 {
@@ -258,6 +254,13 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
     return zlink::message_t::from (std::string (frame.value ().begin (), frame.value ().end ()));
 }
 
+zlink::message_t make_frame_prefix (std::size_t header_size, std::size_t payload_size)
+{
+    auto prefix =
+      zlink::stream_connector::detail::frame_codec_t::encode_prefix (header_size, payload_size);
+    return zlink::message_t::from (std::string (prefix.value ().begin (), prefix.value ().end ()));
+}
+
 } // namespace
 
 int main ()
@@ -321,10 +324,15 @@ int main ()
         zlink::stream_connector::connector_options_t frame_options;
         frame_options.max_metadata_size = 2;
         frame_options.max_send_payload_size = 2;
+        frame_options.max_receive_payload_size = 4;
         if (zlink::stream_connector::detail::frame_codec_t::validate_frame_size (3, 1,
                                                                                  frame_options)
             || zlink::stream_connector::detail::frame_codec_t::validate_frame_size (1, 3,
                                                                                     frame_options)
+            || zlink::stream_connector::detail::frame_codec_t::validate_receive_frame_size (
+              3, 1, frame_options)
+            || zlink::stream_connector::detail::frame_codec_t::validate_receive_frame_size (
+              1, 5, frame_options)
             || zlink::stream_connector::detail::frame_codec_t::encode_prefix (
                  static_cast<std::size_t> (std::numeric_limits<std::uint16_t>::max ()) + 1, 0)
                    .error_code ()
@@ -472,21 +480,19 @@ int main ()
 
     {
         zlink::stream_connector::connector_options_t lifecycle_options;
-        lifecycle_options.dispatch_mode =
-          zlink::stream_connector::dispatch_mode_t::immediate;
+        lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         bool connect_lifetime_seen = false;
         callback_latch_t connect_lifetime_latch;
         {
             auto lifecycle_connector =
               zlink::stream_connector::connector_factory_t::create (lifecycle_options);
-            lifecycle_connector.connect (
-              [&] (zlink::stream_connector::result_t<void> result) {
-                  connect_lifetime_seen =
-                    !result
-                    && result.error_code ()
-                         == zlink::stream_connector::error_code_t::configuration_error;
-                  connect_lifetime_latch.signal ();
-              });
+            lifecycle_connector.connect ([&] (zlink::stream_connector::result_t<void> result) {
+                connect_lifetime_seen =
+                  !result
+                  && result.error_code ()
+                       == zlink::stream_connector::error_code_t::configuration_error;
+                connect_lifetime_latch.signal ();
+            });
         }
         if (!connect_lifetime_latch.wait_for (std::chrono::milliseconds (100))
             || !connect_lifetime_seen) {
@@ -540,8 +546,8 @@ int main ()
             async_connect_server_thread.join ();
             return 99;
         }
-        if (!async_connect_latch.wait_for (std::chrono::milliseconds (100))
-            || !async_connect_seen || !async_connect_connector.is_connected ()) {
+        if (!async_connect_latch.wait_for (std::chrono::milliseconds (100)) || !async_connect_seen
+            || !async_connect_connector.is_connected ()) {
             async_connect_connector.close ();
             boost::system::error_code ignored;
             async_connect_acceptor.close (ignored);
@@ -560,14 +566,13 @@ int main ()
           + std::to_string (websocket_connect_acceptor.local_endpoint ().port ()) + "/stream";
         callback_latch_t websocket_connect_server_latch;
         std::thread websocket_connect_server_thread ([&] {
-            auto accepted = std::make_shared<boost::asio::ip::tcp::socket> (
-              websocket_connect_io);
+            auto accepted = std::make_shared<boost::asio::ip::tcp::socket> (websocket_connect_io);
             boost::system::error_code accept_error;
-            websocket_connect_acceptor.async_accept (
-              *accepted, [&] (boost::system::error_code error) {
-                  accept_error = error;
-                  websocket_connect_server_latch.signal ();
-              });
+            websocket_connect_acceptor.async_accept (*accepted,
+                                                     [&] (boost::system::error_code error) {
+                                                         accept_error = error;
+                                                         websocket_connect_server_latch.signal ();
+                                                     });
             websocket_connect_io.run_for (std::chrono::milliseconds (200));
             if (accept_error || !accepted->is_open ()) {
                 websocket_connect_server_latch.signal ();
@@ -583,8 +588,7 @@ int main ()
         });
         zlink::stream_connector::connector_options_t websocket_connect_options;
         websocket_connect_options.endpoint = websocket_connect_endpoint;
-        websocket_connect_options.transport =
-          zlink::stream_connector::transport_t::websocket;
+        websocket_connect_options.transport = zlink::stream_connector::transport_t::websocket;
         websocket_connect_options.dispatch_mode =
           zlink::stream_connector::dispatch_mode_t::immediate;
         auto websocket_connect_connector =
@@ -592,11 +596,10 @@ int main ()
         bool websocket_connect_seen = false;
         callback_latch_t websocket_connect_latch;
         const auto websocket_connect_started = std::chrono::steady_clock::now ();
-        websocket_connect_connector.connect (
-          [&] (zlink::stream_connector::result_t<void> result) {
-              websocket_connect_seen = static_cast<bool> (result);
-              websocket_connect_latch.signal ();
-          });
+        websocket_connect_connector.connect ([&] (zlink::stream_connector::result_t<void> result) {
+            websocket_connect_seen = static_cast<bool> (result);
+            websocket_connect_latch.signal ();
+        });
         const auto websocket_connect_submit_elapsed =
           std::chrono::steady_clock::now () - websocket_connect_started;
         if (websocket_connect_submit_elapsed > std::chrono::milliseconds (50)) {
@@ -626,17 +629,17 @@ int main ()
 
     bool callback_seen = false;
     callback_latch_t send_callback_latch;
-	connector.send (login_request_t{})
-	  .metadata ("trace", "t1")
-	  .compress ()
-	  .submit ([&] (zlink::stream_connector::result_t<void> result) {
-	      callback_seen = static_cast<bool> (result);
+    connector.send (login_request_t{})
+      .metadata ("trace", "t1")
+      .compress ()
+      .submit ([&] (zlink::stream_connector::result_t<void> result) {
+          callback_seen = static_cast<bool> (result);
           send_callback_latch.signal ();
-	  });
+      });
     dispatch_until (connector, send_callback_latch, std::chrono::milliseconds (100));
-	if (!callback_seen) {
-	    return 4;
-	}
+    if (!callback_seen) {
+        return 4;
+    }
     auto runtime = zlink::stream_connector::detail::connector_runtime_t::from (connector);
     if (runtime.sent_packets ().size () != 1
         || runtime.sent_packets ()[0].name != login_request_t::packet_name
@@ -704,9 +707,7 @@ int main ()
     if (!receive_connector.connect ()) {
         return 56;
     }
-    if (!receive_connector.send (login_request_t{})
-           .packet_name ("receive.trigger")
-           .submit ()) {
+    if (!receive_connector.send (login_request_t{}).packet_name ("receive.trigger").submit ()) {
         return 57;
     }
     auto received_first =
@@ -786,8 +787,7 @@ int main ()
                                         {},
                                         zlink::stream_connector::codec_t::raw,
                                         false,
-                                        zlink::message_t::from (
-                                          std::string ("wait-callback"))});
+                                        zlink::message_t::from (std::string ("wait-callback"))});
     dispatch_until (connector, pending_wait_latch, std::chrono::milliseconds (100));
     if (!pending_wait_callback_seen) {
         return 83;
@@ -854,17 +854,17 @@ int main ()
     }
     bool request_after_close_callback_seen = false;
     callback_latch_t request_after_close_latch;
-	connector.request<login_reply_t> (login_request_t{})
-	  .packet_name ("after.close.request")
-	  .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
-	      request_after_close_callback_seen =
-	        !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
+    connector.request<login_reply_t> (login_request_t{})
+      .packet_name ("after.close.request")
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+          request_after_close_callback_seen =
+            !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           request_after_close_latch.signal ();
-	  });
+      });
     dispatch_until (connector, request_after_close_latch, std::chrono::milliseconds (100));
-	if (!request_after_close_callback_seen) {
-	    return 59;
-	}
+    if (!request_after_close_callback_seen) {
+        return 59;
+    }
     auto missing_endpoint = zlink::stream_connector::connector_factory_t::create (
       zlink::stream_connector::connector_options_t{});
     if (missing_endpoint.connect ()
@@ -902,8 +902,7 @@ int main ()
     if (!auto_connector.connect ()) {
         return 30;
     }
-    if (!zlink::stream_connector::codecs::send (auto_connector, auto_payload_t{"auto"})
-           .submit ()) {
+    if (!zlink::stream_connector::codecs::send (auto_connector, auto_payload_t{"auto"}).submit ()) {
         return 31;
     }
     auto_server_thread.join ();
@@ -1032,12 +1031,12 @@ int main ()
       .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_response_seen = static_cast<bool> (result);
           request_callback_response_latch.signal ();
-	    });
-	    callback_response_thread.join ();
+      });
+    callback_response_thread.join ();
     request_callback_response_latch.wait_for (std::chrono::milliseconds (100));
-	    if (!request_callback_response_seen) {
-	        return 61;
-	    }
+    if (!request_callback_response_seen) {
+        return 61;
+    }
     callback_response_connector.close ();
 
     zlink::stream_socket_t callback_timeout_server (context);
@@ -1073,8 +1072,8 @@ int main ()
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;
           request_callback_timeout_latch.signal ();
-	    });
-	    callback_timeout_thread.join ();
+      });
+    callback_timeout_thread.join ();
     request_callback_timeout_latch.wait_for (std::chrono::milliseconds (100));
     if (!request_callback_timeout_seen || !callback_timeout_request_seen) {
         return 63;
@@ -1087,17 +1086,16 @@ int main ()
     const auto close_cleanup_endpoint = close_cleanup_server.options ().last_endpoint ();
     callback_latch_t close_cleanup_request_latch;
     callback_latch_t close_cleanup_release_latch;
-    std::thread close_cleanup_thread ([&close_cleanup_server,
-                                       &close_cleanup_request_latch,
-                                       &close_cleanup_release_latch] {
-        zlink::received_t inbound;
-        if (close_cleanup_server.recv (inbound) != 0) {
-            return;
-        }
-        close_cleanup_request_latch.signal ();
-        close_cleanup_release_latch.wait_for (std::chrono::milliseconds (100));
-        inbound.close ();
-    });
+    std::thread close_cleanup_thread (
+      [&close_cleanup_server, &close_cleanup_request_latch, &close_cleanup_release_latch] {
+          zlink::received_t inbound;
+          if (close_cleanup_server.recv (inbound) != 0) {
+              return;
+          }
+          close_cleanup_request_latch.signal ();
+          close_cleanup_release_latch.wait_for (std::chrono::milliseconds (100));
+          inbound.close ();
+      });
     zlink::stream_connector::connector_options_t close_cleanup_options;
     close_cleanup_options.endpoint = close_cleanup_endpoint;
     close_cleanup_options.request_timeout = std::chrono::milliseconds (1000);
@@ -1226,9 +1224,7 @@ int main ()
     if (!partial_connector.connect ()) {
         return 64;
     }
-    if (!partial_connector.send (login_request_t{})
-           .packet_name ("partial.trigger")
-           .submit ()) {
+    if (!partial_connector.send (login_request_t{}).packet_name ("partial.trigger").submit ()) {
         return 65;
     }
     auto partial_packet =
@@ -1259,6 +1255,7 @@ int main ()
     large_receive_options.endpoint = large_receive_endpoint;
     large_receive_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
     large_receive_options.max_send_payload_size = 16;
+    large_receive_options.max_receive_payload_size = 80 * 1024;
     auto large_receive_connector =
       zlink::stream_connector::connector_factory_t::create (large_receive_options);
     if (!large_receive_connector.connect ()) {
@@ -1277,6 +1274,115 @@ int main ()
         return 72;
     }
     large_receive_connector.close ();
+
+    zlink::stream_socket_t oversized_receive_server (context);
+    oversized_receive_server.options ().notify (false);
+    oversized_receive_server.bind ("tcp://127.0.0.1:0");
+    const auto oversized_receive_endpoint = oversized_receive_server.options ().last_endpoint ();
+    std::thread oversized_receive_server_thread ([&oversized_receive_server] {
+        zlink::received_t inbound;
+        if (oversized_receive_server.recv (inbound) != 0) {
+            return;
+        }
+        inbound.send ().message (make_frame_prefix (0, 17)).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t oversized_receive_options;
+    oversized_receive_options.endpoint = oversized_receive_endpoint;
+    oversized_receive_options.max_receive_payload_size = 16;
+    auto oversized_receive_connector =
+      zlink::stream_connector::connector_factory_t::create (oversized_receive_options);
+    if (!oversized_receive_connector.connect ()) {
+        return 120;
+    }
+    auto oversized_receive_result =
+      oversized_receive_connector.request<login_reply_t> (login_request_t{})
+        .packet_name ("oversized.receive.request")
+        .timeout (std::chrono::milliseconds (100))
+        .submit ();
+    oversized_receive_server_thread.join ();
+    if (oversized_receive_result
+        || oversized_receive_result.error_code ()
+             != zlink::stream_connector::error_code_t::frame_too_large) {
+        return 121;
+    }
+    oversized_receive_connector.close ();
+
+    zlink::stream_socket_t async_oversized_receive_server (context);
+    async_oversized_receive_server.options ().notify (false);
+    async_oversized_receive_server.bind ("tcp://127.0.0.1:0");
+    const auto async_oversized_receive_endpoint =
+      async_oversized_receive_server.options ().last_endpoint ();
+    std::thread async_oversized_receive_server_thread ([&async_oversized_receive_server] {
+        zlink::received_t inbound;
+        if (async_oversized_receive_server.recv (inbound) != 0) {
+            return;
+        }
+        inbound.send ().message (make_frame_prefix (0, 17)).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t async_oversized_receive_options;
+    async_oversized_receive_options.endpoint = async_oversized_receive_endpoint;
+    async_oversized_receive_options.max_receive_payload_size = 16;
+    async_oversized_receive_options.dispatch_mode =
+      zlink::stream_connector::dispatch_mode_t::immediate;
+    auto async_oversized_receive_connector =
+      zlink::stream_connector::connector_factory_t::create (async_oversized_receive_options);
+    if (!async_oversized_receive_connector.connect ()) {
+        return 122;
+    }
+    bool async_oversized_receive_seen = false;
+    callback_latch_t async_oversized_receive_latch;
+    async_oversized_receive_connector.request<login_reply_t> (login_request_t{})
+      .packet_name ("async.oversized.receive.request")
+      .timeout (std::chrono::milliseconds (100))
+      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+          async_oversized_receive_seen =
+            !result
+            && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
+          async_oversized_receive_latch.signal ();
+      });
+    async_oversized_receive_server_thread.join ();
+    async_oversized_receive_latch.wait_for (std::chrono::milliseconds (100));
+    if (!async_oversized_receive_seen) {
+        return 123;
+    }
+    async_oversized_receive_connector.close ();
+
+    zlink::stream_socket_t oversized_wait_server (context);
+    oversized_wait_server.options ().notify (false);
+    oversized_wait_server.bind ("tcp://127.0.0.1:0");
+    const auto oversized_wait_endpoint = oversized_wait_server.options ().last_endpoint ();
+    std::thread oversized_wait_server_thread ([&oversized_wait_server] {
+        zlink::received_t inbound;
+        if (oversized_wait_server.recv (inbound) != 0) {
+            return;
+        }
+        inbound.send ().message (make_frame_prefix (0, 17)).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t oversized_wait_options;
+    oversized_wait_options.endpoint = oversized_wait_endpoint;
+    oversized_wait_options.max_receive_payload_size = 16;
+    auto oversized_wait_connector =
+      zlink::stream_connector::connector_factory_t::create (oversized_wait_options);
+    if (!oversized_wait_connector.connect ()) {
+        return 124;
+    }
+    if (!oversized_wait_connector.send (login_request_t{})
+           .packet_name ("oversized.wait.trigger")
+           .submit ()) {
+        return 125;
+    }
+    auto oversized_wait_result =
+      oversized_wait_connector.wait_for ("oversized.wait", std::chrono::milliseconds (100));
+    oversized_wait_server_thread.join ();
+    if (oversized_wait_result
+        || oversized_wait_result.error_code ()
+             != zlink::stream_connector::error_code_t::frame_too_large) {
+        return 126;
+    }
+    oversized_wait_connector.close ();
 
     zlink::stream_socket_t heartbeat_server (context);
     heartbeat_server.options ().notify (false);
@@ -1501,33 +1607,32 @@ int main ()
     std::atomic_bool reconnect_success_connecting{false};
     std::atomic_bool reconnect_success_send_seen{false};
     callback_latch_t reconnect_success_connecting_latch;
-    std::thread reconnect_success_server_thread ([&reconnect_success_io, reconnect_success_port,
-                                                  &reconnect_success_connecting,
-                                                  &reconnect_success_send_seen,
-                                                  &reconnect_success_connecting_latch] {
-        reconnect_success_connecting_latch.wait_for (std::chrono::milliseconds (100));
-        callback_latch_t retry_delay_latch;
-        retry_delay_latch.wait_for (std::chrono::milliseconds (20));
-        boost::asio::ip::tcp::acceptor acceptor (reconnect_success_io);
-        acceptor.open (boost::asio::ip::tcp::v4 ());
-        acceptor.set_option (boost::asio::socket_base::reuse_address (true));
-        acceptor.bind ({boost::asio::ip::make_address ("127.0.0.1"), reconnect_success_port});
-        acceptor.listen ();
-        boost::asio::ip::tcp::socket socket (acceptor.get_executor ());
-        acceptor.accept (socket);
-        std::array<char, 512> request_buffer{};
-        boost::system::error_code error;
-        const auto read_size = socket.read_some (boost::asio::buffer (request_buffer), error);
-        if (error) {
-            return;
-        }
-        std::string frame_text (request_buffer.data (), read_size);
-        if (auto frame = try_read_server_frame (frame_text)) {
-            reconnect_success_send_seen =
-              frame->header.kind == zlink::stream_connector::message_kind_t::send
-              && frame->header.name == login_request_t::packet_name;
-        }
-    });
+    std::thread reconnect_success_server_thread (
+      [&reconnect_success_io, reconnect_success_port, &reconnect_success_connecting,
+       &reconnect_success_send_seen, &reconnect_success_connecting_latch] {
+          reconnect_success_connecting_latch.wait_for (std::chrono::milliseconds (100));
+          callback_latch_t retry_delay_latch;
+          retry_delay_latch.wait_for (std::chrono::milliseconds (20));
+          boost::asio::ip::tcp::acceptor acceptor (reconnect_success_io);
+          acceptor.open (boost::asio::ip::tcp::v4 ());
+          acceptor.set_option (boost::asio::socket_base::reuse_address (true));
+          acceptor.bind ({boost::asio::ip::make_address ("127.0.0.1"), reconnect_success_port});
+          acceptor.listen ();
+          boost::asio::ip::tcp::socket socket (acceptor.get_executor ());
+          acceptor.accept (socket);
+          std::array<char, 512> request_buffer{};
+          boost::system::error_code error;
+          const auto read_size = socket.read_some (boost::asio::buffer (request_buffer), error);
+          if (error) {
+              return;
+          }
+          std::string frame_text (request_buffer.data (), read_size);
+          if (auto frame = try_read_server_frame (frame_text)) {
+              reconnect_success_send_seen =
+                frame->header.kind == zlink::stream_connector::message_kind_t::send
+                && frame->header.name == login_request_t::packet_name;
+          }
+      });
     zlink::stream_connector::connector_options_t reconnect_success_options;
     reconnect_success_options.endpoint = reconnect_success_endpoint;
     reconnect_success_options.reconnect.initial_delay = std::chrono::milliseconds (10);
@@ -1544,20 +1649,20 @@ int main ()
               reconnect_success_connecting_latch.signal ();
           }
       });
-	    if (!reconnect_success_connector.connect ()
-	        || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
-	                      zlink::stream_connector::connection_state_t::reconnecting)
-	             == reconnect_success_states.end ()
-	        || reconnect_success_states.back ()
-	             != zlink::stream_connector::connection_state_t::connected) {
-	        reconnect_success_server_thread.join ();
-	        return 67;
-	    }
-	    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
-	        reconnect_success_connector.close ();
-	        reconnect_success_server_thread.join ();
-	        return 68;
-	    }
+    if (!reconnect_success_connector.connect ()
+        || std::find (reconnect_success_states.begin (), reconnect_success_states.end (),
+                      zlink::stream_connector::connection_state_t::reconnecting)
+             == reconnect_success_states.end ()
+        || reconnect_success_states.back ()
+             != zlink::stream_connector::connection_state_t::connected) {
+        reconnect_success_server_thread.join ();
+        return 67;
+    }
+    if (!reconnect_success_connector.send (login_request_t{}).submit ()) {
+        reconnect_success_connector.close ();
+        reconnect_success_server_thread.join ();
+        return 68;
+    }
     reconnect_success_connector.close ();
     reconnect_success_server_thread.join ();
     if (!reconnect_success_send_seen) {

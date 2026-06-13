@@ -87,6 +87,7 @@ class connector_state_t
     bool write_in_progress = false;
     bool request_pump_scheduled = false;
     bool read_in_progress = false;
+    std::optional<error_t> inbound_error;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
     boost::asio::io_context &io_context;

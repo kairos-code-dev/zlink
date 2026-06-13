@@ -98,6 +98,7 @@ connector
 
 // 또는 options에서 한도 올리기
 options.max_send_payload_size = 512 * 1024;
+options.max_receive_payload_size = 512 * 1024;
 ```
 
 ## throwing adapter

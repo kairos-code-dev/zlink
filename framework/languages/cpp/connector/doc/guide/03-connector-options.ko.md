@@ -92,11 +92,20 @@ connector 기본 압축 설정이다. 호출마다 `.compress()`로 패킷 단�
 ## payload/metadata 크기 제한
 
 ```cpp
-options.max_send_payload_size = 64 * 1024;   // 기본 64 KB
-options.max_metadata_size     = 8 * 1024;    // 기본 8 KB
+options.max_send_payload_size    = 64 * 1024; // 기본 64 KB
+options.max_receive_payload_size = 64 * 1024; // 기본 64 KB
+options.max_metadata_size        = 8 * 1024;  // 기본 8 KB
 ```
 
-이 한도를 넘으면 `send()`/`request()`가 `frame_too_large` 오류를 반환한다.
+`max_send_payload_size`는 `send()`와 `request()`가 보낼 payload 크기를 제한한다. 이 한도를
+넘으면 transport write 전에 `frame_too_large` 오류를 반환한다.
+
+`max_receive_payload_size`는 서버에서 받은 stream frame의 encoded payload 크기를 제한한다. 이
+한도를 넘는 frame은 payload buffer를 만들기 전에 `frame_too_large` 오류로 거부한다. 서버가 더
+큰 push 또는 reply를 보낼 수 있는 환경이라면 이 값을 명시적으로 올린다.
+
+`max_metadata_size`는 송신 metadata와 수신 frame header 크기에 모두 적용된다. metadata가 큰
+프로토콜을 쓰는 경우 payload 상한과 별도로 조정한다.
 
 ## TLS 인증서 검증
 

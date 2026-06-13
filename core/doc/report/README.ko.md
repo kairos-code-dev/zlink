@@ -65,7 +65,7 @@ stream-connector 와이어 프레임은 6바이트 prefix(`header_size` u16 + `p
 
 | 언어 | 위치 | 증상 |
 |------|------|------|
-| C++ | `connector/core/src/runtime/.../zlink_stream_calls.cpp:235`, `stream_connection.cpp:351`, `:307` | `std::vector<uint8_t>(payload_size)` 최대 4GiB, `inbound_buffer` cap 없음 |
+| C++ | `connector/core/src/runtime/.../zlink_stream_calls.cpp:235`, `stream_connection.cpp:351`, `:307` | 2026-06-14 `max_receive_payload_size` 검증으로 수정 완료 |
 | Node | `stream-connector/.../NodeDuplexStreamConnection.ts:65`, `WebSocketFrameCodec.ts:29` | `new Uint8Array(frameLength)` 최대 4GiB, WS 64비트 길이 |
 | Java | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191` | `new byte[payloadLength]` 최대 ~2GiB + `header+payload` int 오버플로 → `NegativeArraySizeException` |
 | .NET | `ZlinkStreamFrameCodec.cs:96`, `WebSocketConnection.cs:35` | `new byte[payloadSize]` 최대 ~2GiB, WS 단편 무제한 누적 |

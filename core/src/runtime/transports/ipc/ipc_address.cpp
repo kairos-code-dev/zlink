@@ -8,9 +8,10 @@
 
 #include "utils/err.hpp"
 
+#include <algorithm>
 #include <string>
 
-zlink::ipc_address_t::ipc_address_t ()
+zlink::ipc_address_t::ipc_address_t () : _addrlen (0)
 {
     memset (&_address, 0, sizeof _address);
 }
@@ -20,8 +21,12 @@ zlink::ipc_address_t::ipc_address_t (const sockaddr *sa_, socklen_t sa_len_) : _
     zlink_assert (sa_ && sa_len_ > 0);
 
     memset (&_address, 0, sizeof _address);
-    if (sa_->sa_family == AF_UNIX)
-        memcpy (&_address, sa_, sa_len_);
+    if (sa_->sa_family == AF_UNIX) {
+        const socklen_t copy_len =
+          std::min<socklen_t> (sa_len_, static_cast<socklen_t> (sizeof _address));
+        memcpy (&_address, sa_, copy_len);
+        _addrlen = copy_len;
+    }
 }
 
 zlink::ipc_address_t::~ipc_address_t ()
@@ -63,15 +68,24 @@ int zlink::ipc_address_t::to_string (std::string &addr_) const
     memcpy (pos, prefix, sizeof prefix - 1);
     pos += sizeof prefix - 1;
     const char *src_pos = _address.sun_path;
-    if (!_address.sun_path[0] && _address.sun_path[1]) {
+    const size_t sun_path_offset = offsetof (sockaddr_un, sun_path);
+    if (_addrlen <= sun_path_offset) {
+        addr_.assign (buf, pos - buf);
+        return 0;
+    }
+
+    size_t path_capacity = _addrlen - sun_path_offset;
+    path_capacity = std::min (path_capacity, sizeof _address.sun_path);
+
+    if (path_capacity > 1 && !_address.sun_path[0] && _address.sun_path[1]) {
         *pos++ = '@';
         src_pos++;
+        --path_capacity;
     }
     // according to http://man7.org/linux/man-pages/man7/unix.7.html, NOTES
     // section, address.sun_path might not always be null-terminated; therefore,
     // we calculate the length based of addrlen
-    const size_t src_len = strnlen (src_pos, _addrlen - offsetof (sockaddr_un, sun_path)
-                                               - (src_pos - _address.sun_path));
+    const size_t src_len = strnlen (src_pos, path_capacity);
     memcpy (pos, src_pos, src_len);
     addr_.assign (buf, pos - buf + src_len);
     return 0;

@@ -7,6 +7,7 @@ set(unittests
     unittest_service_mode_policy
     unittest_mtrie
     unittest_ip_resolver
+    unittest_ipc_address
     unittest_radix_tree
     unittest_zmp_decoder
     unittest_raw_decoder

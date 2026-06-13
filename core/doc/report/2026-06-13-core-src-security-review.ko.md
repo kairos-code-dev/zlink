@@ -4,7 +4,7 @@
 - **수정일**: 2026-06-14
 - **대상 범위**: `core/src/runtime/**` (libzmq 파생 메시징 런타임 "zlink")
 - **검토 방식**: 5개 공격면 영역 병렬 정밀 리뷰 → 상위 발견 항목 소스 직접 대조 검증
-- **상태**: 리포트 전용. **코드 수정 없음.** 2026-06-14에 최종 판정과 수정 권고를 정리함.
+- **상태**: 2026-06-14 본문 항목 처리 완료. 코드 수정, 문서 보강, 오탐 종결, Codex 에이전트 리뷰 결과를 각 항목에 기록함.
 
 > 본 문서는 외부 입력이 닿는 신뢰 경계와 동시성 코어를 우선순위로 검토한 결과다.
 > zlink는 libzmq를 포크해 재구조화한 코드베이스이며, **asio 기반 I/O 엔진·WebSocket·`services/` 계층은
@@ -29,7 +29,7 @@
 | 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | **문서 보강 완료(2026-06-14)** | upstream 동작 |
 | 8 | - | 동시성 / 미스 웨이크업 | `core/src/runtime/core/mailbox.cpp:121-143` | **반박됨, 수정 제외** | repo 고유 |
 | 9 | Low | 방어적 길이 clamp 누락 | `core/src/runtime/core/msg.cpp:623` | **수정 완료(2026-06-14)** | upstream 파생 |
-| 10 | Low | IPC 주소 길이 방어 누락 | `core/src/runtime/transports/ipc/ipc_address.cpp:13,73` | 호출자 제공 sockaddr 경로 한정 | upstream 파생 |
+| 10 | Low | IPC 주소 길이 방어 누락 | `core/src/runtime/transports/ipc/ipc_address.cpp:13,73` | **수정 완료(2026-06-14)** | upstream 파생 |
 
 ### 질문에 대한 결론
 
@@ -785,7 +785,7 @@ Codex 에이전트 리뷰:
 - **분류**: 정수 언더플로 방어 / 호출자 제공 sockaddr 경로 한정
 - **위치**: `core/src/runtime/transports/ipc/ipc_address.cpp:73-75` (언더플로), `:13-16` (기본 ctor 미초기화)
 - **출처**: upstream 파생
-- **상태**: 기본 생성자 경로는 `sun_family == 0`으로 조기 반환. 호출자 제공 sockaddr 경로만 방어 필요.
+- **상태**: ✅ 2026-06-14 수정 완료. 기본 생성자와 호출자 제공 `sockaddr` 경로 모두 방어 가드를 추가함.
 
 ### 코드
 
@@ -811,6 +811,35 @@ memcpy (pos, src_pos, src_len);   // 스택 buf 오버런 가능
 - 기본 ctor에 `_addrlen (0)`.
 - `if (_addrlen <= offsetof(sockaddr_un, sun_path)) { prefix만 사용하고 반환; }` 가드.
 - `strnlen` bound를 `sizeof(_address.sun_path)`로 clamp.
+
+### 처리 기록 (2026-06-14)
+
+`ipc_address_t` 기본 생성자가 `_addrlen`을 0으로 초기화하도록 바꾸었다. 호출자 제공 `sockaddr`
+생성자는 `sa_len_`이 `sockaddr_un`보다 커도 내부 저장소 크기까지만 복사한다. `to_string()`은
+`sun_path` 시작 위치보다 짧거나 같은 `_addrlen`에서는 `ipc://` prefix만 반환하고, `strnlen` bound를
+`sun_path` 저장소 크기 이하로 제한한다. abstract IPC 주소 판정도 실제 `addrlen` 안에 두 번째
+바이트가 있을 때만 수행한다.
+
+검증:
+- `cmake -S core -B core/build`: 통과.
+- `cmake --build core/build --target unittest_ipc_address -j2`: 통과.
+- `ctest --test-dir core/build -R '^unittest_ipc_address$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다. 스크립트가
+  생성한 native 산출물은 검증 후 커밋하지 않도록 되돌렸다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 위치는
+  `bindings/c/tests/test_c_contract_surface.c`의 `ZLINK_VERSION_PATCH == 3` 기대값이며, 이미 별도
+  C 바인딩 리포트의 `C-BINDING-001`에 기록된 버전 매크로 불일치와 같은 문제다.
+
+Codex 에이전트 리뷰:
+- 2026-06-14: 실제 `ipc_address.cpp`, `ipc_address.hpp`, `unittest_ipc_address.cpp`와 IPC 소비자 경로를
+  대조한 결과, 기본 생성자 `_addrlen` 미초기화, `sa_len_ > sizeof(sockaddr_un)` 복사 오버런,
+  `to_string()` 길이 언더플로, abstract IPC의 `sun_path[1]` 경계 읽기 문제가 닫혔다고 확인했다.
+- `resolve()` round-trip 테스트가 일반 path와 abstract path 모두 기존 출력을 고정하고, 같은 계층에
+  동일한 `_addrlen`/`sun_path[1]`/`offsetof(sockaddr_un, sun_path)` 위험 패턴이 더 남아 있지 않다고
+  확인했다.
+- 결론: "추가 이슈 없음."
 
 ---
 

@@ -26,7 +26,7 @@
 | 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | **수정 완료(2026-06-14)** | repo 고유 순서 |
 | 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 6 | Medium | API 경계 가드 누락 | `core/src/api/message/message_api.cpp`, `core/src/runtime/core/send_internal.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
-| 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | 확인, 기본값 정책 사안 | upstream 동작 |
+| 7 | Medium | DoS / 큰 단일 할당 | `core/src/runtime/protocol/zmp_decoder.cpp:139` | **문서 보강 완료(2026-06-14)** | upstream 동작 |
 | 8 | - | 동시성 / 미스 웨이크업 | `core/src/runtime/core/mailbox.cpp:121-143` | **반박됨, 수정 제외** | repo 고유 |
 | 9 | Low | 방어적 길이 clamp 누락 | `core/src/runtime/core/msg.cpp:623` | ZMP 원격 도달 불가, 방어 수정 권장 | upstream 파생 |
 | 10 | Low | IPC 주소 길이 방어 누락 | `core/src/runtime/transports/ipc/ipc_address.cpp:13,73` | 호출자 제공 sockaddr 경로 한정 | upstream 파생 |
@@ -617,7 +617,7 @@ Claude 리뷰:
 - **분류**: 큰 단일 할당 / DoS
 - **위치**: `core/src/runtime/protocol/zmp_decoder.cpp:114-118, 139-140`
 - **출처**: upstream 동작
-- **상태**: ✅ 확인(문서화/기본값 사안)
+- **상태**: ✅ 2026-06-14 문서 보강 완료(기본값 유지)
 
 ### 코드
 
@@ -631,13 +631,56 @@ rc = _in_progress.init_size (static_cast<size_t> (msg_size_));  // malloc(conten
 
 ### 트리거
 
-피어가 헤더 flags=0 + 4바이트 길이 `0xFFFFFFFF`를 보내고 `maxmsgsize`가 미설정(`-1` → 유효 상한 `0xffffffff`)이면 단일 `malloc(약 4GiB + sizeof(content_t))`이 발생한다. `init_size`가 덧셈 오버플로는 가드하고 실패 시 ENOMEM을 정상 반환하므로 **메모리 손상이 아니라 메모리 압박 DoS**다. 신뢰할 수 없는 listener에서는 `ZLINK_MAXMSGSIZE` 설정으로만 완화된다.
+피어가 헤더 flags=0 + 4바이트 길이 `0xFFFFFFFF`를 보내고 `maxmsgsize`가 미설정(`-1` → 유효 상한 `0xffffffff`)이면 단일 `malloc(약 4GiB + sizeof(content_t))`이 발생한다. `init_size`가 덧셈 오버플로는 가드하고 실패 시 ENOMEM을 정상 반환하므로 **메모리 손상이 아니라 메모리 압박 DoS**다. 신뢰할 수 없는 listener에서는 `ZLINK_OPT_MAXMSGSIZE` 설정으로만 완화된다.
 
 ### 수정 방향
 
 - 기본값을 바로 바꾸면 기존 큰 메시지 사용자에게 호환성 문제가 생길 수 있다.
-- 우선 guide와 샘플에서 신뢰할 수 없는 listener는 `ZLINK_MAXMSGSIZE`를 명시하도록 안내한다.
+- 우선 guide와 샘플에서 신뢰할 수 없는 listener는 `ZLINK_OPT_MAXMSGSIZE`를 명시하도록 안내한다.
 - 기본값 변경이 필요하면 별도 마이그레이션 계획, 릴리스 노트, 큰 메시지 회귀 테스트를 붙여 처리한다.
+
+### 처리 기록 (2026-06-14)
+
+기본 `maxmsgsize = -1` 정책은 바꾸지 않았다. 이 기본값을 낮추면 기존 큰 메시지 사용자가 깨질 수
+있으므로, 이번 항목은 신뢰할 수 없는 listener에서 양수 `ZLINK_OPT_MAXMSGSIZE`를 명시하라는 guide
+보강으로 처리했다.
+
+보강한 문서:
+- `doc/guide/12-socket-options.md`
+- `doc/guide/12-socket-options.ko.md`
+- `doc/guide/03-5-stream.md`
+- `doc/guide/03-5-stream.ko.md`
+- `doc/guide/10-performance.md`
+- `doc/guide/10-performance.ko.md`
+- 같은 내용을 반영한 `doc/site/docs/guide/...` mirror 문서
+
+문서에는 `MAXMSGSIZE` 기본값이 호환성을 위해 무제한으로 남아 있으며, 신뢰 경계 밖의 피어를 받는
+애플리케이션은 listener에서 `bind` 전에 양수 제한을 설정해야 한다고 적었다. `12-socket-options`
+guide에는 C API 설정 예시도 추가했다.
+
+검증:
+- `rg -n "ZLINK_OPT_MAXMSGSIZE|MAXMSGSIZE" doc/guide doc/site/docs/guide core/doc/report/2026-06-13-core-src-security-review.ko.md`: 보강 위치 확인.
+- `git diff --check`: 통과.
+- 수정 문서에서 금지 표현을 검색했고 결과가 없음을 확인했다.
+- 코드 변경이 없으므로 core build와 `bindings/dev_sync_local_core_libs.sh`는 이 항목의 실행 대상이 아니다.
+
+Codex 에이전트 리뷰:
+- 2026-06-14 1차 리뷰에서 기본값 `-1`, ZMP decoder의 상한 적용, TCP listener가 accepted 연결의
+  engine/session 생성에 listener `options`를 넘기는 흐름을 확인했다.
+- `doc/spec/`가 아니라 `doc/guide/`에 둔 것은 새 계약 추가가 아니라 운영 지침 보강이므로 디렉토리
+  목적에 맞는다고 확인했다.
+- 리뷰에서 리포트 본문의 옵션명 오기와 한국어 guide의 혼합 표현을 지적했고, 위 내용처럼
+  `ZLINK_OPT_MAXMSGSIZE`와 `새로 수락된 세션`으로 고쳤다.
+- `doc/guide`와 `doc/site/docs/guide` 사이에 기존 drift가 있다는 지적이 있었다. 이번 #7 범위는
+  새로 추가한 `MAXMSGSIZE` 안내의 mirror 반영이며, 기존 전체 파일 drift는 별도 문서 유지보수
+  항목으로 남긴다.
+- 2026-06-14 2차 리뷰에서 옵션명 오기와 한국어 혼합 표현이 제거되었고, 기존 guide/site drift를
+  이번 범위 밖으로 기록한 판단도 충분하다고 확인했다.
+- 코드 기준 기본값은 `maxmsgsize(-1)`로 유지되고, ZMP decoder가 `-1`을 `0xffffffff` 유효 상한으로
+  사용한 뒤 크기 검사와 `init_size` 할당으로 들어간다고 확인했다.
+- TCP listener는 현재 socket `options`로 listener를 만들고 accepted 연결의 engine/session 생성에도
+  그 options를 사용하므로, listener에서 `bind` 전에 설정하라는 안내가 코드 흐름과 맞는다고 확인했다.
+- 결론: "추가 이슈 없음."
 
 ---
 

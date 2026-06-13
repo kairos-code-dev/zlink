@@ -421,7 +421,7 @@ int main(void)
 | `ZLINK_OPT_RCVTIMEO` | 1000ms | Tune lower for polling loops, or set `-1` explicitly for infinite wait |
 | `ZLINK_OPT_SNDHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
 | `ZLINK_OPT_RCVHWM` | automatic | Leave auto HWM on unless the workload needs a fixed queue depth |
-| `ZLINK_OPT_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |
+| `ZLINK_OPT_MAXMSGSIZE` | -1 (unlimited) | Set a positive limit before `bind` on untrusted listeners |
 
 ### LINGER Setting
 

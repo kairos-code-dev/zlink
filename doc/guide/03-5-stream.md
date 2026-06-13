@@ -209,6 +209,11 @@ Main supported options:
 - `ZLINK_OPT_MAXMSGSIZE`, `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDBUF`, `ZLINK_OPT_RCVBUF`, `ZLINK_OPT_BACKLOG`, `ZLINK_OPT_LINGER`
 - TLS/WSS server: `zlink_set_tls_server()` / TLS client: `zlink_set_tls_client()`
 
+STREAM listeners often receive bytes from raw TCP peers. If the peer is not
+fully trusted, set `ZLINK_OPT_MAXMSGSIZE` to the largest application message you
+intend to accept before calling `zlink_bind`. Without that setting the
+compatibility default is unlimited.
+
 Unsupported/changed:
 - Setting `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID` on STREAM returns `EOPNOTSUPP`.
 

@@ -417,7 +417,7 @@ int main(void)
 | `ZLINK_OPT_RCVTIMEO` | 1000ms | 폴링 루프에서 더 짧게 조정하거나, 무한 대기는 `-1`을 명시적으로 설정 |
 | `ZLINK_OPT_SNDHWM` | 자동 | 기본은 auto HWM, 고정 큐 깊이가 필요할 때만 수동 설정 |
 | `ZLINK_OPT_RCVHWM` | 자동 | 기본은 auto HWM, 고정 큐 깊이가 필요할 때만 수동 설정 |
-| `ZLINK_OPT_MAXMSGSIZE` | -1 (무제한) | STREAM 소켓에서 보안 설정 |
+| `ZLINK_OPT_MAXMSGSIZE` | -1 (무제한) | 신뢰할 수 없는 listener에서는 `bind` 전에 양수 제한 설정 |
 
 ### LINGER 설정
 

@@ -214,6 +214,10 @@ recv(fd, body, body_len, MSG_WAITALL);
 - TLS/WSS 서버: `zlink_set_tls_server()`
 - TLS 클라이언트: `zlink_set_tls_client()`
 
+STREAM listener는 raw TCP 피어가 보낸 바이트를 직접 받을 수 있다. 피어를 완전히 신뢰할 수 없다면
+`zlink_bind`를 호출하기 전에 애플리케이션이 받아들일 최대 메시지 크기로
+`ZLINK_OPT_MAXMSGSIZE`를 설정한다. 이 값을 설정하지 않으면 호환성을 위해 기본값은 무제한이다.
+
 비지원/변경:
 - `ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID`를 STREAM에 설정하면 `EOPNOTSUPP`
 

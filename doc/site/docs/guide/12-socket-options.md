@@ -412,7 +412,19 @@ Bit N set to 1 means I/O thread N is available. `0` allows all threads. Useful f
 | **Default** | `-1` (unlimited) |
 | **>0** | Reject messages exceeding specified size (bytes) |
 
-Useful for preventing OOM attacks from untrusted peers.
+Useful for preventing OOM attacks from untrusted peers. The default remains
+unlimited for compatibility with existing large-message deployments, so
+applications that accept traffic from outside their trust boundary should set a
+positive limit explicitly.
+
+Set this option before `bind` on listening sockets so newly accepted sessions
+inherit the limit:
+
+```c
+int64_t max_msg_size = 1024 * 1024;  /* 1 MiB */
+zlink_set_option(socket, ZLINK_OPT_MAXMSGSIZE,
+                 &max_msg_size, sizeof(max_msg_size));
+```
 
 ---
 

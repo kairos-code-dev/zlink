@@ -58,6 +58,20 @@ const (
 	SubjectKindPattern SubjectKind = SubjectKind(C.ZLINK_SERVICE_EVENT_SUBJECT_PATTERN)
 )
 
+type RouteKind uint32
+
+const (
+	RouteKindInvalid      RouteKind = RouteKind(C.ZLINK_ROUTE_KIND_INVALID)
+	RouteKindActor        RouteKind = RouteKind(C.ZLINK_ROUTE_KIND_ACTOR)
+	RouteKindSpotName     RouteKind = RouteKind(C.ZLINK_ROUTE_KIND_SPOT_NAME)
+	RouteKindActorSession RouteKind = RouteKind(C.ZLINK_ROUTE_KIND_ACTOR_SESSION)
+)
+
+type DiscoveryRoute struct {
+	OwnerRoutingID RoutingID
+	Value          *Message
+}
+
 type SpotRole uint32
 
 const (

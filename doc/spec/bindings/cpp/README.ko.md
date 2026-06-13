@@ -68,6 +68,7 @@ bindings/cpp/
 |       |   |   +-- context.hpp
 |       |   |   +-- context_options.hpp
 |       |   |   +-- routing_id.hpp
+|       |   |   +-- utilities.hpp
 |       |   +-- Messaging/
 |       |   |   +-- message.hpp
 |       |   |   +-- received.hpp
@@ -110,6 +111,7 @@ bindings/cpp/
 |       +-- Core/
 |       |   +-- capability.cpp
 |       |   +-- context.cpp
+|       |   +-- utilities.cpp
 |       |   +-- operation_detail.hpp
 |       |   +-- runtime_helpers.hpp
 |       |   +-- types_impl.hpp
@@ -405,6 +407,10 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 
 - data-plane `recv`, routed recv, subscribe, subscription-event 수신은 호출자가 제공하는
   출력 저장소(예: `received_t&`, `topic_message_t&`, `subscription_event_t&`)를 사용한다.
+- `message_t::from(...)`은 호출자가 넘긴 바이트를 독립적으로 복사한다. 호출자가 소유한 버퍼를
+  복사 없이 메시지로 넘겨야 할 때는 고급 API인
+  `external_message_t::from(span, free_fn, hint)` 오버로드를 사용한다. 이 오버로드는 버퍼를
+  메시지에 맡기고, 메시지가 버퍼를 해제할 때 `free_fn(data, hint)`를 한 번 호출한다.
 - send, routed send, publish, request, reply, SPOT operation, Actor location/session
   operation은 move-only fluent 빌더를 반환한다.
 - 빌더 시작 메서드는 대상 identity, topic, channel, routing id, request sequence만
@@ -437,12 +443,15 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 
 완성된 C++ 바인딩의 공개 헤더는 다음 그룹을 다룬다.
 
-- Core: context, version/capability 헬퍼, context 옵션, shutdown, 자동 HWM 재계산.
+- Core: context, version/capability 헬퍼, context 옵션, shutdown, 자동 HWM 재계산,
+  `atomic_counter_t`, `stopwatch_t`, `thread_t`.
 - Messaging: message ownership, 빌더 multipart 입력, received metadata, topic message,
   subscription event, routing id, callback 타입.
-- Socket family: pair, dealer, router, pub, sub, xpub, xsub, stream, 공통 옵션, 타입 지정
-  socket 옵션, bind/connect/disconnect, TLS, callback, request/reply 표면.
-- Eventing: socket monitor, monitor event, monitor snapshot, poller, poll event, timer,
+- Socket family: pair, dealer, router, pub, sub, xpub, xsub, stream, stream-bound
+  actor snapshot, 공통 옵션, 타입 지정 socket 옵션, bind/connect/disconnect, TLS,
+  callback, request/reply 표면.
+- Eventing: socket monitor, monitor event, monitor snapshot, poller, one-shot `poll(...)`,
+  poll event, timer,
   readiness flag.
 - Services: registry, discovery, SPOT node, SPOT handle, 토폴로지 snapshot, actor ref,
   actor 생명주기, actor operation.
@@ -524,10 +533,19 @@ C++는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 도�
 애플리케이션은 `discovery_t::resolve_actor()` 또는 `discovery_t::resolve_spot()`을 Spot
 routed API와 조합해 쓴다.
 
+## Discovery route table
+
+C++는 discovery route table을 `discovery_t::bind_route(...)`,
+`discovery_t::unbind_route(...)`, `discovery_t::resolve_route(...)`로 노출한다.
+`route_kind` 값은 코어와 같이 `invalid = 0`, `actor = 1`, `spot_name = 2`,
+`actor_session = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
+`message_t`로 담은 `discovery_route_t`를 반환한다.
+
 ## SpotNode 라우터 채널 peer
 
 C++는 라우터 채널 peer 배선을 공개 `spot_node_t` 메서드로 노출한다.
 `connect_router_channel_peer(channel_name, endpoint)`,
+`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
 `disconnect_router_channel_peer(channel_name, endpoint)`,
 `disconnect_router_channel_peer_rid(channel_name, peer_rid)`,
 `attach_spot_route_channel_discovery(channel_name, discovery)`가 그것이다. 이 메서드들은

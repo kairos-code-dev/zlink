@@ -716,6 +716,17 @@ class _Lib:
             [ctypes.c_void_p, ctypes.c_char_p],
             ctypes.c_int,
         )
+        self._require(
+            "zlink_subscription_at",
+            [
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.POINTER(ctypes.c_int),
+            ],
+            ctypes.c_int,
+        )
         self._require("zlink_bind", [ctypes.c_void_p, ctypes.c_char_p], ctypes.c_int)
         self._require(
             "zlink_connect",
@@ -1016,6 +1027,35 @@ class _Lib:
             ctypes.c_int,
         )
         self._require(
+            "zlink_discovery_bind_route",
+            [
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+            ],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_unbind_route",
+            [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_size_t],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_discovery_resolve_route",
+            [
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.POINTER(ZlinkRoutingId),
+                ctypes.POINTER(ZlinkMsg),
+            ],
+            ctypes.c_int,
+        )
+        self._require(
             "zlink_discovery_destroy",
             [ctypes.POINTER(ctypes.c_void_p)],
             ctypes.c_int,
@@ -1201,6 +1241,11 @@ class _Lib:
         self._require(
             "zlink_spot_node_connect_router_channel_peer",
             [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p],
+            ctypes.c_int,
+        )
+        self._require(
+            "zlink_spot_node_connect_router_channel_peer_rid",
+            [ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ZlinkRoutingId), ctypes.c_char_p],
             ctypes.c_int,
         )
         self._require(

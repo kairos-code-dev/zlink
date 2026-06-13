@@ -2264,6 +2264,27 @@ napi_value spot_node_connect_router_channel_peer (napi_env env, napi_callback_in
     return ok;
 }
 
+napi_value spot_node_connect_router_channel_peer_rid (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external (env, argv[0], &node);
+    std::string channel = get_string (env, argv[1]);
+    zlink_routing_id_t rid;
+    if (!parse_routing_id_value (env, argv[2], &rid))
+        return NULL;
+    std::string ep = get_string (env, argv[3]);
+    int rc =
+      zlink_spot_node_connect_router_channel_peer_rid (node, channel.c_str (), &rid, ep.c_str ());
+    if (rc != 0)
+        return throw_last_error (env, "spot_node_connect_router_channel_peer_rid failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
 napi_value spot_node_disconnect_router_channel_peer (napi_env env, napi_callback_info info)
 {
     napi_value argv[3];

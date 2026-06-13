@@ -22,6 +22,9 @@ napi_value discovery_set_value (napi_env env, napi_callback_info info);
 napi_value discovery_get_value (napi_env env, napi_callback_info info);
 napi_value discovery_resolve_spot (napi_env env, napi_callback_info info);
 napi_value discovery_resolve_actor (napi_env env, napi_callback_info info);
+napi_value discovery_bind_route (napi_env env, napi_callback_info info);
+napi_value discovery_unbind_route (napi_env env, napi_callback_info info);
+napi_value discovery_resolve_route (napi_env env, napi_callback_info info);
 napi_value discovery_destroy (napi_env env, napi_callback_info info);
 napi_value discovery_set_tls_client (napi_env env, napi_callback_info info);
 

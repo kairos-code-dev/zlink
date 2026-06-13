@@ -1,10 +1,30 @@
-use crate::actor_models::{ActorRoute, SpotRoute};
+use crate::actor_models::{ActorRoute, DiscoveryRoute, SpotRoute};
 use crate::core_context::Context;
 use crate::error::{CloseError, ConfigError, ConnectError};
 use crate::message::RoutingId;
 use crate::registry_models::MemberPeerEntry;
 use crate::runtime_bridge::DiscoveryStorage;
 use crate::spot_models::AutoConnectType;
+
+/// The owner-scoped discovery route kind.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum RouteKind {
+    /// No route kind (unset).
+    Invalid = 0,
+    /// A route keyed by actor id.
+    Actor = 1,
+    /// A route keyed by spot name.
+    SpotName = 2,
+    /// A route keyed by actor session.
+    ActorSession = 3,
+}
+
+impl RouteKind {
+    pub(crate) fn to_raw(self) -> u32 {
+        self as u32
+    }
+}
 
 /// A discovery service that learns peer routes from a registry and resolves
 /// spots and actors for a fixed channel.
@@ -67,6 +87,25 @@ impl Discovery {
     /// Resolves the route to the actor identified by `actor_id`.
     pub fn resolve_actor(&self, actor_id: &str) -> Result<ActorRoute, ConfigError> {
         crate::service::discovery_resolve_actor(self, actor_id)
+    }
+
+    /// Binds a custom route value under `kind` and `key`.
+    pub fn bind_route(&self, kind: RouteKind, key: &[u8], value: &[u8]) -> Result<(), ConfigError> {
+        crate::service::discovery_bind_route(self, kind, key, value)
+    }
+
+    /// Removes the custom route bound under `kind` and `key`.
+    pub fn unbind_route(&self, kind: RouteKind, key: &[u8]) -> Result<(), ConfigError> {
+        crate::service::discovery_unbind_route(self, kind, key)
+    }
+
+    /// Resolves the custom route bound under `kind` and `key`.
+    pub fn resolve_route(
+        &self,
+        kind: RouteKind,
+        key: &[u8],
+    ) -> Result<DiscoveryRoute, ConfigError> {
+        crate::service::discovery_resolve_route(self, kind, key)
     }
 
     /// Returns the registry member peers currently known to this service. The

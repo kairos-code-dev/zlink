@@ -50,6 +50,18 @@ class Discovery(_ClosableContract, Protocol):
         """Resolve the route to the actor identified by ``actor_id``."""
         ...
 
+    def bind_route(self, kind: int, key, value):
+        """Bind a custom route value under ``kind`` and ``key``."""
+        ...
+
+    def unbind_route(self, kind: int, key):
+        """Remove the custom route bound under ``kind`` and ``key``."""
+        ...
+
+    def resolve_route(self, kind: int, key):
+        """Resolve the custom route bound under ``kind`` and ``key``."""
+        ...
+
     @property
     def spot_owner_sync_enabled(self):
         """Whether spot ownership changes are synchronized across peers."""
@@ -79,6 +91,8 @@ class Discovery(_ClosableContract, Protocol):
 def __getattr__(name):
     if name == "SpotRoute":
         from .discovery_models import SpotRoute as value
+    elif name == "DiscoveryRoute":
+        from .discovery_models import DiscoveryRoute as value
     elif name == "Registry":
         from ..registry.registry import Registry as value
     elif name == "RegistryQueryClient":

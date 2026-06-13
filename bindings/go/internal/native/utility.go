@@ -5,11 +5,18 @@ package native
 /*
 #include <stdlib.h>
 #include "zlink.h"
+
+extern void zlinkGoThreadInvoke(void *);
+static inline void *zlink_thread_start_go(void *arg) {
+    return zlink_thread_start(zlinkGoThreadInvoke, arg);
+}
 */
 import "C"
 
 import (
+	"runtime/cgo"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -113,4 +120,110 @@ func (s *Stopwatch) Stop() uint64 {
 	handle := s.handle
 	s.handle = nil
 	return uint64(C.zlink_stopwatch_stop(handle))
+}
+
+type AtomicCounter struct {
+	handle unsafe.Pointer
+}
+
+func NewAtomicCounter() *AtomicCounter {
+	handle := C.zlink_atomic_counter_new()
+	if handle == nil {
+		return nil
+	}
+	return &AtomicCounter{handle: handle}
+}
+
+func (c *AtomicCounter) Set(value int) {
+	if c == nil || c.handle == nil {
+		return
+	}
+	C.zlink_atomic_counter_set(c.handle, C.int(value))
+}
+
+func (c *AtomicCounter) Increment() int {
+	if c == nil || c.handle == nil {
+		return 0
+	}
+	return int(C.zlink_atomic_counter_inc(c.handle))
+}
+
+func (c *AtomicCounter) Decrement() int {
+	if c == nil || c.handle == nil {
+		return 0
+	}
+	return int(C.zlink_atomic_counter_dec(c.handle))
+}
+
+func (c *AtomicCounter) Value() int {
+	if c == nil || c.handle == nil {
+		return 0
+	}
+	return int(C.zlink_atomic_counter_value(c.handle))
+}
+
+func (c *AtomicCounter) Close() {
+	if c == nil || c.handle == nil {
+		return
+	}
+	handle := c.handle
+	c.handle = nil
+	C.zlink_atomic_counter_destroy(&handle)
+}
+
+type Thread struct {
+	handle unsafe.Pointer
+	state  cgo.Handle
+	once   sync.Once
+	err    error
+}
+
+type threadState struct {
+	target func()
+	mu     sync.Mutex
+	err    error
+}
+
+func (s *threadState) setErr(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.err = err
+}
+
+func (s *threadState) getErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err
+}
+
+func NewThread(target func()) (*Thread, error) {
+	if target == nil {
+		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+	}
+	state := cgo.NewHandle(&threadState{target: target})
+	handle := C.zlink_thread_start_go(unsafe.Pointer(state))
+	if handle == nil {
+		state.Delete()
+		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.zlink_errno())}
+	}
+	return &Thread{handle: handle, state: state}, nil
+}
+
+func (t *Thread) Join() error {
+	if t == nil || t.handle == nil {
+		return nil
+	}
+	t.once.Do(func() {
+		handle := t.handle
+		t.handle = nil
+		C.zlink_thread_join(handle)
+		state := t.state.Value().(*threadState)
+		t.err = state.getErr()
+		t.state.Delete()
+	})
+	return t.err
+}
+
+func (t *Thread) Close() error {
+	return t.Join()
 }

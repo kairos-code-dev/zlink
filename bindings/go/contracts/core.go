@@ -21,6 +21,10 @@ type (
 	SocketTarget = impl.SocketTarget
 	// Stopwatch is a high-resolution elapsed-time stopwatch.
 	Stopwatch = impl.Stopwatch
+	// AtomicCounter is a thread-safe integer counter.
+	AtomicCounter = impl.AtomicCounter
+	// Thread is a running background thread created by the zlink runtime.
+	Thread = impl.Thread
 )
 
 const (
@@ -63,4 +67,8 @@ var (
 	MultipartClose = impl.MultipartClose
 	// NewStopwatch creates a high-resolution stopwatch; the caller owns it.
 	NewStopwatch = impl.NewStopwatch
+	// NewAtomicCounter creates a thread-safe integer counter; the caller owns it.
+	NewAtomicCounter = impl.NewAtomicCounter
+	// NewThread starts target on a zlink-owned native thread; the caller owns the handle.
+	NewThread = impl.NewThread
 )

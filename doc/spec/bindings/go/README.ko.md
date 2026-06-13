@@ -231,6 +231,8 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
   않는다.
 - `NewPoller()`, `NewTimer()`, `NewTimerFromSpot(...)`이 eventing 리소스를
   생성한다.
+- `NewAtomicCounter()`, `NewStopwatch()`, `NewThread(...)`는 호출자가 소유하는
+  유틸리티 리소스를 생성한다.
 - Version, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
   계약 함수다. 이 함수들 뒤의 cgo 호출은 private으로 유지한다.
 
@@ -424,10 +426,19 @@ Go는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추�
 호출자는 `ResolveActor` 또는 `ResolveSpot`을 기존의 Spot routed send/request
 API와 조합한다.
 
+## Discovery route table
+
+Go는 discovery route table을 `Discovery.BindRoute(...)`,
+`Discovery.UnbindRoute(...)`, `Discovery.ResolveRoute(...)`로 노출한다.
+`RouteKind` 값은 코어와 같이 `RouteKindInvalid = 0`, `RouteKindActor = 1`,
+`RouteKindSpotName = 2`, `RouteKindActorSession = 3`이다. `ResolveRoute(...)`는
+owner routing ID와 route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+
 ## SpotNode Router Channel Peer
 
 Go는 router channel peer 연결을 공개 `SpotNode` 메서드로 노출한다:
 `ConnectRouterChannelPeer(channelName string, endpoint string) error`,
+`ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error`,
 `DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
 `DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
 `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery) error`.

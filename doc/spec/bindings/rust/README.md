@@ -348,6 +348,8 @@ methods.
   construction is not public.
 - `Poller::new(...)`, `Timer::new(...)`, and timer-on-SPOT helpers create
   eventing resources.
+- `AtomicCounter::new()`, `Stopwatch::start()`, and `Thread::start(...)`
+  create utility resources owned by the caller.
 - Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
   are public crate functions. FFI calls behind those functions stay private.
 
@@ -433,7 +435,9 @@ binding is aligned to the shared .NET-standard policy.
   capability, and strerror.
 - Message ownership, multipart payloads, routing ids, received metadata, topic
   messages, subscription events, and stream packet callbacks.
-- All socket families and their typed options.
+- All socket families and their typed options. `SubSocket::subscription_at(index)`
+  and `XSubSocket::subscription_at(index)` return the subscription filter and
+  pattern flag for the index, or `None` when the index is absent.
 - Monitor, poller, timer, and readiness semantics.
 - Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
@@ -540,10 +544,19 @@ Rust must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
 Callers compose `resolve_actor()` or `resolve_spot()` with the existing Spot
 routed APIs.
 
+## Discovery Route Table
+
+Rust exposes the discovery route table through `Discovery::bind_route(...)`,
+`Discovery::unbind_route(...)`, and `Discovery::resolve_route(...)`.
+`RouteKind` uses the core values `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
+and `ActorSession = 3`. `resolve_route(...)` returns a `DiscoveryRoute`
+containing the owner routing id and the route value as a `Message`.
+
 ## SpotNode Router Channel Peers
 
 Rust exposes router channel peer wiring as public `SpotNode` methods:
 `connect_router_channel_peer(channel_name, endpoint)`,
+`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
 `disconnect_router_channel_peer(channel_name, endpoint)`,
 `disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
 `attach_spot_route_channel_discovery(channel_name, discovery)`. These methods

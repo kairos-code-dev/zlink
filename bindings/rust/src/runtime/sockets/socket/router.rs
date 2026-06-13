@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 use std::ptr;
 
-use super::{SocketInner, close_unreceived_part};
+use super::{close_unreceived_part, SocketInner};
 use crate::core_context::Context;
 use crate::domain::Received;
 use crate::error::{ConfigError, RecvError};
@@ -72,7 +72,11 @@ fn router_received_from_raw(
         None
     } else {
         let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-        if rid.is_empty() { None } else { Some(rid) }
+        if rid.is_empty() {
+            None
+        } else {
+            Some(rid)
+        }
     };
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {

@@ -123,11 +123,19 @@ class message_t
 
 namespace advanced
 {
+using external_message_free_fn_t = void (*) (void *data_, void *hint_);
+
 class external_message_t
 {
   public:
     static message_t from (std::span<const std::byte> bytes_);
     static message_t from (std::span<const uint8_t> bytes_);
+    static message_t from (std::span<std::byte> bytes_,
+                           external_message_free_fn_t free_fn_,
+                           void *hint_ = nullptr);
+    static message_t from (std::span<uint8_t> bytes_,
+                           external_message_free_fn_t free_fn_,
+                           void *hint_ = nullptr);
 };
 } // namespace advanced
 

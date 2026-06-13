@@ -6,6 +6,7 @@
 #include "zlink/Contracts/Core/context.hpp"
 #include "zlink/Contracts/Core/context_options.hpp"
 #include "zlink/Contracts/Core/routing_id.hpp"
+#include "zlink/Contracts/Core/utilities.hpp"
 #include "zlink/Contracts/Errors/errors.hpp"
 #include "zlink/Contracts/Messaging/message.hpp"
 #include "zlink/Contracts/Messaging/received.hpp"

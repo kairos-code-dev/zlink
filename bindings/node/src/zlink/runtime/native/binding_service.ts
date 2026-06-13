@@ -32,6 +32,12 @@ import type {
 
 export interface ServiceNativeBinding {
   discoveryConnectRegistry: (discovery: NativeHandle, endpoint: string) => void;
+  discoveryBindRoute: (
+    discovery: NativeHandle,
+    kind: number,
+    key: Buffer,
+    value: Buffer
+  ) => void;
   discoveryDestroy: (discovery: NativeHandle) => void;
   discoveryGetProviders: (discovery: NativeHandle) => MemberPeerEntryRaw[];
   discoveryGetValue: (discovery: NativeHandle) => number;
@@ -41,6 +47,10 @@ export interface ServiceNativeBinding {
     channelName: string
   ) => NativeHandle;
   discoveryResolveActor: (discovery: NativeHandle, actorId: string) => DiscoveryActorRouteRaw;
+  discoveryResolveRoute: (discovery: NativeHandle, kind: number, key: Buffer) => {
+    ownerRoutingId: Buffer;
+    value: Buffer;
+  };
   discoveryResolveSpot: (discovery: NativeHandle, spotRid: Buffer) => DiscoverySpotRouteRaw;
   discoverySetTlsClient: (
     discovery: NativeHandle,
@@ -49,6 +59,7 @@ export interface ServiceNativeBinding {
     trustSystem: number
   ) => void;
   discoverySetValue: (discovery: NativeHandle, value: number) => void;
+  discoveryUnbindRoute: (discovery: NativeHandle, kind: number, key: Buffer) => void;
   registryAddPeer: (registry: NativeHandle, pubEndpoint: string) => void;
   registryDestroy: (registry: NativeHandle) => void;
   registryMemberPeers: (registry: NativeHandle, channelName: string) => MemberPeerEntryRaw[];
@@ -185,6 +196,12 @@ export interface ServiceNativeBinding {
   spotNodeConnectRouterChannelPeer: (
     node: NativeHandle,
     channelName: string,
+    endpoint: string
+  ) => void;
+  spotNodeConnectRouterChannelPeerRid: (
+    node: NativeHandle,
+    channelName: string,
+    peerRid: Buffer,
     endpoint: string
   ) => void;
   spotNodeDestroy: (node: NativeHandle) => void;

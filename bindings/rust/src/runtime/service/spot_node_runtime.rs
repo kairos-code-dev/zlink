@@ -178,6 +178,28 @@ impl SpotNodePublicRuntime for SpotNode {
         })
     }
 
+    fn connect_router_channel_peer_rid(
+        &self,
+        channel_name: &str,
+        peer_rid: &RoutingId,
+        endpoint: &str,
+    ) -> Result<(), ConnectError> {
+        let channel = CString::new(channel_name).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        let ep = CString::new(endpoint).map_err(|_| {
+            ConnectError::new(crate::error::ConnectResult::InvalidArgument, libc::EINVAL)
+        })?;
+        check_connect_rc(unsafe {
+            ffi::zlink_spot_node_connect_router_channel_peer_rid(
+                spot_node_handle(self),
+                channel.as_ptr(),
+                peer_rid.as_raw(),
+                ep.as_ptr(),
+            )
+        })
+    }
+
     fn disconnect_router_channel_peer(
         &self,
         channel_name: &str,

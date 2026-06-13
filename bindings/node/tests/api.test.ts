@@ -60,8 +60,9 @@ test('service objects expose aligned monitor and query surface', () => {
   assert.equal(discovery.getValue(), 7);
   assert.deepEqual(discovery.memberPeers(), []);
   assert.equal(discovery.memberPeerMetadata, undefined);
-  assert.equal(discovery.bindRoute, undefined);
-  assert.equal(discovery.resolveRoute, undefined);
+  assert.equal(typeof discovery.bindRoute, 'function');
+  assert.equal(typeof discovery.unbindRoute, 'function');
+  assert.equal(typeof discovery.resolveRoute, 'function');
   assert.equal(typeof discovery.resolveSpot, 'function');
   assert.equal(discovery.setDealerPeerMode, undefined);
   assert.equal(typeof spot.setDispatchHandler, 'function');

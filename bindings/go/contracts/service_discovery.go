@@ -15,12 +15,16 @@ type (
 	SpotKind = impl.SpotKind
 	// SubjectKind is how a subscription subject is matched.
 	SubjectKind = impl.SubjectKind
+	// RouteKind identifies an owner-scoped discovery route table.
+	RouteKind = impl.RouteKind
 	// SpotRole is the pub/sub role of a spot subject.
 	SpotRole = impl.SpotRole
 	// Discovery learns peer routes from a registry and resolves spots and actors for a fixed channel.
 	Discovery = impl.Discovery
 	// SpotRoute is the resolved route to a spot: the spot, its owning node, and its kind.
 	SpotRoute = impl.SpotRoute
+	// DiscoveryRoute is a resolved custom route entry.
+	DiscoveryRoute = impl.DiscoveryRoute
 	// MemberPeerEntry is one member peer registered on a channel.
 	MemberPeerEntry = impl.MemberPeerEntry
 )
@@ -70,6 +74,14 @@ const (
 	SubjectKindTopic = impl.SubjectKindTopic
 	// SubjectKindPattern matches by pattern.
 	SubjectKindPattern = impl.SubjectKindPattern
+	// RouteKindInvalid is the unset discovery route kind.
+	RouteKindInvalid = impl.RouteKindInvalid
+	// RouteKindActor identifies a route keyed by actor id.
+	RouteKindActor = impl.RouteKindActor
+	// RouteKindSpotName identifies a route keyed by spot name.
+	RouteKindSpotName = impl.RouteKindSpotName
+	// RouteKindActorSession identifies a route keyed by actor session.
+	RouteKindActorSession = impl.RouteKindActorSession
 	// SpotRolePub is the publisher role of a spot subject.
 	SpotRolePub = impl.SpotRolePub
 	// SpotRoleSub is the subscriber role of a spot subject.

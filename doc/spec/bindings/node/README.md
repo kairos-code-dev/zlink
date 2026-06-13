@@ -719,10 +719,20 @@ Node must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
 Callers compose `resolveActor()` or `resolveSpot()` with the existing Spot
 routed APIs.
 
+## Discovery Route Table
+
+Node exposes the discovery route table through `Discovery.bindRoute(...)`,
+`Discovery.unbindRoute(...)`, and `Discovery.resolveRoute(...)`.
+`DiscoveryRouteKind` uses the core values `Invalid = 0`, `Actor = 1`,
+`SpotName = 2`, and `ActorSession = 3`. `resolveRoute(...)` returns a
+`DiscoveryRoute` containing the owner routing id and the route value as a
+`Message`.
+
 ## SpotNode Router Channel Peers
 
 Node exposes router channel peer wiring on the public `SpotNode` object:
 `connectRouterChannelPeer(channelName, endpoint)`,
+`connectRouterChannelPeerRid(channelName, peerRid, endpoint)`,
 `disconnectRouterChannelPeer(channelName, endpoint)`,
 `disconnectRouterChannelPeerRid(channelName, peerRid)`, and
 `attachSpotRouteChannelDiscovery(channelName, discovery)`. These methods call

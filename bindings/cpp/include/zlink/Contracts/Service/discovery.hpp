@@ -9,6 +9,7 @@
 #include "actor_models.hpp"
 
 #include <memory>
+#include <span>
 
 namespace zlink
 {
@@ -83,6 +84,22 @@ class discovery_t
     spot_route_t resolve_spot (const routing_id_t &spot_rid_);
 
     actor_route_t resolve_actor (const std::string &actor_id_);
+
+    void bind_route (route_kind_t kind_,
+                     std::span<const std::byte> key_,
+                     std::span<const std::byte> value_);
+
+    void bind_route (route_kind_t kind_,
+                     std::span<const uint8_t> key_,
+                     std::span<const uint8_t> value_);
+
+    void unbind_route (route_kind_t kind_, std::span<const std::byte> key_);
+
+    void unbind_route (route_kind_t kind_, std::span<const uint8_t> key_);
+
+    discovery_route_t resolve_route (route_kind_t kind_, std::span<const std::byte> key_);
+
+    discovery_route_t resolve_route (route_kind_t kind_, std::span<const uint8_t> key_);
 
     void close ();
 

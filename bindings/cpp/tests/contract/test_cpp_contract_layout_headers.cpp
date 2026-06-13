@@ -4,6 +4,7 @@
 #include <zlink/Contracts/Core/capability.hpp>
 #include <zlink/Contracts/Core/context_options.hpp>
 #include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Core/utilities.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Eventing/poll_event.hpp>
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
@@ -46,6 +47,12 @@ static_assert (std::is_class<zlink::spot_node_socket_entry_t>::value,
 static_assert (std::is_class<zlink::service::spot_t>::value,
                "public projection must expose service::spot_t");
 static_assert (std::is_class<zlink::timer_t>::value, "public projection must expose timer_t");
+static_assert (std::is_class<zlink::atomic_counter_t>::value,
+               "public projection must expose atomic_counter_t");
+static_assert (std::is_class<zlink::stopwatch_t>::value,
+               "public projection must expose stopwatch_t");
+static_assert (std::is_class<zlink::thread_t>::value,
+               "public projection must expose thread_t");
 static_assert (std::is_enum<zlink::auto_connect_type_t>::value,
                "public projection must expose auto_connect_type_t");
 static_assert (std::is_class<zlink::member_peer_entry_t>::value,
@@ -53,6 +60,7 @@ static_assert (std::is_class<zlink::member_peer_entry_t>::value,
 static_assert (std::is_enum<zlink::poll_event_flag_t>::value,
                "poll_event.hpp must own poll_event_flag_t");
 static_assert (std::is_class<zlink::poll_event_t>::value, "poll_event.hpp must own poll_event_t");
+static_assert (std::is_class<zlink::poll_item_t>::value, "poller.hpp must own poll_item_t");
 int main ()
 {
     return 0;

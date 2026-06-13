@@ -2,6 +2,9 @@
 #pragma once
 
 #include "message_socket_contracts.hpp"
+#include "../Service/actor_models.hpp"
+
+#include <vector>
 
 namespace zlink
 {
@@ -42,6 +45,8 @@ class stream_socket_t : public routed_message_socket_t
 
     service::send_operation_t send_bound_actor (const routing_id_t &session_rid_,
                                                 const std::string &actor_id_);
+
+    std::vector<actor_ref_t> bound_actors (const routing_id_t &session_rid_);
 
   private:
     std::function<void (const routing_id_t &, message_t &&, message_t &&)> _packet_handler;

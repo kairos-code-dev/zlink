@@ -155,6 +155,23 @@ func (n *SpotNode) ConnectRouterChannelPeer(channelName string, endpoint string)
 	})
 }
 
+func (n *SpotNode) ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error {
+	return n.withChannelEndpointCStrings(channelName, endpoint, func(channel *C.char, ep *C.char) error {
+		handle, err := n.handleOrError()
+		if err != nil {
+			return err
+		}
+		rid := peerRID.toC()
+		return connectErrorFromResult(
+			C.zlink_spot_node_connect_router_channel_peer_rid(
+				handle,
+				channel,
+				(*C.zlink_routing_id_t)(unsafe.Pointer(&rid)),
+				ep,
+			))
+	})
+}
+
 func (n *SpotNode) AttachDiscovery(discovery *Discovery) error {
 	if discovery == nil || discovery.closed {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}

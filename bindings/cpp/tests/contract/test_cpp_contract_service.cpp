@@ -371,6 +371,11 @@ static_assert (!has_monitor_open_t<zlink::service::discovery_t>::value,
                "discovery_t must not expose monitor_open");
 static_assert (has_resolve_spot_t<zlink::service::discovery_t>::value,
                "discovery_t must expose resolve_spot");
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::service::discovery_t &> ().resolve_route (
+                   zlink::route_kind_t::actor_session, std::declval<std::span<const uint8_t>> ())),
+                  zlink::discovery_route_t>,
+  "discovery_t must expose resolve_route");
 static_assert (has_spot_owner_sync_t<zlink::service::discovery_t>::value,
                "discovery_t must expose spot owner sync option");
 static_assert (has_actor_route_sync_t<zlink::service::discovery_t>::value,
@@ -412,6 +417,22 @@ void test_registry_query_and_discovery_metadata ()
 
     const std::vector<zlink::member_peer_entry_t> peers = discovery.member_peers ();
     assert (peers.size () >= 0);
+    auto bind_route_surface =
+      static_cast<void (zlink::service::discovery_t::*) (zlink::route_kind_t,
+                                                         std::span<const uint8_t>,
+                                                         std::span<const uint8_t>)>(
+        &zlink::service::discovery_t::bind_route);
+    auto unbind_route_surface =
+      static_cast<void (zlink::service::discovery_t::*) (zlink::route_kind_t,
+                                                         std::span<const uint8_t>)>(
+        &zlink::service::discovery_t::unbind_route);
+    auto resolve_route_surface =
+      static_cast<zlink::discovery_route_t (zlink::service::discovery_t::*) (
+        zlink::route_kind_t, std::span<const uint8_t>)>(
+        &zlink::service::discovery_t::resolve_route);
+    (void) bind_route_surface;
+    (void) unbind_route_surface;
+    (void) resolve_route_surface;
 
     zlink::service::discovery_t socket_discovery (ctx, zlink::auto_connect_type::client_server,
                                                   "orders-socket");
@@ -455,6 +476,17 @@ void test_spot_node_snapshot_contract ()
         rejected_empty_channel = err.result () == zlink::connect_result_t::invalid_argument;
     }
     assert (rejected_empty_channel);
+    auto connect_rid_surface =
+      static_cast<void (zlink::service::spot_node_t::*) (const std::string &,
+                                               const zlink::routing_id_t &,
+                                               const std::string &)>(
+        &zlink::service::spot_node_t::connect_router_channel_peer_rid);
+    auto disconnect_rid_surface =
+      static_cast<void (zlink::service::spot_node_t::*) (const std::string &,
+                                               const zlink::routing_id_t &)>(
+        &zlink::service::spot_node_t::disconnect_router_channel_peer_rid);
+    (void) connect_rid_surface;
+    (void) disconnect_rid_surface;
 
     node.router_admission_hwm (zlink::message_count_t::value (2));
     node.pubsub_admission_hwm (zlink::message_count_t::value (3));

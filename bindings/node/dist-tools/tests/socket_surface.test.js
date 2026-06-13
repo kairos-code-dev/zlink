@@ -115,6 +115,7 @@ test('canonical socket classes expose only directionally valid methods', () => {
     assert.equal(typeof spotNode.setRouterBind, 'function');
     assert.equal(typeof spotNode.setRoutingId, 'function');
     assert.equal(typeof spotNode.connectRouterChannelPeer, 'function');
+    assert.equal(typeof spotNode.connectRouterChannelPeerRid, 'function');
     assert.equal(typeof spotNode.disconnectRouterChannelPeer, 'function');
     assert.equal(typeof spotNode.disconnectRouterChannelPeerRid, 'function');
     assert.equal(typeof spotNode.attachSpotRouteChannelDiscovery, 'function');

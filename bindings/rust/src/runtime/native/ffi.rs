@@ -655,6 +655,12 @@ pub enum zlink_auto_connect_type_t {
     ZLINK_AUTO_CONNECT_SPOT_MESH = 5,
 }
 
+pub type zlink_route_kind_t = u32;
+pub const ZLINK_ROUTE_KIND_INVALID: zlink_route_kind_t = 0;
+pub const ZLINK_ROUTE_KIND_ACTOR: zlink_route_kind_t = 1;
+pub const ZLINK_ROUTE_KIND_SPOT_NAME: zlink_route_kind_t = 2;
+pub const ZLINK_ROUTE_KIND_ACTOR_SESSION: zlink_route_kind_t = 3;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum zlink_service_role_t {
@@ -1151,7 +1157,7 @@ unsafe extern "C" {
     pub fn zlink_disconnect_rid(socket: *mut c_void, peer_rid: *const zlink_routing_id_t) -> c_int;
     pub fn zlink_socket_attach_discovery(socket: *mut c_void, discovery: *mut c_void) -> c_int;
     pub fn zlink_socket_set_channel_name(socket: *mut c_void, channel_name: *const c_char)
-    -> c_int;
+        -> c_int;
     pub fn zlink_socket_get_channel_name(
         socket: *mut c_void,
         channel_name_buf: *mut c_char,
@@ -1352,6 +1358,28 @@ unsafe extern "C" {
         actor_id: *const c_char,
         route_out: *mut zlink_actor_route_t,
     ) -> c_int;
+    pub fn zlink_discovery_bind_route(
+        discovery: *mut c_void,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+        value: *const c_void,
+        value_size: usize,
+    ) -> c_int;
+    pub fn zlink_discovery_unbind_route(
+        discovery: *mut c_void,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+    ) -> c_int;
+    pub fn zlink_discovery_resolve_route(
+        discovery: *mut c_void,
+        kind: zlink_route_kind_t,
+        key: *const c_void,
+        key_size: usize,
+        owner_rid_out: *mut zlink_routing_id_t,
+        value_out: *mut zlink_msg_t,
+    ) -> c_int;
     pub fn zlink_discovery_destroy(discovery_p: *mut *mut c_void) -> c_int;
 
     // -- Spot --------------------------------------------------------------
@@ -1459,6 +1487,12 @@ unsafe extern "C" {
     pub fn zlink_spot_node_connect_router_channel_peer(
         node: *mut c_void,
         channel_name: *const c_char,
+        endpoint: *const c_char,
+    ) -> c_int;
+    pub fn zlink_spot_node_connect_router_channel_peer_rid(
+        node: *mut c_void,
+        channel_name: *const c_char,
+        peer_rid: *const zlink_routing_id_t,
         endpoint: *const c_char,
     ) -> c_int;
     pub fn zlink_spot_node_disconnect_router_channel_peer(
@@ -1636,7 +1670,7 @@ unsafe extern "C" {
         count: *mut usize,
     ) -> c_int;
     pub fn zlink_registry_status(registry: *mut c_void, out: *mut zlink_registry_status_t)
-    -> c_int;
+        -> c_int;
     pub fn zlink_registry_service_summary(
         registry: *mut c_void,
         filter: *const zlink_registry_service_summary_filter_t,
@@ -1726,6 +1760,17 @@ unsafe extern "C" {
     pub fn zlink_stopwatch_start() -> *mut c_void;
     pub fn zlink_stopwatch_intermediate(watch: *mut c_void) -> c_ulong;
     pub fn zlink_stopwatch_stop(watch: *mut c_void) -> c_ulong;
+    pub fn zlink_atomic_counter_new() -> *mut c_void;
+    pub fn zlink_atomic_counter_set(counter: *mut c_void, value: c_int);
+    pub fn zlink_atomic_counter_inc(counter: *mut c_void) -> c_int;
+    pub fn zlink_atomic_counter_dec(counter: *mut c_void) -> c_int;
+    pub fn zlink_atomic_counter_value(counter: *mut c_void) -> c_int;
+    pub fn zlink_atomic_counter_destroy(counter_p: *mut *mut c_void);
+    pub fn zlink_thread_start(
+        func: Option<extern "C" fn(*mut c_void)>,
+        arg: *mut c_void,
+    ) -> *mut c_void;
+    pub fn zlink_thread_join(thread: *mut c_void);
 
     // -- Proxy -------------------------------------------------------------
     pub fn zlink_proxy(frontend: *mut c_void, backend: *mut c_void, capture: *mut c_void) -> c_int;

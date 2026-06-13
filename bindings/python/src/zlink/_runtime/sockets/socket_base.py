@@ -1149,6 +1149,49 @@ class _SubscriberSocket(_Socket):
         if rc != 0:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
+    def subscription_at(self, index):
+        if index < 0:
+            raise ConfigError(ConfigResult.INVALID_ARGUMENT, _errno.EINVAL)
+        size = ctypes.c_size_t(0)
+        is_pattern = ctypes.c_int(0)
+        rc = lib().zlink_subscription_at(
+            self._handle,
+            ctypes.c_size_t(index),
+            None,
+            ctypes.byref(size),
+            ctypes.byref(is_pattern),
+        )
+        if rc != 0 and size.value == 0:
+            if ConfigResult(rc) == ConfigResult.NOT_FOUND:
+                return None
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        if size.value == 0:
+            rc = lib().zlink_subscription_at(
+                self._handle,
+                ctypes.c_size_t(index),
+                None,
+                ctypes.byref(size),
+                ctypes.byref(is_pattern),
+            )
+            if rc != 0:
+                if ConfigResult(rc) == ConfigResult.NOT_FOUND:
+                    return None
+                _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+            return ("", bool(is_pattern.value))
+        buffer = ctypes.create_string_buffer(size.value)
+        rc = lib().zlink_subscription_at(
+            self._handle,
+            ctypes.c_size_t(index),
+            buffer,
+            ctypes.byref(size),
+            ctypes.byref(is_pattern),
+        )
+        if rc != 0:
+            if ConfigResult(rc) == ConfigResult.NOT_FOUND:
+                return None
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return (buffer.raw[:size.value].decode("utf-8"), bool(is_pattern.value))
+
     def _attach_subscribe_handler(self, handler):
         if handler is None:
             raise ValueError("handler must not be None")

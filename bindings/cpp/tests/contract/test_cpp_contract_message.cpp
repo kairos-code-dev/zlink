@@ -2,6 +2,7 @@
 
 #include "support.hpp"
 
+#include <atomic>
 #include <stdexcept>
 #include <vector>
 
@@ -85,6 +86,27 @@ void test_copy_and_move_preserve_payload ()
     assert (moved.ref_count () == 2);
 }
 
+void test_external_message_uses_caller_owned_storage_until_close ()
+{
+    std::atomic<int> frees {0};
+    auto free_payload = [] (void *data_, void *hint_) {
+        delete[] static_cast<uint8_t *> (data_);
+        static_cast<std::atomic<int> *> (hint_)->fetch_add (1);
+    };
+
+    uint8_t *payload = new uint8_t[4] {'z', 'e', 'r', 'o'};
+    zlink::message_t msg = zlink::advanced::external_message_t::from (
+      std::span<uint8_t> (payload, 4), free_payload, &frees);
+    assert (msg.valid ());
+    payload[0] = 'Z';
+    assert ((msg.to_bytes () == std::vector<uint8_t>{'Z', 'e', 'r', 'o'}));
+    assert (frees.load () == 0);
+    msg.close ();
+    assert (frees.load () == 1);
+    msg.close ();
+    assert (frees.load () == 1);
+}
+
 void test_diagnostic_surface_uses_canonical_names ()
 {
     zlink::message_t msg = zlink::message_t::from ("diagnostic");
@@ -135,6 +157,7 @@ int main ()
     test_allocate_exposes_writable_owned_payload ();
     test_copy_helpers_copy_payload ();
     test_copy_and_move_preserve_payload ();
+    test_external_message_uses_caller_owned_storage_until_close ();
     test_diagnostic_surface_uses_canonical_names ();
     test_routing_id_hex_and_display_policy ();
     return 0;

@@ -44,6 +44,14 @@ pub struct SpotRoute {
     pub spot_kind: SpotKind,
 }
 
+/// A resolved custom route entry: the owning node routing id and a value payload.
+pub struct DiscoveryRoute {
+    /// The routing id of the peer that owns this route.
+    pub owner_routing_id: RoutingId,
+    /// The bound value payload.
+    pub value: Message,
+}
+
 /// Metadata about a message received for an actor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActorRecvInfo {

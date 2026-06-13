@@ -1,8 +1,8 @@
 use std::ffi::c_void;
 
 use crate::domain::Received;
-use crate::runtime_bridge::{ReceivedReplyRuntime, ReceivedSendRuntime};
 use crate::message::{Message, RoutingId};
+use crate::runtime_bridge::{ReceivedReplyRuntime, ReceivedSendRuntime};
 use crate::spot_operations::Empty;
 use crate::spot_operations::{ReplyOp, SendOp};
 

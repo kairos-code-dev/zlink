@@ -192,6 +192,17 @@ void spot_node_t::connect_router_channel_peer (const std::string &channel_name_,
       _impl->handle, channel_name_.c_str (), endpoint_.c_str ()));
 }
 
+void spot_node_t::connect_router_channel_peer_rid (const std::string &channel_name_,
+                                                   const routing_id_t &peer_rid_,
+                                                   const std::string &endpoint_)
+{
+    validate_channel_name_for_connect (channel_name_);
+    validate_endpoint (endpoint_);
+    const zlink_routing_id_t native = *zlink::detail::routing_id_native (peer_rid_);
+    throw_connect_result (zlink_spot_node_connect_router_channel_peer_rid (
+      _impl->handle, channel_name_.c_str (), &native, endpoint_.c_str ()));
+}
+
 void spot_node_t::disconnect_router_channel_peer (const std::string &channel_name_,
                                                   const std::string &endpoint_)
 {

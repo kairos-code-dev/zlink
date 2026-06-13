@@ -10,9 +10,11 @@ type (
 	ServiceKind     = impl.ServiceKind
 	SpotKind        = impl.SpotKind
 	SubjectKind     = impl.SubjectKind
+	RouteKind       = impl.RouteKind
 	SpotRole        = impl.SpotRole
 	Discovery       = impl.Discovery
 	SpotRoute       = impl.SpotRoute
+	DiscoveryRoute  = impl.DiscoveryRoute
 	MemberPeerEntry = impl.MemberPeerEntry
 )
 
@@ -39,6 +41,10 @@ const (
 	SubjectKindNone         = impl.SubjectKindNone
 	SubjectKindTopic        = impl.SubjectKindTopic
 	SubjectKindPattern      = impl.SubjectKindPattern
+	RouteKindInvalid        = impl.RouteKindInvalid
+	RouteKindActor          = impl.RouteKindActor
+	RouteKindSpotName       = impl.RouteKindSpotName
+	RouteKindActorSession   = impl.RouteKindActorSession
 	SpotRolePub             = impl.SpotRolePub
 	SpotRoleSub             = impl.SpotRoleSub
 )

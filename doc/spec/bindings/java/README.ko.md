@@ -755,6 +755,14 @@ Java는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추
 호출자는 기존 SPOT routed API와 `Discovery.resolveActor()` 또는
 `Discovery.resolveSpot()`을 조합한다.
 
+## Discovery route table
+
+Java는 discovery route table을 `Discovery.bindRoute(...)`,
+`Discovery.unbindRoute(...)`, `Discovery.resolveRoute(...)`로 노출한다. route
+kind 값은 코어 계약과 같이 invalid `0`, actor `1`, spot name `2`, actor session
+`3`이다. `resolveRoute(...)`는 `ownerRoutingId()`와 route `value()`를 `Message`로
+담은 `DiscoveryRoute`를 반환한다.
+
 ## Spot Get-Or-Create
 
 Java는 `SpotNode.getOrCreateSpot(RoutingId)`를 노출한다.
@@ -770,6 +778,7 @@ concrete result를 반환한다. `created`는 해당 logical spot을 생성한 �
 Java는 public `SpotNode` contract에 router channel peer 와이어링을 노출한다:
 
 - `connectRouterChannelPeer(channelName, endpoint)`
+- `connectRouterChannelPeerRid(channelName, peerRid, endpoint)`
 - `disconnectRouterChannelPeer(channelName, endpoint)`
 - `disconnectRouterChannelPeerRid(channelName, peerRid)`
 - `attachSpotRouteChannelDiscovery(channelName, discovery)`

@@ -1,25 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_discovery_api.h"
+#include "addon_message_values.h"
 #include <errno.h>
 
 namespace
 {
 
 static const int k_snapshot_retry_limit = 4;
-
-napi_value create_routing_id_value (napi_env env, const zlink_routing_id_t &rid)
-{
-    if (rid.size == 0) {
-        napi_value none;
-        napi_get_null (env, &none);
-        return none;
-    }
-
-    napi_value out;
-    napi_create_buffer_copy (env, rid.size, rid.data, NULL, &out);
-    return out;
-}
 
 bool parse_routing_id (napi_env env, napi_value value, zlink_routing_id_t *routing_id)
 {
@@ -36,6 +24,15 @@ bool parse_routing_id (napi_env env, napi_value value, zlink_routing_id_t *routi
     memset (routing_id, 0, sizeof (*routing_id));
     routing_id->size = static_cast<uint8_t> (len);
     memcpy (routing_id->data, data, len);
+    return true;
+}
+
+bool get_buffer_arg (napi_env env, napi_value value, void **data, size_t *len, const char *label)
+{
+    if (napi_get_buffer_info (env, value, data, len) != napi_ok) {
+        napi_throw_type_error (env, NULL, label);
+        return false;
+    }
     return true;
 }
 
@@ -678,6 +675,84 @@ napi_value discovery_resolve_spot (napi_env env, napi_callback_info info)
     napi_set_named_property (env, obj, "ownerNodeRid",
                              create_routing_id_value (env, route.owner_node_rid));
     set_uint32_property (env, obj, "spotKind", static_cast<uint32_t> (route.spot_kind));
+    return obj;
+}
+
+napi_value discovery_bind_route (napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external (env, argv[0], &discovery);
+    uint32_t kind = 0;
+    napi_get_value_uint32 (env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    void *value = NULL;
+    size_t value_len = 0;
+    if (!get_buffer_arg (env, argv[2], &key, &key_len, "key must be Buffer")
+        || !get_buffer_arg (env, argv[3], &value, &value_len, "value must be Buffer"))
+        return NULL;
+    int rc = zlink_discovery_bind_route (discovery, static_cast<zlink_route_kind_t> (kind), key,
+                                         key_len, value, value_len);
+    if (rc != 0)
+        return throw_last_error (env, "discovery_bind_route failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value discovery_unbind_route (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external (env, argv[0], &discovery);
+    uint32_t kind = 0;
+    napi_get_value_uint32 (env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    if (!get_buffer_arg (env, argv[2], &key, &key_len, "key must be Buffer"))
+        return NULL;
+    int rc = zlink_discovery_unbind_route (discovery, static_cast<zlink_route_kind_t> (kind), key,
+                                           key_len);
+    if (rc != 0)
+        return throw_last_error (env, "discovery_unbind_route failed");
+    napi_value ok;
+    napi_get_undefined (env, &ok);
+    return ok;
+}
+
+napi_value discovery_resolve_route (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *discovery = NULL;
+    napi_get_value_external (env, argv[0], &discovery);
+    uint32_t kind = 0;
+    napi_get_value_uint32 (env, argv[1], &kind);
+    void *key = NULL;
+    size_t key_len = 0;
+    if (!get_buffer_arg (env, argv[2], &key, &key_len, "key must be Buffer"))
+        return NULL;
+    zlink_routing_id_t owner;
+    zlink_msg_t value;
+    memset (&owner, 0, sizeof (owner));
+    memset (&value, 0, sizeof (value));
+    int rc = zlink_discovery_resolve_route (discovery, static_cast<zlink_route_kind_t> (kind), key,
+                                            key_len, &owner, &value);
+    if (rc != 0)
+        return throw_last_error (env, "discovery_resolve_route failed");
+    napi_value obj;
+    napi_create_object (env, &obj);
+    napi_set_named_property (env, obj, "ownerRoutingId", create_routing_id_value (env, owner));
+    napi_value data = create_message_data_buffer (env, &value);
+    if (data == NULL)
+        return NULL;
+    napi_set_named_property (env, obj, "value", data);
     return obj;
 }
 

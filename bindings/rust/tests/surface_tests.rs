@@ -6,9 +6,9 @@
 //! - Monitor canonical surface exists (recv)
 
 use zlink::{
-    AutoConnectType, Context, Discovery, Message, MonitorEvent, Received, RecvError, RecvFlags,
-    RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode, StreamSocket,
-    SubmitRetryMode, SubscriptionEvent, TopicMessage, XPubSocket,
+    AtomicCounter, AutoConnectType, Context, Discovery, Message, MonitorEvent, Received, RecvError,
+    RecvFlags, RidDuplicatePolicy, RoutingId, SendFlags, SendResult, SocketMonitor, SpotNode,
+    Stopwatch, StreamSocket, SubmitRetryMode, SubscriptionEvent, Thread, TopicMessage, XPubSocket,
 };
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,24 @@ fn pair_socket_has_send_recv() {
         .submit();
     let mut received = Received::empty();
     let _ = sock.recv(&mut received, RecvFlags::DONT_WAIT);
+}
+
+#[test]
+fn core_utility_surface_exists() {
+    let mut counter = AtomicCounter::new().unwrap();
+    counter.set(1);
+    let _ = counter.increment();
+    assert_eq!(counter.value(), 2);
+    let _ = counter.decrement();
+    assert_eq!(counter.value(), 1);
+    counter.close();
+
+    let mut stopwatch = Stopwatch::start().unwrap();
+    let _ = stopwatch.intermediate();
+    let _ = stopwatch.stop();
+
+    let mut thread = Thread::start(|| {}).unwrap();
+    thread.join();
 }
 
 #[test]
@@ -55,7 +73,8 @@ fn sub_socket_has_subscribe_no_send() {
     sock.connect("inproc://surface-sub-target").unwrap();
     sock.set_subscription("").unwrap();
 
-    // SubSocket exposes: subscribe, set_subscription, unset_subscription
+    // SubSocket exposes: subscribe, set_subscription, unset_subscription, subscription_at
+    let _ = sock.subscription_at(0);
     let mut message = TopicMessage::empty();
     let _ = sock.subscribe(&mut message, RecvFlags::DONT_WAIT);
     // No send on SubSocket – compile-time enforced
@@ -119,6 +138,7 @@ fn xsub_socket_has_subscribe_no_send() {
     let sock = ctx.xsub_socket().unwrap();
     sock.connect("inproc://surface-xsub-target").unwrap();
     sock.set_subscription("").unwrap();
+    let _ = sock.subscription_at(0);
 
     let mut message = TopicMessage::empty();
     let _ = sock.subscribe(&mut message, RecvFlags::DONT_WAIT);
@@ -229,6 +249,7 @@ fn rid_disconnect_surface_exists() {
     let _ = node.set_router_bind("inproc://surface-router");
     let _ = node.disconnect_peer_rid(&rid);
     let _ = node.connect_router_channel_peer("", "");
+    let _ = node.connect_router_channel_peer_rid("", &rid, "");
     let _ = node.disconnect_router_channel_peer("", "");
     let _ = node.disconnect_router_channel_peer_rid("", &rid);
 }

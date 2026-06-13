@@ -1,10 +1,10 @@
 //! Service surface tests - verify channel/query/introspection APIs exist.
 
 use zlink::{
-    ActorReceived, AutoConnectType, Context, Discovery, Message, POLLIN, POLLOUT, PairSocket,
-    PollEvent, PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient,
+    ActorReceived, AutoConnectType, Context, Discovery, Message, PairSocket, PollEvent,
+    PollSourceKind, Poller, Received, RecvFlags, Registry, RegistryQueryClient, RouteKind,
     RoutingId, SendFlags, SocketMonitor, Spot, SpotDispatchInfo, SpotNode, SubscriptionEvent,
-    Timer,
+    Timer, POLLIN, POLLOUT,
 };
 
 fn reserve_tcp_port() -> u16 {
@@ -175,6 +175,9 @@ fn discovery_resolve_spot_surface_exists() {
     assert!(discovery.actor_route_sync_enabled().unwrap());
     let _ = discovery.resolve_spot(&RoutingId::from(b"spot-rid"));
     let _ = discovery.resolve_actor("actor-rid");
+    let _ = discovery.bind_route(RouteKind::ActorSession, b"session", b"value");
+    let _ = discovery.unbind_route(RouteKind::ActorSession, b"session");
+    let _ = discovery.resolve_route(RouteKind::ActorSession, b"session");
 }
 
 #[test]

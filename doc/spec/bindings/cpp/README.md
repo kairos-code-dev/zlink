@@ -283,6 +283,7 @@ bindings/cpp/
 |       |   |   +-- context.hpp
 |       |   |   +-- context_options.hpp
 |       |   |   +-- routing_id.hpp
+|       |   |   +-- utilities.hpp
 |       |   +-- Messaging/
 |       |   |   +-- message.hpp
 |       |   |   +-- received.hpp
@@ -325,6 +326,7 @@ bindings/cpp/
 |       +-- Core/
 |       |   +-- capability.cpp
 |       |   +-- context.cpp
+|       |   +-- utilities.cpp
 |       |   +-- operation_detail.hpp
 |       |   +-- runtime_helpers.hpp
 |       |   +-- types_impl.hpp
@@ -447,16 +449,18 @@ The completed C++ binding makes the public contract visible without adding
 interface-only layers. A user can start at `<zlink.hpp>`, then follow this map
 to the owning contract header.
 
-- Core: `context_t`, context options, routing id, and version/capability helpers
-  live in `Contracts/Core/`.
+- Core: `context_t`, context options, routing id, version/capability helpers,
+  `atomic_counter_t`, `stopwatch_t`, and `thread_t` live in
+  `Contracts/Core/`.
 - Messaging: `message_t`, `received_t`, `topic_message_t`,
   `subscription_event_t`, and multipart helpers live in
   `Contracts/Messaging/`.
 - Sockets: `pair_socket_t`, `dealer_socket_t`, `router_socket_t`,
   `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`,
-  `stream_socket_t`, and send/recv/request/reply builders live in
-  `Contracts/Sockets/`.
-- Eventing: `socket_monitor_t`, monitor events, poller, poll event, timer, and
+  `stream_socket_t`, stream-bound actor snapshots, and
+  send/recv/request/reply builders live in `Contracts/Sockets/`.
+- Eventing: `socket_monitor_t`, monitor events, poller, one-shot `poll(...)`,
+  poll event, timer, and
   readiness helpers live in `Contracts/Eventing/`.
 - Service: `registry_t`, `discovery_t`, `spot_node_t`, `spot_t`,
   `actor_ref_t`, actor lifecycle models, and service operation builders live in
@@ -985,6 +989,11 @@ C++ callers should not have to reason about C handle cleanup.
   ownership.
 - Message values should support efficient move and explicit copy when copying
   is requested.
+- `message_t::from(...)` creates an independent copy of caller bytes. For
+  caller-owned buffers that must be sent without copying, the advanced
+  `external_message_t::from(span, free_fn, hint)` overload transfers the buffer
+  to the message and calls `free_fn(data, hint)` once when the message releases
+  it.
 - Data-plane receive and subscribe paths use caller-provided storage.
 - Service control/admission receive paths such as Actor join request receive may
   use optional or typed result-return forms when that is clearer for C++ callers.
@@ -1081,10 +1090,20 @@ C++ must not introduce ROUTER-to-Actor or Actor-to-ROUTER direct messaging
 methods. Applications compose `discovery_t::resolve_actor()` or
 `discovery_t::resolve_spot()` with the Spot routed APIs.
 
+## Discovery Route Table
+
+C++ exposes the discovery route table through `discovery_t::bind_route(...)`,
+`discovery_t::unbind_route(...)`, and `discovery_t::resolve_route(...)`.
+`route_kind` uses the core values `invalid = 0`, `actor = 1`,
+`spot_name = 2`, and `actor_session = 3`. `resolve_route(...)` returns a
+`discovery_route_t` containing the owner routing id and the route value as a
+`message_t`.
+
 ## SpotNode Router Channel Peers
 
 C++ exposes router channel peer wiring as public `spot_node_t` methods:
 `connect_router_channel_peer(channel_name, endpoint)`,
+`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
 `disconnect_router_channel_peer(channel_name, endpoint)`,
 `disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
 `attach_spot_route_channel_discovery(channel_name, discovery)`. The methods map

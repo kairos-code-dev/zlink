@@ -32,6 +32,9 @@ class SpotNode(Protocol):
     def connect_router_channel_peer(self, channel_name: str, endpoint: str):
         """Connect to a router-channel peer on ``channel_name`` at ``endpoint``."""
         ...
+    def connect_router_channel_peer_rid(self, channel_name: str, peer_rid, endpoint: str):
+        """Connect to a router-channel peer on ``channel_name`` by ``peer_rid`` at ``endpoint``."""
+        ...
     def disconnect_router_channel_peer(self, channel_name: str, endpoint: str):
         """Disconnect a router-channel peer on ``channel_name`` at ``endpoint``."""
         ...

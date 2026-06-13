@@ -134,6 +134,8 @@ type (
 	SubscriptionEvent            = impl.SubscriptionEvent
 	SocketTarget                 = impl.SocketTarget
 	Stopwatch                    = impl.Stopwatch
+	AtomicCounter                = impl.AtomicCounter
+	Thread                       = impl.Thread
 )
 
 const (
@@ -336,4 +338,6 @@ var (
 	Sleep                 = impl.Sleep
 	MultipartClose        = impl.MultipartClose
 	NewStopwatch          = impl.NewStopwatch
+	NewAtomicCounter      = impl.NewAtomicCounter
+	NewThread             = impl.NewThread
 )

@@ -2,7 +2,11 @@
 #pragma once
 
 #include "../Core/routing_id.hpp"
+#include "../Messaging/message.hpp"
 
+
+#include <cstdint>
+#include <utility>
 
 namespace zlink
 {
@@ -46,4 +50,27 @@ enum class service_kind : int
 using auto_connect_type_t = auto_connect_type;
 using service_role_t = service_role;
 using service_kind_t = service_kind;
+
+/// @brief The owner-scoped discovery route kind.
+enum class route_kind : uint32_t
+{
+    invalid = 0,      ///< No route kind (unset).
+    actor = 1,        ///< A route keyed by actor id.
+    spot_name = 2,    ///< A route keyed by spot name.
+    actor_session = 3 ///< A route keyed by actor session.
+};
+
+using route_kind_t = route_kind;
+
+/// @brief A resolved custom route entry: the owning node routing id and a value payload.
+struct discovery_route_t
+{
+    discovery_route_t (routing_id_t owner_routing_id_, message_t value_) :
+        owner_routing_id (std::move (owner_routing_id_)), value (std::move (value_))
+    {
+    }
+
+    routing_id_t owner_routing_id;
+    message_t value;
+};
 } // namespace zlink

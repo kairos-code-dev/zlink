@@ -663,10 +663,19 @@ Node는 Actor와 Spot route 조회 결과를 공개 JavaScript 객체와 일치�
 Node는 ROUTER-to-Actor나 Actor-to-ROUTER 직접 메시징 메서드를 추가하지 않는다.
 호출자는 `resolveActor()` 또는 `resolveSpot()`을 기존 Spot routed API와 조합한다.
 
+## Discovery route table
+
+Node는 discovery route table을 `Discovery.bindRoute(...)`,
+`Discovery.unbindRoute(...)`, `Discovery.resolveRoute(...)`로 노출한다.
+`DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
+`SpotName = 2`, `ActorSession = 3`이다. `resolveRoute(...)`는 owner routing id와
+route 값을 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+
 ## SpotNode 라우터 채널 피어
 
 Node는 공개 `SpotNode` 객체에 라우터 채널 피어 와이어링을 노출한다.
 `connectRouterChannelPeer(channelName, endpoint)`,
+`connectRouterChannelPeerRid(channelName, peerRid, endpoint)`,
 `disconnectRouterChannelPeer(channelName, endpoint)`,
 `disconnectRouterChannelPeerRid(channelName, peerRid)`,
 `attachSpotRouteChannelDiscovery(channelName, discovery)`이다. 이 메서드들은

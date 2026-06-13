@@ -55,6 +55,11 @@ class SubSocket(_socket_contract._SocketContract, Protocol):
         """Remove a subscription previously added for ``topic``."""
         ...
 
+    def subscription_at(self, index):
+        """Return ``(filter, is_pattern)`` for a subscription index, or
+        ``None`` when the index is absent."""
+        ...
+
     def subscribe_into(self, topic_message, *, flags=0):
         """Receive the next matching topic message into ``topic_message``
         storage; ``False`` when ``DONT_WAIT`` is set and none is available."""
@@ -113,6 +118,11 @@ class XSubSocket(_socket_contract._SocketContract, Protocol):
 
     def unset_subscription(self, topic):
         """Remove a subscription previously added for ``topic``."""
+        ...
+
+    def subscription_at(self, index):
+        """Return ``(filter, is_pattern)`` for a subscription index, or
+        ``None`` when the index is absent."""
         ...
 
     def subscribe_into(self, topic_message, *, flags=0):

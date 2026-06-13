@@ -304,6 +304,8 @@ Trait는 호출자에게 대체 가능한 동작이나 generic bound가 필요�
   생성은 공개되지 않는다.
 - `Poller::new(...)`, `Timer::new(...)`, 그리고 timer-on-SPOT 헬퍼가 eventing
   리소스를 생성한다.
+- `AtomicCounter::new()`, `Stopwatch::start()`, `Thread::start(...)`는 호출자가
+  소유하는 유틸리티 리소스를 생성한다.
 - Version, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
   crate 함수이다. 이들 함수 뒤의 FFI 호출은 private으로 유지된다.
 
@@ -387,7 +389,9 @@ FFI 모듈은 private으로 유지한다.
   strerror.
 - Message ownership, multipart payload, routing id, received metadata, topic
   message, subscription event, stream packet 콜백.
-- 모든 socket family와 그 typed option.
+- 모든 socket family와 그 typed option. `SubSocket::subscription_at(index)`와
+  `XSubSocket::subscription_at(index)`는 해당 인덱스의 subscription filter와
+  pattern 여부를 반환한다. 해당 인덱스가 없으면 `None`을 반환한다.
 - Monitor, poller, timer, readiness 의미.
 - Registry, discovery, SPOT node, SPOT 핸들, topology snapshot, actor, stream
   actor binding.
@@ -493,10 +497,19 @@ Rust는 ROUTER-to-Actor 또는 Actor-to-ROUTER 직접 메시징 메서드를 추
 않는다. 호출자는 `resolve_actor()` 또는 `resolve_spot()`을 기존 Spot routed
 API와 조합한다.
 
+## Discovery route table
+
+Rust는 discovery route table을 `Discovery::bind_route(...)`,
+`Discovery::unbind_route(...)`, `Discovery::resolve_route(...)`로 노출한다.
+`RouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`, `SpotName = 2`,
+`ActorSession = 3`이다. `resolve_route(...)`는 owner routing id와 route 값을
+`Message`로 담은 `DiscoveryRoute`를 반환한다.
+
 ## SpotNode Router Channel Peer
 
 Rust는 router channel peer 연결을 공개 `SpotNode` 메서드로 노출한다.
 `connect_router_channel_peer(channel_name, endpoint)`,
+`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
 `disconnect_router_channel_peer(channel_name, endpoint)`,
 `disconnect_router_channel_peer_rid(channel_name, peer_rid)`,
 `attach_spot_route_channel_discovery(channel_name, discovery)`. 이 메서드들은

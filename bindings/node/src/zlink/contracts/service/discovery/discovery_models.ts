@@ -18,3 +18,9 @@ export const ServiceKind = Object.freeze({
   Discovery: 1, SpotSub: 3, SpotPub: 4, Socket: 5
 } as const);
 export type ServiceKindValue = typeof ServiceKind[keyof typeof ServiceKind];
+
+/** The owner-scoped discovery route kind. */
+export const DiscoveryRouteKind = Object.freeze({
+  Invalid: 0, Actor: 1, SpotName: 2, ActorSession: 3
+} as const);
+export type DiscoveryRouteKindValue = typeof DiscoveryRouteKind[keyof typeof DiscoveryRouteKind];

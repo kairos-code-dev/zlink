@@ -12,6 +12,8 @@ type (
 	AutoHwmRecalcReason = impl.AutoHwmRecalcReason
 	SocketTarget        = impl.SocketTarget
 	Stopwatch           = impl.Stopwatch
+	AtomicCounter       = impl.AtomicCounter
+	Thread              = impl.Thread
 )
 
 const (
@@ -28,12 +30,14 @@ const (
 )
 
 var (
-	RuntimeVersion = impl.RuntimeVersion
-	NewContext     = impl.NewContext
-	Has            = impl.Has
-	Proxy          = impl.Proxy
-	ProxySteerable = impl.ProxySteerable
-	Sleep          = impl.Sleep
-	MultipartClose = impl.MultipartClose
-	NewStopwatch   = impl.NewStopwatch
+	RuntimeVersion   = impl.RuntimeVersion
+	NewContext       = impl.NewContext
+	Has              = impl.Has
+	Proxy            = impl.Proxy
+	ProxySteerable   = impl.ProxySteerable
+	Sleep            = impl.Sleep
+	MultipartClose   = impl.MultipartClose
+	NewStopwatch     = impl.NewStopwatch
+	NewAtomicCounter = impl.NewAtomicCounter
+	NewThread        = impl.NewThread
 )

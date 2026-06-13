@@ -19,10 +19,7 @@ macro_rules! define_error_type {
         impl $name {
             /// Creates an error from a typed result `code` and native errno.
             pub const fn new(code: $result, native_errno: i32) -> Self {
-                Self {
-                    code,
-                    native_errno,
-                }
+                Self { code, native_errno }
             }
 
             /// Returns the typed result code that classifies this failure.

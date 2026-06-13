@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { RoutingId } from '../../core';
+import type { BufferLike } from '../../core/buffer_like';
+import type { Message } from '../../messaging';
 import type {
   ActorRoute,
+  DiscoveryRouteKindValue,
   MemberPeerEntry,
   SpotRoute,
 } from '../index';
+
+/** A resolved custom route entry: the owning node routing id and a value payload. */
+export interface DiscoveryRoute {
+  ownerRoutingId: RoutingId;
+  value: Message;
+}
 
 /** A discovery service that learns peer routes from a registry and resolves spots and actors for a fixed channel. */
 export interface Discovery {
@@ -23,6 +32,12 @@ export interface Discovery {
   resolveSpot(spotRid: RoutingId): SpotRoute;
   /** Resolve the route to the actor identified by `actorId`. */
   resolveActor(actorId: string): ActorRoute;
+  /** Bind a custom route value under `kind` and `key`. */
+  bindRoute(kind: DiscoveryRouteKindValue | number, key: BufferLike, value: BufferLike): void;
+  /** Remove the custom route bound under `kind` and `key`. */
+  unbindRoute(kind: DiscoveryRouteKindValue | number, key: BufferLike): void;
+  /** Resolve the custom route bound under `kind` and `key`. */
+  resolveRoute(kind: DiscoveryRouteKindValue | number, key: BufferLike): DiscoveryRoute;
   /** Whether spot ownership changes are synchronized across peers. */
   spotOwnerSyncEnabled: boolean;
   /** Whether actor routes are synchronized across peers. */

@@ -537,10 +537,19 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
 Actor 또는 Spot route를 resolve한 뒤, 기존 Spot routed send/request API를
 사용한다.
 
+## Discovery route table
+
+`.NET`은 discovery route table을 `IDiscovery.BindRoute(...)`,
+`IDiscovery.UnbindRoute(...)`, `IDiscovery.ResolveRoute(...)`로 노출한다.
+`DiscoveryRouteKind` 값은 코어와 같이 `Invalid = 0`, `Actor = 1`,
+`SpotName = 2`, `ActorSession = 3`이다. `ResolveRoute(...)`는 `OwnerRoutingId`와
+route `Value`를 `Message`로 담은 `DiscoveryRoute`를 반환한다.
+
 ## SpotNode Router Channel Peers
 
 `.NET`은 router channel peer 연결을 공개 `SpotNode`와 `ISpotNode` 표면에
 노출한다: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
+`ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
 `DisconnectRouterChannelPeer(string channelName, string endpoint)`,
 `DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`,
 `AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.

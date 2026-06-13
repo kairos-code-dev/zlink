@@ -652,7 +652,11 @@ fn spot_received_from_raw(
         None
     } else {
         let rid = unsafe { RoutingId::from_raw(*source_spot_rid) };
-        if rid.is_empty() { None } else { Some(rid) }
+        if rid.is_empty() {
+            None
+        } else {
+            Some(rid)
+        }
     };
     if let Some(spot_rid) = spot_rid {
         if request_seq == 0 {

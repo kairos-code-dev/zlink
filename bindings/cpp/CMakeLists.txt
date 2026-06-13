@@ -150,6 +150,7 @@ zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
 add_library(zlink_cpp STATIC
   src/Runtime/Core/capability.cpp
   src/Runtime/Core/context.cpp
+  src/Runtime/Core/utilities.cpp
   src/Runtime/Errors/error.cpp
   src/Runtime/Eventing/poller.cpp
   src/Runtime/Eventing/monitor.cpp

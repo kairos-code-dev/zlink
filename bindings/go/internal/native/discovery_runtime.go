@@ -10,10 +10,31 @@ package native
 static inline int zlink_discovery_resolve_spot_go(void *discovery, const zlink_routing_id_t *spot_rid, zlink_spot_route_t *route_out) {
     return zlink_discovery_resolve_spot(discovery, spot_rid, route_out);
 }
+
+static inline int zlink_discovery_bind_route_go(void *discovery, zlink_route_kind_t kind, const void *key, size_t key_size, const void *value, size_t value_size) {
+    return zlink_discovery_bind_route(discovery, kind, key, key_size, value, value_size);
+}
+
+static inline int zlink_discovery_unbind_route_go(void *discovery, zlink_route_kind_t kind, const void *key, size_t key_size) {
+    return zlink_discovery_unbind_route(discovery, kind, key, key_size);
+}
+
+static inline int zlink_discovery_resolve_route_go(void *discovery, zlink_route_kind_t kind, const void *key, size_t key_size, zlink_routing_id_t *owner_rid_out, zlink_msg_t *value_out) {
+    return zlink_discovery_resolve_route(discovery, kind, key, key_size, owner_rid_out, value_out);
+}
 */
 import "C"
 
 import "unsafe"
+
+func withRouteBytes(data []byte, fn func(unsafe.Pointer, C.size_t) error) error {
+	if len(data) == 0 {
+		return fn(nil, 0)
+	}
+	ptr := C.CBytes(data)
+	defer C.free(ptr)
+	return fn(ptr, C.size_t(len(data)))
+}
 
 func newDiscovery(ctx *Context, autoConnectType AutoConnectType, channelName string) (*Discovery, error) {
 	if ctx == nil || ctx.closed {
@@ -102,6 +123,60 @@ func (d *Discovery) ResolveSpot(spotRid RoutingID) (SpotRoute, error) {
 		return SpotRoute{}, err
 	}
 	return spotRouteFromC(raw), nil
+}
+
+func (d *Discovery) BindRoute(kind RouteKind, key []byte, value []byte) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return withRouteBytes(key, func(keyPtr unsafe.Pointer, keySize C.size_t) error {
+		return withRouteBytes(value, func(valuePtr unsafe.Pointer, valueSize C.size_t) error {
+			return configErrorFromResult(ConfigResult(C.zlink_discovery_bind_route_go(
+				d.raw(),
+				C.zlink_route_kind_t(kind),
+				keyPtr,
+				keySize,
+				valuePtr,
+				valueSize,
+			)))
+		})
+	})
+}
+
+func (d *Discovery) UnbindRoute(kind RouteKind, key []byte) error {
+	if d == nil || d.closed {
+		return stateError("discovery is closed")
+	}
+	return withRouteBytes(key, func(keyPtr unsafe.Pointer, keySize C.size_t) error {
+		return configErrorFromResult(ConfigResult(C.zlink_discovery_unbind_route_go(
+			d.raw(),
+			C.zlink_route_kind_t(kind),
+			keyPtr,
+			keySize,
+		)))
+	})
+}
+
+func (d *Discovery) ResolveRoute(kind RouteKind, key []byte) (DiscoveryRoute, error) {
+	if d == nil || d.closed {
+		return DiscoveryRoute{}, stateError("discovery is closed")
+	}
+	var owner C.zlink_routing_id_t
+	value := &Message{}
+	err := withRouteBytes(key, func(keyPtr unsafe.Pointer, keySize C.size_t) error {
+		return configErrorFromResult(ConfigResult(C.zlink_discovery_resolve_route_go(
+			d.raw(),
+			C.zlink_route_kind_t(kind),
+			keyPtr,
+			keySize,
+			&owner,
+			&value.msg,
+		)))
+	})
+	if err != nil {
+		return DiscoveryRoute{}, err
+	}
+	return DiscoveryRoute{OwnerRoutingID: routingIDFromC(owner), Value: value}, nil
 }
 
 func (d *Discovery) GetValue() (int64, error) {

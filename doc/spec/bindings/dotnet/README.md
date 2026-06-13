@@ -560,10 +560,20 @@ methods. Framework code and applications resolve Actor or Spot routes through
 `Discovery.ResolveActor()` and `Discovery.ResolveSpot()`, then use existing Spot
 routed send/request APIs.
 
+## Discovery Route Table
+
+`.NET` exposes the discovery route table through `IDiscovery.BindRoute(...)`,
+`IDiscovery.UnbindRoute(...)`, and `IDiscovery.ResolveRoute(...)`.
+`DiscoveryRouteKind` uses the core values `Invalid = 0`, `Actor = 1`,
+`SpotName = 2`, and `ActorSession = 3`. `ResolveRoute(...)` returns a
+`DiscoveryRoute` containing `OwnerRoutingId` and the route `Value` as a
+`Message`.
+
 ## SpotNode Router Channel Peers
 
 `.NET` exposes router channel peer wiring on the public `SpotNode` and
 `ISpotNode` surface: `ConnectRouterChannelPeer(string channelName, string endpoint)`,
+`ConnectRouterChannelPeerRid(string channelName, RoutingId peerRid, string endpoint)`,
 `DisconnectRouterChannelPeer(string channelName, string endpoint)`,
 `DisconnectRouterChannelPeerRid(string channelName, RoutingId peerRid)`, and
 `AttachSpotRouteChannelDiscovery(string channelName, IDiscovery discovery)`.

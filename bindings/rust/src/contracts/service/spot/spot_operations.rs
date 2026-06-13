@@ -5,13 +5,12 @@ use crate::error::{RequestError, SubmitError};
 use crate::flags::SendFlags;
 use crate::message::Message;
 use crate::runtime_bridge::{
-    ActorJoinEntrySpotOpStorage, ActorJoinEntrySpotOpContract, ActorJoinOpEmptyContract,
-    ActorJoinOpStorage, ActorJoinOpReadyContract, ActorJoinReplyOpStorage,
-    ActorJoinReplyOpContract, ActorLookupOpStorage, ActorLookupOpContract,
-    ActorReplyOpStorage, ActorReplyOpContract, ActorReplyOpTimeoutContract,
-    ReplyOpEmptyContract, ReplyOpReadyContract, ReplyOpStorage, RequestOpCallbackReadyContract,
-    RequestOpEmptyContract, RequestOpReadyContract, RequestOpStorage, SendOpEmptyContract,
-    SendOpReadyContract, SendOpStorage,
+    ActorJoinEntrySpotOpContract, ActorJoinEntrySpotOpStorage, ActorJoinOpEmptyContract,
+    ActorJoinOpReadyContract, ActorJoinOpStorage, ActorJoinReplyOpContract,
+    ActorJoinReplyOpStorage, ActorLookupOpContract, ActorLookupOpStorage, ActorReplyOpContract,
+    ActorReplyOpStorage, ActorReplyOpTimeoutContract, ReplyOpEmptyContract, ReplyOpReadyContract,
+    ReplyOpStorage, RequestOpCallbackReadyContract, RequestOpEmptyContract, RequestOpReadyContract,
+    RequestOpStorage, SendOpEmptyContract, SendOpReadyContract, SendOpStorage,
 };
 
 /// Typestate marker: no message has been set yet.

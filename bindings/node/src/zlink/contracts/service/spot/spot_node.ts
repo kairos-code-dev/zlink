@@ -39,6 +39,8 @@ export interface SpotNode {
   disconnectPeerRid(targetNodeRid: RoutingId): void;
   /** Connect to a router-channel peer on `channelName` at `endpoint`. */
   connectRouterChannelPeer(channelName: string, endpoint: string): void;
+  /** Connect to a router-channel peer on `channelName` by `peerRid` at `endpoint`. */
+  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void;
   /** Disconnect a router-channel peer on `channelName` at `endpoint`. */
   disconnectRouterChannelPeer(channelName: string, endpoint: string): void;
   /** Disconnect a router-channel peer on `channelName` by `peerRid`. */

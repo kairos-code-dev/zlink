@@ -165,6 +165,62 @@ pub(crate) fn discovery_resolve_actor(
     Ok(ActorRoute::from_raw(&unsafe { raw.assume_init() }))
 }
 
+pub(crate) fn discovery_bind_route(
+    discovery: &Discovery,
+    kind: RouteKind,
+    key: &[u8],
+    value: &[u8],
+) -> Result<(), ConfigError> {
+    check_config_rc(unsafe {
+        ffi::zlink_discovery_bind_route(
+            discovery.raw(),
+            kind.to_raw(),
+            key.as_ptr().cast(),
+            key.len(),
+            value.as_ptr().cast(),
+            value.len(),
+        )
+    })
+}
+
+pub(crate) fn discovery_unbind_route(
+    discovery: &Discovery,
+    kind: RouteKind,
+    key: &[u8],
+) -> Result<(), ConfigError> {
+    check_config_rc(unsafe {
+        ffi::zlink_discovery_unbind_route(
+            discovery.raw(),
+            kind.to_raw(),
+            key.as_ptr().cast(),
+            key.len(),
+        )
+    })
+}
+
+pub(crate) fn discovery_resolve_route(
+    discovery: &Discovery,
+    kind: RouteKind,
+    key: &[u8],
+) -> Result<DiscoveryRoute, ConfigError> {
+    let mut owner = MaybeUninit::<ffi::zlink_routing_id_t>::zeroed();
+    let mut value = MaybeUninit::<ffi::zlink_msg_t>::zeroed();
+    check_config_rc(unsafe {
+        ffi::zlink_discovery_resolve_route(
+            discovery.raw(),
+            kind.to_raw(),
+            key.as_ptr().cast(),
+            key.len(),
+            owner.as_mut_ptr(),
+            value.as_mut_ptr(),
+        )
+    })?;
+    Ok(DiscoveryRoute {
+        owner_routing_id: RoutingId::from_raw(unsafe { owner.assume_init() }),
+        value: unsafe { Message::from_raw(value.assume_init()) },
+    })
+}
+
 pub(crate) fn discovery_member_peers(
     discovery: &Discovery,
 ) -> Result<Vec<MemberPeerEntry>, ConfigError> {

@@ -8,6 +8,8 @@
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
+#include <atomic>
+#include <vector>
 
 namespace
 {
@@ -220,6 +222,34 @@ void test_routing_id_rejects_oversize_input ()
     assert (threw);
 }
 
+void test_core_utilities_surface ()
+{
+    zlink::atomic_counter_t counter;
+    assert (counter.valid ());
+    counter.set (1);
+    (void) counter.increment ();
+    assert (counter.value () == 2);
+    (void) counter.decrement ();
+    assert (counter.value () == 1);
+    counter.close ();
+
+    zlink::stopwatch_t stopwatch;
+    assert (stopwatch.valid ());
+    (void) stopwatch.intermediate ();
+    (void) stopwatch.stop ();
+
+    std::atomic<int> value {0};
+    zlink::thread_t thread ([&] { value.store (7); });
+    thread.join ();
+    assert (value.load () == 7);
+}
+
+void test_one_shot_poll_empty_set ()
+{
+    std::vector<zlink::poll_item_t> items;
+    assert (zlink::poll (items, std::chrono::milliseconds (0)) == 0);
+}
+
 void test_routing_id_rejects_null_pointer_for_non_empty_bytes ()
 {
     bool threw = false;
@@ -280,6 +310,8 @@ int main ()
     test_socket_monitor_receive_returns_empty_without_event ();
     test_routing_id_accepts_maximum_size ();
     test_routing_id_rejects_oversize_input ();
+    test_core_utilities_surface ();
+    test_one_shot_poll_empty_set ();
     test_routing_id_rejects_null_pointer_for_non_empty_bytes ();
     test_routing_id_copy_assignment_preserves_short_value ();
     test_async_result_wait_pumps_progress ();

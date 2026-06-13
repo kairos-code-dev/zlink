@@ -2,7 +2,6 @@ use std::ffi::c_void;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::SpotNode;
 use crate::actor_models::ActorRef;
 use crate::core_context::Context;
 use crate::error::{ConfigError, HandlerError};
@@ -14,6 +13,7 @@ use crate::socket_contracts::StreamSocket;
 use crate::spot_operations::Empty;
 use crate::spot_operations::SendOp;
 use crate::spot_operations::{ActorBindOp, ActorUnbindOp};
+use crate::SpotNode;
 
 use super::SocketInner;
 

@@ -3,7 +3,7 @@
 from .discovery import (
     Discovery,
 )
-from .discovery_models import SpotRoute
+from .discovery_models import DiscoveryRoute, SpotRoute
 from ..registry import (
     MemberPeerEntry,
     Registry,
@@ -17,6 +17,7 @@ from ..registry import (
 
 __all__ = [
     "Discovery",
+    "DiscoveryRoute",
     "MemberPeerEntry",
     "Registry",
     "RegistryQueryClient",

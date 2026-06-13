@@ -502,7 +502,9 @@ binding is aligned to the shared .NET-standard policy.
   capability, and strerror.
 - Message ownership, multipart payloads, routing ids, received metadata, topic
   messages, subscription events, and stream packet callbacks.
-- All socket families and their typed options.
+- All socket families and their typed options. `SubSocket.subscription_at(index)`
+  and `XSubSocket.subscription_at(index)` return the subscription filter and
+  pattern flag for the index, or `None` when the index is absent.
 - Monitor, poller, timer, and readiness semantics.
 - Registry, discovery, SPOT node, SPOT handle, topology snapshots, actors, and
   stream actor binding.
@@ -619,10 +621,20 @@ Python must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging
 methods. Callers compose `resolve_actor()` or `resolve_spot()` with the existing
 Spot routed APIs.
 
+## Discovery Route Table
+
+Python exposes the discovery route table through `Discovery.bind_route(...)`,
+`Discovery.unbind_route(...)`, and `Discovery.resolve_route(...)`. The route
+kind integer uses the core values `0` for invalid, `1` for actor, `2` for spot
+name, and `3` for actor session. `resolve_route(...)` returns a
+`DiscoveryRoute` containing the owner routing id and the route value as a
+`Message`.
+
 ## SpotNode Router Channel Peers
 
 Python exposes router channel peer wiring on the public `SpotNode` object:
 `connect_router_channel_peer(channel_name, endpoint)`,
+`connect_router_channel_peer_rid(channel_name, peer_rid, endpoint)`,
 `disconnect_router_channel_peer(channel_name, endpoint)`,
 `disconnect_router_channel_peer_rid(channel_name, peer_rid)`, and
 `attach_spot_route_channel_discovery(channel_name, discovery)`. These methods

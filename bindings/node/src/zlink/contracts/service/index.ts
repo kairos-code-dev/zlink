@@ -37,6 +37,7 @@ export type {
 export * from './discovery/discovery_models';
 export * from './registry/registry_models';
 export type { Discovery } from './discovery/discovery';
+export type { DiscoveryRoute } from './discovery/discovery';
 export type { Registry } from './registry/registry';
 export type { RegistryQueryClient } from './registry/registry_query_client';
 export type { ZlinkFactories } from './factories';

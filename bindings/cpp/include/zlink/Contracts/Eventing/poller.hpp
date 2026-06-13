@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace zlink
 {
@@ -64,5 +65,36 @@ class poller_t
     struct impl;
     std::unique_ptr<impl> _impl;
 };
+
+struct poll_item_t
+{
+    socket_t *socket = nullptr;
+    int fd = 0;
+    poll_event_flag_t events = poll_event_flag_t::none;
+    poll_event_flag_t revents = poll_event_flag_t::none;
+
+    static poll_item_t from_socket (socket_t &socket_, poll_event_flag_t events_)
+    {
+        poll_item_t item;
+        item.socket = &socket_;
+        item.events = events_;
+        return item;
+    }
+
+    static poll_item_t from_fd (int fd_, poll_event_flag_t events_)
+    {
+        poll_item_t item;
+        item.fd = fd_;
+        item.events = events_;
+        return item;
+    }
+};
+
+int poll (poll_item_t *items_, size_t count_, std::chrono::milliseconds timeout_);
+
+inline int poll (std::vector<poll_item_t> &items_, std::chrono::milliseconds timeout_)
+{
+    return poll (items_.empty () ? nullptr : items_.data (), items_.size (), timeout_);
+}
 
 } // namespace zlink

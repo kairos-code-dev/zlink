@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <zlink.h>
 
 namespace zlink
 {
@@ -232,6 +233,27 @@ message_t external_message_t::from (std::span<const std::byte> bytes_)
 message_t external_message_t::from (std::span<const uint8_t> bytes_)
 {
     return message_t::from (bytes_);
+}
+
+message_t external_message_t::from (std::span<std::byte> bytes_,
+                                    external_message_free_fn_t free_fn_,
+                                    void *hint_)
+{
+    if (!free_fn_)
+        throw std::invalid_argument ("external message free callback must not be null");
+    message_t msg {message_t::no_init_t ()};
+    if (zlink_msg_init_data (detail::native_handle (msg), bytes_.data (), bytes_.size (),
+                             reinterpret_cast<zlink_free_fn *> (free_fn_), hint_)
+        == 0)
+        msg._valid = true;
+    return msg;
+}
+
+message_t external_message_t::from (std::span<uint8_t> bytes_,
+                                    external_message_free_fn_t free_fn_,
+                                    void *hint_)
+{
+    return from (std::as_writable_bytes (bytes_), free_fn_, hint_);
 }
 
 } // namespace advanced

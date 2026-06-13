@@ -159,6 +159,9 @@ void define_discovery_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("discoveryGetValue", discovery_get_value),
       ZLINK_METHOD ("discoveryResolveSpot", discovery_resolve_spot),
       ZLINK_METHOD ("discoveryResolveActor", discovery_resolve_actor),
+      ZLINK_METHOD ("discoveryBindRoute", discovery_bind_route),
+      ZLINK_METHOD ("discoveryUnbindRoute", discovery_unbind_route),
+      ZLINK_METHOD ("discoveryResolveRoute", discovery_resolve_route),
       ZLINK_METHOD ("discoverySetTlsClient", discovery_set_tls_client),
       ZLINK_METHOD ("discoveryDestroy", discovery_destroy),
     };
@@ -176,6 +179,8 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotNodeDisconnectPeerPub", spot_node_disconnect_peer),
       ZLINK_METHOD ("spotNodeDisconnectPeerRidPub", spot_node_disconnect_peer_rid),
       ZLINK_METHOD ("spotNodeConnectRouterChannelPeer", spot_node_connect_router_channel_peer),
+      ZLINK_METHOD ("spotNodeConnectRouterChannelPeerRid",
+                    spot_node_connect_router_channel_peer_rid),
       ZLINK_METHOD ("spotNodeDisconnectRouterChannelPeer",
                     spot_node_disconnect_router_channel_peer),
       ZLINK_METHOD ("spotNodeDisconnectRouterChannelPeerRid",

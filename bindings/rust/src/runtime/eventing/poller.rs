@@ -7,7 +7,7 @@ use crate::error::{ConfigError, HandlerError, RecvError};
 use crate::ffi;
 use crate::native_errors::{check_config_rc, check_handler_rc, check_recv_rc, last_errno};
 use crate::poller_contracts::{
-    POLLCOMPLETION, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
+    PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer, POLLCOMPLETION,
 };
 use crate::request_progress::{acquire_external_progress, release_external_progress};
 use crate::runtime_bridge::{PollerRuntime, TimerFireHandler, TimerRuntime};

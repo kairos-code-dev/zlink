@@ -681,7 +681,11 @@ fn request_reply_userdata(is_final: bool, state_ptr: *mut SpotReplyCallbackState
 }
 
 fn request_reply_timeout(is_final: bool, timeout_ms: u32) -> u32 {
-    if is_final { timeout_ms } else { 0 }
+    if is_final {
+        timeout_ms
+    } else {
+        0
+    }
 }
 
 pub(super) struct NativeReplyOp {

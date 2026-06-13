@@ -1,4 +1,4 @@
-use std::ffi::{CStr, c_void};
+use std::ffi::{c_void, CStr};
 use std::mem::MaybeUninit;
 
 use crate::core_context::AutoHwmRecalcReason;

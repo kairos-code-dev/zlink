@@ -262,6 +262,8 @@ Go construction is exposed through public constructors and resource methods.
   construction is not public.
 - `NewPoller()`, `NewTimer()`, and `NewTimerFromSpot(...)` create eventing
   resources.
+- `NewAtomicCounter()`, `NewStopwatch()`, and `NewThread(...)` create utility
+  resources owned by the caller.
 - Version, capability, strerror, proxy, sleep, and multipart cleanup helpers
   are public contract functions. cgo calls behind those functions stay private.
 
@@ -464,10 +466,20 @@ Go must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
 Callers compose `ResolveActor` or `ResolveSpot` with the existing Spot routed
 send/request APIs.
 
+## Discovery Route Table
+
+Go exposes the discovery route table through `Discovery.BindRoute(...)`,
+`Discovery.UnbindRoute(...)`, and `Discovery.ResolveRoute(...)`. `RouteKind`
+uses the core values `RouteKindInvalid = 0`, `RouteKindActor = 1`,
+`RouteKindSpotName = 2`, and `RouteKindActorSession = 3`.
+`ResolveRoute(...)` returns a `DiscoveryRoute` containing the owner routing ID
+and the route value as a `Message`.
+
 ## SpotNode Router Channel Peers
 
 Go exposes router channel peer wiring as public `SpotNode` methods:
 `ConnectRouterChannelPeer(channelName string, endpoint string) error`,
+`ConnectRouterChannelPeerRID(channelName string, peerRID RoutingID, endpoint string) error`,
 `DisconnectRouterChannelPeer(channelName string, endpoint string) error`,
 `DisconnectRouterChannelPeerRID(channelName string, peerRID RoutingID) error`,
 and `AttachSpotRouteChannelDiscovery(channelName string, discovery *Discovery)

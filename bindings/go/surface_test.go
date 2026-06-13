@@ -206,6 +206,9 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if !hasMethod((*zlink.SpotNode)(nil), "ConnectRouterChannelPeer") {
 		t.Fatalf("SpotNode should expose ConnectRouterChannelPeer")
 	}
+	if !hasMethod((*zlink.SpotNode)(nil), "ConnectRouterChannelPeerRID") {
+		t.Fatalf("SpotNode should expose ConnectRouterChannelPeerRID")
+	}
 	if !hasMethod((*zlink.SpotNode)(nil), "DisconnectRouterChannelPeer") {
 		t.Fatalf("SpotNode should expose DisconnectRouterChannelPeer")
 	}
@@ -332,11 +335,14 @@ func TestSurfaceCapabilities(t *testing.T) {
 	if hasMethod((*zlink.Discovery)(nil), "GetMetadata") {
 		t.Fatalf("Discovery should not expose GetMetadata")
 	}
-	if hasMethod((*zlink.Discovery)(nil), "BindRoute") {
-		t.Fatalf("Discovery should not expose BindRoute")
+	if !hasMethod((*zlink.Discovery)(nil), "BindRoute") {
+		t.Fatalf("Discovery should expose BindRoute")
 	}
-	if hasMethod((*zlink.Discovery)(nil), "ResolveRoute") {
-		t.Fatalf("Discovery should not expose ResolveRoute")
+	if !hasMethod((*zlink.Discovery)(nil), "UnbindRoute") {
+		t.Fatalf("Discovery should expose UnbindRoute")
+	}
+	if !hasMethod((*zlink.Discovery)(nil), "ResolveRoute") {
+		t.Fatalf("Discovery should expose ResolveRoute")
 	}
 	if !hasMethod((*zlink.Discovery)(nil), "SetSpotOwnerSyncEnabled") {
 		t.Fatalf("Discovery should expose SetSpotOwnerSyncEnabled")
@@ -379,6 +385,31 @@ func TestSurfaceCapabilities(t *testing.T) {
 	}
 	if !hasMethod((*zlink.Message)(nil), "RefCount") {
 		t.Fatalf("Message should expose RefCount")
+	}
+}
+
+func TestCoreUtilitySurface(t *testing.T) {
+	counter := zlink.NewAtomicCounter()
+	if counter == nil {
+		t.Fatalf("NewAtomicCounter returned nil")
+	}
+	counter.Set(1)
+	counter.Increment()
+	if got := counter.Value(); got != 2 {
+		t.Fatalf("AtomicCounter.Value() after increment = %d, want 2", got)
+	}
+	counter.Decrement()
+	if got := counter.Value(); got != 1 {
+		t.Fatalf("AtomicCounter.Value() after decrement = %d, want 1", got)
+	}
+	counter.Close()
+
+	thread, err := zlink.NewThread(func() {})
+	if err != nil {
+		t.Fatalf("NewThread() error = %v", err)
+	}
+	if err := thread.Join(); err != nil {
+		t.Fatalf("Thread.Join() error = %v", err)
 	}
 }
 

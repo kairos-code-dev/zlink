@@ -201,6 +201,12 @@ impl SubSocket {
         crate::socket::sub_inner(self).unset_subscription(filter)
     }
 
+    /// Returns the subscription filter and pattern flag at `index`, or `None`
+    /// when no subscription exists at that index.
+    pub fn subscription_at(&self, index: usize) -> Result<Option<(String, bool)>, ConfigError> {
+        crate::socket::sub_inner(self).subscription_at(index)
+    }
+
     /// Returns the typed options facade common to all socket types.
     pub fn common_options(&self) -> CommonSocketOptions<'_> {
         CommonSocketOptions::new(crate::socket::sub_inner(self))
@@ -284,6 +290,12 @@ impl XSubSocket {
     /// Removes a subscription previously added for `filter`.
     pub fn unset_subscription(&self, filter: &str) -> Result<(), ConfigError> {
         crate::socket::xsub_inner(self).unset_subscription(filter)
+    }
+
+    /// Returns the subscription filter and pattern flag at `index`, or `None`
+    /// when no subscription exists at that index.
+    pub fn subscription_at(&self, index: usize) -> Result<Option<(String, bool)>, ConfigError> {
+        crate::socket::xsub_inner(self).subscription_at(index)
     }
 
     /// Returns the typed options facade common to all socket types.

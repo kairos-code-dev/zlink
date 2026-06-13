@@ -484,6 +484,32 @@ size_t poller_t::wait (poll_event_t *events_, size_t capacity_, std::chrono::mil
     return _impl->wait (events_, capacity_, detail::native_poll_timeout_ms (timeout_));
 }
 
+int poll (poll_item_t *items_, size_t count_, std::chrono::milliseconds timeout_)
+{
+    std::vector<zlink_pollitem_t> native_items (count_);
+    for (size_t i = 0; i < count_; ++i) {
+        if (items_[i].socket)
+            native_items[i].socket = detail::native_handle (*items_[i].socket);
+        native_items[i].fd = static_cast<zlink_fd_t> (items_[i].fd);
+        native_items[i].events = static_cast<short> (items_[i].events);
+    }
+
+    zlink_config_result_t error = static_cast<zlink_config_result_t> (0);
+    const int rc = zlink_poll (native_items.empty () ? nullptr : native_items.data (),
+                               static_cast<int> (native_items.size ()),
+                               detail::native_poll_timeout_ms (timeout_), &error);
+    if (rc < 0) {
+        if (error != 0)
+            throw config_error_t (static_cast<config_result_t> (error), detail::current_errno ());
+        throw config_error_t (detail::config_result_from_errno (detail::current_errno ()),
+                              detail::current_errno ());
+    }
+
+    for (size_t i = 0; i < count_; ++i)
+        items_[i].revents = static_cast<poll_event_flag_t> (native_items[i].revents);
+    return rc;
+}
+
 void poller_t::close ()
 {
     if (!_impl)

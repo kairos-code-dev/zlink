@@ -6,6 +6,8 @@
 #include <Runtime/Service/service_model_access.hpp>
 #include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Core/context_access.hpp>
+#include <Runtime/Core/routing_id_access.hpp>
+#include <Runtime/Native/message_access.hpp>
 
 #include <zlink.h>
 
@@ -191,6 +193,55 @@ actor_route_t discovery_t::resolve_actor (const std::string &actor_id_)
     detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_discovery_resolve_actor (_impl->handle, actor_id_.c_str (), &native)));
     return zlink::detail::actor_model_access_t::from_native (native);
+}
+
+void discovery_t::bind_route (route_kind_t kind_,
+                              std::span<const std::byte> key_,
+                              std::span<const std::byte> value_)
+{
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_discovery_bind_route (_impl->handle, static_cast<zlink_route_kind_t> (kind_),
+                                  key_.data (), key_.size (), value_.data (), value_.size ())));
+}
+
+void discovery_t::bind_route (route_kind_t kind_,
+                              std::span<const uint8_t> key_,
+                              std::span<const uint8_t> value_)
+{
+    bind_route (kind_, std::as_bytes (key_), std::as_bytes (value_));
+}
+
+void discovery_t::unbind_route (route_kind_t kind_, std::span<const std::byte> key_)
+{
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_discovery_unbind_route (_impl->handle, static_cast<zlink_route_kind_t> (kind_),
+                                    key_.data (), key_.size ())));
+}
+
+void discovery_t::unbind_route (route_kind_t kind_, std::span<const uint8_t> key_)
+{
+    unbind_route (kind_, std::as_bytes (key_));
+}
+
+discovery_route_t discovery_t::resolve_route (route_kind_t kind_, std::span<const std::byte> key_)
+{
+    zlink_routing_id_t owner;
+    zlink_msg_t value;
+    std::memset (&owner, 0, sizeof (owner));
+    std::memset (&value, 0, sizeof (value));
+    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_discovery_resolve_route (_impl->handle, static_cast<zlink_route_kind_t> (kind_),
+                                     key_.data (), key_.size (), &owner, &value)));
+
+    message_t msg;
+    zlink::detail::adopt_native_message (msg, &value);
+    return discovery_route_t (zlink::detail::routing_id_access_t::from_native (owner),
+                              std::move (msg));
+}
+
+discovery_route_t discovery_t::resolve_route (route_kind_t kind_, std::span<const uint8_t> key_)
+{
+    return resolve_route (kind_, std::as_bytes (key_));
 }
 
 void discovery_t::close ()

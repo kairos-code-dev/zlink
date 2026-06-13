@@ -79,6 +79,19 @@ export class SpotNode extends NativeHandle {
       );
     });
   }
+  connectRouterChannelPeerRid(channelName: string, peerRid: RoutingId, endpoint: string): void {
+    const normalizedChannelName = validateCString(channelName, 'channelName');
+    const normalizedPeerRid = normalizeRoutingId(peerRid);
+    const normalizedEndpoint = validateCString(endpoint, 'endpoint');
+    connectCall('spot node router channel peer connect by routing id failed', () => {
+      requireNative().spotNodeConnectRouterChannelPeerRid(
+        this._native,
+        normalizedChannelName,
+        normalizedPeerRid,
+        normalizedEndpoint
+      );
+    });
+  }
   disconnectRouterChannelPeer(channelName: string, endpoint: string): void {
     const normalizedChannelName = validateCString(channelName, 'channelName');
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');

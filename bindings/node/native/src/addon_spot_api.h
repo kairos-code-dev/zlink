@@ -12,6 +12,7 @@ napi_value spot_node_connect_peer (napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_peer (napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_peer_rid (napi_env env, napi_callback_info info);
 napi_value spot_node_connect_router_channel_peer (napi_env env, napi_callback_info info);
+napi_value spot_node_connect_router_channel_peer_rid (napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_router_channel_peer (napi_env env, napi_callback_info info);
 napi_value spot_node_disconnect_router_channel_peer_rid (napi_env env, napi_callback_info info);
 napi_value spot_node_set_discovery (napi_env env, napi_callback_info info);

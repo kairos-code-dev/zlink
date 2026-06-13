@@ -4,31 +4,31 @@ use std::any::Any;
 use std::os::fd::RawFd;
 use std::time::Duration;
 
-use crate::core_context::AutoHwmProfile;
 use crate::actor_models::{
     ActorJoinEntrySpotResult, ActorJoinRequest, ActorJoinResult, ActorLookupResult, ActorRef,
     SpotActorLifecycleEvent,
 };
 use crate::actor_received::ActorReceived;
+use crate::core_context::AutoHwmProfile;
 use crate::error::{
     CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError, SubmitError,
 };
 use crate::flags::{RecvFlags, RidDuplicatePolicy, SendFlags, SubmitRetryMode};
 use crate::message::{Message, RoutingId};
+use crate::messaging_subscription_event::SubscriptionEvent;
 use crate::monitor_contracts::{MonitorEvent, MonitorStatus};
 use crate::poller_contracts::{PollEvent, Pollable, Timer};
 use crate::spot_models::{
-    SpotDispatchInfo, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter,
-    SpotNodeSocketEntry, SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus,
-    SpotNodeSubjectEntry, SpotNodeSubjectFilter,
+    SpotDispatchInfo, SpotNodeOptions, SpotNodePeerEntry, SpotNodePeerFilter, SpotNodeSocketEntry,
+    SpotNodeSocketFilter, SpotNodeSpotEntry, SpotNodeStatus, SpotNodeSubjectEntry,
+    SpotNodeSubjectFilter,
 };
 use crate::spot_operations::{
     ActorDestroyOp, ActorJoinEntrySpotOp, ActorJoinOp, ActorJoinReplyOp, ActorLeaveOp,
     ActorLookupOp, CallbackReady, Empty, Ready, ReplyOp, RequestOp, SendOp,
 };
-use crate::{Actor, Discovery, Received, Spot, SpotNodeActorEntry};
-use crate::messaging_subscription_event::SubscriptionEvent;
 use crate::topic_message_contract::TopicMessage;
+use crate::{Actor, Discovery, Received, Spot, SpotNodeActorEntry};
 
 pub(crate) trait MessageRuntime: Any + Send {
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -495,6 +495,12 @@ pub(crate) trait SpotNodePublicRuntime {
     fn connect_router_channel_peer(
         &self,
         channel_name: &str,
+        endpoint: &str,
+    ) -> Result<(), ConnectError>;
+    fn connect_router_channel_peer_rid(
+        &self,
+        channel_name: &str,
+        peer_rid: &RoutingId,
         endpoint: &str,
     ) -> Result<(), ConnectError>;
     fn disconnect_router_channel_peer(

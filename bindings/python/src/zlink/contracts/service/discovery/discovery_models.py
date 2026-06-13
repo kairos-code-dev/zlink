@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from ...core.routing_id import RoutingId
+from ...messaging.message import Message
 from ..codes import SpotKind
 
 
@@ -21,4 +22,12 @@ class SpotRoute:
     spot_kind: SpotKind
 
 
-__all__ = ["SpotRoute"]
+@dataclass(frozen=True)
+class DiscoveryRoute:
+    """A resolved custom route entry: the owning node routing id and a value payload."""
+
+    owner_routing_id: RoutingId
+    value: Message
+
+
+__all__ = ["DiscoveryRoute", "SpotRoute"]

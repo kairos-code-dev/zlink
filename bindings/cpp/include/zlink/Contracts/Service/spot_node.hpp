@@ -98,6 +98,10 @@ class spot_node_t
     void connect_router_channel_peer (const std::string &channel_name_,
                                       const std::string &endpoint_);
 
+    void connect_router_channel_peer_rid (const std::string &channel_name_,
+                                          const routing_id_t &peer_rid_,
+                                          const std::string &endpoint_);
+
     void disconnect_router_channel_peer (const std::string &channel_name_,
                                          const std::string &endpoint_);
 

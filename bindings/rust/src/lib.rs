@@ -30,6 +30,8 @@ mod actor_received;
 mod actor_resource;
 #[path = "contracts/core/context.rs"]
 mod core_context;
+#[path = "contracts/core/utilities.rs"]
+mod core_utilities;
 #[path = "runtime/handles/ctx.rs"]
 mod ctx;
 #[path = "contracts/service/discovery/discovery.rs"]
@@ -46,8 +48,6 @@ mod message;
 mod message_factory;
 #[path = "contracts/sockets/message_socket_contracts.rs"]
 mod message_socket_contracts;
-#[path = "runtime/messaging/domain.rs"]
-mod received_operations;
 #[path = "contracts/messaging/operation_contracts.rs"]
 mod messaging_operation_contracts;
 #[path = "contracts/messaging/subscription_event.rs"]
@@ -68,6 +68,8 @@ mod poller;
 mod poller_contracts;
 #[path = "contracts/sockets/pubsub_socket_contracts.rs"]
 mod pubsub_socket_contracts;
+#[path = "runtime/messaging/domain.rs"]
+mod received_operations;
 #[path = "contracts/service/registry/registry_models.rs"]
 mod registry_models;
 #[path = "contracts/service/registry/registry_query_client.rs"]
@@ -107,13 +109,14 @@ mod topic_message_contract;
 
 pub use actor_models::{
     ActorJoinEntrySpotResult, ActorJoinInfo, ActorJoinRequest, ActorJoinResult, ActorLookupResult,
-    ActorRecvInfo, ActorRef, ActorRoute, SpotActorLifecycleEvent, SpotActorLifecycleEventKind,
-    SpotActorLifecycleInfo, SpotNodeActorEntry, SpotRoute,
+    ActorRecvInfo, ActorRef, ActorRoute, DiscoveryRoute, SpotActorLifecycleEvent,
+    SpotActorLifecycleEventKind, SpotActorLifecycleInfo, SpotNodeActorEntry, SpotRoute,
 };
 pub use actor_received::ActorReceived;
 pub use actor_resource::Actor;
 pub use core_context::{AutoHwmProfile, AutoHwmRecalcReason, Context, ContextOptions};
-pub use discovery_resource::Discovery;
+pub use core_utilities::{AtomicCounter, Stopwatch, Thread};
+pub use discovery_resource::{Discovery, RouteKind};
 pub use domain::Received;
 pub use error::{
     BindError, CloseError, ConfigError, ConnectError, HandlerError, RecvError, RequestError,
@@ -128,11 +131,11 @@ pub use message_socket_contracts::{DealerSocket, PairSocket};
 pub use messaging_operation_contracts::SendResult;
 pub use messaging_subscription_event::SubscriptionEvent;
 pub use monitor_contracts::{
-    MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY, MonitorEvent, MonitorEventType,
-    MonitorSourceKind, MonitorStatus, Monitorable, SocketMonitor, SocketMonitorEventMask,
+    MonitorEvent, MonitorEventType, MonitorSourceKind, MonitorStatus, Monitorable, SocketMonitor,
+    SocketMonitorEventMask, MONITOR_EVENT_ALL, MONITOR_EVENT_CONNECTION_READY,
 };
 pub use poller_contracts::{
-    POLLCOMPLETION, POLLIN, POLLOUT, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
+    PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer, POLLCOMPLETION, POLLIN, POLLOUT,
 };
 pub use pubsub_socket_contracts::{PubSocket, SubSocket, XPubSocket, XSubSocket};
 pub use registry_models::{

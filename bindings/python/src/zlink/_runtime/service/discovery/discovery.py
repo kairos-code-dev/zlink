@@ -22,10 +22,12 @@ from ...._native.ffi import (
     ZlinkRegistryStatus,
     ZlinkRegistryTopologyEntry,
     ZlinkRegistryTopologyFilter,
+    ZlinkRoutingId,
     ZlinkSpotRoute,
     lib,
 )
 from ....contracts.service.discovery import (
+    DiscoveryRoute,
     MemberPeerEntry,
     RegistryServiceSummaryEntry,
     RegistryServiceSummaryFilter,
@@ -35,6 +37,7 @@ from ....contracts.service.discovery import (
     SpotRoute,
 )
 from ....contracts.service.spot import ActorRoute
+from ...messaging.message_materializer import Message
 from ..spot import _actor_id_bytes, _actor_ref_from_native
 from ...handles.native_support import (
     BindError,
@@ -129,6 +132,12 @@ class SpotRoute:
 
 
 @dataclass(frozen=True)
+class DiscoveryRoute:
+    owner_routing_id: RoutingId
+    value: Message
+
+
+@dataclass(frozen=True)
 class RegistryTopologyFilter:
     auto_connect_type: AutoConnectType | None = None
     service_kind: ServiceKind | None = None
@@ -220,6 +229,28 @@ def _build_topology_filter(filter_):
     return native
 
 
+def _route_bytes(value):
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return bytes(value)
+
+
+def _route_buffer(data):
+    return ctypes.create_string_buffer(data) if data else None
+
+
+def _route_buffer_ptr(buffer):
+    return None if buffer is None else ctypes.cast(buffer, ctypes.c_void_p)
+
+
+def _message_from_native(native):
+    msg = Message.__new__(Message)
+    msg._msg = native
+    msg._valid = True
+    msg._keepalive = None
+    return msg
+
+
 class Discovery:
     def __init__(self, ctx, auto_connect_type, channel_name: str):
         self._handle = lib().zlink_discovery_new(
@@ -284,6 +315,54 @@ class Discovery:
             actor=_actor_ref_from_native(native.actor),
             current_spot_rid=_routing_id_bytes(native.current_spot_rid),
             current_spot_kind=SpotKind(int(native.current_spot_kind)),
+        )
+
+    def bind_route(self, kind: int, key, value):
+        key_bytes = _route_bytes(key)
+        value_bytes = _route_bytes(value)
+        key_buffer = _route_buffer(key_bytes)
+        value_buffer = _route_buffer(value_bytes)
+        rc = lib().zlink_discovery_bind_route(
+            self._handle,
+            _validated_uint32(kind, field="kind"),
+            _route_buffer_ptr(key_buffer),
+            len(key_bytes),
+            _route_buffer_ptr(value_buffer),
+            len(value_bytes),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def unbind_route(self, kind: int, key):
+        key_bytes = _route_bytes(key)
+        key_buffer = _route_buffer(key_bytes)
+        rc = lib().zlink_discovery_unbind_route(
+            self._handle,
+            _validated_uint32(kind, field="kind"),
+            _route_buffer_ptr(key_buffer),
+            len(key_bytes),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+
+    def resolve_route(self, kind: int, key):
+        key_bytes = _route_bytes(key)
+        key_buffer = _route_buffer(key_bytes)
+        owner = ZlinkRoutingId()
+        value = ZlinkMsg()
+        rc = lib().zlink_discovery_resolve_route(
+            self._handle,
+            _validated_uint32(kind, field="kind"),
+            _route_buffer_ptr(key_buffer),
+            len(key_bytes),
+            ctypes.byref(owner),
+            ctypes.byref(value),
+        )
+        if rc != 0:
+            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
+        return DiscoveryRoute(
+            owner_routing_id=_routing_id_bytes(owner),
+            value=_message_from_native(value),
         )
 
     @property

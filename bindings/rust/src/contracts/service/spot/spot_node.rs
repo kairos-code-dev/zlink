@@ -69,17 +69,28 @@ impl SpotNode {
         <Self as SpotNodeContract>::connect_router_channel_peer(self, channel_name, endpoint)
     }
 
+    /// Connects to a router-channel peer on `channel_name` by `peer_rid` at `endpoint`.
+    pub fn connect_router_channel_peer_rid(
+        &self,
+        channel_name: &str,
+        peer_rid: &RoutingId,
+        endpoint: &str,
+    ) -> Result<(), ConnectError> {
+        <Self as SpotNodeContract>::connect_router_channel_peer_rid(
+            self,
+            channel_name,
+            peer_rid,
+            endpoint,
+        )
+    }
+
     /// Disconnects a router-channel peer on `channel_name` at `endpoint`.
     pub fn disconnect_router_channel_peer(
         &self,
         channel_name: &str,
         endpoint: &str,
     ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::disconnect_router_channel_peer(
-            self,
-            channel_name,
-            endpoint,
-        )
+        <Self as SpotNodeContract>::disconnect_router_channel_peer(self, channel_name, endpoint)
     }
 
     /// Disconnects a router-channel peer on `channel_name` by `peer_rid`.
@@ -88,11 +99,7 @@ impl SpotNode {
         channel_name: &str,
         peer_rid: &RoutingId,
     ) -> Result<(), ConnectError> {
-        <Self as SpotNodeContract>::disconnect_router_channel_peer_rid(
-            self,
-            channel_name,
-            peer_rid,
-        )
+        <Self as SpotNodeContract>::disconnect_router_channel_peer_rid(self, channel_name, peer_rid)
     }
 
     /// Attaches a discovery service so the node auto-connects discovered peers.
@@ -203,12 +210,7 @@ impl SpotNode {
         key_pem: &str,
         require_client_cert: bool,
     ) -> Result<(), ConfigError> {
-        <Self as SpotNodeContract>::set_tls_server(
-            self,
-            cert_pem,
-            key_pem,
-            require_client_cert,
-        )
+        <Self as SpotNodeContract>::set_tls_server(self, cert_pem, key_pem, require_client_cert)
     }
 
     /// Configures TLS for the node's outbound connections.

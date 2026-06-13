@@ -1,4 +1,3 @@
-use crate::Received;
 use crate::actor_models::{ActorJoinRequest, ActorRef, SpotActorLifecycleEvent};
 use crate::error::{CloseError, ConfigError, HandlerError, RecvError};
 use crate::flags::RecvFlags;
@@ -9,6 +8,7 @@ use crate::spot_models::SpotDispatchInfo;
 use crate::spot_operations::ActorJoinReplyOp;
 use crate::spot_operations::{Empty, ReplyOp, RequestOp, SendOp};
 use crate::topic_message_contract::TopicMessage;
+use crate::Received;
 
 /// A spot: a multi-role messaging endpoint that can publish, subscribe, route,
 /// request, reply, and host actors over an existing spot node.

@@ -8,16 +8,27 @@ import { validateCString } from '../../options/validation';
 import { boolBuffer, readInt32Option } from '../../sockets/socket_options';
 import { normalizeRoutingId } from '../../core/routing_id';
 import { RoutingId } from '../../../contracts';
+import { Message } from '../../../contracts/messaging';
 import { SocketOption } from '../../options/option_mapping';
 import {
   type ActorRef,
   type ActorRoute,
+  type DiscoveryRoute,
   type MemberPeerEntry,
   type SpotKindValue,
   type SpotRoute,
   type AutoConnectType,
 } from '../../../contracts/service';
 import { mapMemberPeerEntry, type MemberPeerEntryRaw } from '../registry/registry_support';
+
+function normalizeRouteBytes(value: Buffer | Uint8Array | string, label: string): Buffer {
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (typeof value === 'string') return Buffer.from(value);
+  throw new TypeError(`${label} must be Buffer, Uint8Array, or string`);
+}
 
 export interface DiscoveryActorRefRaw {
   nodeRid: Buffer;
@@ -35,6 +46,11 @@ export interface DiscoverySpotRouteRaw {
   spotRid: Buffer;
   ownerNodeRid: Buffer;
   spotKind: number;
+}
+
+export interface DiscoveryRouteRaw {
+  ownerRoutingId: Buffer;
+  value: Buffer;
 }
 
 function actorRefFromRaw(raw: DiscoveryActorRefRaw): ActorRef {
@@ -109,6 +125,32 @@ export class Discovery extends NativeHandle {
         )
       )
     );
+  }
+
+  bindRoute(kind: number, key: Buffer | Uint8Array | string, value: Buffer | Uint8Array | string): void {
+    const normalizedKey = normalizeRouteBytes(key, 'key');
+    const normalizedValue = normalizeRouteBytes(value, 'value');
+    configCall('discovery route bind failed', () => {
+      requireNative().discoveryBindRoute(this._native, kind, normalizedKey, normalizedValue);
+    });
+  }
+
+  unbindRoute(kind: number, key: Buffer | Uint8Array | string): void {
+    const normalizedKey = normalizeRouteBytes(key, 'key');
+    configCall('discovery route unbind failed', () => {
+      requireNative().discoveryUnbindRoute(this._native, kind, normalizedKey);
+    });
+  }
+
+  resolveRoute(kind: number, key: Buffer | Uint8Array | string): DiscoveryRoute {
+    const normalizedKey = normalizeRouteBytes(key, 'key');
+    const raw = configCall('discovery route resolve failed', () =>
+      requireNative().discoveryResolveRoute(this._native, kind, normalizedKey)
+    ) as DiscoveryRouteRaw;
+    return {
+      ownerRoutingId: RoutingId.from(raw.ownerRoutingId),
+      value: Message.from(raw.value)
+    };
   }
 
   get spotOwnerSyncEnabled(): boolean {

@@ -760,6 +760,14 @@ Java must not add ROUTER-to-Actor or Actor-to-ROUTER direct messaging methods.
 Callers compose `Discovery.resolveActor()` or `Discovery.resolveSpot()` with
 existing SPOT routed APIs.
 
+## Discovery Route Table
+
+Java exposes the discovery route table through `Discovery.bindRoute(...)`,
+`Discovery.unbindRoute(...)`, and `Discovery.resolveRoute(...)`. Route kind
+values follow the core contract: invalid `0`, actor `1`, spot name `2`, and
+actor session `3`. `resolveRoute(...)` returns a `DiscoveryRoute` containing
+`ownerRoutingId()` and the route `value()` as a `Message`.
+
 ## Spot Get-Or-Create
 
 Java exposes `SpotNode.getOrCreateSpot(RoutingId)`. It maps directly to
@@ -775,6 +783,7 @@ created the logical spot.
 Java exposes router channel peer wiring on the public `SpotNode` contract:
 
 - `connectRouterChannelPeer(channelName, endpoint)`
+- `connectRouterChannelPeerRid(channelName, peerRid, endpoint)`
 - `disconnectRouterChannelPeer(channelName, endpoint)`
 - `disconnectRouterChannelPeerRid(channelName, peerRid)`
 - `attachSpotRouteChannelDiscovery(channelName, discovery)`

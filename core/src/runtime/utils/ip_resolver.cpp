@@ -518,9 +518,10 @@ int zlink::ip_resolver_t::resolve_nic_name (ip_addr_t *ip_addr_, const char *nic
     errno_assert (sd != -1);
 
     struct ifreq ifr;
+    memset (&ifr, 0, sizeof (ifr));
 
     //  Copy interface name for ioctl get.
-    strncpy (ifr.ifr_name, nic_, sizeof (ifr.ifr_name));
+    strncpy (ifr.ifr_name, nic_, sizeof (ifr.ifr_name) - 1);
 
     //  Fetch interface address.
     const int rc = ioctl (sd, SIOCGIFADDR, (caddr_t) &ifr, sizeof (ifr));

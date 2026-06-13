@@ -296,7 +296,7 @@ std::string stream_t::session_id () const
 
 task_t<void> stream_t::close ()
 {
-    _state->closed = true;
+    _state->closed.store (true, std::memory_order_release);
     return task_t<void> (result_t<void>::success ());
 }
 
@@ -307,7 +307,7 @@ stream_write_call_t stream_t::write_packet (const stream_header_t &header,
     return stream_write_call_t (
       header, payload,
       [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
-          if (state->closed) {
+          if (state->closed.load (std::memory_order_acquire)) {
               return task_t<void> (result_t<void>::failure (
                 framework_error_kind_t::disconnected, "STREAM session is disconnected"));
           }
@@ -718,7 +718,7 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
 result_t<void> stream_runtime_t::dispatch_disconnected (packet_stream_session_t &session,
                                                         stream_t &stream) const
 {
-    stream._state->closed = true;
+    stream._state->closed.store (true, std::memory_order_release);
     return dispatch_serial (stream, "disconnected",
                             [&] { return session.on_disconnected (stream); });
 }

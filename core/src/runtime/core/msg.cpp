@@ -213,7 +213,8 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
             return -1;
         }
 
-        if (src_._u.base.flags & msg_t::shared)
+        const bool promoted_to_shared = !(src_._u.base.flags & msg_t::shared);
+        if (!promoted_to_shared)
             content->refcnt.add (1);
         else {
             content->refcnt.set (2);
@@ -229,6 +230,8 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
                     content->ffn (content->data, content->hint);
                 if (lmsg_owner)
                     free (content);
+            } else if (promoted_to_shared) {
+                src_._u.base.flags &= ~msg_t::shared;
             }
             const int init_rc = init ();
             errno_assert (init_rc == 0);
@@ -248,6 +251,8 @@ int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
                 content->ffn (content->data, content->hint);
             if (lmsg_owner)
                 free (content);
+        } else if (promoted_to_shared) {
+            src_._u.base.flags &= ~msg_t::shared;
         }
         const int init_rc = init ();
         errno_assert (init_rc == 0);

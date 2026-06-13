@@ -4,7 +4,10 @@
 
 #include <zlink/stream_connector.hpp>
 
+#include <deque>
 #include <chrono>
+#include <memory>
+#include <mutex>
 #include <utility>
 
 namespace zlink::axmol_stream_connector
@@ -32,19 +35,41 @@ class stream_connector_t::runtime_t
     std::function<void (const packet_t &)> packet_callback;
     std::function<void (const packet_t &)> request_callback;
     std::function<void (connection_state_t)> state_callback;
-    std::function<void (std::function<void ()>)> axmol_thread_dispatcher =
-      [] (std::function<void ()> callback) {
-          if (callback) {
-              callback ();
-          }
-      };
+    std::function<void (std::function<void ()>)> axmol_thread_dispatcher;
+    std::mutex pending_callbacks_mutex;
+    std::deque<std::function<void ()>> pending_callbacks;
+
+    void post_to_axmol_thread (std::function<void ()> callback)
+    {
+        if (!callback) {
+            return;
+        }
+        if (axmol_thread_dispatcher) {
+            axmol_thread_dispatcher (std::move (callback));
+            return;
+        }
+        const std::lock_guard lock (pending_callbacks_mutex);
+        pending_callbacks.push_back (std::move (callback));
+    }
+
+    void drain_pending_callbacks ()
+    {
+        std::deque<std::function<void ()>> callbacks;
+        {
+            const std::lock_guard lock (pending_callbacks_mutex);
+            callbacks.swap (pending_callbacks);
+        }
+        for (auto &callback : callbacks) {
+            callback ();
+        }
+    }
 
     void emit_state (connection_state_t state)
     {
         if (!state_callback) {
             return;
         }
-        axmol_thread_dispatcher ([callback = state_callback, state] { callback (state); });
+        post_to_axmol_thread ([callback = state_callback, state] { callback (state); });
     }
 
     void emit_request (packet_t packet)
@@ -52,13 +77,18 @@ class stream_connector_t::runtime_t
         if (!request_callback) {
             return;
         }
-        axmol_thread_dispatcher (
+        post_to_axmol_thread (
           [callback = request_callback, packet = std::move (packet)] { callback (packet); });
     }
 };
 
-stream_connector_t::stream_connector_t () : _runtime (std::make_unique<runtime_t> ()) {}
-stream_connector_t::~stream_connector_t () = default;
+stream_connector_t::stream_connector_t () : _runtime (std::make_shared<runtime_t> ()) {}
+stream_connector_t::~stream_connector_t ()
+{
+    if (_runtime) {
+        close ();
+    }
+}
 stream_connector_t::stream_connector_t (stream_connector_t &&) noexcept = default;
 stream_connector_t &stream_connector_t::operator= (stream_connector_t &&) noexcept = default;
 
@@ -117,18 +147,21 @@ void stream_connector_t::request_json (std::string packet_name,
     auto request = _runtime->connector.request<zlink::message_t> (std::move (packet));
     request.timeout (
       std::chrono::milliseconds (static_cast<int> (timeout_seconds * 1000.0)));
-    request.submit ([runtime = _runtime.get (), reply_name = std::move (reply_name)] (
+    request.submit ([runtime = std::weak_ptr<runtime_t> (_runtime), reply_name = std::move (reply_name)] (
                       zlink::stream_connector::result_t<zlink::message_t> result) mutable {
         if (!result) {
             return;
         }
-        runtime->emit_request (to_axmol_packet (std::move (reply_name), result.value ()));
+        if (auto owner = runtime.lock ()) {
+            owner->emit_request (to_axmol_packet (std::move (reply_name), result.value ()));
+        }
     });
 }
 
 void stream_connector_t::dispatch ()
 {
     _runtime->connector.dispatch ();
+    _runtime->drain_pending_callbacks ();
 }
 
 void stream_connector_t::set_axmol_thread_dispatcher (

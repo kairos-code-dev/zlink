@@ -45,6 +45,12 @@ bool is_authorization_header (const std::string &name)
     return iequals (name, "authorization");
 }
 
+bool can_retry_reused_connection (http_method_t method)
+{
+    return method == http_method_t::get || method == http_method_t::head
+           || method == http_method_t::options;
+}
+
 zlink::framework::result_t<raw_http_response_t>
 finish_response (raw_http_response_t response,
                  std::chrono::steady_clock::time_point started_at,
@@ -113,10 +119,10 @@ class request_performer_t
             if (_options.compression && !_request.sink) {
                 const auto encoding = find_header (raw.headers, "content-encoding");
                 if (encoding && iequals (*encoding, "gzip")) {
-                    raw.body = gunzip (raw.body);
+                    raw.body = gunzip (raw.body, _options.max_response_body_size);
                     erase_header (raw.headers, "content-encoding");
                 } else if (encoding && iequals (*encoding, "deflate")) {
-                    raw.body = inflate_deflate (raw.body);
+                    raw.body = inflate_deflate (raw.body, _options.max_response_body_size);
                     erase_header (raw.headers, "content-encoding");
                 }
             }
@@ -214,7 +220,7 @@ class request_performer_t
                 return std::move (outcome.response);
             }
             catch (...) {
-                if (!reused) {
+                if (!reused || !can_retry_reused_connection (method)) {
                     throw;
                 }
             }

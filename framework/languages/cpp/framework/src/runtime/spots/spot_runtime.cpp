@@ -283,14 +283,20 @@ task_t<bool> spot_context_t::close ()
 
 task_t<bool> spot_context_t::close_erased ()
 {
-    if (!_state || !_state->node || _state->closed || _state->actor_count != 0) {
+    if (!_state || !_state->node) {
         co_return result_t<bool>::success (false);
     }
-    if (_state->callback_depth != 0) {
-        _state->close_requested = true;
-        co_return result_t<bool>::success (true);
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
+        if (_state->closed || _state->actor_count != 0) {
+            co_return result_t<bool>::success (false);
+        }
+        if (_state->callback_depth != 0) {
+            _state->close_requested = true;
+            co_return result_t<bool>::success (true);
+        }
+        co_return result_t<bool>::success (_state->close_now ());
     }
-    co_return result_t<bool>::success (_state->close_now ());
 }
 
 task_t<actor_ref_t> spot_context_t::leaveActor_erased (
@@ -303,6 +309,7 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
         return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
     }
+    std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
     if (_state->node_rid.empty () || actor_ref.node_rid ().value () != _state->node_rid.value ()) {
         return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor is not owned by this SPOT node"));
@@ -416,6 +423,7 @@ task_t<void> entry_spot_context_t::destroyActor_erased (const actor_ref_t &actor
         return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "actor ref is empty"));
     }
+    std::lock_guard<std::recursive_mutex> node_lock (_state->node->mutex);
     if (actor.node_rid ().empty () || actor.node_rid ().value () != _state->node_rid.value ()) {
         return task_t<void> (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "actor is not owned by this Entry SPOT"));
@@ -1122,6 +1130,7 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)
 spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
                                                        zlink::message_t request)
 {
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto found = _state->spot_factories.find (spot_name);
     if (found == _state->spot_factories.end ()) {
         throw framework_exception_t (framework_error_kind_t::spot_create_failed,
@@ -1185,6 +1194,7 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
                                                               spot_rid_t spot_rid,
                                                               zlink::message_t request)
 {
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto rid_value = std::string (spot_rid.value ());
     if (const auto existing = _state->spot_contexts_by_rid.find (rid_value);
         existing != _state->spot_contexts_by_rid.end ()) {
@@ -1252,6 +1262,7 @@ std::optional<spot_info_t> spot_node_runtime_t::find_spot (spot_rid_t spot_rid) 
 
 std::vector<spot_info_t> spot_node_runtime_t::list_spots () const
 {
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     std::vector<spot_info_t> spots;
     spots.reserve (_state->spot_names_by_rid.size ());
     for (const auto &[rid, name] : _state->spot_names_by_rid) {
@@ -1262,15 +1273,21 @@ std::vector<spot_info_t> spot_node_runtime_t::list_spots () const
 
 task_t<bool> spot_node_runtime_t::close_spot (spot_rid_t spot_rid)
 {
-    const auto found = _state->spot_contexts_by_rid.find (std::string (spot_rid.value ()));
-    if (found == _state->spot_contexts_by_rid.end ()) {
-        co_return result_t<bool>::success (false);
+    std::optional<spot_context_t> context;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        const auto found = _state->spot_contexts_by_rid.find (std::string (spot_rid.value ()));
+        if (found == _state->spot_contexts_by_rid.end ()) {
+            co_return result_t<bool>::success (false);
+        }
+        context = found->second;
     }
-    co_return result_t<bool>::success (found->second.close ().result ().value ());
+    co_return result_t<bool>::success (context->close ().result ().value ());
 }
 
 std::optional<std::string> spot_node_runtime_t::spot_name_for (spot_rid_t spot_rid) const
 {
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto found = _state->spot_names_by_rid.find (std::string (spot_rid.value ()));
     if (found == _state->spot_names_by_rid.end ()) {
         return std::nullopt;
@@ -1280,9 +1297,11 @@ std::optional<std::string> spot_node_runtime_t::spot_name_for (spot_rid_t spot_r
 
 std::optional<spot_route_t> spot_node_runtime_t::resolve_spot (spot_rid_t spot_rid) const
 {
-    if (const auto name = spot_name_for (spot_rid)) {
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    const auto found = _state->spot_names_by_rid.find (std::string (spot_rid.value ()));
+    if (found != _state->spot_names_by_rid.end ()) {
         return spot_route_t{node_rid_t::from_string (_state->snapshot.name), std::move (spot_rid),
-                            *name};
+                            found->second};
     }
     for (const auto &[_, resolver] : _state->resolvers) {
         if (auto route = resolver (spot_rid)) {

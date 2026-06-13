@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/streams/stream.hpp>
 
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <map>
@@ -26,7 +27,7 @@ class stream_state_t
 {
   public:
     std::string session_id;
-    bool closed = false;
+    std::atomic_bool closed{false};
     std::deque<std::string> serial_log;
     std::vector<stream_header_t> written_headers;
     std::vector<zlink::message_t> written_payloads;

@@ -44,7 +44,7 @@
 ### Framework 계층 (언어별)
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
-| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | Medium (쿠키 경로 스코프와 런타임 동시성 후보 남음, 인바운드 프레임 DoS·리다이렉트 자격증명 유출·Unreal 동시성/teardown은 2026-06-14 수정 완료) |
+| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 추가 보안 수정 없음 (쿠키 경로, HTTP 압축 해제 상한, retry 정책, spot/actor 동기화, Axmol/Godot 수명·dispatcher, stream closed flag는 2026-06-14 수정 완료. M2/M5/L4는 코드 대조로 반박 종결) |
 | Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 추가 보안 수정 없음 (인바운드/WS DoS, LZ4, JSON 입력 검증은 2026-06-14 수정 완료. S3 타이머 누수 의심은 보안 이슈 아님) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 추가 보안 수정 없음 (부록의 codec naming 정확성 후보는 별도 품질 항목) |
 | .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 추가 보안 수정 없음 (인바운드/WS/LZ4 DoS와 수신 메시지·callback queue 한도는 2026-06-14 수정 완료) |
@@ -101,7 +101,7 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 | Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` (2026-06-14 출력 길이 상한 적용 완료) |
 | Java | `ZLinkStreamLz4Pickler.java:53`, `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51` (2026-06-14 출력 길이 상한 적용 완료) |
 | .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` (2026-06-14 출력 길이 상한 적용 완료) |
-| C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, 단 http 디코딩은 무제한 — cpp 리포트 L1) |
+| C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, HTTP gzip/deflate 해제 결과도 `max_response_body_size`로 제한하도록 수정 완료) |
 
 **수정**: 할당 전 `resultLength`를 max-decompressed-size로 clamp.
 

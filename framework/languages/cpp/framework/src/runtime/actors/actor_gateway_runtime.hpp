@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -30,6 +31,7 @@ struct relayed_frame_t
 class actor_gateway_state_t
 {
   public:
+    mutable std::recursive_mutex mutex;
     using join_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
       const actor_ref_t &, spot_rid_t, const zlink::message_t &)>;
     using join_entry_spot_dispatcher_t =

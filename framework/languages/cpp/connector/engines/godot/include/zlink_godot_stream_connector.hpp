@@ -61,7 +61,7 @@ class stream_connector_t
 
   private:
     class runtime_t;
-    std::unique_ptr<runtime_t> _runtime;
+    std::shared_ptr<runtime_t> _runtime;
 };
 
 } // namespace zlink::godot_stream_connector

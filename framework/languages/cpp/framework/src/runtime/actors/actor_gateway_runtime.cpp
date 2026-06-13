@@ -65,6 +65,7 @@ send_call_t bound_session_t::send_raw (const zlink::message_t &payload)
 
 send_call_t bound_session_t::disconnect ()
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (_actor_id);
     if (found != _state->actors_by_id.end ()) {
         if (found->second.ref.generation () != _generation) {
@@ -79,6 +80,7 @@ send_call_t bound_session_t::disconnect ()
 
 send_call_t bound_session_t::send_erased (std::string packet_name, const zlink::message_t &payload)
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (_actor_id);
     if (found != _state->actors_by_id.end () && found->second.disconnected) {
         return send_call_t (result_t<void>::failure (framework_error_kind_t::disconnected,
@@ -135,6 +137,7 @@ bound_session_t actor_context_t::bound_session () const
 result_t<detail::actor_join_reply_t>
 actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &request)
 {
+    const std::lock_guard lock (_state->mutex);
     if (_actor_ref.empty ()) {
         return result_t<detail::actor_join_reply_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty");
@@ -167,6 +170,7 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
 
 actor_join_entry_spot_call_t actor_context_t::join_entry_spot (node_rid_t spot_node_rid)
 {
+    const std::lock_guard lock (_state->mutex);
     if (_actor_ref.empty ()) {
         return actor_join_entry_spot_call_t (result_t<actor_ref_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
@@ -233,6 +237,7 @@ bound_session_t session_actor_t::bound_session () const
 
 relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink::message_t &payload)
 {
+    const std::lock_guard lock (_state->mutex);
     if (_ref.empty ()) {
         return relay_call_t (result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "session actor is not bound"));
@@ -270,6 +275,7 @@ relay_call_t session_actor_t::relay (const stream_header_t &header, const zlink:
 relay_request_call_t session_actor_t::relay_request (const stream_header_t &header,
                                                      const zlink::message_t &payload)
 {
+    const std::lock_guard lock (_state->mutex);
     if (_ref.empty ()) {
         return relay_request_call_t (result_t<zlink::message_t>::failure (
           framework_error_kind_t::actor_route_not_found, "session actor is not bound"));
@@ -313,6 +319,7 @@ relay_request_call_t session_actor_t::relay_request (const stream_header_t &head
 
 relay_call_t session_actor_t::notify_disconnected ()
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
     if (found != _state->actors_by_id.end ()) {
         if (found->second.ref.generation () != _ref.generation ()) {
@@ -344,6 +351,7 @@ session_actor_manager_t::operator= (session_actor_manager_t &&) noexcept = defau
 result_t<session_actor_t> session_actor_manager_t::create (std::string actor_type,
                                                            std::string actor_id)
 {
+    const std::lock_guard lock (_state->mutex);
     if (actor_type.empty () || actor_id.empty ()) {
         return result_t<session_actor_t>::failure (framework_error_kind_t::request_protocol_error,
                                                    "actor type and id are required");
@@ -359,6 +367,7 @@ result_t<session_actor_t> session_actor_manager_t::create (std::string actor_typ
 
 std::optional<session_actor_t> session_actor_manager_t::find (std::string actor_id) const
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (actor_id);
     if (found == _state->actors_by_id.end ()) {
         return std::nullopt;
@@ -381,6 +390,7 @@ result_t<session_actor_t> session_actor_manager_t::get_or_create (std::string ac
 
 request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor_ref)
 {
+    const std::lock_guard lock (_state->mutex);
     if (actor_ref.empty ()) {
         return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
           framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
@@ -405,6 +415,7 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
 
 void session_actor_manager_t::unbind_session (std::string actor_id) noexcept
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (actor_id);
     if (found != _state->actors_by_id.end ()) {
         found->second.bound = false;
@@ -434,22 +445,26 @@ session_actor_manager_t actor_gateway_runtime_t::manager () const
 
 std::vector<relayed_frame_t> actor_gateway_runtime_t::relayed_frames () const
 {
+    const std::lock_guard lock (_state->mutex);
     return _state->relayed_frames;
 }
 
 std::vector<relayed_frame_t> actor_gateway_runtime_t::bound_session_pushes () const
 {
+    const std::lock_guard lock (_state->mutex);
     return _state->bound_session_pushes;
 }
 
 bool actor_gateway_runtime_t::actor_bound (std::string actor_id) const
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (actor_id);
     return found != _state->actors_by_id.end () && found->second.bound;
 }
 
 bool actor_gateway_runtime_t::actor_disconnected (std::string actor_id) const
 {
+    const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (actor_id);
     return found != _state->actors_by_id.end () && found->second.disconnected;
 }
@@ -461,6 +476,7 @@ actor_context_t actor_gateway_runtime_t::actor_context (const actor_ref_t &actor
 
 result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &actor_ref)
 {
+    const std::lock_guard lock (_state->mutex);
     if (actor_ref.empty ()) {
         return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                         "actor ref is empty");
@@ -483,6 +499,7 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
 
 result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_ref)
 {
+    const std::lock_guard lock (_state->mutex);
     if (actor_ref.empty ()) {
         return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                         "actor ref is empty");
@@ -505,6 +522,7 @@ result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_
 
 void actor_gateway_runtime_t::bind_session_stream (std::string actor_id, stream_t stream)
 {
+    const std::lock_guard lock (_state->mutex);
     _state->bound_session_sinks[actor_id] =
       [stream = std::move (stream)] (std::string packet_name,
                                      const zlink::message_t &payload) mutable {
@@ -517,23 +535,27 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id, stream_
 
 void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id)
 {
+    const std::lock_guard lock (_state->mutex);
     _state->bound_session_sinks.erase (actor_id);
 }
 
 void actor_gateway_runtime_t::on_join_spot (
   actor_gateway_state_t::join_spot_dispatcher_t dispatcher)
 {
+    const std::lock_guard lock (_state->mutex);
     _state->join_spot_dispatcher = std::move (dispatcher);
 }
 
 void actor_gateway_runtime_t::on_join_entry_spot (
   actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher)
 {
+    const std::lock_guard lock (_state->mutex);
     _state->join_entry_spot_dispatcher = std::move (dispatcher);
 }
 
 void actor_gateway_runtime_t::on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher)
 {
+    const std::lock_guard lock (_state->mutex);
     _state->relay_dispatcher = std::move (dispatcher);
 }
 

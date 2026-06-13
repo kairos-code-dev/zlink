@@ -21,7 +21,7 @@ namespace beast = boost::beast;
       "HTTP response compressed body is malformed");
 }
 
-std::string inflate_raw (const unsigned char *data, std::size_t size)
+std::string inflate_raw (const unsigned char *data, std::size_t size, std::size_t decoded_limit)
 {
     if (size == 0) {
         fail_decode ();
@@ -40,6 +40,11 @@ std::string inflate_raw (const unsigned char *data, std::size_t size)
         beast::error_code ec;
         inflater.write (zs, beast::zlib::Flush::sync, ec);
         decoded.append (chunk, sizeof chunk - zs.avail_out);
+        if (decoded.size () > decoded_limit) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_failed,
+              "HTTP response compressed body exceeds max_response_body_size");
+        }
         if (ec == beast::zlib::error::end_of_stream) {
             return decoded;
         }
@@ -49,7 +54,7 @@ std::string inflate_raw (const unsigned char *data, std::size_t size)
     }
 }
 
-std::string gunzip (const std::string &compressed)
+std::string gunzip (const std::string &compressed, std::size_t decoded_limit)
 {
     const auto *data = reinterpret_cast<const unsigned char *> (compressed.data ());
     const auto size = compressed.size ();
@@ -81,17 +86,17 @@ std::string gunzip (const std::string &compressed)
     if (offset >= size) {
         fail_decode ();
     }
-    return inflate_raw (data + offset, size - offset);
+    return inflate_raw (data + offset, size - offset, decoded_limit);
 }
 
-std::string inflate_deflate (const std::string &compressed)
+std::string inflate_deflate (const std::string &compressed, std::size_t decoded_limit)
 {
     const auto *data = reinterpret_cast<const unsigned char *> (compressed.data ());
     const auto size = compressed.size ();
     if (size >= 2 && (data[0] & 0x0f) == 8 && ((data[0] << 8 | data[1]) % 31) == 0) {
-        return inflate_raw (data + 2, size - 2);
+        return inflate_raw (data + 2, size - 2, decoded_limit);
     }
-    return inflate_raw (data, size);
+    return inflate_raw (data, size, decoded_limit);
 }
 
 std::optional<std::string> find_header (const std::map<std::string, std::string> &headers,

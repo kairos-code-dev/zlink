@@ -611,7 +611,11 @@ void zlink::pipe_t::process_pipe_term ()
     //  service/socket teardown we can observe a duplicate term command after
     //  we've already transitioned into a peer-terminated state; treat that as
     //  an idempotent no-op instead of asserting.
-    if (_state == waiting_for_delimiter || _state == term_ack_sent || _state == term_req_sent2) {
+    if (_state == waiting_for_delimiter) {
+        return;
+    }
+    if (_state == term_ack_sent || _state == term_req_sent2) {
+        send_pipe_term_ack (_peer);
         return;
     }
 

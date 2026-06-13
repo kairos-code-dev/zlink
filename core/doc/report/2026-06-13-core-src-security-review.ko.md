@@ -843,16 +843,16 @@ Codex 에이전트 리뷰:
 
 ---
 
-## 부록 A. 추가 추적 후보 (Low ~ Medium)
+## 부록 A. 추가 추적 후보 처리 기록 (Low ~ Medium)
 
-| 항목 | 위치 | 출처 | 요지 |
+| 항목 | 위치 | 출처 | 처리 |
 |------|------|------|------|
-| `init_view` OOM 롤백 | `core/src/runtime/core/msg.cpp:216-255` | repo 고유 | 비-shared 경로 실패 시 `src_`의 `shared` 플래그가 영구 세팅으로 잔존(행동상 결함, refcnt는 상쇄 → UAF 아님) |
-| slice content thread-local 풀 교차스레드 | `core/src/runtime/core/msg.cpp:31-63` | repo 고유 | 스레드 A에서 만든 view를 B에서 close → B 풀 적재. 풀 churn. 메시지 수명 모델을 별도 추적한다 |
-| signaler eventfd write EINTR 미루프 | `core/src/runtime/core/signaler.cpp:151` | repo 고유 | socketpair 분기는 EINTR 루프인데 eventfd 분기는 없음 → 드물게 `errno_assert` abort |
-| `check_term_acks` 비-acquire load | `core/src/runtime/core/own.cpp:167` | upstream 파생 | `_sent_seqnum.get()`이 비-acquire volatile read. 메일박스 뮤텍스 배리어 덕에 현재 안전하나 주석/assert 권장 |
-| `resolve_nic_name` strncpy 미종단 | `core/src/runtime/utils/ip_resolver.cpp:477` | upstream 파생 | AIX/HPUX 경로 한정. `ifr_name` NUL 미종단 가능 → 후속 `strcmp` over-read |
-| `blob_t::operator<` NULL memcmp | `core/src/runtime/utils/blob.hpp:87` | upstream 파생 | 빈 blob에 `memcmp(NULL, x, 0)` — 표준상 UB, 실 libc에선 무해(UBSan only) |
+| `init_view` OOM 롤백 | `core/src/runtime/core/msg.cpp:216-255` | repo 고유 | 수정 완료. 비-shared 메시지를 view 생성 중 shared로 승격한 뒤 실패하면 refcount를 되돌리고 `shared` flag도 해제한다. |
+| slice content thread-local 풀 교차스레드 | `core/src/runtime/core/msg.cpp:31-63` | repo 고유 | 반박 종결. thread-local 풀은 성능 cache일 뿐이고, 다른 thread에서 반환된 slice content가 그 thread의 풀로 들어가도 소유권·수명 계약은 깨지지 않는다. |
+| signaler eventfd write EINTR 미루프 | `core/src/runtime/core/signaler.cpp:151` | repo 고유 | 수정 완료. eventfd write도 EINTR이면 재시도한다. |
+| `check_term_acks` 비-acquire load | `core/src/runtime/core/own.cpp:167` | upstream 파생 | 반박 종결. 이 값은 메일박스 command 순서와 term ack accounting의 같은 thread 처리 순서로 판정되며, 이번 변경 범위에서 추가 memory-order 계약은 필요하지 않다. |
+| `resolve_nic_name` strncpy 미종단 | `core/src/runtime/utils/ip_resolver.cpp:477` | upstream 파생 | 수정 완료. `ifreq`를 0으로 초기화하고 `ifr_name`은 마지막 byte를 남겨 복사한다. |
+| `blob_t::operator<` NULL memcmp | `core/src/runtime/utils/blob.hpp:87` | upstream 파생 | 수정 완료. 비교 길이가 0이면 `memcmp`를 호출하지 않는다. |
 
 ---
 
@@ -885,7 +885,12 @@ Codex 에이전트 리뷰:
 - **C5 (메일박스 단일 소비자 가정)**: 초판은 `_scheduled` 경쟁으로 핸들러가 이중 post될 수 있다고
   의심했지만, `write/flush`와 `check_read`가 모두 `_sync` 안에서 실행되고 poller가 단일 워커로
   동작하는 점을 확인해 #8은 반박했다. 이 메모는 오탐 방지 기록으로 남긴다.
-- **S1 (`process_pipe_term` 중복 처리)**: `pipe.cpp:614` 부근의 early-return은 **repo 추가**(upstream은 해당 상태에서 assert). 중복 `pipe_term`을 무시하는데, 그 중복이 진짜 중복이 아니라 별개 요청이라면 ack가 매칭되지 않아 피어의 `check_term_acks`가 영원히 대기 → own_t 누수 / 컨텍스트 미종료. 모든 `send_pipe_term` 호출자가 "파이프당 1회"임을 추적 검증 필요.
+- **S1 (`process_pipe_term` 중복 처리)**: 2026-06-14 수정 완료. 이미 `term_ack_sent` 또는 `term_req_sent2` 상태라면 중복 `pipe_term`을 no-op으로 삼지 않고 `pipe_term_ack`를 다시 보낸다. 아직 pending message drain 중인 `waiting_for_delimiter` 상태는 기존처럼 조기 ack를 보내지 않는다.
+
+검증:
+- `cmake --build core/build -j2` 통과.
+- `ctest --test-dir core/build -R 'unittest_(msg_view|ip_resolver)|test_stream_threadsafe|test_socket_runtime|test_spot_actor_dispatch' --output-on-failure` 통과. 13개 테스트가 통과했다.
+- core runtime 변경 후 `bindings/dev_sync_local_core_libs.sh`를 실행했고, 동기화된 native library로 `bindings/python/tests/run_tests.sh`를 실행했다. Python 단위 테스트 81개와 sample 14개가 통과했다. 스크립트가 복사한 release artifact는 검증 후 커밋하지 않도록 되돌렸다.
 
 ---
 

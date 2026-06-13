@@ -86,7 +86,8 @@ struct blob_t
     //  Defines an order relationship on blob_t.
     bool operator< (blob_t const &other_) const
     {
-        const int cmpres = memcmp (_data, other_._data, std::min (_size, other_._size));
+        const size_t compare_size = std::min (_size, other_._size);
+        const int cmpres = compare_size == 0 ? 0 : memcmp (_data, other_._data, compare_size);
         return cmpres < 0 || (cmpres == 0 && _size < other_._size);
     }
 

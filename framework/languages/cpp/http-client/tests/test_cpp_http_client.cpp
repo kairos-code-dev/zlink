@@ -229,7 +229,8 @@ http::response<http::string_body> make_response (const http::request<http::strin
         response.prepare_payload ();
         return response;
     }
-    if (target == "/echo-cookie") {
+    if (target == "/echo-cookie" || target == "/admin/echo-cookie"
+        || target == "/administrator/echo-cookie") {
         response.body () =
           nlohmann::json{{"cookie", std::string (request[http::field::cookie])}}.dump ();
         response.prepare_payload ();
@@ -238,6 +239,14 @@ http::response<http::string_body> make_response (const http::request<http::strin
     if (target == "/set-cookie") {
         response.insert (http::field::set_cookie, "session=abc123; Path=/; Max-Age=300");
         response.insert (http::field::set_cookie, "theme=dark; Path=/games");
+        response.body () = R"({"ok":true})";
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/set-cookie-overlap") {
+        response.insert (http::field::set_cookie, "scope=root; Path=/");
+        response.insert (http::field::set_cookie, "scope=admin; Path=/admin");
+        response.insert (http::field::set_cookie, "scope=games; Path=/games");
         response.body () = R"({"ok":true})";
         response.prepare_payload ();
         return response;
@@ -271,6 +280,12 @@ http::response<http::string_body> make_response (const http::request<http::strin
     if (target == "/gzip") {
         response.set (http::field::content_encoding, "gzip");
         response.body () = gzip_compress ("hello gzip payload");
+        response.prepare_payload ();
+        return response;
+    }
+    if (target == "/gzip-large") {
+        response.set (http::field::content_encoding, "gzip");
+        response.body () = gzip_compress (std::string (200000, 'z'));
         response.prepare_payload ();
         return response;
     }
@@ -1374,6 +1389,22 @@ TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
     EXPECT_EQ (result.value ().status, 200);
 }
 
+TEST (ZLinkHttpClient, DoesNotInternallyRetryNonIdempotentRequestsOnStaleConnection)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ()).json ().build ();
+
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+
+    const auto result = client.post ("/flaky")
+                          .body (create_game_request_t{"post-on-stale-connection"})
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_FALSE (result);
+    EXPECT_TRUE (result.error ()->is_retriable ());
+}
+
 TEST (ZLinkHttpClient, StoresAndSendsCookies)
 {
     loopback_http_server_t server;
@@ -1394,6 +1425,31 @@ TEST (ZLinkHttpClient, StoresAndSendsCookies)
     const auto plain = without_jar.get ("/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (plain);
     EXPECT_EQ (nlohmann::json::parse (plain.value ().body).at ("cookie").get<std::string> (), "");
+}
+
+TEST (ZLinkHttpClient, MatchesCookiePathsWithSegmentBoundaries)
+{
+    loopback_http_server_t server;
+    auto client =
+      zlink::http_client::client_t::create (server.base_url ()).json ().cookies ().build ();
+
+    ASSERT_TRUE (client.get ("/set-cookie-overlap").submit_raw ().result ());
+
+    const auto administrator = client.get ("/administrator/echo-cookie").submit_raw ().result ();
+    ASSERT_TRUE (administrator) << administrator.error ()->what ();
+    const auto administrator_cookie =
+      nlohmann::json::parse (administrator.value ().body).at ("cookie").get<std::string> ();
+    EXPECT_NE (administrator_cookie.find ("scope=root"), std::string::npos);
+    EXPECT_EQ (administrator_cookie.find ("scope=admin"), std::string::npos);
+    EXPECT_EQ (administrator_cookie.find ("scope=games"), std::string::npos);
+
+    const auto admin = client.get ("/admin/echo-cookie").submit_raw ().result ();
+    ASSERT_TRUE (admin) << admin.error ()->what ();
+    const auto admin_cookie =
+      nlohmann::json::parse (admin.value ().body).at ("cookie").get<std::string> ();
+    EXPECT_NE (admin_cookie.find ("scope=root"), std::string::npos);
+    EXPECT_NE (admin_cookie.find ("scope=admin"), std::string::npos);
+    EXPECT_EQ (admin_cookie.find ("scope=games"), std::string::npos);
 }
 
 TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
@@ -1421,6 +1477,21 @@ TEST (ZLinkHttpClient, DecompressesGzipResponses)
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body, "hello gzip payload");
     EXPECT_EQ (result.value ().headers.count ("Content-Encoding"), 0U);
+}
+
+TEST (ZLinkHttpClient, RejectsDecompressedResponseAboveBodyLimit)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .compression ()
+                    .max_response_body_size (1024)
+                    .build ();
+
+    const auto result = client.get ("/gzip-large").submit_raw ().result ();
+
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
 }
 
 TEST (ZLinkHttpClient, DownloadStreamsResponseBody)

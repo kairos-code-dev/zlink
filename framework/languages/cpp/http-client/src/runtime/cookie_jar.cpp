@@ -10,6 +10,27 @@
 namespace zlink::http_client::detail
 {
 
+namespace
+{
+
+constexpr std::size_t max_cookies_per_host = 128;
+
+bool path_matches_cookie (const std::string &request_path, const std::string &cookie_path)
+{
+    if (cookie_path.empty () || cookie_path == "/") {
+        return true;
+    }
+    if (request_path == cookie_path) {
+        return true;
+    }
+    if (request_path.rfind (cookie_path, 0) != 0) {
+        return false;
+    }
+    return cookie_path.back () == '/' || request_path[cookie_path.size ()] == '/';
+}
+
+} // namespace
+
 void cookie_jar_t::store (const std::string &host, const std::string &set_cookie_header)
 {
     std::string_view remaining (set_cookie_header);
@@ -66,12 +87,29 @@ void cookie_jar_t::store (const std::string &host, const std::string &set_cookie
     const std::lock_guard<std::mutex> lock (_mutex);
     _cookies.erase (std::remove_if (_cookies.begin (), _cookies.end (),
                                     [&] (const cookie_t &existing) {
-                                        return existing.host == host
-                                               && existing.name == cookie.name;
+                                        return existing.host == host && existing.name == cookie.name
+                                               && existing.path == cookie.path;
                                     }),
                     _cookies.end ());
     if (!expired) {
         _cookies.push_back (std::move (cookie));
+        std::size_t cookies_for_host = 0;
+        for (const auto &stored : _cookies) {
+            if (stored.host == host) {
+                ++cookies_for_host;
+            }
+        }
+        while (cookies_for_host > max_cookies_per_host) {
+            auto oldest = std::find_if (_cookies.begin (), _cookies.end (),
+                                        [&] (const cookie_t &stored) {
+                                            return stored.host == host;
+                                        });
+            if (oldest == _cookies.end ()) {
+                break;
+            }
+            _cookies.erase (oldest);
+            --cookies_for_host;
+        }
     }
 }
 
@@ -81,7 +119,8 @@ cookie_jar_t::header_for (const std::string &host, const std::string &path, bool
     const std::lock_guard<std::mutex> lock (_mutex);
     std::string header;
     for (const auto &cookie : _cookies) {
-        if (cookie.host != host || (cookie.secure && !secure) || path.rfind (cookie.path, 0) != 0) {
+        if (cookie.host != host || (cookie.secure && !secure)
+            || !path_matches_cookie (path, cookie.path)) {
             continue;
         }
         if (!header.empty ()) {

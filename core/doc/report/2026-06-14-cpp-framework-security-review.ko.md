@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/cpp/{framework,connector,extensions,http-client}` (zlink core 위의 상위 래퍼 계층)
-- **상태**: CR1, CR2, H1, H2, H3 종결. M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
+- **상태**: 확인된 보안·안정성 항목 모두 종결. M2/M5는 코드 대조 결과 현재 취약 경로가 성립하지 않아 반박 종결.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **신뢰 모델**: stream-connector는 원격 서버에 대한 **클라이언트**이며, 인바운드 프레임의 신뢰 불가 주체는 서버다.
@@ -18,12 +18,12 @@
 | H2 | High | 동시성 / data race·UAF | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:108,191,268` | 수정 완료(2026-06-14) |
 | H3 | High | 리소스 누수 / teardown | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:88` | 수정 완료(2026-06-14) |
 | H4 | ~~High~~ → **Low** | 동시성 / drain-semantics | `framework/src/runtime/dispatch/offload_executor.cpp:65-78`, `runtime/execution/serial_execution_queue.cpp` | ❌ **반박(하향)** |
-| M1 | Medium | 쿠키 경로 스코프 | `http-client/.../cookie_jar.cpp:84` | 확인 |
-| M2 | Medium | 동시성 / 수명(잠복) | `framework/.../channels/route_handler_invoker.cpp:26` | 확인(잠복) |
-| M3 | Medium | data race | `framework/.../spots/spot_runtime.cpp`, `actors/actor_gateway_runtime.cpp` | 확인 |
-| M4 | Medium | 수명 / UAF | `connector/engines/axmol/...`, godot 등가 | 확인(좁은 창) |
-| M5 | Medium | 동시성 / 코루틴 정지 | `http-client/.../coroutine_scheduler.cpp:28` | 의심 |
-| L1~L6 | Low | (부록) | — | — |
+| M1 | Medium | 쿠키 경로 스코프 | `http-client/.../cookie_jar.cpp` | 수정 완료(2026-06-14) |
+| M2 | Medium | 동시성 / 수명(잠복) | `framework/.../channels/route_handler_invoker.cpp` | 반박 종결(2026-06-14) |
+| M3 | Medium | data race | `framework/.../spots/spot_runtime.cpp`, `actors/actor_gateway_runtime.cpp` | 수정 완료(2026-06-14) |
+| M4 | Medium | 수명 / UAF | `connector/engines/axmol/...`, godot 등가 | 수정 완료(2026-06-14) |
+| M5 | Medium | 동시성 / 코루틴 정지 | `http-client/.../coroutine_scheduler.cpp` | 반박 종결(2026-06-14) |
+| L1~L6 | Low | (부록) | — | 수정 또는 반박 종결(2026-06-14) |
 
 > ⚠️ **아래 §Codex 교차검증이 최종 판정이다.** H4는 반박되어 하향됨.
 
@@ -195,6 +195,13 @@ Codex 에이전트 리뷰:
 - **M4 엔진 어댑터 dangling 런타임(Axmol/Godot)** `connector/engines/axmol/src/...:120,125`: `runtime = _runtime.get()` raw 캡처, `~stream_connector_t() = default`가 pending 콜백이 stale 포인터 보유한 채 `_runtime` 소멸. Unreal과 달리 close-on-destruct 없음. **수정**: `weak_ptr` 캡처 또는 소멸자 close.
 - **M5 코루틴 continuation이 모든 예외 삼킴(코루틴 정지 가능)** `coroutine_scheduler.cpp:28-34`: `try{ continuation(); }catch(...){}`. continuation이 `task_completion_source` 완료 전 throw 시 await 코루틴이 영구히 재개되지 않을 수 있다. **의심** — completion source가 throw 전 항상 resolve되는지 확인 필요.
 
+**처리 기록(2026-06-14)**:
+- M1은 `cookie_jar_t`가 RFC 6265 path 경계 규칙을 따르도록 수정했다. 동명 쿠키 dedupe도 `host + name + path` 기준으로 바꿔 서로 다른 path의 동명 쿠키를 지우지 않는다.
+- M2는 현재 코드에서 `route_handler_invoker_t`가 제출한 handler task를 호출자가 `.result()`로 동기 대기하는 계약을 다시 확인해 반박 종결했다. fire-and-forget으로 바꾸는 미래 리팩터 위험은 남지만, 현재 실행 경로에서는 캡처된 registry/service 참조가 task보다 먼저 사라지는 경로가 없다.
+- M3은 `actor_gateway_state_t`와 `spot_node_builder_state_t`에 node/state mutex를 추가하고, actor gateway map/vector와 spot node map/set 접근 경로를 보호하도록 수정했다.
+- M4는 Axmol/Godot adapter runtime 소유권을 `shared_ptr`로 바꾸고 request callback이 `weak_ptr`만 캡처하게 했다. adapter 소멸자는 `close()`를 호출해 pending operation을 종료한다.
+- M5는 `task_t` promise의 `unhandled_exception()`이 result를 실패로 완료하고, `task_shared_state_t::complete()`가 result 설정 뒤 continuation을 예약하는 구조를 확인해 반박 종결했다. 기본 resume scheduler의 catch는 완료 후 callback/continuation 예외를 삼키는 방어막이지, completion source를 미완료 상태로 남기는 경로가 아니다.
+
 ---
 
 ## 부록 A. Low
@@ -205,6 +212,20 @@ Codex 에이전트 리뷰:
 - **L4 `change_state`가 `transport_mutex` 없이 핸들러 벡터 순회** `connector_runtime.cpp:217-233`: 핸들러가 connect 후 등록될 때만 race(보통 setup-time).
 - **L5 `stream_runtime.cpp` `closed` 플래그가 plain bool** `:310`: 풀 스레드가 세팅. atomic화 권장. **의심**.
 - **L6 Axmol/Godot 기본 스레드 디스패처가 콜백 인라인 실행**: integrator가 `set_*_thread_dispatcher` 누락 시 엔진 메인 스레드로 마샬 안 됨(통합 footgun).
+
+**처리 기록(2026-06-14)**:
+- L1은 gzip/deflate 해제 결과가 `max_response_body_size`를 넘으면 `request_failed`로 중단하도록 수정했다.
+- L2는 stale keep-alive connection에 대한 내부 재시도를 GET/HEAD/OPTIONS로 제한했다. POST 같은 비멱등 요청은 명시적 `.retry(...)` 정책이 없으면 내부에서 조용히 재전송하지 않는다.
+- L3은 host별 cookie 보관 한도를 128개로 제한했다.
+- L4는 코드 대조 결과 setup-time handler registration 경로에 한정되고, 이번에 M4/L6 adapter callback 경로를 queue/weak ownership으로 정리해 보안 항목으로는 반박 종결했다.
+- L5는 stream session `closed` 플래그를 `std::atomic_bool`로 바꿨다.
+- L6은 Axmol/Godot adapter에 dispatcher가 없을 때 callback을 인라인 실행하지 않고 adapter queue에 넣은 뒤 `dispatch()`에서 실행하도록 수정했다.
+
+실행 검증:
+- `cmake --build framework/languages/cpp/build --target test_cpp_http_client zlink_axmol_stream_connector zlink_godot_stream_connector test_cpp_framework_spot_runtime test_cpp_framework_actor_gateway -j2` 통과. 현재 CMake 출력 기준 actor gateway 실행 파일은 `test_cpp_framework_ActorGateway_actor_session_relay` 이름으로 등록되어 있다.
+- `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_http_client$' --output-on-failure` 통과. 54개 테스트가 통과했다.
+- `ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_(spot_runtime|actor_gateway)$' --output-on-failure`는 `test_cpp_framework_spot_runtime` 1개를 실행해 통과했다. actor gateway는 대소문자가 다른 별도 이름으로 등록되어 아래 명령으로 실행했다.
+- `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_framework_ActorGateway_actor_session_relay$' --output-on-failure` 통과.
 
 ---
 
@@ -223,8 +244,8 @@ Codex 에이전트 리뷰:
 
 ---
 
-## 처리 우선순위
-1. **CR2**(교차호스트 리다이렉트 auth 제거) — 원격 트리거. CR1은 2026-06-14에 수정 완료.
-2. **H1**(응답 body_limit), **H2/H3**(Unreal IO 스레드 race + close-on-destruct; request 콜백도 동일 패턴 — Codex ADDITIONAL).
-3. **M1**(쿠키 경계 + host+name dedupe 경로 무시), **M2/M3**(프레임워크 교차스레드 캡처/맵), **M4**(엔진 dangling 런타임).
-4. ~~H4~~ executor drain — **Codex 반박으로 Low 격하**, 선택적 정리.
+## 최종 처리 기록
+
+1. CR1, CR2, H1, H2, H3은 2026-06-14에 수정과 테스트를 완료했다.
+2. M1, M3, M4와 L1, L2, L3, L5, L6은 2026-06-14에 수정과 테스트를 완료했다.
+3. M2, M5, H4, L4는 실제 코드 대조 결과 현재 취약 경로가 성립하지 않아 반박 종결했다.

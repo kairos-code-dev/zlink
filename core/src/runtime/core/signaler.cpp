@@ -150,7 +150,10 @@ void zlink::signaler_t::send ()
 #endif
 #if defined ZLINK_HAVE_EVENTFD
     const uint64_t inc = 1;
-    ssize_t sz = write (_w, &inc, sizeof (inc));
+    ssize_t sz;
+    do {
+        sz = write (_w, &inc, sizeof (inc));
+    } while (sz == -1 && errno == EINTR);
     errno_assert (sz == sizeof (inc));
 #elif defined ZLINK_HAVE_WINDOWS
     const char dummy = 0;

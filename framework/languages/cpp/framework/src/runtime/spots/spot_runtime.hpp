@@ -28,6 +28,7 @@ class spot_node_builder_state_t
   public:
     explicit spot_node_builder_state_t (std::string name) : snapshot{.name = std::move (name)} {}
 
+    mutable std::recursive_mutex mutex;
     spot_node_snapshot_t snapshot;
     std::map<std::string, std::type_index> spot_factories;
     std::map<std::string, spot_lifecycle_callbacks_t> spot_lifecycles;
@@ -57,7 +58,11 @@ class spot_context_state_t
   public:
     bool close_now ()
     {
-        if (!node || closed || actor_count != 0) {
+        if (!node) {
+            return false;
+        }
+        std::lock_guard<std::recursive_mutex> node_lock (node->mutex);
+        if (closed || actor_count != 0) {
             return false;
         }
         close_requested = false;

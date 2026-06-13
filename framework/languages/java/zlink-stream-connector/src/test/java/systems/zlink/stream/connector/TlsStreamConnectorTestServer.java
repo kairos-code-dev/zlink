@@ -104,6 +104,19 @@ final class TlsStreamConnectorTestServer implements Closeable {
         return result;
     }
 
+    CompletableFuture<Void> sendBytesAsync(byte[] bytes) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Channel channel = awaitClientChannel();
+        channel.writeAndFlush(Unpooled.wrappedBuffer(bytes)).addListener(write -> {
+            if (write.isSuccess()) {
+                result.complete(null);
+            } else {
+                result.completeExceptionally(write.cause());
+            }
+        });
+        return result;
+    }
+
     @Override
     public void close() {
         if (clientChannel != null) {

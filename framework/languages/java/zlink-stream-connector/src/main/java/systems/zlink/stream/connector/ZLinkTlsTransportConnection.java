@@ -42,6 +42,7 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
     static CompletionStage<ZLinkTlsTransportConnection> connectStage(
         URI endpoint,
         Duration connectTimeout,
+        int maxReceivePayloadSize,
         boolean skipServerCertificateValidation) {
         CompletableFuture<ZLinkTlsTransportConnection> result = new CompletableFuture<>();
         ZLinkTlsTransportConnection connection = new ZLinkTlsTransportConnection();
@@ -69,7 +70,7 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
                         channel.alloc(),
                         endpoint.getHost(),
                         port));
-                    channel.pipeline().addLast(new FrameDecoder());
+                    channel.pipeline().addLast(new FrameDecoder(maxReceivePayloadSize));
                     channel.pipeline().addLast(new InboundHandler(connection));
                 }
             });
@@ -173,6 +174,12 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
     }
 
     private static final class FrameDecoder extends ByteToMessageDecoder {
+        private final int maxReceivePayloadSize;
+
+        private FrameDecoder(int maxReceivePayloadSize) {
+            this.maxReceivePayloadSize = maxReceivePayloadSize;
+        }
+
         @Override
         protected void decode(ChannelHandlerContext context, ByteBuf input, List<Object> output) {
             if (input.readableBytes() < 6) {
@@ -181,10 +188,11 @@ final class ZLinkTlsTransportConnection implements ZLinkStreamTransportConnectio
             input.markReaderIndex();
             int headerLength = input.readUnsignedShort();
             int payloadLength = input.readInt();
-            if (payloadLength < 0) {
-                throw new IllegalArgumentException("negative payload length");
-            }
-            if (input.readableBytes() < headerLength + payloadLength) {
+            int bodyLength = ZLinkStreamWireProtocol.checkedBodyLength(
+                headerLength,
+                payloadLength,
+                maxReceivePayloadSize);
+            if (input.readableBytes() < bodyLength) {
                 input.resetReaderIndex();
                 return;
             }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -301,6 +302,49 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void compressedResponseRejectsDecodedPayloadAboveReceiveLimit() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(options(
+                    server.endpoint(),
+                    ZLinkStreamDispatchMode.MANUAL,
+                    64 * 1024,
+                    2,
+                    false,
+                    false,
+                    ZLinkStreamCompression.LZ4));
+            connector.connect().await();
+
+            var requestFrame = server.readFrameAsync();
+            var replyFuture = connector.request(payload("Echo", "hello"))
+                .timeout(Duration.ofMillis(500))
+                .submit()
+                .toCompletableFuture();
+
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_RESPONSE,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ
+                        | ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED,
+                    request.header().requestSeq(),
+                    "Echo",
+                    Map.of()),
+                new byte[] {0x40, 0x03}).join();
+
+            CompletionException ex = assertThrows(CompletionException.class, replyFuture::join);
+            assertTrue(ex.getCause() instanceof IllegalArgumentException);
+        }
+    }
+
+    @Test
+    void lz4PicklerRejectsDecodedPayloadAboveReceiveLimit() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ZLinkStreamLz4Pickler.unpickle(new byte[] {0x40, 0x03}, 2));
+    }
+
+    @Test
     void webSocketRequestUsesBinaryFrameAndCorrelatesResponse() throws Exception {
         try (WebSocketStreamConnectorTestServer server = new WebSocketStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
@@ -333,6 +377,27 @@ final class ZLinkStreamConnectorTest {
             } finally {
                 reply.payload().close();
             }
+        }
+    }
+
+    @Test
+    void tcpTransportRejectsOversizedInboundPayloadPrefix() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(options(
+                    server.endpoint(),
+                    ZLinkStreamDispatchMode.MANUAL,
+                    64 * 1024,
+                    1,
+                    false,
+                    false,
+                    ZLinkStreamCompression.NONE));
+            connector.connect().await();
+
+            server.sendBytesAsync(framePrefix(0, 2)).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.state() == ZLinkStreamConnectionState.DISCONNECTED);
         }
     }
 
@@ -373,6 +438,27 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void tlsTransportRejectsOversizedInboundPayloadPrefix() throws Exception {
+        try (TlsStreamConnectorTestServer server = new TlsStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(options(
+                    server.endpoint(),
+                    ZLinkStreamDispatchMode.MANUAL,
+                    64 * 1024,
+                    1,
+                    false,
+                    true,
+                    ZLinkStreamCompression.NONE));
+            connector.connect().await();
+
+            server.sendBytesAsync(framePrefix(0, 2)).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.state() == ZLinkStreamConnectionState.DISCONNECTED);
+        }
+    }
+
+    @Test
     void wssRequestUsesBinaryFrameAndSkippedCertificateValidation() throws Exception {
         try (SecureWebSocketStreamConnectorTestServer server =
                  new SecureWebSocketStreamConnectorTestServer()) {
@@ -406,6 +492,27 @@ final class ZLinkStreamConnectorTest {
             } finally {
                 reply.payload().close();
             }
+        }
+    }
+
+    @Test
+    void webSocketTransportRejectsOversizedInboundPayloadPrefix() throws Exception {
+        try (WebSocketStreamConnectorTestServer server = new WebSocketStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(options(
+                    server.endpoint(),
+                    ZLinkStreamDispatchMode.MANUAL,
+                    64 * 1024,
+                    1,
+                    false,
+                    false,
+                    ZLinkStreamCompression.NONE));
+            connector.connect().await();
+
+            server.sendRawAsync(framePrefix(0, 2)).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> connector.state() == ZLinkStreamConnectionState.DISCONNECTED);
         }
     }
 
@@ -681,6 +788,7 @@ final class ZLinkStreamConnectorTest {
         assertEquals(3, options.maxReconnectAttempts());
         assertEquals(Duration.ofSeconds(5), options.connectTimeout());
         assertEquals(64 * 1024, options.maxSendPayloadSize());
+        assertEquals(64 * 1024, options.maxReceivePayloadSize());
         assertTrue(options.heartbeatEnabled());
         assertEquals(Duration.ofSeconds(1), options.heartbeatInterval());
         assertEquals(Duration.ofSeconds(5), options.heartbeatTimeout());
@@ -691,6 +799,19 @@ final class ZLinkStreamConnectorTest {
         assertFalse(options.skipServerCertificateValidation());
         assertEquals(ZLinkStreamCompression.NONE, options.compression());
         assertEquals("custom.packet", options.nameResolver().resolve(NamedPayload.class));
+    }
+
+    @Test
+    void receivePayloadLimitMustBePositive() {
+        assertThrows(IllegalArgumentException.class, () ->
+            createConnector(options(
+                URI.create("tcp://127.0.0.1:1"),
+                ZLinkStreamDispatchMode.MANUAL,
+                64 * 1024,
+                0,
+                false,
+                false,
+                ZLinkStreamCompression.NONE)));
     }
 
     private static ZLinkStreamEncodedPayload payload(String packetName, String body) {
@@ -719,6 +840,24 @@ final class ZLinkStreamConnectorTest {
         URI endpoint,
         ZLinkStreamDispatchMode dispatchMode,
         int maxSendPayloadSize) {
+        return options(
+            endpoint,
+            dispatchMode,
+            maxSendPayloadSize,
+            64 * 1024,
+            true,
+            false,
+            ZLinkStreamCompression.LZ4);
+    }
+
+    private static ZLinkStreamConnectorOptions options(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode,
+        int maxSendPayloadSize,
+        int maxReceivePayloadSize,
+        boolean reconnectEnabled,
+        boolean skipServerCertificateValidation,
+        ZLinkStreamCompression compression) {
         return new ZLinkStreamConnectorOptions(
             endpoint,
             dispatchMode,
@@ -726,15 +865,25 @@ final class ZLinkStreamConnectorTest {
             1,
             Duration.ofSeconds(1),
             maxSendPayloadSize,
-            true,
-            Duration.ofSeconds(1),
-            Duration.ofSeconds(5),
-            true,
+            maxReceivePayloadSize,
+            false,
+            Duration.ofMillis(25),
+            Duration.ofMillis(500),
+            reconnectEnabled,
             Duration.ofMillis(250),
             Duration.ofSeconds(5),
             2.0,
-            false,
-            ZLinkStreamCompression.LZ4);
+            skipServerCertificateValidation,
+            compression,
+            ZLinkStreamPacketNameResolver.defaultResolver(),
+            null);
+    }
+
+    private static byte[] framePrefix(int headerLength, int payloadLength) {
+        return ByteBuffer.allocate(6)
+            .putShort((short) headerLength)
+            .putInt(payloadLength)
+            .array();
     }
 
     private static byte[] hex(String value) {

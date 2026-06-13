@@ -71,6 +71,16 @@ final class WebSocketStreamConnectorTestServer implements Closeable {
         }, executor);
     }
 
+    CompletableFuture<Void> sendRawAsync(byte[] payload) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                writeBinaryMessage(socket().getOutputStream(), payload);
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+        }, executor);
+    }
+
     ZLinkStreamConnectorOptions options(ZLinkStreamDispatchMode dispatchMode) {
         return new ZLinkStreamConnectorOptions(
             endpoint(),

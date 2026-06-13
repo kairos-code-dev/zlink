@@ -103,6 +103,7 @@ public final class ZLinkStreamConnectorOptions {
     ZLinkStreamHeartbeatOptions heartbeat();
     ZLinkStreamReconnectOptions reconnect();
     int maxSendPayloadSize();       // default 64 * 1024
+    int maxReceivePayloadSize();    // default 64 * 1024
     boolean skipServerCertificateValidation();
     ZLinkStreamDispatchMode dispatchMode(); // default MANUAL
     ZLinkStreamCompression compression();   // default NONE

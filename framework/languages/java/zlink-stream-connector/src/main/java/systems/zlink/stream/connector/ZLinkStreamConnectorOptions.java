@@ -10,6 +10,7 @@ public record ZLinkStreamConnectorOptions(
     int maxReconnectAttempts,
     Duration connectTimeout,
     int maxSendPayloadSize,
+    int maxReceivePayloadSize,
     boolean heartbeatEnabled,
     Duration heartbeatInterval,
     Duration heartbeatTimeout,
@@ -30,6 +31,7 @@ public record ZLinkStreamConnectorOptions(
             Duration.ofSeconds(30),
             3,
             Duration.ofSeconds(5),
+            64 * 1024,
             64 * 1024,
             true,
             Duration.ofSeconds(1),
@@ -77,6 +79,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -112,6 +115,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -120,7 +124,9 @@ public record ZLinkStreamConnectorOptions(
             reconnectMaxDelay,
             reconnectBackoffFactor,
             skipServerCertificateValidation,
-            ZLinkStreamCompression.NONE);
+            ZLinkStreamCompression.NONE,
+            ZLinkStreamPacketNameResolver.defaultResolver(),
+            null);
     }
 
     public ZLinkStreamConnectorOptions(
@@ -146,6 +152,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -182,6 +189,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -217,6 +225,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -251,6 +260,7 @@ public record ZLinkStreamConnectorOptions(
             maxReconnectAttempts,
             connectTimeout,
             maxSendPayloadSize,
+            64 * 1024,
             heartbeatEnabled,
             heartbeatInterval,
             heartbeatTimeout,
@@ -258,7 +268,10 @@ public record ZLinkStreamConnectorOptions(
             reconnectInitialDelay,
             reconnectMaxDelay,
             reconnectBackoffFactor,
-            false);
+            false,
+            ZLinkStreamCompression.NONE,
+            ZLinkStreamPacketNameResolver.defaultResolver(),
+            null);
     }
 
     public ZLinkStreamConnectorOptions(

@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/java/{zlink-framework-core,-spring-boot-starter,zlink-stream-connector,-codecs,-json,-msgpack,-protobuf}/src/main/java`
-- **상태**: 리포트 전용. **코드 수정 없음.**
+- **상태**: 2026-06-14 원격 DoS 항목(F1, F2) 수정 완료. F3, F4, F5와 부록 항목은 후속 순서에서 별도 확인.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **바인딩 범위 주의**: 본 계층에 **네이티브 바인딩 없음**(`native`/`System.loadLibrary`/`MemorySegment`/`Pointer`/JNA grep 0건;
@@ -14,8 +14,8 @@
 
 | # | 심각도 | 분류 | 위치 | 상태 |
 |---|--------|------|------|------|
-| F1 | High | DoS / 무제한 수신 할당 + int 오버플로 | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191`, `ZLinkStreamWireProtocol.java:138` | 확인 |
-| F2 | Medium | DoS / LZ4 압축 폭탄 | `ZLinkStreamLz4Pickler.java:53` | 확인 |
+| F1 | High | DoS / 무제한 수신 할당 + int 오버플로 | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191`, `ZLinkStreamWireProtocol.java:138` | **수정 완료(2026-06-14)** |
+| F2 | Medium | DoS / LZ4 압축 폭탄 | `ZLinkStreamLz4Pickler.java:53` | **수정 완료(2026-06-14)** |
 | F3 | Medium | TLS 호스트명 검증 미설정(Netty) | `ZLinkTlsTransportConnection.java:54,68` | 확인(버전 확인 권장) |
 | F4 | Low | 동시성 / 비-thread-safe 핸들러 리스트 | `DefaultZLinkStreamConnector.java:43-45` | 확인 |
 | S1~S3 | — | (부록) | — | 의심 |
@@ -44,6 +44,27 @@
 
 **Codex 총평**: F1~F4와 코덱 의심 모두 반박 불가. 보정은 (1) WS의 F1 메커니즘 nuance, (2) **F2가 framework-core에도 있어 과소평가**됨.
 
+## 처리 기록 (2026-06-14)
+
+원격 DoS 항목(F1, F2)은 `framework/languages/java` 코드와 대조한 뒤 수정했다.
+
+- `ZLinkStreamConnectorOptions`에 `maxReceivePayloadSize`를 추가하고 기본값을 64KiB로 맞췄다.
+- TCP transport는 6바이트 prefix를 읽은 직후 payload 길이와 `headerLength + payloadLength`를 검사해 body buffer 할당 전에 초과 프레임을 거부한다.
+- TLS transport의 Netty `FrameDecoder`도 같은 검사 함수를 사용해 `ByteBuf`에서 payload 배열을 만들기 전에 초과 프레임을 거부한다.
+- WebSocket transport는 전체 메시지를 한 번 더 복사하기 전에 허용 가능한 최대 frame 길이를 검사하고, decode 단계에서도 payload 길이를 다시 검사한다.
+- LZ4 unpickle은 result length를 `long`으로 계산한 뒤 출력 배열을 할당하기 전에 상한을 넘는지 검사한다. stream-connector와 framework-core의 중복 구현을 모두 수정했다.
+- Java stream connector spec에 `maxReceivePayloadSize()` 공개 옵션을 추가했다.
+
+검증:
+
+- `./gradlew :zlink-stream-connector:test :zlink-framework-core:test` (`framework/languages/java`, 통과)
+
+Claude 리뷰:
+
+- 2026-06-14: F1, F2의 코드와 테스트를 직접 대조했고 "추가 이슈 없음" 판정을 받았다.
+
+core runtime과 `core/include` public header는 수정하지 않았으므로 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
+
 ---
 
 ## CONFIRMED
@@ -67,6 +88,7 @@ send 경로는 `maxSendPayloadSize` 강제(`DefaultZLinkStreamConnector.encodePa
 - `ZLinkStreamWireProtocol.decodeFrame:138`(WebSocket 경로 `ZLinkWebSocketTransportConnection.onBinary:56`): `new byte[payloadLength]`. 단 `frame.length == 6+headerLength+payloadLength`를 int read **후** 검증해 over-alloc이 실제 프레임 크기로 제한 → WS는 셋 중 가장 덜 노출.
 
 **수정**: `maxReceivePayloadSize`(또는 `maxSendPayloadSize` 재사용)를 3개 transport에 주입, `headerLength + payloadLength`(long 계산)가 cap 초과 시 **할당 전** 거부, 오버플로/`< 0` 거부. TCP·TLS가 위험.
+**처리 결과(2026-06-14)**: `maxReceivePayloadSize`를 옵션에 추가하고 TCP, TLS, WebSocket 수신 경로에 주입했다. TCP/TLS는 body 또는 payload 배열 할당 전에 검사하고, WebSocket은 메시지 복사 전 최대 frame 길이와 decode 단계 payload 길이를 모두 검사한다.
 
 ### F2 — LZ4 압축 폭탄 증폭 (두 모듈 중복)
 - `ZLinkStreamLz4Pickler.unpickle:53`(connector) **+ `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51`·`ZLinkStreamRuntime.java:558`(framework-core 중복)** · **확인(§Codex로 범위 확대)**
@@ -75,6 +97,7 @@ send 경로는 `maxSendPayloadSize` 강제(`DefaultZLinkStreamConnector.encodePa
   ```
   `resultLength = dataLength + resultDiff`, `resultDiff`는 `peekLittleEndian`(`decodeHeader:84`)로 와이어에서 최대 32비트 int. 작은 압축 프레임이 큰 `resultDiff` 선언 → `LZ4SafeDecompressor.decompress` 실행 전 ~4GB 할당. `FLAG_PAYLOAD_COMPRESSED` + `compression==LZ4`(`decodePayload:768`) 시 도달. F1 증폭.
   **수정**: 할당 전 `resultLength`를 수신 cap으로 clamp — **connector·framework-core 두 모듈 모두**.
+  **처리 결과(2026-06-14)**: connector LZ4는 `maxReceivePayloadSize`를 사용하고, framework-core LZ4는 기본 64KiB 상한을 적용한다. 두 구현 모두 출력 배열 할당 전에 result length를 검사한다.
 
 ### F3 — TLS 호스트명 검증 미설정(Netty 경로 추정)
 - `ZLinkTlsTransportConnection.connectStage:54,68` · **확인(Netty 버전 확인 권장)**

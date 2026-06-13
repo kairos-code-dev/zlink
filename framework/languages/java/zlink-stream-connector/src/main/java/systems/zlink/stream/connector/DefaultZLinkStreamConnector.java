@@ -111,6 +111,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             return ZLinkTlsTransportConnection.connectStage(
                 options.endpoint(),
                 options.connectTimeout(),
+                options.maxReceivePayloadSize(),
                 options.skipServerCertificateValidation()).thenAccept(this::activateConnection);
         }
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -140,7 +141,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
                     result.completeExceptionally(new IllegalStateException("connector is closed"));
                     return;
                 }
-                ZLinkTcpTransportConnection tcp = new ZLinkTcpTransportConnection(channel);
+                ZLinkTcpTransportConnection tcp = new ZLinkTcpTransportConnection(
+                    channel,
+                    options.maxReceivePayloadSize());
                 activateConnection(tcp);
                 result.complete(null);
             }
@@ -474,7 +477,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         }
         return ZLinkWebSocketTransportConnection.connectStage(
             clientBuilder.build(),
-            options.endpoint()).thenAccept(ws -> {
+            options.endpoint(),
+            options.maxReceivePayloadSize()).thenAccept(ws -> {
                 if (state == ZLinkStreamConnectionState.CLOSED) {
                     closeQuietly(ws);
                     throw new IllegalStateException("connector is closed");
@@ -694,6 +698,9 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (options.maxSendPayloadSize() <= 0) {
             throw new IllegalArgumentException("maxSendPayloadSize must be positive");
         }
+        if (options.maxReceivePayloadSize() <= 0) {
+            throw new IllegalArgumentException("maxReceivePayloadSize must be positive");
+        }
         Objects.requireNonNull(options.compression(), "compression");
         return options;
     }
@@ -765,7 +772,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (options.compression() != ZLinkStreamCompression.LZ4) {
             throw new IllegalStateException("compression codec is not configured");
         }
-        return ZLinkStreamLz4Pickler.unpickle(payload);
+        return ZLinkStreamLz4Pickler.unpickle(payload, options.maxReceivePayloadSize());
     }
 
     private static ZLinkStreamEncodedPayload copyPayload(

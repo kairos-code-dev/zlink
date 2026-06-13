@@ -6,6 +6,7 @@ import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.lz4.LZ4SafeDecompressor;
 
 final class ZLinkStreamLz4Pickler {
+    private static final int DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE = 64 * 1024;
     private static final int VERSION_MASK = 0x07;
     private static final LZ4Factory LZ4 = LZ4Factory.fastestInstance();
 
@@ -41,24 +42,32 @@ final class ZLinkStreamLz4Pickler {
     }
 
     static byte[] unpickle(byte[] source) {
+        return unpickle(source, DEFAULT_MAX_DECOMPRESSED_PAYLOAD_SIZE);
+    }
+
+    static byte[] unpickle(byte[] source, int maxDecompressedSize) {
         if (source.length == 0) {
             return new byte[0];
         }
         PickleHeader header = decodeHeader(source);
+        if (header.resultLength() > maxDecompressedSize) {
+            throw new IllegalArgumentException("LZ4 decoded stream payload exceeds maximum stream payload size");
+        }
         if (!header.compressed()) {
             return Arrays.copyOfRange(source, header.dataOffset(), source.length);
         }
-        byte[] output = new byte[header.resultLength()];
+        int resultLength = Math.toIntExact(header.resultLength());
+        byte[] output = new byte[resultLength];
         int decodedLength = LZ4.safeDecompressor().decompress(
             source,
             header.dataOffset(),
             source.length - header.dataOffset(),
             output,
             0);
-        if (decodedLength != header.resultLength()) {
+        if (decodedLength != resultLength) {
             throw new IllegalArgumentException(
                 "compressed stream payload decoded to " + decodedLength
-                    + " bytes, expected " + header.resultLength());
+                    + " bytes, expected " + resultLength);
         }
         return output;
     }
@@ -78,7 +87,7 @@ final class ZLinkStreamLz4Pickler {
             throw new IllegalArgumentException("LZ4 pickle header is incomplete");
         }
         int dataLength = source.length - dataOffset;
-        int resultDiff = sizeOfDiff == 0 ? 0 : peekLittleEndian(source, 1, sizeOfDiff);
+        long resultDiff = sizeOfDiff == 0 ? 0 : peekLittleEndian(source, 1, sizeOfDiff);
         return new PickleHeader(dataOffset, dataLength + resultDiff, resultDiff != 0);
     }
 
@@ -103,14 +112,14 @@ final class ZLinkStreamLz4Pickler {
         }
     }
 
-    private static int peekLittleEndian(byte[] source, int offset, int size) {
-        int result = 0;
+    private static long peekLittleEndian(byte[] source, int offset, int size) {
+        long result = 0;
         for (int i = 0; i < size; i++) {
-            result |= Byte.toUnsignedInt(source[offset + i]) << (i * 8);
+            result |= (long) Byte.toUnsignedInt(source[offset + i]) << (i * 8);
         }
         return result;
     }
 
-    private record PickleHeader(int dataOffset, int resultLength, boolean compressed) {
+    private record PickleHeader(int dataOffset, long resultLength, boolean compressed) {
     }
 }

@@ -10,9 +10,13 @@ import java.util.concurrent.CompletionStage;
 
 final class ZLinkTcpTransportConnection implements ZLinkStreamTransportConnection {
     private final AsynchronousSocketChannel channel;
+    private final int maxReceivePayloadSize;
 
-    ZLinkTcpTransportConnection(AsynchronousSocketChannel channel) {
+    ZLinkTcpTransportConnection(
+        AsynchronousSocketChannel channel,
+        int maxReceivePayloadSize) {
         this.channel = channel;
+        this.maxReceivePayloadSize = maxReceivePayloadSize;
     }
 
     AsynchronousSocketChannel channel() {
@@ -26,11 +30,16 @@ final class ZLinkTcpTransportConnection implements ZLinkStreamTransportConnectio
             prefix.flip();
             int headerLength = Short.toUnsignedInt(prefix.getShort());
             int payloadLength = prefix.getInt();
-            if (payloadLength < 0) {
-                return CompletableFuture.failedFuture(
-                    new IllegalArgumentException("negative payload length"));
+            int bodyLength;
+            try {
+                bodyLength = ZLinkStreamWireProtocol.checkedBodyLength(
+                    headerLength,
+                    payloadLength,
+                    maxReceivePayloadSize);
+            } catch (IllegalArgumentException ex) {
+                return CompletableFuture.failedFuture(ex);
             }
-            ByteBuffer body = ByteBuffer.allocate(headerLength + payloadLength);
+            ByteBuffer body = ByteBuffer.allocate(bodyLength);
             return readFully(channel, body).thenApply(ignoredBody -> {
                 body.flip();
                 byte[] header = new byte[headerLength];

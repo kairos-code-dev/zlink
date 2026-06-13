@@ -53,6 +53,14 @@ final class ZLinkStreamWireProtocolTest {
     }
 
     @Test
+    void frameProtocol_rejectsPayloadAboveReceiveLimitBeforeBodyAllocation() {
+        byte[] prefixOnly = hex("00 00 00 00 00 02");
+
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamWireProtocol.decodeFrame(prefixOnly, 1));
+    }
+
+    @Test
     void headerProtocol_rejectsRequestWithoutRequestSeq() {
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_REQUEST,

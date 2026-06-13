@@ -89,6 +89,19 @@ final class TcpStreamConnectorTestServer implements Closeable {
         }, executor);
     }
 
+    CompletableFuture<Void> sendBytesAsync(byte[] bytes) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                Socket socket = socket();
+                DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+                output.write(bytes);
+                output.flush();
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }, executor);
+    }
+
     ZLinkStreamConnectorOptions options(ZLinkStreamDispatchMode dispatchMode) {
         return new ZLinkStreamConnectorOptions(
             endpoint(),

@@ -18,14 +18,18 @@ final class ZLinkWebSocketTransportConnection
         new ArrayDeque<>();
     private volatile WebSocket webSocket;
     private volatile Throwable failure;
+    private final int maxReceivePayloadSize;
 
-    private ZLinkWebSocketTransportConnection() {
+    private ZLinkWebSocketTransportConnection(int maxReceivePayloadSize) {
+        this.maxReceivePayloadSize = maxReceivePayloadSize;
     }
 
     static CompletionStage<ZLinkWebSocketTransportConnection> connectStage(
         HttpClient client,
-        URI endpoint) {
-        ZLinkWebSocketTransportConnection connection = new ZLinkWebSocketTransportConnection();
+        URI endpoint,
+        int maxReceivePayloadSize) {
+        ZLinkWebSocketTransportConnection connection =
+            new ZLinkWebSocketTransportConnection(maxReceivePayloadSize);
         client.newWebSocketBuilder()
             .buildAsync(endpoint, connection)
             .whenComplete((socket, ex) -> {
@@ -50,10 +54,15 @@ final class ZLinkWebSocketTransportConnection
             socket.request(1);
             return CompletableFuture.completedFuture(null);
         }
+        if (data.remaining() > ZLinkStreamWireProtocol.maxFrameLength(maxReceivePayloadSize)) {
+            fail(new IllegalArgumentException("websocket frame exceeds max receive payload size"));
+            socket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
         byte[] frame = new byte[data.remaining()];
         data.get(frame);
         try {
-            enqueue(ZLinkStreamWireProtocol.decodeFrame(frame));
+            enqueue(ZLinkStreamWireProtocol.decodeFrame(frame, maxReceivePayloadSize));
         } catch (RuntimeException ex) {
             fail(ex);
         }

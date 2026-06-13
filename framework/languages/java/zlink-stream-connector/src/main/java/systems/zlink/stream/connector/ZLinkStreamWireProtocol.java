@@ -125,13 +125,18 @@ final class ZLinkStreamWireProtocol {
     }
 
     static Frame decodeFrame(byte[] frame) {
+        return decodeFrame(frame, 64 * 1024);
+    }
+
+    static Frame decodeFrame(byte[] frame, int maxPayloadSize) {
         if (frame.length < 6) {
             throw new IllegalArgumentException("frame prefix is incomplete");
         }
         ByteBuffer buffer = ByteBuffer.wrap(frame);
         int headerLength = Short.toUnsignedInt(buffer.getShort());
         int payloadLength = buffer.getInt();
-        if (payloadLength < 0 || frame.length != 6 + headerLength + payloadLength) {
+        int bodyLength = checkedBodyLength(headerLength, payloadLength, maxPayloadSize);
+        if (frame.length != 6L + bodyLength) {
             throw new IllegalArgumentException("frame length does not match prefix");
         }
         byte[] header = new byte[headerLength];
@@ -139,6 +144,24 @@ final class ZLinkStreamWireProtocol {
         buffer.get(header);
         buffer.get(payload);
         return new Frame(header, payload);
+    }
+
+    static int checkedBodyLength(int headerLength, int payloadLength, int maxPayloadSize) {
+        if (payloadLength < 0) {
+            throw new IllegalArgumentException("negative payload length");
+        }
+        if (payloadLength > maxPayloadSize) {
+            throw new IllegalArgumentException("payload exceeds max receive payload size");
+        }
+        long bodyLength = (long) headerLength + payloadLength;
+        if (bodyLength > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("frame body length exceeds supported size");
+        }
+        return (int) bodyLength;
+    }
+
+    static long maxFrameLength(int maxPayloadSize) {
+        return 6L + 0xFFFF + maxPayloadSize;
     }
 
     private static byte[] encodeMetadata(Map<String, String> metadata) {

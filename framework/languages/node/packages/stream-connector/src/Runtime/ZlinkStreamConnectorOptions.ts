@@ -22,6 +22,7 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
   validatePositive(options.connectTimeoutMs ?? 5000, 'ConnectTimeout');
   validatePositive(options.requestTimeoutMs ?? 30000, 'RequestTimeout');
   validatePositive(options.maxSendPayloadSize ?? 64 * 1024, 'MaxSendPayloadSize');
+  validatePositive(options.maxReceivePayloadSize ?? 64 * 1024, 'MaxReceivePayloadSize');
   validateHeartbeat(options.heartbeat);
   validateReconnect(options.reconnect);
 
@@ -43,6 +44,7 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
       maxAttempts: options.reconnect?.maxAttempts ?? 3
     },
     maxSendPayloadSize: options.maxSendPayloadSize ?? 64 * 1024,
+    maxReceivePayloadSize: options.maxReceivePayloadSize ?? 64 * 1024,
     skipServerCertificateValidation: options.skipServerCertificateValidation ?? false,
     dispatchMode: options.dispatchMode ?? ZlinkStreamDispatchMode.Manual,
     compression: options.compression ?? ZlinkStreamCompression.None,

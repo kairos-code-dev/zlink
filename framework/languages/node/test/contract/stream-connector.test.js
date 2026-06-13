@@ -22,6 +22,7 @@ test('stream connector exposes dotnet-shaped enums factory and default options',
   assert.equal(instance.options.requestTimeoutMs, 30000);
   assert.equal(instance.options.heartbeat.enabled, true);
   assert.equal(instance.options.reconnect.maxAttempts, 3);
+  assert.equal(instance.options.maxReceivePayloadSize, 64 * 1024);
 });
 
 test('stream header and frame codec follow dotnet binary layout', () => {
@@ -258,6 +259,48 @@ test('stream connector request resolves compressed response payloads', async () 
   await instance.dispatch();
   const reply = await pending;
   assert.equal(new TextDecoder().decode(reply.payload), 'A'.repeat(96));
+});
+
+test('stream connector rejects compressed response payloads above receive limit', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'tcp://127.0.0.1:19000',
+    transportFactory,
+    compression: connector.ZlinkStreamCompression.Lz4,
+    maxReceivePayloadSize: 1
+  });
+
+  await instance.connect();
+  const pending = instance
+    .request({
+      codec: connector.ZlinkStreamCodec.Raw,
+      payload: new TextEncoder().encode('request')
+    })
+    .packetName('CompressedRequest')
+    .timeout(1000)
+    .submit();
+
+  const requestFrame = connector.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+  const requestHeader = connector.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  transportFactory.connection.pushFrame(
+    connector.ZlinkStreamFrameCodec.encode(
+      connector.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Response,
+        codec: connector.ZlinkStreamCodec.Raw,
+        flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq | connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+        requestSeq: requestHeader.requestSeq,
+        name: 'CompressedReply',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      Uint8Array.from([0x40, 0x02])
+    )
+  );
+
+  await instance.dispatch();
+  await assert.rejects(
+    () => pending,
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.DecompressionFailed
+  );
 });
 
 test('stream connector dispatch invokes typed handlers for send frames', async () => {
@@ -511,6 +554,31 @@ test('stream connector default TCP transport sends request and dispatches respon
   }
 });
 
+test('stream connector TCP transport rejects oversized inbound payload prefix', async () => {
+  const server = net.createServer((socket) => {
+    socket.write(Buffer.from([0, 0, 0, 0, 0, 2]));
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `tcp://127.0.0.1:${port}`,
+    maxReceivePayloadSize: 1,
+    heartbeat: { enabled: false }
+  });
+
+  try {
+    await instance.connect();
+    await assert.rejects(
+      () => instance.dispatch(),
+      (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+    );
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
 test('stream connector immediate dispatch invokes handlers without manual dispatch', async () => {
   const server = net.createServer((socket) => {
     socket.write(connector.ZlinkStreamFrameCodec.encode(
@@ -626,6 +694,156 @@ test('stream connector default WebSocket transport sends request and dispatches 
   }
 });
 
+test('stream connector WebSocket transport rejects oversized inbound frame header', async () => {
+  const server = net.createServer((socket) => {
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd < 0) {
+        return;
+      }
+      const header = buffer.subarray(0, headerEnd).toString('utf8');
+      socket.write(createWebSocketAcceptResponse(header));
+      socket.write(Buffer.from([0x82, 0x02]));
+    });
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `ws://127.0.0.1:${port}/zlink`,
+    maxReceivePayloadSize: 1,
+    heartbeat: { enabled: false }
+  });
+
+  try {
+    await instance.connect();
+    await assert.rejects(
+      () => instance.dispatch(),
+      (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+    );
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector WebSocket transport rejects fragmented messages above receive limit', async () => {
+  const server = net.createServer((socket) => {
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd < 0) {
+        return;
+      }
+      const header = buffer.subarray(0, headerEnd).toString('utf8');
+      socket.write(createWebSocketAcceptResponse(header));
+      socket.write(createWebSocketFrame(Uint8Array.from([1]), { fin: false, opcode: 0x2 }));
+      socket.write(createWebSocketFrame(Uint8Array.from([2]), { fin: true, opcode: 0x0 }));
+    });
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `ws://127.0.0.1:${port}/zlink`,
+    maxReceivePayloadSize: 1,
+    heartbeat: { enabled: false }
+  });
+
+  try {
+    await instance.connect();
+    await assert.rejects(
+      () => instance.dispatch(),
+      (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+    );
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector WebSocket transport caps queued message bytes', async () => {
+  const streamFrame = connector.ZlinkStreamFrameCodec.encode(
+    connector.ZlinkStreamHeaderCodec.encode({
+      kind: connector.ZlinkStreamMessageKind.Send,
+      codec: connector.ZlinkStreamCodec.Raw,
+      flags: connector.ZlinkStreamHeaderFlags.None,
+      name: 'Queued',
+      metadata: connector.ZlinkStreamMetadataMap.empty
+    }),
+    new Uint8Array()
+  );
+  const server = net.createServer((socket) => {
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd < 0) {
+        return;
+      }
+      const header = buffer.subarray(0, headerEnd).toString('utf8');
+      socket.write(createWebSocketAcceptResponse(header));
+      socket.write(Buffer.concat([
+        createWebSocketBinaryFrame(streamFrame),
+        createWebSocketBinaryFrame(streamFrame)
+      ]));
+    });
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `ws://127.0.0.1:${port}/zlink`,
+    maxReceivePayloadSize: streamFrame.length,
+    heartbeat: { enabled: false }
+  });
+  let received = 0;
+  instance.on('Queued', () => {
+    received += 1;
+  });
+
+  try {
+    await instance.connect();
+    await instance.dispatch();
+    await assert.rejects(
+      () => instance.dispatch(),
+      (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+    );
+    assert.equal(received, 1);
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
+test('stream connector WebSocket handshake rejects oversized response headers', async () => {
+  const server = net.createServer((socket) => {
+    socket.once('data', () => {
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nX-Fill: ${'a'.repeat(17 * 1024)}`, () => socket.end());
+    });
+  });
+
+  await listen(server);
+  const { port } = server.address();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: `ws://127.0.0.1:${port}/zlink`,
+    heartbeat: { enabled: false }
+  });
+
+  try {
+    await assert.rejects(
+      () => instance.connect(),
+      (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameTooLarge
+    );
+  } finally {
+    await instance.close();
+    await closeServer(server);
+  }
+});
+
 test('stream connector secure WebSocket transport sends request and dispatches binary response frame', async () => {
   const credentials = createTestTlsCredentials();
   const server = tls.createServer(credentials, (socket) => handleWebSocketEcho(socket, 'WssReply', '{"wss":true}'));
@@ -697,6 +915,10 @@ test('stream connector validates endpoint and lifecycle options like dotnet tran
   assert.throws(
     () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1', reconnect: { backoffFactor: 0.5 } }),
     /BackoffFactor/
+  );
+  assert.throws(
+    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1', maxReceivePayloadSize: 0 }),
+    /MaxReceivePayloadSize/
   );
 });
 
@@ -814,24 +1036,29 @@ function tryReadWebSocketFrame(buffer) {
   return { opcode: buffer[0] & 0x0f, payload, length: frameLength };
 }
 
-function createWebSocketBinaryFrame(payload) {
+function createWebSocketFrame(payload, options = { fin: true, opcode: 0x2 }) {
   const length = payload.length;
+  const firstByte = (options.fin ? 0x80 : 0) | options.opcode;
   if (length < 126) {
-    return Buffer.concat([Buffer.from([0x82, length]), Buffer.from(payload)]);
+    return Buffer.concat([Buffer.from([firstByte, length]), Buffer.from(payload)]);
   }
   if (length <= 0xffff) {
     const header = Buffer.alloc(4);
-    header[0] = 0x82;
+    header[0] = firstByte;
     header[1] = 126;
     header.writeUInt16BE(length, 2);
     return Buffer.concat([header, Buffer.from(payload)]);
   }
   const header = Buffer.alloc(10);
-  header[0] = 0x82;
+  header[0] = firstByte;
   header[1] = 127;
   header.writeUInt32BE(0, 2);
   header.writeUInt32BE(length, 6);
   return Buffer.concat([header, Buffer.from(payload)]);
+}
+
+function createWebSocketBinaryFrame(payload) {
+  return createWebSocketFrame(payload);
 }
 
 function listen(server) {

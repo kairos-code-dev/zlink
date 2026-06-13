@@ -4,6 +4,8 @@ import type {
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 
+const defaultMaxDecompressedPayloadSize = 64 * 1024;
+
 export enum ZLinkStreamCodec {
   Json = 1
 }
@@ -204,7 +206,7 @@ export function lz4Pickle(payload: Uint8Array): Uint8Array {
   return pickled;
 }
 
-export function lz4Unpickle(payload: Uint8Array): Uint8Array {
+export function lz4Unpickle(payload: Uint8Array, maxDecompressedSize = defaultMaxDecompressedPayloadSize): Uint8Array {
   if (payload.length === 0) {
     return new Uint8Array();
   }
@@ -220,6 +222,9 @@ export function lz4Unpickle(payload: Uint8Array): Uint8Array {
   const data = payload.subarray(dataOffset);
   const resultDiff = sizeOfDiff === 0 ? 0 : readLittleEndian(payload, 1, sizeOfDiff);
   const resultLength = data.length + resultDiff;
+  if (resultLength > maxDecompressedSize) {
+    throw new Error('LZ4 decoded payload exceeds maximum stream payload size.');
+  }
   if (resultDiff === 0) {
     return data.slice();
   }

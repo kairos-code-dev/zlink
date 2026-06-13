@@ -15,6 +15,7 @@
 - 2026-06-14: 공통 #2 LZ4 압축 폭탄 심각도를 Medium으로 바로잡고, Java와 .NET의 framework-core 중복 위치를 표에 함께 적었다.
 - 2026-06-14: 코드 변경 없음. core runtime과 public header 변경이 없어 `bindings/dev_sync_local_core_libs.sh`는 실행 대상이 아니다.
 - 2026-06-14: Claude 리뷰에서 README 인덱스 확인 항목에 대해 "추가 이슈 없음" 판정을 받았다.
+- 2026-06-14: Node/TS framework 원격 DoS 항목(C1, C2, S1, S2)을 수정하고, build·targeted node test·typecheck 통과와 Claude "추가 이슈 없음" 판정을 확인했다.
 
 ## 리포트 목록
 
@@ -27,7 +28,7 @@
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
 | C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | **Critical** (인바운드 프레임 DoS, 리다이렉트 자격증명 유출) |
-| Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS) |
+| Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS: 2026-06-14 수정 완료) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | High (인바운드 DoS, Netty 호스트명 미검증) |
 | .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | High (인바운드/WS DoS, 무제한 메시지 적재) |
 
@@ -66,7 +67,7 @@ stream-connector 와이어 프레임은 6바이트 prefix(`header_size` u16 + `p
 | 언어 | 위치 | 증상 |
 |------|------|------|
 | C++ | `connector/core/src/runtime/.../zlink_stream_calls.cpp:235`, `stream_connection.cpp:351`, `:307` | 2026-06-14 `max_receive_payload_size` 검증으로 수정 완료 |
-| Node | `stream-connector/.../NodeDuplexStreamConnection.ts:65`, `WebSocketFrameCodec.ts:29` | `new Uint8Array(frameLength)` 최대 4GiB, WS 64비트 길이 |
+| Node | `stream-connector/.../NodeDuplexStreamConnection.ts:65`, `WebSocketFrameCodec.ts:29` | 2026-06-14 `maxReceivePayloadSize` 검증으로 수정 완료 |
 | Java | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191` | `new byte[payloadLength]` 최대 ~2GiB + `header+payload` int 오버플로 → `NegativeArraySizeException` |
 | .NET | `ZlinkStreamFrameCodec.cs:96`, `WebSocketConnection.cs:35` | `new byte[payloadSize]` 최대 ~2GiB, WS 단편 무제한 누적 |
 
@@ -80,7 +81,7 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 
 | 언어 | 위치 |
 |------|------|
-| Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` |
+| Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` (2026-06-14 출력 길이 상한 적용 완료) |
 | Java | `ZLinkStreamLz4Pickler.java:53`, `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51` |
 | .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` |
 | C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, 단 http 디코딩은 무제한 — cpp 리포트 L1) |

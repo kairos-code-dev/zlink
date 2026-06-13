@@ -10,7 +10,7 @@ export class NodeDuplexStreamConnection implements ZlinkStreamConnection {
   private readWaiter: (() => void) | undefined;
   private error: Error | undefined;
 
-  constructor(private readonly socket: net.Socket | tls.TLSSocket) {
+  constructor(private readonly socket: net.Socket | tls.TLSSocket, private readonly maxReceivePayloadSize: number) {
     socket.on('data', (chunk: Buffer) => {
       this.buffer.push(chunk);
       this.wakeReader();
@@ -69,6 +69,9 @@ export class NodeDuplexStreamConnection implements ZlinkStreamConnection {
     const prefix = this.buffer.peek(6);
     const headerLength = readUInt16BE(prefix, 0);
     const payloadLength = readUInt32BE(prefix, 2);
+    if (payloadLength > this.maxReceivePayloadSize) {
+      throw connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'Inbound stream payload exceeds MaxReceivePayloadSize.');
+    }
     const frameLength = 6 + headerLength + payloadLength;
     if (this.buffer.size < frameLength) {
       return undefined;

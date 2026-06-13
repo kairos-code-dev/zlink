@@ -9,7 +9,7 @@ export interface WebSocketFrame {
   readonly payload: Uint8Array;
 }
 
-export function tryDecodeWebSocketFrame(buffer: BufferedByteQueue): WebSocketFrame | undefined {
+export function tryDecodeWebSocketFrame(buffer: BufferedByteQueue, maxPayloadSize: number): WebSocketFrame | undefined {
   if (buffer.size < 2) {
     return undefined;
   }
@@ -38,6 +38,9 @@ export function tryDecodeWebSocketFrame(buffer: BufferedByteQueue): WebSocketFra
     }
     payloadLength = low;
     headerLength = 10;
+  }
+  if (payloadLength > maxPayloadSize) {
+    throw connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'WebSocket payload exceeds MaxReceivePayloadSize.');
   }
 
   const maskLength = masked ? 4 : 0;
@@ -88,8 +91,11 @@ export function encodeWebSocketFrame(payload: Uint8Array, options: { opcode: num
   return output;
 }
 
-export function concatParts(parts: Uint8Array[]): Uint8Array {
+export function concatParts(parts: Uint8Array[], maxPayloadSize: number): Uint8Array {
   const length = parts.reduce((sum, part) => sum + part.length, 0);
+  if (length > maxPayloadSize) {
+    throw connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'WebSocket message exceeds MaxReceivePayloadSize.');
+  }
   const output = new Uint8Array(length);
   let offset = 0;
   for (const part of parts) {

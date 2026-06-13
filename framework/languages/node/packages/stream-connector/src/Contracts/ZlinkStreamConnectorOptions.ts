@@ -15,6 +15,7 @@ export interface ZlinkStreamConnectorOptions {
   readonly heartbeat?: ZlinkStreamHeartbeatOptions;
   readonly reconnect?: ZlinkStreamReconnectOptions;
   readonly maxSendPayloadSize?: number;
+  readonly maxReceivePayloadSize?: number;
   readonly skipServerCertificateValidation?: boolean;
   readonly dispatchMode?: ZlinkStreamDispatchMode;
   readonly compression?: ZlinkStreamCompression;
@@ -62,6 +63,7 @@ export interface RequiredZlinkStreamConnectorOptions {
   readonly heartbeat: Required<ZlinkStreamHeartbeatOptions>;
   readonly reconnect: Required<ZlinkStreamReconnectOptions>;
   readonly maxSendPayloadSize: number;
+  readonly maxReceivePayloadSize: number;
   readonly skipServerCertificateValidation: boolean;
   readonly dispatchMode: ZlinkStreamDispatchMode;
   readonly compression: ZlinkStreamCompression;

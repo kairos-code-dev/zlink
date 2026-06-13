@@ -304,6 +304,39 @@ test('stream session runtime decompresses dispatch payloads before session handl
   assert.deepEqual(events, [['dispatch', 'Move', 'A'.repeat(96)]]);
 });
 
+test('stream session runtime rejects compressed dispatch payloads above receive limit', async () => {
+  const socket = new FakeStreamSocket();
+  const errors = [];
+  const events = [];
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    onError(error) {
+      errors.push(error);
+    },
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header, payload) {
+          events.push(['dispatch', header.name, payload.getString()]);
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-compressed-too-large', fakeMessage(JSON.stringify(streamHeaderJson({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    flags: connector.ZlinkStreamHeaderFlags.PayloadCompressed,
+    name: 'Move'
+  }))), fakeMessageBytes(Uint8Array.from([0x40, 0x01, ...Buffer.from('A'.repeat(64 * 1024), 'utf8')])));
+  await runtime.dispose();
+
+  assert.deepEqual(events, []);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /maximum stream payload size/);
+});
+
 test('stream session pending request timeout removes request sequence', async () => {
   const context = new framework.ZLinkStreamBindingRuntime().createSessionContext({
     sessionId: 'session-timeout',

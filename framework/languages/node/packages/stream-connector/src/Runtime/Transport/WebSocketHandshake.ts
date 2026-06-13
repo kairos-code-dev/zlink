@@ -4,6 +4,8 @@ import * as tls from 'node:tls';
 import { ZlinkStreamErrorCode } from '../../Contracts';
 import { connectorError } from '../ZlinkStreamSupport';
 
+const maxHandshakeHeaderBytes = 16 * 1024;
+
 export async function completeWebSocketHandshake(
   socket: net.Socket | tls.TLSSocket,
   endpoint: URL,
@@ -68,6 +70,11 @@ function readHttpHeaders(
     const onData = (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
       const index = buffer.indexOf('\r\n\r\n');
+      if ((index < 0 ? buffer.length : index) > maxHandshakeHeaderBytes) {
+        cleanup();
+        reject(connectorError(ZlinkStreamErrorCode.FrameTooLarge, 'WebSocket handshake header is too large.'));
+        return;
+      }
       if (index < 0) {
         return;
       }

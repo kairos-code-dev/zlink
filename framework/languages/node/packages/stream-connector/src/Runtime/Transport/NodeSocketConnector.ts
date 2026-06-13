@@ -36,7 +36,7 @@ export async function connectNodeStream(options: RequiredZlinkStreamConnectorOpt
   const socket = options.transport === ZlinkStreamTransport.Tls
     ? await connectTls(endpoint, options, signal)
     : await connectTcp(endpoint, options.connectTimeoutMs, signal);
-  return new NodeDuplexStreamConnection(socket);
+  return new NodeDuplexStreamConnection(socket, options.maxReceivePayloadSize);
 }
 
 function parseEndpoint(endpoint: string): URL {
@@ -62,7 +62,7 @@ async function connectWebSocket(
     }), 443)
     : await connectSocket(endpoint, options.connectTimeoutMs, signal, (port, host) => net.connect({ port, host, keepAlive: true }), 80);
   const leftover = await completeWebSocketHandshake(socket, endpoint, options.connectTimeoutMs, signal);
-  return new NodeWebSocketConnection(socket, leftover);
+  return new NodeWebSocketConnection(socket, options.maxReceivePayloadSize, leftover);
 }
 
 async function connectTcp(endpoint: URL, connectTimeoutMs: number, signal?: AbortSignal): Promise<net.Socket> {

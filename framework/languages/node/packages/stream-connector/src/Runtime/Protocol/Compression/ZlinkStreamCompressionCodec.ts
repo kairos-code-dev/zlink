@@ -17,7 +17,12 @@ export function compressPayload(payload: Uint8Array, compression: ZlinkStreamCom
   return pickleUncompressed(payload);
 }
 
-export function decompressIfNeeded(header: ZlinkStreamHeader, payload: Uint8Array, compression: ZlinkStreamCompression): Uint8Array {
+export function decompressIfNeeded(
+  header: ZlinkStreamHeader,
+  payload: Uint8Array,
+  compression: ZlinkStreamCompression,
+  maxDecompressedSize: number
+): Uint8Array {
   if ((header.flags & ZlinkStreamHeaderFlags.PayloadCompressed) === 0) {
     return payload;
   }
@@ -29,7 +34,7 @@ export function decompressIfNeeded(header: ZlinkStreamHeader, payload: Uint8Arra
   }
 
   try {
-    return unpickle(payload);
+    return unpickle(payload, maxDecompressedSize);
   } catch (cause) {
     throw connectorError(ZlinkStreamErrorCode.DecompressionFailed, 'Decompression failed.', cause);
   }
@@ -47,7 +52,7 @@ function pickleUncompressed(payload: Uint8Array): Uint8Array {
   return pickled;
 }
 
-function unpickle(payload: Uint8Array): Uint8Array {
+function unpickle(payload: Uint8Array, maxDecompressedSize: number): Uint8Array {
   if (payload.length === 0) {
     return new Uint8Array();
   }
@@ -63,6 +68,9 @@ function unpickle(payload: Uint8Array): Uint8Array {
   const data = payload.subarray(dataOffset);
   const resultDiff = sizeOfDiff === 0 ? 0 : readLittleEndian(payload, 1, sizeOfDiff);
   const resultLength = data.length + resultDiff;
+  if (resultLength > maxDecompressedSize) {
+    throw new Error('LZ4 decoded payload exceeds MaxReceivePayloadSize.');
+  }
   if (resultDiff === 0) {
     return data.slice();
   }

@@ -346,7 +346,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 
   private payloadForHeader(header: ZlinkStreamHeader, payload: Uint8Array): Uint8Array {
-    return decompressIfNeeded(header, payload, this.options.compression);
+    return decompressIfNeeded(header, payload, this.options.compression, this.options.maxReceivePayloadSize);
   }
 
   private async connectWithReconnect(signal?: AbortSignal): Promise<ZlinkStreamConnection> {

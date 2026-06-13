@@ -21,7 +21,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
                 "Expected a single-part message.");
 
         ZlinkMsg* msgv = (ZlinkMsg*)parts;
-        int payloadSize = (int)NativeMethods.zlink_msg_size(ref msgv[0]);
+        int payloadSize = GetNativeSize(ref msgv[0]);
         if (payloadSize <= 0)
             return 0;
 
@@ -50,7 +50,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             ZlinkMsg* msgv = (ZlinkMsg*)parts;
             for (int i = 0; i < length; i++)
             {
-                int size = checked((int)NativeMethods.zlink_msg_size(ref msgv[i]));
+                int size = GetNativeSize(ref msgv[i]);
                 if (size <= 0)
                 {
                     result[i] = new Message(0);

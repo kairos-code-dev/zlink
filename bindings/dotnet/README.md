@@ -12,6 +12,19 @@ message back over the original receive context. Request messages also keep
 Create caller-owned receive buffers with `Received.Create()` and reuse the
 same instance across `Recv(...)` calls when draining hot paths.
 
+## Native library loading
+
+The binding first honors `ZLINK_LIBRARY_PATH`, then searches packaged native
+runtime locations, and finally falls back to well-known library names for the
+current platform. `ZLINK_LIBRARY_PATH` is intended for development, diagnostics,
+and trusted deployments where the process environment is controlled by the
+operator.
+
+Do not allow untrusted users to set `ZLINK_LIBRARY_PATH` for a privileged
+service process. Services with a strict loading policy should deploy the native
+library in a fixed application directory and control that directory's ownership
+and write permissions.
+
 ## CancellationToken policy
 
 `CancellationToken` is part of an API only when the operation can actually

@@ -52,7 +52,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             return _managedPayload.Length;
         if (_knownSize >= 0)
             return _knownSize;
-        return (int)NativeMethods.zlink_msg_size(ref _msg);
+        return GetNativeSize(ref _msg);
     }
 
     private int GetRefCountCore()
@@ -90,7 +90,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             return managed.Bytes.AsSpan(0, managed.Length);
         int size = _knownSize >= 0
             ? _knownSize
-            : (int)NativeMethods.zlink_msg_size(ref _msg);
+            : GetNativeSize(ref _msg);
         if (size == 0)
             return Span<byte>.Empty;
         IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
@@ -107,7 +107,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             return managed.Bytes.AsSpan(0, managed.Length);
         int size = _knownSize >= 0
             ? _knownSize
-            : (int)NativeMethods.zlink_msg_size(ref _msg);
+            : GetNativeSize(ref _msg);
         if (size == 0)
             return ReadOnlySpan<byte>.Empty;
         IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
@@ -394,7 +394,7 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(message));
 
         ZlinkMsg* src = (ZlinkMsg*)message;
-        int size = checked((int)NativeMethods.zlink_msg_size(ref *src));
+        int size = GetNativeSize(ref *src);
         if (size <= 0)
             return new Message(0);
 
@@ -445,6 +445,12 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     {
         if (!_valid)
             throw new ObjectDisposedException(nameof(Message));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetNativeSize(ref ZlinkMsg msg)
+    {
+        return checked((int)NativeMethods.zlink_msg_size(ref msg));
     }
 
     private void InitializeManagedCopy(ReadOnlySpan<byte> data)

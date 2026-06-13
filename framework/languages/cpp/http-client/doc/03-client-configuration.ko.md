@@ -12,6 +12,7 @@ runtime이 만들어진다.
 auto client = zlink::http_client::client_t::create ("https://game-api.example.internal")
                 .json ()
                 .timeout (std::chrono::seconds (5))
+                .max_response_body_size (32 * 1024 * 1024)
                 .default_header ("x-service-name", "matchmaker")
                 .bearer_token (session_token)
                 .trust_certificate_file ("/etc/pki/internal-root-ca.pem")
@@ -27,6 +28,7 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 | `base_url(url)` / `create(url)` | `http://` 또는 `https://` endpoint. path prefix 포함 가능 | 필수 |
 | `json()` | `Accept: application/json` + 기본 `Content-Type` 등록 | off |
 | `timeout(duration)` | request 기본 timeout. request 단위로 [override 가능](./04-making-requests.ko.md) | 3000ms |
+| `max_response_body_size(bytes)` | 응답 body를 읽을 때 허용하는 최대 bytes. buffered 응답과 streaming 다운로드 모두에 적용 | 16 MiB |
 | `default_header(name, value)` | 모든 request에 실리는 헤더 | 없음 |
 | `basic_auth(user, pw)` / `bearer_token(tok)` | `Authorization` 헤더 ([9장](./09-authentication-tls.ko.md)) | 없음 |
 | `trust_certificate_file(path)` | 추가로 신뢰할 server certificate ([9장](./09-authentication-tls.ko.md)) | 시스템 CA |
@@ -37,9 +39,14 @@ auto client = zlink::http_client::client_t::create ("https://game-api.example.in
 | `proxy(url)` / `proxy_basic_auth(user, pw)` | HTTP proxy ([11장](./11-proxy.ko.md)) | 없음 |
 | `compression()` | gzip/deflate 응답 해제 ([12장](./12-compression.ko.md)) | off |
 
-잘못된 값(빈 base_url, `ftp://` scheme, 0 이하 timeout, 빈 헤더 이름 등)은
+잘못된 값(빈 base_url, `ftp://` scheme, 0 이하 timeout, 0 bytes 응답 body 상한,
+빈 헤더 이름 등)은
 `build()` 또는 해당 setter에서 `request_protocol_error`로 즉시 던진다 —
 조용히 넘어가지 않는다.
+
+`default_header`로 넣은 헤더는 redirect 대상이 바뀌어도 그대로 적용된다. 비밀 값은
+`default_header`에 직접 넣지 말고, `basic_auth`나 `bearer_token`을 사용한다. 이 두 인증
+API가 만드는 `Authorization` 헤더는 교차 origin redirect에서 자동으로 제거된다.
 
 ## base_url과 path prefix
 

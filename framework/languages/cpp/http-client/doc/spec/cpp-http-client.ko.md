@@ -44,7 +44,8 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
 - `zlink/http_client/contracts/client.hpp`
 - `zlink::http_client` CMake target
 - `client_t::create(base_url)` 또는 `create().base_url(...)` +
-  `.json().timeout(...).default_header(...).trust_certificate_file(...)`
+  `.json().timeout(...).default_header(...).max_response_body_size(...)`
+  `.trust_certificate_file(...)`
   `.follow_redirects(...).retry(...).cookies().proxy(...).compression().build()`
 - coroutine 실행 설정: `.coroutines()`, `.coroutines(resume_scheduler)`,
   `.coroutines(execute_scheduler, resume_scheduler)`
@@ -140,7 +141,9 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
   주입하면 HTTP 실행 위치와 continuation resume 위치를 분리할 수 있다.
 - redirect 자동 추적: `follow_redirects(max)`. `301/302`의 `POST`와 `303`은 `GET`으로
   바뀌고 body를 버린다. `307/308`은 method와 body를 보존한다. 절대 URL과 절대 경로
-  Location을 지원하며, 한도를 넘으면 `request_failed`로 닫힌다.
+  Location을 지원하며, 한도를 넘으면 `request_failed`로 닫힌다. 최초 요청 origin과 다른
+  redirect hop에는 `Authorization` 헤더를 다시 보내지 않는다. 다른 이름의 비밀 헤더는
+  일반 헤더와 구분할 수 없으므로 caller가 직접 관리한다.
 - retry: `retry(attempts)`. retriable한 transport 실패(연결 끊김, timeout)만 재시도하고
   HTTP status 실패는 재시도하지 않는다. 되감을 수 없는 `body_stream`/`download`
   request는 자동 retry에서 제외한다.
@@ -152,6 +155,8 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
 - 압축: `compression()`. `Accept-Encoding: gzip, deflate`를 보내고 gzip/deflate 응답
   body를 투명하게 해제한다(Boost.Beast zlib 사용, trailer checksum은 검증하지 않는다).
   `download(sink)` streaming 경로에는 적용되지 않는다.
+- 응답 body 상한: `max_response_body_size(bytes)`. 기본값은 16 MiB이며, buffered 응답과
+  `download(sink)` streaming 응답 모두 같은 상한을 적용한다.
 - HTTP와 HTTPS endpoint, TLS server certificate verification, hostname verification,
   test certificate trust option
 - HTTP status mapping
@@ -159,10 +164,11 @@ auto created = zlink::http_client::client_t::create(topology.api_http_endpoint)
 HTTP/2와 caller cancellation 공통 모델은 현재 구현 범위 밖이다. HTTP/2는 Boost.Beast가
 지원하지 않고, cancellation은 server runtime마다 의미가 달라 별도 설계가 필요하다.
 
-`base_url(...)`, `timeout(...)`, `default_header(...)`, `trust_certificate_file(...)`,
-`follow_redirects(...)`, `retry(...)`, `proxy(...)`, request path, request header name,
-query/form/multipart field name은 call을 보내기 전에 검증한다. URL scheme이 `http://` 또는
-`https://`가 아니거나 timeout이 0 이하인 경우, 또는 이름이 비어 있는 경우에는
+`base_url(...)`, `timeout(...)`, `max_response_body_size(...)`, `default_header(...)`,
+`trust_certificate_file(...)`, `follow_redirects(...)`, `retry(...)`, `proxy(...)`,
+request path, request header name, query/form/multipart field name은 call을 보내기 전에
+검증한다. URL scheme이 `http://` 또는 `https://`가 아니거나 timeout 또는 응답 body 상한이
+0 이하인 경우, 또는 이름이 비어 있는 경우에는
 `framework_error_kind_t::request_protocol_error`로 설정 오류를 알린다. 이 오류는 transport
 실패와 구분되어야 하므로 `request_failed`로 뭉개지 않는다.
 
@@ -284,7 +290,8 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
 - query encoding: `query(...)`가 percent-encoding된 query string으로 전달된다
 - body 소스: raw content-type, form-urlencoded, multipart 인코딩이 wire에 그대로 실리고,
   복수 body 소스는 `request_protocol_error`로 거부된다
-- redirect: 추적 on/off, 절대 URL Location, `POST`→`GET` 변환, redirect 한도 초과 실패
+- redirect: 추적 on/off, 절대 URL Location, `POST`→`GET` 변환, redirect 한도 초과 실패,
+  교차 origin `Authorization` 제거
 - retry: 응답 없이 끊긴 연결이 재시도로 복구된다
 - cookie: `Set-Cookie`가 jar에 저장되어 후속 request에 실리고 `Path` scope를 벗어나면
   보내지 않는다
@@ -294,6 +301,8 @@ HTTP handler e2e 테스트는 외부 HTTP 도구나 sample-local client가 아�
   헤더를 제거한다
 - streaming download: `download(sink)`가 body를 chunk로 전달하고, redirect 중간 응답
   body는 sink로 새지 않는다
+- response body limit: buffered 응답과 `download(sink)` 응답이 설정한 body 상한을 넘으면
+  실패한다
 - streaming upload: `body_stream(provider)`가 chunked transfer-encoding으로 전달된다
 - 인증: `basic_auth`/`bearer_token`이 `Authorization` 헤더로 실리고, mTLS 서버는
   `client_certificate_file` 설정 시에만 handshake가 성공한다

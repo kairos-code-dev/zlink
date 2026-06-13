@@ -256,6 +256,12 @@ http::response<http::string_body> make_response (const http::request<http::strin
         response.prepare_payload ();
         return response;
     }
+    if (target == "/redirect-custom") {
+        response.result (http::status::found);
+        response.set (http::field::location, request["X-ZLink-Redirect-Location"]);
+        response.prepare_payload ();
+        return response;
+    }
     if (target == "/redirect-loop") {
         response.result (http::status::found);
         response.set (http::field::location, "/redirect-loop");
@@ -721,6 +727,14 @@ TEST (ZLinkHttpClient, ValidatesFluentInputAsProtocolErrors)
             .timeout (std::chrono::milliseconds (0));
       },
       "timeout"));
+
+    EXPECT_TRUE (throws_protocol_error (
+      [] {
+          (void) zlink::http_client::client_t::create ()
+            .base_url ("http://127.0.0.1")
+            .max_response_body_size (0);
+      },
+      "response body size"));
 
     EXPECT_TRUE (throws_protocol_error (
       [] {
@@ -1267,6 +1281,57 @@ TEST (ZLinkHttpClient, FollowsAbsoluteRedirectLocations)
     EXPECT_EQ (result.value ().status, 200);
 }
 
+TEST (ZLinkHttpClient, RedirectStripsAuthorizationAcrossHosts)
+{
+    loopback_http_server_t origin;
+    loopback_http_server_t redirected;
+    const auto location = redirected.base_url () + "/echo-auth";
+
+    auto default_auth_client = zlink::http_client::client_t::create (origin.base_url ())
+                                 .json ()
+                                 .bearer_token ("secret-token")
+                                 .follow_redirects ()
+                                 .build ();
+    const auto default_auth = default_auth_client.get ("/redirect-custom")
+                                .header ("X-ZLink-Redirect-Location", location)
+                                .submit_raw ()
+                                .result ();
+    ASSERT_TRUE (default_auth) << default_auth.error ()->what ();
+    EXPECT_EQ (nlohmann::json::parse (default_auth.value ().body).at ("authorization"), "");
+
+    auto request_auth_client = zlink::http_client::client_t::create (origin.base_url ())
+                                 .json ()
+                                 .follow_redirects ()
+                                 .build ();
+    const auto request_auth = request_auth_client.get ("/redirect-custom")
+                                .header ("X-ZLink-Redirect-Location", location)
+                                .header ("authorization", "Bearer request-token")
+                                .submit_raw ()
+                                .result ();
+    ASSERT_TRUE (request_auth) << request_auth.error ()->what ();
+    EXPECT_EQ (nlohmann::json::parse (request_auth.value ().body).at ("authorization"), "");
+}
+
+TEST (ZLinkHttpClient, RedirectKeepsAuthorizationForSameOrigin)
+{
+    loopback_http_server_t server;
+    const auto location = server.base_url () + "/echo-auth";
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .bearer_token ("same-origin-token")
+                    .follow_redirects ()
+                    .build ();
+
+    const auto result = client.get ("/redirect-custom")
+                          .header ("X-ZLink-Redirect-Location", location)
+                          .submit_raw ()
+                          .result ();
+
+    ASSERT_TRUE (result) << result.error ()->what ();
+    EXPECT_EQ (nlohmann::json::parse (result.value ().body).at ("authorization"),
+               "Bearer same-origin-token");
+}
+
 TEST (ZLinkHttpClient, RedirectTransformsPostIntoGet)
 {
     loopback_http_server_t server;
@@ -1377,6 +1442,40 @@ TEST (ZLinkHttpClient, DownloadStreamsResponseBody)
     EXPECT_TRUE (result.value ().body.empty ());
     EXPECT_GT (chunks, 1);
     EXPECT_EQ (received, big_download_body ());
+}
+
+TEST (ZLinkHttpClient, RejectsBufferedResponseAboveBodyLimit)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (2000ms)
+                    .max_response_body_size (32)
+                    .build ();
+
+    const auto result = client.get ("/big").submit_raw ().result ();
+
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+}
+
+TEST (ZLinkHttpClient, RejectsDownloadResponseAboveBodyLimit)
+{
+    loopback_http_server_t server;
+    auto client = zlink::http_client::client_t::create (server.base_url ())
+                    .json ()
+                    .timeout (2000ms)
+                    .max_response_body_size (32)
+                    .build ();
+
+    std::string received;
+    const auto result = client.get ("/big")
+                          .download ([&] (std::string_view chunk) { received.append (chunk); })
+                          .result ();
+
+    ASSERT_FALSE (result);
+    EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
+    EXPECT_LT (received.size (), big_download_body ().size ());
 }
 
 TEST (ZLinkHttpClient, CoroutineDownloadSinkRunsOnExecuteSchedulerWorker)

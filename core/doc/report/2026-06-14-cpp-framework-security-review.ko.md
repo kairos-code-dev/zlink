@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/cpp/{framework,connector,extensions,http-client}` (zlink core 위의 상위 래퍼 계층)
-- **상태**: CR1 수정 완료. CR2/H1/H2/H3/M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
+- **상태**: CR1, CR2, H1 종결. H2/H3/M1 이후 항목은 실행 순서에 따라 별도 처리 필요.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **신뢰 모델**: stream-connector는 원격 서버에 대한 **클라이언트**이며, 인바운드 프레임의 신뢰 불가 주체는 서버다.
@@ -13,8 +13,8 @@
 | # | 심각도 | 분류 | 위치 | 상태 |
 |---|--------|------|------|------|
 | CR1 | **Critical** | DoS / 무제한 할당 | `connector/core/.../zlink_stream_calls.cpp:235,307`, `stream_connection.cpp:351` | 수정 완료(2026-06-14) |
-| CR2 | **Critical** | 자격증명 유출(CWE-200) | `http-client/src/client.cpp:186,193`, `request_performer.cpp:149`, `url.cpp:110` | 확인 |
-| H1 | High | DoS / 무제한 응답 본문 | `http-client/.../request_performer.cpp:294,302` | 확인 |
+| CR2 | **Critical** | 자격증명 유출(CWE-200) | `http-client/src/client.cpp:186,193`, `request_performer.cpp:149`, `url.cpp:110` | 수정 완료(2026-06-14) |
+| H1 | High | DoS / 무제한 응답 본문 | `http-client/.../request_performer.cpp:294,302` | 수정 완료(2026-06-14) |
 | H2 | High | 동시성 / data race·UAF | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:108,191,268` | 확인 |
 | H3 | High | 리소스 누수 / teardown | `connector/engines/unreal/.../ZLinkStreamConnector.cpp:88` | 확인 |
 | H4 | ~~High~~ → **Low** | 동시성 / drain-semantics | `framework/src/runtime/dispatch/offload_executor.cpp:65-78`, `runtime/execution/serial_execution_queue.cpp` | ❌ **반박(하향)** |
@@ -87,6 +87,24 @@
 **트리거**: bearer/basic auth로 `https://api.legit/...` 요청 → 서버(또는 평문 홉의 네트워크 공격자)가 `302 Location: https://attacker/` 반환 → `Authorization`이 attacker로 재전송. (쿠키는 호스트 스코프 jar라 영향 없음.)
 **수정**: (scheme,host,port)가 원본과 다른 홉에서는 `Authorization`(및 사용자 지정 auth 헤더)을 제거, 명시적 opt-in 시에만 전달.
 
+**처리 기록(2026-06-14)**:
+- redirect hop의 scheme, host, port가 최초 요청 origin과 다르면 default header와 request header
+  양쪽의 `Authorization`을 재적용하지 않도록 `request_performer`를 수정했다.
+- 같은 origin redirect는 기존처럼 인증 헤더를 유지한다. `Proxy-Authorization`은 proxy 연결
+  인증이므로 기존 proxy 경로에만 남긴다.
+- 이름이 다른 custom 비밀 헤더는 일반 header와 구분할 수 없으므로 자동 제거 범위에 넣지
+  않는다. 문서에는 `default_header`나 요청 단위 `header`에 비밀 값을 직접 넣지 말고
+  `basic_auth`/`bearer_token`을 쓰라고 명시했다.
+- 회귀 테스트는 `test_cpp_http_client`에 추가했다. default `bearer_token`과 request 단위
+  `authorization` header가 교차 host redirect 후 `/echo-auth`에 전달되지 않는지, 같은 origin
+  redirect에서는 `Authorization`이 유지되는지 검증한다.
+- 실행 검증:
+  - `cmake --build framework/languages/cpp/build --target test_cpp_http_client test_cpp_framework_contract_headers -j2` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_http_client$' --output-on-failure` 성공.
+  - `ctest --test-dir framework/languages/cpp/build -R '^test_cpp_framework_contract_headers$' --output-on-failure` 성공.
+- Claude 재리뷰에서 CR2/H1 모두 코드·테스트·문서가 일치하며, "추가 이슈 없음" 판정을
+  받았다.
+
 ---
 
 ## HIGH
@@ -96,6 +114,16 @@
 
 `parser.body_limit(std::numeric_limits<uint64_t>::max())` — Beast 내장 응답 크기 가드를 버퍼/스트림 파서 양쪽에서 비활성. `max_response_size` 옵션도 없음. 악의 서버가 무제한 바이트 스트림 → 메모리 고갈.
 **수정**: 설정 가능한 상한으로 `body_limit` 지정, 합리적 기본값.
+
+**처리 기록(2026-06-14)**:
+- `client_builder_t::max_response_body_size(bytes)`를 추가했다. 기본값은 16 MiB이며, 0 bytes는
+  `request_protocol_error`로 거부한다.
+- buffered 응답과 `download(sink)` streaming 응답 모두 Beast parser의 `body_limit`에 같은
+  상한을 적용한다.
+- 회귀 테스트는 작은 body 상한으로 `/big` buffered 응답과 streaming download가
+  `request_failed`로 실패하는지 검증한다.
+- HTTP 압축 해제 결과의 출력 상한은 부록 L1 범위이므로 이번 H1 처리에서 닫지 않았다.
+- Claude 재리뷰에서 H1이 실제 코드에서 닫혔고 L1을 잘못 닫지 않았음을 확인받았다.
 
 ### H2 — Unreal 어댑터: IO 스레드에서 쓰는 pending 큐의 data race + UAF
 - `connector/engines/unreal/Source/ZLinkStreamConnector/Private/ZLinkStreamConnector.cpp:108-111,191-196,268-271` · **확인 · repo 고유**

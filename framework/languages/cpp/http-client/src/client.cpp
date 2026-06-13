@@ -194,6 +194,17 @@ client_builder_t &client_builder_t::bearer_token (const std::string &token)
     return *this;
 }
 
+client_builder_t &client_builder_t::max_response_body_size (std::size_t bytes)
+{
+    if (bytes == 0) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP client max response body size must be greater than zero");
+    }
+    _max_response_body_size = bytes;
+    return *this;
+}
+
 client_builder_t &client_builder_t::trust_certificate_file (std::string path)
 {
     require_non_blank (path, "HTTP client trust certificate file is required");
@@ -318,6 +329,7 @@ client_t client_builder_t::build () const
     detail::http_client_options_t options{.base_url = _base_url,
                                           .json = _json,
                                           .timeout = _timeout,
+                                          .max_response_body_size = _max_response_body_size,
                                           .headers = _headers,
                                           .trust_certificate_file = _trust_certificate_file,
                                           .client_certificate = _client_certificate,

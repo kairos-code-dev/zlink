@@ -37,6 +37,13 @@ client.get ("/players/7281")
 
 (proxy 인증은 [11. Proxy](./11-proxy.ko.md)의 `proxy_basic_auth` 참고.)
 
+`follow_redirects()`가 켜져 있고 redirect 대상이 최초 요청과 다른 origin
+(scheme, host, port 중 하나가 다름)이면 `Authorization` 헤더를 다시 보내지 않는다.
+이는 다른 host가 redirect 응답을 통해 Basic 또는 Bearer 자격 증명을 받지 못하게 하기 위한
+기본 보호다. 같은 origin 안의 redirect에는 기존 인증 헤더를 유지한다.
+`default_header`나 요청 단위 `header`로 직접 넣은 다른 비밀 헤더는 일반 헤더와 구분할 수
+없으므로 자동 제거 대상이 아니다.
+
 ## HTTPS 기본 동작
 
 `https://` endpoint는 항상 다음을 수행한다. **끄는 옵션은 없다** — 묵시적으로

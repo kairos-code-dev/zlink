@@ -18,6 +18,7 @@
 - 2026-06-14: Node/TS framework 원격 DoS 항목(C1, C2, S1, S2)을 수정하고, build·targeted node test·typecheck 통과와 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: Java framework 원격 DoS 항목(F1, F2)을 수정하고, stream-connector·framework-core test 통과와 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: .NET framework 원격 DoS 1차 항목(D1, D2, D5)을 수정하고, stream-connector test와 framework LZ4 회귀 테스트 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. D3/D4는 실행 순서 5-4에서 계속 처리한다.
+- 2026-06-14: C++ framework 인증·HTTP 항목(CR2, H1)을 수정하고, HTTP client test·contract header test 통과 및 Claude "추가 이슈 없음" 판정을 확인했다.
 
 ## 리포트 목록
 
@@ -29,7 +30,7 @@
 ### Framework 계층 (언어별)
 | 언어 | 파일 | 최고 심각도 |
 |------|------|-------------|
-| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | **Critical** (인바운드 프레임 DoS, 리다이렉트 자격증명 유출) |
+| C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | High (Unreal 동시성·teardown 남음, 인바운드 프레임 DoS와 리다이렉트 자격증명 유출은 2026-06-14 수정 완료) |
 | Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS: 2026-06-14 수정 완료) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | High (인바운드 DoS: 2026-06-14 수정 완료, Netty 호스트명 미검증 남음) |
 | .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | Medium (무제한 메시지 적재·디스패치 큐 남음, 인바운드/WS/LZ4 DoS는 2026-06-14 수정 완료) |
@@ -107,7 +108,7 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 
 1. **공통 #1** — 4개 언어 모두 `maxReceivePayloadSize` 도입 + decode 경로 강제. 단일 수정으로 주 OOM 벡터 제거. **원격 트리거 가능, 전 언어 영향.**
 2. **공통 #2** — LZ4 출력 길이 clamp(Node/Java/.NET).
-3. **C++ 전용 보안** — 리다이렉트 시 `Authorization` 스트립(CR2), HTTP body_limit(H1).
+3. **C++ 전용 보안** — 리다이렉트 시 `Authorization` 스트립(CR2), HTTP body_limit(H1)은 2026-06-14 수정 완료.
 4. **Java 전용** — Netty TLS 호스트명 검증(`endpointIdentificationAlgorithm("HTTPS")`, F3).
 5. 언어별 동시성/리소스 항목(각 리포트 참조).
 

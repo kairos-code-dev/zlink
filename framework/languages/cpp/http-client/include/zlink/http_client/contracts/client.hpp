@@ -7,6 +7,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -63,6 +64,7 @@ class client_builder_t
     client_builder_t &default_header (std::string name, std::string value);
     client_builder_t &basic_auth (const std::string &user, const std::string &password);
     client_builder_t &bearer_token (const std::string &token);
+    client_builder_t &max_response_body_size (std::size_t bytes);
     client_builder_t &trust_certificate_file (std::string path);
     client_builder_t &client_certificate_file (std::string certificate_path, std::string key_path);
     client_builder_t &follow_redirects (int max_redirects = 5);
@@ -94,6 +96,7 @@ class client_builder_t
     std::string _base_url;
     bool _json = false;
     std::chrono::milliseconds _timeout{3000};
+    std::size_t _max_response_body_size = 16 * 1024 * 1024;
     std::map<std::string, std::string> _headers;
     std::optional<std::string> _trust_certificate_file;
     std::optional<std::pair<std::string, std::string>> _client_certificate;

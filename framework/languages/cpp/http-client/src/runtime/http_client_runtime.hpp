@@ -6,6 +6,7 @@
 #include "runtime/cookie_jar.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -22,6 +23,7 @@ struct http_client_options_t
     std::string base_url;
     bool json = false;
     std::chrono::milliseconds timeout{3000};
+    std::uint64_t max_response_body_size = 16 * 1024 * 1024;
     std::map<std::string, std::string> headers;
     std::optional<std::string> trust_certificate_file;
     std::optional<std::pair<std::string, std::string>> client_certificate;

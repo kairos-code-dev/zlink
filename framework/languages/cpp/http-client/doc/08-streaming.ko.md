@@ -8,6 +8,8 @@
 
 `download(sink)`는 응답 body를 버퍼링하지 않고 도착하는 대로 chunk 단위로
 sink에 전달한다. 반환되는 응답에는 status와 헤더만 있고 body는 비어 있다.
+다만 전체 body bytes는 client의 `max_response_body_size` 상한을 넘을 수 없다. 큰 파일을
+다운로드하는 client는 이 값을 명시적으로 올려야 한다.
 
 ```cpp
 // 수 GB짜리 리플레이 파일을 디스크로 흘려 쓴다

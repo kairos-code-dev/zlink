@@ -15,7 +15,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <limits>
 
 namespace zlink::http_client::detail
 {
@@ -39,6 +38,11 @@ raw_http_response_t to_raw_response (const http::response<http::string_body> &re
         raw.headers.emplace (std::string (field.name_string ()), std::string (field.value ()));
     }
     return raw;
+}
+
+bool is_authorization_header (const std::string &name)
+{
+    return iequals (name, "authorization");
 }
 
 zlink::framework::result_t<raw_http_response_t>
@@ -73,12 +77,13 @@ class request_performer_t
                          .host = url.host,
                          .port = url.port,
                          .target = make_target (url, _request.path)};
+        const auto origin = hop;
         auto method = _request.method;
         auto body = _request.body;
         int redirects_left = _options.follow_redirects;
 
         for (;;) {
-            auto response = perform_hop (hop, method, body);
+            auto response = perform_hop (origin, hop, method, body);
             if (_options.cookies) {
                 for (const auto &field : response) {
                     if (field.name () == http::field::set_cookie) {
@@ -127,7 +132,10 @@ class request_performer_t
 
     template <typename TBody>
     http::request<TBody>
-    build_wire_request (const hop_target_t &hop, http_method_t method, bool absolute_form) const
+    build_wire_request (const hop_target_t &origin,
+                        const hop_target_t &hop,
+                        http_method_t method,
+                        bool absolute_form) const
     {
         const auto wire_target =
           absolute_form ? "http://" + hop.host + ":" + hop.port + hop.target : hop.target;
@@ -146,10 +154,17 @@ class request_performer_t
         if (absolute_form && _options.proxy_authorization) {
             wire.set (http::field::proxy_authorization, *_options.proxy_authorization);
         }
+        const bool keep_authorization = same_origin (origin, hop);
         for (const auto &[name, value] : _options.headers) {
+            if (!keep_authorization && is_authorization_header (name)) {
+                continue;
+            }
             wire.set (name, value);
         }
         for (const auto &[name, value] : _request.headers) {
+            if (!keep_authorization && is_authorization_header (name)) {
+                continue;
+            }
             wire.set (name, value);
         }
         if (_options.cookies) {
@@ -172,7 +187,8 @@ class request_performer_t
         return key;
     }
 
-    http::response<http::string_body> perform_hop (const hop_target_t &hop,
+    http::response<http::string_body> perform_hop (const hop_target_t &origin,
+                                                   const hop_target_t &hop,
                                                    http_method_t method,
                                                    const std::optional<std::string> &body)
     {
@@ -191,7 +207,7 @@ class request_performer_t
             }
 
             try {
-                auto outcome = run_exchange (*connection, hop, method, body);
+                auto outcome = run_exchange (*connection, origin, hop, method, body);
                 if (outcome.reusable && can_reuse) {
                     _pool.release (key, std::move (connection));
                 }
@@ -207,18 +223,21 @@ class request_performer_t
     }
 
     exchange_outcome_t run_exchange (pooled_connection_t &connection,
+                                     const hop_target_t &origin,
                                      const hop_target_t &hop,
                                      http_method_t method,
                                      const std::optional<std::string> &body)
     {
         if (connection.plain) {
             connection.plain->expires_after (effective_timeout ());
-            return run_exchange_on (*connection.plain, connection.buffer, hop, method, body);
+            return run_exchange_on (*connection.plain, connection.buffer, origin, hop, method,
+                                    body);
         }
 #ifdef ZLINK_HTTP_CLIENT_WITH_OPENSSL
         if (connection.secure) {
             beast::get_lowest_layer (*connection.secure).expires_after (effective_timeout ());
-            return run_exchange_on (*connection.secure, connection.buffer, hop, method, body);
+            return run_exchange_on (*connection.secure, connection.buffer, origin, hop, method,
+                                    body);
         }
 #endif
         throw request_error ("HTTP connection is not open");
@@ -227,6 +246,7 @@ class request_performer_t
     template <typename TStream>
     exchange_outcome_t run_exchange_on (TStream &stream,
                                         beast::flat_buffer &buffer,
+                                        const hop_target_t &origin,
                                         const hop_target_t &hop,
                                         http_method_t method,
                                         const std::optional<std::string> &body)
@@ -234,11 +254,13 @@ class request_performer_t
         const bool absolute_form = _options.proxy.has_value () && hop.scheme == "http";
 
         if (_request.body_provider) {
-            auto wire = build_wire_request<http::buffer_body> (hop, method, absolute_form);
+            auto wire = build_wire_request<http::buffer_body> (origin, hop, method,
+                                                               absolute_form);
             wire.chunked (true);
             send_streamed (stream, wire, _request.body_provider);
         } else {
-            auto wire = build_wire_request<http::string_body> (hop, method, absolute_form);
+            auto wire = build_wire_request<http::string_body> (origin, hop, method,
+                                                               absolute_form);
             if (body) {
                 wire.body () = *body;
                 wire.prepare_payload ();
@@ -291,7 +313,7 @@ class request_performer_t
 
         if (!_request.sink) {
             http::response_parser<http::string_body> parser;
-            parser.body_limit ((std::numeric_limits<std::uint64_t>::max) ());
+            parser.body_limit (_options.max_response_body_size);
             parser.skip (skip_body);
             http::read (stream, buffer, parser);
             const bool reusable = parser.get ().keep_alive ();
@@ -299,7 +321,7 @@ class request_performer_t
         }
 
         http::response_parser<http::buffer_body> parser;
-        parser.body_limit ((std::numeric_limits<std::uint64_t>::max) ());
+        parser.body_limit (_options.max_response_body_size);
         parser.skip (skip_body);
         http::read_header (stream, buffer, parser);
 

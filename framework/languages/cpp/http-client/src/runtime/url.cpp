@@ -107,6 +107,12 @@ bool is_redirect_status (int status)
     return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
 }
 
+bool same_origin (const hop_target_t &left, const hop_target_t &right)
+{
+    return iequals (left.scheme, right.scheme) && iequals (left.host, right.host)
+           && left.port == right.port;
+}
+
 hop_target_t resolve_location (const hop_target_t &current, const std::string &location)
 {
     if (starts_with (location, "http://") || starts_with (location, "https://")) {

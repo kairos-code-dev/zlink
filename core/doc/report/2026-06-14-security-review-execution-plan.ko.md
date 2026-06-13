@@ -35,7 +35,7 @@
 | 2-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 종결 | 2026-06-14: D1/D2/D5 수정·관련 테스트 통과·Claude 추가 이슈 없음 |
 | 3-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 종결 | 2026-06-14: CR2/H1 수정·관련 테스트 통과·Claude 추가 이슈 없음 |
 | 3-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F3 수정·F5 문서 경고·stream connector test 통과·Claude 추가 이슈 없음 |
-| 4 | [2026-06-13-core-src-security-review.ko.md](2026-06-13-core-src-security-review.ko.md) | 진행 중 | 2026-06-14: #1 mtrie, #3 포트 파싱, #4 IPC unlink, #6 message/send 가드 수정·core/C++ binding 검증 통과·Claude 추가 이슈 없음, C binding은 기존 C-BINDING-001 버전 테스트 불일치로 실패 |
+| 4 | [2026-06-13-core-src-security-review.ko.md](2026-06-13-core-src-security-review.ko.md) | 진행 중 | 2026-06-14: #1 mtrie, #2 WS/WSS buffering, #3 포트 파싱, #4 IPC unlink, #6 message/send 가드 수정·core/C++ binding 검증 통과·Claude 추가 이슈 없음, C binding은 기존 C-BINDING-001 버전 테스트 불일치로 실패 |
 | 5-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
 | 5-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |
 | 5-3 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 대기 | 동시성·리소스 항목 |

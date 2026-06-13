@@ -21,7 +21,7 @@
 | # | 심각도 | 분류 | 위치 | 상태 | 출처 |
 |---|--------|------|------|------|------|
 | 1 | **High** | DoS / 스택 오버플로 | `core/src/runtime/utils/generic_mtrie_impl.hpp`, 보조: `trie.cpp`, `radix_tree.cpp` | **수정 완료(2026-06-14)** | upstream 파생 |
-| 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | 확인 | repo 고유 |
+| 2 | Medium | DoS / 큰 메시지 버퍼 이중 보관 | `core/src/runtime/transports/ws/ws_transport.cpp`, `core/src/runtime/transports/tls/wss_transport.cpp` | **수정 완료(2026-06-14)** | repo 고유 |
 | 3 | Medium | 입력검증 / 잘못된 포트 | `core/src/runtime/utils/ip_resolver.cpp:216,257` | **수정 완료(2026-06-14)** | upstream 파생 |
 | 4 | Medium | 파일시스템 / TOCTOU | `core/src/runtime/transports/ipc/asio_ipc_listener.cpp:118` | **수정 완료(2026-06-14)** | repo 고유 순서 |
 | 5 | Medium | 정수 오버플로 | `core/src/runtime/protocol/decoder_allocators.cpp:88` | 확인, 현실 도달성 낮음 | upstream 파생 |
@@ -259,7 +259,7 @@ Claude 리뷰:
   - `core/src/runtime/transports/ws/ws_transport.cpp:43` (`ZLINK_WS_READ_MESSAGE_MAX`), `:199-205`
   - `core/src/runtime/transports/tls/wss_transport.cpp:45` (`ZLINK_WS_READ_MESSAGE_MAX`)
 - **출처**: repo 고유
-- **상태**: ✅ 확인
+- **상태**: ✅ 2026-06-14 수정 완료
 
 ### 참고 (오해 방지)
 
@@ -293,6 +293,44 @@ ZMP `maxmsgsize` 검사는 이 할당의 **하류**라 WS/WSS 전송 버퍼를 �
   바꾸지 않고 메모리와 복사 비용을 함께 줄일 수 있다.
 - 기본 `read_message_max`를 `_options.maxmsgsize` 또는 작은 고정값에 맞추는 변경은 큰 메시지 사용자에게
   호환성 영향을 줄 수 있다. 기본값 변경은 별도 릴리스 노트와 테스트를 붙여 처리한다.
+
+### 처리 기록 (2026-06-14)
+
+`ws_transport_t`와 `wss_transport_t`의 `read_state_t`에서 `pending_message`와 `pending_offset`을
+제거했다. partial read 뒤 남은 바이트는 Beast `flat_buffer`인 `message_buffer`에 그대로 남겨 두고,
+다음 `async_read_some` 호출에서 `message_buffer.data()`를 caller buffer로 복사한 뒤 전달한 길이만
+`message_buffer.consume(deliver)`로 소비한다. 따라서 큰 WS/WSS 메시지를 작은 read buffer로 읽어도
+전체 메시지를 `std::vector`에 한 번 더 복사하지 않는다.
+
+Claude 리뷰에서 이번 변경이 만든 문제는 아니지만 같은 WS/WSS 계층의 선재 하드닝 항목으로
+`ws_transport_t`의 async read callback도 WSS처럼 stream shared pointer를 잡도록 맞추었다.
+`pending_message` 제거 뒤 남은 사용처가 없어진 `<vector>` include도 함께 제거했다.
+
+이번 변경은 큰 메시지 사용자에게 영향을 줄 수 있는 기본 `read_message_max` 값은 바꾸지 않았다.
+이번 항목의 범위는 두 번째 전체 사본 제거와 기존 partial-read 의미 유지다.
+
+검증:
+- `rg -n "pending_message|pending_offset" core/src/runtime/transports/ws core/src/runtime/transports/tls/wss_transport.*`: 결과 없음.
+- `cmake --build core/build --target test_transport_matrix -j2`: 통과.
+- `ctest --test-dir core/build -R '^test_transport_matrix$' --output-on-failure`: 통과.
+- `cmake --build core/build -j2`: 통과.
+- `bindings/dev_sync_local_core_libs.sh`: core runtime을 바인딩 workspace로 동기화했다.
+- `bindings/cpp/tests/run_tests.sh`: 통과.
+- `bindings/c/tests/run_tests.sh`: 6개 중 5개 통과, `test_c_contract_surface` 실패. 실패 위치는
+  `bindings/c/tests/test_c_contract_surface.c`의 `ZLINK_VERSION_PATCH == 3` 기대값이며,
+  이미 별도 C 바인딩 리포트의 `C-BINDING-001`에 기록된 버전 매크로 불일치와 같은 문제다.
+  WS/WSS buffering 변경 경로와는 무관하지만, C 바인딩 검증은 해당 항목을 처리할 때 다시 통과시켜야 한다.
+
+Claude 리뷰:
+- 2026-06-14: 실제 WS/WSS transport 코드와 문서를 대조한 결과, `pending_message.resize(available)`로
+  전체 메시지 두 번째 사본을 만들던 경로가 제거되었고 `message_buffer`에 남은 바이트를 다음
+  `async_read_some`에서 전달하는 partial-read 의미가 유지된다고 확인했다.
+- WS와 WSS가 같은 버퍼 처리 의미로 수정되었고, 같은 계층에 `pending_message` 전체 사본 패턴이
+  남아 있지 않다고 확인했다.
+- 기본 `ZLINK_WS_READ_MESSAGE_MAX`와 `read_message_max` 정책은 바뀌지 않았고 문서와 일치한다고 확인했다.
+- 선재 관찰로 WS async read callback의 stream lifetime capture 비대칭과 사용되지 않는 `<vector>` include를
+  지적했고, 위 처리 기록처럼 함께 정리했다.
+- 결론: "이번 #2 수정 범위 내에서 추가 이슈 없음."
 
 ---
 

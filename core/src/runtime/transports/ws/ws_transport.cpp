@@ -10,7 +10,6 @@
 #include "utils/env.hpp"
 
 #include <cerrno>
-#include <cstring>
 
 //  Debug logging for WebSocket transport
 #define ASIO_DBG_WS(fmt, ...) ASIO_DBG_THIS ("WS", fmt, ##__VA_ARGS__)
@@ -151,16 +150,12 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    const std::size_t pending_size = read_state->pending_message.size ();
-    if (read_state->pending_offset < pending_size) {
-        const std::size_t remaining = pending_size - read_state->pending_offset;
-        const std::size_t deliver = std::min<std::size_t> (buffer_size, remaining);
-        std::memcpy (buffer, &read_state->pending_message[read_state->pending_offset], deliver);
-        read_state->pending_offset += deliver;
-        if (read_state->pending_offset >= read_state->pending_message.size ()) {
-            read_state->pending_message.clear ();
-            read_state->pending_offset = 0;
-        }
+    const std::size_t buffered_size = read_state->message_buffer.size ();
+    if (buffered_size > 0) {
+        const std::size_t deliver = std::min<std::size_t> (buffer_size, buffered_size);
+        boost::asio::buffer_copy (boost::asio::buffer (buffer, deliver),
+                                  read_state->message_buffer.data ());
+        read_state->message_buffer.consume (deliver);
         if (handler) {
             boost::asio::post (stream->get_executor (), [handler, deliver] () {
                 handler (boost::system::error_code (), deliver);
@@ -169,7 +164,7 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    stream->async_read (read_state->message_buffer, [read_state, buffer, buffer_size,
+    stream->async_read (read_state->message_buffer, [stream, read_state, buffer, buffer_size,
                                                      handler] (const boost::system::error_code &ec,
                                                                std::size_t) {
         if (read_state->closed) {
@@ -196,20 +191,9 @@ void ws_transport_t::async_read_some (unsigned char *buffer,
         }
 
         const std::size_t deliver = std::min<std::size_t> (buffer_size, available);
-        if (available > deliver) {
-            read_state->pending_message.resize (available);
-            boost::asio::buffer_copy (
-              boost::asio::buffer (&read_state->pending_message[0], available),
-              read_state->message_buffer.data ());
-            std::memcpy (buffer, &read_state->pending_message[0], deliver);
-            read_state->pending_offset = deliver;
-        } else {
-            boost::asio::buffer_copy (boost::asio::buffer (buffer, deliver),
-                                      read_state->message_buffer.data ());
-            read_state->pending_message.clear ();
-            read_state->pending_offset = 0;
-        }
-        read_state->message_buffer.consume (available);
+        boost::asio::buffer_copy (boost::asio::buffer (buffer, deliver),
+                                  read_state->message_buffer.data ());
+        read_state->message_buffer.consume (deliver);
 
         if (handler) {
             handler (boost::system::error_code (), deliver);

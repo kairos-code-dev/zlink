@@ -16,7 +16,6 @@
 #include <array>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "engine/asio/i_asio_transport.hpp"
 
@@ -105,18 +104,14 @@ class wss_transport_t : public i_asio_transport
     typedef boost::beast::websocket::stream<ssl_stream_t> wss_stream_t;
     struct read_state_t
     {
-        read_state_t () : pending_offset (0), closed (false) {}
+        read_state_t () : closed (false) {}
 
         void clear ()
         {
             message_buffer.consume (message_buffer.size ());
-            pending_message.clear ();
-            pending_offset = 0;
         }
 
         boost::beast::flat_buffer message_buffer;
-        std::vector<unsigned char> pending_message;
-        std::size_t pending_offset;
         bool closed;
     };
 

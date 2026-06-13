@@ -54,7 +54,7 @@
 | C | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | Low (버전 매크로 불일치) |
 | C++ | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 추가 수정 없음 |
 | .NET | [2026-06-14-bindings-dotnet-security-review.ko.md](2026-06-14-bindings-dotnet-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계 문서화, 메시지 크기 변환 정책 수정 완료) |
-| Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | Low (`Message.Data()` slice 수명) |
+| Go | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 추가 보안 수정 없음 (`Message.Data()` slice 수명 규칙 문서화와 회귀 테스트 추가 완료) |
 | Java | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 추가 보안 수정 없음 (native library 로딩 경계와 Windows DLL 검색 전제 문서화 완료) |
 | Node | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | Low (callback handler slot 제한) |
 | Python | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 추가 보안 수정 없음 (Windows DLL 검색 경계와 native view 수명 규칙 문서화 완료) |

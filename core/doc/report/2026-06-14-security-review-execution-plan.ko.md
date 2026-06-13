@@ -46,7 +46,7 @@
 | 6-2 | [2026-06-14-bindings-java-security-review.ko.md](2026-06-14-bindings-java-security-review.ko.md) | 종결 | 2026-06-14: native library 로딩 경계와 Windows DLL 검색 전제 문서화, Gradle test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-3 | [2026-06-14-bindings-python-security-review.ko.md](2026-06-14-bindings-python-security-review.ko.md) | 종결 | 2026-06-14: Windows DLL 검색 경계와 native view 수명 규칙 문서화, Python tests/samples 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-4 | [2026-06-14-bindings-rust-security-review.ko.md](2026-06-14-bindings-rust-security-review.ko.md) | 종결 | 2026-06-14: Context thread-safety 계약 문서화와 회귀 테스트 추가, Rust cargo test 통과, Codex 에이전트 추가 이슈 없음 |
-| 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 대기 | - |
+| 6-5 | [2026-06-14-bindings-go-security-review.ko.md](2026-06-14-bindings-go-security-review.ko.md) | 종결 | 2026-06-14: Message.Data slice 수명 규칙 문서화와 회귀 테스트 추가, Go test 통과, Codex 에이전트 추가 이슈 없음 |
 | 6-6 | [2026-06-14-bindings-c-security-review.ko.md](2026-06-14-bindings-c-security-review.ko.md) | 대기 | - |
 | 6-7 | [2026-06-14-bindings-node-security-review.ko.md](2026-06-14-bindings-node-security-review.ko.md) | 대기 | - |
 | 6-8 | [2026-06-14-bindings-cpp-security-review.ko.md](2026-06-14-bindings-cpp-security-review.ko.md) | 대기 | - |

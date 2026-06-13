@@ -231,6 +231,11 @@ func (m *Message) Close() error {
 	return nil
 }
 
+// Data returns a view of the native message payload.
+//
+// The returned slice is valid only until the message is closed. Callers that
+// need to keep the payload after Close, send it to another goroutine, or store
+// it beyond the message lifetime should use Bytes instead.
 func (m *Message) Data() []byte {
 	if m == nil || m.closed {
 		return nil

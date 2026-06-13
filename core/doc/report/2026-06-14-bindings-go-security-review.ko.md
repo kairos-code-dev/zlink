@@ -3,7 +3,7 @@
 - 작성일: 2026-06-14
 - 대상 범위: `bindings/go/internal/native/ffi.go`, `bindings/go/internal/native/message.go`
 - 검토 방식: cgo 링크 설정, routing id 변환, 메시지 생성·복사·close 경로를 코드 기준으로 확인했다.
-- 상태: 주의 항목 1건
+- 상태: 2026-06-14 주의 항목 1건 문서화와 회귀 테스트 추가 완료. Codex 에이전트 리뷰 통과.
 
 ## 요약
 
@@ -16,6 +16,7 @@ Go 바인딩은 cgo로 core C API를 호출한다. 이번 검토에서는 Go sli
 ### GO-BINDING-001: `Message.Data()`가 반환한 slice는 메시지 수명에 의존한다
 
 - 심각도: 낮음
+- 상태: 2026-06-14 문서화와 회귀 테스트 추가 완료
 - 근거:
   - `bindings/go/internal/native/message.go:234-244`는 `zlink_msg_data` 결과를 `unsafe.Slice`로 감싸 반환한다.
   - `bindings/go/internal/native/message.go:246-252`의 `Bytes()`는 `Data()` 결과를 새 `[]byte`로 복사해 snapshot을 만든다.
@@ -26,6 +27,10 @@ Go 바인딩은 cgo로 core C API를 호출한다. 이번 검토에서는 Go sli
 - 권장 조치:
   - `Data()`가 반환한 slice는 메시지를 닫기 전까지만 유효하다고 공개 문서에 명시한다.
   - 안전한 보관이 필요한 호출자는 `Bytes()`를 쓰도록 안내한다.
+- 처리 결과:
+  - `bindings/go/internal/native/message.go`의 `Message.Data()` 주석에 반환 slice가 message close 전까지만 유효하다고 적었다.
+  - `bindings/go/doc.go`와 `bindings/go/README.godoc.md`에 `Message.Data()`는 native message storage 위의 zero-copy view이고, 장기 보관이나 goroutine 경계 전달에는 `Message.Bytes()`를 쓰라고 적었다.
+  - `bindings/go/message_test.go`에 `Bytes()` snapshot이 `Data()` view 변경과 `Close()` 이후에도 독립적으로 유지되는 회귀 테스트를 추가했다.
 
 ## 확인 결과
 
@@ -46,6 +51,12 @@ Routing id도 public API에서는 복사본을 반환하므로 외부 호출자�
 
 메시지 생성 시 Go slice에서 native buffer로 한 번 복사한다. 이는 cgo 경계에서 수명 문제를 줄이는 안정적인 선택이다. 반대로 `Data()`는 복사 없는 view를 반환하므로 성능에는 유리하지만 메시지 수명에 묶인다.
 
+검증:
+
+- `cd bindings/go && go test ./... -run TestMessageBytesSnapshotSurvivesClose -count=1` 통과.
+- `cd bindings/go && go test ./...` 통과.
+- Codex 에이전트 리뷰에서 "추가 이슈 없음" 판정을 받았다.
+
 ## 결론
 
-Go 바인딩에서 즉시 수정해야 할 기능 결함은 확인하지 못했다. 다만 `Data()`의 slice 수명 규칙은 문서와 테스트로 고정하는 편이 좋다. 남은 위험은 core C API와 cgo callback 경계의 계약에 종속된다.
+Go 바인딩에서 즉시 수정해야 할 기능 결함은 확인하지 못했다. 2026-06-14에 `Data()`의 slice 수명 규칙을 문서와 테스트로 고정했다. 남은 위험은 core C API와 cgo callback 경계의 계약에 종속된다.

@@ -94,6 +94,30 @@ func TestMessageCanonicalCopyHelpers(t *testing.T) {
 	}
 }
 
+func TestMessageBytesSnapshotSurvivesClose(t *testing.T) {
+	msg, err := zlink.NewMessageString("snapshot-payload")
+	if err != nil {
+		t.Fatalf("NewMessageString() error = %v", err)
+	}
+
+	view := msg.Data()
+	snapshot := msg.Bytes()
+	view[0] = 'S'
+
+	if got := string(snapshot); got != "snapshot-payload" {
+		t.Fatalf("Bytes() snapshot = %q, want snapshot-payload", got)
+	}
+	if err := msg.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if got := msg.Data(); got != nil {
+		t.Fatalf("Data() after Close() = %v, want nil", got)
+	}
+	if got := string(snapshot); got != "snapshot-payload" {
+		t.Fatalf("snapshot after Close() = %q, want snapshot-payload", got)
+	}
+}
+
 func TestMessageEmptyState(t *testing.T) {
 	msg, err := zlink.NewMessageWithSize(0)
 	if err != nil {

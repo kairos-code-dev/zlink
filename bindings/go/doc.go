@@ -25,4 +25,8 @@
 // caller-owned bytes during Submit and does not retain the slice after Submit
 // returns. Receive paths transfer ownership to Go wrappers that must be closed
 // explicitly when their lifetime ends.
+//
+// Message.Data returns a zero-copy view over native message storage. The view
+// is valid only while the Message remains open. Use Message.Bytes when payload
+// data must outlive the Message or cross a goroutine boundary.
 package zlink

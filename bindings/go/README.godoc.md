@@ -44,6 +44,13 @@ The exported Go package reflects the shared bindings policy in
 - callback delivery hops off native callback threads onto Go-managed
   dispatcher goroutines before user handlers run
 
+## Message Payload Lifetime
+
+`Message.Data()` returns a zero-copy view over native message storage. The
+returned slice is valid only while the `Message` remains open. Use
+`Message.Bytes()` when payload data must outlive the message or cross a
+goroutine boundary.
+
 ## Verification Entry Points
 
 - `go test ./...`

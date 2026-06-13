@@ -116,6 +116,35 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task TcpReceivePayloadLimitDisconnectsBeforePayloadAllocation()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePrefixAsync(stream, headerLength: 0, payloadLength: 2);
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxReceivePayloadSize = 1,
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        await connector.Connect.Async();
+
+        await WaitUntilAsync(
+            () => connector.State == ZlinkStreamConnectionState.Disconnected,
+            TimeSpan.FromSeconds(5));
+        await server;
+    }
+
+    [Fact]
     public async Task WebSocketSendUsesBinaryFrames()
     {
         using var listener = new HttpListener();
@@ -151,6 +180,40 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task WebSocketReceivePayloadLimitDisconnectsBeforeExtraCopy()
+    {
+        using var listener = new HttpListener();
+        var port = GetFreeTcpPort();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/ws/");
+        listener.Start();
+        var server = Task.Run(async () =>
+        {
+            var context = await listener.GetContextAsync();
+            var webSocketContext = await context.AcceptWebSocketAsync(null);
+            using var webSocket = webSocketContext.WebSocket;
+            await webSocket.SendAsync(
+                new byte[70_000],
+                WebSocketMessageType.Binary,
+                true,
+                CancellationToken.None);
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"ws://127.0.0.1:{port}/ws/"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxReceivePayloadSize = 1,
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+        await connector.Connect.Async();
+
+        await WaitUntilAsync(
+            () => connector.State == ZlinkStreamConnectionState.Disconnected,
+            TimeSpan.FromSeconds(5));
+        await server;
+    }
+
+    [Fact]
     public async Task TlsSendWorksWithSkippedCertificateValidation()
     {
         using var certificate = CreateSelfSignedCertificate();
@@ -182,6 +245,38 @@ public sealed partial class StreamConnectorTests
             .PacketName("th")
             .Async();
 
+        await server;
+    }
+
+    [Fact]
+    public async Task TlsReceivePayloadLimitDisconnectsBeforePayloadAllocation()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var ssl = new SslStream(tcp.GetStream(), false);
+            await ssl.AuthenticateAsServerAsync(certificate);
+            await WritePrefixAsync(ssl, headerLength: 0, payloadLength: 2);
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tls://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            MaxReceivePayloadSize = 1,
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            SkipServerCertificateValidation = true
+        });
+        await connector.Connect.Async();
+
+        await WaitUntilAsync(
+            () => connector.State == ZlinkStreamConnectionState.Disconnected,
+            TimeSpan.FromSeconds(5));
         await server;
     }
 

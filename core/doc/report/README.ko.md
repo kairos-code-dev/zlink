@@ -2,7 +2,7 @@
 
 - **대상**: `core/` 런타임 + `framework/languages/{cpp,node,java,dotnet}` 프레임워크 계층 + `bindings/{c,cpp,dotnet,go,java,node,python,rust}` 바인딩 라이브러리
 - **방식**: 영역별 병렬 정밀 리뷰(신뢰 불가 입력 파싱·역직렬화 · 네이티브 interop · 동시성 · 리소스 해제 우선)
-- **상태**: 리포트 전용. **코드 수정 없음.**
+- **상태**: 실행 순서에 따라 일부 framework 원격 DoS 항목 수정 진행 중.
 
 > Core와 framework 리포트는 Codex 교차검증 결과를 본문에 포함한다.
 > 바인딩 리포트는 실제 바인딩 코드와 Claude 코드 리뷰 결과를 다시 대조해 보강했다.
@@ -17,6 +17,7 @@
 - 2026-06-14: Claude 리뷰에서 README 인덱스 확인 항목에 대해 "추가 이슈 없음" 판정을 받았다.
 - 2026-06-14: Node/TS framework 원격 DoS 항목(C1, C2, S1, S2)을 수정하고, build·targeted node test·typecheck 통과와 Claude "추가 이슈 없음" 판정을 확인했다.
 - 2026-06-14: Java framework 원격 DoS 항목(F1, F2)을 수정하고, stream-connector·framework-core test 통과와 Claude "추가 이슈 없음" 판정을 확인했다.
+- 2026-06-14: .NET framework 원격 DoS 1차 항목(D1, D2, D5)을 수정하고, stream-connector test와 framework LZ4 회귀 테스트 통과 및 Claude "추가 이슈 없음" 판정을 확인했다. D3/D4는 실행 순서 5-4에서 계속 처리한다.
 
 ## 리포트 목록
 
@@ -31,7 +32,7 @@
 | C++ | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | **Critical** (인바운드 프레임 DoS, 리다이렉트 자격증명 유출) |
 | Node/TS | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | High (인바운드/WS DoS: 2026-06-14 수정 완료) |
 | Java | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | High (인바운드 DoS: 2026-06-14 수정 완료, Netty 호스트명 미검증 남음) |
-| .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | High (인바운드/WS DoS, 무제한 메시지 적재) |
+| .NET | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | Medium (무제한 메시지 적재·디스패치 큐 남음, 인바운드/WS/LZ4 DoS는 2026-06-14 수정 완료) |
 
 ### 바인딩 라이브러리 (언어별)
 | 언어 | 파일 | 최고 심각도 |
@@ -70,7 +71,7 @@ stream-connector 와이어 프레임은 6바이트 prefix(`header_size` u16 + `p
 | C++ | `connector/core/src/runtime/.../zlink_stream_calls.cpp:235`, `stream_connection.cpp:351`, `:307` | 2026-06-14 `max_receive_payload_size` 검증으로 수정 완료 |
 | Node | `stream-connector/.../NodeDuplexStreamConnection.ts:65`, `WebSocketFrameCodec.ts:29` | 2026-06-14 `maxReceivePayloadSize` 검증으로 수정 완료 |
 | Java | `ZLinkTcpTransportConnection.java:33`, `ZLinkTlsTransportConnection.java:191` | 2026-06-14 `maxReceivePayloadSize` 검증으로 수정 완료 |
-| .NET | `ZlinkStreamFrameCodec.cs:96`, `WebSocketConnection.cs:35` | `new byte[payloadSize]` 최대 ~2GiB, WS 단편 무제한 누적 |
+| .NET | `ZlinkStreamFrameCodec.cs:96`, `WebSocketConnection.cs:35` | 2026-06-14 `MaxReceivePayloadSize` 검증으로 수정 완료 |
 
 **트리거**: 악의적/탈취된 서버(또는 평문 `tcp://`/`ws://`의 MITM)가 prefix에 거대한 `payload_size`를 실어 보냄 → 클라이언트 OOM/크래시.
 **근본 원인**: `frame_codec`의 크기 검증이 **encode 전용**으로만 호출되고 decode에서는 호출 안 됨.
@@ -84,7 +85,7 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 |------|------|
 | Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` (2026-06-14 출력 길이 상한 적용 완료) |
 | Java | `ZLinkStreamLz4Pickler.java:53`, `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51` (2026-06-14 출력 길이 상한 적용 완료) |
-| .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` |
+| .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` (2026-06-14 출력 길이 상한 적용 완료) |
 | C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, 단 http 디코딩은 무제한 — cpp 리포트 L1) |
 
 **수정**: 할당 전 `resultLength`를 max-decompressed-size로 clamp.

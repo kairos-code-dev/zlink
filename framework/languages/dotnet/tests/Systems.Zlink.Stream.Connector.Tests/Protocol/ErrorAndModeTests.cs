@@ -99,6 +99,20 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task ReceivePayloadLimitMustBePositive()
+    {
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                MaxReceivePayloadSize = 0
+            }));
+
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
+        await Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task InvalidHeaderFramePublishesDecodeError()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

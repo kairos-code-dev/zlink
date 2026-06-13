@@ -40,6 +40,17 @@ public sealed partial class StreamConnectorTests
         await stream.WriteAsync(payload);
     }
 
+    private static async Task WritePrefixAsync(
+        global::System.IO.Stream stream,
+        ushort headerLength,
+        uint payloadLength)
+    {
+        var prefix = new byte[6];
+        BinaryPrimitives.WriteUInt16BigEndian(prefix.AsSpan(0, 2), headerLength);
+        BinaryPrimitives.WriteUInt32BigEndian(prefix.AsSpan(2, 4), payloadLength);
+        await stream.WriteAsync(prefix);
+    }
+
     private static byte[] EncodePacket(byte[] header, byte[] payload)
     {
         var frame = new byte[6 + header.Length + payload.Length];

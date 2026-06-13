@@ -2,7 +2,7 @@
 
 - **작성일**: 2026-06-14
 - **대상 범위**: `framework/languages/dotnet/src/{Zlink.Framework,Zlink.Framework.AspNetCore,Systems.Zlink.Stream.Connector,.Codecs,.Json,.MessagePack,.Protobuf}`
-- **상태**: 리포트 전용. **코드 수정 없음.**
+- **상태**: 2026-06-14 원격 DoS 1차 항목(D1, D2, D5) 종결. D3, D4는 실행 순서 5-4에서 계속 처리.
 - **참고**: 교차언어 공통 결함은 [README.ko.md](README.ko.md) 참조.
 
 > **바인딩 범위 주의**: 본 계층은 **순수 관리 구현** — `DllImport`/`LibraryImport`/`Marshal`/`SafeHandle`/`AllocHGlobal`/`GCHandle`/`stackalloc` 없음.
@@ -13,11 +13,11 @@
 
 | # | 심각도 | 분류 | 위치 | 상태 |
 |---|--------|------|------|------|
-| D1 | High | DoS / 무제한 수신 할당 | `Systems.Zlink.Stream.Connector/.../Framing/ZlinkStreamFrameCodec.cs:96-104` | 확인 |
-| D2 | High | DoS / WS 단편 무제한 버퍼링 | `.../Transport/WebSocketConnection.cs:35-53,87-104` | 확인 |
+| D1 | High | DoS / 무제한 수신 할당 | `Systems.Zlink.Stream.Connector/.../Framing/ZlinkStreamFrameCodec.cs:96-104` | 2026-06-14 수정 완료 |
+| D2 | High | DoS / WS 단편 무제한 버퍼링 | `.../Transport/WebSocketConnection.cs:35-53,87-104` | 2026-06-14 수정 완료 |
 | D3 | Medium | DoS / 무제한 수신 메시지 적재 | `.../Runtime/ZlinkStreamReceivedMessages.cs:17-34`, `ZlinkStreamReceiveDispatcher.cs:76` | 확인 |
 | D4 | Medium | DoS / 무제한 디스패치 큐 | `.../Runtime/ZlinkStreamConnectorCallbacks.cs:230-236` | 확인 |
-| D5 | Medium | DoS / LZ4 압축 폭탄 | `.../Compression/ZlinkStreamLz4CompressionCodec.cs:10-11` | 확인 |
+| D5 | Medium | DoS / LZ4 압축 폭탄 | `.../Compression/ZlinkStreamLz4CompressionCodec.cs:10-11` | 2026-06-14 수정 완료 |
 | S1 | Low | 동시성 / CTS use-after-dispose 창 | `ZlinkStreamConnectorLifecycle.cs:256` | 의심 → **오탐(멱등 dispose)** |
 | S2 | Low | 리소스 / pending-request 누수 | `ZlinkStreamPendingRequests.cs:46-66` | 의심 → **오탐(caller가 정리)** |
 
@@ -47,6 +47,29 @@
 ---
 
 ## CONFIRMED
+
+## 처리 기록 (2026-06-14)
+
+- D1: `ZlinkStreamConnectorOptions.MaxReceivePayloadSize` 를 추가하고, TCP/TLS 수신 경로의
+  `ZlinkStreamFrameCodec.ReadAsync` 가 payload 배열을 할당하기 전에 수신 payload 길이를
+  검사하도록 수정했다.
+- D2: `WebSocketConnection` 이 WebSocket message 를 조립하는 동안
+  `header + payload` 최대 수신 frame 크기를 넘는지 먼저 검사하도록 수정했다. 버퍼 확장
+  계산은 `checked` 산술을 사용한다.
+- D5: connector LZ4 codec 과 framework stream protocol 기본 LZ4 해제 경로가
+  `LZ4Pickler.UnpickledSize` 로 압축 해제 결과 길이를 먼저 확인한 뒤 `Unpickle` 을 호출한다.
+- D3/D4는 메시지 저장소와 callback dispatch queue의 bounded 정책 문제라서 실행 순서
+  5-4에서 별도로 처리한다.
+- 실행한 검증:
+  - `cd framework/languages/dotnet && dotnet test tests/Systems.Zlink.Stream.Connector.Tests/Systems.Zlink.Stream.Connector.Tests.csproj --no-restore --logger "console;verbosity=minimal"` 통과(48개).
+  - `cd framework/languages/dotnet && dotnet test tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj --no-restore --logger "console;verbosity=minimal" --filter "FullyQualifiedName~StreamProtocolLz4DecompressRejectsDecodedPayloadAboveDefaultLimit"` 통과(1개).
+  - 전체 `Zlink.Framework.UnitTests` 실행은 기존 문서 회귀 테스트
+    `DotNetRegressionMatrix_Includes_ExecutionSerialization_Guards` 의 matrix 문구 누락으로 1개
+    실패했다. 이번 D1/D2/D5 수정과 직접 관련된 런타임 테스트는 위 필터 검증으로 통과했다.
+- core runtime과 public header를 수정하지 않았으므로 `bindings/dev_sync_local_core_libs.sh` 는
+  실행 대상이 아니다.
+- Claude 코드 리뷰에서 D1/D2/D5가 실제 코드에서 닫혔고, D3/D4를 악화시키지 않았으며,
+  "D1/D2/D5 종결 blocker가 되는 추가 이슈 없음"이라는 판정을 받았다.
 
 ### D1 — 무제한 수신 페이로드 할당 (`MaxReceivePayloadSize` 부재)
 - **분류**: DoS / 신뢰 불가 입력 · **확인 · repo 고유**

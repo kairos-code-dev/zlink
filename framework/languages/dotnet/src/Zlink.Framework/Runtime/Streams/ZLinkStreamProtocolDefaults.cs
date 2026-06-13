@@ -6,6 +6,8 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal static class ZLinkStreamProtocolDefaults
 {
+    private const int DefaultMaxDecompressedPayloadSize = 64 * 1024;
+
     public static IZlinkStreamPacketNameResolver PacketNameResolver { get; } = new DefaultPacketNameResolver();
 
     public static ReadOnlyMemory<byte> EncodeHeader(ZlinkStreamHeader header)
@@ -18,7 +20,20 @@ internal static class ZLinkStreamProtocolDefaults
         => LZ4Pickler.Pickle(payload.Span);
 
     public static ReadOnlyMemory<byte> Lz4Decompress(ReadOnlyMemory<byte> payload)
-        => LZ4Pickler.Unpickle(payload.Span);
+        => Lz4Decompress(payload, DefaultMaxDecompressedPayloadSize);
+
+    public static ReadOnlyMemory<byte> Lz4Decompress(
+        ReadOnlyMemory<byte> payload,
+        int maxDecompressedPayloadSize)
+    {
+        var decompressedSize = LZ4Pickler.UnpickledSize(payload.Span);
+        if (decompressedSize > maxDecompressedPayloadSize)
+        {
+            throw new InvalidOperationException("LZ4 decoded stream payload exceeds maximum stream payload size.");
+        }
+
+        return LZ4Pickler.Unpickle(payload.Span);
+    }
 
     private sealed class DefaultPacketNameResolver : IZlinkStreamPacketNameResolver
     {

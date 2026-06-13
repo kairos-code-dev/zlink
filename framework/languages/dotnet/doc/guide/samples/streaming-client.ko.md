@@ -131,6 +131,8 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxSendPayloadSize { get; init; } = 64 * 1024;
 
+    public int MaxReceivePayloadSize { get; init; } = 64 * 1024;
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public ZlinkStreamDispatchMode DispatchMode { get; init; } =
@@ -172,6 +174,12 @@ public sealed class ZlinkStreamReconnectOptions
 64KB 를 넘는 payload 가 필요한 애플리케이션은 이 값을 의도적으로 키워야 한다.
 `.Compress()` 를 호출한 경우에도 한도 검사는 압축 전 원본 payload 기준으로 한다.
 한도를 넘으면 transport write 전에 `FrameTooLarge` 예외가 난다.
+
+`MaxReceivePayloadSize` 는 connector 가 읽어 들이는 payload bytes 에 대한 기본 보호
+장치다. 기본값은 64KB이며, TCP/TLS frame 을 할당하기 전과 WebSocket message 를 조립하는
+동안 적용한다. LZ4 로 압축된 payload 를 해제할 때도 압축이 풀린 결과가 이 값을 넘으면
+`FrameTooLarge` 예외로 처리한다. 이 값은 신뢰할 수 없는 피어가 아주 큰 frame 길이나 압축
+결과 길이를 보내 connector 메모리를 소모시키지 못하게 막기 위한 한도다.
 
 metadata encoded payload 는 1024 bytes 고정 한도를 사용한다. header 전체 길이는 STREAM
 frame prefix 의 `u16 header_len` 으로 표현되므로 65535 bytes 를 넘을 수 없다. 하지만
@@ -814,6 +822,7 @@ public enum ZlinkStreamCompression
 - `ZlinkStreamCompression.Lz4` 는 framework 가 제공하는 LZ4 codec 을 사용한다.
 - `PayloadCompressed` flag 가 켜져 있는데도 `Compression` 이 `None` 이라면, 이는 decode
   error 로 처리한다.
+- 압축이 풀린 payload 가 `MaxReceivePayloadSize` 를 넘으면 `FrameTooLarge` 로 처리한다.
 
 ## 14. Request Helper
 
@@ -912,6 +921,8 @@ server → client 방향은 typed API 에서 자동 압축 해제를 제공한�
 - 그러면 `.NET` connector 가, typed 사용자 callback 이 호출되기 전에 payload 를 미리 압축
   해제해 둔다.
 - typed message handler 와 request reply decode 는 모두, 압축이 해제된 payload 를 받는다.
+- 압축 해제 결과가 `MaxReceivePayloadSize` 를 넘으면, 사용자 callback 이 호출되기 전에
+  `FrameTooLarge` error 로 사용자에게 전달한다.
 - 압축 해제에 실패하면, `DecompressionFailed` error 로 사용자에게 전달한다.
 
 client → server 방향은 명시적으로 호출했을 때만 압축한다.
@@ -956,6 +967,8 @@ Unity 사용 예제와 lifecycle 처리 방식은
   테스트한다.
 - TLS 자체 서명 인증서 검증 옵션을 테스트한다.
 - partial read, multi-packet read, send payload limit 동작을 테스트한다.
+- receive payload limit 이 TCP/TLS frame 할당 전, WebSocket message 조립 중, LZ4 압축
+  해제 전에 적용되는지 테스트한다.
 - JSON, MessagePack, Protobuf extension이 core packet 계약을 바꾸지 않는지 테스트한다.
 - server-to-client 방향에서 압축된 payload를 typed API가 자동으로 해제한다.
 - client-to-server 방향의 압축은 `.Compress()`를 호출한 packet에만 적용된다.

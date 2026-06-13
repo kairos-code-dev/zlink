@@ -1,4 +1,5 @@
 using System.Text;
+using K4os.Compression.LZ4;
 using Zlink.Framework.AspNetCore.Monitoring;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
@@ -6,6 +7,15 @@ namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class CoverageCriticalRuntimeTests
 {
+    [Fact]
+    public void StreamProtocolLz4DecompressRejectsDecodedPayloadAboveDefaultLimit()
+    {
+        var compressed = LZ4Pickler.Pickle(new byte[(64 * 1024) + 1]);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ZLinkStreamProtocolDefaults.Lz4Decompress(compressed));
+    }
+
     [Fact]
     public void RegistryRoutePayloadCodec_RoundTripsIdentityStringsRoutingIdsAndUInt64()
     {

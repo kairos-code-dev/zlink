@@ -13,6 +13,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Codecs;
 using Systems.Zlink.Stream.Connector.Contracts.Calls;
 using Systems.Zlink.Stream.Connector.Runtime;
+using Systems.Zlink.Stream.Connector.Runtime.Protocol.Compression;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol.Framing;
 using Xunit;
 using StreamJson = Systems.Zlink.Stream.Connector.Json.ZlinkStreamJsonExtensions;
@@ -104,5 +105,16 @@ public sealed partial class StreamConnectorTests
         await server;
     }
 
+    [Fact]
+    public void Lz4CodecRejectsDecodedPayloadAboveReceiveLimit()
+    {
+        var source = Encoding.UTF8.GetBytes(new string('A', 1024));
+        var compressed = ZlinkStreamDefaultCodecFactory.Lz4Compression().Compress(source);
+        var codec = new ZlinkStreamLz4CompressionCodec(maxDecompressedPayloadSize: 64);
+
+        var exception = Assert.Throws<ZlinkStreamException>(() => codec.Decompress(compressed));
+
+        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+    }
 
 }

@@ -114,6 +114,13 @@ internal static class ZlinkStreamTransportFactory
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxSendPayloadSize must be positive.");
         }
+
+        if (options.MaxReceivePayloadSize <= 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "MaxReceivePayloadSize must be positive.");
+        }
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(
@@ -137,7 +144,7 @@ internal static class ZlinkStreamTransportFactory
         }
 
         await webSocket.ConnectAsync(options.Endpoint, cancellationToken).ConfigureAwait(false);
-        return new WebSocketConnection(webSocket);
+        return new WebSocketConnection(webSocket, options.MaxReceivePayloadSize);
     }
 
     private static async ValueTask<IZlinkStreamConnection> ConnectStreamAsync(

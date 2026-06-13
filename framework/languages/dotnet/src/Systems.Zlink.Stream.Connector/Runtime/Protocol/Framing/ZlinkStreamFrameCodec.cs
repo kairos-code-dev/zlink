@@ -89,15 +89,18 @@ internal static class ZlinkStreamFrameCodec
 
     public static async ValueTask<ZlinkStreamFrame> ReadAsync(
         IZlinkStreamConnection connection,
+        int maxPayloadSize,
         CancellationToken cancellationToken)
     {
         var prefix = new byte[6];
         await ReadExactAsync(connection, prefix, cancellationToken).ConfigureAwait(false);
         var headerSize = BinaryPrimitives.ReadUInt16BigEndian(prefix.AsSpan(0, 2));
         var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(2, 4));
-        if (payloadSize > int.MaxValue)
+        ValidateReceivePayload(payloadSize, maxPayloadSize);
+        var bodySize = checked((long)headerSize + payloadSize);
+        if (bodySize > int.MaxValue)
         {
-            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Payload exceeds supported in-memory size.");
+            throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameTooLarge, "Frame body exceeds supported in-memory size.");
         }
 
         var header = new byte[headerSize];
@@ -106,6 +109,19 @@ internal static class ZlinkStreamFrameCodec
         await ReadExactAsync(connection, payload, cancellationToken).ConfigureAwait(false);
         return new ZlinkStreamFrame(header, payload);
     }
+
+    public static void ValidateReceivePayload(uint payloadLength, int maxPayloadSize)
+    {
+        if (payloadLength > (uint)maxPayloadSize)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.FrameTooLarge,
+                "Payload exceeds MaxReceivePayloadSize.");
+        }
+    }
+
+    public static long GetMaxReceiveFrameSize(int maxPayloadSize)
+        => 6L + ushort.MaxValue + maxPayloadSize;
 
     private static async ValueTask ReadExactAsync(
         IZlinkStreamConnection connection,

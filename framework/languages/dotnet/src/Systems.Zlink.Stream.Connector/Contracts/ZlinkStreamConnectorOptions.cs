@@ -16,6 +16,8 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxSendPayloadSize { get; init; } = 64 * 1024;
 
+    public int MaxReceivePayloadSize { get; init; } = 64 * 1024;
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public ZlinkStreamDispatchMode DispatchMode { get; init; } = ZlinkStreamDispatchMode.Manual;

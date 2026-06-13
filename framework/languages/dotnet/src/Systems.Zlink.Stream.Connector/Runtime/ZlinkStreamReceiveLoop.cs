@@ -3,7 +3,8 @@ namespace Systems.Zlink.Stream.Connector.Runtime;
 internal sealed class ZlinkStreamReceiveLoop(
     ZlinkStreamReceiveDispatcher dispatcher,
     Func<IZlinkStreamConnection?> connectionProvider,
-    Action recordInbound)
+    Action recordInbound,
+    int maxReceivePayloadSize)
 {
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -15,7 +16,10 @@ internal sealed class ZlinkStreamReceiveLoop(
                 return;
             }
 
-            var packet = await ZlinkStreamFrameCodec.ReadAsync(connection, cancellationToken).ConfigureAwait(false);
+            var packet = await ZlinkStreamFrameCodec.ReadAsync(
+                connection,
+                maxReceivePayloadSize,
+                cancellationToken).ConfigureAwait(false);
             recordInbound();
             await dispatcher.DispatchPacketAsync(packet, cancellationToken).ConfigureAwait(false);
         }

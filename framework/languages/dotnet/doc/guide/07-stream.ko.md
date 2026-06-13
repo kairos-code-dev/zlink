@@ -260,8 +260,9 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 - **콜백이 안 불린다(client)** → `DispatchMode.Manual` 인데 `Dispatch.Async()` 를
   주기적으로 안 부르고 있다.
-- **`FrameTooLarge`** → `MaxSendPayloadSize`(기본 64KB) 초과. 압축 전 원본 크기로
-  검사한다.
+- **`FrameTooLarge`** → 송신은 `MaxSendPayloadSize`(기본 64KB), 수신은
+  `MaxReceivePayloadSize`(기본 64KB)를 넘었다. 송신 한도는 압축 전 원본 크기로 검사하고,
+  수신 한도는 frame payload 크기와 LZ4 압축 해제 결과 크기에 적용한다.
 - **압축이 한쪽만** → server→client 는 typed API 가 자동 해제하지만, client→server
   는 `.Compress()` 를 명시해야 한다. LZ4 만 지원.
 - **session 콜백에서 actor 상태 직접 접근** → 하지 않는다. session 은 actor

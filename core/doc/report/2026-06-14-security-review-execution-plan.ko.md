@@ -32,7 +32,7 @@
 | 2-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 종결 | 2026-06-14: CR1 수정·테스트·Claude 추가 이슈 없음 |
 | 2-2 | [2026-06-14-node-framework-security-review.ko.md](2026-06-14-node-framework-security-review.ko.md) | 종결 | 2026-06-14: C1/C2/S1/S2 수정·테스트·Claude 추가 이슈 없음 |
 | 2-3 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 종결 | 2026-06-14: F1/F2 수정·테스트·Claude 추가 이슈 없음 |
-| 2-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 대기 | - |
+| 2-4 | [2026-06-14-dotnet-framework-security-review.ko.md](2026-06-14-dotnet-framework-security-review.ko.md) | 종결 | 2026-06-14: D1/D2/D5 수정·관련 테스트 통과·Claude 추가 이슈 없음 |
 | 3-1 | [2026-06-14-cpp-framework-security-review.ko.md](2026-06-14-cpp-framework-security-review.ko.md) | 대기 | 인증·HTTP 항목 |
 | 3-2 | [2026-06-14-java-framework-security-review.ko.md](2026-06-14-java-framework-security-review.ko.md) | 대기 | TLS 항목 |
 | 4 | [2026-06-13-core-src-security-review.ko.md](2026-06-13-core-src-security-review.ko.md) | 대기 | - |

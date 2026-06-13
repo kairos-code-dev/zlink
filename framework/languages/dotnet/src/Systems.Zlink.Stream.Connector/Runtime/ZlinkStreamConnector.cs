@@ -32,7 +32,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _callbacks = new ZlinkStreamConnectorCallbacks(_taskRunner, options.DispatchMode);
 
         _headerCodec = ZlinkStreamDefaultCodecFactory.Header();
-        _compressionCodec = CreateCompressionCodec(options.Compression);
+        _compressionCodec = CreateCompressionCodec(options.Compression, options.MaxReceivePayloadSize);
 
         _nameResolver = options.NameResolver;
         _lifecycle = new ZlinkStreamConnectorLifecycle(options, _pending, _taskRunner, _callbacks);
@@ -52,7 +52,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         _receiveLoop = new ZlinkStreamReceiveLoop(
             _receiveDispatcher,
             () => _lifecycle.Connection,
-            _lifecycle.RecordInbound);
+            _lifecycle.RecordInbound,
+            options.MaxReceivePayloadSize);
         Connect = new ZlinkStreamLifecycleCall(ConnectCoreAsync);
         Close = new ZlinkStreamLifecycleCall(CloseCoreAsync);
         Dispatch = new ZlinkStreamLifecycleCall(DispatchCoreAsync);
@@ -351,12 +352,14 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         await _frameSender.SendControlAsync(HeartbeatPingName, cancellationToken).ConfigureAwait(false);
     }
 
-    private static IZlinkStreamCompressionCodec? CreateCompressionCodec(ZlinkStreamCompression compression)
+    private static IZlinkStreamCompressionCodec? CreateCompressionCodec(
+        ZlinkStreamCompression compression,
+        int maxReceivePayloadSize)
     {
         return compression switch
         {
             ZlinkStreamCompression.None => null,
-            ZlinkStreamCompression.Lz4 => new ZlinkStreamLz4CompressionCodec(),
+            ZlinkStreamCompression.Lz4 => new ZlinkStreamLz4CompressionCodec(maxReceivePayloadSize),
             _ => throw Error(ZlinkStreamErrorCode.ConfigurationError, "Compression option is not supported.")
         };
     }

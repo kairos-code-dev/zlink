@@ -14,9 +14,13 @@ using K4os.Compression.LZ4;
 
 namespace Systems.Zlink.Stream.Connector.Runtime.Transport;
 
-internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStreamConnection
+internal sealed class WebSocketConnection(
+    ClientWebSocket webSocket,
+    int maxReceivePayloadSize) : IZlinkStreamConnection
 {
     private readonly byte[] _receiveBuffer = new byte[8192];
+    private readonly long _maxReceiveFrameSize =
+        ZlinkStreamFrameCodec.GetMaxReceiveFrameSize(maxReceivePayloadSize);
     private byte[]? _pendingMessage;
     private int _pendingLength;
     private int _pendingOffset;
@@ -46,7 +50,15 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
                         throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed, "WebSocket text messages are not supported.");
                     }
 
-                    EnsureCapacity(ref message, messageLength, messageLength + result.Count);
+                    var requiredCapacity = (long)messageLength + result.Count;
+                    if (requiredCapacity > _maxReceiveFrameSize)
+                    {
+                        throw ZlinkStreamConnector.Error(
+                            ZlinkStreamErrorCode.FrameTooLarge,
+                            "WebSocket message exceeds MaxReceivePayloadSize.");
+                    }
+
+                    EnsureCapacity(ref message, messageLength, (int)requiredCapacity);
                     _receiveBuffer.AsSpan(0, result.Count).CopyTo(message.AsSpan(messageLength));
                     messageLength += result.Count;
                 }
@@ -94,7 +106,7 @@ internal sealed class WebSocketConnection(ClientWebSocket webSocket) : IZlinkStr
         var newLength = buffer.Length;
         while (newLength < requiredCapacity)
         {
-            newLength *= 2;
+            newLength = checked(newLength * 2);
         }
 
         var next = ArrayPool<byte>.Shared.Rent(newLength);

@@ -18,6 +18,7 @@ set(unittests
     unittest_spot_data_plane_protocol
     unittest_spot_data_plane_budget
     unittest_spot_runtime_control_state
+    unittest_spot_dispatch_seriality
     unittest_socket_runtime
     unittest_spot_subject_access
     unittest_registry_access

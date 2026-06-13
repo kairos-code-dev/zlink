@@ -930,8 +930,8 @@ Spot 실행 줄로 되돌려야 하므로 framework serial executor는 CAPI disp
 
 ### 19.1 CAPI/core 후속 확인
 
-- CAPI contract test를 추가해 같은 native Spot에 대해 dispatch handler가 동시에 두 번
-  호출되지 않는지 확인한다.
+- 완료: core `unittest_spot_dispatch_seriality`에서 같은 native Spot에 대해 dispatch
+  handler가 동시에 두 번 호출되지 않는지 확인한다.
 - Entry Spot과 user Spot 모두 같은 native Spot dispatch worker active guard를 거치는지
   테스트 이름과 문서에서 분명히 구분한다.
 - dispatch state의 `running`, `active_info_valid`, `rearm_keys` 규칙과
@@ -948,10 +948,12 @@ Spot 실행 줄로 되돌려야 하므로 framework serial executor는 CAPI disp
 
 - 언어별 Entry Spot serial executor는 CAPI dispatch 직렬화를 대체하는 장치가 아니라,
   application handler 완료 시점까지 비재진입을 유지하는 gate임을 문서화한다.
-- C++ framework의 lifecycle callback 경로가 actor packet handler처럼 같은 Entry Spot
-  serial executor를 통과하는지 추가 audit와 regression test로 닫는다. 이 항목은 core의
-  lifecycle dispatch cycle 보장이 없다는 뜻이 아니라, C++ framework가 별도 경로에서
-  lifecycle callback을 직접 실행하지 않는지 확인하기 위한 항목이다.
+- 완료: C++ framework의 lifecycle callback 경로는 actor packet handler처럼 같은 Entry
+  Spot serial executor를 통과한다. `test_cpp_framework_spot_runtime`은 직접 Entry Spot
+  join 경로와 `leaveActor`로 Entry Spot에 돌아오는 경로가 호출자 thread에서 inline으로
+  실행되지 않는지 확인한다. 이 항목은 core의 lifecycle dispatch cycle 보장이 없다는
+  뜻이 아니라, C++ framework가 별도 경로에서 lifecycle callback을 직접 실행하지 않는지
+  확인하기 위한 항목이다.
 - timer callback, request continuation, worker completion은 CAPI callback stack에서 직접
   사용자 callback을 실행하지 않고 owning Spot 실행 줄로 post하는지 확인한다.
 - detached callback 경로는 현재 actor epoch, current Spot, session binding, pending

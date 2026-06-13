@@ -327,6 +327,18 @@ struct factory_spot_t : public zlink::framework::spot_t
     static inline std::string last_request;
 };
 
+struct lifecycle_thread_probe_entry_spot_t : public zlink::framework::entry_spot_t
+{
+    void onJoinActor (player_actor_factory_t &)
+    {
+        ++joined_count;
+        last_join_thread = std::this_thread::get_id ();
+    }
+
+    int joined_count{};
+    std::thread::id last_join_thread;
+};
+
 } // namespace
 
 int main ()
@@ -705,6 +717,66 @@ int main ()
     }
     if (lifecycle_gateway.manager ().find ("context-leave-player")) {
         return 81;
+    }
+
+    auto thread_probe_entry = std::make_shared<lifecycle_thread_probe_entry_spot_t> ();
+    auto thread_probe_stage = std::make_shared<stage_spot_t> ();
+    zlink::framework::spot_node_builder_t thread_probe_builder;
+    zlink::framework::zlink_builder_t thread_probe_host;
+    thread_probe_host.add_spot_node (
+      "thread-probe-stage", [&] (zlink::framework::spot_node_builder_t &spot_node) {
+          spot_node
+            .add_entry_spot<lifecycle_thread_probe_entry_spot_t> (
+              [thread_probe_entry] { return thread_probe_entry; })
+            .add_actor_factory<player_actor_factory_t> ("player")
+            .add_spot<stage_spot_t> ("stage",
+                                     [thread_probe_stage] { return thread_probe_stage; });
+          thread_probe_builder = spot_node;
+      });
+    auto thread_probe_entry_create = thread_probe_builder.create_spot ("entry");
+    auto thread_probe_stage_create = thread_probe_builder.create_spot ("stage");
+    auto thread_probe_runtime =
+      zlink::framework::detail::spot_node_runtime_t::from (thread_probe_builder);
+    if (thread_probe_entry_create.state != zlink::framework::spot_create_state_t::created
+        || thread_probe_stage_create.state != zlink::framework::spot_create_state_t::created) {
+        return 90;
+    }
+
+    player_actor_factory_t direct_entry_actor;
+    zlink::framework::actor_ref_t direct_entry_ref (
+      zlink::framework::node_rid_t::from_string ("thread-probe-stage"), "player",
+      "direct-entry-player", 1);
+    const auto direct_entry_caller = std::this_thread::get_id ();
+    auto direct_entry_join =
+      thread_probe_runtime
+        .join_actor_to_entry_spot<lifecycle_thread_probe_entry_spot_t> (
+          direct_entry_ref, zlink::framework::node_rid_t::from_string ("thread-probe-stage"),
+          direct_entry_actor);
+    if (!direct_entry_join || thread_probe_entry->joined_count != 1
+        || thread_probe_entry->last_join_thread == direct_entry_caller) {
+        return 87;
+    }
+
+    player_actor_factory_t context_leave_actor;
+    zlink::framework::actor_ref_t context_leave_ref (
+      zlink::framework::node_rid_t::from_string ("thread-probe-stage"), "player",
+      "context-leave-thread-player", 1);
+    auto context_leave_stage_join =
+      thread_probe_runtime.join_actor_to_spot<stage_spot_t> (
+        context_leave_ref, thread_probe_stage_create.spot_rid, context_leave_actor,
+        zlink::message_t::from (std::string ("45")));
+    if (!context_leave_stage_join || context_leave_stage_join.value ().result_code != 0) {
+        return 88;
+    }
+    thread_probe_entry->last_join_thread = std::thread::id ();
+    const auto context_leave_caller = std::this_thread::get_id ();
+    auto context_leave_thread_result =
+      thread_probe_stage_create.context
+        .leaveActor (context_leave_stage_join.value ().actor, context_leave_actor)
+        .result ();
+    if (!context_leave_thread_result || thread_probe_entry->joined_count != 2
+        || thread_probe_entry->last_join_thread == context_leave_caller) {
+        return 89;
     }
 
     zlink::framework::spot_node_builder_t relay_builder;

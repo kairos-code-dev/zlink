@@ -11,9 +11,11 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -76,20 +78,13 @@ class spot_context_state_t
         return true;
     }
 
-    void enter_callback () { callback_depth++; }
-
-    void leave_callback ()
-    {
-        if (callback_depth > 0) {
-            callback_depth--;
-        }
-        if (callback_depth == 0 && close_requested) {
-            (void) close_now ();
-        }
-    }
+    void enter_callback ();
+    void leave_callback ();
+    bool is_current_callback_thread () const;
 
     bool try_post_serial (std::string name, std::function<void ()> work);
     bool try_post_serial_async (std::string name, runtime::serial_execution_queue_t::async_work_t work);
+    bool run_serial_sync (std::string name, std::function<void ()> work);
     void drain_serial ();
 
     std::shared_ptr<spot_node_builder_state_t> node;
@@ -113,6 +108,8 @@ class spot_context_state_t
     bool close_requested = false;
     bool closed = false;
     std::size_t actor_count = 0;
+    mutable std::mutex callback_mutex;
+    std::thread::id callback_thread;
     std::size_t callback_depth = 0;
 };
 
@@ -392,7 +389,12 @@ class spot_node_runtime_t
     {
         const auto found = state.onCreateActor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.onCreateActor_callbacks.end () && state.spot_instance) {
-            found->second (state.spot_instance.get (), &actor);
+            if (!state.run_serial_sync ("spot-lifecycle-create", [&] {
+                    found->second (state.spot_instance.get (), &actor);
+                })) {
+                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                             "spot serial queue is full");
+            }
         }
     }
 
@@ -400,7 +402,12 @@ class spot_node_runtime_t
     {
         const auto found = state.onJoinActor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.onJoinActor_callbacks.end () && state.spot_instance) {
-            found->second (state.spot_instance.get (), &actor);
+            if (!state.run_serial_sync ("spot-lifecycle-join", [&] {
+                    found->second (state.spot_instance.get (), &actor);
+                })) {
+                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                             "spot serial queue is full");
+            }
         }
     }
 
@@ -408,7 +415,12 @@ class spot_node_runtime_t
     {
         const auto found = state.onLeaveActor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.onLeaveActor_callbacks.end () && state.spot_instance) {
-            found->second (state.spot_instance.get (), &actor);
+            if (!state.run_serial_sync ("spot-lifecycle-leave", [&] {
+                    found->second (state.spot_instance.get (), &actor);
+                })) {
+                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                             "spot serial queue is full");
+            }
         }
     }
 
@@ -418,7 +430,12 @@ class spot_node_runtime_t
         const auto found =
           state.onDisconnectActor_callbacks.find (std::type_index (typeid (TActor)));
         if (found != state.onDisconnectActor_callbacks.end () && state.spot_instance) {
-            found->second (state.spot_instance.get (), &actor);
+            if (!state.run_serial_sync ("spot-lifecycle-disconnect", [&] {
+                    found->second (state.spot_instance.get (), &actor);
+                })) {
+                throw framework_exception_t (framework_error_kind_t::request_rejected,
+                                             "spot serial queue is full");
+            }
         }
     }
 

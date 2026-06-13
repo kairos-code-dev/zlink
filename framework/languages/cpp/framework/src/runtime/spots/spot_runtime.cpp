@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <sstream>
 #include <thread>
@@ -83,6 +84,39 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
 namespace detail
 {
 
+void spot_context_state_t::enter_callback ()
+{
+    std::lock_guard<std::mutex> lock (callback_mutex);
+    if (callback_depth == 0) {
+        callback_thread = std::this_thread::get_id ();
+    }
+    ++callback_depth;
+}
+
+void spot_context_state_t::leave_callback ()
+{
+    bool should_close = false;
+    {
+        std::lock_guard<std::mutex> lock (callback_mutex);
+        if (callback_depth > 0) {
+            --callback_depth;
+        }
+        if (callback_depth == 0) {
+            callback_thread = std::thread::id ();
+            should_close = close_requested;
+        }
+    }
+    if (should_close) {
+        (void) close_now ();
+    }
+}
+
+bool spot_context_state_t::is_current_callback_thread () const
+{
+    std::lock_guard<std::mutex> lock (callback_mutex);
+    return callback_depth > 0 && callback_thread == std::this_thread::get_id ();
+}
+
 bool spot_context_state_t::try_post_serial (std::string name, std::function<void ()> work)
 {
     if (!serial_queue) {
@@ -105,6 +139,37 @@ bool spot_context_state_t::try_post_serial_async (
         return true;
     }
     return serial_queue->try_post_async (std::move (name), std::move (work));
+}
+
+bool spot_context_state_t::run_serial_sync (std::string name, std::function<void ()> work)
+{
+    if (!work) {
+        return true;
+    }
+    if (is_current_callback_thread ()) {
+        work ();
+        return true;
+    }
+
+    std::exception_ptr error;
+    const bool posted = try_post_serial (std::move (name), [&] {
+        enter_callback ();
+        try {
+            work ();
+        }
+        catch (...) {
+            error = std::current_exception ();
+        }
+        leave_callback ();
+    });
+    if (!posted) {
+        return false;
+    }
+    drain_serial ();
+    if (error) {
+        std::rethrow_exception (error);
+    }
+    return true;
 }
 
 void spot_context_state_t::drain_serial ()
@@ -287,9 +352,12 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
         const auto source_left = source_state.onLeaveActor_callbacks.find (actor_type);
         if (source_left != source_state.onLeaveActor_callbacks.end ()
             && source_state.spot_instance) {
-            source_state.enter_callback ();
-            source_left->second (source_state.spot_instance.get (), actor);
-            source_state.leave_callback ();
+            if (!source_state.run_serial_sync ("spot-lifecycle-leave", [&] {
+                    source_left->second (source_state.spot_instance.get (), actor);
+                })) {
+                return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+                  framework_error_kind_t::request_rejected, "spot serial queue is full"));
+            }
         }
 
         auto &entry_state = *entry_context->second._state;
@@ -315,9 +383,12 @@ task_t<actor_ref_t> spot_context_t::leaveActor_erased (
 
         const auto entry_joined = entry_state.onJoinActor_callbacks.find (actor_type);
         if (entry_joined != entry_state.onJoinActor_callbacks.end () && entry_state.spot_instance) {
-            entry_state.enter_callback ();
-            entry_joined->second (entry_state.spot_instance.get (), actor);
-            entry_state.leave_callback ();
+            if (!entry_state.run_serial_sync ("spot-lifecycle-join", [&] {
+                    entry_joined->second (entry_state.spot_instance.get (), actor);
+                })) {
+                return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
+                  framework_error_kind_t::request_rejected, "spot serial queue is full"));
+            }
         }
         return task_t<actor_ref_t> (result_t<actor_ref_t>::success (committed));
     }

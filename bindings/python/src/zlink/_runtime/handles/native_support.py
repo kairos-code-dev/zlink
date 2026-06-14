@@ -193,7 +193,6 @@ def _decode_topic_text(raw):
     return bytes(raw).decode("utf-8", errors="replace")
 
 
-_ZlinkRoutingId = ZlinkRoutingId
 _SOCKET_RECV_HANDLER = ctypes.CFUNCTYPE(
     None,
     ctypes.POINTER(ZlinkRoutingId),
@@ -485,16 +484,6 @@ def _recv_native_parts(handle, flags):
         final_array[index] = native_part
     routing = _routing_id_bytes(routing_id.contents) if routing_id else None
     return routing, _ReceivedPartsOwner(final_array, part_count)
-
-
-def _recv_native_parts_no_wait(handle):
-    try:
-        return _recv_native_parts(handle, 1)
-    except ZlinkError as exc:
-        if _is_eagain(exc):
-            return None
-        raise
-
 
 
 # Public classes live in contracts/. The re-export below is intentionally

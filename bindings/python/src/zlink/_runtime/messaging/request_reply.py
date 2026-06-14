@@ -19,7 +19,6 @@ from ..handles.native_support import (
     ZlinkMsg,
     _REPLY_HANDLER,
     _ROUTER_HANDLER,
-    _ReceivedPartsOwner,
     _clone_native_msg,
     _copy_routing_id,
     _report_unhandled_callback_exception,
@@ -28,7 +27,7 @@ from ..handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
 )
-from .message_materializer import Message, Received, message_from
+from .message_materializer import Message, message_from
 from ..sockets.socket_base import _enter_callback, _leave_callback
 from ..._native.ffi import ZlinkPollerEvent, lib
 
@@ -75,33 +74,6 @@ def _prepare_native_parts(native_parts):
     for index, native in enumerate(native_parts):
         parts_array[index] = native
     return parts_array
-
-
-def _clone_received_owner(parts_ptr, part_count):
-    parts_array = (ZlinkMsg * part_count)()
-    for index in range(part_count):
-        parts_array[index] = _clone_native_msg(parts_ptr[index])
-    return _ReceivedPartsOwner(parts_array, part_count)
-
-
-def _request_received(
-    parts_ptr,
-    part_count,
-    routing_id=None,
-    spot_rid=None,
-    request_seq=None,
-    *,
-    send_sender=None,
-    reply_sender=None,
-):
-    return Received(
-        _clone_received_owner(parts_ptr, int(part_count)),
-        routing_id=routing_id,
-        spot_rid=spot_rid,
-        request_seq=request_seq,
-        send_sender=send_sender,
-        reply_sender=reply_sender,
-    )
 
 
 def _message_list_from_parts(parts_ptr, part_count):

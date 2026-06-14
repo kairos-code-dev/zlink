@@ -3,7 +3,7 @@
 package systems.zlink.contracts.core;
 
 
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;

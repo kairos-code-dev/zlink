@@ -2,12 +2,12 @@
 
 package systems.zlink.contracts.sockets;
 
-import systems.zlink.internal.sockets.SocketOptions;
+import systems.zlink.contracts.internal.sockets.SocketOptions;
 
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 
 import java.time.Duration;
-import systems.zlink.internal.DurationConversions;
+import systems.zlink.contracts.internal.DurationConversions;
 import java.util.Objects;
 
 /** The typed facade over socket options shared by every socket type. */

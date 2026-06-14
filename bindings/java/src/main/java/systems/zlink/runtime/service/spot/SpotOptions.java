@@ -11,7 +11,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.time.Duration;
-import systems.zlink.internal.DurationConversions;
+import systems.zlink.contracts.internal.DurationConversions;
 import java.util.Objects;
 
 final class SpotOptions {

@@ -28,7 +28,7 @@ import systems.zlink.contracts.service.spot.SpotDispatchEvent;
 import systems.zlink.contracts.service.spot.SpotDispatchEventHandler;
 import systems.zlink.contracts.service.spot.SpotDispatchInfo;
 import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;

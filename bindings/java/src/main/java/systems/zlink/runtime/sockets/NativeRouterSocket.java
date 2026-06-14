@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.internal.sockets.SendFlag;
+import systems.zlink.contracts.internal.sockets.SendFlag;
 
 import systems.zlink.contracts.sockets.*;
 
@@ -13,7 +13,7 @@ import systems.zlink.contracts.service.spot.ReplyOperation;
 import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.SendOperation;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.nio.file.Files;

@@ -10,7 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.internal.sockets.SendFlag;
+import systems.zlink.contracts.internal.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendResult;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;

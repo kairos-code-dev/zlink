@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.internal.sockets;
+package systems.zlink.contracts.internal.sockets;
 
 
 /** Native socket option identifiers used by the option facades. */

@@ -24,7 +24,7 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.contracts.service.spot.*;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.messaging.MessageOperations;

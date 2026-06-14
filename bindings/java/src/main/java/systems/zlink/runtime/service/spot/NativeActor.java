@@ -26,7 +26,7 @@ import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.internal.DurationConversions;
+import systems.zlink.contracts.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.InternalAccess;

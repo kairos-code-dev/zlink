@@ -35,7 +35,6 @@ import systems.zlink.contracts.service.spot.RequestOperation;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.internal.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.contracts.sockets.SocketType;
@@ -856,8 +855,8 @@ public class SocketContractTest {
             assertTrue(hasPublicMethod(Message.class, "refCount"));
             assertFalse(hasPublicMethod(XPubSocket.class, "subscriptionEvent"));
             assertFalse(hasPublicMethod(PairSocket.class, "sendNoWaitResult", Message.class));
-            assertFalse(hasPublicMethod(RouterSocket.class, "send",
-                byte[].class, Message.class, SendFlag.class));
+            assertFalse(hasPublicMethodNamedWithSimpleParameters(RouterSocket.class,
+                "send", "byte[]", "Message", "SendFlag"));
             assertFalse(hasPublicMethod(RouterSocket.class, "sendInternal",
                 RoutingId.class, Message.class, SendFlags.class));
             assertFalse(hasPublicMethod(RouterSocket.class, "sendInternal",
@@ -1025,6 +1024,30 @@ public class SocketContractTest {
         } catch (NoSuchMethodException ex) {
             return false;
         }
+    }
+
+    private static boolean hasPublicMethodNamedWithSimpleParameters(
+        Class<?> type, String name, String... parameterTypeNames) {
+        for (Method method : type.getMethods()) {
+            if (!method.getName().equals(name)) {
+                continue;
+            }
+            Class<?>[] actual = method.getParameterTypes();
+            if (actual.length != parameterTypeNames.length) {
+                continue;
+            }
+            boolean matched = true;
+            for (int i = 0; i < actual.length; i++) {
+                if (!actual[i].getSimpleName().equals(parameterTypeNames[i])) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean hasPublicConstructor(Class<?> type,

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.internal;
+package systems.zlink.contracts.internal;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
@@ -31,7 +31,7 @@ import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.sockets.RouterSocketOptions;
 import systems.zlink.contracts.sockets.StreamSocketOptions;
 import systems.zlink.contracts.sockets.SubSocketOptions;
-import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.contracts.internal.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.nio.ByteBuffer;
 import java.util.Objects;

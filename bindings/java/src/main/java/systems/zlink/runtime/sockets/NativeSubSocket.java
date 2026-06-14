@@ -2,10 +2,10 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.internal.sockets.ReceiveFlag;
+import systems.zlink.contracts.internal.sockets.ReceiveFlag;
 
 import systems.zlink.contracts.sockets.*;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.messaging.SubscriptionEntry;

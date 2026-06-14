@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -19,9 +19,9 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.SubscriptionEntry;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.internal.sockets.ReceiveFlag;
+import systems.zlink.contracts.internal.sockets.ReceiveFlag;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.internal.sockets.SendFlag;
+import systems.zlink.contracts.internal.sockets.SendFlag;
 import systems.zlink.contracts.sockets.SendResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;

@@ -2,17 +2,17 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.internal.sockets.ReceiveFlag;
+import systems.zlink.contracts.internal.sockets.ReceiveFlag;
 
-import systems.zlink.internal.sockets.SendFlag;
+import systems.zlink.contracts.internal.sockets.SendFlag;
 
-import systems.zlink.internal.sockets.SocketOptionValueType;
+import systems.zlink.contracts.internal.sockets.SocketOptionValueType;
 
-import systems.zlink.internal.sockets.SocketOptions;
+import systems.zlink.contracts.internal.sockets.SocketOptions;
 
-import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.contracts.internal.sockets.SocketOptionKey;
 
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.service.discovery.Discovery;

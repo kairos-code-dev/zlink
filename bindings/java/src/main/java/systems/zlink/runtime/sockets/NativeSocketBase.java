@@ -2,11 +2,11 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.internal.sockets.ReceiveFlag;
+import systems.zlink.contracts.internal.sockets.ReceiveFlag;
 
-import systems.zlink.internal.sockets.SendFlag;
+import systems.zlink.contracts.internal.sockets.SendFlag;
 
-import systems.zlink.internal.sockets.SocketOptionKey;
+import systems.zlink.contracts.internal.sockets.SocketOptionKey;
 
 import systems.zlink.contracts.sockets.*;
 
@@ -14,7 +14,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.SubscriptionEntry;

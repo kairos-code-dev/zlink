@@ -110,14 +110,23 @@ final class OptimizationGuardContractTest {
     }
 
     @Test
+    void sourceTopLevelPackagesStayContractAndRuntimeOnly() throws IOException {
+        Path topLevelInternal = MAIN_SOURCE.resolve(
+            Path.of("systems", "zlink", "internal"));
+
+        assertFalse(Files.exists(topLevelInternal),
+            "internal helpers must live under contracts.internal or runtime");
+    }
+
+    @Test
     void samplesAndPerfUseOnlyPublicBindingContract() throws IOException {
         List<String> violations = new ArrayList<>();
         for (Path root : List.of(SAMPLES_SOURCE, KOTLIN_SAMPLES_SOURCE, PERF_SOURCE)) {
             for (Path path : sourceFiles(root)) {
                 String source = Files.readString(path, StandardCharsets.UTF_8);
-                if (source.contains("import systems.zlink.internal.")
+                if (source.contains("import systems.zlink.contracts.internal.")
                     || source.contains("import systems.zlink.runtime.")
-                    || source.contains("systems.zlink.internal.")
+                    || source.contains("systems.zlink.contracts.internal.")
                     || source.contains("systems.zlink.runtime.")
                     || source.contains("ContractAccess")) {
                     violations.add(path.toString());

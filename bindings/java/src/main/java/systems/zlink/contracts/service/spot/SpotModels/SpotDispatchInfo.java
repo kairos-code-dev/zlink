@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.eventing.ZlinkTimer;
-import systems.zlink.internal.ContractAccess;
+import systems.zlink.contracts.internal.ContractAccess;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;

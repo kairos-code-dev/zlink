@@ -6,23 +6,10 @@ use std::sync::mpsc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode};
+use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode, SubmitResult};
 
 #[path = "sample_support.rs"]
 mod sample_support;
-
-fn wait_peer(node: &SpotNode) {
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while Instant::now() < deadline {
-        if let Ok(status) = node.status() {
-            if status.connected_peer_count > 0 {
-                return;
-            }
-        }
-        sleep(Duration::from_millis(10));
-    }
-    panic!("spot peer not connected");
-}
 
 fn main() {
     // --8<-- [start:doc]
@@ -58,27 +45,39 @@ fn main() {
     server_node.connect_peer(&client_endpoint).unwrap();
     client_node.connect_peer(&server_endpoint).unwrap();
 
-    wait_peer(&server_node);
-    wait_peer(&client_node);
+    sample_support::wait_spot_peer_connected(&server_node, Duration::from_secs(5));
+    sample_support::wait_spot_peer_connected(&client_node, Duration::from_secs(5));
 
     // 클라이언트 Spot이 서버 Spot으로 요청한다.
     let (reply_tx, reply_rx) = mpsc::channel();
-    client
-        .request_to_spot(
-            RoutingId::from(b"rpc-server-node"),
-            RoutingId::from(b"rpc-server-spot"),
-        )
-        .message(Message::try_from(b"ping").unwrap())
-        .flags(SendFlags::DONT_WAIT)
-        .timeout(Duration::from_secs(3))
-        .submit(move |result| {
-            if let Ok(parts) = result {
-                if !parts.is_empty() {
-                    let _ = reply_tx.send(parts[0].as_str().unwrap_or("").to_owned());
+    let submit_deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let reply_tx_for_callback = reply_tx.clone();
+        match client
+            .request_to_spot(
+                RoutingId::from(b"rpc-server-node"),
+                RoutingId::from(b"rpc-server-spot"),
+            )
+            .message(Message::try_from(b"ping").unwrap())
+            .flags(SendFlags::DONT_WAIT)
+            .timeout(Duration::from_secs(3))
+            .submit(move |result| {
+                if let Ok(parts) = result {
+                    if !parts.is_empty() {
+                        let _ =
+                            reply_tx_for_callback.send(parts[0].as_str().unwrap_or("").to_owned());
+                    }
                 }
+            }) {
+            Ok(()) => break,
+            Err(err)
+                if err.code() == SubmitResult::NotConnected && Instant::now() < submit_deadline =>
+            {
+                sleep(Duration::from_millis(10));
             }
-        })
-        .unwrap();
+            Err(err) => panic!("spot rpc request submit failed: {err}"),
+        }
+    }
 
     // 서버 Spot의 라우티드 수신을 폴링해 응답하고, 응답이 올 때까지 기다린다.
     let mut received = Received::empty();

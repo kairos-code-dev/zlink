@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 final class SampleSupport {
-    private static final Duration TIMEOUT = Duration.ofSeconds(180);
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
     static final String PAIR_PAYLOAD = "hello-pair";
     static final String DEALER_REQUEST = "ping";
     static final String DEALER_REPLY = "pong";

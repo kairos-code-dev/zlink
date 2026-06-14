@@ -7,19 +7,9 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.Received
-import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
 import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import java.time.Duration
-
-private fun waitPeer(node: SpotNode) {
-    val deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos()
-    while (System.nanoTime() < deadline) {
-        if (node.status().connectedPeerCount() > 0) return
-        Thread.sleep(10)
-    }
-    throw IllegalStateException("spot peer not connected")
-}
 
 fun main() {
 // --8<-- [start:doc]
@@ -62,8 +52,8 @@ fun main() {
                             }
                         }
 
-                        waitPeer(serverNode)
-                        waitPeer(clientNode)
+                        SampleSupport.waitSpotPeerConnected(serverNode)
+                        SampleSupport.waitSpotPeerConnected(clientNode)
 
                         // 클라이언트 Spot이 서버 Spot으로 요청한다.
                         val reply = client.requestToSpot(

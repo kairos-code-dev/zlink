@@ -25,8 +25,8 @@ def main():
                         publisher_node.connect_peer(subscriber_endpoint)
                         subscriber_node.connect_peer(publisher_endpoint)
                         subscriber.set_subscription(TOPIC)
-                        wait_spot_peer_connected(publisher_node, timeout_ms=10000)
-                        wait_spot_peer_connected(subscriber_node, timeout_ms=10000)
+                        wait_spot_peer_connected(publisher_node, timeout_ms=5000)
+                        wait_spot_peer_connected(subscriber_node, timeout_ms=5000)
 
                         def attempt_receive():
                             try:
@@ -63,7 +63,7 @@ def main():
                         wait_until(
                             attempt_receive,
                             description="spot payload delivery",
-                            timeout_ms=10000,
+                            timeout_ms=5000,
                         )
                         print(
                             '[spot/recv] channel: "direct" tick: 1 '

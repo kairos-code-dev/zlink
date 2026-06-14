@@ -12,16 +12,14 @@ import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.RecvFlags;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.time.Duration;
 
 public final class SpotPubSubExample {
     public static void main(String[] args) throws Exception {
 // --8<-- [start:doc]
         String topic = "room:lobby";
-        String pubEndpoint = uniqueTcp();
-        String subEndpoint = uniqueTcp();
+        String pubEndpoint = SampleSupport.tcpEndpoint();
+        String subEndpoint = SampleSupport.tcpEndpoint();
 
         try (Context ctx = Zlink.createContext();
              SpotNode publisherNode = ctx.createSpotNode();
@@ -34,8 +32,8 @@ public final class SpotPubSubExample {
             subscriberNode.connectPeer(pubEndpoint);
             // 구독자는 받을 토픽을 등록한다.
             subscriber.setSubscription(topic);
-            waitPeer(publisherNode);
-            waitPeer(subscriberNode);
+            SampleSupport.waitSpotPeerConnected(publisherNode);
+            SampleSupport.waitSpotPeerConnected(subscriberNode);
 
             // 연결 직후 첫 publish가 닿기 전일 수 있어, 도착할 때까지 반복 발행한다.
             String receivedTopic = null;
@@ -61,22 +59,5 @@ public final class SpotPubSubExample {
                 "[spot/pubsub] topic \"" + receivedTopic + "\" -> recv: \"" + payload + "\"");
         }
 // --8<-- [end:doc]
-    }
-
-    private static String uniqueTcp() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getByName("127.0.0.1"))) {
-            return "tcp://127.0.0.1:" + socket.getLocalPort();
-        }
-    }
-
-    private static void waitPeer(SpotNode node) throws InterruptedException {
-        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (node.status().connectedPeerCount() > 0) {
-                return;
-            }
-            Thread.sleep(10);
-        }
-        throw new IllegalStateException("spot peer not connected");
     }
 }

@@ -6,18 +6,8 @@ package systems.zlink.samples
 import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.TopicMessage
-import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
 import java.time.Duration
-
-private fun waitPeer(node: SpotNode) {
-    val deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos()
-    while (System.nanoTime() < deadline) {
-        if (node.status().connectedPeerCount() > 0) return
-        Thread.sleep(10)
-    }
-    throw IllegalStateException("spot peer not connected")
-}
 
 fun main() {
 // --8<-- [start:doc]
@@ -35,8 +25,8 @@ fun main() {
                         subscriberNode.connectPeer(pubEndpoint)
                         // 구독자는 받을 토픽을 등록한다.
                         subscriber.setSubscription(topic)
-                        waitPeer(publisherNode)
-                        waitPeer(subscriberNode)
+                        SampleSupport.waitSpotPeerConnected(publisherNode)
+                        SampleSupport.waitSpotPeerConnected(subscriberNode)
 
                         // 도착할 때까지 반복 발행한다.
                         var receivedTopic: String? = null

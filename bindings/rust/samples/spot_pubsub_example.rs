@@ -29,8 +29,8 @@ fn main() {
     let subscriber = subscriber_node.create_spot().unwrap();
     // 구독자는 받을 토픽을 등록한다.
     subscriber.set_subscription(topic).unwrap();
-    sample_support::wait_spot_peer_connected(&publisher_node, Duration::from_secs(15));
-    sample_support::wait_spot_peer_connected(&subscriber_node, Duration::from_secs(15));
+    sample_support::wait_spot_peer_connected(&publisher_node, Duration::from_secs(5));
+    sample_support::wait_spot_peer_connected(&subscriber_node, Duration::from_secs(5));
 
     // 연결 직후 첫 publish가 닿기 전일 수 있어, 도착할 때까지 반복 발행한다.
     let mut received = TopicMessage::empty();

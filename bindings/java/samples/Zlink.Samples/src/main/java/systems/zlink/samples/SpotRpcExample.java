@@ -14,8 +14,6 @@ import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.service.spot.SpotDispatchEvent;
-import java.net.InetAddress;
-import java.net.ServerSocket;
 import java.time.Duration;
 import java.util.List;
 
@@ -32,10 +30,10 @@ public final class SpotRpcExample {
             server.setRoutingId(RoutingId.from("rpc-server-spot"));
             client.setRoutingId(RoutingId.from("rpc-client-spot"));
             // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-            serverNode.setRouterBind(uniqueTcp());
-            clientNode.setRouterBind(uniqueTcp());
-            String serverEndpoint = uniqueTcp();
-            String clientEndpoint = uniqueTcp();
+            serverNode.setRouterBind(SampleSupport.tcpEndpoint());
+            clientNode.setRouterBind(SampleSupport.tcpEndpoint());
+            String serverEndpoint = SampleSupport.tcpEndpoint();
+            String clientEndpoint = SampleSupport.tcpEndpoint();
             serverNode.setPubBind(serverEndpoint);
             clientNode.setPubBind(clientEndpoint);
             serverNode.connectPeer(clientEndpoint);
@@ -64,8 +62,8 @@ public final class SpotRpcExample {
                 }
             });
 
-            waitPeer(serverNode);
-            waitPeer(clientNode);
+            SampleSupport.waitSpotPeerConnected(serverNode);
+            SampleSupport.waitSpotPeerConnected(clientNode);
 
             // 클라이언트 Spot이 서버 Spot으로 요청한다.
             List<Message> reply = client.requestToSpot(
@@ -82,20 +80,4 @@ public final class SpotRpcExample {
 // --8<-- [end:doc]
     }
 
-    private static String uniqueTcp() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getByName("127.0.0.1"))) {
-            return "tcp://127.0.0.1:" + socket.getLocalPort();
-        }
-    }
-
-    private static void waitPeer(SpotNode node) throws InterruptedException {
-        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
-        while (System.nanoTime() < deadline) {
-            if (node.status().connectedPeerCount() > 0) {
-                return;
-            }
-            Thread.sleep(10);
-        }
-        throw new IllegalStateException("spot peer not connected");
-    }
 }

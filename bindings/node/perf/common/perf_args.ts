@@ -5,6 +5,7 @@
 const MIN_MSG_SIZE = 29;
 const STANDARD_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144];
 const STREAM_MSG_SIZES = [64, 256, 1024, 65536];
+const MULTI_MSG_SIZES = [64, 256, 1024, 4096, 65536, 131072];
 const DEFAULT_SINGLE_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
 const DEFAULT_MULTI_TRANSPORTS = ['tcp', 'tls', 'ws', 'wss'];
 
@@ -238,12 +239,12 @@ function defaultMultiMsgSizes(patternNames, explicitMsgSizes) {
   const onlyStream = patternNames.length > 0
     && patternNames.every((name) => name === 'MULTI_STREAM');
   if (onlyStream && envStreamSizes) {
-    return parseSizeList(envStreamSizes, STREAM_MSG_SIZES.slice());
+    return parseSizeList(envStreamSizes, MULTI_MSG_SIZES.slice());
   }
   if (envSizes) {
-    return parseSizeList(envSizes, STANDARD_MSG_SIZES.slice());
+    return parseSizeList(envSizes, MULTI_MSG_SIZES.slice());
   }
-  return onlyStream ? STREAM_MSG_SIZES.slice() : STANDARD_MSG_SIZES.slice();
+  return MULTI_MSG_SIZES.slice();
 }
 
 function defaultSingleTransports() {
@@ -258,6 +259,7 @@ module.exports = {
   DEFAULT_MULTI_TRANSPORTS,
   DEFAULT_SINGLE_TRANSPORTS,
   MIN_MSG_SIZE,
+  MULTI_MSG_SIZES,
   STANDARD_MSG_SIZES,
   STREAM_MSG_SIZES,
   defaultMultiMsgSizes,

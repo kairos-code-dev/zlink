@@ -655,10 +655,14 @@ def select_transports(pattern_name):
 
 
 _env_sizes = parse_env_list("PERF_MSG_SIZES", int)
+DEFAULT_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
+DEFAULT_MULTI_MSG_SIZES = [64, 256, 1024, 4096, 65536, 131072]
 if _env_sizes:
     MSG_SIZES = _env_sizes
+elif ALLOW_MULTI:
+    MSG_SIZES = DEFAULT_MULTI_MSG_SIZES
 else:
-    MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
+    MSG_SIZES = DEFAULT_MSG_SIZES
 
 _env_stream_sizes = parse_env_list(
     "PERF_STREAM_MSG_SIZES",
@@ -671,7 +675,7 @@ elif _env_sizes:
     # unless a stream-specific override is explicitly provided.
     STREAM_MSG_SIZES = _env_sizes
 else:
-    STREAM_MSG_SIZES = [64, 256, 1024, 65536]
+    STREAM_MSG_SIZES = DEFAULT_MULTI_MSG_SIZES if ALLOW_MULTI else [64, 256, 1024, 65536]
 
 DEFAULT_RUN_COOLDOWN_MS = max(
     0,
@@ -4300,10 +4304,10 @@ def is_default_full_matrix(args, selected_patterns):
     if env_transports and parse_raw_csv_list(env_transports) != ["tcp", "tls", "ws", "wss"]:
         return False
     env_msg_sizes = os.environ.get("PERF_MSG_SIZES", "").strip()
-    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != [64, 256, 1024, 65536, 131072, 262144]:
+    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != DEFAULT_MULTI_MSG_SIZES:
         return False
     env_stream_msg_sizes = os.environ.get("PERF_STREAM_MSG_SIZES", "").strip()
-    if env_stream_msg_sizes and parse_raw_csv_list(env_stream_msg_sizes, int) != [64, 256, 1024, 65536]:
+    if env_stream_msg_sizes and parse_raw_csv_list(env_stream_msg_sizes, int) != DEFAULT_MULTI_MSG_SIZES:
         return False
     expected_patterns = [pattern for _, pattern in MULTI_COMPARISONS]
     return list(selected_patterns) == expected_patterns

@@ -14,7 +14,7 @@ PERF_FAIL_FAST=1 \
 "${RUNNER}" \
   --pattern MULTI_DEALER_DEALER \
   --transports ws \
-  --msg-sizes 64,256,1024,65536,131072,262144 \
+  --msg-sizes 64,256,1024,4096,65536,131072 \
   --duration 5 \
   --results-tag "${tag}" \
   >"${log_file}" 2>&1

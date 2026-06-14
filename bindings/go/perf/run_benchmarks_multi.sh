@@ -616,14 +616,14 @@ pattern_msg_sizes() {
     elif [[ -n "${PERF_MSG_SIZES:-}" ]]; then
       echo "${PERF_MSG_SIZES}"
     else
-      echo "64,256,1024,65536"
+      echo "64,256,1024,4096,65536,131072"
     fi
     return
   fi
   if [[ -n "${PERF_MSG_SIZES:-}" ]]; then
     echo "${PERF_MSG_SIZES}"
   else
-    echo "64,256,1024,65536,131072,262144"
+    echo "64,256,1024,4096,65536,131072"
   fi
 }
 

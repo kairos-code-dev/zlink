@@ -120,8 +120,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         old_env = os.environ.copy()
         try:
             os.environ["PERF_TRANSPORTS"] = "tcp,tls,ws,wss"
-            os.environ["PERF_MSG_SIZES"] = "64,256,1024,65536,131072,262144"
-            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,65536"
+            os.environ["PERF_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
+            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
             patterns = [pattern for _, pattern in RC.MULTI_COMPARISONS]
             self.assertTrue(
                 RC.is_default_full_matrix(
@@ -183,9 +183,11 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_multi_split_runner_isolates_each_size_case(self):
         old_allow_multi = RC.ALLOW_MULTI
         old_split = RC.run_sizes_test_split
+        old_env = os.environ.copy()
         calls = []
         try:
             RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -226,6 +228,8 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test_split = old_split
+            os.environ.clear()
+            os.environ.update(old_env)
 
     def test_multi_stream_runner_isolates_each_size_case(self):
         old_stream = RC.run_sizes_test_stream_shared
@@ -274,6 +278,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         sleeps = []
         try:
             RC.ALLOW_MULTI = True
+            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -375,13 +380,15 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             def fake_run_sizes_test(binary_name, lib_name, transport, sizes,
                                     pattern_name, result_line_callback=None):
                 calls.append((transport, list(sizes), pattern_name))
+                parsed = {}
                 if result_line_callback is not None:
                     for size in sizes:
                         for metric_name, value in tier1_metrics(1.0):
                             result_line_callback(transport, size, metric_name, value)
+                            parsed[f"{transport}|{size}|{metric_name}"] = value
                 return {
                     "status": "success",
-                    "parsed": {},
+                    "parsed": parsed,
                     "timed_out": False,
                     "returncode": 0,
                     "reason": "",
@@ -484,7 +491,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(start_callbacks, [("tcp", 65536)])
             self.assertEqual(result_callbacks, [("tcp", 65536)])
             self.assertIn("Testing tcp | 65536B:", output)
-            self.assertIn("999.000 ms", output)
+            self.assertIn("1.500 ms", output)
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test

@@ -10,7 +10,8 @@ MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
 PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
-MSG_SIZES="${PERF_MSG_SIZES:-}"
+DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
+MSG_SIZES="${PERF_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}"
 IFS=',' read -r -a PATTERN_LIST <<< "${PATTERNS}"
 
 SECONDS=0
@@ -367,8 +368,7 @@ Options:
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS
                          (default: non-stream=4, stream=4).
   --msg-sizes LIST       Comma-separated message sizes
-                         (default: 64,256,1024,65536,131072,262144;
-                         STREAM: 64,256,1024,65536).
+                         (default: 64,256,1024,4096,65536,131072).
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
@@ -551,7 +551,7 @@ RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${PERF_RCVTIMEO_MS:-200}}"
 CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${PERF_CONNECT_CONCURRENCY:-}}"
 SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
 TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
-STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-}}"
+STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-${MSG_SIZES}}}"
 PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-${PERF_PUBSUB_XPUB_NODROP:-}}"
 SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-${PERF_SPOT_XPUB_NODROP:-}}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"

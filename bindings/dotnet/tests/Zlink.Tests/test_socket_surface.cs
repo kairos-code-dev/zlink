@@ -99,6 +99,21 @@ public sealed class test_socket_surface
     }
 
     [Fact]
+    public void implementation_namespaces_are_not_public_contract()
+    {
+        string[] exportedTypeNames = typeof(Zlink).Assembly.GetExportedTypes()
+            .Select(type => type.FullName!)
+            .ToArray();
+
+        Assert.DoesNotContain(exportedTypeNames,
+            typeName => typeName.StartsWith("Systems.Zlink.Native.",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(exportedTypeNames,
+            typeName => typeName.StartsWith("Systems.Zlink.Runtime.",
+                StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void context_factory_exposes_public_resource_contracts()
     {
         Assert.Equal(typeof(IContext),

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Native;
@@ -12,6 +13,14 @@ internal static class NativeLibraryLoader
     private static IntPtr _handle = IntPtr.Zero;
     private static bool _resolverInstalled;
     private static bool _exportsValidated;
+
+#pragma warning disable CA2255
+    [ModuleInitializer]
+#pragma warning restore CA2255
+    internal static void Initialize()
+    {
+        EnsureResolverInstalled();
+    }
 
     internal static void EnsureLoaded()
     {

@@ -26,29 +26,15 @@ sync_native_dirs() {
   done < <(find "$search_root" -type d -path '*linux-x64/native')
 }
 
-SAMPLES=(
-  "RequestReplyAsync/RequestReplyAsync.csproj"
-  "PairRecv/PairRecv.csproj"
-  "MonitorRecv/MonitorRecv.csproj"
-  "PubSubRecv/PubSubRecv.csproj"
-  "DealerRouterRecv/DealerRouterRecv.csproj"
-  "StreamRecv/StreamRecv.csproj"
-  "StreamPacketCallback/StreamPacketCallback.csproj"
-  "SpotRecv/SpotRecv.csproj"
-  "SpotRequestAsync/SpotRequestAsync.csproj"
-  "SpotChannelExample/SpotChannelExample.csproj"
-  "SpotPubSubExample/SpotPubSubExample.csproj"
-  "SpotRpcExample/SpotRpcExample.csproj"
-  "SpotTimerExample/SpotTimerExample.csproj"
-  "ActorRoomServer/ActorRoomServer.csproj"
-  "ActorGatewayRelay/ActorGatewayRelay.csproj"
-  "ActorSinglePlayerQueue/ActorSinglePlayerQueue.csproj"
-  "ActorQueueExample/ActorQueueExample.csproj"
-  "ActorRoomExample/ActorRoomExample.csproj"
-  "ActorSequentialExample/ActorSequentialExample.csproj"
-  "DiscoveryRegistry/DiscoveryRegistry.csproj"
-  "RegistryQuery/RegistryQuery.csproj"
+mapfile -t SAMPLES < <(
+  dotnet sln "${ROOT}/Zlink.Samples.sln" list |
+    awk '/\.csproj$/ && $0 !~ /^SampleCommon\// { print }'
 )
+
+if (( ${#SAMPLES[@]} == 0 )); then
+  echo "No sample projects found in Zlink.Samples.sln" >&2
+  exit 1
+fi
 
 passed=0
 failed=0

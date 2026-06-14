@@ -132,6 +132,34 @@ public sealed class test_optimization_guard
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void samples_and_perf_use_only_public_binding_contracts()
+    {
+        string source = ReadSampleAndPerfSource();
+        string[] forbidden =
+        {
+            "Systems.Zlink.Native",
+            "Systems.Zlink.Runtime",
+            "NativeMethods",
+            "NativeLibraryLoader",
+            "DllImport(",
+            "LibraryImport(",
+            "BindingFlags.NonPublic",
+            "InternalsVisibleTo",
+            "FromNative",
+            "MoveFromNative"
+        };
+
+        var violations = new List<string>();
+        foreach (string token in forbidden)
+        {
+            if (source.Contains(token, StringComparison.Ordinal))
+                violations.Add(token);
+        }
+
+        Assert.Empty(violations);
+    }
+
     private static string ReadZlinkSource([CallerFilePath] string file = "")
     {
         string repoRoot = Path.GetFullPath(Path.Combine(
@@ -149,6 +177,35 @@ public sealed class test_optimization_guard
                     StringComparison.Ordinal))
                 continue;
             chunks.Add(File.ReadAllText(path));
+        }
+        return string.Join('\n', chunks);
+    }
+
+    private static string ReadSampleAndPerfSource([CallerFilePath] string file = "")
+    {
+        string repoRoot = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(file)!,
+            "..", "..", "..", ".."));
+        string bindingRoot = Path.Combine(repoRoot, "bindings", "dotnet");
+        string[] roots =
+        {
+            Path.Combine(bindingRoot, "samples"),
+            Path.Combine(bindingRoot, "perf")
+        };
+        var chunks = new List<string>();
+        foreach (string root in roots)
+        {
+            foreach (string path in Directory.EnumerateFiles(root, "*.cs",
+                         SearchOption.AllDirectories))
+            {
+                if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                        StringComparison.Ordinal))
+                    continue;
+                if (path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                        StringComparison.Ordinal))
+                    continue;
+                chunks.Add(File.ReadAllText(path));
+            }
         }
         return string.Join('\n', chunks);
     }

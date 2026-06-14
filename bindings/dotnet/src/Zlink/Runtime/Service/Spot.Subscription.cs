@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
 using Systems.Zlink.Native;
+using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -182,7 +183,7 @@ internal sealed partial class Spot
                     return SendResult.Sent;
             }
 
-            SendResult? sendResult = TryMapSendResultFromErrno();
+            SendResult? sendResult = SendResultErrno.TryMapCurrent();
             if (sendResult == null)
                 throw ZlinkException.CreateSubmitException(
                     NativeMethods.zlink_errno());

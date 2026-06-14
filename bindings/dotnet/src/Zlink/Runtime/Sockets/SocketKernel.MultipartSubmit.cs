@@ -132,7 +132,7 @@ internal sealed partial class SocketKernel
 
                 if (mapNoWaitResult)
                 {
-                    SendResult? sendResult = TryMapSendResultFromErrno();
+                    SendResult? sendResult = SendResultErrno.TryMapCurrent();
                     if (sendResult != null)
                     {
                         NativeMessageParts.RestoreManaged(parts, nativeParts,

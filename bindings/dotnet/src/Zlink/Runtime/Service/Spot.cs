@@ -26,14 +26,6 @@ internal sealed partial class Spot : ISpot
     private const int StackPublishPartLimit = 8;
     private const int TopicBufferSize = 256;
     private const int DontWaitFlag = 1;
-    private const int ErrnoEAgain = 11;
-    private const int ErrnoEWouldBlockWin = 10035;
-    private const int ErrnoENotConn = 107;
-    private const int ErrnoENotConnWin = 10057;
-    private const int ErrnoEHostUnreach = 113;
-    private const int ErrnoEHostUnreachWin = 10065;
-    private const int ErrnoETimedOut = 110;
-    private const int ErrnoETimedOutWin = 10060;
     private IntPtr _handle;
     private readonly SpotNode _node;
     private readonly bool _ownsHandle;
@@ -504,23 +496,6 @@ internal sealed partial class Spot : ISpot
             2 => SendResult.NotReady,
             _ => throw new InvalidOperationException(
                 $"Unexpected send result code '{rc}'.")
-        };
-    }
-
-    private static SendResult? TryMapSendResultFromErrno()
-    {
-        int errno = NativeMethods.zlink_errno();
-        return errno switch
-        {
-            ErrnoEAgain => SendResult.Backpressured,
-            ErrnoEWouldBlockWin => SendResult.Backpressured,
-            ErrnoENotConn => SendResult.NotReady,
-            ErrnoENotConnWin => SendResult.NotReady,
-            ErrnoEHostUnreach => SendResult.NotReady,
-            ErrnoEHostUnreachWin => SendResult.NotReady,
-            ErrnoETimedOut => SendResult.NotReady,
-            ErrnoETimedOutWin => SendResult.NotReady,
-            _ => null
         };
     }
 

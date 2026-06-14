@@ -3,6 +3,7 @@
 using System;
 using System.Buffers;
 using Systems.Zlink.Native;
+using Systems.Zlink.Sockets.Internal;
 
 namespace Systems.Zlink;
 
@@ -92,7 +93,7 @@ internal sealed partial class Spot
 
                     if (mapNoWaitResult)
                     {
-                        SendResult? sendResult = TryMapSendResultFromErrno();
+                        SendResult? sendResult = SendResultErrno.TryMapCurrent();
                         if (sendResult != null)
                         {
                             NativeMessageParts.RestoreManaged(parts, nativeParts,
@@ -147,7 +148,7 @@ internal sealed partial class Spot
 
             if (mapNoWaitResult)
             {
-                SendResult? sendResult = TryMapSendResultFromErrno();
+                SendResult? sendResult = SendResultErrno.TryMapCurrent();
                 if (sendResult != null)
                     return sendResult.Value;
             }

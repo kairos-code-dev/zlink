@@ -16,14 +16,6 @@ internal sealed partial class SocketKernel : IDisposable
     private const int StackSendPartLimit = 8;
     private const int TopicBufferSize = 4096;
     private const int DontWaitFlag = 1;
-    private const int ErrnoEAgain = 11;
-    private const int ErrnoEWouldBlockWin = 10035;
-    private const int ErrnoENotConn = 107;
-    private const int ErrnoENotConnWin = 10057;
-    private const int ErrnoEHostUnreach = 113;
-    private const int ErrnoEHostUnreachWin = 10065;
-    private const int ErrnoETimedOut = 110;
-    private const int ErrnoETimedOutWin = 10060;
 
     private readonly SocketHandle _handle;
     private readonly SocketOptionAccessor _options;
@@ -1122,27 +1114,6 @@ internal sealed partial class SocketKernel : IDisposable
         };
     }
 
-    private static SendResult? TryMapSendResultFromErrno()
-    {
-        return TryMapSendResultFromErrno(NativeMethods.zlink_errno());
-    }
-
-    private static SendResult? TryMapSendResultFromErrno(int errno)
-    {
-        return errno switch
-        {
-            ErrnoEAgain => SendResult.Backpressured,
-            ErrnoEWouldBlockWin => SendResult.Backpressured,
-            ErrnoENotConn => SendResult.NotReady,
-            ErrnoENotConnWin => SendResult.NotReady,
-            ErrnoEHostUnreach => SendResult.NotReady,
-            ErrnoEHostUnreachWin => SendResult.NotReady,
-            ErrnoETimedOut => SendResult.NotReady,
-            ErrnoETimedOutWin => SendResult.NotReady,
-            _ => null
-        };
-    }
-
     internal static bool TrySendOrThrow(SendResult result)
     {
         return result switch
@@ -1225,7 +1196,7 @@ internal sealed partial class SocketKernel : IDisposable
             int errno = NativeMethods.zlink_errno();
             message.RestoreFrom(ref nativePart);
             shouldRestore = false;
-            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            SendResult? mappedResult = SendResultErrno.TryMap(errno);
             if (mappedResult == null)
                 throw ZlinkException.CreateSubmitException(errno);
             return mappedResult.Value;
@@ -1259,7 +1230,7 @@ internal sealed partial class SocketKernel : IDisposable
             int errno = NativeMethods.zlink_errno();
             message.RestoreFrom(ref nativePart);
             shouldRestore = false;
-            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            SendResult? mappedResult = SendResultErrno.TryMap(errno);
             if (mappedResult == null)
                 throw ZlinkException.CreateSubmitException(errno);
             return mappedResult.Value;
@@ -1340,7 +1311,7 @@ internal sealed partial class SocketKernel : IDisposable
             int errno = NativeMethods.zlink_errno();
             message.RestoreFrom(ref nativePart);
             shouldRestore = false;
-            SendResult? sendResult = TryMapSendResultFromErrno(errno);
+            SendResult? sendResult = SendResultErrno.TryMap(errno);
             if (sendResult == null)
                 throw ZlinkException.CreateSubmitException(errno);
             return sendResult.Value;
@@ -1446,7 +1417,7 @@ internal sealed partial class SocketKernel : IDisposable
             int errno = NativeMethods.zlink_errno();
             message.RestoreFrom(ref nativePart);
             shouldRestore = false;
-            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            SendResult? mappedResult = SendResultErrno.TryMap(errno);
             if (mappedResult == null)
                 throw ZlinkException.CreateSubmitException(errno);
             return mappedResult.Value;
@@ -1480,7 +1451,7 @@ internal sealed partial class SocketKernel : IDisposable
             int errno = NativeMethods.zlink_errno();
             message.RestoreFrom(ref nativePart);
             shouldRestore = false;
-            SendResult? mappedResult = TryMapSendResultFromErrno(errno);
+            SendResult? mappedResult = SendResultErrno.TryMap(errno);
             if (mappedResult == null)
                 throw ZlinkException.CreateSubmitException(errno);
             return mappedResult.Value;

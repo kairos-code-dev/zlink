@@ -554,10 +554,6 @@ for _public_type in (
     _public_type.__module__ = "zlink.contracts.messaging.message"
 
 
-def create_message(size=None):
-    return Message(size)
-
-
 def message_from(data):
     return Message.from_(data)
 

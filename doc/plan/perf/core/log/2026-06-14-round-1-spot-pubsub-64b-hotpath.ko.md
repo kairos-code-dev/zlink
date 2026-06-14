@@ -79,6 +79,8 @@
 - targeted perf:
   - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT --transports tcp,tls --msg-sizes 64 --duration 5` 통과. Runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`. 결과: tcp 3876.720 Kmsg/s, tls 3899.024 Kmsg/s.
   - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB,MULTI_SPOT --transports tcp,tls --msg-sizes 64 --duration 5` 통과. Runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`. 결과: DEALER_DEALER tcp 2982.051/tls 3095.303 Kmsg/s, PUBSUB tcp 2516.592/tls 2381.888 Kmsg/s, SPOT tcp 3346.090/tls 3406.861 Kmsg/s.
+  - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT --transports ws,wss --msg-sizes 64 --duration 5` 통과. Runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`. 결과: ws 3606.783 Kmsg/s, wss 3928.487 Kmsg/s.
+  - `PERF_FAIL_FAST=1 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern MULTI_SPOT --transports ws,wss --duration 5` 통과. Runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`. Completion: success 12, fail 0, status complete. 결과 파일: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_150826.txt`.
 - full perf: 미실행
 
 ## 결과
@@ -93,4 +95,5 @@
 ## 다음 작업
 
 - 남은 위험: current report는 partial이며 SPOT ws/wss 실패가 섞여 있다. 실패 수정과 성능 개선을 분리해서 판단해야 한다.
-- 다음 goal 후보: SPOT ws/wss readiness 실패 제거, STREAM ws 1024B 이상 실패 제거
+- 실패 재현 상태: `MULTI_SPOT ws/wss` 실패는 현재 runtime에서 재현되지 않았다. 같은 pattern/transport 전체 size targeted perf가 fail 0으로 끝났다. current partial report의 나머지 실패인 `MULTI_SPOT_REQREP ws/wss`, `MULTI_SPOT_SENDSEND ws/wss`, `MULTI_STREAM ws 1024B+`는 아직 재확인하지 않았다.
+- 다음 goal 후보: `MULTI_SPOT_REQREP ws/wss`, `MULTI_SPOT_SENDSEND ws/wss`, `MULTI_STREAM ws 1024B+` 실패 재현 확인 후 실패 0개 기준선 승격

@@ -23,11 +23,7 @@ async_result_t<std::vector<message_t>> submit_request_part_awaitable (message_t 
     std::future<std::vector<message_t>> future = state->promise->get_future ();
 
     zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ()) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    move_to_native_or_reject (part_, &native);
 
     const submit_result_t rc = static_cast<submit_result_t> (
       submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));
@@ -53,11 +49,7 @@ bool submit_request_part_callback (message_t &part_,
     std::unique_ptr<request_state_t> state (make_callback_request_state (std::move (callback_)));
 
     zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ()) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    move_to_native_or_reject (part_, &native);
 
     const submit_result_t rc = static_cast<submit_result_t> (
       submit_part_ (&native, ZLINK_PART_FINAL, &request_callback_trampoline, state.get ()));

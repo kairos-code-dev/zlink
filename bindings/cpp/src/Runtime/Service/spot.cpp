@@ -63,11 +63,7 @@ void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     zlink_msg_t native;
-    zlink::detail::move_to_native (message_, &native);
-    if (message_.valid ()) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    detail::move_to_native_or_reject (message_, &native);
 
     const submit_result_t rc = static_cast<submit_result_t> (submit_part_ (&native));
     if (rc != submit_result_t::ok) {

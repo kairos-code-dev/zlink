@@ -5,6 +5,7 @@
 #include "actor_model_access.hpp"
 #include "spot_state.hpp"
 #include "spot_access.hpp"
+#include "detail.hpp"
 #include "../Native/native_message_parts.hpp"
 
 namespace zlink
@@ -141,11 +142,7 @@ inline bool submit_bound_session_send_state (spot_operation_state_t &state_)
             throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
         zlink_msg_t native;
-        zlink::detail::move_to_native (part, &native);
-        if (part.valid ()) {
-            (void) zlink_msg_close (&native);
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-        }
+        move_to_native_or_reject (part, &native);
         const submit_result_t rc =
           static_cast<submit_result_t> (zlink_spot_node_actor_send_bound_session_msg (
             zlink::detail::native_handle (*state_.node),

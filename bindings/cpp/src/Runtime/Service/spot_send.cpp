@@ -21,11 +21,7 @@ bool submit_single_send_message (message_t &message_, send_flags_t flags_, Submi
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     zlink_msg_t native;
-    zlink::detail::move_to_native (message_, &native);
-    if (message_.valid ()) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    detail::move_to_native_or_reject (message_, &native);
 
     const submit_result_t rc =
       static_cast<submit_result_t> (submit_part_ (&native, ZLINK_PART_FINAL));
@@ -88,11 +84,7 @@ bool spot_t::publish_discard_on_backpressure (const std::string &topic_, message
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     zlink_msg_t native;
-    zlink::detail::move_to_native (part_, &native);
-    if (part_.valid ()) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    detail::move_to_native_or_reject (part_, &native);
 
     const int rc = zlink_spot_publish_part (_impl->handle, topic_.c_str (), &native, ZLINK_DONTWAIT,
                                             ZLINK_PART_FINAL);

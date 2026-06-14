@@ -10,7 +10,7 @@ from ...sockets.socket_base import (
     _enter_callback,
     _leave_callback,
 )
-from ...messaging.request_reply import _ensure_reply_flags_supported
+from ...messaging.request_reply import _ensure_reply_flags_supported, _timeout_to_ms
 from ....contracts.core.options import AutoHwmProfile
 from ....contracts.sockets.codes import SocketType
 from ....contracts.service.codes import (
@@ -274,12 +274,6 @@ def _fixed_buffer_value(value, size):
     if len(raw) >= size:
         raise ValueError(f"value exceeds fixed buffer size {size - 1}")
     return raw
-
-
-def _timeout_to_ms(timeout):
-    if timeout in (None, 0):
-        return 0
-    return max(1, int(float(timeout) * 1000))
 
 
 def _payload_can_use_native_bridge(payload):

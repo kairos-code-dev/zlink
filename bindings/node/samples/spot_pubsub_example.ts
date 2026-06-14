@@ -6,27 +6,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const net = require('node:net');
-const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
-
-async function reservePort(): Promise<number> {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
-
-async function waitPeer(node): Promise<void> {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (node.status().connectedPeerCount > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error('spot peer not connected');
-}
+const { tcpEndpoint, waitSpotPeerConnected } = require('./sample_support');
 
 async function main() {
 // --8<-- [start:doc]
@@ -38,8 +19,8 @@ async function main() {
   const topic = 'room:lobby';
 
   try {
-    const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const subEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const pubEndpoint = await tcpEndpoint();
+    const subEndpoint = await tcpEndpoint();
     publisherNode.setPubBind(pubEndpoint);
     subscriberNode.setPubBind(subEndpoint);
     publisherNode.connectPeer(subEndpoint);
@@ -48,8 +29,8 @@ async function main() {
     subscriber = subscriberNode.createSpot();
     // 구독자는 받을 토픽을 등록한다.
     subscriber.setSubscription(topic);
-    await waitPeer(publisherNode);
-    await waitPeer(subscriberNode);
+    await waitSpotPeerConnected(publisherNode);
+    await waitSpotPeerConnected(subscriberNode);
 
     // 연결 직후 첫 publish가 닿기 전일 수 있어, 도착할 때까지 반복 발행한다.
     const received = new zlink.TopicMessage();

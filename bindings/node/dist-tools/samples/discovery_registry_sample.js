@@ -2,20 +2,11 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
-const { once } = require('node:events');
-const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
+const { tcpEndpoint } = require('./sample_support');
 const AUTO_CONNECT_SPOT_MESH = 5;
-async function reservePort() {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const { port } = server.address();
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    return port;
-}
 async function waitForTopologyEntry(registry, channelName, endpoint) {
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
         const entry = registry.topology().find((item) => item.channelName === channelName);
         if (entry) {
@@ -31,9 +22,9 @@ async function main() {
     const registry = zlink.createRegistry(ctx);
     const discovery = zlink.createDiscovery(ctx, AUTO_CONNECT_SPOT_MESH, 'sample');
     const node = zlink.createSpotNode(ctx);
-    const pubEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const routerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const serviceEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    const pubEndpoint = await tcpEndpoint();
+    const routerEndpoint = await tcpEndpoint();
+    const serviceEndpoint = await tcpEndpoint();
     try {
         registry.bind(pubEndpoint, routerEndpoint);
         discovery.connectRegistry(routerEndpoint);

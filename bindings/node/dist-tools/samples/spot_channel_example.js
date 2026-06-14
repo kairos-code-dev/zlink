@@ -4,17 +4,8 @@
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
-const net = require('node:net');
-const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
-async function reservePort() {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const { port } = server.address();
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    return port;
-}
+const { tcpEndpoint } = require('./sample_support');
 async function main() {
     // --8<-- [start:doc]
     const ctx = zlink.createContext();
@@ -24,7 +15,7 @@ async function main() {
     const apiRouter = zlink.createRouterSocket(ctx);
     try {
         const channel = 'api';
-        const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+        const endpoint = await tcpEndpoint();
         apiRouter.bind(endpoint);
         roomDealer.connect(endpoint);
         // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.

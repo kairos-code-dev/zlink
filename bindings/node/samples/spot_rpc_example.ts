@@ -7,27 +7,8 @@
 
 'use strict';
 
-const net = require('node:net');
-const { once } = require('node:events');
 const zlink = require('@zlink-systems/zlink');
-
-async function reservePort(): Promise<number> {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
-
-async function waitPeer(node): Promise<void> {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (node.status().connectedPeerCount > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error('spot peer not connected');
-}
+const { tcpEndpoint, waitSpotPeerConnected } = require('./sample_support');
 
 function rid(text: string) {
   return zlink.RoutingId.from(Buffer.from(text));
@@ -48,17 +29,17 @@ async function main() {
     server.setRoutingId(rid('rpc-server-spot'));
     client.setRoutingId(rid('rpc-client-spot'));
     // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-    serverNode.setRouterBind(`tcp://127.0.0.1:${await reservePort()}`);
-    clientNode.setRouterBind(`tcp://127.0.0.1:${await reservePort()}`);
-    const serverEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const clientEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    serverNode.setRouterBind(await tcpEndpoint());
+    clientNode.setRouterBind(await tcpEndpoint());
+    const serverEndpoint = await tcpEndpoint();
+    const clientEndpoint = await tcpEndpoint();
     serverNode.setPubBind(serverEndpoint);
     clientNode.setPubBind(clientEndpoint);
     serverNode.connectPeer(clientEndpoint);
     clientNode.connectPeer(serverEndpoint);
 
-    await waitPeer(serverNode);
-    await waitPeer(clientNode);
+    await waitSpotPeerConnected(serverNode);
+    await waitSpotPeerConnected(clientNode);
 
     // 서버 Spot은 라우티드 요청을 폴링으로 받아 같은 평면으로 응답한다.
     const served = new Promise<void>((resolve, reject) => {

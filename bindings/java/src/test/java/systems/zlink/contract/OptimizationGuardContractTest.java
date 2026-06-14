@@ -191,6 +191,33 @@ final class OptimizationGuardContractTest {
             "samples/perf must stay on public contract packages: " + violations);
     }
 
+    @Test
+    void nativeSocketFlagsStayRuntimePrivate() throws IOException {
+        Path contractInternalSockets = MAIN_SOURCE.resolve(Path.of(
+            "systems", "zlink", "contracts", "internal", "sockets"));
+        List<String> violations = new ArrayList<>();
+
+        for (String fileName : List.of("SendFlag.java", "ReceiveFlag.java")) {
+            Path contractPath = contractInternalSockets.resolve(fileName);
+            if (Files.exists(contractPath)) {
+                violations.add(contractPath.toString());
+            }
+        }
+
+        Path runtimeSockets = MAIN_SOURCE.resolve(Path.of(
+            "systems", "zlink", "runtime", "sockets"));
+        for (String fileName : List.of("SendFlag.java", "ReceiveFlag.java")) {
+            Path runtimePath = runtimeSockets.resolve(fileName);
+            String source = Files.readString(runtimePath, StandardCharsets.UTF_8);
+            if (source.contains("public enum ")) {
+                violations.add(runtimePath + " declares a public enum");
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "native socket flags must stay runtime-private: " + violations);
+    }
+
     private static String allMainSource() throws IOException {
         StringBuilder builder = new StringBuilder();
         try (var stream = Files.walk(MAIN_SOURCE)) {

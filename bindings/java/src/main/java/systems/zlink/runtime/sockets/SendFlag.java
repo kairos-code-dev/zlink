@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.internal.sockets;
-
+package systems.zlink.runtime.sockets;
 
 /** Low-level send flags used by the native socket API. */
-public enum SendFlag {
+enum SendFlag {
     NONE(0), DONTWAIT(1), SNDMORE(2), DONTWAIT_SNDMORE(3);
 
     private final int value;

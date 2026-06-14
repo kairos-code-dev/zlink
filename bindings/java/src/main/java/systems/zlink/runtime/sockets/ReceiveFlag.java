@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.internal.sockets;
-
+package systems.zlink.runtime.sockets;
 
 /** Low-level receive flags used by the native socket API. */
-public enum ReceiveFlag {
+enum ReceiveFlag {
     NONE(0), DONTWAIT(1);
 
     private final int value;

@@ -11,7 +11,6 @@ import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.internal.sockets.ReceiveFlag;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;

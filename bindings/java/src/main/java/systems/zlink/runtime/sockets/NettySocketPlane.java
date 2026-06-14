@@ -3,8 +3,6 @@
 package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.internal.sockets.ReceiveFlag;
-import systems.zlink.contracts.internal.sockets.SendFlag;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import io.netty.buffer.ByteBuf;
 import java.lang.foreign.MemorySegment;

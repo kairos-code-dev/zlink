@@ -2,10 +2,6 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.internal.sockets.ReceiveFlag;
-
-import systems.zlink.contracts.internal.sockets.SendFlag;
-
 import systems.zlink.contracts.internal.sockets.SocketOptionValueType;
 
 import systems.zlink.contracts.internal.sockets.SocketOptions;
@@ -612,7 +608,6 @@ final class NativeSocketRuntime implements AutoCloseable {
                 ReceiveFlag flags) {
         return receivePlane.recvNoWait(segment, offset, length, flags);
     }
-
 
     MemorySegment handle() {
         return handle;

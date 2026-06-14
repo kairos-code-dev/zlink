@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.ComponentModel;
-using Systems.Zlink.Sockets.Internal;
+using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 

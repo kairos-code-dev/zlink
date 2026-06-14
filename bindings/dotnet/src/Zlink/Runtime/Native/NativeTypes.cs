@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace Systems.Zlink.Native;
+namespace Systems.Zlink.Runtime.Native;
 
 [StructLayout(LayoutKind.Explicit, Size = 64)]
 internal unsafe struct ZlinkMsg

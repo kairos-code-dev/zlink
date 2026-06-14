@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Systems.Zlink.Native;
+namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {

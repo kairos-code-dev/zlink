@@ -4,7 +4,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 

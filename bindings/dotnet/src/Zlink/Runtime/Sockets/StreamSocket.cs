@@ -3,7 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 

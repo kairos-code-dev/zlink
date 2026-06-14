@@ -106,7 +106,7 @@ public sealed class test_socket_surface
             .ToArray();
 
         Assert.DoesNotContain(exportedTypeNames,
-            typeName => typeName.StartsWith("Systems.Zlink.Native.",
+            typeName => typeName.StartsWith("Systems.Zlink.Runtime.Native.",
                 StringComparison.Ordinal));
         Assert.DoesNotContain(exportedTypeNames,
             typeName => typeName.StartsWith("Systems.Zlink.Runtime.",

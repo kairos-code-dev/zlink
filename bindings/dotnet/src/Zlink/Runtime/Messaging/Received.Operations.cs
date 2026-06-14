@@ -3,7 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Systems.Zlink.Sockets.Internal;
+using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 

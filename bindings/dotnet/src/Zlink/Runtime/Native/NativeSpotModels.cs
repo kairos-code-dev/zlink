@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Systems.Zlink.Native;
+namespace Systems.Zlink.Runtime.Native;
 
 [StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkSpotRoute

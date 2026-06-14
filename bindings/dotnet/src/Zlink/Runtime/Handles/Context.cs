@@ -2,7 +2,7 @@
 
 using System;
 using System.Threading.Tasks;
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 

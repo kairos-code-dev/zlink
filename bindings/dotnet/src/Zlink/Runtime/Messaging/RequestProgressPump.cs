@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 

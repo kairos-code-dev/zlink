@@ -3,8 +3,8 @@
 using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
-using Systems.Zlink.Sockets.Internal;
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Sockets.Internal;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 

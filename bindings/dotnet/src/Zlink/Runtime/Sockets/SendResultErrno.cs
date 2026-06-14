@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using Systems.Zlink.Native;
+using Systems.Zlink.Runtime.Native;
 
-namespace Systems.Zlink.Sockets.Internal;
+namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 // Maps the platform errno reported after a non-blocking native send onto a
 // non-faulting SendResult. The Unix/Windows errno pairs that mean "would

@@ -2,6 +2,7 @@
 
 using System;
 using System.Text;
+using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
 
@@ -107,7 +108,7 @@ internal sealed class ContextOptions : IContextOptions
             byte[] bytes = Encoding.UTF8.GetBytes(value);
             if (bytes.Length > 16)
                 throw new ArgumentOutOfRangeException(nameof(value));
-            int rc = Native.NativeMethods.zlink_ctx_set_data(_context.Handle,
+            int rc = NativeMethods.zlink_ctx_set_data(_context.Handle,
                 (int)ContextOption.ThreadNamePrefix, bytes, (nuint)bytes.Length);
             ZlinkException.ThrowConfigIfError(rc);
             _threadNamePrefix = value;

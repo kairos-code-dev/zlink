@@ -144,6 +144,7 @@ public sealed class test_optimization_guard
         string[] forbidden =
         {
             "Systems.Zlink.Native",
+            "Systems.Zlink.Sockets.Internal",
             "Systems.Zlink.Runtime",
             "NativeMethods",
             "NativeLibraryLoader",
@@ -153,6 +154,28 @@ public sealed class test_optimization_guard
             "InternalsVisibleTo",
             "FromNative",
             "MoveFromNative"
+        };
+
+        var violations = new List<string>();
+        foreach (string token in forbidden)
+        {
+            if (source.Contains(token, StringComparison.Ordinal))
+                violations.Add(token);
+        }
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void internal_runtime_namespaces_stay_under_runtime()
+    {
+        string source = ReadZlinkSource();
+        string[] forbidden =
+        {
+            "namespace Systems.Zlink.Native",
+            "namespace Systems.Zlink.Sockets.Internal",
+            "using Systems.Zlink.Native",
+            "using Systems.Zlink.Sockets.Internal"
         };
 
         var violations = new List<string>();

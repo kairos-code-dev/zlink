@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Systems.Zlink.Native;
+namespace Systems.Zlink.Runtime.Native;
 
 internal static class NativeConstants
 {

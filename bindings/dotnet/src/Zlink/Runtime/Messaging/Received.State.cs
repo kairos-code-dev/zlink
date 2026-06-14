@@ -2,8 +2,8 @@
 
 using System;
 using System.Collections.Generic;
-using Systems.Zlink.Native;
-using Systems.Zlink.Sockets.Internal;
+using Systems.Zlink.Runtime.Native;
+using Systems.Zlink.Runtime.Sockets.Internal;
 
 namespace Systems.Zlink;
 

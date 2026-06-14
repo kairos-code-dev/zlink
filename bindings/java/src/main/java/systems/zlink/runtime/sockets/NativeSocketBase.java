@@ -8,7 +8,7 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.SubscriptionEntry;

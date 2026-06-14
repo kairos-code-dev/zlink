@@ -5,7 +5,7 @@ package systems.zlink.contracts.core;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.ZlinkTimer;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.service.spot.Spot;
 import java.time.Duration;

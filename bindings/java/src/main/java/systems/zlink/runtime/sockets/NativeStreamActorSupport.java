@@ -13,7 +13,7 @@ import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.internal.DurationConversions;
+import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.InternalAccess;

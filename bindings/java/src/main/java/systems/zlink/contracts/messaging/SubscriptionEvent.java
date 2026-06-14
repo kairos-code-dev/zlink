@@ -3,7 +3,7 @@
 package systems.zlink.contracts.messaging;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import java.util.Optional;
 
 /** Canonical XPUB subscription event snapshot. */

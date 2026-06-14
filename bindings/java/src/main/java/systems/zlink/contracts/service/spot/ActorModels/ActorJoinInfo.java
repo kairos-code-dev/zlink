@@ -3,7 +3,7 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.messaging.Message;
 import java.util.Objects;
 import java.util.Optional;

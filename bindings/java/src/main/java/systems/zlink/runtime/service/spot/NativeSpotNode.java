@@ -31,7 +31,7 @@ import systems.zlink.contracts.service.spot.SpotNodeSpotEntry;
 import systems.zlink.contracts.service.spot.SpotNodeStatus;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.service.spot.SpotNodeSubjectFilter;
-import systems.zlink.contracts.internal.DurationConversions;
+import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.EnumCodecs;
 import systems.zlink.runtime.nativeapi.InternalAccess;

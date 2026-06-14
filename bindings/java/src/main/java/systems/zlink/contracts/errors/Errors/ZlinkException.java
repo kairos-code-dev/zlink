@@ -5,7 +5,7 @@ package systems.zlink.contracts.errors;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import java.util.Locale;
 
 /** Base class for all exceptions thrown by the zlink bindings. */

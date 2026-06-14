@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.runtime.sockets.SocketOptions;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 
 
 /** The typed facade over STREAM-specific socket options. */

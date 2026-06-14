@@ -2,7 +2,7 @@
 
 package systems.zlink.runtime.service.spot;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;

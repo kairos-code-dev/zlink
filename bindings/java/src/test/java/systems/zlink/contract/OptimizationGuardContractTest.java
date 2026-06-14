@@ -152,7 +152,7 @@ final class OptimizationGuardContractTest {
             }
             """,
             """
-            import systems.zlink.contracts.internal.ContractAccess;
+            import systems.zlink.runtime.nativeapi.ContractAccess;
             final class InternalProbe {
                 ContractAccess access;
             }
@@ -195,6 +195,16 @@ final class OptimizationGuardContractTest {
 
         assertTrue(violations.isEmpty(),
             "samples/perf must stay on public contract packages: " + violations);
+    }
+
+    @Test
+    void contractPackagesDoNotExposeInternalNamespace() {
+        Path contractInternal = MAIN_SOURCE.resolve(Path.of(
+            "systems", "zlink", "contracts", "internal"));
+
+        assertFalse(Files.exists(contractInternal),
+            "contract packages must not expose an internal namespace: "
+                + contractInternal);
     }
 
     @Test

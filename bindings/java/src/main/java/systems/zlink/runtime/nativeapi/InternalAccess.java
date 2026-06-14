@@ -5,7 +5,6 @@ package systems.zlink.runtime.nativeapi;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.ContextOption;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.internal.ContractAccess;
 import systems.zlink.contracts.errors.ZlinkException;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.eventing.ZlinkTimer;

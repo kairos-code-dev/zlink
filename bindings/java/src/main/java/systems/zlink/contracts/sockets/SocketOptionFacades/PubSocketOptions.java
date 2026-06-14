@@ -6,7 +6,7 @@ import systems.zlink.runtime.sockets.SocketOptions;
 
 import systems.zlink.runtime.sockets.SocketOptionKey;
 
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.core.RoutingId;

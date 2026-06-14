@@ -6,7 +6,7 @@ import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.internal.ContractAccess;
+import systems.zlink.runtime.nativeapi.ContractAccess;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;

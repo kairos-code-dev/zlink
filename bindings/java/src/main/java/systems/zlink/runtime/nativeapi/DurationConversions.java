@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.internal;
+package systems.zlink.runtime.nativeapi;
 
 import java.time.Duration;
 

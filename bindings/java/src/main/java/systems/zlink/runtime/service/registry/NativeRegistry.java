@@ -7,7 +7,7 @@ import systems.zlink.contracts.service.registry.*;
 import systems.zlink.contracts.core.Context;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
-import systems.zlink.contracts.internal.DurationConversions;
+import systems.zlink.runtime.nativeapi.DurationConversions;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;

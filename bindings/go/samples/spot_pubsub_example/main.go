@@ -5,84 +5,51 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"time"
 
 	zlink "zlink.systems/zlink"
+	"zlink.systems/zlink/samples/internal/samplecommon"
 )
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func message(text string) *zlink.Message {
-	msg, err := zlink.NewMessageString(text)
-	must(err)
-	return msg
-}
-
-// 빈 TCP 포트를 잡아 endpoint를 만든다.
-func uniqueTCP() string {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	must(err)
-	addr := listener.Addr().(*net.TCPAddr)
-	_ = listener.Close()
-	return fmt.Sprintf("tcp://127.0.0.1:%d", addr.Port)
-}
-
-func waitPeer(node *zlink.SpotNode) {
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		status, err := node.Status()
-		if err == nil && status != nil && status.ConnectedPeerCount > 0 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	panic("spot peer not connected")
-}
 
 func main() {
 	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
-	must(err)
+	samplecommon.Must(err)
 	defer ctx.Close()
 
 	// 토픽을 발행하는 노드와 구독하는 노드.
 	publisherNode, err := ctx.SpotNode()
-	must(err)
+	samplecommon.Must(err)
 	defer publisherNode.Close()
 	subscriberNode, err := ctx.SpotNode()
-	must(err)
+	samplecommon.Must(err)
 	defer subscriberNode.Close()
 
 	topic := "room:lobby"
-	pubEndpoint := uniqueTCP()
-	subEndpoint := uniqueTCP()
-	must(publisherNode.SetPubBind(pubEndpoint))
-	must(subscriberNode.SetPubBind(subEndpoint))
-	must(publisherNode.ConnectPeer(subEndpoint))
-	must(subscriberNode.ConnectPeer(pubEndpoint))
+	pubEndpoint := samplecommon.UniqueTCP("spot-pubsub-pub")
+	subEndpoint := samplecommon.UniqueTCP("spot-pubsub-sub")
+	samplecommon.Must(publisherNode.SetPubBind(pubEndpoint))
+	samplecommon.Must(subscriberNode.SetPubBind(subEndpoint))
+	samplecommon.Must(publisherNode.ConnectPeer(subEndpoint))
+	samplecommon.Must(subscriberNode.ConnectPeer(pubEndpoint))
 
 	publisher, err := publisherNode.Spot()
-	must(err)
+	samplecommon.Must(err)
 	defer publisher.Close()
 	subscriber, err := subscriberNode.Spot()
-	must(err)
+	samplecommon.Must(err)
 	defer subscriber.Close()
 	// 구독자는 받을 토픽을 등록한다.
-	must(subscriber.SetSubscription(topic))
-	waitPeer(publisherNode)
-	waitPeer(subscriberNode)
+	samplecommon.Must(subscriber.SetSubscription(topic))
+	samplecommon.WaitSpotPeerConnected(publisherNode, 15*time.Second)
+	samplecommon.WaitSpotPeerConnected(subscriberNode, 15*time.Second)
 
 	// 연결 직후 첫 publish가 구독자에게 닿기 전일 수 있어, 도착할 때까지 반복 발행한다.
 	var received zlink.TopicMessage
 	delivered := false
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, pubErr := publisher.Publish(topic).Message(message("hello-everyone")).Submit(nil); pubErr != nil {
+		if _, pubErr := publisher.Publish(topic).Message(samplecommon.Message("hello-everyone")).Submit(nil); pubErr != nil {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
@@ -98,7 +65,7 @@ func main() {
 	defer received.Close()
 
 	part, err := received.SinglePartOrError()
-	must(err)
+	samplecommon.Must(err)
 	fmt.Printf("[spot/pubsub] topic %q -> recv: %q\n", received.Topic(), string(part.Data()))
 	// --8<-- [end:doc]
 }

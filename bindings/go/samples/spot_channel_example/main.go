@@ -7,58 +7,38 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"time"
 
 	zlink "zlink.systems/zlink"
+	"zlink.systems/zlink/samples/internal/samplecommon"
 )
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
-func message(text string) *zlink.Message {
-	msg, err := zlink.NewMessageString(text)
-	must(err)
-	return msg
-}
-
-func uniqueTCP() string {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	must(err)
-	addr := listener.Addr().(*net.TCPAddr)
-	_ = listener.Close()
-	return fmt.Sprintf("tcp://127.0.0.1:%d", addr.Port)
-}
 
 func main() {
 	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
-	must(err)
+	samplecommon.Must(err)
 	defer ctx.Close()
 
 	// 게임룸(Spot) 쪽과, API 서버(raw ROUTER) 쪽.
 	roomNode, err := ctx.SpotNode()
-	must(err)
+	samplecommon.Must(err)
 	defer roomNode.Close()
 	room, err := roomNode.Spot()
-	must(err)
+	samplecommon.Must(err)
 	defer room.Close()
 	roomDealer, err := ctx.DealerSocket()
-	must(err)
+	samplecommon.Must(err)
 	defer roomDealer.Close()
 	apiRouter, err := ctx.RouterSocket()
-	must(err)
+	samplecommon.Must(err)
 	defer apiRouter.Close()
 
 	const channel = "api"
-	endpoint := uniqueTCP()
-	must(apiRouter.Bind(endpoint))
-	must(roomDealer.Connect(endpoint))
+	endpoint := samplecommon.UniqueTCP("spot-channel")
+	samplecommon.Must(apiRouter.Bind(endpoint))
+	samplecommon.Must(roomDealer.Connect(endpoint))
 	// "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
-	must(roomNode.AttachChannelDealerManual(channel, roomDealer))
+	samplecommon.Must(roomNode.AttachChannelDealerManual(channel, roomDealer))
 
 	// API 서버: 요청을 받아 응답한다.
 	serverDone := make(chan error, 1)
@@ -70,13 +50,13 @@ func main() {
 		}
 		defer received.Close()
 		serverDone <- apiRouter.Reply(received.RoutingID(), received.RequestSeq()).
-			Message(message("profile:level-7")).Submit(nil)
+			Message(samplecommon.Message("profile:level-7")).Submit(nil)
 	}()
 
 	// 게임룸이 API 채널로 outgame 요청을 보낸다.
 	replyCh := make(chan string, 1)
 	_, reqErr := room.RequestToChannel(channel).
-		Message(message("get-profile")).
+		Message(samplecommon.Message("get-profile")).
 		Timeout(5*time.Second).
 		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 			if result == zlink.RequestOK && len(parts) > 0 {
@@ -84,10 +64,10 @@ func main() {
 			}
 			zlink.MultipartClose(parts)
 		})
-	must(reqErr)
+	samplecommon.Must(reqErr)
 
 	reply := <-replyCh
-	must(<-serverDone)
+	samplecommon.Must(<-serverDone)
 	fmt.Printf("[spot/channel] request \"get-profile\" -> reply %q\n", reply)
 	// --8<-- [end:doc]
 }

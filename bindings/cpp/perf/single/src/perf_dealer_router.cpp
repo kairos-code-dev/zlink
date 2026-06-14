@@ -3,6 +3,7 @@
 #include "../common/perf_single_common.hpp"
 #include "../common/perf_single_runner.hpp"
 
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -195,7 +196,7 @@ bool run_pattern_dealer_router (const std::string &transport,
     // one reused zlink_msg_t recv buffer with no per-message heap churn.
     unsigned long long received_count = 0;
     {
-        zlink::routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
+        zlink::routing_id_t source_rid = zlink::routing_id_t::from (std::string ("placeholder"));
         bool stop_received = false;
         while (!stop_received) {
             zlink::message_t part;

@@ -933,11 +933,11 @@ class socket_t
         if constexpr (std::is_same<socket_type_t, pair_socket_t>::value
                       || std::is_same<socket_type_t, dealer_socket_t>::value) {
             if (source_rid_out_ != NULL)
-                *source_rid_out_ = detail::unchecked_empty_routing_id ();
+                *source_rid_out_ = routing_id_t::from (std::string ("placeholder"));
             return socket_.recv (part_out_, flags_);
         } else if constexpr (std::is_same<socket_type_t, router_socket_t>::value) {
             if (source_rid_out_ == NULL) {
-                routing_id_t ignored = detail::unchecked_empty_routing_id ();
+                routing_id_t ignored = routing_id_t::from (std::string ("placeholder"));
                 return socket_.recv (ignored, part_out_, flags_);
             }
             return socket_.recv (*source_rid_out_, part_out_, flags_);

@@ -5,6 +5,7 @@
 
 #include <cstring>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace
@@ -267,7 +268,7 @@ bool run_pattern_router_router (const std::string &transport,
     // uses one reused zlink_msg_t recv buffer with no per-message heap
     // churn.
     {
-        zlink::routing_id_t source_rid = zlink::detail::unchecked_empty_routing_id ();
+        zlink::routing_id_t source_rid = zlink::routing_id_t::from (std::string ("placeholder"));
         bool stop_received = false;
         while (!stop_received) {
             zlink::message_t part;

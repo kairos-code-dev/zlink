@@ -38,7 +38,7 @@ async function main() {
     const replyPromise = room.requestToChannel(channel)
       .message(Buffer.from('get-profile'))
       .timeout(5000)
-      .submitAsync();
+      .submit();
 
     // API 서버(ROUTER)는 요청을 폴링으로 받아 응답한다.
     await new Promise((resolve, reject) => {

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# JavaScript actor samples share the Node binding runtime (@zlink-systems/zlink).
+# JavaScript samples share the Node binding runtime (@zlink-systems/zlink).
 # No separate native binding exists; these plain-JS samples consume the built
 # Node package directly. Build the Node binding first: (cd ../../node && npm run build).
 SAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_DIR="$(cd "$SAMPLES_DIR/../../node" && pwd)"
+source "$NODE_DIR/scripts/run_node_job.sh"
 
 if [[ ! -f "$NODE_DIR/dist/index.js" || ! -f "$NODE_DIR/build/Release/zlink.node" ]]; then
   echo "node binding is not built; run: (cd $NODE_DIR && npm run build)" >&2
@@ -18,16 +19,34 @@ mkdir -p "$SAMPLES_DIR/node_modules/@zlink-systems"
 ln -sfn "$NODE_DIR" "$SAMPLES_DIR/node_modules/@zlink-systems/zlink"
 
 samples=(
-  "actor_room_server_sample.js"
   "actor_gateway_relay_sample.js"
+  "actor_queue_example.js"
+  "actor_room_example.js"
+  "actor_room_server_sample.js"
+  "actor_sequential_example.js"
   "actor_single_player_queue_sample.js"
+  "dealer_router_recv_sample.js"
+  "discovery_registry_sample.js"
+  "monitor_recv_sample.js"
+  "pair_recv_sample.js"
+  "pubsub_recv_sample.js"
+  "registry_query_sample.js"
+  "request_reply_async_sample.js"
+  "spot_channel_example.js"
+  "spot_pubsub_example.js"
+  "spot_recv_sample.js"
+  "spot_request_async_sample.js"
+  "spot_rpc_example.js"
+  "spot_timer_example.js"
+  "stream_packet_callback_sample.js"
+  "stream_recv_sample.js"
 )
 
 passed=0
 failed=0
 for sample in "${samples[@]}"; do
   printf '[sample] %s\n' "$sample"
-  if node "$SAMPLES_DIR/$sample"; then
+  if run_node_job 90 node "$SAMPLES_DIR/$sample"; then
     passed=$((passed + 1))
   else
     failed=$((failed + 1))

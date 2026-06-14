@@ -33,7 +33,7 @@ async function main() {
     // 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
     stream.attachActorGateway(node);
     const session = zlink.RoutingId.from(Buffer.from('single-player-session'));
-    await stream.bindActor(session, actor.ref()).timeout(2000).submitAsync();
+    await stream.bindActor(session, actor.ref()).timeout(2000).submit();
 
     // dispatch 핸들러: actor에게 온 메시지를 모은다.
     spot.setDispatchHandler((info) => {
@@ -47,7 +47,7 @@ async function main() {
 
     // join 요청을 수신해 "accepted"로 응답한다.
     async function joinAndAccept(payload) {
-      const reply = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submitAsync();
+      const reply = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit();
       const request = waitForJoin(spot);
       spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
       await reply;
@@ -55,7 +55,7 @@ async function main() {
 
     await joinAndAccept('join-first'); // actor가 spot에 합류
     stream.sendBoundActor(session, 'single-player').message(Buffer.from('before')).submit(); // joined 상태에서 도착
-    await actor.leave(spot).timeout(2000).submitAsync(); // 처리 위치 이탈 (세션 바인딩은 유지)
+    await actor.leave(spot).timeout(2000).submit(); // 처리 위치 이탈 (세션 바인딩은 유지)
     stream.sendBoundActor(session, 'single-player').message(Buffer.from('between')).submit(); // leave 사이 도착 → 큐잉
     await joinAndAccept('join-second'); // rejoin → 큐된 메시지가 핸들러로 배달된다
 
@@ -63,7 +63,7 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.deepEqual(payloads, ['before', 'between']);
-    await actor.leave(spot).timeout(2000).submitAsync();
+    await actor.leave(spot).timeout(2000).submit();
     console.log('[actor/single-player] queued payload: "before/between" -> actor: "before/between"');
   } finally {
     stream.close();

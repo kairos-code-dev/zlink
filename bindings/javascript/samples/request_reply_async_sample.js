@@ -48,7 +48,7 @@ async function main() {
     const pendingReply = dealerSocket.request()
       .message(Buffer.from('ping'))
       .timeout(2000)
-      .submitAsync();
+      .submit();
     const request = new zlink.Received();
     routerSocket.recv(request);
     try {

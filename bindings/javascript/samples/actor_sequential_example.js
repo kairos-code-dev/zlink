@@ -33,7 +33,7 @@ async function main() {
     stream.attachActorGateway(node);
     const session = zlink.RoutingId.from(Buffer.from('player-session'));
     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-    await stream.bindActor(session, player.ref()).timeout(2000).submitAsync();
+    await stream.bindActor(session, player.ref()).timeout(2000).submit();
 
     // dispatch 핸들러: STREAM이 relay한 메시지를 모은다.
     room.setDispatchHandler((info) => {
@@ -46,7 +46,7 @@ async function main() {
     });
 
     // join으로 Entry Spot에서 room(user Spot)으로 이동한다.
-    const reply = player.join(room).message(Buffer.from('enter-room')).timeout(2000).submitAsync();
+    const reply = player.join(room).message(Buffer.from('enter-room')).timeout(2000).submit();
     const request = waitForJoin(room);
     room.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
     await reply;
@@ -61,7 +61,7 @@ async function main() {
     }
     assert.deepEqual(processed, ['move', 'attack', 'loot']);
 
-    await player.leave(room).timeout(2000).submitAsync();
+    await player.leave(room).timeout(2000).submit();
     console.log('[actor/sequential] processed in order: move -> attack -> loot');
   } finally {
     stream.close();

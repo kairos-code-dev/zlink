@@ -37,7 +37,7 @@ async function main() {
     const pendingReply = requester.requestToChannel(CHANNEL_NAME)
       .message(Buffer.from(REQUEST_PAYLOAD))
       .timeout(2000)
-      .submitAsync();
+      .submit();
     const received = new zlink.Received();
     await recvRouterRequest(responderRouter, received, 2000);
     try {

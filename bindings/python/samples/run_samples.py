@@ -9,19 +9,26 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = ROOT / "samples"
 CANONICAL_SAMPLES = [
     "request_reply_callback_sample.py",
-    "spot_recv_sample.py",
-    "spot_request_callback_sample.py",
     "pair_recv_sample.py",
     "dealer_router_recv_sample.py",
     "pubsub_recv_sample.py",
     "stream_recv_sample.py",
     "stream_packet_callback_sample.py",
     "monitor_recv_sample.py",
+    "spot_recv_sample.py",
+    "spot_request_callback_sample.py",
     "discovery_registry_sample.py",
     "registry_query_sample.py",
     "actor_room_server_sample.py",
     "actor_gateway_relay_sample.py",
     "actor_single_player_queue_sample.py",
+    "actor_queue_example.py",
+    "actor_room_example.py",
+    "actor_sequential_example.py",
+    "spot_channel_example.py",
+    "spot_pubsub_example.py",
+    "spot_rpc_example.py",
+    "spot_timer_example.py",
 ]
 
 

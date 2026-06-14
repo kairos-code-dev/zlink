@@ -4,9 +4,8 @@
     PYTHONPATH=src python samples/spot_timer_example.py
 """
 
-import time
-
 import zlink
+from sample_support import wait_until
 
 
 def main():
@@ -21,9 +20,7 @@ def main():
         # 50ms 간격으로 3번 발화한다.
         timer.start(50_000_000, 3)
 
-        deadline = time.monotonic() + 3
-        while ticks[0] < 3 and time.monotonic() < deadline:
-            time.sleep(0.01)
+        wait_until(lambda: ticks[0] >= 3, timeout_ms=3000, description="spot timer ticks")
         timer.close()
         if ticks[0] < 3:
             raise RuntimeError(f"timer fired only {ticks[0]} times")

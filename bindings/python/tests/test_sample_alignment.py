@@ -16,6 +16,16 @@ CANONICAL_SAMPLES = [
     "spot_request_callback_sample.py",
     "discovery_registry_sample.py",
     "registry_query_sample.py",
+    "actor_room_server_sample.py",
+    "actor_gateway_relay_sample.py",
+    "actor_single_player_queue_sample.py",
+    "actor_queue_example.py",
+    "actor_room_example.py",
+    "actor_sequential_example.py",
+    "spot_channel_example.py",
+    "spot_pubsub_example.py",
+    "spot_rpc_example.py",
+    "spot_timer_example.py",
 ]
 ALLOWED_NON_SAMPLE_FILES = {
     "run_samples.py",
@@ -29,6 +39,14 @@ class SampleAlignmentTests(unittest.TestCase):
         expected = CANONICAL_SAMPLES + sorted(ALLOWED_NON_SAMPLE_FILES)
         for name in expected:
             self.assertTrue((SAMPLES_DIR / name).exists(), msg=name)
+
+    def test_canonical_sample_set_matches_sample_files(self):
+        sample_files = {
+            path.name
+            for path in SAMPLES_DIR.glob("*.py")
+            if path.name not in ALLOWED_NON_SAMPLE_FILES
+        }
+        self.assertEqual(sample_files, set(CANONICAL_SAMPLES))
 
     def test_samples_avoid_inproc_and_sleep_handshake(self):
         for name in CANONICAL_SAMPLES:

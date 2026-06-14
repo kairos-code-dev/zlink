@@ -6,9 +6,8 @@ Actor는 생성 시 Entry Spot(로비)에 있다가 join으로 개별 room(user 
     PYTHONPATH=src python samples/actor_sequential_example.py
 """
 
-import time
-
 import zlink
+from sample_support import submit_actor_op, submit_request_op, wait_until
 
 
 def main():
@@ -42,24 +41,17 @@ def main():
 
         room.on_dispatch_event(on_dispatch)
 
-        def wait_until(predicate, timeout=2.0):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                if predicate():
-                    return
-                time.sleep(0.01)
-            raise TimeoutError("condition not met")
-
         # STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-        stream.bind_actor(session, player.ref()).timeout(2).submit(
-            lambda result, messages: [m.close() for m in messages])
+        submit_request_op(
+            stream.bind_actor(session, player.ref()),
+            description="stream actor bind",
+        )
 
         # join으로 Entry Spot에서 room(user Spot)으로 이동한다.
-        replies = []
-        player.join(room).message(b"enter-room").timeout(2).submit(
-            lambda result, messages: (replies.append(result),
-                                      [m.close() for m in messages]))
-        wait_until(lambda: replies)
+        submit_actor_op(
+            player.join(room).message(b"enter-room"),
+            description="actor join",
+        )
 
         # STREAM이 플레이어 입력을 연달아 relay한다 — actor는 순서대로 처리한다.
         commands = [b"move", b"attack", b"loot"]
@@ -70,8 +62,7 @@ def main():
         if processed != [b"move", b"attack", b"loot"]:
             raise AssertionError(f"messages were not processed in order: {processed}")
 
-        player.leave(room).timeout(2).submit(
-            lambda result, messages: [m.close() for m in messages])
+        submit_actor_op(player.leave(room), description="actor leave")
         player.close()
         print("[actor/sequential] processed in order: move -> attack -> loot")
 # --8<-- [end:doc]

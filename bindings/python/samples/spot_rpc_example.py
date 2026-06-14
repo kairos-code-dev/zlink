@@ -4,28 +4,8 @@
     PYTHONPATH=src python samples/spot_rpc_example.py
 """
 
-import socket
-import time
-
 import zlink
-
-
-def unique_tcp():
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
-
-
-def wait_peer(node):
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        status = node.status()
-        if status is not None and status.connected_peer_count > 0:
-            return
-        time.sleep(0.01)
-    raise RuntimeError("spot peer not connected")
+from sample_support import tcp_endpoint, wait_spot_peer_connected, wait_until
 
 
 def main():
@@ -41,10 +21,12 @@ def main():
             server.set_routing_id(b"rpc-server-spot")
             client.set_routing_id(b"rpc-client-spot")
             # 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-            server_node.set_router_bind(unique_tcp())
-            client_node.set_router_bind(unique_tcp())
-            server_endpoint = unique_tcp()
-            client_endpoint = unique_tcp()
+            _, server_router_endpoint = tcp_endpoint()
+            _, client_router_endpoint = tcp_endpoint()
+            _, server_endpoint = tcp_endpoint()
+            _, client_endpoint = tcp_endpoint()
+            server_node.set_router_bind(server_router_endpoint)
+            client_node.set_router_bind(client_router_endpoint)
             server_node.set_pub_bind(server_endpoint)
             client_node.set_pub_bind(client_endpoint)
             server_node.connect_peer(client_endpoint)
@@ -62,8 +44,8 @@ def main():
                     received.close()
 
             server.on_dispatch_event(on_dispatch)
-            wait_peer(server_node)
-            wait_peer(client_node)
+            wait_spot_peer_connected(server_node, timeout_ms=15000)
+            wait_spot_peer_connected(client_node, timeout_ms=15000)
 
             # 클라이언트 Spot이 서버 Spot으로 요청한다.
             replies = []
@@ -76,11 +58,7 @@ def main():
                     [p.close() for p in parts],
                 ))
 
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline and not replies:
-                time.sleep(0.01)
-            if not replies:
-                raise RuntimeError("spot rpc: no reply")
+            wait_until(lambda: replies, timeout_ms=5000, description="spot rpc reply")
             result, parts = replies[0]
             print(f'[spot/rpc] request "ping" -> reply "{parts[0].decode()}"')
 # --8<-- [end:doc]

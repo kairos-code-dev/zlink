@@ -4,9 +4,8 @@
     PYTHONPATH=src python samples/actor_queue_example.py
 """
 
-import time
-
 import zlink
+from sample_support import submit_actor_op, submit_request_op, wait_until
 
 
 def main():
@@ -16,14 +15,15 @@ def main():
          zlink.create_stream_socket(ctx) as stream:
         actor = node.actor("single-player")
         payloads = []
-        replies = []
 
         # 스트림 게이트웨이에 actor를 세션으로 바인딩한다. 실제 서버에서 session은
         # 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
         stream.attach_actor_gateway(node)
         session = zlink.RoutingId.from_("single-player-session")
-        stream.bind_actor(session, actor.ref()).timeout(2).submit(
-            lambda result, messages: [m.close() for m in messages])
+        submit_request_op(
+            stream.bind_actor(session, actor.ref()),
+            description="stream actor bind",
+        )
 
         # dispatch 핸들러: join 요청을 수락하고, actor에게 온 메시지를 모은다.
         def on_dispatch(current_spot, info):
@@ -44,28 +44,13 @@ def main():
         spot.on_dispatch_event(on_dispatch)
 
         def join(payload):
-            replies.clear()
-            actor.join(spot).message(payload).timeout(2).submit(
-                lambda result, messages: (
-                    replies.append(result),
-                    [m.close() for m in messages],
-                ))
-            wait_until(lambda: replies)
+            submit_actor_op(actor.join(spot).message(payload), description="actor join")
 
         def send(payload):
             stream.send_bound_actor(session, "single-player").message(payload).submit()
 
         def leave():
-            actor.leave(spot).timeout(2).submit(
-                lambda result, messages: [m.close() for m in messages])
-
-        def wait_until(predicate, timeout=2.0):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                if predicate():
-                    return
-                time.sleep(0.01)
-            raise TimeoutError("condition not met")
+            submit_actor_op(actor.leave(spot), description="actor leave")
 
         join(b"join-first")   # actor가 spot에 합류
         send(b"before")       # joined 상태에서 도착

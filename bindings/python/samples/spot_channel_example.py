@@ -4,18 +4,8 @@
     PYTHONPATH=src python samples/spot_channel_example.py
 """
 
-import socket
-import time
-
 import zlink
-
-
-def unique_tcp():
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return f"tcp://127.0.0.1:{port}"
+from sample_support import tcp_endpoint, wait_until
 
 
 def main():
@@ -24,9 +14,9 @@ def main():
          zlink.create_spot_node(ctx) as room_node, \
          room_node.create_spot() as room, \
          zlink.create_dealer_socket(ctx) as room_dealer, \
-         zlink.create_router_socket(ctx) as api_router:
+        zlink.create_router_socket(ctx) as api_router:
         channel = "api"
-        endpoint = unique_tcp()
+        _, endpoint = tcp_endpoint()
         api_router.bind(endpoint)
         room_dealer.connect(endpoint)
         # "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.
@@ -40,8 +30,8 @@ def main():
 
         # API 서버(ROUTER)는 요청을 받아 응답한다.
         served = False
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
+        def serve_until_reply():
+            nonlocal served
             if not served:
                 received = zlink.create_received()
                 try:
@@ -52,11 +42,9 @@ def main():
                 except zlink.RecvError:
                     pass
                 received.close()
-            if replies:
-                break
-            time.sleep(0.01)
-        if not replies:
-            raise RuntimeError("spot channel: no reply")
+            return bool(replies)
+
+        wait_until(serve_until_reply, timeout_ms=5000, description="spot channel reply")
         print(f'[spot/channel] request "get-profile" -> reply "{replies[0][0].decode()}"')
 # --8<-- [end:doc]
 

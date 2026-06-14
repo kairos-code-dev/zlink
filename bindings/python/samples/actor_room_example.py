@@ -4,9 +4,8 @@
 한 파일로 실행된다:  PYTHONPATH=src python samples/actor_room_example.py
 """
 
-import time
-
 import zlink
+from sample_support import submit_actor_op, submit_request_op, wait_until
 
 
 def main():
@@ -41,28 +40,20 @@ def main():
 
         room.on_dispatch_event(on_dispatch)
 
-        def wait_until(predicate, timeout=2.0):
-            deadline = time.monotonic() + timeout
-            while time.monotonic() < deadline:
-                if predicate():
-                    return
-                time.sleep(0.01)
-            raise TimeoutError("condition not met")
-
         def bind(actor):
-            stream.bind_actor(session, actor.ref()).timeout(2).submit(
-                lambda result, messages: [m.close() for m in messages])
+            submit_request_op(
+                stream.bind_actor(session, actor.ref()),
+                description="stream actor bind",
+            )
 
         def join(actor):
-            replies = []
-            actor.join(room).message(b"enter-room").timeout(2).submit(
-                lambda result, messages: (replies.append(result),
-                                          [m.close() for m in messages]))
-            wait_until(lambda: replies)
+            submit_actor_op(
+                actor.join(room).message(b"enter-room"),
+                description="actor join",
+            )
 
         def leave(actor):
-            actor.leave(room).timeout(2).submit(
-                lambda result, messages: [m.close() for m in messages])
+            submit_actor_op(actor.leave(room), description="actor leave")
 
         # 보낸 직후 도착을 기다리므로, 그 메시지는 방금 주소 지정한 플레이어 것이다.
         def send_and_wait(actor_id, text, want):

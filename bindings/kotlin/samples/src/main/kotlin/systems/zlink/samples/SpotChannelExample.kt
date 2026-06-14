@@ -7,12 +7,7 @@ import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.Received
 import systems.zlink.contracts.sockets.RecvFlags
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.time.Duration
-
-private fun uniqueTcp(): String =
-    ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
 fun main() {
 // --8<-- [start:doc]
@@ -22,7 +17,7 @@ fun main() {
                 ctx.createDealerSocket().use { roomDealer ->
                     ctx.createRouterSocket().use { apiRouter ->
                         val channel = "api"
-                        val endpoint = uniqueTcp()
+                        val endpoint = SampleSupport.tcpEndpoint()
                         apiRouter.bind(endpoint)
                         roomDealer.connect(endpoint)
                         // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.

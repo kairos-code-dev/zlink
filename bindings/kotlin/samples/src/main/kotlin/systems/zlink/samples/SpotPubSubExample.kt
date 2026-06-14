@@ -8,12 +8,7 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.contracts.messaging.TopicMessage
 import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.time.Duration
-
-private fun uniqueTcp(): String =
-    ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
 private fun waitPeer(node: SpotNode) {
     val deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos()
@@ -27,8 +22,8 @@ private fun waitPeer(node: SpotNode) {
 fun main() {
 // --8<-- [start:doc]
     val topic = "room:lobby"
-    val pubEndpoint = uniqueTcp()
-    val subEndpoint = uniqueTcp()
+    val pubEndpoint = SampleSupport.tcpEndpoint()
+    val subEndpoint = SampleSupport.tcpEndpoint()
     Zlink.createContext().use { ctx ->
         ctx.createSpotNode().use { publisherNode ->
             ctx.createSpotNode().use { subscriberNode ->

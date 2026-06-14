@@ -10,12 +10,7 @@ import systems.zlink.contracts.messaging.Received
 import systems.zlink.contracts.service.spot.SpotNode
 import systems.zlink.contracts.sockets.RecvFlags
 import systems.zlink.contracts.service.spot.SpotDispatchEvent
-import java.net.InetAddress
-import java.net.ServerSocket
 import java.time.Duration
-
-private fun uniqueTcp(): String =
-    ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { "tcp://127.0.0.1:${it.localPort}" }
 
 private fun waitPeer(node: SpotNode) {
     val deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos()
@@ -38,10 +33,10 @@ fun main() {
                         server.setRoutingId(RoutingId.from("rpc-server-spot"))
                         client.setRoutingId(RoutingId.from("rpc-client-spot"))
                         // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-                        serverNode.setRouterBind(uniqueTcp())
-                        clientNode.setRouterBind(uniqueTcp())
-                        val serverEndpoint = uniqueTcp()
-                        val clientEndpoint = uniqueTcp()
+                        serverNode.setRouterBind(SampleSupport.tcpEndpoint())
+                        clientNode.setRouterBind(SampleSupport.tcpEndpoint())
+                        val serverEndpoint = SampleSupport.tcpEndpoint()
+                        val clientEndpoint = SampleSupport.tcpEndpoint()
                         serverNode.setPubBind(serverEndpoint)
                         clientNode.setPubBind(clientEndpoint)
                         serverNode.connectPeer(clientEndpoint)

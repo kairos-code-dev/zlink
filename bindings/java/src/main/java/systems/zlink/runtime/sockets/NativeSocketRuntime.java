@@ -2,12 +2,6 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.internal.sockets.SocketOptionValueType;
-
-import systems.zlink.contracts.internal.sockets.SocketOptions;
-
-import systems.zlink.contracts.internal.sockets.SocketOptionKey;
-
 import systems.zlink.contracts.internal.ContractAccess;
 
 import systems.zlink.contracts.core.Context;

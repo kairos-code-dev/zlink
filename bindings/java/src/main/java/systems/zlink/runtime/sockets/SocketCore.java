@@ -2,12 +2,6 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.internal.sockets.SocketOptionValueType;
-
-import systems.zlink.contracts.internal.sockets.SocketOptions;
-
-import systems.zlink.contracts.internal.sockets.SocketOptionKey;
-
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.MemorySegment;

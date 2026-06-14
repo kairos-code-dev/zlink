@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package systems.zlink.contracts.internal.sockets;
+package systems.zlink.runtime.sockets;
 
 import java.util.Objects;
 

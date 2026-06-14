@@ -2,8 +2,6 @@
 
 package systems.zlink.runtime.sockets;
 
-import systems.zlink.contracts.internal.sockets.SocketOptionKey;
-
 import systems.zlink.contracts.sockets.*;
 
 import systems.zlink.contracts.core.Context;

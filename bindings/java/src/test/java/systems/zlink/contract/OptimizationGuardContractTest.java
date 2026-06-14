@@ -156,6 +156,12 @@ final class OptimizationGuardContractTest {
             final class InternalProbe {
                 ContractAccess access;
             }
+            """,
+            """
+            import systems.zlink.runtime.sockets.SocketOptions;
+            final class RuntimeSocketOptionsProbe {
+                Object options = SocketOptions.all();
+            }
             """
         );
         List<String> violations = new ArrayList<>();
@@ -192,10 +198,14 @@ final class OptimizationGuardContractTest {
     }
 
     @Test
-    void nativeSocketFlagsStayRuntimePrivate() throws IOException {
+    void nativeSocketDescriptorsStayRuntimePrivate() throws IOException {
         Path contractInternalSockets = MAIN_SOURCE.resolve(Path.of(
             "systems", "zlink", "contracts", "internal", "sockets"));
         List<String> violations = new ArrayList<>();
+
+        if (Files.exists(contractInternalSockets)) {
+            violations.add(contractInternalSockets.toString());
+        }
 
         for (String fileName : List.of("SendFlag.java", "ReceiveFlag.java")) {
             Path contractPath = contractInternalSockets.resolve(fileName);
@@ -215,7 +225,7 @@ final class OptimizationGuardContractTest {
         }
 
         assertTrue(violations.isEmpty(),
-            "native socket flags must stay runtime-private: " + violations);
+            "native socket descriptors must stay runtime-private: " + violations);
     }
 
     private static String allMainSource() throws IOException {

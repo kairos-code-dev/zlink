@@ -31,7 +31,7 @@ import systems.zlink.contracts.sockets.PubSocketOptions;
 import systems.zlink.contracts.sockets.RouterSocketOptions;
 import systems.zlink.contracts.sockets.StreamSocketOptions;
 import systems.zlink.contracts.sockets.SubSocketOptions;
-import systems.zlink.contracts.internal.sockets.SocketOptionKey;
+import systems.zlink.runtime.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.SendFlags;
 import java.nio.ByteBuffer;
 import java.util.Objects;

@@ -1,4 +1,4 @@
-package systems.zlink.contracts.internal.sockets;
+package systems.zlink.runtime.sockets;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;

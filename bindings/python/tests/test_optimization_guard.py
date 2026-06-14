@@ -274,3 +274,23 @@ def test_public_helpers_remain_canonical_facade_objects():
     assert not hasattr(zlink.Spot, "subscribe_part_into")
     assert not hasattr(zlink.PairSocket, "try_send")
     assert not hasattr(zlink.PairSocket, "try_recv")
+
+
+def test_root_facade_does_not_expose_runtime_wiring_aliases():
+    import zlink
+
+    forbidden = (
+        "core_runtime",
+        "runtime_open_socket_monitor",
+        "messaging_runtime",
+        "socket_options_runtime",
+        "socket_runtime",
+        "discovery_runtime",
+        "spot_runtime",
+        "contracts_projection",
+        "messaging_contracts_projection",
+        "message_contract_module",
+    )
+
+    violations = [name for name in forbidden if hasattr(zlink, name)]
+    assert violations == []

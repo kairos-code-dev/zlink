@@ -33,6 +33,7 @@ class socket_t;
 namespace detail
 {
 class socket_handle_t;
+struct socket_callback_state_t;
 struct socket_access_t;
 } // namespace detail
 
@@ -168,7 +169,7 @@ class socket_t
     void set_send_ready_handler (std::function<void ()> handler_);
 
   protected:
-    std::function<void ()> _send_ready_handler;
+    detail::socket_callback_state_t &callback_state ();
 
     [[nodiscard]] int set_routing_id_raw (std::span<const std::byte> data_);
 
@@ -193,6 +194,7 @@ class socket_t
     friend struct detail::socket_access_t;
 
     std::unique_ptr<detail::socket_handle_t> _socket;
+    std::unique_ptr<detail::socket_callback_state_t> _callbacks;
     socket_type _type;
 };
 

@@ -1,5 +1,7 @@
 use super::*;
 
+const MAX_NATIVE_PARTS: usize = 1024;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -67,8 +69,12 @@ pub(crate) fn close_unreceived_part(part: &mut MaybeUninit<ffi::zlink_msg_t>) {
 
 /// Take ownership of `part_count` messages from a native-owned array.
 pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) -> Vec<Message> {
-    let mut out = Vec::with_capacity(part_count);
-    for i in 0..part_count {
+    if parts_ptr.is_null() || part_count == 0 {
+        return Vec::new();
+    }
+    let count = part_count.min(MAX_NATIVE_PARTS);
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
         unsafe {
             // Move content from the library-owned array into our own zlink_msg_t.
             // ptr::read would create a bitwise copy sharing the same internal
@@ -84,7 +90,8 @@ pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) ->
 }
 
 pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
-    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
+    let bytes: &[u8] =
+        unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len.min(buf.len())) };
     match std::str::from_utf8(bytes) {
         Ok(s) => s.to_owned(),
         Err(_) => String::from_utf8_lossy(bytes).into_owned(),
@@ -94,7 +101,8 @@ pub(crate) fn cstr_buf_to_string(buf: &[i8], len: usize) -> String {
 // Same shape as cstr_buf_to_string but produces a SmolStr: short subscribe
 // topics now bypass heap allocation entirely (<=22 bytes live inline).
 pub(crate) fn cstr_buf_to_smolstr(buf: &[i8], len: usize) -> smol_str::SmolStr {
-    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
+    let bytes: &[u8] =
+        unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len.min(buf.len())) };
     match std::str::from_utf8(bytes) {
         Ok(s) => smol_str::SmolStr::new(s),
         Err(_) => smol_str::SmolStr::new(String::from_utf8_lossy(bytes)),

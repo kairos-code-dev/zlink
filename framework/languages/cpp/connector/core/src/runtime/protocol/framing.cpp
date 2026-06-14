@@ -60,7 +60,8 @@ std::optional<packet_t> read_stream_packet (connector_state_t &state)
         if (!state.lz4_enabled) {
             throw std::runtime_error ("LZ4 compression is not enabled");
         }
-        payload = lz4_compression_codec_t{}.decompress (payload);
+        payload =
+          lz4_compression_codec_t{}.decompress (payload, state.options.max_receive_payload_size);
     }
     packet_t packet;
     packet.name = std::move (header.name);

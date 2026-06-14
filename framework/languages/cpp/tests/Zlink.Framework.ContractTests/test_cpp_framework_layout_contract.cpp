@@ -143,12 +143,21 @@ bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::p
     return ok;
 }
 
-bool file_contains (const std::filesystem::path &path, const std::string &needle)
+bool file_contains_quiet (const std::filesystem::path &path, const std::string &needle)
 {
     std::ifstream input (path);
     std::ostringstream buffer;
     buffer << input.rdbuf ();
     return buffer.str ().find (needle) != std::string::npos;
+}
+
+bool file_contains (const std::filesystem::path &path, const std::string &needle)
+{
+    if (file_contains_quiet (path, needle)) {
+        return true;
+    }
+    std::cerr << "file lacks required text: " << path << " :: " << needle << '\n';
+    return false;
 }
 
 std::size_t count_occurrences (const std::string &text, const std::string &needle)
@@ -1800,7 +1809,7 @@ bool file_does_not_contain (const std::filesystem::path &path,
                             const std::string &needle,
                             const std::string &message)
 {
-    if (!file_contains (path, needle)) {
+    if (!file_contains_quiet (path, needle)) {
         return true;
     }
     std::cerr << message << ": " << path << '\n';
@@ -2237,9 +2246,9 @@ int main ()
     ok &= file_contains (root / "framework/src/runtime/http/http_request_pipeline.cpp",
                          "co_await await_task_result");
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
-                         "runtime::handler_coroutine_executor ().submit");
+                         "runtime::serial_execution_queue_t");
     ok &= file_contains (root / "framework/src/runtime/spots/spot_runtime.cpp",
-                         "co_await runtime::await_task_result");
+                         "try_post_serial_async");
     ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",
                          "handler_coroutine_executor ()");
     ok &= file_contains (root / "framework/src/runtime/streams/stream_runtime.cpp",

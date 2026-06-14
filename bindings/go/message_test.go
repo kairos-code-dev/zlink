@@ -118,6 +118,30 @@ func TestMessageBytesSnapshotSurvivesClose(t *testing.T) {
 	}
 }
 
+func TestMessageDataViewIsBoundToMessageLifetime(t *testing.T) {
+	msg, err := zlink.NewMessageWithSize(4)
+	if err != nil {
+		t.Fatalf("NewMessageWithSize() error = %v", err)
+	}
+
+	data := msg.Data()
+	copy(data, []byte("view"))
+	if got := string(msg.Bytes()); got != "view" {
+		t.Fatalf("Bytes() while open = %q, want view", got)
+	}
+	snapshot := msg.Bytes()
+
+	if err := msg.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if got := msg.Data(); got != nil {
+		t.Fatalf("Data() after Close() = %v, want nil", got)
+	}
+	if got := string(snapshot); got != "view" {
+		t.Fatalf("snapshot after Close() = %q, want view", got)
+	}
+}
+
 func TestMessageEmptyState(t *testing.T) {
 	msg, err := zlink.NewMessageWithSize(0)
 	if err != nil {

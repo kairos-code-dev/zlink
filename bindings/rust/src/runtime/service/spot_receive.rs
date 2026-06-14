@@ -10,6 +10,8 @@ use crate::message::{Message, RoutingId};
 use crate::native_errors::check_recv_rc;
 use crate::socket::{close_unreceived_part, routing_id_from_ptr};
 
+const MAX_NATIVE_PARTS: usize = 1024;
+
 pub(super) type SpotRoutedParts = Result<
     Option<(
         *const ffi::zlink_routing_id_t,
@@ -27,8 +29,12 @@ pub(super) fn borrowed_parts_to_messages(
     parts: *mut ffi::zlink_msg_t,
     part_count: usize,
 ) -> Vec<Message> {
-    let mut out = Vec::with_capacity(part_count);
-    for i in 0..part_count {
+    if parts.is_null() || part_count == 0 {
+        return Vec::new();
+    }
+    let count = part_count.min(MAX_NATIVE_PARTS);
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
         unsafe {
             let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
             ffi::zlink_msg_init(dest.as_mut_ptr());

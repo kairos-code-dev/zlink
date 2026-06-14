@@ -49,7 +49,6 @@ class stream_socket_t : public routed_message_socket_t
     std::vector<actor_ref_t> bound_actors (const routing_id_t &session_rid_);
 
   private:
-    std::function<void (const routing_id_t &, message_t &&, message_t &&)> _packet_handler;
     using routed_message_socket_t::recv;
     using socket_t::connect;
     using socket_t::disconnect;

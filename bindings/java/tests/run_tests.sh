@@ -29,36 +29,100 @@ TASKS=(
   ":zlink-codec-protobuf:test"
   ":zlink-ext-netty:test"
 )
+LOG_DIR="${ROOT_DIR}/build/test-runner-logs"
 
 cd "${ROOT_DIR}"
+mkdir -p "${LOG_DIR}"
 
 failures=0
 timeout_seconds=180
 
+task_log_name() {
+  local name="$1"
+  name="${name#:}"
+  name="${name//:/_}"
+  name="${name//\//_}"
+  printf '%s.log' "$name"
+}
+
+print_report_hints() {
+  local task="$1"
+  local report_dir=""
+  local results_dir=""
+
+  case "${task}" in
+    ":test")
+      report_dir="${ROOT_DIR}/build/reports/tests/test"
+      results_dir="${ROOT_DIR}/build/test-results/test"
+      ;;
+    ":integrationTest")
+      report_dir="${ROOT_DIR}/build/reports/tests/integrationTest"
+      results_dir="${ROOT_DIR}/build/test-results/integrationTest"
+      ;;
+    ":zlink-codec-json:test")
+      report_dir="${ROOT_DIR}/codec/zlink-codec-json/build/reports/tests/test"
+      results_dir="${ROOT_DIR}/codec/zlink-codec-json/build/test-results/test"
+      ;;
+    ":zlink-codec-messagepack:test")
+      report_dir="${ROOT_DIR}/codec/zlink-codec-messagepack/build/reports/tests/test"
+      results_dir="${ROOT_DIR}/codec/zlink-codec-messagepack/build/test-results/test"
+      ;;
+    ":zlink-codec-protobuf:test")
+      report_dir="${ROOT_DIR}/codec/zlink-codec-protobuf/build/reports/tests/test"
+      results_dir="${ROOT_DIR}/codec/zlink-codec-protobuf/build/test-results/test"
+      ;;
+    ":zlink-ext-netty:test")
+      report_dir="${ROOT_DIR}/codec/zlink-ext-netty/build/reports/tests/test"
+      results_dir="${ROOT_DIR}/codec/zlink-ext-netty/build/test-results/test"
+      ;;
+    "samples/run_samples.sh")
+      report_dir="${ROOT_DIR}/samples/build/reports"
+      results_dir="${ROOT_DIR}/samples/build/test-results"
+      ;;
+  esac
+
+  if [[ -n "${report_dir}" ]]; then
+    printf '[REPORT] %s\n' "${report_dir}"
+  fi
+  if [[ -n "${results_dir}" ]]; then
+    printf '[JUNIT] %s\n' "${results_dir}"
+  fi
+}
+
 run_task() {
+  local task="$1"
+  local log_file="$2"
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_seconds}s" ./gradlew "$1" --no-daemon
+    timeout "${timeout_seconds}s" ./gradlew "${task}" --no-daemon 2>&1 | tee "${log_file}"
     return $?
   fi
-  ./gradlew "$1" --no-daemon
+  ./gradlew "${task}" --no-daemon 2>&1 | tee "${log_file}"
 }
 
 for task in "${TASKS[@]}"; do
+  log_file="${LOG_DIR}/$(task_log_name "${task}")"
   printf '[RUN] %s\n' "$task"
-  if ! run_task "$task"; then
+  if ! run_task "$task" "${log_file}"; then
     printf '[FAIL] %s\n' "$task"
+    printf '[LOG] %s\n' "${log_file}"
+    print_report_hints "${task}"
     failures=$((failures + 1))
   else
     printf '[PASS] %s\n' "$task"
+    printf '[LOG] %s\n' "${log_file}"
   fi
 done
 
+sample_log="${LOG_DIR}/samples_run_samples.sh.log"
 printf '[RUN] samples/run_samples.sh\n'
-if ! "${ROOT_DIR}/samples/run_samples.sh"; then
+if ! "${ROOT_DIR}/samples/run_samples.sh" 2>&1 | tee "${sample_log}"; then
   printf '[FAIL] samples/run_samples.sh\n'
+  printf '[LOG] %s\n' "${sample_log}"
+  print_report_hints "samples/run_samples.sh"
   failures=$((failures + 1))
 else
   printf '[PASS] samples/run_samples.sh\n'
+  printf '[LOG] %s\n' "${sample_log}"
 fi
 
 if (( failures > 0 )); then

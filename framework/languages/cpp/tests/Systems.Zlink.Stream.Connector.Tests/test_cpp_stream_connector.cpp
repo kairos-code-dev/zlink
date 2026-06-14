@@ -216,7 +216,7 @@ std::optional<server_frame_t> try_read_server_frame (std::string &buffer)
       != 0;
     if (compressed) {
         payload = zlink::stream_connector::detail::lz4_compression_codec_t{}
-                    .decompress (zlink::message_t::from (payload))
+                    .decompress (zlink::message_t::from (payload), 64 * 1024)
                     .to_string ();
     }
     return server_frame_t{decoded.value (), std::move (payload), compressed};
@@ -353,10 +353,23 @@ int main ()
         const auto source =
           zlink::message_t::from (std::string ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         const auto compressed = lz4.compress (source);
-        const auto restored = lz4.decompress (compressed);
+        const auto restored = lz4.decompress (compressed, source.size ());
         if (restored.to_string () != source.to_string ()
             || compressed.to_string () == source.to_string ()) {
             return 20;
+        }
+        const std::string oversized_declared_size{
+          static_cast<char> (0x00), static_cast<char> (0x10), static_cast<char> (0x00),
+          static_cast<char> (0x00)};
+        bool oversized_rejected = false;
+        try {
+            (void) lz4.decompress (zlink::message_t::from (oversized_declared_size), 1024);
+        }
+        catch (const std::runtime_error &) {
+            oversized_rejected = true;
+        }
+        if (!oversized_rejected) {
+            return 141;
         }
     }
 

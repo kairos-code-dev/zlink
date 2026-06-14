@@ -17,8 +17,7 @@ class ReceivedMessage(Protocol):
 
     @property
     def data(self):
-        """A zero-copy ``memoryview`` of the part, valid only while it is
-        open."""
+        """A ``memoryview`` snapshot of the part payload."""
         ...
 
     def to_bytes(self):

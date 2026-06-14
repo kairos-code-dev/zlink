@@ -757,7 +757,10 @@ ctest --test-dir framework/languages/cpp/build -L framework-regression -R spot
   event 후 recv 순서 정책을 따른다.
 - Entry Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
   같은 Entry Spot 실행 줄에서 처리한다.
+- Entry Spot timer는 Entry Spot 전체를 전역 직렬화하지 않는다. timer 실행 순서만 Entry Spot의
+  기존 실행 줄에 맞추고, 서로 독립적인 Entry Spot 작업을 하나의 전역 병목으로 묶지 않는다.
 - Entry Spot application callback 직렬 실행 queue를 Spot runtime 안에서 소유한다.
+- CAPI timer와 CAPI SPOT dispatch event 후 recv 경계를 사용하므로 별도 실행 직렬화 queue를 추가하지 않는다.
 - timer failure event는 snapshot interval을 기다리지 않고 발생한다.
 
 검증:

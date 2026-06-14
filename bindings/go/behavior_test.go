@@ -2,6 +2,7 @@ package zlink_test
 
 import (
 	"bytes"
+	"runtime"
 	"testing"
 	"time"
 
@@ -41,6 +42,50 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 	}
 	if !bytes.Equal(part.Data(), []byte("hello-pair")) {
 		t.Fatalf("unexpected payload = %q", string(part.Data()))
+	}
+}
+
+func TestSpotCallbackDispatchersStopOnClose(t *testing.T) {
+	runtime.GC()
+	baseline := runtime.NumGoroutine()
+
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	const iterations = 40
+	for i := 0; i < iterations; i++ {
+		node, err := ctx.SpotNode()
+		if err != nil {
+			t.Fatalf("SpotNode() error = %v", err)
+		}
+		spot, err := node.Spot()
+		if err != nil {
+			t.Fatalf("Spot() error = %v", err)
+		}
+		if err := spot.OnSendReady(func() {}); err != nil {
+			t.Fatalf("OnSendReady() error = %v", err)
+		}
+		if err := spot.OnDispatchEvent(func(*zlink.Spot, zlink.SpotDispatchInfo) {}); err != nil {
+			t.Fatalf("OnDispatchEvent() error = %v", err)
+		}
+		if err := spot.Close(); err != nil {
+			t.Fatalf("Spot.Close() error = %v", err)
+		}
+		if err := node.Close(); err != nil {
+			t.Fatalf("SpotNode.Close() error = %v", err)
+		}
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		runtime.GC()
+		if got := runtime.NumGoroutine(); got <= baseline+8 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goroutines did not return near baseline: baseline=%d got=%d", baseline, runtime.NumGoroutine())
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

@@ -101,7 +101,7 @@ LZ4 unpickle이 **압축 헤더의 attacker-제어 original-length**로 출력 �
 | Node | `ZlinkStreamCompressionCodec.ts:64`, `framework/.../streams/protocol.ts:221` (2026-06-14 출력 길이 상한 적용 완료) |
 | Java | `ZLinkStreamLz4Pickler.java:53`, `zlink-framework-core/.../ZLinkStreamLz4Pickler.java:51` (2026-06-14 출력 길이 상한 적용 완료) |
 | .NET | `ZlinkStreamLz4CompressionCodec.cs:10`, `ZLinkStreamPacketPayloadCodec.cs:21` (2026-06-14 출력 길이 상한 적용 완료) |
-| C++ | (lz4 codec 자체는 `LZ4_decompress_safe`로 안전, HTTP gzip/deflate 해제 결과도 `max_response_body_size`로 제한하도록 수정 완료) |
+| C++ | `LZ4_decompress_safe`는 버퍼 오버런을 막지만 출력 버퍼 할당량은 제한하지 않는다. 2026-06-14 `max_receive_payload_size`를 `decompress`에 전달해 할당 전에 `original_size`를 거부하도록 수정했다. HTTP gzip/deflate 해제 결과도 `max_response_body_size`로 제한한다. |
 
 **수정**: 할당 전 `resultLength`를 max-decompressed-size로 clamp.
 

@@ -94,6 +94,24 @@ public sealed class test_message
     }
 
     [Fact]
+    public void message_span_access_is_bounded_by_message_lifetime()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        Message message = Message.Allocate(4);
+        Span<byte> span = message.AsSpan();
+        "view"u8.CopyTo(span);
+        byte[] snapshot = message.ToArray();
+
+        message.Dispose();
+
+        Assert.Equal("view"u8.ToArray(), snapshot);
+        Assert.Throws<ObjectDisposedException>(() => message.AsSpan());
+        Assert.Throws<ObjectDisposedException>(() => message.AsReadOnlySpan());
+    }
+
+    [Fact]
     public void message_property_accessor_uses_canonical_name()
     {
         if (!CoreTestSupport.IsNativeAvailable())

@@ -704,7 +704,7 @@ unsafe extern "C" fn reply_result_callback(
         unsafe { Box::from_raw(userdata.cast::<mpsc::Sender<ffi::zlink_request_result_t>>()) };
     let _ = sender.send(result_);
     if !parts.is_null() {
-        for i in 0..part_count {
+        for i in 0..part_count.min(1024) {
             unsafe {
                 ffi::zlink_msg_close(parts.add(i));
             }

@@ -54,21 +54,16 @@ class ReceivedMessage:
 
     @property
     def data(self):
-        """Memoryview over this received part's owner buffer.
+        """Memoryview over a snapshot of this received part.
 
-        Native-backed owners expose the core receive buffer directly.
-        Bytes-backed owners expose their private immutable bytes storage. In
-        both cases the view is only valid while this received message remains
-        open.
+        Received parts may be closed independently from the returned view. The
+        view therefore points at Python-owned bytes instead of native receive
+        storage.
         """
         if self._owner is not None:
             return self._owner.data(self._index)
         native = self._native_msg()
-        ptr = _msg_data_ptr(native)
-        size = _msg_size(native)
-        if not ptr or size <= 0:
-            return memoryview(b"")
-        return memoryview((ctypes.c_ubyte * size).from_address(ptr)).cast("B")
+        return memoryview(_msg_to_bytes(native))
 
     def to_bytes(self):
         if self._owner is not None:

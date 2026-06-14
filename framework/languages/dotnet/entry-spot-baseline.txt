@@ -32,3 +32,9 @@
 2026-06-13T03:52:05.1495236Z actors=200 packetsPerActor=50 totalMs=29.4 throughputPerSec=340013 p50Ms=0.295 p95Ms=2.609 p99Ms=7.066
 2026-06-13T04:43:54.7729640Z actors=200 packetsPerActor=50 totalMs=33.9 throughputPerSec=295068 p50Ms=0.239 p95Ms=2.903 p99Ms=10.636
 2026-06-13T04:44:37.9634459Z actors=200 packetsPerActor=50 totalMs=24.6 throughputPerSec=406316 p50Ms=0.246 p95Ms=2.703 p99Ms=3.733
+2026-06-13T23:55:54.0815351Z actors=200 packetsPerActor=50 totalMs=116.4 throughputPerSec=85893 p50Ms=0.325 p95Ms=5.601 p99Ms=38.513
+2026-06-14T00:43:02.6677435Z actors=200 packetsPerActor=50 totalMs=25.7 throughputPerSec=389531 p50Ms=0.247 p95Ms=2.677 p99Ms=4.016
+2026-06-14T00:47:35.8464986Z actors=200 packetsPerActor=50 totalMs=29.5 throughputPerSec=338890 p50Ms=0.253 p95Ms=3.441 p99Ms=4.845
+2026-06-14T01:02:32.2758135Z actors=200 packetsPerActor=50 totalMs=29.0 throughputPerSec=345342 p50Ms=0.235 p95Ms=3.373 p99Ms=9.424
+2026-06-14T01:03:48.7094855Z actors=200 packetsPerActor=50 totalMs=33.4 throughputPerSec=299758 p50Ms=0.268 p95Ms=3.288 p99Ms=10.556
+2026-06-14T01:06:30.6280612Z actors=200 packetsPerActor=50 totalMs=39.0 throughputPerSec=256513 p50Ms=0.377 p95Ms=3.405 p99Ms=8.244

@@ -5,6 +5,7 @@
 #include <Runtime/Native/message_access.hpp>
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
+#include <Runtime/Sockets/socket_callback_state.hpp>
 #include <Runtime/Service/spot_state.hpp>
 #include <Runtime/Service/actor_detail.hpp>
 #include <Runtime/Service/actor_model_access.hpp>
@@ -35,22 +36,23 @@ int stream_socket_t::recv (received_t &out_, recv_flags_t flags_)
 void stream_socket_t::set_packet_handler (
   std::function<void (const routing_id_t &, message_t &&, message_t &&)> handler_)
 {
-    _packet_handler = std::move (handler_);
+    detail::socket_callback_state_t &state = callback_state ();
+    state.packet_handler = std::move (handler_);
     auto trampoline = [] (void *, const zlink_routing_id_t *source_rid_, zlink_msg_t *header_,
                           zlink_msg_t *body_, void *userdata_) {
-        stream_socket_t *self = static_cast<stream_socket_t *> (userdata_);
-        if (!self || !self->_packet_handler)
+        auto *callback_state = static_cast<detail::socket_callback_state_t *> (userdata_);
+        if (!callback_state || !callback_state->packet_handler)
             return;
         const routing_id_t source = zlink::detail::routing_id_from_native_pointer (source_rid_);
         message_t header{message_t::no_init_t ()};
         message_t body{message_t::no_init_t ()};
         zlink::detail::adopt_native_message (header, header_);
         zlink::detail::adopt_native_message (body, body_);
-        self->_packet_handler (source, std::move (header), std::move (body));
+        callback_state->packet_handler (source, std::move (header), std::move (body));
     };
     if (zlink_stream_packet_handler (detail::native_handle (*this),
                                      static_cast<zlink_stream_packet_handler_fn> (+trampoline),
-                                     this)
+                                     &state)
         != 0)
         throw handler_error_t (detail::handler_result_from_errno (detail::current_errno ()),
                                detail::current_errno ());

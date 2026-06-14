@@ -7,6 +7,7 @@
 #include <future>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
 #include <atomic>
 #include <vector>
@@ -185,6 +186,107 @@ void test_stream_receive_returns_busy_in_packet_callback_mode ()
         assert (errno == EBUSY);
 }
 
+void test_stream_packet_handler_survives_move_and_source_destruction ()
+{
+    zlink::context_t ctx;
+    std::promise<std::string> payload_promise;
+    std::future<std::string> payload_future = payload_promise.get_future ();
+
+    zlink::stream_socket_t moved_server = [&] {
+        zlink::stream_socket_t server (ctx);
+        zlink::socket_monitor_t monitor = server.monitor_open ();
+        server.options ().notify (false);
+        server.bind ("tcp://127.0.0.1:0");
+        const std::string endpoint = server.options ().last_endpoint ();
+        assert (!endpoint.empty ());
+
+        server.set_packet_handler (
+          [&payload_promise] (const zlink::routing_id_t &, zlink::message_t header_,
+                              zlink::message_t body_) {
+              assert (header_.size () == 0);
+              payload_promise.set_value (body_.to_string ());
+          });
+
+        zlink::stream_socket_t moved = std::move (server);
+        zlink_cpp_contract::raw_tcp_client_t client (endpoint);
+        assert (zlink_cpp_contract::wait_stream_connected (monitor));
+
+        const std::string payload = "move-safe-packet";
+        const std::vector<unsigned char> frame =
+          zlink_cpp_contract::encode_stream_packet_frame (payload);
+        client.send_all (reinterpret_cast<const char *> (frame.data ()), frame.size ());
+
+        assert (zlink_cpp_contract::wait_future (payload_future, 2000) == payload);
+        return moved;
+    } ();
+
+    moved_server.close ();
+}
+
+void test_stream_send_ready_handler_survives_move_and_source_destruction ()
+{
+    zlink::context_t ctx;
+    std::promise<zlink::routing_id_t> routing_id_promise;
+    std::future<zlink::routing_id_t> routing_id_future = routing_id_promise.get_future ();
+    std::atomic<int> ready_count {0};
+
+    zlink::stream_socket_t moved_server = [&] {
+        zlink::stream_socket_t server (ctx);
+        zlink::socket_monitor_t monitor = server.monitor_open ();
+        server.options ().notify (false);
+        server.options ().send_hwm (zlink::message_count_t::value (8));
+        server.bind ("tcp://127.0.0.1:0");
+        const std::string endpoint = server.options ().last_endpoint ();
+        assert (!endpoint.empty ());
+
+        server.set_packet_handler (
+          [&routing_id_promise] (const zlink::routing_id_t &source_rid_, zlink::message_t,
+                                 zlink::message_t) { routing_id_promise.set_value (source_rid_); });
+        server.set_send_ready_handler ([&ready_count] {
+            ready_count.fetch_add (1, std::memory_order_release);
+        });
+
+        zlink::stream_socket_t moved = std::move (server);
+        zlink_cpp_contract::raw_tcp_client_t client (endpoint);
+        assert (zlink_cpp_contract::wait_stream_connected (monitor));
+
+        const std::vector<unsigned char> hello =
+          zlink_cpp_contract::encode_stream_packet_frame ("route-me");
+        client.send_all (reinterpret_cast<const char *> (hello.data ()), hello.size ());
+        const zlink::routing_id_t routing_id =
+          zlink_cpp_contract::wait_future (routing_id_future, 2000);
+
+        bool backpressured = false;
+        const std::string payload (64 * 1024, 'x');
+        for (int i = 0; i < 512; ++i) {
+            zlink::message_t message = zlink_cpp_contract::make_message (payload);
+            if (!std::move (moved.send (routing_id))
+                   .message (message)
+                   .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                   .submit ()) {
+                backpressured = true;
+                break;
+            }
+        }
+        assert (backpressured);
+
+        zlink::poller_t poller;
+        poller.add (moved, zlink::poll_event_flag_t::pollout, 1);
+
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+        while (std::chrono::steady_clock::now () < deadline
+               && ready_count.load (std::memory_order_acquire) == 0) {
+            (void) client.drain_available ();
+            zlink::poll_event_t event;
+            (void) poller.wait (&event, 1, std::chrono::milliseconds (10));
+        }
+        assert (ready_count.load (std::memory_order_acquire) > 0);
+        return moved;
+    } ();
+
+    moved_server.close ();
+}
+
 void test_socket_monitor_receive_returns_empty_without_event ()
 {
     zlink::context_t ctx;
@@ -307,6 +409,8 @@ int main ()
     test_send_throws_on_general_error ();
     test_publish_throws_on_general_error ();
     test_stream_receive_returns_busy_in_packet_callback_mode ();
+    test_stream_packet_handler_survives_move_and_source_destruction ();
+    test_stream_send_ready_handler_survives_move_and_source_destruction ();
     test_socket_monitor_receive_returns_empty_without_event ();
     test_routing_id_accepts_maximum_size ();
     test_routing_id_rejects_oversize_input ();

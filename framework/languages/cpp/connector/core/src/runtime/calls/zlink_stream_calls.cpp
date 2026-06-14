@@ -104,7 +104,9 @@ result_t<packet_t> decode_packet (connector_state_t &state,
                                                 "LZ4 compression is not enabled");
         }
         try {
-            payload = lz4_compression_codec_t{}.decompress (payload);
+            payload =
+              lz4_compression_codec_t{}.decompress (payload,
+                                                    state.options.max_receive_payload_size);
         }
         catch (const std::exception &ex) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());

@@ -39,7 +39,7 @@ class VersionTests(unittest.TestCase):
                     with received:
                         self.assertEqual(received.to_bytes_list(), [payload])
 
-    def test_received_part_data_is_owner_backed_view(self):
+    def test_received_part_data_snapshot_survives_owner_close(self):
         ctx = zlink.create_context()
         with ctx:
             with zlink.create_pair_socket(ctx) as s1:
@@ -58,6 +58,7 @@ class VersionTests(unittest.TestCase):
                         self.assertEqual(len(view), len(payload))
                         self.assertEqual(bytes(view), payload)
                         self.assertEqual(bytes(view[:6]), payload[:6])
+                    self.assertEqual(bytes(view), payload)
                     with self.assertRaises(RuntimeError):
                         part.to_bytes()
 

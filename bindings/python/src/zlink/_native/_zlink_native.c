@@ -504,26 +504,24 @@ static PyObject *native_parts_owner_size (native_parts_owner_t *owner, PyObject 
 static PyObject *native_parts_owner_data (native_parts_owner_t *owner, PyObject *index_obj)
 {
     Py_ssize_t index = 0;
-    Py_buffer view;
     void *data = NULL;
     Py_ssize_t size = 0;
+    PyObject *snapshot = NULL;
+    PyObject *view_obj = NULL;
 
     if (native_parts_owner_index (owner, index_obj, &index) != 0)
         return NULL;
     data = zlink_msg_data (&owner->parts[index]);
     size = (Py_ssize_t) zlink_msg_size (&owner->parts[index]);
-    if (!data || size <= 0) {
-        PyObject *empty = PyBytes_FromStringAndSize ("", 0);
-        PyObject *view_obj = NULL;
-        if (!empty)
-            return NULL;
-        view_obj = PyMemoryView_FromObject (empty);
-        Py_DECREF (empty);
-        return view_obj;
-    }
-    if (PyBuffer_FillInfo (&view, (PyObject *) owner, data, size, 1, PyBUF_CONTIG_RO) != 0)
+    if (!data || size <= 0)
+        snapshot = PyBytes_FromStringAndSize ("", 0);
+    else
+        snapshot = PyBytes_FromStringAndSize ((const char *) data, size);
+    if (!snapshot)
         return NULL;
-    return PyMemoryView_FromBuffer (&view);
+    view_obj = PyMemoryView_FromObject (snapshot);
+    Py_DECREF (snapshot);
+    return view_obj;
 }
 
 static PyObject *native_parts_owner_to_bytes (native_parts_owner_t *owner, PyObject *index_obj)

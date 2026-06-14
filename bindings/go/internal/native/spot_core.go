@@ -60,13 +60,13 @@ func (s *spotCore) Close() error {
 	s.owner = nil
 	s.mu.Unlock()
 	if subscribeHandle != 0 {
-		subscribeHandle.Delete()
+		releaseCallbackHandle(subscribeHandle)
 	}
 	if sendReadyHandle != 0 {
-		sendReadyHandle.Delete()
+		releaseCallbackHandle(sendReadyHandle)
 	}
 	if dispatchHandle != 0 {
-		dispatchHandle.Delete()
+		releaseCallbackHandle(dispatchHandle)
 	}
 	if owner != nil {
 		owner.unregisterSpot(s)

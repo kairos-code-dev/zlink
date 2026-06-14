@@ -12,6 +12,7 @@
 #include <Runtime/Options/option_ids.hpp>
 #include <Runtime/Service/discovery_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
+#include <Runtime/Sockets/socket_callback_state.hpp>
 #include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Native/subscription_reader.hpp>
 
@@ -124,13 +125,16 @@ int socket_t::attach_discovery (service::discovery_t &discovery_)
 }
 
 socket_t::socket_t () noexcept :
-    _socket (std::make_unique<detail::socket_handle_t> ()), _type (socket_type::pair)
+    _socket (std::make_unique<detail::socket_handle_t> ()),
+    _callbacks (std::make_unique<detail::socket_callback_state_t> ()),
+    _type (socket_type::pair)
 {
 }
 
 socket_t::socket_t (context_t &ctx_, socket_type type_) :
     _socket (std::make_unique<detail::socket_handle_t> (
       zlink_socket (detail::native_handle (ctx_), static_cast<zlink_socket_type_t> (type_)), true)),
+    _callbacks (std::make_unique<detail::socket_callback_state_t> ()),
     _type (type_)
 {
 }
@@ -422,17 +426,25 @@ int socket_t::subscription_event (subscription_event_t &event_, recv_flags_t fla
 
 void socket_t::set_send_ready_handler (std::function<void ()> handler_)
 {
-    _send_ready_handler = std::move (handler_);
+    detail::socket_callback_state_t &state = callback_state ();
+    state.send_ready_handler = std::move (handler_);
     auto trampoline = [] (void *, void *userdata_) {
-        socket_t *self = static_cast<socket_t *> (userdata_);
-        if (self && self->_send_ready_handler)
-            self->_send_ready_handler ();
+        auto *callback_state = static_cast<detail::socket_callback_state_t *> (userdata_);
+        if (callback_state && callback_state->send_ready_handler)
+            callback_state->send_ready_handler ();
     };
     if (zlink_send_ready_handler (detail::native_handle (*this),
-                                  static_cast<zlink_send_ready_handler_fn> (+trampoline), this)
+                                  static_cast<zlink_send_ready_handler_fn> (+trampoline), &state)
         != 0)
         detail::throw_if_failed<handler_error_t> (
           static_cast<handler_result_t> (detail::handler_result_from_errno (zlink_errno ())));
+}
+
+detail::socket_callback_state_t &socket_t::callback_state ()
+{
+    if (!_callbacks)
+        _callbacks = std::make_unique<detail::socket_callback_state_t> ();
+    return *_callbacks;
 }
 
 int socket_t::set_routing_id_raw (std::span<const std::byte> data_)

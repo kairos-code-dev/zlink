@@ -272,10 +272,12 @@ I/O 스레드를 같은 NUMA 노드에 두면 cross-node YPipe 접근이 없어�
 
 이 스레딩 모델에서 다음 패턴은 안전하고 동작이 명확하게 정의된다
 (전체 계약은 [Thread-Safety 내부 구조](./thread-safety.ko.md) 참고).
+공개 socket handle은 여러 스레드에서 동시 사용 가능하지만, 모든 API가 같은 비용과
+같은 실패 규칙을 갖는 것은 아니다.
 `send`/`publish`/`send_rid` 같은 hot path는 여러 스레드에서 동시에 쓸 수 있으며,
 control path는 정확성을 위해 내부에서 직렬화한다.
 
-### 7.1 여러 스레드에서 `zlink_send()` 동시 호출
+### 8.1 여러 스레드에서 `zlink_send()` 동시 호출
 
 각 `zlink_send()` 호출은 입장 허용 게이트를 지난 뒤 경량 spinlock으로 YPipe에 쓰고
 Mailbox에 신호를 보낸다. I/O 스레드는 YPipe를 독립적으로 drain(소비)한다:
@@ -286,14 +288,14 @@ zlink_send(s, &a, 1, 0);            zlink_send(s, &b, 1, 0);
 /* 모두 안전 — hot-path admission guard가 파이프 쓰기를 직렬화 */
 ```
 
-### 7.2 한 스레드가 close하는 동안 다른 스레드가 send
+### 8.2 한 스레드가 close하는 동안 다른 스레드가 send
 
 `zlink_close()`는 fail-fast(빠른 실패) lifecycle 게이트를 쓴다. 다른 스레드가 그 핸들의
 hot-path API 안에 있으면 곧바로 `ZLINK_CLOSE_BUSY`를 반환한다. close 호출자는 성공할 때까지
 재시도해야 한다. close가 수락되면 이후 해당 핸들에 대한 API 호출은 `ZLINK_CLOSE_SHUTDOWN`을
 반환한다.
 
-### 7.3 콜백 전달과 동시 send
+### 8.3 콜백 전달과 동시 send
 
 `*_handler()`로 등록한 콜백은 I/O 스레드에서 실행된다. 애플리케이션 스레드에서는
 동시에 `zlink_send()`를 호출할 수 있다 — 입장 허용 게이트가 콜백 경로와 send 경로를

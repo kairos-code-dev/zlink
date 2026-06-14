@@ -153,7 +153,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot route egress capability validation | `unit` | routed Spot egress 는 client-server client capability 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
 | spot 종료 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
-| Entry Spot actor dispatch serialization | `integration-single-process` | Entry Spot actor packet이 actor별 입력 순서를 보존한 뒤 Entry Spot 실행 queue에서 순서대로 처리된다 |
+| Entry Spot actor mailbox dispatch | `integration-single-process` | Entry Spot actor packet이 actor별 입력 순서를 보존한 뒤 Entry Spot 실행 queue에서 순서대로 처리된다 |
 | local actor mailbox dispatch | `integration-single-process` | user Spot에 들어가지 않은 actor packet도 actor별 mailbox 순서를 따른다 |
 | user Spot actor dispatch serialization | `integration-single-process` | 같은 user Spot 안의 여러 actor packet이 Spot 실행 queue에서 순서대로 처리되어 Spot 상태가 보호된다 |
 | runtime task exception observation | `unit` | detached runtime task와 fire-and-forget handler에서 발생한 예외가 unobserved exception으로 묻히지 않고 runtime error sink 또는 logger로 관찰된다 |

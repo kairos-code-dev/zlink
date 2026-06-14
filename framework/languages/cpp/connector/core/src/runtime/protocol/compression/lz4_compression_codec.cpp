@@ -74,7 +74,9 @@ zlink::message_t lz4_compression_codec_t::compress (const zlink::message_t &payl
 #endif
 }
 
-zlink::message_t lz4_compression_codec_t::decompress (const zlink::message_t &payload) const
+zlink::message_t
+lz4_compression_codec_t::decompress (const zlink::message_t &payload,
+                                     std::size_t max_decompressed_size) const
 {
 #ifndef ZLINK_STREAM_CONNECTOR_WITH_LZ4
     throw std::runtime_error ("LZ4 decompression is not linked into this connector build");
@@ -86,6 +88,9 @@ zlink::message_t lz4_compression_codec_t::decompress (const zlink::message_t &pa
     const auto original_size = read_u32 (input);
     if (original_size > static_cast<std::uint32_t> (std::numeric_limits<std::int32_t>::max ())) {
         throw std::runtime_error ("LZ4 payload exceeds fixed size limit");
+    }
+    if (original_size > max_decompressed_size) {
+        throw std::runtime_error ("LZ4 payload exceeds configured receive limit");
     }
     if (original_size == 0) {
         return zlink::message_t::from (std::string{});

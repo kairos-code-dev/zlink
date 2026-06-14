@@ -4,14 +4,18 @@
 
 #include <zlink.hpp>
 
+#include <boost/asio.hpp>
+
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
+#include <future>
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #if defined(ZLINK_HAVE_WINDOWS)
 #include <process.h>
@@ -71,6 +75,19 @@ inline zlink::message_t make_message (const std::string &text_)
     return zlink::message_t::from (text_);
 }
 
+inline std::vector<unsigned char> encode_stream_packet_frame (const std::string &payload_)
+{
+    std::vector<unsigned char> frame (6u + payload_.size (), 0u);
+    const uint32_t body_size = static_cast<uint32_t> (payload_.size ());
+    frame[2] = static_cast<unsigned char> ((body_size >> 24) & 0xFFu);
+    frame[3] = static_cast<unsigned char> ((body_size >> 16) & 0xFFu);
+    frame[4] = static_cast<unsigned char> ((body_size >> 8) & 0xFFu);
+    frame[5] = static_cast<unsigned char> (body_size & 0xFFu);
+    if (!payload_.empty ())
+        std::memcpy (frame.data () + 6u, payload_.data (), payload_.size ());
+    return frame;
+}
+
 inline bool wait_until (std::condition_variable &cv_,
                         std::unique_lock<std::mutex> &lock_,
                         bool &ready_,
@@ -126,6 +143,88 @@ inline bool wait_for_socket_monitor_event (zlink::socket_monitor_t &monitor_,
 
     return false;
 }
+
+inline bool wait_stream_connected (zlink::socket_monitor_t &monitor_, int timeout_ms_ = 2000)
+{
+    return wait_for_socket_monitor_event (
+      monitor_, static_cast<uint64_t> (zlink::monitor_event::accepted), timeout_ms_);
+}
+
+template <typename T> inline T wait_future (std::future<T> &future_, int timeout_ms_)
+{
+    assert (future_.wait_for (std::chrono::milliseconds (timeout_ms_))
+            == std::future_status::ready);
+    return future_.get ();
+}
+
+inline bool parse_tcp_endpoint (const std::string &endpoint_,
+                                std::string &host_,
+                                std::string &port_)
+{
+    char proto[8] = {0};
+    char host[64] = {0};
+    int port = 0;
+    if (std::sscanf (endpoint_.c_str (), "%7[^:]://%63[^:]:%d", proto, host, &port) != 3)
+        return false;
+
+    if (std::strcmp (proto, "tcp") != 0 || port <= 0 || port > 65535)
+        return false;
+
+    host_ = host;
+    std::ostringstream stream;
+    stream << port;
+    port_ = stream.str ();
+    return true;
+}
+
+class raw_tcp_client_t
+{
+  public:
+    explicit raw_tcp_client_t (const std::string &endpoint_) : _socket (_io)
+    {
+        std::string host;
+        std::string port;
+        assert (parse_tcp_endpoint (endpoint_, host, port));
+
+        boost::asio::ip::tcp::resolver resolver (_io);
+        boost::system::error_code ec;
+        const boost::asio::ip::tcp::resolver::results_type endpoints =
+          resolver.resolve (host, port, ec);
+        assert (!ec);
+        boost::asio::connect (_socket, endpoints, ec);
+        assert (!ec);
+    }
+
+    ~raw_tcp_client_t ()
+    {
+        boost::system::error_code ec;
+        _socket.close (ec);
+    }
+
+    void send_all (const char *data_, size_t size_)
+    {
+        boost::system::error_code ec;
+        const size_t written = boost::asio::write (_socket, boost::asio::buffer (data_, size_), ec);
+        assert (!ec);
+        assert (written == size_);
+    }
+
+    size_t drain_available ()
+    {
+        boost::system::error_code ec;
+        const size_t available = _socket.available (ec);
+        if (ec || available == 0)
+            return 0;
+        std::vector<char> buffer (available);
+        const size_t received = _socket.read_some (boost::asio::buffer (buffer), ec);
+        assert (!ec || ec == boost::asio::error::would_block);
+        return received;
+    }
+
+  private:
+    boost::asio::io_context _io;
+    boost::asio::ip::tcp::socket _socket;
+};
 
 } // namespace zlink_cpp_contract
 

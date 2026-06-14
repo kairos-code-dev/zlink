@@ -145,11 +145,6 @@ def _payload_parts(payload):
     return parts
 
 
-def _close_send_parts(parts_array, part_count, start=0):
-    for index in range(start, part_count):
-        lib().zlink_msg_close(ctypes.byref(parts_array[index]))
-
-
 def _close_native_parts(native_parts, start=0):
     for native in native_parts[start:]:
         lib().zlink_msg_close(ctypes.byref(native))
@@ -185,62 +180,6 @@ _STREAM_PACKET_HANDLER = ctypes.CFUNCTYPE(
     ctypes.POINTER(ZlinkMsg),
     ctypes.c_void_p,
 )
-
-
-def _classify_nonblocking_send_errno():
-    err = lib().zlink_errno()
-    if err == _errno.EAGAIN:
-        return SubmitResult.BACKPRESSURED
-    if err in (_errno.ENOTCONN, getattr(_errno, "EHOSTUNREACH", _errno.ENOTCONN)):
-        return SubmitResult.NOT_CONNECTED
-    return SubmitResult.INTERNAL_ERROR
-
-
-def _send_via_native_no_wait_result(handle, parts_array, part_count):
-    for index in range(part_count):
-        rc = lib().zlink_send_part(
-            handle,
-            ctypes.byref(parts_array[index]),
-            1,
-            _part_flag(index, part_count),
-        )
-        if rc != 0:
-            result = _classify_nonblocking_send_errno()
-            _close_send_parts(parts_array, part_count, index)
-            return result
-    return SubmitResult.OK
-
-
-def _send_rid_via_native_no_wait_result(handle, routing_id, parts_array, part_count):
-    for index in range(part_count):
-        rc = lib().zlink_send_part_rid(
-            handle,
-            ctypes.byref(routing_id),
-            ctypes.byref(parts_array[index]),
-            1,
-            _part_flag(index, part_count),
-        )
-        if rc != 0:
-            result = _classify_nonblocking_send_errno()
-            _close_send_parts(parts_array, part_count, index)
-            return result
-    return SubmitResult.OK
-
-
-def _publish_via_native_no_wait_result(handle, topic_bytes, parts_array, part_count):
-    for index in range(part_count):
-        rc = lib().zlink_publish_part(
-            handle,
-            topic_bytes,
-            ctypes.byref(parts_array[index]),
-            1,
-            _part_flag(index, part_count),
-        )
-        if rc != 0:
-            result = _classify_nonblocking_send_errno()
-            _close_send_parts(parts_array, part_count, index)
-            return result
-    return SubmitResult.OK
 
 
 class _SocketHandle:
@@ -370,62 +309,6 @@ class _BaseSocket:
                 return False
             _raise_result_error(SubmitError, SubmitResult, rc, err)
         return True
-
-    def _raise_submit_error_from_bridge(self, rc, err):
-        _raise_result_error(SubmitError, SubmitResult, int(rc), int(err))
-
-    def _raise_send_op_error(self, kind):
-        result = (
-            SubmitResult.INVALID_ARGUMENT
-            if kind == "invalid_argument"
-            else SubmitResult.INVALID_STATE
-        )
-        raise SubmitError(result, 0)
-
-    def _send_payload_fallback(self, payload, flags):
-        try:
-            self._send_native_parts(self._native_parts_from_payload(payload), flags)
-            return True
-        except SubmitError as ex:
-            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-
-    def _send_routed_payload_fallback(self, routing_id, payload, flags):
-        try:
-            self._send_native_parts_to_routing_id(
-                routing_id,
-                self._native_parts_from_payload(payload),
-                flags,
-            )
-            return True
-        except SubmitError as ex:
-            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-
-    def _publish_payload_fallback(self, topic, payload, flags):
-        try:
-            topic_bytes = _validated_c_string_value(topic, field="topic")
-            native_parts = self._native_parts_from_payload(payload)
-            part_count = len(native_parts)
-            for index, native in enumerate(native_parts):
-                rc = lib().zlink_publish_part(
-                    self._handle,
-                    topic_bytes,
-                    ctypes.byref(native),
-                    int(flags),
-                    _part_flag(index, part_count),
-                )
-                if rc != 0:
-                    err = lib().zlink_errno()
-                    _close_native_parts(native_parts, index)
-                    _raise_result_error(SubmitError, SubmitResult, rc, err)
-            return True
-        except SubmitError as ex:
-            if (int(flags) & 1) and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
 
     def _send_payload_via_native_bridge(self, payload, flags):
         _ensure_not_in_callback("blocking send")

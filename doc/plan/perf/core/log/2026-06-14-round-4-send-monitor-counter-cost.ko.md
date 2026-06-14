@@ -38,7 +38,7 @@
 ## 검증
 
 - build: `cmake --build core/build -j$(nproc)` 통과
-  - 참고: 빌드 중 clock skew 경고가 있었다. perf 결과가 유효 후보가 아니어서 추가 clean rebuild는 하지 않았다.
+  - 참고: 임시 변경 빌드 중 clock skew 경고가 있었다. 임시 변경을 되돌린 뒤 같은 명령을 다시 실행해 현재 `core/build` runtime을 소스와 맞췄다.
 - test:
   - `ctest --test-dir core/build --output-on-failure -R 'test_multi_socket_contract_regressions|test_pubsub$|test_pubsub_filter_xpub|test_monitor_perf_contract|unittest_socket_runtime|test_backpressure_(oneway_)?matrix_(pubsub|spot)_regression'`
   - 결과: 9/9 통과
@@ -58,5 +58,5 @@
 
 - 목표 달성 여부: 미달성
 - 판정: send attempt atomic counter는 공통 one-way 64B 회귀의 주된 원인이 아니다.
-- 조치: 임시 core 변경은 되돌렸다. monitor blocked ratio 계약도 변경하지 않는다.
+- 조치: 임시 core 변경은 되돌렸고, 되돌린 뒤 `core/build`를 다시 빌드했다. monitor blocked ratio 계약도 변경하지 않는다.
 - 다음 후보: pipe/write 또는 ASIO output batching처럼 DEALER/PUBSUB/SPOT one-way에 공통인 실제 송신 경로를 계속 본다.

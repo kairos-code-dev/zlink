@@ -1,23 +1,13 @@
 // 자립형 가이드 예제: SPOT → 채널(DEALER→ROUTER) 요청.
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 //   dotnet run --project samples/SpotChannelExample
-using System.Net;
-using System.Net.Sockets;
+using SampleCommon;
 using Systems.Zlink;
 
 internal static class Program
 {
     private static async Task Main(string[] args)
     {
-        static string UniqueTcp()
-        {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return $"tcp://127.0.0.1:{port}";
-        }
-
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
         using var roomNode = ctx.CreateSpotNode();
@@ -26,7 +16,7 @@ internal static class Program
         using var apiRouter = ctx.CreateRouterSocket();
 
         const string channel = "api";
-        string endpoint = UniqueTcp();
+        string endpoint = SampleSupport.NewEndpoint("tcp", "spot-channel");
         apiRouter.Bind(endpoint);
         roomDealer.Connect(endpoint);
         // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.

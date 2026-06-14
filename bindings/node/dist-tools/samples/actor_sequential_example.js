@@ -56,11 +56,16 @@ async function main() {
             await new Promise((resolve) => setTimeout(resolve, 10));
         }
         assert.deepEqual(processed, ['move', 'attack', 'loot']);
+        await stream.unbindActor(session, 'player').timeout(2000).submit();
         await player.leave(room).timeout(2000).submit();
         console.log('[actor/sequential] processed in order: move -> attack -> loot');
     }
     finally {
-        player.close(2000);
+        try {
+            player.close(2000);
+        }
+        catch (_) {
+        }
         stream.close();
         room.close();
         node.close();

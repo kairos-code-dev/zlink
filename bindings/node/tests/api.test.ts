@@ -12,6 +12,17 @@ const AUTO_CONNECT_FANOUT = 4;
 const SERVICE_ROLE_SPOT = 2;
 const SERVICE_KIND_SPOT_PUB = 4;
 
+test('package exports only expose the public contract entry point', () => {
+  assert.throws(
+    () => require('@zlink-systems/zlink/zlink/runtime/native/native'),
+    { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }
+  );
+  assert.throws(
+    () => require('@zlink-systems/zlink/dist/zlink/runtime/native/native'),
+    { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' }
+  );
+});
+
 async function reservePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');

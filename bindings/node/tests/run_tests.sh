@@ -12,3 +12,4 @@ for test_file in dist-tools/tests/*.test.js; do
 done
 
 "$ROOT_DIR/samples/run_samples.sh"
+"$ROOT_DIR/../javascript/samples/run_samples.sh"

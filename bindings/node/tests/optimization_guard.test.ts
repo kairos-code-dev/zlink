@@ -159,6 +159,7 @@ test('node multi dealer-dealer receiver uses caller-provided Received storage', 
 test('node samples and perf stay on public binding contract', () => {
   const files = [
     ...sourceFiles(path.join(ROOT, 'samples'), ['.ts']),
+    ...sourceFiles(path.join(ROOT, '..', 'javascript', 'samples'), ['.js']),
     ...sourceFiles(path.join(ROOT, 'perf'), ['.ts'])
   ];
   const forbidden = [

@@ -64,8 +64,8 @@ async function main() {
     await player.leave(room).timeout(2000).submit();
     console.log('[actor/sequential] processed in order: move -> attack -> loot');
   } finally {
-    stream.close();
     player.close(2000);
+    stream.close();
     room.close();
     node.close();
     ctx.close();

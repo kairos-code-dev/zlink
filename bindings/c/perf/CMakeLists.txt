@@ -12,10 +12,6 @@ get_filename_component(ZLINK_C_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOL
 get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_C_BINDINGS_DIR}/../.." ABSOLUTE)
 
 set(PERF_BINDINGS_C_INCLUDE_DIR "${ZLINK_C_BINDINGS_DIR}/include")
-set(PERF_CORE_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/core/include")
-if(NOT EXISTS "${PERF_CORE_INCLUDE_DIR}/zlink.h")
-    set(PERF_CORE_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/include")
-endif()
 
 set(PERF_EXTERNAL_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/core/external")
 if(NOT EXISTS "${PERF_EXTERNAL_INCLUDE_DIR}")
@@ -46,7 +42,6 @@ function(add_current_bench_single name source)
     endif()
     target_include_directories(${name} PRIVATE
         ${PERF_BINDINGS_C_INCLUDE_DIR}
-        ${PERF_CORE_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/single/common
         ${PERF_EXTERNAL_INCLUDE_DIR})
     target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
@@ -62,7 +57,6 @@ function(add_current_bench_single_recv name source)
     endif()
     target_include_directories(${name} PRIVATE
         ${PERF_BINDINGS_C_INCLUDE_DIR}
-        ${PERF_CORE_INCLUDE_DIR}
         ${PERF_BENCH_SINGLE_COMMON_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/single/common
         ${PERF_EXTERNAL_INCLUDE_DIR})
@@ -79,7 +73,6 @@ function(add_current_bench_multi name source)
     endif()
     target_include_directories(${name} PRIVATE
         ${PERF_BINDINGS_C_INCLUDE_DIR}
-        ${PERF_CORE_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/multi/common
         ${PERF_BENCH_MULTI_COMMON_DIR})
     target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})

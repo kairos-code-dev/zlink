@@ -78,7 +78,7 @@ endfunction()
 zlink_c_ensure_core_target(ZLINK_C_CORE_TARGET ZLINK_C_CORE_RUNTIME_DIR)
 
 add_library(zlink_c INTERFACE)
-target_include_directories(zlink_c INTERFACE include "${ZLINK_CORE_DIR}/include")
+target_include_directories(zlink_c INTERFACE include)
 target_link_libraries(zlink_c INTERFACE ${ZLINK_C_CORE_TARGET})
 
 if(NOT DEFINED ZLINK_C_REGISTER_CTEST)

@@ -6,6 +6,14 @@ C_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROOT_DIR="$(cd "${C_DIR}/../.." && pwd)"
 BUILD_DIR="${C_DIR}/build"
 
+if grep -R -n -E 'core/include|ZLINK_CORE_INCLUDE_DIR|PERF_CORE_INCLUDE_DIR' \
+  "${C_DIR}/CMakeLists.txt" \
+  "${C_DIR}/samples/CMakeLists.txt" \
+  "${C_DIR}/perf/CMakeLists.txt"; then
+  echo "[FAIL] C binding samples/perf must include only bindings/c/include" >&2
+  exit 1
+fi
+
 cmake -S "${C_DIR}" -B "${BUILD_DIR}" \
   -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
   -DZLINK_C_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \

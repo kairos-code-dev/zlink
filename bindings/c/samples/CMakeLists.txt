@@ -8,15 +8,13 @@ get_filename_component(ZLINK_C_BINDINGS_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOL
 get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_C_BINDINGS_DIR}/../.." ABSOLUTE)
 
 set(ZLINK_C_BINDINGS_INCLUDE_DIR "${ZLINK_C_BINDINGS_DIR}/include")
-set(ZLINK_CORE_INCLUDE_DIR "${ZLINK_REPO_ROOT_DIR}/core/include")
 
 function(add_c_sample target_name source_file)
   add_executable(${target_name} ${source_file})
   target_link_libraries(${target_name} PRIVATE zlink_c)
   target_include_directories(${target_name} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${ZLINK_C_BINDINGS_INCLUDE_DIR}
-    ${ZLINK_CORE_INCLUDE_DIR})
+    ${ZLINK_C_BINDINGS_INCLUDE_DIR})
   if(UNIX AND NOT WIN32)
     set_target_properties(${target_name} PROPERTIES
       BUILD_RPATH "${ZLINK_C_CORE_RUNTIME_DIR}")

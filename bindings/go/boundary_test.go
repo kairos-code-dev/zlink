@@ -1,10 +1,12 @@
 package zlink_test
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -142,4 +144,86 @@ func TestSamplesAndPerfUseOnlyPublicBindingContract(t *testing.T) {
 	if len(violations) != 0 {
 		t.Fatalf("samples/perf must use public binding contract only: %v", violations)
 	}
+}
+
+func TestRootProjectionCoversContractExports(t *testing.T) {
+	contractNames := exportedTopLevelNames(t, "contracts")
+	rootNames := exportedTopLevelNames(t, ".")
+	var missing []string
+	var extra []string
+
+	for name := range contractNames {
+		if _, ok := rootNames[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	for name := range rootNames {
+		if _, ok := contractNames[name]; !ok {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+
+	if len(missing) != 0 {
+		t.Fatalf("root package must project every public contract symbol: %v", missing)
+	}
+	if len(extra) != 0 {
+		t.Fatalf("root package must not define symbols outside the public contract: %v", extra)
+	}
+}
+
+func exportedTopLevelNames(t *testing.T, dir string) map[string]struct{} {
+	t.Helper()
+	names := make(map[string]struct{})
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" ||
+			strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			switch decl := decl.(type) {
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					for _, name := range exportedSpecNames(spec) {
+						names[name] = struct{}{}
+					}
+				}
+			case *ast.FuncDecl:
+				if decl.Recv == nil && decl.Name.IsExported() {
+					names[decl.Name.Name] = struct{}{}
+				}
+			}
+		}
+	}
+
+	return names
+}
+
+func exportedSpecNames(spec ast.Spec) []string {
+	switch spec := spec.(type) {
+	case *ast.TypeSpec:
+		if spec.Name.IsExported() {
+			return []string{spec.Name.Name}
+		}
+	case *ast.ValueSpec:
+		var names []string
+		for _, name := range spec.Names {
+			if name.IsExported() {
+				names = append(names, name.Name)
+			}
+		}
+		return names
+	}
+	return nil
 }

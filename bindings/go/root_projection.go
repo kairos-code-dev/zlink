@@ -64,6 +64,7 @@ type (
 	ServiceKind                  = impl.ServiceKind
 	SpotKind                     = impl.SpotKind
 	SubjectKind                  = impl.SubjectKind
+	RouteKind                    = impl.RouteKind
 	SpotRole                     = impl.SpotRole
 	SpotNodeState                = impl.SpotNodeState
 	SpotPeerSource               = impl.SpotPeerSource
@@ -76,6 +77,7 @@ type (
 	Registry                     = impl.Registry
 	RegistryQueryClient          = impl.RegistryQueryClient
 	SpotRoute                    = impl.SpotRoute
+	DiscoveryRoute               = impl.DiscoveryRoute
 	SpotNodeStatus               = impl.SpotNodeStatus
 	SpotNodePeerEntry            = impl.SpotNodePeerEntry
 	SpotNodePeerFilter           = impl.SpotNodePeerFilter
@@ -192,6 +194,10 @@ const (
 	SubjectKindNone                         = impl.SubjectKindNone
 	SubjectKindTopic                        = impl.SubjectKindTopic
 	SubjectKindPattern                      = impl.SubjectKindPattern
+	RouteKindInvalid                        = impl.RouteKindInvalid
+	RouteKindActor                          = impl.RouteKindActor
+	RouteKindSpotName                       = impl.RouteKindSpotName
+	RouteKindActorSession                   = impl.RouteKindActorSession
 	SpotRolePub                             = impl.SpotRolePub
 	SpotRoleSub                             = impl.SpotRoleSub
 	SpotNodeStateIdle                       = impl.SpotNodeStateIdle

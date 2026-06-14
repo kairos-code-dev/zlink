@@ -4,34 +4,13 @@
  * 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
  */
 
-#include <boost/asio.hpp>
-#include <zlink.hpp>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "sample_common.hpp"
 
 #include <chrono>
 #include <cstdio>
 #include <string>
 #include <thread>
 #include <vector>
-
-static std::string unique_tcp ()
-{
-    int fd = ::socket (AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    (void) ::bind (fd, reinterpret_cast<sockaddr *> (&addr), sizeof (addr));
-    socklen_t len = sizeof (addr);
-    (void) ::getsockname (fd, reinterpret_cast<sockaddr *> (&addr), &len);
-    int port = ntohs (addr.sin_port);
-    ::close (fd);
-    return "tcp://127.0.0.1:" + std::to_string (port);
-}
 
 static void wait_connected (zlink::socket_monitor_t &monitor)
 {
@@ -54,7 +33,7 @@ int main ()
     zlink::router_socket_t api_router (ctx);
 
     const std::string channel = "api";
-    const std::string endpoint = unique_tcp ();
+    const std::string endpoint = detail::unique_tcp ("spot-channel");
     zlink::socket_monitor_t router_monitor = api_router.monitor_open ();
     zlink::socket_monitor_t dealer_monitor = room_dealer.monitor_open ();
     api_router.bind (endpoint);

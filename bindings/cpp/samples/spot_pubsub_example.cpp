@@ -4,35 +4,13 @@
  * 한 노드가 토픽에 publish하면, 그 토픽을 구독한 다른 노드가 받는다.
  */
 
-#include <boost/asio.hpp>
-#include <zlink.hpp>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "sample_common.hpp"
 
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <string>
 #include <thread>
-
-// 빈 TCP 포트를 잡아 endpoint를 만든다.
-static std::string unique_tcp ()
-{
-    int fd = ::socket (AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    (void) ::bind (fd, reinterpret_cast<sockaddr *> (&addr), sizeof (addr));
-    socklen_t len = sizeof (addr);
-    (void) ::getsockname (fd, reinterpret_cast<sockaddr *> (&addr), &len);
-    int port = ntohs (addr.sin_port);
-    ::close (fd);
-    return "tcp://127.0.0.1:" + std::to_string (port);
-}
 
 static void wait_peer (zlink::service::spot_node_t &node)
 {
@@ -54,8 +32,8 @@ int main ()
     zlink::service::spot_node_t subscriber_node (ctx);
 
     const std::string topic = "room:lobby";
-    const std::string pub_endpoint = unique_tcp ();
-    const std::string sub_endpoint = unique_tcp ();
+    const std::string pub_endpoint = detail::unique_tcp ("spot-pubsub-pub");
+    const std::string sub_endpoint = detail::unique_tcp ("spot-pubsub-sub");
     publisher_node.set_pub_bind (pub_endpoint);
     subscriber_node.set_pub_bind (sub_endpoint);
     publisher_node.connect_peer (sub_endpoint);

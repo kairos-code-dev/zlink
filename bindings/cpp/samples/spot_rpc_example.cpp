@@ -4,13 +4,7 @@
  * 한 노드의 Spot이 다른 노드의 Spot으로 직접 요청을 보내고, 상대가 응답한다.
  */
 
-#include <boost/asio.hpp>
-#include <zlink.hpp>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "sample_common.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -20,21 +14,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-static std::string unique_tcp ()
-{
-    int fd = ::socket (AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    (void) ::bind (fd, reinterpret_cast<sockaddr *> (&addr), sizeof (addr));
-    socklen_t len = sizeof (addr);
-    (void) ::getsockname (fd, reinterpret_cast<sockaddr *> (&addr), &len);
-    int port = ntohs (addr.sin_port);
-    ::close (fd);
-    return "tcp://127.0.0.1:" + std::to_string (port);
-}
 
 static void wait_peer (zlink::service::spot_node_t &node)
 {
@@ -60,10 +39,10 @@ int main ()
     server.set_routing_id (zlink::routing_id_t::from (std::string ("rpc-server-spot")));
     client.set_routing_id (zlink::routing_id_t::from (std::string ("rpc-client-spot")));
     // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-    server_node.set_router_bind (unique_tcp ());
-    client_node.set_router_bind (unique_tcp ());
-    const std::string server_endpoint = unique_tcp ();
-    const std::string client_endpoint = unique_tcp ();
+    server_node.set_router_bind (detail::unique_tcp ("spot-rpc-server-router"));
+    client_node.set_router_bind (detail::unique_tcp ("spot-rpc-client-router"));
+    const std::string server_endpoint = detail::unique_tcp ("spot-rpc-server-pub");
+    const std::string client_endpoint = detail::unique_tcp ("spot-rpc-client-pub");
     server_node.set_pub_bind (server_endpoint);
     client_node.set_pub_bind (client_endpoint);
     server_node.connect_peer (client_endpoint);

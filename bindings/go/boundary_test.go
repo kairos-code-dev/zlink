@@ -1,6 +1,10 @@
 package zlink_test
 
 import (
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -97,5 +101,45 @@ func TestNilInputValidation(t *testing.T) {
 
 	if err := stream.OnPacket(nil); err == nil {
 		t.Fatalf("OnPacket(nil) should fail")
+	}
+}
+
+func TestSamplesAndPerfUseOnlyPublicBindingContract(t *testing.T) {
+	var violations []string
+	for _, root := range []string{"samples", "perf"} {
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				if entry.Name() == "build" || entry.Name() == "results" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if filepath.Ext(path) != ".go" {
+				return nil
+			}
+
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+			if err != nil {
+				return err
+			}
+			for _, imported := range file.Imports {
+				value := strings.Trim(imported.Path.Value, `"`)
+				if value == "C" ||
+					value == "unsafe" ||
+					strings.HasPrefix(value, "zlink.systems/zlink/internal/") {
+					violations = append(violations, path+":"+value)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(violations) != 0 {
+		t.Fatalf("samples/perf must use public binding contract only: %v", violations)
 	}
 }

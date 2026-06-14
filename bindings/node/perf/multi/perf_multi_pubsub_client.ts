@@ -4,7 +4,6 @@
 
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const {
   createMetricCollector,
   createRunId,
@@ -27,7 +26,6 @@ const {
 } = require('./perf_multi_runtime');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const TOPIC = 'bench';
-const native = requireNative();
 
 function isStopTokenPayload(buffer, size) {
   if (size !== STOP_TOKEN_BYTES.length) {
@@ -46,6 +44,7 @@ async function main() {
   const ctx = zlink.createContext();
   applyContextPolicy(ctx, 'client', 'MULTI_PUBSUB');
   const subs = [];
+  const receivedBySub = [];
   let rl = null;
   let collector = null;
 
@@ -58,6 +57,7 @@ async function main() {
       await waitForConnectionReady(sub, () => sub.connect(options.endpoint));
       applyAutoHwmMsgUnit(ctx, options.msgSize);
       subs.push(sub);
+      receivedBySub.push(new zlink.TopicMessage());
     }
     ctx.recalculateAutoHwm();
     for (const sub of subs) {
@@ -106,10 +106,11 @@ async function main() {
                 continue;
               }
               while (true) {
-                const data = native.socketTrySubscribePayload(subs[index].nativeHandle());
-                if (!data) {
+                const received = receivedBySub[index];
+                if (!subs[index].subscribe(received, zlink.RecvFlags.DontWait)) {
                   break;
                 }
+                const data = received.singlePartOrThrow().data();
                 if (isStopTokenPayload(data, data.length)) {
                   stopReceived = true;
                   continue;
@@ -141,6 +142,9 @@ async function main() {
     console.log(`CLIENT_DONE,${options.msgSize}`);
   } finally {
     rl?.close();
+    for (const received of receivedBySub) {
+      received.close();
+    }
     for (const sub of subs) {
       sub.close();
     }

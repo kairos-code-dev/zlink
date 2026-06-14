@@ -3,11 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const readline = require('node:readline');
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { configureTlsServer } = require('../common/perf_tls');
 const { parseMultiArgs } = require('./perf_multi_common');
 const { POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPolicy, emitMultiSocketHwmDetail, pollEvents, pollEventHas, trySocketSend, waitPollerOne } = require('./perf_multi_runtime');
-const native = requireNative();
 function packetFrame(header, body) {
     const headerBytes = header.data();
     const bodyBytes = body.data();
@@ -27,16 +25,6 @@ function isTransientSendError(error) {
 }
 function tryStreamSend(stream, routingId, frame) {
     try {
-        const result = native.socketSendRoutingNoWaitResult(stream.nativeHandle(), routingId.borrowedBytes(), frame);
-        if (result === zlink.SubmitResult.Ok) {
-            return true;
-        }
-        if (result === zlink.SubmitResult.Backpressured
-            || result === zlink.SubmitResult.NotConnected
-            || result === zlink.SubmitResult.NotFound
-            || result === zlink.SubmitResult.NotAdmitted) {
-            return false;
-        }
         return trySocketSend(stream, routingId, frame);
     }
     catch (error) {

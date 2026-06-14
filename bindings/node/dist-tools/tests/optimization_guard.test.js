@@ -129,15 +129,43 @@ test('node multi dealer-dealer receiver uses caller-provided Received storage', 
     assert.doesNotMatch(body, /\brecvNoWaitInto\b/);
     assert.doesNotMatch(body, /\brecvNoWait\b/);
 });
-test('node multi pubsub client uses internal single-payload subscribe path', () => {
+test('node samples and perf stay on public binding contract', () => {
+    const files = [
+        ...sourceFiles(path.join(ROOT, 'samples'), ['.ts']),
+        ...sourceFiles(path.join(ROOT, 'perf'), ['.ts'])
+    ];
+    const forbidden = [
+        'requireNative(',
+        'nativeHandle(',
+        'publishDirect',
+        'socketTrySubscribePayload',
+        'socketSendNoWaitResult',
+        'socketSendRoutingNoWaitResult',
+        'spotSendToSpotNoWaitResult',
+        'routerRecvSingleMetricLatency',
+        'routerRecvSinglePayload',
+        'spotRecvRoutedMetricLatency'
+    ];
+    const violations = [];
+    for (const file of files) {
+        const body = fs.readFileSync(file, 'utf8');
+        for (const token of forbidden) {
+            if (body.includes(token)) {
+                violations.push(`${path.relative(ROOT, file)}:${token}`);
+            }
+        }
+    }
+    assert.deepEqual(violations, []);
+});
+test('node multi pubsub client uses public TopicMessage subscribe path', () => {
     const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_pubsub_client.ts');
     const body = fs.readFileSync(file, 'utf8');
-    assert.match(body, /requireNative\(\)/);
-    assert.match(body, /socketTrySubscribePayload\(subs\[index\]\.nativeHandle\(\)\)/);
+    assert.match(body, /new zlink\.TopicMessage\(\)/);
+    assert.match(body, /\.subscribe\(received, zlink\.RecvFlags\.DontWait\)/);
     assert.match(body, /recordPayload/);
     assert.match(body, /const TOPIC = 'bench'/);
-    assert.doesNotMatch(body, /new zlink\.TopicMessage\(\)/);
-    assert.doesNotMatch(body, /\.subscribe\(received, zlink\.RecvFlags\.DontWait\)/);
+    assert.doesNotMatch(body, /requireNative\(\)/);
+    assert.doesNotMatch(body, /nativeHandle\(\)/);
     assert.doesNotMatch(body, /\bsubscribeNoWait\b/);
 });
 test('node multi publish helper stays on public publish operation', () => {

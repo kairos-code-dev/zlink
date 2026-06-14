@@ -2,7 +2,6 @@
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { createMetricCollector, createPayload, createRunId, currentEpochNs, sleepMillis, summarizeMetrics, stampPayload, } = require('../common/perf_metrics');
 const { configureTlsClient, configureTlsServer } = require('../common/perf_tls');
 const { benchmarkEndpoint, parseMultiArgs, resolveMultiSpotControlSettleMs, resolveMultiSpotReadySettleMs } = require('./perf_multi_common');
@@ -10,8 +9,9 @@ const { POLLIN, POLLOUT, applyAutoHwmMsgUnit, applyContextPolicy, applySocketPol
 const CONTROL_TOPIC = 'bench';
 const SERVER_NODE_ROUTING_ID_BYTES = Buffer.from('PERF_SPOT_SENDSEND_NODE', 'ascii');
 const SERVER_SPOT_ROUTING_ID_BYTES = Buffer.from('PERF_SPOT_SENDSEND_SPOT', 'ascii');
+const SERVER_NODE_ROUTING_ID = zlink.RoutingId.from(SERVER_NODE_ROUTING_ID_BYTES);
+const SERVER_SPOT_ROUTING_ID = zlink.RoutingId.from(SERVER_SPOT_ROUTING_ID_BYTES);
 const TRACE = process.env.PERF_MULTI_SPOT_SENDSEND_TRACE === '1';
-const native = requireNative();
 function trace(message) {
     if (TRACE) {
         console.error(`[multi-spot-sendsend-client] ${message}`);
@@ -26,16 +26,10 @@ function isTransientSendError(error) {
 }
 function sendToServer(slot) {
     try {
-        const result = native.spotSendToSpotNoWaitResult(slot.spot.nativeHandle(), SERVER_NODE_ROUTING_ID_BYTES, SERVER_SPOT_ROUTING_ID_BYTES, slot.payload);
-        if (result === zlink.SubmitResult.Ok)
-            return true;
-        if (result === zlink.SubmitResult.Backpressured
-            || result === zlink.SubmitResult.NotConnected
-            || result === zlink.SubmitResult.NotFound
-            || result === zlink.SubmitResult.NotAdmitted) {
-            return false;
-        }
-        throw new zlink.SubmitError(result, 0, 'spot sendToSpot failed');
+        return slot.spot.sendToSpot(SERVER_NODE_ROUTING_ID, SERVER_SPOT_ROUTING_ID)
+            .message(slot.payload)
+            .flags(zlink.SendFlags.DontWait)
+            .submit();
     }
     catch (error) {
         if (isTransientSendError(error)) {
@@ -113,6 +107,7 @@ async function main() {
             spot.setRoutingId(zlink.RoutingId.from(Buffer.from(`PERF_SPOT_SENDSEND_CLIENT_SPOT_${i}`, 'ascii')));
             slots.push({
                 spot,
+                received: new zlink.Received(),
                 payload: createPayload(options.msgSize),
                 waitingReply: false,
                 nextSeq: 1n
@@ -174,16 +169,11 @@ async function main() {
             const slot = activeSlots[index];
             let progressed = false;
             while (true) {
-                const latencyNs = native.spotRecvRoutedMetricLatency(slot.spot.nativeHandle(), runId, options.msgSize, options.msgSize, activeStartNs, activeStopNs);
-                if (latencyNs === null) {
+                if (!slot.spot.recvRouted(slot.received, zlink.RecvFlags.DontWait)) {
                     break;
                 }
                 slot.waitingReply = false;
-                if (latencyNs === false) {
-                    progressed = true;
-                    continue;
-                }
-                collector.recordLatencyNs(latencyNs);
+                collector.recordPayload(slot.received.singlePartOrThrow().data(), currentEpochNs());
                 progressed = true;
             }
             return progressed;
@@ -264,6 +254,7 @@ async function main() {
         closeQuietly(controlSub);
         closeQuietly(controlPub);
         for (const slot of slots) {
+            closeQuietly(slot.received);
             closeQuietly(slot.spot);
         }
         closeQuietly(node);

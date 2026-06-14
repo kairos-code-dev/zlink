@@ -3,12 +3,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const { parentPort, workerData } = require('node:worker_threads');
 const zlink = require('@zlink-systems/zlink');
-const { requireNative } = require('../../dist/zlink/runtime/native/native');
 const { createPayload, stampPayload } = require('../common/perf_metrics');
 const { applyContextPolicy, applyAutoHwmMsgUnit, applySocketPolicy, configureTlsClient, configureTlsServer, emitSingleSocketHwmDetail, waitForConnectionReady, } = require('./perf_single_common');
 const { STOP_TOKEN_BYTES } = require('../perf_stop_token');
 const DEFAULT_TOPIC = 'perf.topic';
-const native = requireNative();
 function ensureParentPort() {
     if (!parentPort) {
         throw new Error('sender worker requires parentPort');
@@ -72,28 +70,17 @@ function isTransientSubmit(error) {
 }
 function submitOnce(kind, socket, body, receiverRoutingId, topic) {
     if (kind === 'pubsub') {
-        if (typeof socket.publishDirect === 'function') {
-            return socket.publishDirect(topic, body, zlink.SendFlags.DontWait);
-        }
         return socket.publish(topic).message(body)
             .flags(zlink.SendFlags.DontWait).submit();
     }
     if (kind === 'router_router') {
-        native.socketSendRouting(socket.nativeHandle(), receiverRoutingId.borrowedBytes(), body, zlink.SendFlags.None);
-        return true;
+        return socket.send(receiverRoutingId).message(body)
+            .flags(zlink.SendFlags.None).submit();
     }
     if (kind === 'dealer_router') {
-        native.socketSend(socket.nativeHandle(), body, zlink.SendFlags.None);
-        return true;
+        return socket.send().message(body).flags(zlink.SendFlags.None).submit();
     }
-    const result = native.socketSendNoWaitResult(socket.nativeHandle(), body);
-    if (result === zlink.SubmitResult.Ok) {
-        return true;
-    }
-    if (result === zlink.SubmitResult.Backpressured) {
-        return false;
-    }
-    throw new zlink.SubmitError(result, 0, 'send failed');
+    return socket.send().message(body).flags(zlink.SendFlags.DontWait).submit();
 }
 // Retry through transient backpressure until accepted (C send_step_retry
 // loop). Returns when the message is on the wire; throws only on a real
@@ -122,19 +109,16 @@ function sleepMillis(ms) {
 }
 function submitStopOnce(kind, socket, receiverRoutingId, topic) {
     if (kind === 'pubsub') {
-        if (typeof socket.publishDirect === 'function') {
-            socket.publishDirect(topic, STOP_TOKEN_BYTES, zlink.SendFlags.None);
-            return;
-        }
         socket.publish(topic).message(STOP_TOKEN_BYTES)
             .flags(zlink.SendFlags.None).submit();
         return;
     }
     if (kind === 'router_router') {
-        native.socketSendRouting(socket.nativeHandle(), receiverRoutingId.borrowedBytes(), STOP_TOKEN_BYTES, zlink.SendFlags.None);
+        socket.send(receiverRoutingId).message(STOP_TOKEN_BYTES)
+            .flags(zlink.SendFlags.None).submit();
         return;
     }
-    native.socketSend(socket.nativeHandle(), STOP_TOKEN_BYTES, zlink.SendFlags.None);
+    socket.send().message(STOP_TOKEN_BYTES).flags(zlink.SendFlags.None).submit();
 }
 function sendStopToken(kind, socket, receiverRoutingId, topic) {
     // PERF_SINGLE_TEST_POLICY § 1.4 / C send_stop_token_with_retry

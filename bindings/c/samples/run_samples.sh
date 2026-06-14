@@ -26,31 +26,8 @@ fi
 echo "[c-samples] configure: ${BUILD_DIR}"
 cmake -S "${C_DIR}" -B "${BUILD_DIR}" "${CONFIGURE_ARGS[@]}"
 
-sample_bins=(
-  sample_c_pair_recv_sample
-  sample_c_pubsub_recv_sample
-  sample_c_dealer_router_recv_sample
-  sample_c_stream_recv_sample
-  sample_c_stream_packet_callback_sample
-  sample_c_spot_recv_sample
-  sample_c_spot_routed_request_sample
-  sample_c_monitor_recv_sample
-  sample_c_discovery_registry_sample
-  sample_c_registry_query_sample
-  sample_c_actor_room_server_sample
-  sample_c_actor_gateway_relay_sample
-  sample_c_actor_single_player_queue_sample
-)
-
 echo "[c-samples] build"
-cmake --build "${BUILD_DIR}" --target "${sample_bins[@]}" -j"$(nproc)"
+cmake --build "${BUILD_DIR}" -j"$(nproc)"
 
-pass_count=0
-
-for sample_bin in "${sample_bins[@]}"; do
-  echo "[sample] ${sample_bin}"
-  (cd "${ROOT_DIR}" && "${BUILD_DIR}/samples/${sample_bin}")
-  pass_count=$((pass_count + 1))
-done
-
-echo "[c-samples] sample summary: ${pass_count}/${#sample_bins[@]} passed"
+echo "[c-samples] run"
+ctest --test-dir "${BUILD_DIR}" --output-on-failure -L sample-smoke

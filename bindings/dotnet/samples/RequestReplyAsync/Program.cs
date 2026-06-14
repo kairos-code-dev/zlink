@@ -16,7 +16,7 @@ internal static class Program
         using var ctx = Zlink.CreateContext();
         using var dealerSocket = ctx.CreateDealerSocket();
         using var routerSocket = ctx.CreateRouterSocket();
-        string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string endpoint = SampleSupport.NewEndpoint("tcp", "sample");
         using var dealerMonitor = dealerSocket.MonitorOpen(SocketEvent.ConnectionReady);
         using var routerMonitor = routerSocket.MonitorOpen(SocketEvent.ConnectionReady);
         dealerSocket.SetRoutingId(RoutingId.From(Encoding.UTF8.GetBytes("request-reply-client")));

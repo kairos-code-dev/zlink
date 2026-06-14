@@ -14,9 +14,9 @@ internal static class Program
         var query = ctx.CreateRegistryQueryClient();
         var provider = ctx.CreatePubSocket();
         var discovery = ctx.CreateDiscovery(AutoConnectType.Fanout, "sample");
-        string registryPub = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
-        string registryRouter = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
-        string serviceEndpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string registryPub = SampleSupport.NewEndpoint("tcp", "sample");
+        string registryRouter = SampleSupport.NewEndpoint("tcp", "sample");
+        string serviceEndpoint = SampleSupport.NewEndpoint("tcp", "sample");
 
         registry.Bind(registryPub, registryRouter);
         discovery.ConnectRegistry(registryRouter);

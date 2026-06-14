@@ -13,7 +13,7 @@ internal static class Program
         using var ctx = Zlink.CreateContext();
         using var stream = ctx.CreateStreamSocket();
         stream.Options.Linger = TimeSpan.Zero;
-        string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string endpoint = SampleSupport.NewEndpoint("tcp", "sample");
         int port = SampleSupport.ExtractPort(endpoint);
         using var monitor = stream.MonitorOpen(SocketEvent.Accepted);
         stream.Bind(endpoint);

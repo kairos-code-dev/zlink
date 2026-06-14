@@ -12,7 +12,7 @@ internal static class Program
         using var ctx = Zlink.CreateContext();
         using var publisher = ctx.CreatePubSocket();
         using var subscriber = ctx.CreateSubSocket();
-        string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string endpoint = SampleSupport.NewEndpoint("tcp", "sample");
         using var publisherMonitor = publisher.MonitorOpen(SocketEvent.ConnectionReady);
         using var subscriberMonitor = subscriber.MonitorOpen(SocketEvent.ConnectionReady);
         publisher.Bind(endpoint);

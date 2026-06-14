@@ -15,8 +15,8 @@ internal static class Program
         const string serviceName = "direct";
         const string topic = "room:lobby";
         const string payload = "hello-spot";
-        string publisherEndpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
-        string subscriberEndpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string publisherEndpoint = SampleSupport.NewEndpoint("tcp", "sample");
+        string subscriberEndpoint = SampleSupport.NewEndpoint("tcp", "sample");
         publisherNode.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub"));
         subscriberNode.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub"));
         publisherNode.SetPubBind(publisherEndpoint);

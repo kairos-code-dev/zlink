@@ -11,7 +11,7 @@ internal static class Program
         using var ctx = Zlink.CreateContext();
         using var server = ctx.CreatePairSocket();
         using var client = ctx.CreatePairSocket();
-        string endpoint = $"tcp://127.0.0.1:{SampleSupport.ReservePort()}";
+        string endpoint = SampleSupport.NewEndpoint("tcp", "sample");
         using var serverMonitor = server.MonitorOpen(SocketEvent.ConnectionReady);
         using var clientMonitor = client.MonitorOpen(SocketEvent.ConnectionReady);
         if (serverMonitor.Recv(RecvFlags.DontWait) != null)

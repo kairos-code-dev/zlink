@@ -26,6 +26,7 @@ import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.InternalAccess;
@@ -129,7 +130,7 @@ final class NativeActor implements Actor {
         ensureOpen();
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.spotNodeActorCloseBoundSession(nodeHandle(),
-              ActorInterop.actorRefToNative(arena, ref), timeoutMillis(timeout));
+              ActorInterop.actorRefToNative(arena, ref), DurationConversions.timeoutMillis(timeout));
             if (rc != 0) {
                 throw new ZlinkRequestException(RequestResult.fromValue(rc));
             }
@@ -165,7 +166,7 @@ final class NativeActor implements Actor {
             int rc = Native.spotNodeActorDestroy(nodeHandle(),
               ActorInterop.actorRefToNative(arena, ref),
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(pending.id()), timeoutMillis(timeout));
+              MemorySegment.ofAddress(pending.id()), DurationConversions.timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(pending.id());
                 throw new ZlinkRequestException(RequestResult.fromValue(rc));
@@ -184,14 +185,6 @@ final class NativeActor implements Actor {
 
     private MemorySegment nodeHandle() {
         return InternalAccess.spotNodeHandle(node);
-    }
-
-    private static int timeoutMillis(Duration timeout) {
-        if (timeout == null || timeout.isZero()) {
-            return 0;
-        }
-        long millis = Math.max(1L, timeout.toMillis());
-        return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
     }
 
     private final class ActorJoinBuilder
@@ -258,7 +251,7 @@ final class NativeActor implements Actor {
                   partsArr, parts.size(),
                   ActorRequestCallbacks.ACTOR_JOIN_CALLBACK,
                   MemorySegment.ofAddress(token.id()), flags.value(),
-                  timeoutMillis(timeout));
+                  DurationConversions.timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
                     MessagePartsBuffer.closeNativeArray(partsArr, parts.size());
@@ -350,7 +343,7 @@ final class NativeActor implements Actor {
                   ActorInterop.nativeRoutingId(arena, spot.getRoutingId()),
                   ActorRequestCallbacks.REPLY_CALLBACK,
                   MemorySegment.ofAddress(token.id()),
-                  timeoutMillis(timeout));
+                  DurationConversions.timeoutMillis(timeout));
                 if (rc != 0) {
                     ActorRequestCallbacks.remove(token.id());
                     throw new ZlinkSubmitException(SubmitResult.fromValue(rc));

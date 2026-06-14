@@ -13,6 +13,7 @@ import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubmitResult;
+import systems.zlink.internal.DurationConversions;
 import systems.zlink.runtime.nativeapi.ActorInterop;
 import systems.zlink.runtime.nativeapi.ActorRequestCallbacks;
 import systems.zlink.runtime.nativeapi.InternalAccess;
@@ -86,7 +87,7 @@ final class NativeStreamActorSupport {
               ActorInterop.nativeRoutingId(arena, sessionRid),
               ActorInterop.actorRefToNative(arena, actor),
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
+              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
                 throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
@@ -115,7 +116,7 @@ final class NativeStreamActorSupport {
               ActorInterop.nativeRoutingId(arena, sessionRid),
               NativeHelpers.toCString(arena, actorId),
               ActorRequestCallbacks.REPLY_CALLBACK,
-              MemorySegment.ofAddress(token.id()), timeoutMillis(timeout));
+              MemorySegment.ofAddress(token.id()), DurationConversions.timeoutMillis(timeout));
             if (rc != 0) {
                 ActorRequestCallbacks.remove(token.id());
                 throw new ZlinkSubmitException(SubmitResult.fromValue(rc));
@@ -172,11 +173,4 @@ final class NativeStreamActorSupport {
         }
     }
 
-    private static int timeoutMillis(Duration timeout) {
-        if (timeout == null || timeout.isZero()) {
-            return 0;
-        }
-        long millis = Math.max(1L, timeout.toMillis());
-        return millis >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) millis;
-    }
 }

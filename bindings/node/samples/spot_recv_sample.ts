@@ -3,33 +3,14 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { once } = require('node:events');
-const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
+const { tcpEndpoint, waitSpotPeerConnected } = require('./sample_support');
 const AUTO_CONNECT_SPOT_MESH = 5;
 
 const CHANNEL_NAME = 'sample';
 
-async function reservePort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function waitForSpotPeer(node: { status(): { connectedPeerCount: number } }): Promise<void> {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (node.status().connectedPeerCount > 0) return;
-    await delay(25);
-  }
-  throw new Error('spot peer connection did not become ready');
 }
 
 async function main() {
@@ -43,10 +24,10 @@ async function main() {
   let subscriber = null;
   const topic = 'room:lobby';
   const sent = 'hello-spot';
-  const registryPub = `tcp://127.0.0.1:${await reservePort()}`;
-    const registryRouter = `tcp://127.0.0.1:${await reservePort()}`;
-    const publisherEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const subscriberEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const registryPub = await tcpEndpoint();
+  const registryRouter = await tcpEndpoint();
+  const publisherEndpoint = await tcpEndpoint();
+  const subscriberEndpoint = await tcpEndpoint();
 
   try {
     registry.bind(registryPub, registryRouter);
@@ -64,9 +45,9 @@ async function main() {
     publisher.setRoutingId(zlink.RoutingId.from(Buffer.from('z-node-spot-recv-publisher-spot')));
     subscriber.setRoutingId(zlink.RoutingId.from(Buffer.from('a-node-spot-recv-subscriber-spot')));
     subscriber.setSubscription(topic);
-    await waitForSpotPeer(publisherNode);
-    await waitForSpotPeer(subscriberNode);
-    const deadline = Date.now() + 15000;
+    await waitSpotPeerConnected(publisherNode);
+    await waitSpotPeerConnected(subscriberNode);
+    const deadline = Date.now() + 5000;
     const received = new zlink.TopicMessage();
     let hasReceived = false;
     while (Date.now() < deadline) {
@@ -93,7 +74,7 @@ async function main() {
       throw new Error('spot delivery did not arrive');
     }
     try {
-            assert.equal(received.topic, topic);
+      assert.equal(received.topic, topic);
       const recv = received.parts[0].data().toString();
       assert.equal(recv, sent);
       console.log(`[spot/recv] channel: "${CHANNEL_NAME}" tick: 1 publish: "${topic}/${sent}" -> recv: "${topic}/${recv}"`);

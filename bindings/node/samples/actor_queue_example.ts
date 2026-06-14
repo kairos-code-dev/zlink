@@ -7,16 +7,7 @@
 
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
-
-// join 요청이 도착할 때까지 잠깐 기다렸다 받아온다.
-function waitForJoin(spot) {
-  for (let i = 0; i < 200; i += 1) {
-    const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
-    if (request) return request;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-  throw new Error('actor join request not received');
-}
+const { waitActorJoin } = require('./sample_support');
 
 async function main() {
   const ctx = zlink.createContext();
@@ -46,7 +37,7 @@ async function main() {
     // join 요청을 수신해 "accepted"로 응답한다.
     async function joinAndAccept(payload: string) {
       const reply = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit();
-      const request = waitForJoin(spot);
+      const request = waitActorJoin(spot);
       spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
       await reply;
     }

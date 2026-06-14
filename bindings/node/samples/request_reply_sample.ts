@@ -3,18 +3,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { once } = require('node:events');
-const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-
-async function reservePort() {
-  const srv = net.createServer();
-  srv.listen(0, '127.0.0.1');
-  await once(srv, 'listening');
-  const { port } = srv.address();
-  await new Promise<void>((resolve, reject) => srv.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
+const { tcpEndpoint } = require('./sample_support');
 
 function timeoutPromise(ms, label) {
   return new Promise((_, reject) => {
@@ -24,8 +14,7 @@ function timeoutPromise(ms, label) {
 
 async function main() {
 // --8<-- [start:doc]
-  const port = await reservePort();
-  const endpoint = `tcp://127.0.0.1:${port}`;
+  const endpoint = await tcpEndpoint();
   const ctx = zlink.createContext();
   const routerSocket = zlink.createRouterSocket(ctx);
   const dealerSocket = zlink.createDealerSocket(ctx);

@@ -4,6 +4,7 @@
 
 const { once } = require('node:events');
 const net = require('node:net');
+const zlink = require('@zlink-systems/zlink');
 
 async function reservePort(): Promise<number> {
   const server = net.createServer();
@@ -35,9 +36,29 @@ async function waitSpotPeerConnected(node, timeoutMs = 5000): Promise<void> {
     'spot peer not connected');
 }
 
+function frame(payload) {
+  const framed = Buffer.allocUnsafe(payload.length + 6);
+  framed.writeUInt16BE(0, 0);
+  framed.writeUInt32BE(payload.length, 2);
+  payload.copy(framed, 6);
+  return framed;
+}
+
+function waitActorJoin(spot, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
+    if (request) return request;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+  throw new Error('actor join request not received');
+}
+
 module.exports = {
+  frame,
   reservePort,
   tcpEndpoint,
+  waitActorJoin,
   waitSpotPeerConnected,
   waitUntil
 };

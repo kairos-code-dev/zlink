@@ -8,15 +8,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
-function waitForJoin(spot) {
-    for (let i = 0; i < 200; i += 1) {
-        const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
-        if (request)
-            return request;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-    throw new Error('actor join request not received');
-}
+const { waitActorJoin } = require('./sample_support');
 async function main() {
     // --8<-- [start:doc]
     const ctx = zlink.createContext();
@@ -44,7 +36,7 @@ async function main() {
         });
         // join으로 Entry Spot에서 room(user Spot)으로 이동한다.
         const reply = player.join(room).message(Buffer.from('enter-room')).timeout(2000).submit();
-        const request = waitForJoin(room);
+        const request = waitActorJoin(room);
         room.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
         await reply;
         // STREAM이 플레이어 입력을 연달아 relay한다 — actor는 순서대로 처리한다.

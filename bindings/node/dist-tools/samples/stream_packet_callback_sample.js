@@ -5,21 +5,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-async function reservePort() {
-    const server = net.createServer();
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    const { port } = server.address();
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-    return port;
-}
-function frame(payload) {
-    const framed = Buffer.allocUnsafe(payload.length + 6);
-    framed.writeUInt16BE(0, 0);
-    framed.writeUInt32BE(payload.length, 2);
-    payload.copy(framed, 6);
-    return framed;
-}
+const { frame, reservePort } = require('./sample_support');
 async function main() {
     // --8<-- [start:doc]
     const port = await reservePort();

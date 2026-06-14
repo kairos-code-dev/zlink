@@ -6,36 +6,11 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-
-async function reservePort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
-
-function frame(payload) {
-  const framed = Buffer.allocUnsafe(payload.length + 6);
-  framed.writeUInt16BE(0, 0);
-  framed.writeUInt32BE(payload.length, 2);
-  payload.copy(framed, 6);
-  return framed;
-}
-
-function waitForJoin(spot) {
-  for (let i = 0; i < 100; i += 1) {
-    const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
-    if (request) return request;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-  throw new Error('actor join request not received');
-}
+const { frame, reservePort, waitActorJoin } = require('./sample_support');
 
 async function acceptJoin(actor, spot, payload) {
   const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit();
-  const request = waitForJoin(spot);
+  const request = waitActorJoin(spot);
   spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
   const reply = await replyPromise;
   assert.equal(reply.result.result, zlink.RequestResult.Ok);

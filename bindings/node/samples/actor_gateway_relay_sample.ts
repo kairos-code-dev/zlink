@@ -6,32 +6,7 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-
-async function reservePort() {
-  const server = net.createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const { port } = server.address();
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  return port;
-}
-
-function frame(payload) {
-  const framed = Buffer.allocUnsafe(payload.length + 6);
-  framed.writeUInt16BE(0, 0);
-  framed.writeUInt32BE(payload.length, 2);
-  payload.copy(framed, 6);
-  return framed;
-}
-
-function waitForJoin(spot) {
-  for (let i = 0; i < 100; i += 1) {
-    const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
-    if (request) return request;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-  }
-  throw new Error('actor join request not received');
-}
+const { frame, reservePort, waitActorJoin } = require('./sample_support');
 
 async function main() {
   const port = await reservePort();
@@ -70,7 +45,7 @@ async function main() {
 
     await stream.bindActor(session, actor.ref()).timeout(2000).submit();
     const joinReply = actor.join(spot).message(Buffer.from('join-play')).timeout(2000).submit();
-    const joinRequest = waitForJoin(spot);
+    const joinRequest = waitActorJoin(spot);
     spot.replyActorJoin(joinRequest, 0).message(Buffer.from('accepted')).submit();
     await joinReply;
     stream.sendBoundActor(session, 'play-session-actor').message(Buffer.from('client-input')).submit();

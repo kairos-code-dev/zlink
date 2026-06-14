@@ -43,7 +43,7 @@ def sampleMainClasses = [
     runSpotTimerExample: 'systems.zlink.samples.SpotTimerExample'
 ]
 
-sampleMainClasses.each { taskName, mainClassName ->
+def sampleRunTasks = sampleMainClasses.collect { taskName, mainClassName ->
     tasks.register(taskName, JavaExec) {
         group = 'application'
         classpath =
@@ -53,7 +53,15 @@ sampleMainClasses.each { taskName, mainClassName ->
     }
 }
 
+sampleRunTasks.eachWithIndex { sampleTask, index ->
+    if (index > 0) {
+        sampleTask.configure {
+            mustRunAfter sampleRunTasks[index - 1]
+        }
+    }
+}
+
 tasks.register('runAllSamples') {
     group = 'application'
-    dependsOn sampleMainClasses.keySet().collect { tasks.named(it) }
+    dependsOn sampleRunTasks
 }

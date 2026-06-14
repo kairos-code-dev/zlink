@@ -49,7 +49,6 @@ from perf_metrics import (
     transport_endpoint,
     wait_monitor_event,
     _require_zlink,
-    _native_active_latency_ns,
 )
 
 
@@ -269,44 +268,6 @@ def recv_into_storage(sock, storage, *, method="recv", blocking=True):
         raise
 
 
-def _recv_owner_data(sock, *, method, flags, recv_error, no_data):
-    try:
-        if method == "subscribe" and hasattr(sock, "_subscribe_parts_owner"):
-            result = sock._subscribe_parts_owner(flags)
-            if result is False:
-                return False, None, None
-            _topic_raw, owner, _routing = result
-        elif method == "recv" and hasattr(sock, "_recv_parts_via_native_bridge"):
-            owner_result = None
-            if hasattr(sock, "_recv_owner_via_native_bridge"):
-                owner_result = sock._recv_owner_via_native_bridge(flags)
-            if owner_result is False:
-                return False, None, None
-            if owner_result is not None:
-                owner = owner_result
-            else:
-                result = sock._recv_parts_via_native_bridge(flags)
-                if result is False:
-                    return False, None, None
-                if result is None:
-                    return None, None, None
-                if len(result) == 2:
-                    _routing_id, owner = result
-                else:
-                    owner, _routing_id, _spot_rid, _request_seq = result
-        else:
-            return None, None, None
-    except recv_error as exc:
-        if exc.result == no_data:
-            return False, None, None
-        raise
-
-    if owner._part_count > 0:
-        return True, owner.data(owner._part_count - 1), owner
-    owner.close()
-    return True, memoryview(b""), None
-
-
 def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                          received, latencies):
     """C perf_single_one_way.hpp run_active_phase receiver, fused for the
@@ -341,26 +302,14 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                 break
             flags = dont_wait
             while True:
-                owner = None
                 try:
-                    received_data, data, owner = _recv_owner_data(
-                        sock,
-                        method=method,
-                        flags=flags,
-                        recv_error=recv_error,
-                        no_data=no_data,
+                    recv_method = (
+                        sock.subscribe_into if method == "subscribe" else sock.recv_into
                     )
-                    if received_data is None:
-                        recv_method = (
-                            sock.subscribe_into if method == "subscribe" else sock.recv_into
-                        )
-                        if recv_method(storage, flags=flags):
-                            data = storage._last_part_data()
-                            owner = storage
-                        else:
-                            wait_socket_readable_until(poller, poll_events, stop_wait_end)
-                            break
-                    elif not received_data:
+                    if recv_method(storage, flags=flags):
+                        parts = storage.to_bytes_list()
+                        data = parts[-1] if parts else b""
+                    else:
                         wait_socket_readable_until(poller, poll_events, stop_wait_end)
                         break
                 except recv_error as exc:
@@ -372,49 +321,29 @@ def run_one_way_receiver(sock, *, method, msg_size, run_id, active_end,
                     stop_received = True
                     break
                 flags = dont_wait
-                try:
-                    if _native_active_latency_ns is not None:
-                        latency_ns = _native_active_latency_ns(
-                            data,
-                            msg_size,
-                            run_id,
-                        )
-                        if latency_ns == -1.0:
-                            stop_received = True
-                            break
-                        if latency_ns < 0.0:
-                            continue
-                        if perf_counter() >= active_end:
-                            continue
-                        count += 1
-                        latencies.append(latency_ns)
-                        continue
-                    if len(data) == len(stop_view) and data == stop_view:
-                        stop_received = True
-                        break
-                    if len(data) != msg_size or len(data) < HEADER_SIZE:
-                        continue
-                    magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
-                        struct.unpack_from(HEADER_FORMAT, data, 0)
-                    )
-                    if (
-                        magic != HEADER_MAGIC
-                        or phase != 1
-                        or hdr_msg_size != msg_size
-                        or hdr_run_id != run_id
-                    ):
-                        continue
-                    if perf_counter() >= active_end:
-                        continue
-                    count += 1
-                    now_ns = time_ns()
-                    if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
-                        latencies.append(float(now_ns - sent_ts_ns))
-                    else:
-                        latencies.append(0.0)
-                finally:
-                    if owner is not None:
-                        owner.close()
+                if len(data) == len(stop_view) and data == stop_view:
+                    stop_received = True
+                    break
+                if len(data) != msg_size or len(data) < HEADER_SIZE:
+                    continue
+                magic, hdr_run_id, phase, hdr_msg_size, _seq, sent_ts_ns = (
+                    struct.unpack_from(HEADER_FORMAT, data, 0)
+                )
+                if (
+                    magic != HEADER_MAGIC
+                    or phase != 1
+                    or hdr_msg_size != msg_size
+                    or hdr_run_id != run_id
+                ):
+                    continue
+                if perf_counter() >= active_end:
+                    continue
+                count += 1
+                now_ns = time_ns()
+                if sent_ts_ns > 0 and now_ns >= sent_ts_ns:
+                    latencies.append(float(now_ns - sent_ts_ns))
+                else:
+                    latencies.append(0.0)
     finally:
         poller.close()
     return count

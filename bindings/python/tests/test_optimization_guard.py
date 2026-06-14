@@ -166,14 +166,6 @@ def test_python_hot_paths_prefer_private_native_bridge():
     assert "Extension(" in setup_text
     assert '"zlink._native._zlink_native"' in setup_text
 
-    single_runner = ROOT / "perf" / "single" / "run_benchmarks.py"
-    multi_runner = ROOT / "perf" / "multi" / "run_benchmarks.py"
-    for runner in (single_runner, multi_runner):
-        runner_text = runner.read_text(encoding="utf-8")
-        assert "_require_native_bridge" in runner_text
-        assert "_native_bridge.available()" in runner_text
-
-
 def test_public_socket_contracts_keep_builder_only_send_publish_surface():
     contract_files = [
         SRC / "contracts" / "sockets" / "message_socket_contracts.py",
@@ -189,6 +181,35 @@ def test_public_socket_contracts_keep_builder_only_send_publish_surface():
     assert "def send(self):" in text
     assert "def send(self, routing_id):" in text
     assert "def publish(self, topic):" in text
+
+
+def test_python_perf_uses_public_binding_contract():
+    perf_root = ROOT / "perf"
+    files = [
+        path
+        for path in perf_root.rglob("*.py")
+        if "__pycache__" not in path.parts
+    ]
+    forbidden = [
+        "from zlink._",
+        "import zlink._",
+        "_native_bridge",
+        "_native_active_latency_ns",
+        "_recv_parts_via_native_bridge",
+        "_recv_owner_via_native_bridge",
+        "_subscribe_parts_owner",
+        "_last_part_data",
+        "_socket_handle",
+    ]
+    violations = []
+
+    for path in files:
+        body = path.read_text(encoding="utf-8")
+        for token in forbidden:
+            if token in body:
+                violations.append(f"{path.relative_to(ROOT)}:{token}")
+
+    assert violations == []
 
 
 def test_perf_scripts_do_not_bypass_public_python_api_active_loops():

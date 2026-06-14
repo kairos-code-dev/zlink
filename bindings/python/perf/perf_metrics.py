@@ -21,20 +21,6 @@ HEADER_MAGIC_BYTES = struct.pack("<I", HEADER_MAGIC)
 _zlink = None
 _seq = 0
 _tls_assets = None
-try:
-    from zlink._native import _zlink_native as _native_extension
-except Exception:  # noqa: BLE001
-    _native_extension = None
-_native_stamp_payload = (
-    getattr(_native_extension, "perf_stamp_payload", None)
-    if _native_extension is not None
-    else None
-)
-_native_active_latency_ns = (
-    getattr(_native_extension, "perf_active_latency_ns", None)
-    if _native_extension is not None
-    else None
-)
 
 
 def _env_int(name, default):
@@ -134,13 +120,6 @@ def payload_phase(data):
 
 def stamp_payload(payload, phase=0, *, run_id=None, seq=None):
     header_run_id = benchmark_run_id() if run_id is None else (run_id & 0xFFFFFFFF)
-    if _native_stamp_payload is not None:
-        return _native_stamp_payload(
-            payload,
-            int(phase),
-            header_run_id,
-            -1 if seq is None else int(seq),
-        )
     header_seq = _next_seq() if seq is None else seq
     struct.pack_into(
         HEADER_FORMAT,

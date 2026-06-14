@@ -81,17 +81,19 @@ POLICY_TRANSPORTS = {
 RUNNABLE_TRANSPORTS = POLICY_TRANSPORTS
 
 
-def _require_native_bridge():
+def _require_binding_runtime():
     src_path = str(DEFAULT_PYTHONPATH.resolve())
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
-    from zlink._native import bridge as _native_bridge
+    import zlink
 
-    if not _native_bridge.available():
+    try:
+        zlink.version()
+    except Exception as exc:
         raise SystemExit(
-            "Python native bridge extension is required for official perf runs. "
+            "Python binding runtime is required for official perf runs. "
             "Run `python3 setup.py build_ext --inplace --force` in bindings/python."
-        )
+        ) from exc
 
 
 def parse_args(argv):
@@ -1145,7 +1147,7 @@ def _meta_lines(args, clients):
 def main(argv=None):
     start_time = time.perf_counter()
     args = parse_args(argv or sys.argv[1:])
-    _require_native_bridge()
+    _require_binding_runtime()
     if args.pin_cpu and not pin_current_process_cpu0():
         print("warning: cpu pinning requested but could not pin to cpu 0", file=sys.stderr)
     patterns = _parse_patterns(args.pattern)

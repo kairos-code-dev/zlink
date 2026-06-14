@@ -97,10 +97,7 @@ pub(crate) fn stream_bind_actor(
     actor: &ActorRef,
 ) -> ActorBindOp<Empty> {
     let raw_actor = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-        node_rid: ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        },
+        node_rid: ffi::zlink_routing_id_t::empty(),
         actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
         generation: 0,
     });

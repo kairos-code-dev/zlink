@@ -641,10 +641,7 @@ fn spot_received_from_raw(
     parts: Vec<Message>,
 ) -> Received {
     let node_rid = if source_node_rid.is_null() {
-        RoutingId::from_raw(ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        })
+        RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
     } else {
         unsafe { RoutingId::from_raw(*source_node_rid) }
     };

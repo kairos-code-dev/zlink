@@ -37,10 +37,7 @@ fn routing_id_option(raw: ffi::zlink_routing_id_t) -> Option<RoutingId> {
 fn routing_id_option_to_raw(value: Option<RoutingId>) -> ffi::zlink_routing_id_t {
     value
         .map(|rid| *rid.as_raw())
-        .unwrap_or(ffi::zlink_routing_id_t {
-            size: 0,
-            data: [0; 255],
-        })
+        .unwrap_or(ffi::zlink_routing_id_t::empty())
 }
 
 pub(super) fn actor_join_info_to_raw(info: &ActorJoinInfo) -> ffi::zlink_actor_join_info_t {

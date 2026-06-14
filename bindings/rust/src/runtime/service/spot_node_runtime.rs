@@ -480,10 +480,7 @@ impl SpotNodePublicRuntime for SpotNode {
     /// Async destroy (operation builder).
     fn destroy_actor(&self, actor: &ActorRef) -> ActorDestroyOp<Empty> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-            node_rid: ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            },
+            node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
@@ -502,10 +499,7 @@ impl SpotNodePublicRuntime for SpotNode {
         dest_spot_rid: &RoutingId,
     ) -> ActorJoinOp<Empty> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-            node_rid: ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            },
+            node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
@@ -529,10 +523,7 @@ impl SpotNodePublicRuntime for SpotNode {
         dest_node_rid: &RoutingId,
     ) -> ActorJoinEntrySpotOp<Empty> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-            node_rid: ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            },
+            node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
@@ -547,10 +538,7 @@ impl SpotNodePublicRuntime for SpotNode {
     /// Async leave to the same node's Entry Spot (operation builder).
     fn leave_actor(&self, actor: &ActorRef, current_spot_rid: &RoutingId) -> ActorLeaveOp<Empty> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-            node_rid: ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            },
+            node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });
@@ -567,10 +555,7 @@ impl SpotNodePublicRuntime for SpotNode {
     /// Actor-to-session relay (operation builder).
     fn send_bound_session_msg(&self, actor: &ActorRef) -> SendOp<Empty> {
         let raw = actor.to_raw().unwrap_or(ffi::zlink_actor_ref_t {
-            node_rid: ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            },
+            node_rid: ffi::zlink_routing_id_t::empty(),
             actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
             generation: 0,
         });

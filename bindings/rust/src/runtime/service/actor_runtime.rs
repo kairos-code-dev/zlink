@@ -44,24 +44,15 @@ impl ActorPublicRuntime for Actor {
             self.actor_ref()
                 .and_then(|a| a.to_raw())
                 .unwrap_or(ffi::zlink_actor_ref_t {
-                    node_rid: ffi::zlink_routing_id_t {
-                        size: 0,
-                        data: [0; 255],
-                    },
+                    node_rid: ffi::zlink_routing_id_t::empty(),
                     actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
                     generation: 0,
                 });
         let dest_node_rid = routing_id_from_handle(spot_node_raw(spot)).unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            })
+            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
         });
         let dest_spot_rid = spot.routing_id().unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            })
+            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
         });
         wrap_actor_join_op(NativeActorJoinOp {
             node_handle: actor_native(self).node_handle,
@@ -81,18 +72,12 @@ impl ActorPublicRuntime for Actor {
             self.actor_ref()
                 .and_then(|a| a.to_raw())
                 .unwrap_or(ffi::zlink_actor_ref_t {
-                    node_rid: ffi::zlink_routing_id_t {
-                        size: 0,
-                        data: [0; 255],
-                    },
+                    node_rid: ffi::zlink_routing_id_t::empty(),
                     actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
                     generation: 0,
                 });
         let dest_spot_rid = spot.routing_id().unwrap_or_else(|_| {
-            RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            })
+            RoutingId::from_raw(ffi::zlink_routing_id_t::empty())
         });
         wrap_actor_reply_op(NativeActorReplyOp {
             handle: actor_native(self).node_handle,
@@ -121,10 +106,7 @@ impl ActorPublicRuntime for Actor {
             self.actor_ref()
                 .and_then(|a| a.to_raw())
                 .unwrap_or(ffi::zlink_actor_ref_t {
-                    node_rid: ffi::zlink_routing_id_t {
-                        size: 0,
-                        data: [0; 255],
-                    },
+                    node_rid: ffi::zlink_routing_id_t::empty(),
                     actor_id: [0; ffi::ZLINK_ACTOR_ID_MAX],
                     generation: 0,
                 });

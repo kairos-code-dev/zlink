@@ -606,17 +606,11 @@ unsafe extern "C" fn actor_join_user_callback(
             result: crate::error::RequestResult::InternalError,
             join_result_code: 0,
             actor: ActorRef {
-                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
-                    size: 0,
-                    data: [0; 255],
-                }),
+                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t::empty()),
                 actor_id: String::new(),
                 generation: 0,
             },
-            joined_spot_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            }),
+            joined_spot_rid: RoutingId::from_raw(ffi::zlink_routing_id_t::empty()),
             join_epoch: 0,
             flags: 0,
         };
@@ -649,17 +643,11 @@ unsafe extern "C" fn actor_join_entry_spot_user_callback(
         let placeholder = ActorJoinEntrySpotResult {
             result: crate::error::RequestResult::InternalError,
             actor: ActorRef {
-                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
-                    size: 0,
-                    data: [0; 255],
-                }),
+                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t::empty()),
                 actor_id: String::new(),
                 generation: 0,
             },
-            target_node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
-                size: 0,
-                data: [0; 255],
-            }),
+            target_node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t::empty()),
             join_epoch: 0,
             flags: 0,
         };
@@ -686,10 +674,7 @@ unsafe extern "C" fn actor_lookup_user_callback(
         let placeholder = ActorLookupResult {
             result: crate::error::RequestResult::InternalError,
             actor: ActorRef {
-                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t {
-                    size: 0,
-                    data: [0; 255],
-                }),
+                node_rid: RoutingId::from_raw(ffi::zlink_routing_id_t::empty()),
                 actor_id: String::new(),
                 generation: 0,
             },

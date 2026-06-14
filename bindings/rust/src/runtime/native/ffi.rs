@@ -25,6 +25,15 @@ pub struct zlink_routing_id_t {
     pub data: [u8; 255],
 }
 
+impl zlink_routing_id_t {
+    /// An all-zero routing id placeholder (`size == 0`) used as an out-parameter
+    /// the native layer fills in. Centralizes the empty-routing-id literal that
+    /// the runtime would otherwise repeat at every call site.
+    pub(crate) const fn empty() -> Self {
+        Self { size: 0, data: [0; 255] }
+    }
+}
+
 pub const ZLINK_ACTOR_ID_MAX: usize = 256;
 
 pub type zlink_registry_option_t = u32;

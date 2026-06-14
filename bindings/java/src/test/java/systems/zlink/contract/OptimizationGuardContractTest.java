@@ -16,6 +16,10 @@ import org.junit.jupiter.api.Test;
 
 final class OptimizationGuardContractTest {
     private static final Path MAIN_SOURCE = Path.of("src", "main", "java");
+    private static final Path MODULE_INFO =
+        MAIN_SOURCE.resolve("module-info.java");
+    private static final Path SAMPLES_SOURCE = Path.of("samples");
+    private static final Path PERF_SOURCE = Path.of("perf");
 
     private static final String[] AGGREGATE_SYMBOLS = {
         "zlink_send",
@@ -87,6 +91,42 @@ final class OptimizationGuardContractTest {
         assertFalse(sourceWithoutUnsafeBootstrap.contains("com.sun.jna"));
     }
 
+    @Test
+    void moduleExportsOnlyPublicContractPackages() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (String line : Files.readAllLines(MODULE_INFO, StandardCharsets.UTF_8)) {
+            String trimmed = line.trim();
+            if ((trimmed.startsWith("exports systems.zlink.")
+                    && !trimmed.startsWith("exports systems.zlink.contracts."))
+                || trimmed.startsWith("opens systems.zlink.")) {
+                violations.add(trimmed);
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "non-contract packages exposed from Java module: " + violations);
+    }
+
+    @Test
+    void samplesAndPerfUseOnlyPublicBindingContract() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path root : List.of(SAMPLES_SOURCE, PERF_SOURCE)) {
+            for (Path path : javaFiles(root)) {
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (source.contains("import systems.zlink.internal.")
+                    || source.contains("import systems.zlink.runtime.")
+                    || source.contains("systems.zlink.internal.")
+                    || source.contains("systems.zlink.runtime.")
+                    || source.contains("ContractAccess")) {
+                    violations.add(path.toString());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "samples/perf must stay on public contract packages: " + violations);
+    }
+
     private static String allMainSource() throws IOException {
         StringBuilder builder = new StringBuilder();
         try (var stream = Files.walk(MAIN_SOURCE)) {
@@ -95,5 +135,11 @@ final class OptimizationGuardContractTest {
             }
         }
         return builder.toString();
+    }
+
+    private static List<Path> javaFiles(Path root) throws IOException {
+        try (var stream = Files.walk(root)) {
+            return stream.filter(p -> p.toString().endsWith(".java")).toList();
+        }
     }
 }

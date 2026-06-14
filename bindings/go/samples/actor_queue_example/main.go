@@ -1,6 +1,7 @@
 // 자립형 가이드 예제: SPOT Actor의 재접속 이전성(single-player queue).
 // 한 파일 안에 전체 흐름이 들어 있다 — 별도 헬퍼 없이 그대로 빌드·실행된다:
-//   go run ./samples/actor_queue_example
+//
+//	go run ./samples/actor_queue_example
 package main
 
 import (
@@ -8,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {

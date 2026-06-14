@@ -1,7 +1,8 @@
 // 자립형 가이드 예제: SPOT → 채널(DEALER→ROUTER) 요청.
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 // 채널 호출은 "어느 서비스 인스턴스든" 처리하는 로드밸런싱 경로다.
-//   go run ./samples/spot_channel_example
+//
+//	go run ./samples/spot_channel_example
 package main
 
 import (
@@ -9,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -33,7 +34,7 @@ func uniqueTCP() string {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -76,7 +77,7 @@ func main() {
 	replyCh := make(chan string, 1)
 	_, reqErr := room.RequestToChannel(channel).
 		Message(message("get-profile")).
-		Timeout(5 * time.Second).
+		Timeout(5*time.Second).
 		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 			if result == zlink.RequestOK && len(parts) > 0 {
 				replyCh <- string(parts[0].Data())
@@ -88,5 +89,5 @@ func main() {
 	reply := <-replyCh
 	must(<-serverDone)
 	fmt.Printf("[spot/channel] request \"get-profile\" -> reply %q\n", reply)
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

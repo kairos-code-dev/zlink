@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"time"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -101,5 +101,5 @@ func main() {
 	samplecommon.Must(<-requestDone)
 
 	fmt.Printf("[dealer-router/request-reply/async] send: %q -> recv: %q\n", "ping", string(reply[0].Data()))
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

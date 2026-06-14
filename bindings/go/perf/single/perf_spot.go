@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/perf/internal/perfcommon"
 )
 

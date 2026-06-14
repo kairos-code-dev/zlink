@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.MustStep("NewContext", err)
 	defer func() { samplecommon.MustStep("ctx.Close", ctx.Close()) }()
@@ -36,5 +36,5 @@ func main() {
 	_ = samplecommon.WaitTopologyEntry(registry.Topology, "sample")
 
 	fmt.Println("[discovery-registry] service: \"sample\" -> discovered")
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

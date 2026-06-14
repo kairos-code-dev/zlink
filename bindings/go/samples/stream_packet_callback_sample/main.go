@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -48,5 +48,5 @@ func main() {
 	samplecommon.Must(<-done)
 
 	fmt.Printf("[stream/packet-callback] send: %q -> recv: %q\n", sent, string(buffer))
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

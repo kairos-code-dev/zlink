@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -54,5 +54,5 @@ func main() {
 	}
 
 	fmt.Printf("[pubsub/recv] publish: %q -> subscribe: %q\n", topic+"/"+payload, message.Topic()+"/"+string(part.Data()))
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

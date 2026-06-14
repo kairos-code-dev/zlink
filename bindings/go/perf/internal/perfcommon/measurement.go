@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 const (

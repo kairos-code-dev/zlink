@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -24,7 +24,7 @@ func message(text string) *zlink.Message {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -130,5 +130,5 @@ func main() {
 	must(player1.Close())
 	must(player2.Close())
 	fmt.Println(`[actor/room] player-1: "your-turn", player-2: "wait"`)
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

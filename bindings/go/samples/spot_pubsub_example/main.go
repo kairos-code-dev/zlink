@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -45,7 +45,7 @@ func waitPeer(node *zlink.SpotNode) {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -100,5 +100,5 @@ func main() {
 	part, err := received.SinglePartOrError()
 	must(err)
 	fmt.Printf("[spot/pubsub] topic %q -> recv: %q\n", received.Topic(), string(part.Data()))
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

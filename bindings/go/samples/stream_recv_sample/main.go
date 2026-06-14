@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	samplecommon.Must(err)
 	defer ctx.Close()
@@ -45,5 +45,5 @@ func main() {
 	_, err = io.ReadFull(conn, buffer)
 	samplecommon.Must(err)
 	fmt.Printf("[stream/recv] send: %q -> recv: %q\n", sent, string(buffer))
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

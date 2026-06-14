@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"time"
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 	"zlink.systems/zlink/samples/internal/samplecommon"
 )
 

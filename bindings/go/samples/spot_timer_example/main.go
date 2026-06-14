@@ -1,6 +1,7 @@
 // 자립형 가이드 예제: SPOT timer.
 // 게임룸(Spot)이 주기 타이머로 틱을 돌린다(예: 게임 루프 틱/타임아웃).
-//   go run ./samples/spot_timer_example
+//
+//	go run ./samples/spot_timer_example
 package main
 
 import (
@@ -8,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -18,7 +19,7 @@ func must(err error) {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -61,5 +62,5 @@ func main() {
 		panic(fmt.Sprintf("timer did not fire 3 times: %d", final))
 	}
 	fmt.Printf("[spot/timer] room tick fired %d times\n", final)
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

@@ -55,6 +55,11 @@ func bindingRoot(t *testing.T) string {
 	return filepath.Dir(file)
 }
 
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	return filepath.Clean(filepath.Join(bindingRoot(t), "..", ".."))
+}
+
 func implementationGoFiles(t *testing.T) []string {
 	t.Helper()
 	root := bindingRoot(t)
@@ -77,6 +82,33 @@ func implementationGoFiles(t *testing.T) []string {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	return files
+}
+
+func goFilesUnder(t *testing.T, roots ...string) []string {
+	t.Helper()
+	var files []string
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				if strings.Contains(path, string(filepath.Separator)+"build") ||
+					strings.Contains(path, string(filepath.Separator)+"results") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasSuffix(path, ".go") {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	return files
 }
@@ -134,5 +166,28 @@ func TestOptimizationGuardAvoidsRuntimeFinalizersAndSleeps(t *testing.T) {
 		if strings.Contains(body, "time.Sleep(") {
 			t.Fatalf("%s uses time.Sleep in binding implementation hot path", path)
 		}
+	}
+}
+
+func TestSamplesAndPerfUseRootPublicContract(t *testing.T) {
+	root := moduleRoot(t)
+	var violations []string
+	for _, path := range goFilesUnder(t, filepath.Join(root, "samples"), filepath.Join(root, "perf")) {
+		bodyBytes, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(bodyBytes)
+		for _, token := range []string{
+			`"zlink.systems/zlink/contracts"`,
+			`"zlink.systems/zlink/internal/native"`,
+		} {
+			if strings.Contains(body, token) {
+				violations = append(violations, filepath.Base(path)+":"+token)
+			}
+		}
+	}
+	if len(violations) != 0 {
+		t.Fatalf("samples/perf must use the root public contract: %v", violations)
 	}
 }

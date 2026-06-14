@@ -3,7 +3,8 @@
 // Actor는 생성 시 Entry Spot(로비)에 있다가 join으로 개별 room(user Spot)으로
 // 옮겨 간다. 메시지는 STREAM session에 actor를 bind하고 packet을 relay해야만
 // 도달하며, room의 dispatch context에서 들어온 순서대로 처리된다.
-//   go run ./samples/actor_sequential_example
+//
+//	go run ./samples/actor_sequential_example
 package main
 
 import (
@@ -11,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -27,7 +28,7 @@ func message(text string) *zlink.Message {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -117,5 +118,5 @@ func main() {
 	zlink.MultipartClose((<-leaveCh).Parts)
 	must(player.Close())
 	fmt.Println(`[actor/sequential] processed in order: move -> attack -> loot`)
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

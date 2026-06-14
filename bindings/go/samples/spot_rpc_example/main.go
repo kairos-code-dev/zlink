@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	zlink "zlink.systems/zlink/contracts"
+	zlink "zlink.systems/zlink"
 )
 
 func must(err error) {
@@ -44,7 +44,7 @@ func waitPeer(node *zlink.SpotNode) {
 }
 
 func main() {
-// --8<-- [start:doc]
+	// --8<-- [start:doc]
 	ctx, err := zlink.NewContext()
 	must(err)
 	defer ctx.Close()
@@ -110,7 +110,7 @@ func main() {
 	replyCh := make(chan string, 1)
 	_, reqErr := client.RequestToSpot(serverNodeRid, serverSpotRid).
 		Message(message("ping")).
-		Timeout(3 * time.Second).
+		Timeout(3*time.Second).
 		Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
 			if result == zlink.RequestOK && len(parts) > 0 {
 				replyCh <- string(parts[0].Data())
@@ -125,5 +125,5 @@ func main() {
 	case <-time.After(5 * time.Second):
 		panic("spot rpc: no reply")
 	}
-// --8<-- [end:doc]
+	// --8<-- [end:doc]
 }

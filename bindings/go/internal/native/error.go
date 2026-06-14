@@ -8,6 +8,7 @@ package native
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"syscall"
@@ -39,6 +40,13 @@ type RecvError struct {
 	Result RecvResult
 	errorDetails
 	nativeErrno int
+}
+
+// isNoData reports whether err is a RecvError carrying the no-data result —
+// the signal a non-blocking receive raises when nothing was available.
+func isNoData(err error) bool {
+	var recvErr *RecvError
+	return errors.As(err, &recvErr) && recvErr.Result == RecvNoData
 }
 
 type HandlerError struct {

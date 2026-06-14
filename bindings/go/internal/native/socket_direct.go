@@ -16,10 +16,7 @@ static inline int zlink_recv_handler_go_local(void *s, uintptr_t userdata) {
 */
 import "C"
 
-import (
-	"errors"
-	"runtime/cgo"
-)
+import "runtime/cgo"
 
 type directSocket struct {
 	*connectionSocket
@@ -52,8 +49,7 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err
@@ -67,8 +63,7 @@ func (s *directSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, 
 		return recvErrorFromResult(C.zlink_recv_part(s.raw(), rid, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return RecvPartResult{}, false, nil
 		}
 		return RecvPartResult{}, false, err

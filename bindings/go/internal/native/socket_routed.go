@@ -20,7 +20,6 @@ static inline int zlink_router_send_spot_part_go_local(void *router, const zlink
 import "C"
 
 import (
-	"errors"
 	"runtime/cgo"
 	"time"
 )
@@ -135,8 +134,7 @@ func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
 			requestSeq = primedRequestSeq
 			parts = primedParts
 		} else {
-			var recvErr *RecvError
-			if !errors.As(primedErr, &recvErr) || recvErr.Result != RecvNoData {
+			if !isNoData(primedErr) {
 				return primedErr
 			}
 			var err error
@@ -196,8 +194,7 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 		return false, &RecvError{Result: RecvBusy, nativeErrno: int(C.EBUSY)}
 	}
 	if err := s.recvInto(out, flags); err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err
@@ -210,8 +207,7 @@ func (s *routedSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, 
 		return recvErrorFromResult(C.zlink_router_recv_part(s.raw(), nodeRID, spotRID, requestSeq, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return RecvPartResult{}, false, nil
 		}
 		return RecvPartResult{}, false, err

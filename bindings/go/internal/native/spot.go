@@ -35,7 +35,6 @@ static inline int zlink_spot_request_router_part_go_local(void *spot, const zlin
 import "C"
 
 import (
-	"errors"
 	"runtime/cgo"
 	"time"
 	"unsafe"
@@ -302,8 +301,7 @@ func (s *Spot) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error) {
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, C.size_t(recvTopicBufferCap), topicLen, part, hasMore, recvFlags))
 	}, flags)
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err
@@ -319,8 +317,7 @@ func (s *Spot) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) 
 		return recvErrorFromResult(C.zlink_spot_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return SubscribePartResult{}, false, nil
 		}
 		return SubscribePartResult{}, false, err
@@ -368,8 +365,7 @@ func (s *Spot) RecvRoutedPart(out *Message, flags RecvFlags) (RecvPartResult, bo
 		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), nodeRID, spotRID, requestSeq, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return RecvPartResult{}, false, nil
 		}
 		return RecvPartResult{}, false, err
@@ -388,8 +384,7 @@ func (s *Spot) RecvRouted(out *Received, flags RecvFlags) (bool, error) {
 		return recvErrorFromResult(C.zlink_spot_recv_part(s.raw(), &sourceRID, &spotRID, &requestSeq, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err
@@ -434,8 +429,7 @@ func (s *Spot) RecvActorLifecycle(flags RecvFlags) (SpotActorLifecycleEvent, boo
 	}
 	var event C.zlink_spot_actor_lifecycle_event_t
 	if err := recvErrorFromResult(C.zlink_spot_recv_actor_lifecycle(s.raw(), &event, C.zlink_recv_flags_t(flags))); err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return SpotActorLifecycleEvent{}, false, nil
 		}
 		return SpotActorLifecycleEvent{}, false, err

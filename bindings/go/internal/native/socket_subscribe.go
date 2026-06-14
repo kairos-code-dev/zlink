@@ -9,10 +9,6 @@ package native
 */
 import "C"
 
-import (
-	"errors"
-)
-
 type subscribeSocket struct {
 	*connectionSocket
 }
@@ -37,8 +33,7 @@ func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, e
 		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, recvTopicBufferCap, topicLen, part, hasMore, recvFlags))
 	}, flags)
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err
@@ -51,8 +46,7 @@ func (s *subscribeSocket) SubscribePart(out *Message, topicBuffer []byte, flags 
 		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
 	})
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return SubscribePartResult{}, false, nil
 		}
 		return SubscribePartResult{}, false, err
@@ -81,8 +75,7 @@ func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(out *SubscriptionEvent, f
 		return nil
 	}, flags)
 	if err != nil {
-		var recvErr *RecvError
-		if errors.As(err, &recvErr) && recvErr.Result == RecvNoData {
+		if isNoData(err) {
 			return false, nil
 		}
 		return false, err

@@ -2,7 +2,6 @@
 
 import { Message, RoutingId, type MessageLike } from '../../contracts';
 import {
-  PollEventFlag,
   RidDuplicatePolicy,
   type PollEventFlagValue,
   type RidDuplicatePolicy as RidDuplicatePolicyValue
@@ -48,23 +47,6 @@ export function flagsToMask(events: readonly PollEventFlagValue[]): number {
     throw new TypeError('events must be an array');
   }
   return events.reduce((mask, event) => mask | (event | 0), 0);
-}
-
-export const POLL_EVENT_FLAGS = Object.freeze([
-  PollEventFlag.PollIn,
-  PollEventFlag.PollOut,
-  PollEventFlag.PollErr,
-  PollEventFlag.PollPri,
-  PollEventFlag.PollCompletion
-]);
-
-export function maskToFlags(mask: number): PollEventFlagValue[] {
-  const value = mask | 0;
-  const flags: PollEventFlagValue[] = [];
-  for (const flag of POLL_EVENT_FLAGS) {
-    if ((value & flag) !== 0) flags.push(flag);
-  }
-  return flags;
 }
 
 export function readBoolOption(buffer: Buffer, name: string): boolean {

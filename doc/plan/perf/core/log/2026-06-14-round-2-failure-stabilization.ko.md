@@ -55,14 +55,48 @@
     - runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`
     - result: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_151826.txt`
     - completion: success 6, fail 0, status complete
-- full perf: 미실행
+- full perf:
+  - `PERF_FAIL_FAST=1 bindings/c/perf/run_benchmarks_multi.sh --reuse-build`
+    - runtime: `/home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.6.0.4`
+    - result: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_151925.txt`
+    - completion: success 192, unsupported 0, skip 0, fail 0, status complete
+    - generated baseline copy: `bindings/c/perf/baseline/perf_c_multi_linux_20260614_151925.txt`
+    - total benchmark time: 32m 54s
+
+## 64B 비교
+
+- 기존 기준 report: `bindings/c/perf/baseline/perf_c_multi_linux_20260513_101034.txt`
+- 새 full report: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_151925.txt`
+- 공통 64B 항목: 32개
+- 전체: 항목별 평균 -12.9%, 중앙값 -9.2%, 평균 throughput 비율 -32.7%
+- one-way: 항목별 평균 -32.1%, 중앙값 -27.5%, 평균 throughput 비율 -35.8%
+- echo: 항목별 평균 -1.3%, 중앙값 -6.4%, 평균 throughput 비율 -4.3%
+- 최악 항목:
+  - `MULTI_SPOT wss 64B`: 7185.520 -> 3396.418 Kmsg/s, -52.7%
+  - `MULTI_SPOT tcp 64B`: 7379.815 -> 3508.952 Kmsg/s, -52.5%
+  - `MULTI_SPOT ws 64B`: 7170.263 -> 4194.259 Kmsg/s, -41.5%
+  - `MULTI_SPOT tls 64B`: 6924.687 -> 4204.804 Kmsg/s, -39.3%
+  - `MULTI_PUBSUB tcp 64B`: 3518.023 -> 2393.592 Kmsg/s, -32.0%
+  - `MULTI_PUBSUB tls 64B`: 3333.681 -> 2346.971 Kmsg/s, -29.6%
+
+## 직전 문제 report 대비
+
+- 직전 문제 report: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_103936.txt`
+- 새 full report: `bindings/c/perf/results/multi/report/perf_c_multi_linux_20260614_151925.txt`
+- 공통 64B 항목: 26개
+- 전체: 항목별 평균 +1.5%, 중앙값 +1.6%, 평균 throughput 비율 -1.3%
+- one-way: 항목별 평균 -2.3%, 중앙값 -2.8%, 평균 throughput 비율 -2.1%
+- echo: 항목별 평균 +3.9%, 중앙값 +2.6%, 평균 throughput 비율 +4.2%
+- 새 full report는 직전 문제 report와 성능 수준이 대체로 같지만 실패가 0개다.
 
 ## 결과
 
-- 실패 안정화: current 문제 report의 실패 그룹 중 `MULTI_SPOT ws/wss`, `MULTI_SPOT_REQREP ws/wss`, `MULTI_SPOT_SENDSEND ws/wss`, `MULTI_STREAM ws`는 현재 runtime targeted perf에서 모두 fail 0으로 끝났다.
-- 목표 달성 여부: full multi perf 실패 0개는 아직 미확인이라 미달성이다.
+- 실패 안정화: current 문제 report의 실패 그룹 중 `MULTI_SPOT ws/wss`, `MULTI_SPOT_REQREP ws/wss`, `MULTI_SPOT_SENDSEND ws/wss`, `MULTI_STREAM ws`는 현재 runtime targeted perf와 full perf에서 모두 fail 0으로 끝났다.
+- 목표 달성 여부: 실패 안정화는 달성했다. 성능 회복은 아직 미달성이다.
+- 해석: 실패는 현재 `core/build` runtime에서 재현되지 않으므로 이 라운드에서는 core 수정 대상을 만들지 않는다. 다음 라운드는 `MULTI_SPOT` 64B one-way와 `MULTI_PUBSUB` 64B one-way 회귀를 우선 추적한다.
 
 ## 다음 작업
 
-- full 또는 축소 full perf를 실행해 실패 0개 기준선을 승격한다.
-- 실패 0개가 확인되면 새 current report 기준으로 64B 회귀 수치를 다시 계산한다.
+- `MULTI_SPOT` one-way 64B의 tcp/wss 회귀를 먼저 추적한다. 기준 대비 -52%대라서 10% 의미 기준을 충분히 넘는다.
+- `MULTI_PUBSUB` one-way 64B tcp/tls 회귀를 다음 후보로 둔다.
+- 새 full report `perf_c_multi_linux_20260614_151925.txt`를 실패 0개 기준선으로 사용한다.

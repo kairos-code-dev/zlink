@@ -28,18 +28,6 @@ export function createTopicMessage(
   return message;
 }
 
-export function adoptTopicMessageFrom(target: TopicMessage, source: TopicMessage): void {
-  target.close();
-  const targetState = target as unknown as TopicMessageState;
-  const sourceState = source as unknown as TopicMessageState;
-  targetState.parts = freezeMessageParts(source.parts);
-  sourceState.parts = [];
-  targetState.routingId = source.routingId;
-  targetState.topic = source.topic;
-  sourceState.routingId = null;
-  sourceState.topic = '';
-}
-
 export function replaceTopicMessage(
   target: TopicMessage,
   topic: string,

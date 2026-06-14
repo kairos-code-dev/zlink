@@ -2,18 +2,14 @@
 // 한 노드의 Spot이 다른 노드의 Spot으로 직접 요청을 보내고, 상대가 응답한다.
 //   cargo run --example spot_rpc_example
 
-use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use zlink::{Context, Message, Received, RecvFlags, RoutingId, SendFlags, SpotNode};
 
-fn unique_tcp() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    format!("tcp://127.0.0.1:{port}")
-}
+#[path = "sample_support.rs"]
+mod sample_support;
 
 fn wait_peer(node: &SpotNode) {
     let deadline = Instant::now() + Duration::from_secs(15);
@@ -49,10 +45,14 @@ fn main() {
         .set_routing_id(&RoutingId::from(b"rpc-client-spot"))
         .unwrap();
     // 라우티드 평면은 ROUTER bind가 필요하다 (pub bind보다 먼저).
-    server_node.set_router_bind(&unique_tcp()).unwrap();
-    client_node.set_router_bind(&unique_tcp()).unwrap();
-    let server_endpoint = unique_tcp();
-    let client_endpoint = unique_tcp();
+    server_node
+        .set_router_bind(&sample_support::tcp_endpoint())
+        .unwrap();
+    client_node
+        .set_router_bind(&sample_support::tcp_endpoint())
+        .unwrap();
+    let server_endpoint = sample_support::tcp_endpoint();
+    let client_endpoint = sample_support::tcp_endpoint();
     server_node.set_pub_bind(&server_endpoint).unwrap();
     client_node.set_pub_bind(&client_endpoint).unwrap();
     server_node.connect_peer(&client_endpoint).unwrap();

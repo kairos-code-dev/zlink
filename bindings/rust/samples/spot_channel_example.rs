@@ -2,18 +2,14 @@
 // 게임룸(Spot)이 API 서버(채널 서비스)에 outgame 데이터를 요청한다.
 //   cargo run --example spot_channel_example
 
-use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
 use zlink::{Context, Message, Received, RecvFlags, SpotNode};
 
-fn unique_tcp() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    format!("tcp://127.0.0.1:{port}")
-}
+#[path = "sample_support.rs"]
+mod sample_support;
 
 fn main() {
     // --8<-- [start:doc]
@@ -24,7 +20,7 @@ fn main() {
     let api_router = ctx.router_socket().unwrap();
 
     let channel = "api";
-    let endpoint = unique_tcp();
+    let endpoint = sample_support::tcp_endpoint();
     api_router.bind(&endpoint).unwrap();
     room_dealer.connect(&endpoint).unwrap();
     // "api" 채널 호출을 이 DEALER로 내보내도록 노드에 등록한다.

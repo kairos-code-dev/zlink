@@ -46,6 +46,13 @@ run_sample registry_query_sample
 run_sample actor_room_server_sample
 run_sample actor_gateway_relay_sample
 run_sample actor_single_player_queue_sample
+run_sample actor_queue_example
+run_sample actor_room_example
+run_sample actor_sequential_example
+run_sample spot_channel_example
+run_sample spot_pubsub_example
+run_sample spot_rpc_example
+run_sample spot_timer_example
 
 echo ""
 echo "=== Summary ==="

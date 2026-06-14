@@ -24,7 +24,7 @@ function delay(ms) {
 }
 
 async function waitForSpotPeer(node) {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (node.status().connectedPeerCount > 0) return;
     await delay(25);
@@ -66,7 +66,7 @@ async function main() {
     subscriber.setSubscription(topic);
     await waitForSpotPeer(publisherNode);
     await waitForSpotPeer(subscriberNode);
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + 5000;
     const received = new zlink.TopicMessage();
     let hasReceived = false;
     while (Date.now() < deadline) {

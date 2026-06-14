@@ -19,7 +19,7 @@ async function reservePort() {
 }
 
 async function waitForTopologyEntry(registry, channelName, endpoint) {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     const entry = registry.topology().find((item) => item.channelName === channelName);
     if (entry) {

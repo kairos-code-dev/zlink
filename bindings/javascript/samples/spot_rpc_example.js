@@ -21,7 +21,7 @@ async function reservePort() {
 }
 
 async function waitPeer(node) {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (node.status().connectedPeerCount > 0) return;
     await new Promise((resolve) => setTimeout(resolve, 25));

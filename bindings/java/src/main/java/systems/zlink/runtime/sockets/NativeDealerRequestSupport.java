@@ -30,7 +30,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
-public final class NativeDealerRequestSupport {
+final class NativeDealerRequestSupport {
     static {
         InternalAccess.register(new InternalAccess.RuntimeSocketAccess() {
             @Override

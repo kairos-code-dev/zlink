@@ -208,6 +208,29 @@ final class OptimizationGuardContractTest {
     }
 
     @Test
+    void runtimeImplementationTypesStayPackagePrivateWhenPossible()
+        throws IOException {
+        List<Path> implementationTypes = List.of(
+            MAIN_SOURCE.resolve(Path.of("systems", "zlink", "runtime",
+                "core", "NativeContext.java")),
+            MAIN_SOURCE.resolve(Path.of("systems", "zlink", "runtime",
+                "sockets", "NativeDealerRequestSupport.java"))
+        );
+        List<String> violations = new ArrayList<>();
+
+        for (Path path : implementationTypes) {
+            String source = Files.readString(path, StandardCharsets.UTF_8);
+            if (source.contains("public final class ")) {
+                violations.add(path.toString());
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "runtime implementation types must stay package-private when no "
+                + "public contract requires them: " + violations);
+    }
+
+    @Test
     void nativeSocketDescriptorsStayRuntimePrivate() throws IOException {
         Path contractInternalSockets = MAIN_SOURCE.resolve(Path.of(
             "systems", "zlink", "contracts", "internal", "sockets"));

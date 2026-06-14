@@ -25,9 +25,7 @@ import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.runtime.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.StreamSocket;
-import systems.zlink.runtime.core.NativeContext;
 import systems.zlink.runtime.eventing.NativeTimer;
-import systems.zlink.runtime.sockets.NativeDealerRequestSupport;
 import systems.zlink.runtime.sockets.SocketMessageHandler;
 import systems.zlink.runtime.service.spot.NativeSpot;
 import systems.zlink.runtime.service.spot.NativeSpotNode;
@@ -683,8 +681,9 @@ public final class InternalAccess {
     }
 
     private static ContextAccess contextAccess() {
-        if (contextAccess == null) load(NativeContext.class);
-        return require(contextAccess, NativeContext.class);
+        if (contextAccess == null)
+            load("systems.zlink.runtime.core.NativeContext");
+        return require(contextAccess, Context.class);
     }
 
     private static DiscoveryAccess discoveryAccess() {
@@ -698,8 +697,9 @@ public final class InternalAccess {
     }
 
     private static RuntimeSocketAccess runtimeSocketAccess() {
-        if (runtimeSocketAccess == null) load(NativeDealerRequestSupport.class);
-        return require(runtimeSocketAccess, NativeDealerRequestSupport.class);
+        if (runtimeSocketAccess == null)
+            load("systems.zlink.runtime.sockets.NativeDealerRequestSupport");
+        return require(runtimeSocketAccess, Socket.class);
     }
 
     private static SpotAccess spotAccess() {

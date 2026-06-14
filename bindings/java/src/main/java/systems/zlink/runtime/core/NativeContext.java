@@ -39,7 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
-public final class NativeContext implements Context {
+final class NativeContext implements Context {
     private static final boolean DEBUG_REQREP =
       Boolean.getBoolean("zlink.reqrep.debug");
         private final ContextOptions options;

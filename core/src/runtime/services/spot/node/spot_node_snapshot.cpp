@@ -257,7 +257,7 @@ int spot_node_t::snapshot_peers (const zlink_spot_node_peer_filter_t *filter_,
         connected = _peer_state.connected_endpoints;
         observations = _peer_state.observations;
         weight_by_endpoint = _peer_state.peer_weight_by_endpoint;
-        router_channel_peers = _service_attachment_state.router_channel_peers;
+        router_channel_peers = service_attachments ().router_channel_peers;
         summary_last_changed_ms = _summary_state.summary_last_changed_ms;
     }
 

@@ -81,7 +81,7 @@ int spot_mesh_pub_hwm_t::resolve_runtime_default (const spot_runtime_t *runtime_
 {
     if (!runtime_)
         return 0;
-    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    const spot_node_runtime_tuning_t hwm = runtime_->runtime_tuning_snapshot ();
     return spot_node_pubsub_hwm_overridden (hwm) ? spot_node_pubsub_admission_hwm (hwm) : 0;
 }
 

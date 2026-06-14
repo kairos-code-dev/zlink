@@ -44,7 +44,7 @@ static int resolve_pubsub_admission_hwm (const spot_runtime_t *runtime_)
     if (!runtime_ || !runtime_->owner)
         return spot_node_admission_hwm_for_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED);
 
-    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    const spot_node_runtime_tuning_t hwm = runtime_->runtime_tuning_snapshot ();
     return spot_node_pubsub_admission_hwm (hwm);
 }
 
@@ -53,7 +53,7 @@ static int resolve_router_admission_hwm (const spot_runtime_t *runtime_)
     if (!runtime_ || !runtime_->owner)
         return spot_node_admission_hwm_for_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED);
 
-    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    const spot_node_runtime_tuning_t hwm = runtime_->runtime_tuning_snapshot ();
     return spot_node_router_admission_hwm (hwm);
 }
 
@@ -182,10 +182,10 @@ static int configure_runtime_sockets (spot_runtime_t *runtime_,
     const int submit_retry_mode = ZLINK_SUBMIT_RETRY_LOCAL_FAILURE;
     const int submit_retry_timeout = 100;
     const int submit_retry_attempts = 2;
-    const spot_node_hwm_config_t hwm_config =
-      runtime_ ? runtime_->hwm_config_snapshot () : spot_node_hwm_config_t ();
-    const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm_config);
-    const bool router_hwm_override = spot_node_router_hwm_overridden (hwm_config);
+    const spot_node_runtime_tuning_t runtime_tuning =
+      runtime_ ? runtime_->runtime_tuning_snapshot () : spot_node_runtime_tuning_t ();
+    const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (runtime_tuning);
+    const bool router_hwm_override = spot_node_router_hwm_overridden (runtime_tuning);
     const int pubsub_admission_hwm =
       pubsub_hwm_override ? resolve_pubsub_admission_hwm (runtime_) : 0;
     const int router_admission_hwm =

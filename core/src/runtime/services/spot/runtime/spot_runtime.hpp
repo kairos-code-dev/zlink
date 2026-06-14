@@ -3,16 +3,16 @@
 #ifndef __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 #define __ZLINK_SPOT_RUNTIME_HPP_INCLUDED__
 
+#include "services/spot/runtime/spot_runtime_attachment_state.hpp"
 #include "services/spot/runtime/spot_runtime_execution.hpp"
+#include "services/spot/runtime/spot_runtime_hwm.hpp"
+#include "services/spot/runtime/spot_runtime_routes.hpp"
 #include "services/spot/dispatch/spot_dispatch_worker_pool.hpp"
-#include "zlink.h"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 #include "utils/stdint.hpp"
 
-#include <deque>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -21,12 +21,6 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 class ctx_t;
-
-enum spot_attachment_kind_t
-{
-    spot_attachment_pub = 1,
-    spot_attachment_sub = 2
-};
 
 enum spot_shutdown_phase_t
 {
@@ -38,85 +32,6 @@ enum spot_shutdown_phase_t
     spot_shutdown_phase_drain_state = 5,
     spot_shutdown_phase_cleanup = 6
 };
-
-struct spot_attachment_t
-{
-    spot_attachment_t () : id (0), kind (0), socket (NULL), relay_socket (NULL) {}
-
-    uint64_t id;
-    int kind;
-    socket_base_t *socket;
-    socket_base_t *relay_socket;
-    std::string endpoint;
-    std::string relay_endpoint;
-};
-
-struct spot_node_hwm_config_t
-{
-    spot_node_hwm_config_t () :
-        router_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
-        router_hwm_override (0),
-        pubsub_profile (ZLINK_AUTO_HWM_PROFILE_BALANCED),
-        pubsub_hwm_override (0),
-        dispatch_workers_min (0),
-        dispatch_workers_max (0)
-    {
-    }
-
-    zlink_auto_hwm_profile_t router_profile;
-    int router_hwm_override;
-    zlink_auto_hwm_profile_t pubsub_profile;
-    int pubsub_hwm_override;
-    int dispatch_workers_min;
-    int dispatch_workers_max;
-};
-
-inline int spot_node_admission_hwm_for_profile (zlink_auto_hwm_profile_t profile_)
-{
-    switch (profile_) {
-        case ZLINK_AUTO_HWM_PROFILE_COMPACT:
-            return 64;
-        case ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY:
-            return 128;
-        case ZLINK_AUTO_HWM_PROFILE_THROUGHPUT:
-            return 512;
-        case ZLINK_AUTO_HWM_PROFILE_BALANCED:
-        default:
-            return 256;
-    }
-}
-
-inline bool spot_node_router_hwm_overridden (const spot_node_hwm_config_t &config_)
-{
-    return config_.router_hwm_override > 0;
-}
-
-inline bool spot_node_pubsub_hwm_overridden (const spot_node_hwm_config_t &config_)
-{
-    return config_.pubsub_hwm_override > 0;
-}
-
-inline bool spot_node_valid_hwm_profile (int profile_)
-{
-    return profile_ == ZLINK_AUTO_HWM_PROFILE_COMPACT
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_LOW_LATENCY
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_BALANCED
-           || profile_ == ZLINK_AUTO_HWM_PROFILE_THROUGHPUT;
-}
-
-inline int spot_node_router_admission_hwm (const spot_node_hwm_config_t &config_)
-{
-    return config_.router_hwm_override > 0
-             ? config_.router_hwm_override
-             : spot_node_admission_hwm_for_profile (config_.router_profile);
-}
-
-inline int spot_node_pubsub_admission_hwm (const spot_node_hwm_config_t &config_)
-{
-    return config_.pubsub_hwm_override > 0
-             ? config_.pubsub_hwm_override
-             : spot_node_admission_hwm_for_profile (config_.pubsub_profile);
-}
 
 struct spot_runtime_t
 {
@@ -156,8 +71,8 @@ struct spot_runtime_t
                                    size_t *active_peer_count_out_) const;
     void refresh_attachment_auto_hwm_scope_counts ();
     uint64_t attachment_state_version () const;
-    spot_node_hwm_config_t hwm_config_snapshot () const;
-    void set_hwm_config (const spot_node_hwm_config_t &config_);
+    spot_node_runtime_tuning_t runtime_tuning_snapshot () const;
+    void set_runtime_tuning (const spot_node_runtime_tuning_t &config_);
     int start_dispatch_workers ();
     void stop_dispatch_workers ();
     int post_dispatch_event (void *spot_);
@@ -178,8 +93,7 @@ struct spot_runtime_t
     spot_node_t *owner;
     mutable mutex_t ctrl_sync;
     mutable mutex_t execution_sync;
-    mutable mutex_t hwm_config_sync;
-    mutable mutex_t routed_send_sync;
+    mutable mutex_t runtime_tuning_sync;
     mutable mutex_t shutdown_sync;
     socket_base_t *data_ctrl_front;
     socket_base_t *data_ctrl_back;
@@ -200,19 +114,14 @@ struct spot_runtime_t
     std::string data_ctrl_endpoint;
     std::string peer_ctrl_endpoint;
     std::string external_router_bind_endpoint;
-    std::map<std::string, std::string> external_route_ids_by_endpoint;
-    std::map<std::string, std::string> external_route_endpoints_by_endpoint;
+    spot_runtime_external_routes_t external_routes;
     bool faulted;
     int fault_errno;
     bool abortive_shutdown;
     spot_shutdown_phase_t shutdown_phase_value;
-    spot_node_hwm_config_t hwm_config;
-    mutable mutex_t attachment_sync;
+    spot_node_runtime_tuning_t runtime_tuning;
     spot_runtime_execution_state_t execution;
-    uint64_t next_attachment_id;
-    uint64_t attachment_version;
-    std::map<uint64_t, spot_attachment_t> attachments;
-    std::deque<socket_base_t *> retired_attachment_relay_sockets;
+    spot_runtime_attachment_state_t attachment_state;
 };
 }
 

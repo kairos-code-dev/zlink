@@ -453,9 +453,9 @@ void test_mesh_pub_hwm_runtime_owner_uses_bound_endpoint ()
 
     TEST_ASSERT_TRUE (zlink::spot_mesh_pub_hwm_t::publish_ready_hint (&runtime, 2));
     TEST_ASSERT_EQUAL_INT (0, zlink::spot_mesh_pub_hwm_t::resolve_runtime_default (&runtime));
-    zlink::spot_node_hwm_config_t hwm = runtime.hwm_config_snapshot ();
+    zlink::spot_node_runtime_tuning_t hwm = runtime.runtime_tuning_snapshot ();
     hwm.pubsub_hwm_override = 77;
-    runtime.set_hwm_config (hwm);
+    runtime.set_runtime_tuning (hwm);
     TEST_ASSERT_EQUAL_INT (77, zlink::spot_mesh_pub_hwm_t::resolve_runtime_default (&runtime));
     TEST_ASSERT_EQUAL_INT (
       expected_mesh_pub_sndhwm (),

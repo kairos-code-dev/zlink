@@ -125,22 +125,29 @@ inline std::string node_id_string (uint32_t node_id_)
     return std::string (buf);
 }
 
-inline bool parse_decimal_port (const char *text_, unsigned long min_, unsigned long max_,
-                                unsigned long *port_out_)
+inline bool parse_endpoint_port_and_suffix (const std::string &endpoint_,
+                                            size_t port_sep_,
+                                            unsigned long *port_out_,
+                                            std::string *suffix_out_)
 {
-    if (!text_ || !*text_ || !port_out_)
+    if (!port_out_ || !suffix_out_ || port_sep_ == std::string::npos
+        || port_sep_ + 1 >= endpoint_.size ()) {
         return false;
-    for (const char *it = text_; *it != '\0'; ++it) {
-        if (*it < '0' || *it > '9')
-            return false;
     }
 
+    const std::string port_and_suffix = endpoint_.substr (port_sep_ + 1);
     char *end = NULL;
-    const unsigned long port = std::strtoul (text_, &end, 10);
-    if (!end || end == text_ || *end != '\0' || port < min_ || port > max_)
+    const unsigned long port = std::strtoul (port_and_suffix.c_str (), &end, 10);
+    if (!end || end == port_and_suffix.c_str () || port < 1UL || port > 65535UL) {
+        return false;
+    }
+
+    const char *suffix = end;
+    if (*suffix != '\0' && *suffix != '/')
         return false;
 
     *port_out_ = port;
+    suffix_out_->assign (suffix);
     return true;
 }
 
@@ -156,38 +163,13 @@ derive_fixed_port_endpoint (const std::string &endpoint_, const char *scheme_, s
         return false;
 
     unsigned long port = 0;
-    if (!parse_decimal_port (endpoint_.c_str () + port_sep + 1, 1UL, 64535UL, &port))
+    std::string suffix;
+    if (!parse_endpoint_port_and_suffix (endpoint_, port_sep, &port, &suffix) || port > 64535UL)
         return false;
 
     char buf[32];
     snprintf (buf, sizeof (buf), "%lu", port + 1000UL);
-    *out_ = endpoint_.substr (0, port_sep + 1) + buf;
-    return true;
-}
-
-inline bool parse_endpoint_port_and_suffix (const std::string &endpoint_,
-                                            size_t port_sep_,
-                                            unsigned long *port_out_,
-                                            std::string *suffix_out_)
-{
-    if (!port_out_ || !suffix_out_ || port_sep_ == std::string::npos
-        || port_sep_ + 1 >= endpoint_.size ()) {
-        return false;
-    }
-
-    const std::string port_and_suffix = endpoint_.substr (port_sep_ + 1);
-    char *end = NULL;
-    const unsigned long port = std::strtoul (port_and_suffix.c_str (), &end, 10);
-    if (!end || end == port_and_suffix.c_str () || port < 1024UL || port > 65535UL) {
-        return false;
-    }
-
-    const char *suffix = end;
-    if (*suffix != '\0' && *suffix != '/')
-        return false;
-
-    *port_out_ = port;
-    suffix_out_->assign (suffix);
+    *out_ = endpoint_.substr (0, port_sep + 1) + buf + suffix;
     return true;
 }
 

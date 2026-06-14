@@ -99,6 +99,16 @@ spot_node_t::~spot_node_t ()
     _runtime = NULL;
 }
 
+spot_node_t::service_attachment_state_t &spot_node_t::service_attachments ()
+{
+    return _service_attachments.state ();
+}
+
+const spot_node_t::service_attachment_state_t &spot_node_t::service_attachments () const
+{
+    return _service_attachments.state ();
+}
+
 bool spot_node_t::check_tag () const
 {
     return _tag == spot_node_tag_value;

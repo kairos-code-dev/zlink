@@ -98,10 +98,10 @@ std::string spot_node_t::summary_channel_name () const
     scoped_lock_t lock (_sync);
     if (!_discovery_state.discovery_service.empty ())
         return _discovery_state.discovery_service;
-    if (_service_attachment_state.discoveries.size () == 1)
-        return _service_attachment_state.discoveries.begin ()->first;
-    if (_service_attachment_state.attachments.size () == 1)
-        return _service_attachment_state.attachments.begin ()->first;
+    if (service_attachments ().discoveries.size () == 1)
+        return service_attachments ().discoveries.begin ()->first;
+    if (service_attachments ().attachments.size () == 1)
+        return service_attachments ().attachments.begin ()->first;
     return std::string ();
 }
 

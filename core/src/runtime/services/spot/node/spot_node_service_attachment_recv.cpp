@@ -29,7 +29,7 @@ int spot_node_t::service_subscribe_recv (zlink_routing_id_t *source_rid_out_,
         std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t> sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
-            sub_recv_cache = _service_attachment_state.sub_recv_cache;
+            sub_recv_cache = service_attachments ().sub_recv_cache;
         }
         socket_base_t *ready_socket = NULL;
         if (!sub_recv_cache || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {
@@ -70,7 +70,7 @@ int spot_node_t::service_subscription_event_recv (zlink_routing_id_t *source_rid
         std::shared_ptr<service_attachment_state_t::service_sub_recv_cache_t> sub_recv_cache;
         {
             scoped_lock_t lock (_sync);
-            sub_recv_cache = _service_attachment_state.sub_recv_cache;
+            sub_recv_cache = service_attachments ().sub_recv_cache;
         }
         socket_base_t *ready_socket = NULL;
         if (!sub_recv_cache || !sub_recv_cache->wait_ready_socket (flags_, &ready_socket)) {

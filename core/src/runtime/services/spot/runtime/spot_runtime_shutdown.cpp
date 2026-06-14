@@ -191,10 +191,10 @@ int spot_runtime_t::stop_and_join ()
     stop_sockets ();
     std::vector<socket_base_t *> retired_relay_sockets;
     {
-        scoped_lock_t lock (attachment_sync);
-        while (!retired_attachment_relay_sockets.empty ()) {
-            retired_relay_sockets.push_back (retired_attachment_relay_sockets.front ());
-            retired_attachment_relay_sockets.pop_front ();
+        scoped_lock_t lock (attachment_state.sync);
+        while (!attachment_state.retired_relay_sockets.empty ()) {
+            retired_relay_sockets.push_back (attachment_state.retired_relay_sockets.front ());
+            attachment_state.retired_relay_sockets.pop_front ();
         }
     }
     for (size_t i = 0; i < retired_relay_sockets.size (); ++i) {
@@ -223,8 +223,8 @@ size_t spot_runtime_t::live_socket_slot_count () const
 
 size_t spot_runtime_t::attachment_count () const
 {
-    scoped_lock_t lock (attachment_sync);
-    return attachments.size ();
+    scoped_lock_t lock (attachment_state.sync);
+    return attachment_state.items.size ();
 }
 
 int spot_runtime_t::abortive_stop ()
@@ -278,19 +278,20 @@ int spot_runtime_t::abortive_stop ()
 
     std::vector<socket_base_t *> attachment_sockets;
     {
-        scoped_lock_t lock (attachment_sync);
-        for (std::map<uint64_t, spot_attachment_t>::iterator it = attachments.begin ();
-             it != attachments.end (); ++it) {
+        scoped_lock_t lock (attachment_state.sync);
+        for (std::map<uint64_t, spot_attachment_t>::iterator it =
+               attachment_state.items.begin ();
+             it != attachment_state.items.end (); ++it) {
             if (it->second.socket)
                 attachment_sockets.push_back (it->second.socket);
             if (it->second.relay_socket)
                 attachment_sockets.push_back (it->second.relay_socket);
         }
-        while (!retired_attachment_relay_sockets.empty ()) {
-            attachment_sockets.push_back (retired_attachment_relay_sockets.front ());
-            retired_attachment_relay_sockets.pop_front ();
+        while (!attachment_state.retired_relay_sockets.empty ()) {
+            attachment_sockets.push_back (attachment_state.retired_relay_sockets.front ());
+            attachment_state.retired_relay_sockets.pop_front ();
         }
-        attachments.clear ();
+        attachment_state.items.clear ();
     }
 
     if (spot_node_access_t::ctx (owner)) {

@@ -85,10 +85,10 @@ void spot_node_t::begin_destroy_detach_phase (
     _peer_state.active_endpoints.clear ();
     _endpoint_state.active_peer_count.store (0, std::memory_order_release);
     if (service_discoveries_out_)
-        service_discoveries_out_->swap (_service_attachment_state.discoveries);
+        service_discoveries_out_->swap (service_attachments ().discoveries);
     if (channel_dealer_discoveries_out_)
         channel_dealer_discoveries_out_->swap (
-          _service_attachment_state.channel_dealer_discoveries);
+          service_attachments ().channel_dealer_discoveries);
 }
 
 void spot_node_t::clear_service_attachment_runtime_locked (
@@ -98,17 +98,17 @@ void spot_node_t::clear_service_attachment_runtime_locked (
         return;
     monitors_out_->clear ();
     scoped_lock_t lock (_sync);
-    if (_service_attachment_state.pub_ingress && _runtime
+    if (service_attachments ().pub_ingress && _runtime
         && !_runtime->pub_ingress_endpoint.empty ()) {
-        (void) _service_attachment_state.pub_ingress->term_endpoint (
+        (void) service_attachments ().pub_ingress->term_endpoint (
           _runtime->pub_ingress_endpoint.c_str ());
     }
-    _service_attachment_state.pub_ingress = NULL;
-    monitors_out_->swap (_service_attachment_state.monitors);
-    _service_attachment_state.attachments.clear ();
-    _service_attachment_state.socket_index.clear ();
-    _service_attachment_state.pending_refresh_services.clear ();
-    rebuild_service_attachment_caches_locked ();
+    service_attachments ().pub_ingress = NULL;
+    monitors_out_->swap (service_attachments ().monitors);
+    service_attachments ().attachments.clear ();
+    service_attachments ().socket_index.clear ();
+    service_attachments ().pending_refresh_services.clear ();
+    _service_attachments.rebuild_caches_locked ();
 }
 
 void spot_node_t::close_attachment_monitors (std::deque<attachment_monitor_handle_t> *monitors_)

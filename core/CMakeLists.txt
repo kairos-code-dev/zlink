@@ -1071,6 +1071,7 @@ set(runtime-service-spot-sources
     src/runtime/services/spot/runtime/spot_runtime.cpp
     src/runtime/services/spot/runtime/spot_runtime_attachment.cpp
     src/runtime/services/spot/runtime/spot_runtime_execution.cpp
+    src/runtime/services/spot/runtime/spot_runtime_routes.cpp
     src/runtime/services/spot/runtime/spot_runtime_shutdown.cpp
     src/runtime/services/spot/pubsub/spot_sub_lifecycle.cpp
     src/runtime/services/spot/pubsub/spot_sub_option.cpp

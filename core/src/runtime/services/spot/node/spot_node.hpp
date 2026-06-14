@@ -241,9 +241,12 @@ class spot_node_t : public discovery_observer_t
     typedef spot_node_service_discovery_socket_plan_t service_discovery_socket_plan_t;
     typedef spot_node_service_attachment_t service_attachment_t;
     typedef spot_node_service_attachment_state_t service_attachment_state_t;
+    typedef spot_node_service_attachments_t service_attachments_t;
 
     static void control_task (void *arg_);
 
+    service_attachment_state_t &service_attachments ();
+    const service_attachment_state_t &service_attachments () const;
     const std::string &sub_fanout_endpoint () const;
     void control_tick ();
     int ensure_control_task_running ();
@@ -296,11 +299,7 @@ class spot_node_t : public discovery_observer_t
     int ensure_registered ();
     int unregister_registered ();
     int apply_service_subscription_filters ();
-    void collect_pending_service_discoveries_locked (
-      std::vector<std::pair<std::string, discovery_t *>> *out_);
     void refresh_service_discovery_attachments ();
-    void collect_pending_router_channel_discoveries_locked (
-      std::vector<std::pair<std::string, discovery_t *>> *out_);
     void refresh_router_channel_discovery_peers ();
     void snapshot_service_discovery_topology (discovery_t *discovery_,
                                               const std::string &channel_name_,
@@ -327,17 +326,7 @@ class spot_node_t : public discovery_observer_t
     void clear_service_attachment_runtime_locked (
       std::deque<attachment_monitor_handle_t> *monitors_out_);
     void close_attachment_monitors (std::deque<attachment_monitor_handle_t> *monitors_);
-    int validate_socket_service_discovery_attach_locked (const std::string &channel_name_,
-                                                         discovery_t *discovery_) const;
-    void register_attachment_monitor_locked (socket_base_t *owner_socket_,
-                                             void *monitor_handle_,
-                                             const std::string &channel_name_);
-    void rebuild_service_attachment_caches_locked ();
     void reset_spot_discovery_state_locked ();
-    void queue_service_discovery_refresh_locked (const std::string &channel_name_);
-    void remove_attachment_monitors_by_owner_locked (const std::vector<socket_base_t *> &sockets_);
-    bool detach_discovered_service_locked (discovery_t *discovery_,
-                                           std::vector<socket_base_t *> *sockets_to_close_out_);
 
     static bool validate_public_endpoint (const std::string &endpoint_);
     ctx_t *_ctx;
@@ -365,7 +354,7 @@ class spot_node_t : public discovery_observer_t
     endpoint_state_t _endpoint_state;
     handle_state_t _handle_state;
     actor_state_t _actor_state;
-    service_attachment_state_t _service_attachment_state;
+    service_attachments_t _service_attachments;
     std::shared_ptr<part_helper_internal::handle_state_t> _part_helper_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)

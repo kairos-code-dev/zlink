@@ -127,17 +127,17 @@ bool spot_node_t::can_suspend_control_task () const
 {
     if (_discovery_state.discovery != NULL)
         return false;
-    if (!_service_attachment_state.discoveries.empty ())
+    if (!service_attachments ().discoveries.empty ())
         return false;
     for (std::map<std::string, spot_node_router_channel_peer_state_t>::const_iterator it =
-           _service_attachment_state.router_channel_peers.begin ();
-         it != _service_attachment_state.router_channel_peers.end (); ++it) {
+           service_attachments ().router_channel_peers.begin ();
+         it != service_attachments ().router_channel_peers.end (); ++it) {
         if (it->second.discovery)
             return false;
     }
     if (!_discovery_state.pending_service_updates.empty ())
         return false;
-    if (!_service_attachment_state.pending_router_channel_refreshes.empty ())
+    if (!service_attachments ().pending_router_channel_refreshes.empty ())
         return false;
     if (_peer_state.subscription_replay_pending || _peer_state.subscription_ready_refresh_pending
         || _peer_state.pub_delivery_ready_refresh_pending) {
@@ -161,9 +161,9 @@ void spot_node_t::control_tick ()
     bool has_pending_router_channel_refresh = false;
     {
         scoped_lock_t lock (_sync);
-        has_pending_service_refresh = !_service_attachment_state.pending_refresh_services.empty ();
+        has_pending_service_refresh = !service_attachments ().pending_refresh_services.empty ();
         has_pending_router_channel_refresh =
-          !_service_attachment_state.pending_router_channel_refreshes.empty ();
+          !service_attachments ().pending_router_channel_refreshes.empty ();
     }
     if (has_pending_service_refresh)
         refresh_service_discovery_attachments ();

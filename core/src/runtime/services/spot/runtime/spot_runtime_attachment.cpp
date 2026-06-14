@@ -48,10 +48,10 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
 
     uint64_t attachment_id = 0;
     {
-        scoped_lock_t lock (attachment_sync);
-        attachment_id = ++next_attachment_id;
+        scoped_lock_t lock (attachment_state.sync);
+        attachment_id = ++attachment_state.next_id;
         if (attachment_id == 0)
-            attachment_id = ++next_attachment_id;
+            attachment_id = ++attachment_state.next_id;
     }
 
     const int socket_type =
@@ -73,8 +73,8 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
         return -1;
     socket_base_t *relay_socket = NULL;
     socket->set_auto_hwm_policy_enabled (false);
-    const spot_node_hwm_config_t hwm_config = hwm_config_snapshot ();
-    const int pubsub_admission_hwm = spot_node_pubsub_admission_hwm (hwm_config);
+    const spot_node_runtime_tuning_t runtime_tuning = runtime_tuning_snapshot ();
+    const int pubsub_admission_hwm = spot_node_pubsub_admission_hwm (runtime_tuning);
     const int zero = 0;
     apply_spot_internal_auto_hwm (
       owner_ctx, socket,
@@ -144,15 +144,15 @@ int spot_runtime_t::create_attachment (int kind_, const char *endpoint_, uint64_
 
     spot_attachment_t attachment;
     {
-        scoped_lock_t lock (attachment_sync);
+        scoped_lock_t lock (attachment_state.sync);
         attachment.id = attachment_id;
         attachment.kind = kind_;
         attachment.socket = socket;
         attachment.relay_socket = relay_socket;
         attachment.endpoint = endpoint_;
         attachment.relay_endpoint = relay_endpoint;
-        attachments[attachment.id] = attachment;
-        ++attachment_version;
+        attachment_state.items[attachment.id] = attachment;
+        ++attachment_state.version;
     }
     refresh_attachment_auto_hwm_scope_counts ();
     *out_id_ = attachment.id;
@@ -196,9 +196,9 @@ socket_base_t *spot_runtime_t::attachment_socket (uint64_t id_) const
 {
     if (id_ == 0)
         return NULL;
-    scoped_lock_t lock (attachment_sync);
-    std::map<uint64_t, spot_attachment_t>::const_iterator it = attachments.find (id_);
-    return it != attachments.end () ? it->second.socket : NULL;
+    scoped_lock_t lock (attachment_state.sync);
+    std::map<uint64_t, spot_attachment_t>::const_iterator it = attachment_state.items.find (id_);
+    return it != attachment_state.items.end () ? it->second.socket : NULL;
 }
 
 int spot_runtime_t::destroy_attachment (uint64_t id_)
@@ -212,16 +212,16 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
     std::string relay_endpoint;
     bool data_plane_running = false;
     {
-        scoped_lock_t lock (attachment_sync);
-        std::map<uint64_t, spot_attachment_t>::iterator it = attachments.find (id_);
-        if (it == attachments.end ())
+        scoped_lock_t lock (attachment_state.sync);
+        std::map<uint64_t, spot_attachment_t>::iterator it = attachment_state.items.find (id_);
+        if (it == attachment_state.items.end ())
             return 0;
         socket = it->second.socket;
         relay_socket = it->second.relay_socket;
         endpoint = it->second.endpoint;
         relay_endpoint = it->second.relay_endpoint;
-        attachments.erase (it);
-        ++attachment_version;
+        attachment_state.items.erase (it);
+        ++attachment_state.version;
     }
     refresh_attachment_auto_hwm_scope_counts ();
     {
@@ -230,9 +230,9 @@ int spot_runtime_t::destroy_attachment (uint64_t id_)
     }
     if (relay_socket) {
         if (data_plane_running) {
-            scoped_lock_t lock (attachment_sync);
-            retired_attachment_relay_sockets.push_back (relay_socket);
-            ++attachment_version;
+            scoped_lock_t lock (attachment_state.sync);
+            attachment_state.retired_relay_sockets.push_back (relay_socket);
+            ++attachment_state.version;
         } else {
             relay_socket->set_all_pipes_nodelay ();
             (void) close_runtime_socket (relay_socket, 10000);
@@ -265,16 +265,16 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
     std::string relay_endpoint;
     bool data_plane_running = false;
     {
-        scoped_lock_t lock (attachment_sync);
-        std::map<uint64_t, spot_attachment_t>::iterator it = attachments.find (id_);
-        if (it == attachments.end ())
+        scoped_lock_t lock (attachment_state.sync);
+        std::map<uint64_t, spot_attachment_t>::iterator it = attachment_state.items.find (id_);
+        if (it == attachment_state.items.end ())
             return 0;
         socket = it->second.socket;
         relay_socket = it->second.relay_socket;
         endpoint = it->second.endpoint;
         relay_endpoint = it->second.relay_endpoint;
-        attachments.erase (it);
-        ++attachment_version;
+        attachment_state.items.erase (it);
+        ++attachment_state.version;
     }
     refresh_attachment_auto_hwm_scope_counts ();
     {
@@ -283,9 +283,9 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
     }
     if (relay_socket) {
         if (data_plane_running) {
-            scoped_lock_t lock (attachment_sync);
-            retired_attachment_relay_sockets.push_back (relay_socket);
-            ++attachment_version;
+            scoped_lock_t lock (attachment_state.sync);
+            attachment_state.retired_relay_sockets.push_back (relay_socket);
+            ++attachment_state.version;
         } else {
             relay_socket->set_all_pipes_nodelay ();
             (void) close_runtime_socket_async (relay_socket, 10000);
@@ -309,9 +309,9 @@ int spot_runtime_t::destroy_attachment_async (uint64_t id_)
 size_t spot_runtime_t::attachment_count_by_kind (int kind_) const
 {
     size_t count = 0;
-    scoped_lock_t lock (attachment_sync);
-    for (std::map<uint64_t, spot_attachment_t>::const_iterator it = attachments.begin ();
-         it != attachments.end (); ++it) {
+    scoped_lock_t lock (attachment_state.sync);
+    for (std::map<uint64_t, spot_attachment_t>::const_iterator it = attachment_state.items.begin ();
+         it != attachment_state.items.end (); ++it) {
         if (it->second.kind == kind_)
             ++count;
     }
@@ -324,9 +324,10 @@ void spot_runtime_t::refresh_attachment_auto_hwm_scope_counts ()
     size_t local_pub_count = 0;
     size_t local_sub_count = 0;
     {
-        scoped_lock_t lock (attachment_sync);
-        for (std::map<uint64_t, spot_attachment_t>::const_iterator it = attachments.begin ();
-             it != attachments.end (); ++it) {
+        scoped_lock_t lock (attachment_state.sync);
+        for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
+               attachment_state.items.begin ();
+             it != attachment_state.items.end (); ++it) {
             if (it->second.kind == spot_attachment_pub)
                 ++local_pub_count;
             else if (it->second.kind == spot_attachment_sub)
@@ -356,9 +357,10 @@ void spot_runtime_t::snapshot_auto_hwm_inputs (size_t *local_pub_count_out_,
     size_t local_pub_count = 0;
     size_t local_sub_count = 0;
     {
-        scoped_lock_t lock (attachment_sync);
-        for (std::map<uint64_t, spot_attachment_t>::const_iterator it = attachments.begin ();
-             it != attachments.end (); ++it) {
+        scoped_lock_t lock (attachment_state.sync);
+        for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
+               attachment_state.items.begin ();
+             it != attachment_state.items.end (); ++it) {
             if (it->second.kind == spot_attachment_pub)
                 ++local_pub_count;
             else if (it->second.kind == spot_attachment_sub)

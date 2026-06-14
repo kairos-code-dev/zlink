@@ -79,7 +79,7 @@ class wss_transport_t : public i_asio_transport
     bool requires_handshake () const ZLINK_OVERRIDE { return true; }
     void async_handshake (int handshake_type, completion_handler_t handler) ZLINK_OVERRIDE;
     bool supports_speculative_write () const ZLINK_OVERRIDE { return false; }
-    bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
+    bool supports_gather_write () const ZLINK_OVERRIDE { return false; }
     void async_writev (const unsigned char *header,
                        std::size_t header_size,
                        const unsigned char *body,

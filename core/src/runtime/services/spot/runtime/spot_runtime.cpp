@@ -106,9 +106,7 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     faulted (false),
     fault_errno (0),
     abortive_shutdown (false),
-    shutdown_phase_value (spot_shutdown_phase_running),
-    next_attachment_id (0),
-    attachment_version (0)
+    shutdown_phase_value (spot_shutdown_phase_running)
 {
     if (node_id == 0)
         node_id = 1;
@@ -122,16 +120,16 @@ spot_runtime_t::spot_runtime_t (spot_node_t *owner_) :
     data_ctrl_endpoint = buf;
 }
 
-spot_node_hwm_config_t spot_runtime_t::hwm_config_snapshot () const
+spot_node_runtime_tuning_t spot_runtime_t::runtime_tuning_snapshot () const
 {
-    scoped_lock_t lock (hwm_config_sync);
-    return hwm_config;
+    scoped_lock_t lock (runtime_tuning_sync);
+    return runtime_tuning;
 }
 
 uint64_t spot_runtime_t::attachment_state_version () const
 {
-    scoped_lock_t lock (attachment_sync);
-    return attachment_version;
+    scoped_lock_t lock (attachment_state.sync);
+    return attachment_state.version;
 }
 
 ctx_t *spot_runtime_t::ctx () const
@@ -139,11 +137,11 @@ ctx_t *spot_runtime_t::ctx () const
     return spot_node_access_t::ctx (owner);
 }
 
-void spot_runtime_t::set_hwm_config (const spot_node_hwm_config_t &config_)
+void spot_runtime_t::set_runtime_tuning (const spot_node_runtime_tuning_t &config_)
 {
     {
-        scoped_lock_t lock (hwm_config_sync);
-        hwm_config = config_;
+        scoped_lock_t lock (runtime_tuning_sync);
+        runtime_tuning = config_;
     }
     if (dispatch_workers) {
         int min_workers = config_.dispatch_workers_min;
@@ -168,100 +166,39 @@ void spot_runtime_t::set_external_route_id (const std::string &peer_endpoint_,
                                             const std::string &route_id_,
                                             const std::string &route_endpoint_)
 {
-    if (peer_endpoint_.empty ())
-        return;
-
-    scoped_lock_t lock (routed_send_sync);
-    if (route_id_.empty ()) {
-        external_route_ids_by_endpoint.erase (peer_endpoint_);
-        external_route_endpoints_by_endpoint.erase (peer_endpoint_);
-    } else {
-        external_route_ids_by_endpoint[peer_endpoint_] = route_id_;
-        external_route_endpoints_by_endpoint[peer_endpoint_] =
-          route_endpoint_.empty () ? peer_endpoint_ : route_endpoint_;
-    }
+    external_routes.set (peer_endpoint_, route_id_, route_endpoint_);
 }
 
 bool spot_runtime_t::external_route_id_matches (const std::string &peer_endpoint_,
                                                 const std::string &route_id_,
                                                 const std::string &route_endpoint_) const
 {
-    if (peer_endpoint_.empty () || route_id_.empty ())
-        return false;
-
-    scoped_lock_t lock (routed_send_sync);
-    std::map<std::string, std::string>::const_iterator route_it =
-      external_route_ids_by_endpoint.find (peer_endpoint_);
-    if (route_it == external_route_ids_by_endpoint.end () || route_it->second != route_id_)
-        return false;
-
-    const std::string expected_endpoint =
-      route_endpoint_.empty () ? peer_endpoint_ : route_endpoint_;
-    std::map<std::string, std::string>::const_iterator endpoint_it =
-      external_route_endpoints_by_endpoint.find (peer_endpoint_);
-    return endpoint_it != external_route_endpoints_by_endpoint.end ()
-           && endpoint_it->second == expected_endpoint;
+    return external_routes.matches (peer_endpoint_, route_id_, route_endpoint_);
 }
 
 std::string spot_runtime_t::erase_external_route_id (const std::string &peer_endpoint_)
 {
-    scoped_lock_t lock (routed_send_sync);
-    std::string route_endpoint;
-    std::map<std::string, std::string>::const_iterator endpoint_it =
-      external_route_endpoints_by_endpoint.find (peer_endpoint_);
-    if (endpoint_it != external_route_endpoints_by_endpoint.end ())
-        route_endpoint = endpoint_it->second;
-    external_route_ids_by_endpoint.erase (peer_endpoint_);
-    external_route_endpoints_by_endpoint.erase (peer_endpoint_);
-    return route_endpoint;
+    return external_routes.erase (peer_endpoint_);
 }
 
 std::vector<std::string> spot_runtime_t::clear_external_route_ids ()
 {
-    std::vector<std::string> route_endpoints;
-    scoped_lock_t lock (routed_send_sync);
-    for (std::map<std::string, std::string>::const_iterator it =
-           external_route_endpoints_by_endpoint.begin ();
-         it != external_route_endpoints_by_endpoint.end (); ++it) {
-        if (!it->second.empty ())
-            route_endpoints.push_back (it->second);
-    }
-    external_route_ids_by_endpoint.clear ();
-    external_route_endpoints_by_endpoint.clear ();
-    return route_endpoints;
+    return external_routes.clear ();
 }
 
 bool spot_runtime_t::missing_external_routes_for_ready_peer () const
 {
-    scoped_lock_t lock (routed_send_sync);
     if (!external_router || external_router_bind_endpoint.empty ())
         return false;
 
     const uint32_t ready_peer_count = connected_ready_peer_count (&execution.mesh_peer_state);
-    return ready_peer_count > 0 && external_route_ids_by_endpoint.size () < ready_peer_count;
+    return ready_peer_count > 0 && external_routes.size () < ready_peer_count;
 }
 
 std::vector<std::string>
 spot_runtime_t::external_route_ids_for_destination (const std::string &destination_node_rid_) const
 {
-    std::vector<std::string> route_ids;
-    scoped_lock_t lock (routed_send_sync);
-    if (!destination_node_rid_.empty ())
-        route_ids.push_back (destination_node_rid_);
-    for (std::map<std::string, std::string>::const_iterator it =
-           external_route_ids_by_endpoint.begin ();
-         it != external_route_ids_by_endpoint.end (); ++it) {
-        if (it->second == destination_node_rid_) {
-            return route_ids;
-        }
-    }
-    for (std::map<std::string, std::string>::const_iterator it =
-           external_route_ids_by_endpoint.begin ();
-         it != external_route_ids_by_endpoint.end (); ++it) {
-        if (!it->second.empty ())
-            route_ids.push_back (it->second);
-    }
-    return route_ids;
+    return external_routes.route_ids_for_destination (destination_node_rid_);
 }
 
 int spot_runtime_t::start ()
@@ -325,7 +262,7 @@ int spot_runtime_t::start_dispatch_workers ()
     if (dispatch_workers)
         return 0;
 
-    spot_node_hwm_config_t config = hwm_config_snapshot ();
+    spot_node_runtime_tuning_t config = runtime_tuning_snapshot ();
     int min_workers = config.dispatch_workers_min;
     int max_workers = config.dispatch_workers_max;
     if (min_workers <= 0)

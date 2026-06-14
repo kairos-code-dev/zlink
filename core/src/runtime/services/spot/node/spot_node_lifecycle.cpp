@@ -5,6 +5,7 @@
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/common/spot_control_protocol.hpp"
+#include "services/spot/common/spot_debug.hpp"
 #include "services/spot/pubsub/spot_pub.hpp"
 #include "services/spot/runtime/spot_runtime.hpp"
 #include "services/spot/pubsub/spot_sub.hpp"
@@ -42,6 +43,17 @@ static void *open_attachment_monitor_local (socket_base_t *socket_)
     memset (&monitor_options, 0, sizeof (monitor_options));
     monitor_options.events = ZLINK_EVENT_ALL;
     return zlink_socket_monitor_open (socket_, &monitor_options);
+}
+
+static void spot_shutdown_logf_local (bool always_, const char *fmt_, ...)
+{
+    if (!always_ && !spot_debug::shutdown_enabled ())
+        return;
+
+    va_list args;
+    va_start (args, fmt_);
+    debug_vfprintf (always_ ? NULL : "ZLINK_DEBUG_SPOT_SHUTDOWN", "[spot-shutdown] ", fmt_, args);
+    va_end (args);
 }
 
 }
@@ -259,33 +271,14 @@ int spot_node_t::unregister_registered ()
     return 0;
 }
 
-int spot_node_t::validate_socket_service_discovery_attach_locked (const std::string &channel_name_,
-                                                                  discovery_t *discovery_) const
+void spot_node_service_attachments_t::register_monitor_locked (
+  socket_base_t *owner_socket_, void *monitor_handle_, const std::string &channel_name_)
 {
-    for (std::map<std::string, discovery_t *>::const_iterator it =
-           _service_attachment_state.discoveries.begin ();
-         it != _service_attachment_state.discoveries.end (); ++it) {
-        if (it->second == discovery_) {
-            errno = EBUSY;
-            return -1;
-        }
-    }
-    if (_service_attachment_state.discoveries.count (channel_name_) != 0) {
-        errno = EBUSY;
-        return -1;
-    }
-    return 0;
-}
-
-void spot_node_t::register_attachment_monitor_locked (socket_base_t *owner_socket_,
-                                                      void *monitor_handle_,
-                                                      const std::string &channel_name_)
-{
-    attachment_monitor_handle_t monitor_entry;
+    spot_node_attachment_monitor_handle_t monitor_entry;
     monitor_entry.handle = monitor_handle_;
     monitor_entry.owner_socket = owner_socket_;
     monitor_entry.channel_name = channel_name_;
-    _service_attachment_state.monitors.push_back (monitor_entry);
+    _state.monitors.push_back (monitor_entry);
 }
 
 void spot_node_t::reset_spot_discovery_state_locked ()
@@ -390,23 +383,23 @@ int spot_node_t::attach_router_channel_discovery (const char *channel_name_,
     {
         scoped_lock_t lock (_sync);
         spot_node_router_channel_peer_state_t &state =
-          _service_attachment_state.router_channel_peers[channel_name];
+          service_attachments ().router_channel_peers[channel_name];
         if (state.discovery || !state.manual_endpoints.empty ()
             || !state.active_endpoints.empty ()) {
             errno = EBUSY;
             return -1;
         }
         state.discovery = discovery_;
-        _service_attachment_state.pending_router_channel_refreshes.insert (channel_name);
+        service_attachments ().pending_router_channel_refreshes.insert (channel_name);
         _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     }
     if (discovery_access_t::add_observer (discovery_, this) != 0) {
         scoped_lock_t lock (_sync);
         spot_node_router_channel_peer_state_t &state =
-          _service_attachment_state.router_channel_peers[channel_name];
+          service_attachments ().router_channel_peers[channel_name];
         if (state.discovery == discovery_)
             state.discovery = NULL;
-        _service_attachment_state.pending_router_channel_refreshes.erase (channel_name);
+        service_attachments ().pending_router_channel_refreshes.erase (channel_name);
         return -1;
     }
     wake_control_task ();
@@ -496,13 +489,13 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_, socket_base_t *
             errno = EINVAL;
             return -1;
         }
-        if (_service_attachment_state.channel_dealer_discoveries.count (channel_name) != 0
-            || (_service_attachment_state.attachments.count (channel_name) != 0
-                && !_service_attachment_state.attachments[channel_name].manual.routers.empty ())) {
+        if (service_attachments ().channel_dealer_discoveries.count (channel_name) != 0
+            || (service_attachments ().attachments.count (channel_name) != 0
+                && !service_attachments ().attachments[channel_name].manual.routers.empty ())) {
             errno = EBUSY;
             return -1;
         }
-        if (_service_attachment_state.socket_index.count (dealer_) != 0) {
+        if (service_attachments ().socket_index.count (dealer_) != 0) {
             errno = EBUSY;
             return -1;
         }
@@ -518,10 +511,10 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_, socket_base_t *
     }
 
     scoped_lock_t lock (_sync);
-    if (_service_attachment_state.channel_dealer_discoveries.count (channel_name) != 0
-        || (_service_attachment_state.attachments.count (channel_name) != 0
-            && !_service_attachment_state.attachments[channel_name].manual.routers.empty ())
-        || _service_attachment_state.socket_index.count (dealer_) != 0) {
+    if (service_attachments ().channel_dealer_discoveries.count (channel_name) != 0
+        || (service_attachments ().attachments.count (channel_name) != 0
+            && !service_attachments ().attachments[channel_name].manual.routers.empty ())
+        || service_attachments ().socket_index.count (dealer_) != 0) {
         zlink_monitor_close (&monitor);
         (void) discovery_access_t::remove_observer (discovery_, this);
         errno = EBUSY;
@@ -535,14 +528,14 @@ int spot_node_t::attach_channel_dealer (discovery_t *discovery_, socket_base_t *
         return -1;
     }
 
-    _service_attachment_state.channel_dealer_discoveries[channel_name] = discovery_;
-    service_attachment_t &attachment = _service_attachment_state.attachments[channel_name];
+    service_attachments ().channel_dealer_discoveries[channel_name] = discovery_;
+    service_attachment_t &attachment = service_attachments ().attachments[channel_name];
     attachment.manual.routers.push_back (dealer_);
     attachment.manual.channel_dealer_discovery = discovery_;
-    _service_attachment_state.socket_index[dealer_] = channel_name;
+    service_attachments ().socket_index[dealer_] = channel_name;
     dealer_->lock_channel_name_metadata ();
-    register_attachment_monitor_locked (dealer_, monitor, channel_name);
-    rebuild_service_attachment_caches_locked ();
+    _service_attachments.register_monitor_locked (dealer_, monitor, channel_name);
+    _service_attachments.rebuild_caches_locked ();
     _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     _handle_state.entry_spot_rid_locked = true;
     if (_handle_state.entry_spot)
@@ -570,10 +563,10 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_, socket
 
     scoped_lock_t lock (_sync);
     const std::string channel_name (channel_name_);
-    if (_service_attachment_state.channel_dealer_discoveries.count (channel_name) != 0
-        || (_service_attachment_state.attachments.count (channel_name) != 0
-            && !_service_attachment_state.attachments[channel_name].manual.routers.empty ())
-        || _service_attachment_state.socket_index.count (dealer_) != 0) {
+    if (service_attachments ().channel_dealer_discoveries.count (channel_name) != 0
+        || (service_attachments ().attachments.count (channel_name) != 0
+            && !service_attachments ().attachments[channel_name].manual.routers.empty ())
+        || service_attachments ().socket_index.count (dealer_) != 0) {
         zlink_monitor_close (&monitor);
         errno = EBUSY;
         return -1;
@@ -585,13 +578,13 @@ int spot_node_t::attach_channel_dealer_manual (const char *channel_name_, socket
         return -1;
     }
 
-    service_attachment_t &attachment = _service_attachment_state.attachments[channel_name];
+    service_attachment_t &attachment = service_attachments ().attachments[channel_name];
     attachment.manual.routers.push_back (dealer_);
     attachment.manual.channel_dealer_discovery = NULL;
-    _service_attachment_state.socket_index[dealer_] = channel_name;
+    service_attachments ().socket_index[dealer_] = channel_name;
     dealer_->lock_channel_name_metadata ();
-    register_attachment_monitor_locked (dealer_, monitor, channel_name);
-    rebuild_service_attachment_caches_locked ();
+    _service_attachments.register_monitor_locked (dealer_, monitor, channel_name);
+    _service_attachments.rebuild_caches_locked ();
     _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     _handle_state.entry_spot_rid_locked = true;
     if (_handle_state.entry_spot)
@@ -624,8 +617,8 @@ int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
             errno = EFAULT;
             return -1;
         }
-        if (_service_attachment_state.pub_ingress
-            || _service_attachment_state.socket_index.count (pub_) != 0) {
+        if (service_attachments ().pub_ingress
+            || service_attachments ().socket_index.count (pub_) != 0) {
             errno = EBUSY;
             return -1;
         }
@@ -652,18 +645,18 @@ int spot_node_t::attach_pub_ingress (socket_base_t *pub_)
     }
 
     scoped_lock_t lock (_sync);
-    if (_service_attachment_state.pub_ingress
-        || _service_attachment_state.socket_index.count (pub_) != 0) {
+    if (service_attachments ().pub_ingress
+        || service_attachments ().socket_index.count (pub_) != 0) {
         (void) pub_->term_endpoint (endpoint.c_str ());
         zlink_monitor_close (&monitor);
         errno = EBUSY;
         return -1;
     }
 
-    _service_attachment_state.pub_ingress = pub_;
-    _service_attachment_state.socket_index[pub_] = "__spot_service_attachment_state.pub_ingress__";
-    register_attachment_monitor_locked (pub_, monitor,
-                                        "__spot_service_attachment_state.pub_ingress__");
+    service_attachments ().pub_ingress = pub_;
+    service_attachments ().socket_index[pub_] = "__spot_service_attachment_state.pub_ingress__";
+    _service_attachments.register_monitor_locked (
+      pub_, monitor, "__spot_service_attachment_state.pub_ingress__");
     _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
     _handle_state.entry_spot_rid_locked = true;
     if (_handle_state.entry_spot)
@@ -676,15 +669,15 @@ void spot_node_t::on_service_update (const std::string &channel_name_)
     bool should_wake = false;
     {
         scoped_lock_t lock (_sync);
-        if (_service_attachment_state.discoveries.count (channel_name_) != 0) {
-            queue_service_discovery_refresh_locked (channel_name_);
+        if (service_attachments ().discoveries.count (channel_name_) != 0) {
+            _service_attachments.queue_discovery_refresh_locked (channel_name_);
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
             should_wake = true;
         }
         std::map<std::string, spot_node_router_channel_peer_state_t>::iterator rit =
-          _service_attachment_state.router_channel_peers.find (channel_name_);
-        if (rit != _service_attachment_state.router_channel_peers.end () && rit->second.discovery) {
-            _service_attachment_state.pending_router_channel_refreshes.insert (channel_name_);
+          service_attachments ().router_channel_peers.find (channel_name_);
+        if (rit != service_attachments ().router_channel_peers.end () && rit->second.discovery) {
+            service_attachments ().pending_router_channel_refreshes.insert (channel_name_);
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
             should_wake = true;
         }
@@ -706,8 +699,8 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
     {
         scoped_lock_t lock (_sync);
         for (std::map<std::string, spot_node_router_channel_peer_state_t>::iterator it =
-               _service_attachment_state.router_channel_peers.begin ();
-             it != _service_attachment_state.router_channel_peers.end ();) {
+               service_attachments ().router_channel_peers.begin ();
+             it != service_attachments ().router_channel_peers.end ();) {
             if (it->second.discovery != discovery_) {
                 ++it;
                 continue;
@@ -717,12 +710,16 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
                 router_channel_disconnects.push_back (std::make_pair (it->first, *eit));
             }
             it->second.peer_rids_by_endpoint.clear ();
-            _service_attachment_state.pending_router_channel_refreshes.erase (it->first);
-            it = _service_attachment_state.router_channel_peers.erase (it);
+            service_attachments ().pending_router_channel_refreshes.erase (it->first);
+            it = service_attachments ().router_channel_peers.erase (it);
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
         }
-        if (detach_discovered_service_locked (discovery_, &sockets_to_close))
+        if (_service_attachments.detach_discovered_service_locked (discovery_,
+                                                                   &sockets_to_close)) {
+            spot_shutdown_logf_local (false, "step=detach_discovered_service node=%p sockets=%zu",
+                                      static_cast<void *> (this), sockets_to_close.size ());
             _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
+        }
     }
     for (size_t i = 0; i < router_channel_disconnects.size (); ++i) {
         const std::string arg = spot_node_router_channel_arg::from_endpoint (
@@ -738,27 +735,27 @@ void spot_node_t::on_discovery_destroyed (discovery_t *discovery_)
         return;
     scoped_lock_t lock (_sync);
     for (std::map<std::string, discovery_t *>::iterator it =
-           _service_attachment_state.channel_dealer_discoveries.begin ();
-         it != _service_attachment_state.channel_dealer_discoveries.end (); ++it) {
+           service_attachments ().channel_dealer_discoveries.begin ();
+         it != service_attachments ().channel_dealer_discoveries.end (); ++it) {
         if (it->second != discovery_)
             continue;
         const std::string channel_name = it->first;
         std::map<std::string, service_attachment_t>::iterator attach_it =
-          _service_attachment_state.attachments.find (channel_name);
-        if (attach_it != _service_attachment_state.attachments.end ()) {
+          service_attachments ().attachments.find (channel_name);
+        if (attach_it != service_attachments ().attachments.end ()) {
             std::vector<socket_base_t *> owners = attach_it->second.manual.routers;
             for (size_t i = 0; i < owners.size (); ++i)
-                _service_attachment_state.socket_index.erase (owners[i]);
-            remove_attachment_monitors_by_owner_locked (owners);
+                service_attachments ().socket_index.erase (owners[i]);
+            _service_attachments.remove_monitors_by_owner_locked (owners);
             attach_it->second.manual.routers.clear ();
             attach_it->second.manual.channel_dealer_discovery = NULL;
             if (!attach_it->second.has_manual_pubsub ()
                 && attach_it->second.discovered.routers.empty ()
                 && !attach_it->second.has_auto_pubsub ())
-                _service_attachment_state.attachments.erase (attach_it);
+                service_attachments ().attachments.erase (attach_it);
         }
-        _service_attachment_state.channel_dealer_discoveries.erase (it);
-        rebuild_service_attachment_caches_locked ();
+        service_attachments ().channel_dealer_discoveries.erase (it);
+        _service_attachments.rebuild_caches_locked ();
         _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
         return;
     }
@@ -773,24 +770,24 @@ void spot_node_t::on_discovery_shutdown_requested (discovery_t *discovery_)
     {
         scoped_lock_t lock (_sync);
         for (std::map<std::string, discovery_t *>::iterator it =
-               _service_attachment_state.channel_dealer_discoveries.begin ();
-             it != _service_attachment_state.channel_dealer_discoveries.end (); ++it) {
+               service_attachments ().channel_dealer_discoveries.begin ();
+             it != service_attachments ().channel_dealer_discoveries.end (); ++it) {
             if (it->second == discovery_) {
                 _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
                 return;
             }
         }
         for (std::map<std::string, discovery_t *>::iterator it =
-               _service_attachment_state.discoveries.begin ();
-             it != _service_attachment_state.discoveries.end (); ++it) {
+               service_attachments ().discoveries.begin ();
+             it != service_attachments ().discoveries.end (); ++it) {
             if (it->second == discovery_) {
                 _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
                 return;
             }
         }
         for (std::map<std::string, spot_node_router_channel_peer_state_t>::iterator it =
-               _service_attachment_state.router_channel_peers.begin ();
-             it != _service_attachment_state.router_channel_peers.end (); ++it) {
+               service_attachments ().router_channel_peers.begin ();
+             it != service_attachments ().router_channel_peers.end (); ++it) {
             if (it->second.discovery == discovery_) {
                 _summary_state.summary_last_changed_ms = zlink::clock_t ().now_ms ();
                 return;
@@ -803,9 +800,10 @@ void spot_node_t::on_discovery_shutdown_requested (discovery_t *discovery_)
     (void) destroy ();
 }
 
-void spot_node_t::queue_service_discovery_refresh_locked (const std::string &channel_name_)
+void spot_node_service_attachments_t::queue_discovery_refresh_locked (
+  const std::string &channel_name_)
 {
     if (!channel_name_.empty ())
-        _service_attachment_state.pending_refresh_services.insert (channel_name_);
+        _state.pending_refresh_services.insert (channel_name_);
 }
 }

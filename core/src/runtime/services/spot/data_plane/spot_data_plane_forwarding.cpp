@@ -451,14 +451,14 @@ void spot_data_plane_forwarder_t::sync_local_fanout_targets (
     std::unordered_map<uint64_t, socket_base_t *> snapshot;
     std::deque<socket_base_t *> retired_relays;
     {
-        scoped_lock_t lock (runtime_->attachment_sync);
+        scoped_lock_t lock (runtime_->attachment_state.sync);
         for (std::map<uint64_t, spot_attachment_t>::const_iterator it =
-               runtime_->attachments.begin ();
-             it != runtime_->attachments.end (); ++it) {
+               runtime_->attachment_state.items.begin ();
+             it != runtime_->attachment_state.items.end (); ++it) {
             if (it->second.kind == spot_attachment_sub && it->second.relay_socket)
                 snapshot[it->first] = it->second.relay_socket;
         }
-        retired_relays.swap (runtime_->retired_attachment_relay_sockets);
+        retired_relays.swap (runtime_->attachment_state.retired_relay_sockets);
     }
 
     for (spot_data_plane_runtime_state_t::local_fanout_state_t::target_map_t::iterator it =
@@ -717,7 +717,7 @@ int spot_data_plane_forwarder_t::enqueue_publish_ingress (spot_runtime_t *runtim
 
     spot_data_plane_runtime_state_t::publish_ingress_queue_t &queue =
       runtime_->execution.data_plane_state.publish_ingress;
-    const int slots = spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ());
+    const int slots = spot_node_pubsub_admission_hwm (runtime_->runtime_tuning_snapshot ());
     const queue_admission_plan_t plan =
       make_queue_admission_plan (slots, publish_message_unit_bytes (runtime_, entry.encoded_bytes));
     std::unique_lock<std::mutex> lock (queue.mutex);
@@ -783,7 +783,7 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
         if (queue.backpressure_active
             && publish_ingress_can_resume (
               queue, make_queue_admission_plan (
-                       spot_node_pubsub_admission_hwm (runtime_->hwm_config_snapshot ()), 1))) {
+                       spot_node_pubsub_admission_hwm (runtime_->runtime_tuning_snapshot ()), 1))) {
             queue.backpressure_active = false;
             notify_recovery = true;
         }

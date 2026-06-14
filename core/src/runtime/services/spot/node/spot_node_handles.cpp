@@ -79,7 +79,7 @@ refresh_runtime_auto_hwm_msg_unit (spot_runtime_t *runtime_, const void *optval_
     size_t active_peer_count = 0;
     runtime_->snapshot_auto_hwm_inputs (&local_pub_count, &local_sub_count, &connected_peer_count,
                                         &active_peer_count);
-    const spot_node_hwm_config_t hwm = runtime_->hwm_config_snapshot ();
+    const spot_node_runtime_tuning_t hwm = runtime_->runtime_tuning_snapshot ();
     const bool pubsub_hwm_override = spot_node_pubsub_hwm_overridden (hwm);
     const bool router_hwm_override = spot_node_router_hwm_overridden (hwm);
 
@@ -142,7 +142,7 @@ static void spot_internal_receiver_fanout_handler (const zlink_routing_id_t *sou
     zlink_multipart_close (parts_, part_count_);
 }
 
-static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
+static bool apply_runtime_tuning_option (spot_node_runtime_tuning_t *config_,
                                       int option_,
                                       const void *optval_,
                                       size_t optvallen_)
@@ -192,9 +192,9 @@ static bool apply_runtime_hwm_option (spot_node_hwm_config_t *config_,
     }
 }
 
-static bool read_runtime_hwm_option (ctx_t *ctx_,
+static bool read_runtime_tuning_option (ctx_t *ctx_,
                                      const spot_runtime_t *runtime_,
-                                     const spot_node_hwm_config_t &config_,
+                                     const spot_node_runtime_tuning_t &config_,
                                      int option_,
                                      int *value_out_)
 {
@@ -490,14 +490,14 @@ int spot_node_t::set_node_option (int option_, const void *optval_, size_t optva
         return -1;
     }
 
-    spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
-    if (!apply_runtime_hwm_option (&hwm_config, option_, optval_, optvallen_)) {
+    spot_node_runtime_tuning_t runtime_tuning = _runtime->runtime_tuning_snapshot ();
+    if (!apply_runtime_tuning_option (&runtime_tuning, option_, optval_, optvallen_)) {
         errno = EINVAL;
         return -1;
     }
-    const int router_hwm = spot_node_router_admission_hwm (hwm_config);
-    const int pubsub_hwm = spot_node_pubsub_admission_hwm (hwm_config);
-    _runtime->set_hwm_config (hwm_config);
+    const int router_hwm = spot_node_router_admission_hwm (runtime_tuning);
+    const int pubsub_hwm = spot_node_pubsub_admission_hwm (runtime_tuning);
+    _runtime->set_runtime_tuning (runtime_tuning);
 
     switch (option_) {
         case ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE:
@@ -528,8 +528,8 @@ int spot_node_t::get_node_option (int option_, void *optval_, size_t *optvallen_
     }
 
     int value = 0;
-    const spot_node_hwm_config_t hwm_config = _runtime->hwm_config_snapshot ();
-    if (!read_runtime_hwm_option (_ctx, _runtime, hwm_config, option_, &value)) {
+    const spot_node_runtime_tuning_t runtime_tuning = _runtime->runtime_tuning_snapshot ();
+    if (!read_runtime_tuning_option (_ctx, _runtime, runtime_tuning, option_, &value)) {
         errno = EINVAL;
         return -1;
     }

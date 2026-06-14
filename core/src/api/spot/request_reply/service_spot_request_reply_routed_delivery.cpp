@@ -451,7 +451,7 @@ int zlink::spot_reqrep_internal::enqueue_runtime_routed_send (zlink::spot_runtim
 
     zlink::spot_data_plane_runtime_state_t::routed_send_queue_t &queue =
       runtime_->execution.data_plane_state.routed_send;
-    const int hwm = spot_node_router_admission_hwm (runtime_->hwm_config_snapshot ());
+    const int hwm = spot_node_router_admission_hwm (runtime_->runtime_tuning_snapshot ());
     const size_t entry_bytes = routed_parts_encoded_bytes (*parts_);
     const size_t message_limit = static_cast<size_t> (hwm > 0 ? hwm : 1);
     const size_t byte_limit =
@@ -529,7 +529,7 @@ int zlink::spot_reqrep_internal::drain_runtime_routed_send_queue (zlink::spot_ru
         }
         queue.queued_bytes =
           queue.queued_bytes > moved_bytes ? queue.queued_bytes - moved_bytes : 0;
-        const int hwm = spot_node_router_admission_hwm (runtime_->hwm_config_snapshot ());
+        const int hwm = spot_node_router_admission_hwm (runtime_->runtime_tuning_snapshot ());
         if (queue.backpressure_active && routed_queue_can_resume (queue, hwm, 1)) {
             queue.backpressure_active = false;
             notify_recovery = true;

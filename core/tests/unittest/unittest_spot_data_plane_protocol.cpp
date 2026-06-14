@@ -307,6 +307,18 @@ void test_peer_ctrl_bind_endpoint_preserves_valid_fixed_port ()
     TEST_ASSERT_EQUAL_STRING ("tcp://127.0.0.1:9080", out.c_str ());
 }
 
+void test_peer_ctrl_bind_endpoint_preserves_ws_suffix ()
+{
+    std::string out;
+    TEST_ASSERT_TRUE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "ws://127.0.0.1:8080/", 1, &out));
+    TEST_ASSERT_EQUAL_STRING ("ws://127.0.0.1:9080/", out.c_str ());
+
+    TEST_ASSERT_TRUE (zlink::spot_control_protocol::derive_peer_ctrl_bind_endpoint (
+      "wss://localhost:8080/spot", 1, &out));
+    TEST_ASSERT_EQUAL_STRING ("wss://localhost:9080/spot", out.c_str ());
+}
+
 }
 
 int main (int argc, char **argv)
@@ -325,5 +337,6 @@ int main (int argc, char **argv)
     RUN_TEST (test_bootstrap_descriptor_republish_resumes_after_topology_change);
     RUN_TEST (test_peer_ctrl_bind_endpoint_rejects_garbage_port);
     RUN_TEST (test_peer_ctrl_bind_endpoint_preserves_valid_fixed_port);
+    RUN_TEST (test_peer_ctrl_bind_endpoint_preserves_ws_suffix);
     return UNITY_END ();
 }

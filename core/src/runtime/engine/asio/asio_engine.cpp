@@ -454,7 +454,7 @@ void zlink::asio_engine_t::start_async_read ()
             read_size = read_buffer_size;
 
         if (use_stream_rx_slab () && !_pipeline.pending_stream_rx_chunk_pool.empty ()) {
-            stream_rx_chunk_t chunk = ZLINK_MOVE (_pipeline.pending_stream_rx_chunk_pool.back ());
+            asio_stream_rx_chunk_t chunk = ZLINK_MOVE (_pipeline.pending_stream_rx_chunk_pool.back ());
             _pipeline.pending_stream_rx_chunk_pool.pop_back ();
             _pipeline.pending_read_buffer = ZLINK_MOVE (chunk.data);
         } else if (!_pipeline.pending_buffer_pool.empty ()) {
@@ -578,55 +578,7 @@ bool zlink::asio_engine_t::speculative_read ()
 
     //  Mirror async path behavior for backpressure buffering.
     if (_input_stopped) {
-        if (_pipeline.read_from_pending_pool) {
-            const size_t total_pending = _pipeline.total_pending_bytes + _insize;
-            if (total_pending + bytes > max_pending_buffer_size) {
-                _pipeline.read_from_pending_pool = false;
-                error (connection_error);
-                return true;
-            }
-
-            _pipeline.pending_read_buffer.resize (bytes);
-            if (use_stream_rx_slab ()) {
-                stream_rx_chunk_t chunk;
-                chunk.data.swap (_pipeline.pending_read_buffer);
-                chunk.offset = 0;
-                _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
-            } else {
-                _pipeline.pending_buffers.push_back (std::move (_pipeline.pending_read_buffer));
-            }
-            _pipeline.total_pending_bytes += bytes;
-            _pipeline.read_from_pending_pool = false;
-            return true;
-        }
-
-        const size_t total_pending = _pipeline.total_pending_bytes + _insize;
-        if (total_pending + bytes > max_pending_buffer_size) {
-            error (connection_error);
-            return true;
-        }
-
-        if (use_stream_rx_slab ()) {
-            stream_rx_chunk_t chunk;
-            if (!_pipeline.pending_stream_rx_chunk_pool.empty ()) {
-                chunk = ZLINK_MOVE (_pipeline.pending_stream_rx_chunk_pool.back ());
-                _pipeline.pending_stream_rx_chunk_pool.pop_back ();
-            }
-            chunk.offset = 0;
-            chunk.data.resize (bytes);
-            std::memcpy (chunk.data.data (), _pipeline.read_buffer_ptr, bytes);
-            _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
-        } else {
-            std::vector<unsigned char> buffer;
-            if (!_pipeline.pending_buffer_pool.empty ()) {
-                buffer = ZLINK_MOVE (_pipeline.pending_buffer_pool.back ());
-                _pipeline.pending_buffer_pool.pop_back ();
-            }
-            buffer.resize (bytes);
-            std::memcpy (buffer.data (), _pipeline.read_buffer_ptr, bytes);
-            _pipeline.pending_buffers.push_back (std::move (buffer));
-        }
-        _pipeline.total_pending_bytes += bytes;
+        (void) buffer_stream_backpressure_read (bytes);
         return true;
     }
 
@@ -648,6 +600,53 @@ bool zlink::asio_engine_t::speculative_read ()
         }
     }
 
+    return true;
+}
+
+bool zlink::asio_engine_t::buffer_stream_backpressure_read (size_t bytes_transferred_)
+{
+    const size_t total_pending = _pipeline.total_pending_bytes + _insize;
+    if (total_pending + bytes_transferred_ > max_pending_buffer_size) {
+        _pipeline.read_from_pending_pool = false;
+        ENGINE_DBG ("buffer_stream_backpressure_read: pending buffer overflow (%zu + %zu > %zu)",
+                    total_pending, bytes_transferred_, max_pending_buffer_size);
+        error (connection_error);
+        return false;
+    }
+
+    if (_pipeline.read_from_pending_pool) {
+        _pipeline.pending_read_buffer.resize (bytes_transferred_);
+        if (use_stream_rx_slab ()) {
+            asio_stream_rx_chunk_t chunk;
+            chunk.data.swap (_pipeline.pending_read_buffer);
+            chunk.offset = 0;
+            _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+        } else {
+            _pipeline.pending_buffers.push_back (std::move (_pipeline.pending_read_buffer));
+        }
+        _pipeline.read_from_pending_pool = false;
+    } else if (use_stream_rx_slab ()) {
+        asio_stream_rx_chunk_t chunk;
+        if (!_pipeline.pending_stream_rx_chunk_pool.empty ()) {
+            chunk = ZLINK_MOVE (_pipeline.pending_stream_rx_chunk_pool.back ());
+            _pipeline.pending_stream_rx_chunk_pool.pop_back ();
+        }
+        chunk.offset = 0;
+        chunk.data.resize (bytes_transferred_);
+        std::memcpy (chunk.data.data (), _pipeline.read_buffer_ptr, bytes_transferred_);
+        _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+    } else {
+        std::vector<unsigned char> buffer;
+        if (!_pipeline.pending_buffer_pool.empty ()) {
+            buffer = ZLINK_MOVE (_pipeline.pending_buffer_pool.back ());
+            _pipeline.pending_buffer_pool.pop_back ();
+        }
+        buffer.resize (bytes_transferred_);
+        std::memcpy (buffer.data (), _pipeline.read_buffer_ptr, bytes_transferred_);
+        _pipeline.pending_buffers.push_back (std::move (buffer));
+    }
+
+    _pipeline.total_pending_bytes += bytes_transferred_;
     return true;
 }
 
@@ -976,27 +975,8 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
         }
 
         if (_pipeline.read_from_pending_pool) {
-            const size_t total_pending = _pipeline.total_pending_bytes + _insize;
-
-            if (total_pending + bytes_transferred > max_pending_buffer_size) {
-                ENGINE_DBG ("on_read_complete: pending buffer overflow (%zu + %zu > %zu)",
-                            total_pending, bytes_transferred, max_pending_buffer_size);
-                _pipeline.read_from_pending_pool = false;
-                error (connection_error);
+            if (!buffer_stream_backpressure_read (bytes_transferred))
                 return;
-            }
-
-            _pipeline.pending_read_buffer.resize (bytes_transferred);
-            if (use_stream_rx_slab ()) {
-                stream_rx_chunk_t chunk;
-                chunk.data.swap (_pipeline.pending_read_buffer);
-                chunk.offset = 0;
-                _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
-            } else {
-                _pipeline.pending_buffers.push_back (std::move (_pipeline.pending_read_buffer));
-            }
-            _pipeline.total_pending_bytes += bytes_transferred;
-            _pipeline.read_from_pending_pool = false;
 
             ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
                         bytes_transferred, _pipeline.total_pending_bytes);
@@ -1005,42 +985,8 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
             return;
         }
 
-        //  Check buffer size limit to prevent memory exhaustion
-        //  Bug fix: Include _insize (current partial data) in total calculation
-        //  Bug fix: Use _pipeline.total_pending_bytes for O(1) instead of O(n) iteration
-        const size_t total_pending = _pipeline.total_pending_bytes + _insize;
-
-        if (total_pending + bytes_transferred > max_pending_buffer_size) {
-            //  Buffer overflow - close connection to prevent memory exhaustion
-            ENGINE_DBG ("on_read_complete: pending buffer overflow (%zu + %zu > %zu)",
-                        total_pending, bytes_transferred, max_pending_buffer_size);
-            error (connection_error);
+        if (!buffer_stream_backpressure_read (bytes_transferred))
             return;
-        }
-
-        //  Store data in pending buffer for later processing.
-        //  Reuse pool storage when available to avoid per-read temporaries.
-        if (use_stream_rx_slab ()) {
-            stream_rx_chunk_t chunk;
-            if (!_pipeline.pending_stream_rx_chunk_pool.empty ()) {
-                chunk = ZLINK_MOVE (_pipeline.pending_stream_rx_chunk_pool.back ());
-                _pipeline.pending_stream_rx_chunk_pool.pop_back ();
-            }
-            chunk.offset = 0;
-            chunk.data.resize (bytes_transferred);
-            std::memcpy (chunk.data.data (), _pipeline.read_buffer_ptr, bytes_transferred);
-            _pipeline.pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
-        } else {
-            std::vector<unsigned char> buffer;
-            if (!_pipeline.pending_buffer_pool.empty ()) {
-                buffer = ZLINK_MOVE (_pipeline.pending_buffer_pool.back ());
-                _pipeline.pending_buffer_pool.pop_back ();
-            }
-            buffer.resize (bytes_transferred);
-            std::memcpy (buffer.data (), _pipeline.read_buffer_ptr, bytes_transferred);
-            _pipeline.pending_buffers.push_back (std::move (buffer));
-        }
-        _pipeline.total_pending_bytes += bytes_transferred;
 
         ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)", bytes_transferred,
                     _pipeline.total_pending_bytes);
@@ -1625,7 +1571,7 @@ bool zlink::asio_engine_t::restart_input_internal ()
     //  Process any buffered data from pending queues (if present).
     if (use_stream_rx_slab ()) {
         while (!_pipeline.pending_stream_rx_chunks.empty ()) {
-            stream_rx_chunk_t &chunk = _pipeline.pending_stream_rx_chunks.front ();
+            asio_stream_rx_chunk_t &chunk = _pipeline.pending_stream_rx_chunks.front ();
             const size_t chunk_available = chunk.size ();
 
             ENGINE_DBG ("restart_input: processing stream slab chunk of %zu bytes",

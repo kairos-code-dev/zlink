@@ -8,9 +8,7 @@ use crate::error::{RecvError, RecvResult};
 use crate::ffi;
 use crate::message::{Message, RoutingId};
 use crate::native_errors::check_recv_rc;
-use crate::socket::{close_unreceived_part, routing_id_from_ptr};
-
-const MAX_NATIVE_PARTS: usize = 1024;
+use crate::socket::{close_unreceived_part, routing_id_from_ptr, MAX_NATIVE_PARTS};
 
 pub(super) type SpotRoutedParts = Result<
     Option<(

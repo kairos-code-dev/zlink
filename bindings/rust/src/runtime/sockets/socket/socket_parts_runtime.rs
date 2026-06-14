@@ -1,6 +1,6 @@
 use super::*;
 
-const MAX_NATIVE_PARTS: usize = 1024;
+pub(crate) const MAX_NATIVE_PARTS: usize = 1024;
 
 // ---------------------------------------------------------------------------
 // Helpers

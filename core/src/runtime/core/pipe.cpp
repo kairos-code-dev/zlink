@@ -462,10 +462,12 @@ bool zlink::pipe_t::write_and_flush (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    write_message_unlocked (msg_);
-
-    if (!more)
+    _out_pipe->write (*msg_, more);
+    if (!more) {
+        if (!msg_->is_routing_id ())
+            _msgs_written++;
         flush_unlocked ();
+    }
 
     return true;
 }
@@ -498,10 +500,12 @@ bool zlink::pipe_t::write_and_flush_no_recursive_hwm_check (const msg_t *msg_)
     }
 
     const bool more = (msg_->flags () & msg_t::more) != 0;
-    write_message_unlocked (msg_);
-
-    if (!more)
+    _out_pipe->write (*msg_, more);
+    if (!more) {
+        if (!msg_->is_routing_id ())
+            _msgs_written++;
         flush_unlocked ();
+    }
 
     return true;
 }

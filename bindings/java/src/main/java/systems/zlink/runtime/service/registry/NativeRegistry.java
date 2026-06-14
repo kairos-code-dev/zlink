@@ -66,20 +66,6 @@ public final class NativeRegistry implements Registry {
             throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_set");
     }
 
-    /** Reads one typed registry option. */
-    private int getOption(int option) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment valueOut = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment errorOut = arena.allocate(ValueLayout.JAVA_INT);
-            int value = Native.registryGetOption(handle, option, valueOut,
-              errorOut);
-            int err = errorOut.get(ValueLayout.JAVA_INT, 0);
-            if (err != 0)
-                throw InternalAccess.zlinkExceptionFromLastError("zlink_registry_get");
-            return value;
-        }
-    }
-
     /** Adds one peer registry PUB endpoint. */
     public void addPeer(String peerPubEndpoint) {
         try (Arena arena = Arena.ofConfined()) {

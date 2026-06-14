@@ -32,7 +32,6 @@ import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
 import systems.zlink.runtime.nativeapi.NativeListSnapshots;
-import systems.zlink.runtime.nativeapi.NativeSubmitErrors;
 import systems.zlink.runtime.nativeapi.RequestReplySupport;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -505,14 +504,6 @@ public final class NativeSpot implements Spot {
 
     MemorySegment topicCString(String topic) {
         return sendPlane.topicCString(topic);
-    }
-
-    private ZlinkSubmitException submitFailure(String apiName) {
-        int errno = Native.errno();
-        ZlinkSubmitException submit = NativeSubmitErrors.submitExceptionOrNull(errno);
-        if (submit != null)
-            return submit;
-        throw InternalAccess.zlinkExceptionFromLastError(apiName);
     }
 
     private void drainChannelReplyFrom(MemorySegment dealerSubject) {

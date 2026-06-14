@@ -107,3 +107,47 @@ fn binding_runtime_does_not_hide_sleep_or_join_in_hot_paths() {
         );
     }
 }
+
+#[test]
+fn samples_and_perf_use_only_public_binding_contract() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let roots = [
+        manifest_dir.join("samples"),
+        manifest_dir.join("perf").join("single").join("src"),
+        manifest_dir.join("perf").join("multi").join("src"),
+    ];
+    let forbidden = [
+        "zlink::ffi",
+        "zlink::runtime",
+        "zlink::ctx",
+        "zlink::socket",
+        "zlink::service",
+        "zlink::runtime_bridge",
+        "zlink::native_errors",
+        "zlink::native_routing_id",
+        "crate::ffi",
+        "crate::runtime",
+        "crate::ctx",
+        "crate::socket",
+        "crate::service",
+        "crate::runtime_bridge",
+        "crate::native_errors",
+        "crate::native_routing_id",
+        "extern \"C\"",
+        "unsafe {",
+    ];
+
+    let mut violations = Vec::new();
+    for root in roots {
+        for path in source_files(&root) {
+            let body = fs::read_to_string(&path).unwrap();
+            for token in forbidden {
+                if body.contains(token) {
+                    violations.push(format!("{}:{token}", path.display()));
+                }
+            }
+        }
+    }
+
+    assert!(violations.is_empty(), "{violations:#?}");
+}

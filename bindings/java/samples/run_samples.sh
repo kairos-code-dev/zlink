@@ -48,7 +48,7 @@ TASKS=(
 )
 
 failures=0
-timeout_seconds=240
+timeout_seconds=30
 
 run_task() {
   if command -v timeout >/dev/null 2>&1; then

@@ -380,6 +380,24 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     spot_channel_example.cpp
     spot_timer_example.cpp
   )
+  file(GLOB ZLINK_CPP_SAMPLE_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/samples/*_sample.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/samples/*_example.cpp"
+  )
+  set(ZLINK_CPP_UNREGISTERED_SAMPLE_SOURCES)
+  foreach(sample_file IN LISTS ZLINK_CPP_SAMPLE_FILES)
+    get_filename_component(sample_source "${sample_file}" NAME)
+    list(FIND ZLINK_CPP_SAMPLE_SOURCES "${sample_source}" sample_index)
+    if(sample_index EQUAL -1)
+      list(APPEND ZLINK_CPP_UNREGISTERED_SAMPLE_SOURCES "${sample_source}")
+    endif()
+  endforeach()
+  if(ZLINK_CPP_UNREGISTERED_SAMPLE_SOURCES)
+    list(JOIN ZLINK_CPP_UNREGISTERED_SAMPLE_SOURCES ", " unregistered_samples)
+    message(FATAL_ERROR
+      "C++ sample source files are not registered in "
+      "ZLINK_CPP_SAMPLE_SOURCES: ${unregistered_samples}")
+  endif()
   foreach(sample_source IN LISTS ZLINK_CPP_SAMPLE_SOURCES)
     get_filename_component(sample_name "${sample_source}" NAME_WE)
     add_cpp_sample(

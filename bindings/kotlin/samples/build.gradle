@@ -13,7 +13,7 @@ kotlin {
     jvmToolchain(22)
 }
 
-// Kotlin actor samples share the Java binding runtime (systems.zlink.*) and the
+// Kotlin samples share the Java binding runtime (systems.zlink.*) and the
 // shared SampleSupport helpers from the Java samples project. No separate native
 // binding exists; this subproject only adds idiomatic Kotlin sample sources.
 dependencies {
@@ -46,7 +46,7 @@ def sampleMainClasses = [
     runStreamRecvSample: 'systems.zlink.samples.StreamRecvSampleKt'
 ]
 
-sampleMainClasses.each { taskName, mainClassName ->
+def sampleRunTasks = sampleMainClasses.collect { taskName, mainClassName ->
     tasks.register(taskName, JavaExec) {
         group = 'application'
         classpath = sourceSets.main.runtimeClasspath +
@@ -57,7 +57,15 @@ sampleMainClasses.each { taskName, mainClassName ->
     }
 }
 
+sampleRunTasks.eachWithIndex { sampleTask, index ->
+    if (index > 0) {
+        sampleTask.configure {
+            mustRunAfter sampleRunTasks[index - 1]
+        }
+    }
+}
+
 tasks.register('runAllKotlinSamples') {
     group = 'application'
-    dependsOn sampleMainClasses.keySet().collect { tasks.named(it) }
+    dependsOn sampleRunTasks
 }

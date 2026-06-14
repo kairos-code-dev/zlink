@@ -1,50 +1,13 @@
 //! DEALER/ROUTER direct recv sample – demonstrates routed messaging.
 
+mod sample_support;
+
 use zlink::{Context, Message, RoutingId, SocketMonitor};
-
-pub fn reserve_tcp_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
-}
-
-pub fn wait_connected(monitors: &[&zlink::SocketMonitor]) {
-    for monitor in monitors {
-        loop {
-            let event = monitor.recv().expect("monitor recv failed");
-            if event.is_connection_ready()
-                || monitor
-                    .snapshot()
-                    .expect("monitor snapshot failed")
-                    .is_ready()
-            {
-                break;
-            }
-        }
-    }
-}
-
-pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
-    loop {
-        let event = monitor.recv().expect("monitor recv failed");
-        if event.is_accepted()
-            || event.is_connection_ready()
-            || monitor
-                .snapshot()
-                .expect("monitor snapshot failed")
-                .is_ready()
-        {
-            break;
-        }
-    }
-}
 
 fn main() {
     // --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
-    let port = reserve_tcp_port();
-    let endpoint = format!("tcp://127.0.0.1:{port}");
+    let endpoint = sample_support::tcp_endpoint();
 
     let router = ctx.router_socket().expect("router socket failed");
     let dealer = ctx.dealer_socket().expect("dealer socket failed");
@@ -57,7 +20,7 @@ fn main() {
     router.bind(&endpoint).expect("bind failed");
     dealer.connect(&endpoint).expect("connect failed");
 
-    wait_connected(&[&router_mon, &dealer_mon]);
+    sample_support::wait_connected(&[&router_mon, &dealer_mon]);
     drop(router_mon);
     drop(dealer_mon);
 

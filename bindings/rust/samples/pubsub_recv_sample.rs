@@ -1,50 +1,13 @@
 //! PUB/SUB direct recv sample – demonstrates topic publish/subscribe.
 
+mod sample_support;
+
 use zlink::{Context, Message, RecvFlags, SocketMonitor, TopicMessage};
-
-pub fn reserve_tcp_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
-}
-
-pub fn wait_connected(monitors: &[&zlink::SocketMonitor]) {
-    for monitor in monitors {
-        loop {
-            let event = monitor.recv().expect("monitor recv failed");
-            if event.is_connection_ready()
-                || monitor
-                    .snapshot()
-                    .expect("monitor snapshot failed")
-                    .is_ready()
-            {
-                break;
-            }
-        }
-    }
-}
-
-pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
-    loop {
-        let event = monitor.recv().expect("monitor recv failed");
-        if event.is_accepted()
-            || event.is_connection_ready()
-            || monitor
-                .snapshot()
-                .expect("monitor snapshot failed")
-                .is_ready()
-        {
-            break;
-        }
-    }
-}
 
 fn main() {
     // --8<-- [start:doc]
     let ctx = Context::new().expect("context creation failed");
-    let port = reserve_tcp_port();
-    let endpoint = format!("tcp://127.0.0.1:{port}");
+    let endpoint = sample_support::tcp_endpoint();
 
     let pub_sock = ctx.pub_socket().expect("pub socket failed");
     let sub_sock = ctx.sub_socket().expect("sub socket failed");
@@ -59,7 +22,7 @@ fn main() {
     pub_sock.bind(&endpoint).expect("bind failed");
     sub_sock.connect(&endpoint).expect("connect failed");
 
-    wait_connected(&[&pub_mon, &sub_mon]);
+    sample_support::wait_connected(&[&pub_mon, &sub_mon]);
     drop(pub_mon);
     drop(sub_mon);
 

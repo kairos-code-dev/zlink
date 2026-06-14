@@ -1,48 +1,12 @@
 //! STREAM direct recv sample – demonstrates STREAM socket with direct recv.
 //! The STREAM socket binds as a server; a raw TCP client connects inward.
 
+mod sample_support;
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
 use zlink::{Context, SocketMonitor};
-
-pub fn reserve_tcp_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
-}
-
-pub fn wait_connected(monitors: &[&zlink::SocketMonitor]) {
-    for monitor in monitors {
-        loop {
-            let event = monitor.recv().expect("monitor recv failed");
-            if event.is_connection_ready()
-                || monitor
-                    .snapshot()
-                    .expect("monitor snapshot failed")
-                    .is_ready()
-            {
-                break;
-            }
-        }
-    }
-}
-
-pub fn wait_stream_connected(monitor: &zlink::SocketMonitor) {
-    loop {
-        let event = monitor.recv().expect("monitor recv failed");
-        if event.is_accepted()
-            || event.is_connection_ready()
-            || monitor
-                .snapshot()
-                .expect("monitor snapshot failed")
-                .is_ready()
-        {
-            break;
-        }
-    }
-}
 
 fn main() {
     // --8<-- [start:doc]
@@ -56,7 +20,7 @@ fn main() {
     let tcp_addr = endpoint.strip_prefix("tcp://").unwrap();
     let mut tcp_client = TcpStream::connect(tcp_addr).expect("tcp connect failed");
     tcp_client.set_nodelay(true).expect("set_nodelay failed");
-    wait_stream_connected(&stream_mon);
+    sample_support::wait_stream_connected(&stream_mon);
     drop(stream_mon);
 
     tcp_client

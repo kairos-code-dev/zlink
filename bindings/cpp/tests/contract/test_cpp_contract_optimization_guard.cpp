@@ -46,6 +46,36 @@ bool contains_aggregate_call (const std::string &body, const std::string &symbol
     }
     return false;
 }
+
+void assert_public_contract_includes_only (const std::filesystem::path &root)
+{
+    const std::vector<std::string> forbidden_include_fragments = {
+      "<zlink.h>",
+      "\"zlink.h\"",
+      "Runtime/",
+      "Native/",
+      "native_",
+      "_access.hpp",
+      "detail.hpp",
+      "operation_detail.hpp",
+      "socket_handle.hpp",
+      "request_progress.hpp",
+    };
+
+    std::vector<std::filesystem::path> files;
+    collect_files (root, files);
+    for (const auto &file : files) {
+        std::istringstream lines (read_file (file));
+        std::string line;
+        while (std::getline (lines, line)) {
+            const auto first = line.find_first_not_of (" \t");
+            if (first == std::string::npos || line.compare (first, 8, "#include") != 0)
+                continue;
+            for (const auto &fragment : forbidden_include_fragments)
+                assert (line.find (fragment) == std::string::npos);
+        }
+    }
+}
 }
 
 int main ()
@@ -103,5 +133,8 @@ int main ()
         assert (!contains_aggregate_call (all, symbol));
 
     assert (all.find ("std::this_thread::sleep_for") == std::string::npos);
+
+    assert_public_contract_includes_only (cpp_root / "samples");
+    assert_public_contract_includes_only (cpp_root / "perf");
     return 0;
 }

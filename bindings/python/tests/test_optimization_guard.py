@@ -46,6 +46,22 @@ REQUIRED_PART_SYMBOLS = (
     "zlink_spot_reply_router_part",
 )
 
+PUBLIC_CONTRACT_FORBIDDEN_TOKENS = (
+    "from zlink._",
+    "import zlink._",
+    "zlink._native",
+    "zlink._runtime",
+    "_native_bridge",
+    "_native_active_latency_ns",
+    "_recv_parts_via_native_bridge",
+    "_recv_owner_via_native_bridge",
+    "_subscribe_parts_owner",
+    "_last_part_data",
+    "_socket_handle",
+    "ctypes",
+    "cffi",
+)
+
 
 def _source_files() -> list[Path]:
     return sorted(
@@ -66,6 +82,16 @@ def _perf_source_files() -> list[Path]:
         for path in perf_root.rglob("*.py")
         if "__pycache__" not in path.parts and ".egg-info" not in path.parts
     )
+
+
+def _public_contract_violations(files: list[Path]) -> list[str]:
+    violations = []
+    for path in files:
+        body = path.read_text(encoding="utf-8")
+        for token in PUBLIC_CONTRACT_FORBIDDEN_TOKENS:
+            if token in body:
+                violations.append(f"{path.relative_to(ROOT)}:{token}")
+    return violations
 
 
 def test_hot_paths_use_part_substrate_not_aggregate_calls():
@@ -184,31 +210,19 @@ def test_public_socket_contracts_keep_builder_only_send_publish_surface():
 
 
 def test_python_perf_uses_public_binding_contract():
-    perf_root = ROOT / "perf"
-    files = [
+    violations = _public_contract_violations(_perf_source_files())
+    assert violations == []
+
+
+def test_python_samples_and_examples_use_public_binding_contract():
+    files = sorted(
         path
-        for path in perf_root.rglob("*.py")
+        for root in (ROOT / "samples", ROOT / "examples")
+        for path in root.rglob("*.py")
         if "__pycache__" not in path.parts
-    ]
-    forbidden = [
-        "from zlink._",
-        "import zlink._",
-        "_native_bridge",
-        "_native_active_latency_ns",
-        "_recv_parts_via_native_bridge",
-        "_recv_owner_via_native_bridge",
-        "_subscribe_parts_owner",
-        "_last_part_data",
-        "_socket_handle",
-    ]
-    violations = []
+    )
 
-    for path in files:
-        body = path.read_text(encoding="utf-8")
-        for token in forbidden:
-            if token in body:
-                violations.append(f"{path.relative_to(ROOT)}:{token}")
-
+    violations = _public_contract_violations(files)
     assert violations == []
 
 

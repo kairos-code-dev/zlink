@@ -7,8 +7,10 @@
 #include "routing_id_access.hpp"
 #include "../Native/native_message_parts.hpp"
 #include "../Native/request_progress.hpp"
+#include "duration_conversion.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 
 namespace zlink
@@ -25,6 +27,15 @@ inline std::chrono::milliseconds resolve_timeout (std::chrono::milliseconds requ
                                                   std::chrono::milliseconds fallback_) noexcept
 {
     return requested_ == std::chrono::milliseconds () ? fallback_ : requested_;
+}
+
+// Resolves a requested request timeout against its fallback and converts the
+// result to the native millisecond representation in one step. Centralizes the
+// request-timeout encoding that the spot request surface applies identically.
+inline uint32_t native_request_timeout_ms (std::chrono::milliseconds requested_,
+                                           std::chrono::milliseconds fallback_)
+{
+    return native_timeout_ms (resolve_timeout (requested_, fallback_));
 }
 
 } // namespace detail

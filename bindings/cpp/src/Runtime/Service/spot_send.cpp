@@ -216,8 +216,8 @@ async_result_t<std::vector<message_t>> spot_t::request_to_spot (const routing_id
                                                                 message_t message_,
                                                                 std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_awaitable (
       message_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
@@ -234,8 +234,8 @@ async_result_t<std::vector<message_t>> spot_t::request_to_spot (const routing_id
                                                                 std::vector<message_t> &parts_,
                                                                 std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_awaitable (
       parts_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback_,
@@ -255,8 +255,8 @@ bool spot_t::request_to_spot (
   send_flags_t flags_,
   std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_callback (
       message_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -277,8 +277,8 @@ bool spot_t::request_to_spot (
   send_flags_t flags_,
   std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_callback (
       parts_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -303,8 +303,8 @@ request_operation_t spot_t::request_to_router (const routing_id_t &peer_rid_)
 async_result_t<std::vector<message_t>> spot_t::request_to_router (
   const routing_id_t &peer_rid_, message_t message_, std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_awaitable (
       message_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -318,8 +318,8 @@ async_result_t<std::vector<message_t>> spot_t::request_to_router (
 async_result_t<std::vector<message_t>> spot_t::request_to_router (
   const routing_id_t &peer_rid_, std::vector<message_t> &parts_, std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_awaitable (
       parts_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -337,8 +337,8 @@ bool spot_t::request_to_router (
   send_flags_t flags_,
   std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_callback (
       message_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -357,8 +357,8 @@ bool spot_t::request_to_router (
   send_flags_t flags_,
   std::chrono::milliseconds timeout_)
 {
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_callback (
       parts_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -375,8 +375,8 @@ async_result_t<std::vector<message_t>> spot_t::request_channel (const std::strin
                                                                 std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_awaitable (
       part_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -392,8 +392,8 @@ async_result_t<std::vector<message_t>> spot_t::request_channel (const std::strin
                                                                 std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_awaitable (
       parts_, detail::make_spot_request_progress (_impl->handle),
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -412,8 +412,8 @@ bool spot_t::request_channel (
   std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_part_callback (
       part_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,
@@ -433,8 +433,8 @@ bool spot_t::request_channel (
   std::chrono::milliseconds timeout_)
 {
     validate_channel_name (channel_name_);
-    const uint32_t timeout_ms = zlink::detail::native_timeout_ms (
-      zlink::detail::resolve_timeout (timeout_, _impl->default_request_timeout));
+    const uint32_t timeout_ms =
+      zlink::detail::native_request_timeout_ms (timeout_, _impl->default_request_timeout);
     return detail::submit_request_parts_callback (
       parts_, std::move (callback_), flags_,
       [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, zlink_reply_handler_fn callback,

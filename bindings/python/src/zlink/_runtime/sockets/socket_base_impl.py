@@ -25,13 +25,8 @@ from ..handles.native_support import (
     _raise_result_error,
     _request_result_from_code,
     _request_result_native_errno,
-    _recv_result_from_errno,
-    _submit_result_from_errno,
     _report_unhandled_callback_exception,
-    _raise_handler_error_from_errno,
     _routing_id_bytes,
-    _raise_recv_error_from_errno,
-    _raise_submit_error_from_errno,
     _validated_routing_id_bytes,
     _validated_c_string_value,
 )

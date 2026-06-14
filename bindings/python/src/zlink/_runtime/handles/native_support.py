@@ -33,56 +33,6 @@ from ...contracts.errors.errors import (
 from ..._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
 
 
-def _submit_result_from_errno(err):
-    if err in (_errno.EAGAIN,):
-        return SubmitResult.BACKPRESSURED
-    if err in (_errno.ENOTCONN, getattr(_errno, "EHOSTUNREACH", -1)):
-        return SubmitResult.NOT_CONNECTED
-    if err in (_errno.ENOENT,):
-        return SubmitResult.NOT_FOUND
-    if err in (_errno.EINVAL,):
-        return SubmitResult.INVALID_ARGUMENT
-    if err in (_errno.EFAULT,):
-        return SubmitResult.INVALID_HANDLE
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return SubmitResult.NOT_SUPPORTED
-    if err in (_errno.EBUSY, getattr(_errno, "EFSM", _errno.EBUSY)):
-        return SubmitResult.INVALID_STATE
-    if err in (getattr(_errno, "EMTHREAD", _errno.EBUSY),):
-        return SubmitResult.THREAD_VIOLATION
-    if err in (_errno.ENOMEM, _errno.ENOBUFS):
-        return SubmitResult.OUT_OF_MEMORY
-    return SubmitResult.INTERNAL_ERROR
-
-
-def _request_result_from_errno(err):
-    if err == 0:
-        return RequestResult.OK
-    if err in (_errno.ETIMEDOUT,):
-        return RequestResult.TIMED_OUT
-    if err in (_errno.ENOENT,):
-        return RequestResult.NOT_FOUND
-    if err in (getattr(_errno, "ETERM", 0),):
-        return RequestResult.TERMINATED
-    if err in (_errno.EIO,):
-        return RequestResult.INTERNAL_ERROR
-    if err in (_errno.ECONNREFUSED,):
-        return RequestResult.REJECTED
-    if err in (getattr(_errno, "ESTALE", 116),):
-        return RequestResult.CONFLICT
-    if err in (_errno.EBUSY,):
-        return RequestResult.BUSY
-    if err in (_errno.ENOTCONN,):
-        return RequestResult.NOT_CONNECTED
-    if err in (_errno.EINVAL,):
-        return RequestResult.INVALID_ARGUMENT
-    if err in (getattr(_errno, "EALREADY", 114),):
-        return RequestResult.INVALID_STATE
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return RequestResult.NOT_SUPPORTED
-    return RequestResult.PROTOCOL_ERROR
-
-
 def _request_result_from_code(code):
     try:
         return RequestResult(int(code))
@@ -115,76 +65,6 @@ def _request_result_native_errno(result):
     if typed == RequestResult.NOT_SUPPORTED:
         return _errno.ENOTSUP
     return 0
-
-
-def _recv_result_from_errno(err):
-    if err == 0:
-        return RecvResult.OK
-    if err == _errno.EAGAIN:
-        return RecvResult.NO_DATA
-    if err == _errno.EBUSY:
-        return RecvResult.BUSY
-    if err in (getattr(_errno, "ETERM", 0),):
-        return RecvResult.TERMINATED
-    if err == _errno.EFAULT:
-        return RecvResult.INVALID_HANDLE
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return RecvResult.NOT_SUPPORTED
-    return RecvResult.TERMINATED
-
-
-def _handler_result_from_errno(err):
-    if err == 0:
-        return HandlerResult.OK
-    if err == _errno.EINVAL:
-        return HandlerResult.INVALID_ARGUMENT
-    if err == _errno.EBUSY:
-        return HandlerResult.BUSY
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return HandlerResult.NOT_SUPPORTED
-    if err == _errno.EDEADLK:
-        return HandlerResult.DEADLOCK
-    if err == _errno.EFAULT:
-        return HandlerResult.INVALID_HANDLE
-    return HandlerResult.INVALID_HANDLE
-
-
-def _close_result_from_errno(err):
-    if err == 0:
-        return CloseResult.OK
-    if err == _errno.EBUSY:
-        return CloseResult.BUSY
-    if err in (getattr(_errno, "ESHUTDOWN", None),):
-        return CloseResult.SHUTDOWN
-    if err == _errno.EFAULT:
-        return CloseResult.INVALID_HANDLE
-    return CloseResult.INVALID_HANDLE
-
-
-def _bind_result_from_errno(err):
-    if err == 0:
-        return BindResult.OK
-    if err == _errno.EINVAL:
-        return BindResult.INVALID_ARGUMENT
-    if err == _errno.EADDRINUSE:
-        return BindResult.ADDR_IN_USE
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return BindResult.NOT_SUPPORTED
-    if err == _errno.EFAULT:
-        return BindResult.INVALID_HANDLE
-    return BindResult.INVALID_HANDLE
-
-
-def _connect_result_from_errno(err):
-    if err == 0:
-        return ConnectResult.OK
-    if err == _errno.EINVAL:
-        return ConnectResult.INVALID_ARGUMENT
-    if err in (_errno.ENOTSUP, getattr(_errno, "EOPNOTSUPP", _errno.ENOTSUP)):
-        return ConnectResult.NOT_SUPPORTED
-    if err == _errno.EFAULT:
-        return ConnectResult.INVALID_HANDLE
-    return ConnectResult.INVALID_HANDLE
 
 
 def _config_result_from_errno(err):
@@ -222,34 +102,6 @@ def _raise_mapped_error(error_type, mapper, native_errno=None):
     if native_errno is None:
         native_errno = lib().zlink_errno()
     _raise_zlink_error(error_type, mapper(int(native_errno)), int(native_errno))
-
-
-def _raise_submit_error_from_errno(native_errno=None):
-    _raise_mapped_error(SubmitError, _submit_result_from_errno, native_errno)
-
-
-def _raise_request_error_from_errno(native_errno=None):
-    _raise_mapped_error(RequestError, _request_result_from_errno, native_errno)
-
-
-def _raise_recv_error_from_errno(native_errno=None):
-    _raise_mapped_error(RecvError, _recv_result_from_errno, native_errno)
-
-
-def _raise_handler_error_from_errno(native_errno=None):
-    _raise_mapped_error(HandlerError, _handler_result_from_errno, native_errno)
-
-
-def _raise_close_error_from_errno(native_errno=None):
-    _raise_mapped_error(CloseError, _close_result_from_errno, native_errno)
-
-
-def _raise_bind_error_from_errno(native_errno=None):
-    _raise_mapped_error(BindError, _bind_result_from_errno, native_errno)
-
-
-def _raise_connect_error_from_errno(native_errno=None):
-    _raise_mapped_error(ConnectError, _connect_result_from_errno, native_errno)
 
 
 def _raise_config_error_from_errno(native_errno=None):

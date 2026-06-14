@@ -10,14 +10,19 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 
 final class OptimizationGuardContractTest {
     private static final Path MAIN_SOURCE = Path.of("src", "main", "java");
     private static final Path MODULE_INFO =
         MAIN_SOURCE.resolve("module-info.java");
+    private static final Path MAIN_CLASSES =
+        Path.of("build", "classes", "java", "main");
     private static final Path SAMPLES_SOURCE = Path.of("samples");
     private static final Path KOTLIN_SAMPLES_SOURCE =
         Path.of("..", "kotlin", "samples", "src", "main", "kotlin");
@@ -111,11 +116,59 @@ final class OptimizationGuardContractTest {
 
     @Test
     void sourceTopLevelPackagesStayContractAndRuntimeOnly() throws IOException {
-        Path topLevelInternal = MAIN_SOURCE.resolve(
-            Path.of("systems", "zlink", "internal"));
+        Path zlinkPackage = MAIN_SOURCE.resolve(Path.of("systems", "zlink"));
+        Set<String> allowed = Set.of("contracts", "runtime");
+        List<String> violations = new ArrayList<>();
 
-        assertFalse(Files.exists(topLevelInternal),
-            "internal helpers must live under contracts.internal or runtime");
+        try (var stream = Files.list(zlinkPackage)) {
+            for (Path path : stream.filter(Files::isDirectory).toList()) {
+                String name = path.getFileName().toString();
+                if (!allowed.contains(name)) {
+                    violations.add(name);
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "top-level Java packages must stay limited to contracts/runtime: " + violations);
+    }
+
+    @Test
+    void modulePathConsumersCanCompileAgainstContractOnly() throws IOException {
+        String publicContract = """
+            import systems.zlink.contracts.messaging.Message;
+            final class PublicContractProbe {
+                Message message;
+            }
+            """;
+        assertTrue(compilesOnModulePath(publicContract),
+            "module path consumers must be able to import public contract packages");
+
+        List<String> nonContractSources = List.of(
+            """
+            import systems.zlink.runtime.core.NativeContext;
+            final class RuntimeProbe {
+                NativeContext context;
+            }
+            """,
+            """
+            import systems.zlink.contracts.internal.ContractAccess;
+            final class InternalProbe {
+                ContractAccess access;
+            }
+            """
+        );
+        List<String> violations = new ArrayList<>();
+        for (String source : nonContractSources) {
+            if (compilesOnModulePath(source)) {
+                violations.add(source.lines().filter(line -> line.startsWith("import "))
+                    .findFirst().orElse(source));
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+            "module path consumers must not compile against non-contract packages: "
+                + violations);
     }
 
     @Test
@@ -153,5 +206,32 @@ final class OptimizationGuardContractTest {
             return stream.filter(p ->
                 p.toString().endsWith(".java") || p.toString().endsWith(".kt")).toList();
         }
+    }
+
+    private static boolean compilesOnModulePath(String source) throws IOException {
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        assertTrue(compiler != null, "tests must run on a JDK with javac");
+
+        Path workDir = Files.createTempDirectory("zlink-java-module-guard");
+        Path moduleDir = workDir.resolve("probe");
+        Path sourceDir = moduleDir.resolve("probe");
+        Path moduleInfo = moduleDir.resolve("module-info.java");
+        Path sourceFile = sourceDir.resolve("Probe.java");
+        Path outputDir = workDir.resolve("out");
+        Files.createDirectories(sourceDir);
+        Files.createDirectories(outputDir);
+        Files.writeString(moduleInfo,
+            "module probe { requires systems.zlink; }", StandardCharsets.UTF_8);
+        Files.writeString(sourceFile, "package probe;\n" + source,
+            StandardCharsets.UTF_8);
+
+        List<String> args = Arrays.asList(
+            "-d", outputDir.toString(),
+            "--module-path", MAIN_CLASSES.toString(),
+            "--module-source-path", workDir.toString(),
+            "-m", "probe"
+        );
+
+        return compiler.run(null, null, null, args.toArray(String[]::new)) == 0;
     }
 }

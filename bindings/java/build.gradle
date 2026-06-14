@@ -88,9 +88,10 @@ tasks.register('buildZlinkJavaBridge', Exec) {
         '-I', jniOsIncludeDir.absolutePath,
         '-L', linkDir.absolutePath,
         '-Wl,-rpath,$ORIGIN',
-        '-Wl,--no-as-needed',
+        '-Wl,--no-undefined',
         '-o', output.absolutePath,
         source.absolutePath,
+        '-Wl,--no-as-needed',
         '-lzlink'
 }
 

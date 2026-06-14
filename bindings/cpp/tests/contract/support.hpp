@@ -56,14 +56,13 @@ inline std::string unique_ipc (const char *base_)
 
 inline std::string unique_tcp (const char *base_)
 {
-    static unsigned counter = 0;
-    const unsigned pid =
-#if defined(ZLINK_HAVE_WINDOWS)
-      static_cast<unsigned> (_getpid ());
-#else
-      static_cast<unsigned> (getpid ());
-#endif
-    const unsigned port = 20000u + ((pid % 1000u) * 20u) + (++counter);
+    boost::asio::io_context io;
+    boost::asio::ip::tcp::acceptor acceptor (io);
+    acceptor.open (boost::asio::ip::tcp::v4 ());
+    acceptor.bind (boost::asio::ip::tcp::endpoint (boost::asio::ip::address_v4::loopback (), 0));
+    const unsigned short port = acceptor.local_endpoint ().port ();
+    acceptor.close ();
+
     std::ostringstream stream;
     (void) base_;
     stream << "tcp://127.0.0.1:" << port;

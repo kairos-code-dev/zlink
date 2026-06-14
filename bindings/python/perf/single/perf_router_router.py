@@ -46,7 +46,7 @@ def _send_router_stop_token(router, dest_routing_id):
             poll_idle_ms(1)
 
 
-def _native_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
+def _public_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
     return None
 
 
@@ -111,7 +111,7 @@ def main(argv=None):
                     )
 
                 active_end = time.perf_counter() + args.duration
-                metrics = _native_one_way_metrics(
+                metrics = _public_one_way_metrics(
                     client,
                     server,
                     msg_size=args.msg_size,

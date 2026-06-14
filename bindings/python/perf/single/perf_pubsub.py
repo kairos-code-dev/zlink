@@ -43,7 +43,7 @@ def _publish_stop_token(publisher):
             poll_idle_ms(1)
 
 
-def _native_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
+def _public_one_way_metrics(sender, receiver, *, msg_size, duration_s, run_id):
     return None
 
 
@@ -98,7 +98,7 @@ def main(argv=None):
                     time.sleep(wait_seconds)
 
                 active_end = time.perf_counter() + args.duration
-                metrics = _native_one_way_metrics(
+                metrics = _public_one_way_metrics(
                     publisher,
                     subscriber,
                     msg_size=args.msg_size,

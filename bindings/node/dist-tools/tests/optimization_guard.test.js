@@ -80,6 +80,18 @@ function sourceFiles(dir, suffixes) {
     }
     return out;
 }
+function moduleSpecifiers(body) {
+    return [
+        ...body.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+        ...body.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g),
+        ...body.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g)
+    ].map((match) => match[1]);
+}
+function isRuntimeDeepImport(specifier) {
+    return specifier.startsWith('@zlink-systems/zlink/')
+        || /(^|\/)(src|dist)\/zlink\/runtime(\/|$)/.test(specifier)
+        || /(^|\/)zlink\/runtime(\/|$)/.test(specifier);
+}
 test('native hot paths use part substrate instead of aggregate calls', () => {
     const files = sourceFiles(NATIVE_SRC, ['.cc', '.h']);
     const text = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
@@ -138,6 +150,11 @@ test('node samples and perf stay on public binding contract', () => {
     const forbidden = [
         'requireNative(',
         'nativeHandle(',
+        'asRuntimeContext(',
+        'asRuntimeSocket(',
+        'asRuntimeSpot(',
+        'asPublicContract(',
+        'NativeHandle',
         'publishDirect',
         'socketTrySubscribePayload',
         'socketSendNoWaitResult',
@@ -153,6 +170,11 @@ test('node samples and perf stay on public binding contract', () => {
         for (const token of forbidden) {
             if (body.includes(token)) {
                 violations.push(`${path.relative(ROOT, file)}:${token}`);
+            }
+        }
+        for (const specifier of moduleSpecifiers(body)) {
+            if (isRuntimeDeepImport(specifier)) {
+                violations.push(`${path.relative(ROOT, file)}:${specifier}`);
             }
         }
     }

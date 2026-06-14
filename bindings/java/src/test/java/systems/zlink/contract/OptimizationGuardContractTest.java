@@ -19,6 +19,8 @@ final class OptimizationGuardContractTest {
     private static final Path MODULE_INFO =
         MAIN_SOURCE.resolve("module-info.java");
     private static final Path SAMPLES_SOURCE = Path.of("samples");
+    private static final Path KOTLIN_SAMPLES_SOURCE =
+        Path.of("..", "kotlin", "samples", "src", "main", "kotlin");
     private static final Path PERF_SOURCE = Path.of("perf");
 
     private static final String[] AGGREGATE_SYMBOLS = {
@@ -110,8 +112,8 @@ final class OptimizationGuardContractTest {
     @Test
     void samplesAndPerfUseOnlyPublicBindingContract() throws IOException {
         List<String> violations = new ArrayList<>();
-        for (Path root : List.of(SAMPLES_SOURCE, PERF_SOURCE)) {
-            for (Path path : javaFiles(root)) {
+        for (Path root : List.of(SAMPLES_SOURCE, KOTLIN_SAMPLES_SOURCE, PERF_SOURCE)) {
+            for (Path path : sourceFiles(root)) {
                 String source = Files.readString(path, StandardCharsets.UTF_8);
                 if (source.contains("import systems.zlink.internal.")
                     || source.contains("import systems.zlink.runtime.")
@@ -137,9 +139,10 @@ final class OptimizationGuardContractTest {
         return builder.toString();
     }
 
-    private static List<Path> javaFiles(Path root) throws IOException {
+    private static List<Path> sourceFiles(Path root) throws IOException {
         try (var stream = Files.walk(root)) {
-            return stream.filter(p -> p.toString().endsWith(".java")).toList();
+            return stream.filter(p ->
+                p.toString().endsWith(".java") || p.toString().endsWith(".kt")).toList();
         }
     }
 }

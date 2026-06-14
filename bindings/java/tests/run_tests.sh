@@ -28,6 +28,7 @@ TASKS=(
   ":zlink-codec-messagepack:test"
   ":zlink-codec-protobuf:test"
   ":zlink-ext-netty:test"
+  ":kotlin-samples:runAllKotlinSamples"
 )
 LOG_DIR="${ROOT_DIR}/build/test-runner-logs"
 
@@ -35,7 +36,7 @@ cd "${ROOT_DIR}"
 mkdir -p "${LOG_DIR}"
 
 failures=0
-timeout_seconds=180
+timeout_seconds=420
 
 task_log_name() {
   local name="$1"
@@ -74,6 +75,10 @@ print_report_hints() {
     ":zlink-ext-netty:test")
       report_dir="${ROOT_DIR}/codec/zlink-ext-netty/build/reports/tests/test"
       results_dir="${ROOT_DIR}/codec/zlink-ext-netty/build/test-results/test"
+      ;;
+    ":kotlin-samples:runAllKotlinSamples")
+      report_dir="${ROOT_DIR}/../kotlin/samples/build/reports"
+      results_dir="${ROOT_DIR}/../kotlin/samples/build/test-results"
       ;;
     "samples/run_samples.sh")
       report_dir="${ROOT_DIR}/samples/build/reports"

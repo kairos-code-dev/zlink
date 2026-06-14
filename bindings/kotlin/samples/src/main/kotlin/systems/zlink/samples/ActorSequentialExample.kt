@@ -12,6 +12,7 @@ import systems.zlink.contracts.sockets.RecvFlags
 import systems.zlink.contracts.service.spot.SpotDispatchEvent
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 fun main() {
 // --8<-- [start:doc]
@@ -26,23 +27,30 @@ fun main() {
                     stream.attachActorGateway(node)
                     val session = RoutingId.from("player-session")
                     // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-                    stream.bindActor(session, player.ref()).submit().toCompletableFuture().join().forEach(Message::close)
+                    stream.bindActor(session, player.ref()).timeout(Duration.ofSeconds(2))
+                        .submit().toCompletableFuture().join().forEach(Message::close)
 
-                    // dispatch 핸들러: join을 수락하고, STREAM이 relay한 메시지를 모은다.
+                    // dispatch 핸들러: STREAM이 relay한 메시지를 모은다.
                     room.setDispatchHandler { info ->
-                        when (info.event()) {
-                            SpotDispatchEvent.ACTOR_JOIN_READABLE ->
-                                room.recvActorJoin(RecvFlags.DONT_WAIT)?.use { request ->
-                                    Message.from("accepted").use { reply ->
-                                        room.replyActorJoin(request, 0).message(reply).submit()
-                                    }
-                                }
-                            SpotDispatchEvent.ACTOR_READABLE ->
-                                for (part in info.actorMessages()) {
-                                    part.use { processed.add(it.message().toUtf8String()) }
-                                }
-                            else -> {}
+                        if (info.event() == SpotDispatchEvent.ACTOR_READABLE) {
+                            for (part in info.actorMessages()) {
+                                part.use { processed.add(it.message().toUtf8String()) }
+                            }
                         }
+                    }
+
+                    fun acceptJoin() {
+                        val deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos()
+                        while (System.nanoTime() < deadline) {
+                            room.recvActorJoin(RecvFlags.DONT_WAIT)?.use { request ->
+                                Message.from("accepted").use { reply ->
+                                    room.replyActorJoin(request, 0).message(reply).submit()
+                                }
+                                return
+                            }
+                            Thread.sleep(10)
+                        }
+                        error("join request not received")
                     }
 
                     // join으로 Entry Spot에서 room(user Spot)으로 이동한다.
@@ -53,7 +61,8 @@ fun main() {
                             joined.countDown()
                         }
                     }
-                    joined.await()
+                    acceptJoin()
+                    check(joined.await(2, TimeUnit.SECONDS)) { "actor join did not complete" }
 
                     // STREAM이 플레이어 입력을 연달아 relay한다 — actor는 순서대로 처리한다.
                     val commands = listOf("move", "attack", "loot")
@@ -71,7 +80,8 @@ fun main() {
                         "messages were not processed in order: $processed"
                     }
 
-                    player.leave(room).submit().toCompletableFuture().join().forEach(Message::close)
+                    player.leave(room).timeout(Duration.ofSeconds(2))
+                        .submit().toCompletableFuture().join().forEach(Message::close)
                     player.close()
                     println("[actor/sequential] processed in order: move -> attack -> loot")
                 }

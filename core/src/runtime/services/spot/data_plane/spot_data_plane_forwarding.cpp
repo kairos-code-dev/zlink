@@ -279,6 +279,20 @@ bool wait_for_queue_room (std::condition_variable &cv_,
     return true;
 }
 
+void move_ingress_messages_to_staged (
+  spot_data_plane_runtime_state_t *state_,
+  std::deque<spot_data_plane_runtime_state_t::staged_publish_entry_t> *messages_)
+{
+    if (!state_ || !messages_)
+        return;
+
+    while (!messages_->empty ()) {
+        state_->staged.ingress_messages.push_back (std::move (messages_->front ()));
+        messages_->pop_front ();
+    }
+    refresh_fixed_poller_interest_local (state_);
+}
+
 spot_data_plane_runtime_state_t::local_target_state_t *
 find_local_target_by_socket_local (spot_data_plane_runtime_state_t *state_,
                                    socket_base_t *relay_socket_)
@@ -796,18 +810,47 @@ int spot_data_plane_forwarder_t::drain_publish_ingress_queue (
     if (notify_recovery)
         notify_spot_send_ready_recovery (runtime_->owner);
 
+    if (!state_->staged.ingress_messages.empty () || !state_->staged.mesh_messages.empty ()) {
+        move_ingress_messages_to_staged (state_, &local);
+        return flush_staged_messages (runtime_, state_);
+    }
+
     while (!local.empty ()) {
         spot_data_plane_runtime_state_t::staged_publish_entry_t &entry = local.front ();
-        if (stage_message (state_, entry.topic, entry.parts, false, entry.need_local,
-                           entry.need_mesh)
-            != 0) {
-            spot_clear_msg_parts (&entry.parts);
-            return -1;
+        if (entry.need_local) {
+            if (state_->local_fanout.targets.empty ()) {
+                entry.need_local = false;
+            } else if (forward_local_fanout (runtime_, state_, entry.topic, entry.parts,
+                                             entry.encoded_bytes)
+                       != 0) {
+                if (errno == EAGAIN) {
+                    move_ingress_messages_to_staged (state_, &local);
+                    return 0;
+                }
+                spot_clear_msg_parts (&entry.parts);
+                return -1;
+            } else {
+                entry.need_local = false;
+            }
         }
+
+        if (entry.need_mesh) {
+            if (forward_mesh_pub (runtime_, state_, entry.topic, entry.parts, entry.encoded_bytes)
+                != 0) {
+                if (errno == EAGAIN) {
+                    move_ingress_messages_to_staged (state_, &local);
+                    return 0;
+                }
+                spot_clear_msg_parts (&entry.parts);
+                return -1;
+            }
+            entry.need_mesh = false;
+        }
+
         spot_clear_msg_parts (&entry.parts);
         local.pop_front ();
     }
-    return flush_staged_messages (runtime_, state_);
+    return 0;
 }
 
 int spot_data_plane_forwarder_t::drain_pub_ingress_socket (spot_runtime_t *runtime_,

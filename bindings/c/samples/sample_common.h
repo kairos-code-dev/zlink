@@ -78,6 +78,43 @@ static inline void reserve_tcp_endpoint (char *buf, size_t buf_size)
 #endif
 }
 
+#ifndef _WIN32
+static inline int parse_tcp_endpoint (const char *endpoint, char *host, size_t host_size, int *port)
+{
+    char proto[8] = {0};
+    char addr[64] = {0};
+    int p = 0;
+    if (sscanf (endpoint, "%7[^:]://%63[^:]:%d", proto, addr, &p) != 3)
+        return 0;
+    if (strcmp (proto, "tcp") != 0 || p <= 0 || p > 65535)
+        return 0;
+    strncpy (host, addr, host_size - 1);
+    host[host_size - 1] = '\0';
+    *port = p;
+    return 1;
+}
+
+static inline int raw_tcp_connect (const char *endpoint)
+{
+    char host[64];
+    int port;
+    assert (parse_tcp_endpoint (endpoint, host, sizeof (host), &port));
+
+    struct sockaddr_in addr;
+    memset (&addr, 0, sizeof (addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons ((uint16_t) port);
+    int rc = inet_pton (AF_INET, host, &addr.sin_addr);
+    assert (rc == 1);
+
+    int fd = socket (AF_INET, SOCK_STREAM, 0);
+    assert (fd >= 0);
+    rc = connect (fd, (struct sockaddr *) &addr, sizeof (addr));
+    assert (rc == 0);
+    return fd;
+}
+#endif
+
 /* ---- Monitor helpers ----------------------------------------------------- */
 
 static inline void *open_socket_monitor (void *socket, zlink_socket_monitor_event_mask_t mask)

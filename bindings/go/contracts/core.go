@@ -3,7 +3,7 @@
 // Package contracts is the public Go binding projection.
 package contracts
 
-import impl "zlink.systems/zlink/internal/core"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// Version is the native zlink library version (major, minor, patch).

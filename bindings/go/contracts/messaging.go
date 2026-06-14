@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/messaging"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// RoutingID is an opaque identifier for a messaging peer or route, 1 to 255 bytes.

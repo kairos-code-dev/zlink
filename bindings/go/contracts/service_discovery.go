@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/service"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// AutoConnectType is how a discovery service automatically wires connections between peers.

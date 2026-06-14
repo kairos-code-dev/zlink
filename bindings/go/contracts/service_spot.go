@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/service"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// SpotNode hosts spots and actors, tunes their sockets, and exposes the node's peers, subjects, and topology.
@@ -97,7 +97,7 @@ const (
 	// SpotNodeSocketOwnerNode matches sockets owned by the node itself.
 	SpotNodeSocketOwnerNode = impl.SpotNodeSocketOwnerNode
 	// SpotNodeSocketOwnerSpot matches sockets owned by a spot.
-	SpotNodeSocketOwnerSpot           = impl.SpotNodeSocketOwnerSpot
+	SpotNodeSocketOwnerSpot = impl.SpotNodeSocketOwnerSpot
 	// SpotNodeStateIdle means the node is not yet connecting to any peer.
 	SpotNodeStateIdle       = impl.SpotNodeStateIdle
 	SpotNodeStateConnecting = impl.SpotNodeStateConnecting

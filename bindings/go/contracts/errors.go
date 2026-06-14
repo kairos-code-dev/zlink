@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/errors"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// ZlinkError is the base error type for the zlink bindings, carrying a result code and native errno.

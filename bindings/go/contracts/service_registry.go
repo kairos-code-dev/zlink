@@ -2,7 +2,7 @@
 
 package contracts
 
-import impl "zlink.systems/zlink/internal/service"
+import impl "zlink.systems/zlink/internal/native"
 
 type (
 	// RegistryState is the operational state of a registry.

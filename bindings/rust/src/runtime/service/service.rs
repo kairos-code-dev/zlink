@@ -76,9 +76,7 @@ use crate::spot_operations::{
 };
 use crate::spot_resource::Spot;
 use crate::topic_message_contract::TopicMessage;
-use spot_receive::{
-    borrowed_parts_to_messages, recv_spot_routed_parts, recv_spot_subscribed_parts,
-};
+use spot_receive::{recv_spot_routed_parts, recv_spot_subscribed_parts};
 
 mod actor_model_runtime;
 mod discovery_runtime;

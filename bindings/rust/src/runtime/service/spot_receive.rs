@@ -8,7 +8,7 @@ use crate::error::{RecvError, RecvResult};
 use crate::ffi;
 use crate::message::{Message, RoutingId};
 use crate::native_errors::check_recv_rc;
-use crate::socket::{close_unreceived_part, routing_id_from_ptr, MAX_NATIVE_PARTS};
+use crate::socket::{close_unreceived_part, routing_id_from_ptr};
 
 pub(super) type SpotRoutedParts = Result<
     Option<(
@@ -22,26 +22,6 @@ pub(super) type SpotRoutedParts = Result<
 
 pub(super) type SpotSubscribedParts =
     Result<Option<(Option<RoutingId>, smol_str::SmolStr, Vec<Message>)>, RecvError>;
-
-pub(super) fn borrowed_parts_to_messages(
-    parts: *mut ffi::zlink_msg_t,
-    part_count: usize,
-) -> Vec<Message> {
-    if parts.is_null() || part_count == 0 {
-        return Vec::new();
-    }
-    let count = part_count.min(MAX_NATIVE_PARTS);
-    let mut out = Vec::with_capacity(count);
-    for i in 0..count {
-        unsafe {
-            let mut dest = MaybeUninit::<ffi::zlink_msg_t>::uninit();
-            ffi::zlink_msg_init(dest.as_mut_ptr());
-            ffi::zlink_msg_move(dest.as_mut_ptr(), parts.add(i));
-            out.push(Message::from_raw(dest.assume_init()));
-        }
-    }
-    out
-}
 
 pub(super) fn recv_spot_routed_parts(
     handle: *mut c_void,

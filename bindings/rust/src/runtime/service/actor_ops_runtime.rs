@@ -626,7 +626,7 @@ unsafe extern "C" fn actor_join_user_callback(
         join_epoch: raw.join_epoch,
         flags: raw.flags,
     };
-    let messages = borrowed_parts_to_messages(parts, part_count);
+    let messages = take_parts(parts, part_count);
     callback(join_result, messages);
 }
 

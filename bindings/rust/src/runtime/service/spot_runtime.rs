@@ -683,7 +683,7 @@ pub(super) unsafe extern "C" fn spot_reply_callback(
     let mut state = unsafe { Box::from_raw(userdata.cast::<SpotReplyCallbackState>()) };
     let callback = state.callback.take().expect("spot request callback");
     if result_ == ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK {
-        callback(Ok(borrowed_parts_to_messages(parts, part_count)));
+        callback(Ok(take_parts(parts, part_count)));
     } else {
         callback(Err(request_error_from_result(request_result_from_raw(
             result_,

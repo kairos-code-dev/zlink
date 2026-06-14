@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RuntimeContext as Context } from '../../core/context';
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
@@ -17,7 +17,7 @@ import {
 
 export class RegistryQueryClient extends NativeHandle {
   constructor(ctx: Context) {
-    super(requireNative().registryQueryClientNew(ctx.nativeHandle()));
+    super(requireNative().registryQueryClientNew(getNativeHandle(ctx)));
   }
 
   connect(endpoint: string): void {

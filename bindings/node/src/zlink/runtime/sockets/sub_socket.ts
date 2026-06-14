@@ -7,6 +7,7 @@ import {
 import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall } from '../errors/native_errors';
+import { getNativeHandle, NativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import { SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 
@@ -16,9 +17,9 @@ export class SubSocket extends SubscriberSocket {
   setChannelName(channelName: string): void {
     configureSocketChannelName(this, channelName);
   }
-  attachDiscovery(discovery: { nativeHandle(): unknown }): void {
+  attachDiscovery(discovery: NativeHandle): void {
     configCall('socket discovery attachment failed', () => {
-      requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
+      requireNative().socketAttachDiscovery(getNativeHandle(this), getNativeHandle(discovery));
     });
   }
 }

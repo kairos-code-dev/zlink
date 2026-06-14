@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { requireNative } from '../native/native';
+import { getNativeHandle } from '../handles/native_handle';
 import {
   configCall,
   handlerCall,
@@ -63,8 +64,8 @@ export class SendSocket extends ConnectableSocket {
       let result;
       try {
         result = Array.isArray(payload)
-          ? native.socketSendNoWaitResultParts(this.nativeHandle(), payload) as number
-          : native.socketSendNoWaitResult(this.nativeHandle(), payload) as number;
+          ? native.socketSendNoWaitResultParts(getNativeHandle(this), payload) as number
+          : native.socketSendNoWaitResult(getNativeHandle(this), payload) as number;
       } catch (error) {
         throw submitNativeError(error, flags, 'send failed');
       }
@@ -74,9 +75,9 @@ export class SendSocket extends ConnectableSocket {
     }
     try {
       if (Array.isArray(payload)) {
-        native.socketSendParts(this.nativeHandle(), payload, flags | 0);
+        native.socketSendParts(getNativeHandle(this), payload, flags | 0);
       } else {
-        native.socketSend(this.nativeHandle(), payload, flags | 0);
+        native.socketSend(getNativeHandle(this), payload, flags | 0);
       }
       return true;
     } catch (error) {
@@ -99,7 +100,7 @@ export class PublisherSocket extends ConnectableSocket {
       let result;
       try {
         result = native.socketTryPublish(
-          this.nativeHandle(),
+          getNativeHandle(this),
           topic,
           normalized
         ) as number;
@@ -111,7 +112,7 @@ export class PublisherSocket extends ConnectableSocket {
       throw submitErrorFromResult(result as SubmitResult, 'publish failed');
     }
     try {
-      native.socketPublish(this.nativeHandle(), topic, normalized, flags | 0);
+      native.socketPublish(getNativeHandle(this), topic, normalized, flags | 0);
       return true;
     } catch (error) {
       const submitError = submitNativeError(error, flags, 'publish failed');
@@ -134,8 +135,8 @@ export class MessageSocket extends SendSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? native.socketRecvMessageNoWait(this.nativeHandle())
-        : native.socketRecvMessage(this.nativeHandle(), flags | 0);
+        ? native.socketRecvMessageNoWait(getNativeHandle(this))
+        : native.socketRecvMessage(getNativeHandle(this), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
@@ -145,7 +146,7 @@ export class MessageSocket extends SendSocket {
   }
   setSendReadyHandler(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
-      native.socketSendReadyHandler(this.nativeHandle(), handler);
+      native.socketSendReadyHandler(getNativeHandle(this), handler);
     });
   }
 }
@@ -154,18 +155,18 @@ export class SubscriberSocket extends ConnectableSocket {
   setSubscription(topicOrPattern: string): void {
     const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription set failed', () => {
-      native.socketSetSubscription(this.nativeHandle(), topic);
+      native.socketSetSubscription(getNativeHandle(this), topic);
     });
   }
   unsetSubscription(topicOrPattern: string): void {
     const topic = validateCString(topicOrPattern, 'topicOrPattern', Number.MAX_SAFE_INTEGER);
     configCall('subscription unset failed', () => {
-      native.socketUnsetSubscription(this.nativeHandle(), topic);
+      native.socketUnsetSubscription(getNativeHandle(this), topic);
     });
   }
   subscriptionAt(index: number): SubscriptionEntry | null {
     return configCall('subscription lookup failed', () =>
-      native.subscriptionAt(this.nativeHandle(), index >>> 0) as SubscriptionEntry | null
+      native.subscriptionAt(getNativeHandle(this), index >>> 0) as SubscriptionEntry | null
     );
   }
   subscribe(result: TopicMessage, flags?: RecvFlags): boolean;
@@ -176,8 +177,8 @@ export class SubscriberSocket extends ConnectableSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? native.socketTrySubscribeMessage(this.nativeHandle())
-        : native.socketSubscribeMessage(this.nativeHandle(), flags | 0);
+        ? native.socketTrySubscribeMessage(getNativeHandle(this))
+        : native.socketSubscribeMessage(getNativeHandle(this), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'subscribe failed');
     }
@@ -206,8 +207,8 @@ export class RoutedMessageSocket extends ConnectableSocket {
       let result;
       try {
         result = Array.isArray(normalized)
-          ? native.socketSendRoutingNoWaitResultParts(this.nativeHandle(), routingId, normalized) as number
-          : native.socketSendRoutingNoWaitResult(this.nativeHandle(), routingId, normalized) as number;
+          ? native.socketSendRoutingNoWaitResultParts(getNativeHandle(this), routingId, normalized) as number
+          : native.socketSendRoutingNoWaitResult(getNativeHandle(this), routingId, normalized) as number;
       } catch (error) {
         throw submitNativeError(error, flags, 'send failed');
       }
@@ -217,7 +218,7 @@ export class RoutedMessageSocket extends ConnectableSocket {
     }
     if (!Array.isArray(normalized)) {
       try {
-        native.socketSendRouting(this.nativeHandle(), routingId, normalized, flags | 0);
+        native.socketSendRouting(getNativeHandle(this), routingId, normalized, flags | 0);
       } catch (error) {
         throw submitNativeError(error, flags, 'send failed');
       }
@@ -225,7 +226,7 @@ export class RoutedMessageSocket extends ConnectableSocket {
     }
     try {
       native.socketSendRoutingParts(
-        this.nativeHandle(),
+        getNativeHandle(this),
         routingId,
         normalized,
         flags | 0
@@ -246,8 +247,8 @@ export class RoutedMessageSocket extends ConnectableSocket {
     let raw;
     try {
       raw = ((flags | 0) & (RecvFlags.DontWait | 0))
-        ? native.routerRecvMessageNoWait(this.nativeHandle())
-        : native.routerRecvMessage(this.nativeHandle(), flags | 0);
+        ? native.routerRecvMessageNoWait(getNativeHandle(this))
+        : native.routerRecvMessage(getNativeHandle(this), flags | 0);
     } catch (error) {
       throw recvNativeError(error, flags, 'recv failed');
     }
@@ -275,7 +276,7 @@ export class RoutedMessageSocket extends ConnectableSocket {
   }
   setSendReadyHandler(handler: SocketSendReadyHandler): void {
     handlerCall('send-ready handler registration failed', () => {
-      native.socketSendReadyHandler(this.nativeHandle(), handler);
+      native.socketSendReadyHandler(getNativeHandle(this), handler);
     });
   }
 }

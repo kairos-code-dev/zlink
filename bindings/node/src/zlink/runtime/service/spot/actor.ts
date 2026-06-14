@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, recvNativeError } from '../../errors/native_errors';
 import { RecvFlags } from '../../../contracts/sockets/socket_constants';
@@ -25,8 +25,6 @@ export class Actor extends NativeHandle {
   static create(nodeHandle: unknown, ref: ActorRef): Actor {
     return new Actor(Actor.CREATE_TOKEN, nodeHandle, ref);
   }
-  /** @internal */
-  nativeHandle(): unknown { return this._native; }
   ref(): ActorRef {
     if (!this._ref) {
       throw new Error('actor is closed');
@@ -46,7 +44,7 @@ export class Actor extends NativeHandle {
         this.ref(),
         spot.ownerNodeRoutingId(),
         spot.routingId,
-        spot.nativeHandle(),
+        getNativeHandle(spot),
         parts,
         callback,
         flags,

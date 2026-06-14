@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RuntimeContext as Context } from '../core/context';
-import { NativeHandle } from '../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import {
   bindCall,
@@ -18,7 +18,7 @@ import { MonitorSocket } from '../eventing/monitor_socket';
 
 export class SocketBase extends NativeHandle {
   constructor(ctx: Context, type: number) {
-    super(requireNative().socketNew(ctx.nativeHandle(), type));
+    super(requireNative().socketNew(getNativeHandle(ctx), type));
     if (!this._native) {
       throw lastError('config', 'socket creation failed');
     }
@@ -27,14 +27,14 @@ export class SocketBase extends NativeHandle {
   bind(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     bindCall('socket bind failed', () => {
-      requireNative().socketBind(this.nativeHandle(), normalizedEndpoint);
+      requireNative().socketBind(getNativeHandle(this), normalizedEndpoint);
     });
   }
 
   unbind(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     connectCall('socket unbind failed', () => {
-      requireNative().socketUnbind(this.nativeHandle(), normalizedEndpoint);
+      requireNative().socketUnbind(getNativeHandle(this), normalizedEndpoint);
     });
   }
 
@@ -43,7 +43,7 @@ export class SocketBase extends NativeHandle {
     const normalizedKey = validateCString(key, 'key', Number.MAX_SAFE_INTEGER);
     configCall('socket TLS server configuration failed', () => {
       requireNative().socketSetTlsServer(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizedCert,
         normalizedKey,
         requireClientCert ? 1 : 0
@@ -56,7 +56,7 @@ export class SocketBase extends NativeHandle {
     const normalizedHostname = validateCString(hostname, 'hostname', Number.MAX_SAFE_INTEGER);
     configCall('socket TLS client configuration failed', () => {
       requireNative().socketSetTlsClient(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizedCa,
         normalizedHostname,
         trustSystem ? 1 : 0
@@ -68,14 +68,14 @@ export class SocketBase extends NativeHandle {
   setSockOptRaw(option: number, value: Buffer | number): void {
     const buf = typeof value === 'number' ? Buffer.from([value & 0xff, 0, 0, 0]) : value;
     configCall('socket option set failed', () => {
-      requireNative().socketSetOpt(this.nativeHandle(), option | 0, buf);
+      requireNative().socketSetOpt(getNativeHandle(this), option | 0, buf);
     });
   }
 
   /** @internal */
   getSockOptRaw(option: number): Buffer {
     return configCall('socket option get failed', () =>
-      requireNative().socketGetOpt(this.nativeHandle(), option | 0) as Buffer
+      requireNative().socketGetOpt(getNativeHandle(this), option | 0) as Buffer
     );
   }
 
@@ -84,7 +84,7 @@ export class SocketBase extends NativeHandle {
       ? 0xFFFF
       : events.reduce((current, event) => current | (event | 0), 0);
     return new MonitorSocket(configCall('monitor open failed', () =>
-      requireNative().monitorOpen(this.nativeHandle(), mask | 0)
+      requireNative().monitorOpen(getNativeHandle(this), mask | 0)
     ));
   }
 
@@ -101,7 +101,7 @@ export function configureSocketChannelName(socket: SocketBase, channelName: stri
   const normalized = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
   configCall('channel name set failed', () => {
     requireNative().socketSetChannelName(
-      socket.nativeHandle(),
+      getNativeHandle(socket),
       normalized
     );
   });
@@ -111,14 +111,14 @@ export class ConnectableSocket extends SocketBase {
   connect(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     connectCall('socket connect failed', () => {
-      requireNative().socketConnect(this.nativeHandle(), normalizedEndpoint);
+      requireNative().socketConnect(getNativeHandle(this), normalizedEndpoint);
     });
   }
 
   disconnect(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     connectCall('socket disconnect failed', () => {
-      requireNative().socketDisconnect(this.nativeHandle(), normalizedEndpoint);
+      requireNative().socketDisconnect(getNativeHandle(this), normalizedEndpoint);
     });
   }
 
@@ -126,7 +126,7 @@ export class ConnectableSocket extends SocketBase {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     connectCall('socket disconnect by routing id failed', () => {
       requireNative().socketDisconnectRid(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizedRoutingId
       );
     });

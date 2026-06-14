@@ -17,6 +17,7 @@ import {
   acquireExternalRequestProgress,
   releaseExternalRequestProgress,
 } from '../messaging/request_progress';
+import { getNativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import { flagsToMask } from '../sockets/socket_options';
 import { PollEvents } from './poll_events';
@@ -99,7 +100,7 @@ export class Poller {
     try {
       const count = requireNative().pollerWaitInto(
         this._native,
-        events.nativeHandle(),
+        getNativeHandle(events),
         events.capacity | 0,
         timeoutMs | 0
       ) as number;
@@ -133,9 +134,9 @@ export class Poller {
   private addSocketInternal(socket: BasePollable, events: number, slot: number): void {
     const normalizedSlot = validateSlot(slot);
     try {
-      requireNative().pollerAdd(this._native, socket.nativeHandle(), BigInt(normalizedSlot), events | 0);
+      requireNative().pollerAdd(this._native, getNativeHandle(socket), BigInt(normalizedSlot), events | 0);
       if ((events & PollEventFlag.PollCompletion) !== 0) {
-        const handle = socket.nativeHandle();
+        const handle = getNativeHandle(socket);
         acquireExternalRequestProgress(handle);
         this._externalProgressHandles.add(handle);
       }
@@ -145,7 +146,7 @@ export class Poller {
   }
 
   private modifySocketInternal(socket: BasePollable, events: number): void {
-    const handle = socket.nativeHandle();
+    const handle = getNativeHandle(socket);
     configCall('poller socket modify failed', () => {
       requireNative().pollerModify(this._native, handle, events | 0);
     });
@@ -162,9 +163,9 @@ export class Poller {
 
   private removeSocketInternal(socket: BasePollable): boolean {
     configCall('poller socket remove failed', () => {
-      requireNative().pollerRemove(this._native, socket.nativeHandle());
+      requireNative().pollerRemove(this._native, getNativeHandle(socket));
     });
-    const handle = socket.nativeHandle();
+    const handle = getNativeHandle(socket);
     if (this._externalProgressHandles.delete(handle)) {
       releaseExternalRequestProgress(handle);
     }
@@ -174,7 +175,7 @@ export class Poller {
   private addTimerInternal(timer: Timer, slot: number): void {
     const normalizedSlot = validateSlot(slot);
     try {
-      requireNative().pollerAddTimer(this._native, timer.nativeHandle(), BigInt(normalizedSlot));
+      requireNative().pollerAddTimer(this._native, getNativeHandle(timer), BigInt(normalizedSlot));
     } catch (error) {
       throw createError('config', readErrno(), nativeErrorMessage(error, 'poller timer add failed'));
     }
@@ -182,7 +183,7 @@ export class Poller {
 
   private removeTimerInternal(timer: Timer): boolean {
     configCall('poller timer remove failed', () => {
-      requireNative().pollerRemoveTimer(this._native, timer.nativeHandle());
+      requireNative().pollerRemoveTimer(this._native, getNativeHandle(timer));
     });
     return true;
   }

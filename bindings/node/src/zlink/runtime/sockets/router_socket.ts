@@ -13,6 +13,7 @@ import { configureSocketChannelName } from './socket_base';
 import { normalizeReplyFlags } from './socket_submit_errors';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall, submitNativeError } from '../errors/native_errors';
+import { getNativeHandle, NativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
@@ -37,19 +38,19 @@ export class RouterSocket extends RoutedMessageSocket {
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {
-      native.handleSetRoutingId(this.nativeHandle(), normalizedRoutingId);
+      native.handleSetRoutingId(getNativeHandle(this), normalizedRoutingId);
     });
   }
   getRoutingId(): RoutingId {
     return RoutingId.from(
       configCall('routing id get failed', () =>
-        native.handleGetRoutingId(this.nativeHandle()) as Buffer
+        native.handleGetRoutingId(getNativeHandle(this)) as Buffer
       )
     );
   }
-  attachDiscovery(discovery: { nativeHandle(): unknown }): void {
+  attachDiscovery(discovery: NativeHandle): void {
     configCall('socket discovery attachment failed', () => {
-      native.socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
+      native.socketAttachDiscovery(getNativeHandle(this), getNativeHandle(discovery));
     });
   }
   request(peerRid: RoutingId): RequestOperation {
@@ -66,7 +67,7 @@ export class RouterSocket extends RoutedMessageSocket {
   ): Promise<Message[]> | boolean {
     const parts = normalizeOperationPayload(payloadOrParts);
     const peer = normalizeRoutingId(peerRid, 'peerRid');
-    const nativeHandle = this.nativeHandle();
+    const nativeHandle = getNativeHandle(this);
     return executeNativeRequest({
       callbackOrTimeout,
       flagsOrTimeout,
@@ -93,7 +94,7 @@ export class RouterSocket extends RoutedMessageSocket {
   sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
     try {
       native.routerSpotSend(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizeRoutingId(destNodeRid),
         normalizeRoutingId(destSpotRid),
         normalizeOperationPayload(payloadOrParts),
@@ -120,7 +121,7 @@ export class RouterSocket extends RoutedMessageSocket {
     const parts = normalizeOperationPayload(payloadOrParts);
     const nodeRid = normalizeRoutingId(destNodeRid);
     const spotRid = normalizeRoutingId(destSpotRid);
-    const nativeHandle = this.nativeHandle();
+    const nativeHandle = getNativeHandle(this);
     return executeNativeRequest({
       callbackOrTimeout,
       flagsOrTimeout,
@@ -152,7 +153,7 @@ export class RouterSocket extends RoutedMessageSocket {
     const parts = normalizeOperationPayload(payloadOrParts);
     try {
       native.routerSpotReply(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizedDestNodeRid,
         normalizedDestSpotRid,
         requestSeq,
@@ -171,7 +172,7 @@ export class RouterSocket extends RoutedMessageSocket {
     const parts = normalizeOperationPayload(payloadOrParts);
     try {
       native.routerReply(
-        this.nativeHandle(),
+        getNativeHandle(this),
         normalizedPeerRid,
         requestSeq,
         parts

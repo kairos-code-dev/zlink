@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RuntimeContext as Context } from '../../core/context';
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
@@ -76,13 +76,10 @@ export class Discovery extends NativeHandle {
   constructor(ctx: Context, autoConnectType: AutoConnectType, channelName: string) {
     if (typeof channelName !== 'string' || channelName.length === 0) throw new TypeError('Discovery channelName must be a non-empty string');
     validateCString(channelName, 'channelName');
-    super(requireNative().discoveryNew(ctx.nativeHandle(), autoConnectType, channelName));
+    super(requireNative().discoveryNew(getNativeHandle(ctx), autoConnectType, channelName));
     this.autoConnectType = autoConnectType;
     this.channelName = channelName;
   }
-
-  /** @internal */
-  nativeHandle(): unknown { return this._native; }
 
   connectRegistry(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');

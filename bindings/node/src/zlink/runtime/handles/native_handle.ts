@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MPL-2.0
 
-export class NativeHandle {
-  /** @internal */
-  protected _native: unknown | null;
+const nativeHandles = new WeakMap<NativeHandle, unknown | null>();
 
+export function getNativeHandle(handle: NativeHandle): unknown {
+  return nativeHandles.get(handle) ?? null;
+}
+
+export class NativeHandle {
   protected constructor(native: unknown) {
-    this._native = native;
+    nativeHandles.set(this, native);
   }
 
-  /** @internal */
-  nativeHandle(): unknown {
-    return this._native;
+  protected get _native(): unknown | null {
+    return nativeHandles.get(this) ?? null;
+  }
+
+  protected set _native(native: unknown | null) {
+    nativeHandles.set(this, native);
   }
 
   close(): void {

@@ -3,6 +3,7 @@
 import type { Message } from '../../contracts';
 import { validateCString } from '../options/validation';
 import { configCall } from '../errors/native_errors';
+import { getNativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 import type { RuntimeBaseSocket as BaseSocket } from '../sockets';
 
@@ -25,9 +26,9 @@ export function proxy(frontend: BaseSocket, backend: BaseSocket, capture?: BaseS
   }
   configCall('proxy failed', () => {
     requireNative().proxy(
-      frontend.nativeHandle(),
-      backend.nativeHandle(),
-      capture ? capture.nativeHandle() : null
+      getNativeHandle(frontend),
+      getNativeHandle(backend),
+      capture ? getNativeHandle(capture) : null
     );
   });
 }
@@ -40,10 +41,10 @@ export function proxySteerable(
 ): void {
   configCall('proxySteerable failed', () => {
     requireNative().proxySteerable(
-      frontend.nativeHandle(),
-      backend.nativeHandle(),
-      capture ? capture.nativeHandle() : null,
-      control.nativeHandle()
+      getNativeHandle(frontend),
+      getNativeHandle(backend),
+      capture ? getNativeHandle(capture) : null,
+      getNativeHandle(control)
     );
   });
 }

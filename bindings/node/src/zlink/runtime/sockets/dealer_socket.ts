@@ -10,6 +10,7 @@ import {
 import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall } from '../errors/native_errors';
+import { getNativeHandle, NativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
@@ -22,7 +23,7 @@ export class DealerSocket extends MessageSocket {
   constructor(ctx: Context) { super(ctx, NativeSocketType.DEALER); this.options = DealerSocketOptions.create(this); }
   getChannelName(): string {
     return configCall('channel name get failed', () =>
-      requireNative().socketGetChannelName(this.nativeHandle()) as string
+      requireNative().socketGetChannelName(getNativeHandle(this)) as string
     );
   }
   setChannelName(channelName: string): void {
@@ -31,19 +32,19 @@ export class DealerSocket extends MessageSocket {
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {
-      requireNative().handleSetRoutingId(this.nativeHandle(), normalizedRoutingId);
+      requireNative().handleSetRoutingId(getNativeHandle(this), normalizedRoutingId);
     });
   }
   getRoutingId(): RoutingId {
     return RoutingId.from(
       configCall('routing id get failed', () =>
-        requireNative().handleGetRoutingId(this.nativeHandle()) as Buffer
+        requireNative().handleGetRoutingId(getNativeHandle(this)) as Buffer
       )
     );
   }
-  attachDiscovery(discovery: { nativeHandle(): unknown }): void {
+  attachDiscovery(discovery: NativeHandle): void {
     configCall('socket discovery attachment failed', () => {
-      requireNative().socketAttachDiscovery(this.nativeHandle(), discovery.nativeHandle());
+      requireNative().socketAttachDiscovery(getNativeHandle(this), getNativeHandle(discovery));
     });
   }
   request(): RequestOperation {
@@ -58,7 +59,7 @@ export class DealerSocket extends MessageSocket {
     maybeTimeout?: number,
   ): Promise<Message[]> | boolean {
     const parts = normalizeOperationPayload(payloadOrParts);
-    const nativeHandle = this.nativeHandle();
+    const nativeHandle = getNativeHandle(this);
     return executeNativeRequest({
       callbackOrTimeout,
       flagsOrTimeout,

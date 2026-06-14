@@ -237,15 +237,15 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     ctx.shutdown();
     ctx.close();
 });
-test('threadSchedulingPolicy getter surfaces ConfigError failures', () => {
+test('runtime-only bridge methods are not exposed on public objects', () => {
     const ctx = zlink.createContext();
-    const expected = new zlink.ConfigError(zlink.ConfigResult.NotSupported, 0, 'unsupported');
-    const original = ctx.getOptionRawStrictInternal;
-    ctx.getOptionRawStrictInternal = () => {
-        throw expected;
-    };
-    assert.throws(() => ctx.options.threadSchedulingPolicy, (error) => error === expected);
-    ctx.getOptionRawStrictInternal = original;
+    const pair = zlink.createPairSocket(ctx);
+    assert.equal(ctx.nativeHandle, undefined);
+    assert.equal(ctx.getOptionRawInternal, undefined);
+    assert.equal(ctx.getOptionRawStrictInternal, undefined);
+    assert.equal(ctx.setOptionRawInternal, undefined);
+    assert.equal(pair.nativeHandle, undefined);
+    pair.close();
     ctx.close();
 });
 test('native failures surface documented zlink error classes', () => {

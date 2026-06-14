@@ -6,7 +6,7 @@ import { RuntimeDealerSocket as DealerSocket, RuntimePubSocket as PubSocket } fr
 import { Discovery } from '../discovery/discovery';
 import { Actor } from './actor';
 import { Spot } from './spot';
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { closeCall, configCall, connectCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
 import { int32Buffer, readInt32Option } from '../../sockets/socket_options';
@@ -30,11 +30,9 @@ export class SpotNode extends NativeHandle {
   private readonly _channelDealers = new Map<string, DealerSocket>();
   private _nodeRoutingId: RoutingId;
   constructor(ctx: Context, mode: SpotNodeModeValue = SpotNodeMode.All) {
-    super(requireNative().spotNodeNew(ctx.nativeHandle(), { mode: mode | 0 }));
+    super(requireNative().spotNodeNew(getNativeHandle(ctx), { mode: mode | 0 }));
     this._nodeRoutingId = RoutingId.from(randomBytes(16));
   }
-  /** @internal */
-  nativeHandle(): unknown { return this._native; }
   setPubBind(endpoint: string): void {
     const normalizedEndpoint = validateCString(endpoint, 'endpoint');
     configCall('spot node pub bind failed', () => {
@@ -118,8 +116,8 @@ export class SpotNode extends NativeHandle {
     configCall('spot node channel dealer attachment failed', () => {
       requireNative().spotNodeAttachChannelDealer(
         this._native,
-        discovery.nativeHandle(),
-        dealer.nativeHandle()
+        getNativeHandle(discovery),
+        getNativeHandle(dealer)
       );
     });
   }
@@ -129,19 +127,19 @@ export class SpotNode extends NativeHandle {
       requireNative().spotNodeAttachChannelDealerManual(
         this._native,
         normalized,
-        dealer.nativeHandle()
+        getNativeHandle(dealer)
       );
     });
     this._channelDealers.set(normalized, dealer);
   }
   attachPubIngress(pub: PubSocket): void {
     configCall('spot node pub ingress attachment failed', () => {
-      requireNative().spotNodeAttachPubIngress(this._native, pub.nativeHandle());
+      requireNative().spotNodeAttachPubIngress(this._native, getNativeHandle(pub));
     });
   }
   attachDiscovery(discovery: Discovery): void {
     configCall('spot node discovery attachment failed', () => {
-      requireNative().spotNodeSetDiscovery(this._native, discovery.nativeHandle());
+      requireNative().spotNodeSetDiscovery(this._native, getNativeHandle(discovery));
     });
   }
   attachSpotRouteChannelDiscovery(channelName: string, discovery: Discovery): void {
@@ -150,7 +148,7 @@ export class SpotNode extends NativeHandle {
       requireNative().spotNodeAttachRouterChannelDiscovery(
         this._native,
         normalizedChannelName,
-        discovery.nativeHandle()
+        getNativeHandle(discovery)
       );
     });
   }

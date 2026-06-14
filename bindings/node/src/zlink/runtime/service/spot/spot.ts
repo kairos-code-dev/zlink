@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { closeCall, configCall, handlerCall, recvNativeError, submitNativeError } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
@@ -25,7 +25,7 @@ import { actorJoinInfoFromRaw, actorJoinInfoToRaw, actorPartFromRaw, actorRefFro
 import { RuntimeActorJoinReplyOperation } from './actor_operations';
 import type { ActorRefRaw, SpotActorJoinRecvRaw, SpotActorLifecycleRaw, SpotDispatchRaw, SpotRoutedRaw } from './spot_raw_models';
 
-type OwnerSpotNode = { nativeHandle(): unknown; readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };
+type OwnerSpotNode = NativeHandle & { readonly routingId: RoutingId; unregisterSpot(spot: Spot): void };
 
 const nativeBinding = requireNative();
 
@@ -36,7 +36,7 @@ export class Spot extends NativeHandle {
     if (token !== Spot.CREATE_TOKEN) {
       throw new TypeError('Spot instances must be created with SpotNode.createSpot()');
     }
-    super(native ?? nativeBinding.spotNew(node.nativeHandle()));
+    super(native ?? nativeBinding.spotNew(getNativeHandle(node)));
     this._node = node;
   }
 
@@ -377,7 +377,7 @@ export class Spot extends NativeHandle {
   }
   setDispatchHandler(handler: SpotDispatchEventHandler): void {
     handlerCall('spot dispatch handler registration failed', () => {
-      nativeBinding.spotDispatchEventHandler(this._native, this._node.nativeHandle(), (raw: SpotDispatchRaw) => {
+      nativeBinding.spotDispatchEventHandler(this._native, getNativeHandle(this._node), (raw: SpotDispatchRaw) => {
         const rawActorParts = raw.actorParts ?? [];
         const actorParts = new Array<ActorPart | undefined>(rawActorParts.length);
         const actorRef = rawActorParts[0]?.info.actor

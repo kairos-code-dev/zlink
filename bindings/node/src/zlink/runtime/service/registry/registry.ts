@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { RuntimeContext as Context } from '../../core/context';
-import { NativeHandle } from '../../handles/native_handle';
+import { getNativeHandle, NativeHandle } from '../../handles/native_handle';
 import { requireNative } from '../../native/native';
 import { bindCall, closeCall, configCall } from '../../errors/native_errors';
 import { validateCString } from '../../options/validation';
@@ -27,11 +27,8 @@ import {
 
 export class Registry extends NativeHandle {
   constructor(ctx: Context) {
-    super(requireNative().registryNew(ctx.nativeHandle()));
+    super(requireNative().registryNew(getNativeHandle(ctx)));
   }
-
-  /** @internal */
-  nativeHandle(): unknown { return this._native; }
 
   bind(pubEndpoint: string, routerEndpoint: string): void {
     const normalizedPubEndpoint = validateCString(pubEndpoint, 'pubEndpoint');

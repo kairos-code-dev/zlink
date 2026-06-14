@@ -212,6 +212,26 @@ test('node samples and perf stay on public binding contract', () => {
   assert.deepEqual(violations, []);
 });
 
+test('runtime handles do not expose public native handle bridge methods', () => {
+  const files = sourceFiles(path.join(TS_SRC, 'zlink', 'runtime'), ['.ts']);
+  const violations = [];
+
+  for (const file of files) {
+    const body = fs.readFileSync(file, 'utf8');
+    if (/\bnativeHandle\(\)\s*[:{]/.test(body)) {
+      violations.push(path.relative(ROOT, file));
+    }
+    if (/\bgetOptionRaw(?:Strict)?Internal\(/.test(body)) {
+      violations.push(path.relative(ROOT, file));
+    }
+    if (/\bsetOptionRawInternal\(/.test(body)) {
+      violations.push(path.relative(ROOT, file));
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test('node multi pubsub client uses public TopicMessage subscribe path', () => {
   const file = path.join(ROOT, 'perf', 'multi', 'perf_multi_pubsub_client.ts');
   const body = fs.readFileSync(file, 'utf8');

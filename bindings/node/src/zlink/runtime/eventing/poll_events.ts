@@ -2,6 +2,7 @@
 
 import type { PollEventFlagValue } from '../../contracts/sockets/socket_constants';
 import { closeCall } from '../errors/native_errors';
+import { NativeHandle } from '../handles/native_handle';
 import { requireNative } from '../native/native';
 
 export interface PollEvent {
@@ -11,8 +12,7 @@ export interface PollEvent {
   readonly fd: number;
 }
 
-export class PollEvents {
-  private _native: unknown | null;
+export class PollEvents extends NativeHandle {
   private _readyCount = 0;
   readonly capacity: number;
 
@@ -20,8 +20,8 @@ export class PollEvents {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError('capacity must be a positive integer');
     }
+    super(requireNative().pollEventsNew(capacity));
     this.capacity = capacity;
-    this._native = requireNative().pollEventsNew(capacity);
   }
 
   get readyCount(): number { return this._readyCount; }
@@ -48,12 +48,6 @@ export class PollEvents {
 
   hasEvent(index: number, event: PollEventFlagValue): boolean {
     return (this.revents(index) & (event as number)) !== 0;
-  }
-
-  /** @internal */
-  nativeHandle(): unknown {
-    if (!this._native) throw new Error('PollEvents is closed');
-    return this._native;
   }
 
   /** @internal */

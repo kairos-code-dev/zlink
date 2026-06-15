@@ -143,7 +143,7 @@ $ curl -s -X POST http://127.0.0.1:8080/games \
   자세한 내용은 7장(채널 메시징)에서 다룬다.
 - endpoint·포트를 하드코딩하지 않고 설정으로 빼는 방법은
   [4. Configuration](./05-configuration.ko.md).
-- 실제로 동작하는 전체 구성은 `samples/TicTacToe`가 정본이다 —
+- 실제로 동작하는 전체 구성은 `samples/TicTacToe`가 기준이다 —
   `run_sample.sh`로 서버(Api·Play)와 클라이언트를 한 번에 띄울 수 있다.
 
 [다음: 핵심 개념 →](./03-concepts.ko.md)

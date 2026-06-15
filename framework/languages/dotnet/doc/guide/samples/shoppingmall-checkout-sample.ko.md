@@ -9,7 +9,7 @@
 > 이 문서는 실행 가능한 ShoppingMallCheckout 샘플 설명이다. 체크아웃 도메인에 ZLink 와
 > event sourcing 을 도입할지 판단하려면
 > [13-case-ecommerce-checkout](../case-studies/13-case-ecommerce-checkout.ko.md)을 먼저
-> 보고, 이 문서에서는 DTO, 서버 구조, 실행 흐름을 확인한다. 언어 중립 정본 시나리오는
+> 보고, 이 문서에서는 DTO, 서버 구조, 실행 흐름을 확인한다. 언어 중립 공통 시나리오는
 > [spec/sample/event/shoppingmall-checkout](../../../../../doc/spec/sample/event/shoppingmall-checkout.ko.md)이 다룬다.
 
 ## 1. 목적

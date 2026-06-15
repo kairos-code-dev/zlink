@@ -8,7 +8,7 @@
 
 # ZLink Framework NestJS SPOT Integration
 
-> 이 문서는 **이식 정본(canonical) 스펙**이다. dotnet
+> 이 문서는 **이식 기준(canonical) 스펙**이다. dotnet
 > [aspnet-core-spot.ko.md](../../../dotnet/doc/spec/aspnet-core-spot.ko.md) 의
 > 의미·동작을 그대로 두고, 표면만 NestJS / TypeScript 모양으로 옮긴다. 번역
 > 규칙은 [dotnet-to-node-surface-mapping.ko.md](../internals/dotnet-to-node-surface-mapping.ko.md)
@@ -332,7 +332,7 @@ export class StageSpot implements ZLinkSpot {
 
 > **표면 주의.** dotnet 코드에서 handler registry 는 `Context.Handlers` property
 > (`IZLinkSpotHandlerRegistry`) 에 있다. dotnet spec 예시가 쓰는
-> `Context.AddPacket<T>()` 는 그 축약 표기다. node 정본 표면은
+> `Context.AddPacket<T>()` 는 그 축약 표기다. node 기준 표면은
 > `context.handlers.addPacket(...)` 로 둔다.
 
 Entry Spot registry 와 user Spot registry 는 서로 다른 namespace 다. 따라서
@@ -759,7 +759,7 @@ await spot.context.outbound.sendToSpot(stage.spotRid, new StageNoticeMessage());
 ```
 
 `Stage wrapper` 같은 상위 모델을 생각하면 timer 도 함께 필요하다. 다만 현재
-정본은 이를 `ZLinkSpotOutbound` 의 callback scheduler 로 두지 않는다. 대신
+기준은 이를 `ZLinkSpotOutbound` 의 callback scheduler 로 두지 않는다. 대신
 `context.addTimer(...)` 로 등록하는 lifecycle timer 한 가지 모델로 정리한다.
 그래야 stage state 를 별도 lock 없이 다루는 상위 모델을 설명하기 쉬워진다.
 

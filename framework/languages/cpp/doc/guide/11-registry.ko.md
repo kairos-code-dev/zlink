@@ -104,7 +104,7 @@ options.use_registry_spot_remote_addresses ("bingo.room.routes");
   [12장 §3](./12-monitoring.ko.md)의 `add_registry_check`.
 - registry 이벤트(등록/해제/조회) 관측은 `add_registry_events` —
   [12장 §2](./12-monitoring.ko.md).
-- 동작 예제: `samples/Bingo`가 registry 포함 4-서버 토폴로지의 정본이다
+- 동작 예제: `samples/Bingo`가 registry 포함 4-서버 토폴로지의 기준이다
   ([14장](./14-samples-map.ko.md)).
 
 [다음: Monitoring →](./12-monitoring.ko.md)

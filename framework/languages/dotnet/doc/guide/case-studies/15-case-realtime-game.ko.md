@@ -279,7 +279,7 @@ room 루프가 아니라, 여러 gameplay 영역(combat·inventory·mission·fea
 
 - 구현 학습(deep-dive): [GameQuest Sample 문서](../samples/gamequest-sample.ko.md)
 - 실행 코드: [.NET GameQuest 샘플](../../../samples/GameQuest)
-- 공통 시나리오(언어 중립 정본): [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)
+- 공통 시나리오(언어 중립): [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)
 
 | 서버 | instance | 책임 |
 |------|:--------:|------|

@@ -171,6 +171,6 @@ options.add_stream_node ("tictactoe.stream")
 게이트웨이가 켜지면: 클라이언트 패킷 → session relay → gateway → spot의 actor
 패킷 핸들러 순으로 흐르고, spot이 보낸 알림은 역경로로 클라이언트에 닿는다.
 relay 계약의 세부(메타데이터 전파 정책 등)는 spec
-[actor-gateway-session-relay](../spec/actor-gateway-session-relay.ko.md)가 정본이다.
+[actor-gateway-session-relay](../spec/actor-gateway-session-relay.ko.md)가 다룬다.
 
 [다음: Stream →](./10-stream.ko.md)

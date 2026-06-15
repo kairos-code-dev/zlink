@@ -62,7 +62,7 @@ flowchart TD
 ## 4. 기능을 실제로 보여 주는 샘플
 
 각 샘플은 의도가 겹치지 않게 서로 다른 기능 묶음을 맡는다. "이 기능을 실행 코드로
-보고 싶다" 면 아래에서 정본 샘플로 이동한다. 도입 판단(언제·왜)은 연결된 케이스
+보고 싶다" 면 아래에서 대표 샘플로 이동한다. 도입 판단(언제·왜)은 연결된 케이스
 스터디가, 실행은 샘플이 맡는다.
 
 | 샘플 | 핵심 기능 묶음 | codec | 케이스 스터디 | deep-dive 문서 |
@@ -74,7 +74,7 @@ flowchart TD
 | ShoppingMall(Checkout) | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMallCheckout](./samples/shoppingmall-checkout-sample.ko.md) |
 | GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [GameQuest](./samples/gamequest-sample.ko.md) |
 
-> 기능별 사용법은 04~09 가, 샘플의 언어 중립 정본 시나리오는
+> 기능별 사용법은 04~09 가, 샘플의 언어 중립 공통 시나리오는
 > [spec/sample](../../../../doc/spec/sample/README.ko.md) 가 다룬다.
 
 ## 5. 더 보기

@@ -108,7 +108,7 @@ client.wait_for<game_state_notify_t> (...);   // 서버 알림 수신
 
 connector의 계약과 사용법은
 [stream connector 가이드](../../connector/doc/guide/INDEX.ko.md)를
-본다. 동작 예제는 `samples/TicTacToe/Client`가 정본이다.
+본다. 동작 예제는 `samples/TicTacToe/Client`가 기준이다.
 
 ## 5. 패킷 계약
 

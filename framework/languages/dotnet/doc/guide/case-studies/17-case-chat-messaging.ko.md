@@ -250,7 +250,7 @@ room SPOT·BoundSession·STREAM 매핑을 1:1 고객 상담 도메인으로 좁�
 
 - 구현 학습(deep-dive): [SupportChat Sample 문서](../samples/supportchat-sample.ko.md)
 - 실행 코드: [.NET SupportChat 샘플](../../../samples/SupportChat)
-- 공통 시나리오(언어 중립 정본): [spec/sample/supportchat](../../../../../doc/spec/sample/supportchat/README.ko.md)
+- 공통 시나리오(언어 중립): [spec/sample/supportchat](../../../../../doc/spec/sample/supportchat/README.ko.md)
 
 ### 서버 구성 — session gateway
 

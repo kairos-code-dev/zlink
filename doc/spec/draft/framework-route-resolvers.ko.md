@@ -15,7 +15,7 @@ domain 저장소만 구현하고, route 저장과 조회는 framework 기본 구
 
 ## 현재 결정
 
-기본 구현은 capability 별 API 로 켠다.
+기본 구현은 역할 별 API 로 켠다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -27,24 +27,24 @@
 
 ## 2. 공통 원칙
 
-각 capability 표를 읽기 전에, 표 전체에 공통으로 적용되는 다음 네 가지를 먼저
+각 역할 표를 읽기 전에, 표 전체에 공통으로 적용되는 다음 네 가지를 먼저
 짚어 둔다.
 
 - 등록 단계에서 이미 판정할 수 있는 설정 오류는 host 가 시작되기 전에
   fail-fast[^fail-fast] 한다.
-- 같은 capability 안에서는 `discovery` 기반 자동 연결과 manual 연결을 섞지
+- 같은 역할 안에서는 `discovery` 기반 자동 연결과 manual 연결을 섞지
   않는다.
-- outbound capability 에 manual 연결도 없고 discovery 등록도 없으면 거부한다.
+- outbound 역할에 manual 연결도 없고 discovery 등록도 없으면 거부한다.
   peer 를 어디서 가져올지 알 길이 없기 때문이다.
 - 같은 항목을 중복으로 등록한 경우, 조용히 덮어쓰지 않고 예외로 처리한다.
 
 ## 3. Channel Capability Matrix
 
-다음 표는 channel 의 capability 조합별 허용 여부와 기대 동작을 정리한다.
+다음 표는 channel 의 역할 조합별 허용 여부와 기대 동작을 정리한다.
 
 | 조합 | 허용 여부 | 기대 동작 |
 |------|-----------|-----------|
-| `server: { bind: '...' }`만 등록 | 허용 | server capability만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
+| `server: { bind: '...' }`만 등록 | 허용 | server 역할만 열리고, handler 매핑이 없으면 처리할 packet도 없다 |
 | `server: {}`만 등록 + bind endpoint 없음 | 비허용 | startup validation 오류 |
 | `client: {}`만 등록 + 전역 `discovery: {...}` 있음 | 허용 | outbound request/send runtime을 만든다 |
 | `client: { manualConnections: [...] }`만 등록 | 허용 | manual 기반 outbound request/send runtime을 만든다 |
@@ -56,13 +56,13 @@
 | `subscriber: {}`만 등록 + discovery/manual 둘 다 없음 | 비허용 | startup validation 오류 |
 | 같은 channel에서 `server + client` 함께 등록 | 허용 | inbound와 outbound runtime을 모두 가진다 |
 | 같은 channel에서 `publisher + subscriber` 함께 등록 | 허용 | event fan-out과 수신을 모두 가진다 |
-| 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
+| 같은 channel 역할 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
 | `handlerGroups: ['...']`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | handler class decorator 의 group 과 channel 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `handlerGroups`에 여러 그룹을 넣어 그룹들의 합집합을 한 채널에 노출한다 |
 | `handlerGroups`가 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |
-| client-server channel에서 `spotRouteEgress`만 등록하고 client capability 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
+| client-server channel에서 `spotRouteEgress`만 등록하고 client 역할 없음 | 비허용 | routed Spot egress 는 local client DEALER 가 필요하다 |
 | route mesh channel에서 `spotRouteEgress` 등록 | 허용 | target SpotNode ingress channel 로 routed Spot relay 를 보낼 수 있다. 실제 target ROUTER 연결과 target ROUTER `RoutingId` metadata 가 모두 필요하다 |
 
 ## 4. Spot Capability Matrix
@@ -77,13 +77,13 @@
 | top-level standalone node 등록 | 비허용 | public 등록 표면에서 제거되었다. SPOT node 는 항상 spot mesh 안에서 등록한다 |
 | 분리된 SPOT discovery 등록과 node 등록 | 비허용 | public 등록 표면에서 제거되었다. discovery 와 node 집합은 spot mesh가 함께 소유한다 |
 | 같은 mesh에 `nodes` 여러 개 | 허용 | 같은 channel view를 공유하는 여러 SpotNode를 등록한다 |
-| 같은 mesh의 router-capable node를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router capability 로 시작한다 |
+| 같은 mesh의 router-capable node를 stream ActorGateway 로 참조 | 허용 | session relay ingress 를 일반 SpotNode router 역할로 시작한다 |
 | 같은 `SpotNode`에 같은 `spotRid` factory 중복 등록 | 비허용 | startup validation 오류 |
 | 같은 `SpotNode`에 Entry Spot[^entry-spot] registry 중복 등록 | 비허용 | startup validation 오류 |
-| `router` capability만 등록 | 허용 | inbound routed call만 받는다 |
-| attach된 channel client capability 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
-| attach된 channel client capability 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
-| local spot factory 없는 외부 publish node는 `ZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client capability 만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
+| `router` 역할만 등록 | 허용 | inbound routed call만 받는다 |
+| attach된 channel client 역할 등록 + channel discovery/manual 경로 있음 | 허용 | spot 내부에서 outbound channel 호출이 가능하다 |
+| attach된 channel client 역할 등록 + channel peer acquisition 경로 없음 | 비허용 | startup validation 오류 |
+| local spot factory 없는 외부 publish node는 `ZLinkSpotPublisherClient` 사용 | 허용 | Spot publisher client 역할만 둔 `SpotNode` 로 특정 SPOT channel publish만 수행한다 |
 
 ## 5. Stream Node Matrix
 
@@ -151,8 +151,8 @@
 - duplicate channel 이름
 - duplicate `spotNodeName`
 - duplicate `spotRid` factory
-- outbound capability에 discovery/manual 경로가 둘 다 없는 경우
-- 같은 capability 안에서 discovery/manual 혼용
+- outbound 역할에 discovery/manual 경로가 둘 다 없는 경우
+- 같은 역할 안에서 discovery/manual 혼용
 - monitoring 등록 시 존재하지 않는 source를 지정한 경우
 - 같은 stream node에 session을 중복 등록한 경우
 - bind endpoint가 없는 stream node
@@ -170,18 +170,18 @@ error family 로 명확하게 실패시킨다.
 ## 9. 회귀 테스트
 
 Behavior Matrix 는 허용 조합과 비허용 조합을 테스트 이름 단위로 고정한다. 새
-capability 조합을 추가할 때는 표만 늘리지 않는다. startup validation 또는
+역할 조합을 추가할 때는 표만 늘리지 않는다. startup validation 또는
 runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
-| `ChannelsTests.forRoot_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed capability에서 discovery와 manual 연결을 섞으면 실패한다. |
-| `HandlerExposureTests.forRoot_Throws_WhenServerHasNoBindEndpoint` | server capability에 bind endpoint가 없으면 실패한다. |
-| `RegistryAndMonitoringTests.forRoot_Throws_WhenPublisherHasNoBindEndpoint` | publisher capability에 bind endpoint가 없으면 실패한다. |
+| `ChannelsTests.forRoot_Throws_WhenRouteChannelMixesDiscoveryAndManualConnections` | 같은 routed 역할에서 discovery와 manual 연결을 섞으면 실패한다. |
+| `HandlerExposureTests.forRoot_Throws_WhenServerHasNoBindEndpoint` | server 역할에 bind endpoint가 없으면 실패한다. |
+| `RegistryAndMonitoringTests.forRoot_Throws_WhenPublisherHasNoBindEndpoint` | publisher 역할에 bind endpoint가 없으면 실패한다. |
 | `NodesAndServicesTests.forRoot_AllowsStandaloneLocalSpotNode` | discovery mesh 없이 local-only SpotNode를 단독으로 시작할 수 있다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
 [^startup-validation]: startup validation 은 host가 시작되기 전에 등록된 설정을 검사해 잘못된 조합을 미리 거부하는 단계다.
 [^registration-surface]: registration surface 는 DI 컨테이너에 framework 구성 요소를 등록할 때 사용자가 쓰는 module options 묶음을 가리킨다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈추는 전략이다. 늦게 발견되어 더 큰 문제로 번지는 것을 막는다.
@@ -195,5 +195,5 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

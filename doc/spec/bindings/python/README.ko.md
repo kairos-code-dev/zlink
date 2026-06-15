@@ -383,14 +383,14 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
 - `create_message(...)`, `allocate_message(...)`, `create_received()`,
   `create_topic_message()`, `create_subscription_event()`는
   재사용 가능한 messaging 저장소를 생성한다.
-- 버전, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개 패키지
+- 버전, 역할, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개 패키지
   함수다. 이 함수들 뒤의 네이티브 호출은 비공개 모듈에 둔다.
 
 ## 계약 카테고리 맵
 
 `zlink/contracts/` 패키지가 `zlink`에서 export되는 이름의 소유권 맵이다.
 
-- `core/`: context, context 옵션, routing id, version/capability 헬퍼, 유틸리티
+- `core/`: context, context 옵션, routing id, version/역할 헬퍼, 유틸리티
   계약.
 - `messaging/`: 메시지, 수신 메타데이터, 토픽 메시지, subscription 이벤트,
   스트림 패킷 데이터, 빌더 payload 헬퍼.
@@ -440,7 +440,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
 
 `zlink` 패키지는 도메인 단위 그룹을 노출한다.
 
-- Core: context, version/capability 헬퍼, 옵션, 유틸리티.
+- Core: context, version/역할 헬퍼, 옵션, 유틸리티.
 - Messaging: 메시지, routing id, 수신 메타데이터, 토픽 메시지, subscription
   event, 스트림 패킷 데이터.
 - Sockets: pair, dealer, router, pub, sub, xpub, xsub, stream, 타입드 옵션,
@@ -455,7 +455,7 @@ Python 패키지는 컴파일된 확장 모듈을 wheel에 포함해야 한다. 
 바인딩이 공통 .NET-표준 정책에 정렬되면, 공개 패키지는 다음 안정적인 사용자
 대상 기능을 모두 포함한다.
 
-- context 생명주기, 옵션, shutdown, auto-HWM 재계산, version, capability,
+- context 생명주기, 옵션, shutdown, auto-HWM 재계산, version, 역할,
   strerror.
 - 메시지 ownership, multipart payload, routing id, 수신 메타데이터, 토픽 메시지,
   subscription event, 스트림 패킷 콜백.

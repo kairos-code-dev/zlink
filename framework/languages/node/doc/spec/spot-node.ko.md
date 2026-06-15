@@ -52,8 +52,8 @@ dotnet builder 메서드와 options 키의 대응은 다음과 같다.
 
 | dotnet `IZLinkSpotNodeBuilder` 메서드 | node `spotNodes[name]` 키 | 의미 |
 |------|------|------|
-| `EnableRouter(r => ...)` | `router: { bind, routingId, ... }` | spot router capability |
-| `EnablePubSub(p => ...)` | `pubSub: { bind, routingId, ... }` | spot pub/sub capability |
+| `EnableRouter(r => ...)` | `router: { bind, routingId, ... }` | spot router 역할 |
+| `EnablePubSub(p => ...)` | `pubSub: { bind, routingId, ... }` | spot pub/sub 역할 |
 | `AttachChannelClient(name, ...)` | `attachedChannelClients[name]` | client/server channel client 부착 |
 | `AttachSpotPublisherClient(name, ...)` | `attachedSpotPublisherClients[name]` | spot publisher client 부착 |
 | `AcceptSpotRoutesFromChannel(name, ...)` | `acceptedSpotRouteChannels[name]` | router channel route 수신 |
@@ -61,8 +61,8 @@ dotnet builder 메서드와 options 키의 대응은 다음과 같다.
 | `AddEntrySpot<TEntrySpot>()` | `entrySpotType: TEntrySpot` | Entry Spot handler registry 타입 |
 | `AddSpotFactory<TSpot>()` | `spotFactories: [TSpot, ...]` | 이 node 가 만들 수 있는 spot 타입 |
 
-`router` / `pubSub` 키는 capability 가 켜지는 것을 의미한다(dotnet `EnableRouter` /
-`EnablePubSub` 호출에 해당). capability 내부 옵션은 다음으로 매핑한다.
+`router` / `pubSub` 키는 역할이 켜지는 것을 의미한다(dotnet `EnableRouter` /
+`EnablePubSub` 호출에 해당). 역할 내부 옵션은 다음으로 매핑한다.
 
 | dotnet builder | node 키 | 비고 |
 |------|------|------|
@@ -210,7 +210,7 @@ core 는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 2. `entrySpot.routingId` 가 설정되어 있으면 `entrySpot.setRoutingId(...)` 를
    호출한다.
 3. SpotNode 를 bind 한다.
-4. discovery, route channel, publisher 같은 node capability 를 붙인다.
+4. discovery, route channel, publisher 같은 node 역할을 붙인다.
 5. Entry Spot activation 을 만든다.
 6. Entry Spot dispatch pump 를 붙인다.
 7. 이후 Actor 생성과 Actor remote address publish 는 설정된 Entry Spot rid 를

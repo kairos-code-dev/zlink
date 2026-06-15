@@ -37,7 +37,7 @@ surface를 새 framework 정책으로 옮길 때 지켜야 할 기준을 정리�
 | raw request/send/event handler class | application handler는 `handler_registry_t`의 typed handler 등록, SPOT handler는 `spot_context_t::handlers()`의 Spot member function 등록 |
 | channel client 직접 주입 | `message_bus_t`, `request_client_t`, `publisher_t` DI 주입 |
 | event publisher 전용 타입 | `publisher_t::publish(channel, topic, event)` |
-| channel 전체 연결 설정 | capability builder의 `bind`, `connect`, `use_discovery` |
+| channel 전체 연결 설정 | 역할 builder의 `bind`, `connect`, `use_discovery` |
 | spot 전용 publisher client | `spot_context_t` 또는 `publisher_t`의 channel/topic 표면 |
 | target Spot 직접 호출 public client | actor 생성 또는 Entry Spot join 뒤 actor/session handle 사용 |
 | session actor relay용 route mesh channel | `stream.attach_actor_gateway(...)`와 `session_actor_t::relay(...)` |
@@ -146,7 +146,7 @@ publisher.publish(
 ## 5. Host 구성 기준
 
 runtime 구성은 `add_zlink_framework(...)` 하나로 들어간다. channel 연결 설정은 core
-capability builder를 직접 노출하지 않고, framework options의 channel builder가 필요한
+역할 builder를 직접 노출하지 않고, framework options의 channel builder가 필요한
 부분만 받는다.
 
 ```cpp
@@ -161,7 +161,7 @@ app.add_zlink_framework([](auto &options) {
 });
 ```
 
-수동 연결은 capability 안에서 endpoint 기준으로 설정한다. 같은 capability 안에서
+수동 연결은 역할 안에서 endpoint 기준으로 설정한다. 같은 역할 안에서
 수동 연결과 Discovery 연결을 섞지 않는다.
 
 handler group은 channel에 노출되는 handler packet 집합이다. 같은 channel과 같은
@@ -223,9 +223,9 @@ Session actor relay는 application route mesh channel을 쓰지 않는다. STREA
 - handler template 코드는 handler shape 검사와 type-erased runtime 호출로 제한한다.
   pending queue, recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
 - public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.
-- 같은 capability는 자동 연결과 수동 연결 중 하나만 선택한다.
-- 일반 channel messaging의 handler dispatch는 local server capability ingress 기준이다.
-- outbound client capability의 receive path는 reply correlation 경로로 본다.
+- 같은 역할은 자동 연결과 수동 연결 중 하나만 선택한다.
+- 일반 channel messaging의 handler dispatch는 local server 역할 ingress 기준이다.
+- outbound client 역할의 receive path는 reply correlation 경로로 본다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
 - session actor relay는 ActorGateway attach와 logical actor handle 기준으로 설명한다.
 - Registry는 Spot remote address 조회 기본값으로 쓰고 actor-session binding 저장소로

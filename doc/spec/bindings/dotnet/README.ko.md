@@ -342,7 +342,7 @@ P/Invoke나 런타임 브리지 코드를 읽지 않고도 이 폴더에서 발�
 `Runtime/`은 같은 표준 맵을 따라가지만 구현만을 담는다.
 
 - `Core/`: context 생명주기, counter, stopwatch, thread 헬퍼,
-  runtime version/capability 호출.
+  runtime version/역할 호출.
 - `Handles/`: 네이티브 리소스 ownership, close 상태, lifetime 검사,
   reference tracking.
 - `Messaging/`: multipart 메시지 materialize, request/reply 진행, request
@@ -399,7 +399,7 @@ facade 연결을 위해 내부적으로 런타임 코드에 위임할 수 있지
 .NET 공개 계약은 안정 상태의 사용자 노출 코어 기능 전부를 포괄한다. 형태는
 C보다 좁거나 더 관용적일 수 있지만, 의미는 동일하게 유지한다.
 
-- context 생명주기, 옵션, shutdown, auto-HWM 재계산, version, capability,
+- context 생명주기, 옵션, shutdown, auto-HWM 재계산, version, 역할,
   strerror 헬퍼.
 - 메시지 ownership, multipart payload, routing id, received metadata, topic
   메시지, subscription 이벤트.

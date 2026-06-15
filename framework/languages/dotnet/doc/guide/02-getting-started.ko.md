@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: 핵심 개념 — .NET 표면 멘탈 모델](./03-concepts.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: .NET ZLink Framework 이해를 위한 핵심 개념](./03-concepts.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 2. Getting Started — 처음 한 번 띄워 보기
@@ -38,8 +38,8 @@ flowchart LR
   Caller["caller 앱<br/>(EnableClient)"] -- "Request('price', ...)" --> PriceServer["price-server 앱<br/>(EnableServer + handler)"]
 ```
 
-- `price-server` : `price` channel 에 server capability 를 열고 handler 를 둔다.
-- `caller` : `price` channel 에 client capability 만 열고 호출한다.
+- `price-server` : `price` channel 에 server 역할을 열고 handler 를 둔다.
+- `caller` : `price` channel 에 client 역할만 열고 호출한다.
 
 두 앱은 서로의 주소를 직접 모른다. 위치는 `Discovery`(또는 수동 연결)가 해결한다.
 
@@ -173,7 +173,7 @@ builder.Build().Run();
 | 증상 | 점검 |
 |------|------|
 | 호출이 timeout 으로 떨어진다 | `price-server` 가 떴는지, Registry endpoint(`5551`)를 양쪽이 같이 가리키는지 |
-| `ZLinkConfigurationException` | client capability 에 `UseDiscovery`도 수동 연결도 없는 경우. 둘 중 하나는 있어야 한다 |
+| `ZLinkConfigurationException` | client 역할에 `UseDiscovery`도 수동 연결도 없는 경우. 둘 중 하나는 있어야 한다 |
 | 시작 시 예외 | channel 이름 중복, 같은 channel 안 `kind + packet name` 중복 → 시작 단계에서 막힌다([03-concepts](./03-concepts.ko.md) §4) |
 | 그래도 안 보이면 | runtime 이벤트로 진단 → [09-monitoring](./09-monitoring.ko.md) |
 
@@ -181,7 +181,7 @@ builder.Build().Run();
 
 | 하고 싶은 것 | 가는 곳 |
 |--------------|---------|
-| 표면 개념 정리(channel, capability, DI) | [03-concepts](./03-concepts.ko.md) |
+| 표면 개념 정리(channel, 역할, DI) | [03-concepts](./03-concepts.ko.md) |
 | request/send/pub-sub 전체 사용법 | [04-channel-messaging](./04-channel-messaging.ko.md) |
 | room/stage 같은 동적 노드 | [05-spot](./05-spot.ko.md) |
 | 외부 game/mobile client 받기 | [07-stream](./07-stream.ko.md) |
@@ -189,5 +189,5 @@ builder.Build().Run();
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: 핵심 개념 — .NET 표면 멘탈 모델](./03-concepts.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: .NET ZLink Framework 이해를 위한 핵심 개념](./03-concepts.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

@@ -822,7 +822,7 @@ pgrep -af "run_benchmarks|run_comparison.py|comp_src_"
 
 아래 항목을 반영한다.
 
-- service monitor capability 제거
+- service monitor 역할 제거
 - discovery/spotnode/spot 관찰 모델을 snapshot/query 중심으로 재정리
 - auto HWM 재계산 option과 context recalc 함수 추가
 - perf 정책 문구 갱신

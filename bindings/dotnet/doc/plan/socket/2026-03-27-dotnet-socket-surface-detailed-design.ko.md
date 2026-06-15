@@ -110,7 +110,7 @@ compat:
 
 - `SocketHandle` 은 native handle ownership utility다. public으로 노출하지 않는다.
 - `SocketKernel` 은 진짜 깊은 모듈이다. interop와 공통 정책을 가진다.
-- `SocketBase` 는 lifecycle과 공통 capability만 노출한다.
+- `SocketBase` 는 lifecycle과 공통 역할만 노출한다.
 - `MessageSocketBase`, `PublisherSocketBase`, `SubscriberSocketBase` 는 의미별 facade다.
 - concrete type은 public surface 제한과 special API 노출만 담당한다.
 
@@ -247,7 +247,7 @@ internal sealed class SocketKernel : IDisposable
 
 중요:
 
-- `SocketKernel` 은 모든 capability를 갖지만 public surface는 facade가 제한한다.
+- `SocketKernel` 은 모든 역할을 갖지만 public surface는 facade가 제한한다.
 - typed facade는 kernel 메서드 중 자신에게 의미 있는 것만 노출한다.
 - ownership 계약은 현재 구현과 동일해야 하며, 이번 refactor에서 바꾸지 않는다.
 
@@ -582,7 +582,7 @@ public sealed class XSubSocket : SubscriberSocketBase
 - 내부 구현은 `SocketKernel` 로 위임한다.
 - 새 typed socket과 동일한 kernel을 사용한다.
 - `Socket` 은 상속 기반 compat가 아니라 composition 기반 compat다.
-- `Socket` 은 generic capability를 그대로 유지하지만, 새 샘플과 새 문서에서는 사용하지 않는다.
+- `Socket` 은 generic 역할을 그대로 유지하지만, 새 샘플과 새 문서에서는 사용하지 않는다.
 
 ### 14.2 phase 2
 

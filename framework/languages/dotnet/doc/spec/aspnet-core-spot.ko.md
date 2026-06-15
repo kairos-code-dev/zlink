@@ -150,8 +150,8 @@ builder.Services.AddZLinkFramework(options =>
 - `AddSpotMesh("game.stage", mesh => mesh.UseDiscovery(...AddRegistryEndpoint...))`가 active channel
   view 공급
 - 같은 channel에 속한 다른 `SpotNode`와만 mesh 구성
-- local routed router capability[^capability] 활성화
-- local SPOT pub/sub capability 활성화
+- local routed router 역할[^capability] 활성화
+- local SPOT pub/sub 역할 활성화
 - 다른 channel 호출용 client attach
 - 필요하다면 외부 노드용 spot publish client attach
 - 자동 Entry Spot에 붙일 application registry 등록
@@ -181,7 +181,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
     같은 channel에 속한 다른 `SpotNode`와 routed packet을 주고받는 축이다.
 - `EnablePubSub()`
   - 현재 SPOT channel 안의 publish/subscribe 축을 켠다. local spot 안에서
-    `spot.Context.Outbound.Publish(...)`를 사용하려면 이 capability가 필요하다.
+    `spot.Context.Outbound.Publish(...)`를 사용하려면 이 역할이 필요하다.
 - `AttachChannelClient("orders")`
   - `orders` channel로 outbound[^outbound] send/request를 보낼
     `DEALER(client)`[^dealer-router] 경로를 붙인다.
@@ -214,7 +214,7 @@ SPOT channel 이름과 node 집합을 함께 소유하도록 유지한다.
 - `AddSpotMesh("game.stage", mesh => { ... })`가 이 노드의 mesh 범위를 정한다.
 - 같은 `SpotNode`에 active SPOT channel view는 하나만 둔다.
 - `EnableRouter(router => router.BindRouter(endpoint))`와 `EnablePubSub()`는 별개의
-  capability다.
+  역할다.
 - 다른 channel에 대한 send/request는 attach된 client가 담당한다.
 - 외부 노드에서 SPOT channel로 publish하려면 별도의 spot publisher client를 쓴다.
 - 따라서 SPOT 등록 시점에도 channel client attach와 spot publisher client attach를
@@ -361,12 +361,12 @@ Entry Spot 인스턴스의 상태나 helper 메서드는 handler 에서 사용�
 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 SPOT lifecycle
 handler 섹션을 기준으로 본다.
 
-### 4.2 capability별 수동 연결
+### 4.2 역할별 수동 연결
 
 이 소절은 discovery 를 쓰지 않고 endpoint 를 직접 지정해 연결할 때, 그 설정을
 어디에 어떻게 둬야 하는지를 정리한다.
 
-SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 나눠서
+SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로 나눠서
 다뤄야 한다. `router`, channel client, `pub/sub`, spot publish client 는 각자
 사용할 endpoint 집합을 따로 관리한다.
 
@@ -426,8 +426,8 @@ builder.Services.AddZLinkFramework(options =>
 
 여기서 따라야 할 규칙은 다음과 같다.
 
-- 수동 연결은 `SpotNode` 전체가 아니라 capability별로 관리한다.
-- 같은 capability 안에서는 `Discovery`와 `Manual`을 섞지 않는다.
+- 수동 연결은 `SpotNode` 전체가 아니라 역할별로 관리한다.
+- 같은 역할 안에서는 `Discovery`와 `Manual`을 섞지 않는다.
 - 같은 `SpotNode`에서 같은 `TSpot` factory를 두 번 등록하면 기존 값을 덮어쓰지 않고 예외를 던진다.
 - `router` manual 연결도 endpoint 집합만 등록한다. 이 문서에서는 `Connect(...)`
   호출 시 remote router id를 별도 파라미터로 받지 않는다.
@@ -477,7 +477,7 @@ placement 코드가 먼저 spot rid 를 결정해 두어야 한다.
 - `pub/sub`과 spot publisher client의 manual 연결은 endpoint 집합만 등록한다.
   다만 전자는 peer `SpotNode`의 mesh 주소이고, 후자는 외부 publish ingress 주소다.
 
-#### capability별 소켓 옵션
+#### 역할별 소켓 옵션
 
 소켓 옵션은 호출 단위 builder 옵션과 섞지 않는다. 대신 등록 시점의 runtime
 기본값으로 정의한다.
@@ -1070,12 +1070,12 @@ mesh 안에서 동작한다고 이해하면 된다.
 SPOT discovery 와 top-level node 등록을 분리해서 호출하는 public 경로는
 제공하지 않는다. SPOT network 를 구성하는 모든 node 는
 `AddSpotMesh(...)` 안에서 `mesh.AddNode(...)` 로 등록한다. STREAM
-ActorGateway 는 별도 node builder 가 아니라, stream 이 router capability 를
+ActorGateway 는 별도 node builder 가 아니라, stream 이 router 역할을
 켠 SpotNode 를 `AttachActorGateway(spotNodeName)` 로 참조하는 방식으로 연결한다.
 
 ## 10. 결정된 기준
 
-- attach된 channel client와 spot publisher client 설정은 capability별 builder 하나로
+- attach된 channel client와 spot publisher client 설정은 역할별 builder 하나로
   묶는다. socket option과 manual connection처럼 runtime이 소유하는 설정만
   노출하고, 그보다 더 세밀한 하위 builder 트리는 기본 표면으로 확장하지 않는다.
 - spot rid 는 별도 wrapper 없이 `RoutingId` 로 노출한다. framework 문서에서는
@@ -1091,7 +1091,7 @@ ActorGateway 는 별도 node builder 가 아니라, stream 이 router capability
 - `IZLinkSpotManager`는 생성과 조회를 함께 가진다. `GetAsync(...)`,
   `ListAsync(...)`는 별도 query 서비스로 분리하지 않고 manager에 남긴다.
 - subscriber concurrency와 backpressure[^backpressure]는 per-handler나 per-topic
-  API가 아니라, subscriber capability option에서 노드 단위로 설정한다.
+  API가 아니라, subscriber 역할 option에서 노드 단위로 설정한다.
 
 `Stage wrapper` 에서 필요한 metadata 전달, membership, 실행 문맥 규칙은
 framework 의 기본 계약이 아니다. 이 항목들은
@@ -1132,7 +1132,7 @@ node.AcceptSpotRoutesFromChannel("api", routes =>
 
 수동 endpoint가 없으면 framework discovery view를 통해 자동 연결한다. 같은 route
 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation 오류다.
-fanout channel과 dealer mesh channel은 router capability가 없으므로 지정할 수 없다.
+fanout channel과 dealer mesh channel은 router 역할이 없으므로 지정할 수 없다.
 
 `AcceptSpotRoutesFromChannel(...)`은 application handler mapping 이 아니다. 이 설정은
 target SpotNode 쪽 ingress channel 의 router-capable socket 과 SpotNode router 사이에
@@ -1206,7 +1206,7 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^lifecycle]: lifecycle 은 객체나 컴포넌트가 만들어져서 초기화·동작·정리 단계를 거쳐 사라지기까지의 흐름을 가리킨다.
-[^spotnode]: `SpotNode` 는 같은 channel 안의 spot 인스턴스들을 호스팅하고 router/pub-sub 같은 capability 를 묶어 관리하는 컨테이너 노드다.
+[^spotnode]: `SpotNode` 는 같은 channel 안의 spot 인스턴스들을 호스팅하고 router/pub-sub 같은 역할을 묶어 관리하는 컨테이너 노드다.
 [^publish-subscribe]: publish/subscribe 는 한쪽이 topic 으로 메시지를 내보내면 그 topic 을 구독한 여러 수신자가 함께 메시지를 받는 fan-out 방식의 메시징 패턴이다.
 [^facade]: facade 는 복잡한 하부 기능을 단순한 표면 하나로 묶어 제공하는 디자인 패턴을 가리킨다.
 [^entry-spot]: Entry Spot 은 actor 가 생성된 직후 처음 위치하는 공용 입구 역할의 Spot 이다. 인증, 초기 상태 설정, target Spot 선택 같은 단계가 여기서 이뤄진다.
@@ -1225,7 +1225,7 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 [^ingress]: ingress 는 외부에서 시스템 안으로 들어오는 트래픽의 진입 지점을 가리킨다.
 [^factory]: factory 는 특정 종류의 객체(여기서는 spot 인스턴스)를 만들어 내는 생성기 컴포넌트를 뜻한다.
 [^bridge]: 여기서 bridge 는 외부 stream session 으로 들어온 packet/disconnect 를 framework 내부의 actor 메시지로 이어 같은 실행 문맥에 올려 주는 연결 지점을 가리킨다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, subscriber, publisher)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^outbound]: outbound 는 현재 노드에서 외부로 나가는 방향의 호출(send, request 등)을 뜻한다.
 [^dealer-router]: `DEALER`/`ROUTER` 는 ZeroMQ 의 비대칭 소켓 쌍으로, `DEALER` 는 client 측, `ROUTER` 는 server 측에서 routing id 기반 송수신을 담당한다.
 [^admission]: admission 은 어떤 actor/요청을 받아들일지 거절할지 결정하는 입장 통제 단계를 뜻한다.

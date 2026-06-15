@@ -173,8 +173,8 @@ export class AppModule {}
 - 그에 대응하는 backing `SpotNode` 생성
 - `discovery` 가 active channel view 공급
 - 같은 channel 에 속한 다른 `SpotNode` 와만 mesh 구성
-- `router` 로 local routed router capability 활성화
-- `pubSub` 로 local SPOT pub/sub capability 활성화
+- `router` 로 local routed router 역할 활성화
+- `pubSub` 로 local SPOT pub/sub 역할 활성화
 - `channelClients` 로 다른 channel 호출용 client attach
 - 필요하다면 `spotPublishers` 로 외부 노드용 spot publish client attach
 - `entrySpotType` 으로 자동 Entry Spot 에 붙일 application registry 등록
@@ -188,14 +188,14 @@ export class AppModule {}
 단일 노드도 같은 방식으로 표현한다. 이 경우 `discovery` 를 생략하고 필요한
 `SpotNode` 만 등록한다.
 
-각 capability 키의 역할은 다음과 같다.
+각 역할 키의 역할은 다음과 같다.
 
 - `router: { bind }` (dotnet `EnableRouter(r => r.BindRouter(...))`)
   - local `SpotNode.router` 경로를 켜고 routed ingress endpoint 를 명시한다.
     같은 channel 에 속한 다른 `SpotNode` 와 routed packet 을 주고받는 축이다.
 - `pubSub: { bind }` (dotnet `EnablePubSub(p => p.BindPubSub(...))`)
   - 현재 SPOT channel 안의 publish / subscribe 축을 켠다. local spot 안에서
-    `context.outbound.publish(...)` 를 쓰려면 이 capability 가 필요하다.
+    `context.outbound.publish(...)` 를 쓰려면 이 역할이 필요하다.
 - `attachedChannelClients: { orders: {} }` (dotnet `AttachChannelClient("orders")`)
   - `orders` channel 로 outbound send / request 를 보낼 `DEALER(client)` 경로를
     붙인다.
@@ -234,7 +234,7 @@ export class AppModule {}
 
 - `spotNodes['stage-node']` 가 이 노드의 런타임 범위를 정한다.
 - 같은 `SpotNode` 에 active SPOT channel view 는 하나만 둔다.
-- `router` 와 `pubSub` 는 별개의 capability 다.
+- `router` 와 `pubSub` 는 별개의 역할이다.
 - 다른 channel 에 대한 send / request 는 attach 된 client 가 담당한다.
 - 외부 노드에서 SPOT channel 로 publish 하려면 별도의 spot publisher client 를
   쓴다.
@@ -403,15 +403,15 @@ actor handler 는 spot, actor, payload 를 함께 받는다. 두 표면을 따�
 자세한 시그니처는 [handler-interfaces.ko.md](./handler-interfaces.ko.md) 의 SPOT
 lifecycle callback 섹션을 기준으로 본다.
 
-### 4.3 capability별 수동 연결
+### 4.3 역할별 수동 연결
 
 이 소절은 discovery 를 쓰지 않고 endpoint 를 직접 지정해 연결할 때, 그 설정을
 어디에 어떻게 둬야 하는지를 정리한다.
 
-SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 나눠서 다뤄야
+SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로 나눠서 다뤄야
 한다. `router`, channel client, `pubSub`, spot publish client 는 각자 사용할
 endpoint 집합을 따로 관리한다. dotnet `UseManualConnections(peers => ...)` 는
-node 에서 capability 키 안의 `manualConnections: [...]` 배열로 옮긴다.
+node 에서 역할 키 안의 `manualConnections: [...]` 배열로 옮긴다.
 
 ```ts
 ZLinkModule.forRoot({
@@ -441,8 +441,8 @@ ZLinkModule.forRoot({
 
 여기서 따라야 할 규칙은 다음과 같다.
 
-- 수동 연결은 `SpotNode` 전체가 아니라 capability별로 관리한다.
-- 같은 capability 안에서는 `discovery` 와 `connect`(manual) 를 섞지 않는다.
+- 수동 연결은 `SpotNode` 전체가 아니라 역할별로 관리한다.
+- 같은 역할 안에서는 `discovery` 와 `connect`(manual) 를 섞지 않는다.
 - 같은 `SpotNode` 에서 같은 Spot 클래스 factory 를 두 번 등록하면 기존 값을
   덮어쓰지 않고 예외를 던진다.
 - `router` manual 연결도 endpoint 집합만 등록한다. `connect` 항목에 remote router
@@ -453,11 +453,11 @@ ZLinkModule.forRoot({
 - `pubSub` manual 연결에서 등록하는 주소는 다른 `SpotNode` 의 mesh publish bind
   주소다. local `SUB/XSUB` 쪽이 그 주소로 붙는다.
 
-### 4.4 capability별 소켓 옵션
+### 4.4 역할별 소켓 옵션
 
 소켓 옵션은 호출 단위 builder 옵션과 섞지 않는다. 대신 등록 시점의 runtime
 기본값으로 정의한다. dotnet 의 `ConfigureSocket(...)` / `ConfigureRouting(...)`
-계열은 capability 키 안의 옵션 객체로 옮긴다.
+계열은 역할 키 안의 옵션 객체로 옮긴다.
 
 - `router.socket` (dotnet `router.ConfigureSocket(...)`)
   - Node 바인딩의 공통 socket 기본값을 정한다.
@@ -1004,12 +1004,12 @@ channel 의 `ROUTER(server)` 를 `rid` 로 직접 지정해서 호출하는 모�
 전역 `discovery` 가 active channel view 를 공급한다. SPOT network 를 구성하는
 모든 node 는 `spotNodes[...]` 로 등록한다. STREAM ActorGateway 는 별도 node
 builder 가 아니라, stream 이 router
-capability 를 켠 SpotNode 를 `attachActorGateway: spotNodeName` 으로 참조하는
+역할을 켠 SpotNode 를 `attachActorGateway: spotNodeName` 으로 참조하는
 방식으로 연결한다(자세한 내용은 [nestjs-stream.ko.md](./nestjs-stream.ko.md)).
 
 ## 10. 결정된 기준
 
-- attach 된 channel client 와 spot publisher client 설정은 capability별 옵션 하나
+- attach 된 channel client 와 spot publisher client 설정은 역할별 옵션 하나
   로 묶는다. socket option 과 manual connection(`connect`)처럼 runtime 이 소유하는
   설정만 노출하고, 그보다 더 세밀한 하위 builder 트리는 기본 표면으로 확장하지
   않는다.
@@ -1025,7 +1025,7 @@ capability 를 켠 SpotNode 를 `attachActorGateway: spotNodeName` 으로 참조
 - `ZLinkSpotManager` 는 생성과 조회를 함께 가진다. `find(...)`, `list(...)` 는
   별도 query 서비스로 분리하지 않고 manager 에 남긴다.
 - subscriber concurrency 와 backpressure 는 per-handler 나 per-topic API 가 아니라,
-  subscriber capability option 에서 노드 단위로 설정한다.
+  subscriber 역할 option 에서 노드 단위로 설정한다.
 
 `Stage wrapper` 에서 필요한 metadata 전달, membership, 실행 문맥 규칙은 framework
 의 기본 계약이 아니다. 이 항목들은
@@ -1064,7 +1064,7 @@ acceptedSpotRouteChannels: {
 
 수동 endpoint 가 없으면 framework discovery view 를 통해 자동 연결한다. 같은
 route 수신 관계에서 수동 연결과 discovery 연결을 섞으면 startup validation
-오류다. fanout channel 과 dealer mesh channel 은 router capability 가 없으므로
+오류다. fanout channel 과 dealer mesh channel 은 router 역할이 없으므로
 지정할 수 없다.
 
 `acceptedSpotRouteChannels` 는 application handler mapping 이 아니다. 이 설정은

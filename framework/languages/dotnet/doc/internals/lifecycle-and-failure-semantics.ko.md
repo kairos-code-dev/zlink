@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -21,7 +21,7 @@ shutdown 순서 같은 동작 약속도 문서로 단단히 닫혀 있어야 한
 기본 startup 순서는 다음과 같이 본다.
 
 1. registration surface[^registration-surface] 파싱
-2. 중복된 이름, 잘못된 capability[^capability] 조합, 누락된 endpoint 같은 설정의 검증
+2. 중복된 이름, 잘못된 역할[^capability] 조합, 누락된 endpoint 같은 설정의 검증
 3. `Context` 와 framework runtime 생성
 4. embedded 구성이라면 Registry[^registry] bind
 5. channel runtime, spot node, stream node 시작
@@ -101,9 +101,9 @@ nonblocking send, pending queue, ready notification 조합으로 내부에서 �
 
 ## 6. Reconnect 와 Monitoring 의미
 
-- discovery 기반 capability 는 provider 집합이 바뀔 때마다 runtime 이 알아서
+- discovery 기반 역할은 provider 집합이 바뀔 때마다 runtime 이 알아서
   따라간다.
-- 반면 manual capability 의 경우, framework 가 자동 reconnect 정책을 안에
+- 반면 manual 역할의 경우, framework 가 자동 reconnect 정책을 안에
   숨겨서 끼워 넣지 않는다. reconnect 가 필요하면 명시적인 `Connect(...)`
   호출이나 상위의 retry policy 가 책임진다.
 - socket 단의 이벤트는 하부 monitor event 를 그대로 감싼다.
@@ -189,8 +189,8 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^lifecycle]: lifecycle 은 컴포넌트가 시작·동작·종료되는 전체 수명 주기와, 그 단계마다 일어나는 일을 가리킨다.
 [^startup-validation]: startup validation 은 host 가 본격적으로 동작하기 전에 설정과 등록 정보를 검사해서, 잘못된 구성이라면 그 자리에서 막아 내는 단계다.
 [^registration-surface]: registration surface 는 `AddZLinkFramework(...)` 같은 등록 호출을 통해 framework 에 쌓이는 설정의 집합을 가리킨다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
-[^registry]: Registry 는 어느 노드가 어떤 capability 를 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
+[^registry]: Registry 는 어느 노드가 어떤 역할을 어디서 제공하는지를 모아 두고, 다른 노드가 그 정보를 조회할 수 있게 해 주는 컴포넌트다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈춰서, 더 큰 문제로 번지는 것을 막는 전략이다.
 [^synthetic-event]: synthetic event 는 backend 가 직접 발생시키는 이벤트가 아니라, framework 가 snapshot 의 차이나 polling 결과를 보고 합성해서 만들어 내는 이벤트를 가리킨다.
@@ -202,5 +202,5 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

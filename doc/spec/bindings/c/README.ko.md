@@ -116,7 +116,7 @@ C는 ABI 기준선이며 래퍼 바인딩 인터페이스 규칙을 채택하지
 
 C 리뷰는 `core/include/zlink.h`에서 다음 그룹을 점검한다.
 
-- 런타임, 버전, capability, 컨텍스트 생명주기, 컨텍스트 옵션.
+- 런타임, 버전, 역할, 컨텍스트 생명주기, 컨텍스트 옵션.
 - 메시지 생명주기, 메시지 데이터 접근, copy/move/adopt 규칙, 속성 조회.
 - 소켓 생명주기, bind/connect, disconnect, 옵션, TLS 헬퍼, routing id,
   send, receive, request, reply, publish, subscribe, stream API.

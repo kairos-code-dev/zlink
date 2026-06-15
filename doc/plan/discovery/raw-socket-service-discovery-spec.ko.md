@@ -785,7 +785,7 @@ service-attached 소켓의 advertise 계약은 아래로 고정한다.
 - advertise endpoint는 정확히 1개다.
 - 첫 bind 성공 endpoint가 advertise endpoint가 된다.
 - attach 상태에서 두 번째 bind를 추가해 복수 advertise endpoint를 갖는 것은 지원하지 않는다.
-- 기존 raw socket의 multi-bind capability는 service mode에서는 의도적으로 제한한다.
+- 기존 raw socket의 multi-bind 역할은 service mode에서는 의도적으로 제한한다.
 
 이유:
 

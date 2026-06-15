@@ -9,7 +9,7 @@
 
 ## 1. 목적
 
-이 초안은 `SpotNode`의 routed plane을 router capability가 있는 channel에
+이 초안은 `SpotNode`의 routed plane을 router 역할이 있는 channel에
 연결하는 계약을 정의한다.
 
 현재 framework에는 `ZLinkSpotRoute.RouterChannelId`가 있다. 이 값은
@@ -21,7 +21,7 @@ transport 연결이 닫히지 않는다.
 
 이 문서의 목표는 아래와 같다.
 
-- router capability가 있는 channel에서 `Spot`으로 routed send/request를 보낼 수
+- router 역할이 있는 channel에서 `Spot`으로 routed send/request를 보낼 수
   있게 한다.
 - `SpotNode`가 어느 router channel에 참여할지 명시하는 framework 표면을 둔다.
 - 수동 연결과 discovery 자동 연결을 모두 정의한다.
@@ -41,13 +41,13 @@ transport 연결이 닫히지 않는다.
 | `AddDealerMeshChannel` | `DEALER mesh` | peer DEALER mesh |
 | `AddRouteMeshChannel` | `ROUTER mesh` | routing id 기반 direct routed transport |
 
-`AddChannel(...)`은 channel capability를 보고 client/server 또는 fanout을 추론하는
+`AddChannel(...)`은 channel 역할을 보고 client/server 또는 fanout을 추론하는
 호환 표면이다. `AddRouteChannel(...)`은 현재 `AddRouteMeshChannel(...)`로 바로
 위임하는 alias다. 이 초안은 두 API를 호환성을 깨는 변경으로 삭제하는 것을 정식
 방향으로 둔다. 새 문서와 샘플은 concrete 네 가지 구성만 사용해야 한다.
 
-SPOT으로 보내는 routed 메시지는 최종적으로 `ROUTER` socket capability가 필요하다.
-따라서 target이 될 수 있는 channel은 "channel 종류"가 아니라 "router capability를
+SPOT으로 보내는 routed 메시지는 최종적으로 `ROUTER` socket 역할이 필요하다.
+따라서 target이 될 수 있는 channel은 "channel 종류"가 아니라 "router 역할을
 갖는가"로 판단한다.
 
 포함되는 channel:
@@ -134,7 +134,7 @@ public readonly record struct ZLinkSpotRoute(
 
 - `RouterChannelId`: 어떤 router-capable channel을 타야 하는지 나타낸다.
   이 값은 등록된 `AddClientServerChannel` 또는 `AddRouteMeshChannel` 중 router
-  capability가 있는 channel name을 가리킨다.
+  역할이 있는 channel name을 가리킨다.
 - `TargetNodeRid`: target `SpotNode`의 routing id다.
 - `SpotRid`: target user `Spot`의 routing id다.
 
@@ -171,7 +171,7 @@ options.AddSpotMesh("game.stage", mesh =>
 
 `AcceptSpotRoutesFromChannel("api")`의 의미는 아래와 같다.
 
-- `api` channel이 router capability를 갖는지 검증한다.
+- `api` channel이 router 역할을 갖는지 검증한다.
 - 현재 `SpotNode`가 `api` channel의 router endpoint 집합에서 오는 SPOT routed
   메시지를 받을 수 있게 연결한다.
 - 연결된 router channel은 `targetNodeRid + targetSpotRid`로 target `Spot`에
@@ -255,7 +255,7 @@ framework startup validation은 아래 조건을 검사한다.
   이름이 일반 channel registry와 route mesh registry 양쪽에 있으면 startup 실패다.
 - 대상 channel은 `AddClientServerChannel` 또는 `AddRouteMeshChannel`이어야 한다.
 - `AddClientServerChannel`은 server 쪽이 `ROUTER`인 channel 패턴이므로 허용한다.
-  이 process가 반드시 server capability를 켜야 하는 것은 아니다.
+  이 process가 반드시 server 역할을 켜야 하는 것은 아니다.
 - 실제 연결 peer는 manual endpoint 또는 framework discovery로 해석되어야 한다.
   둘 다 없으면 startup 실패다.
 - `AddFanoutChannel`과 `AddDealerMeshChannel`을 지정하면 startup 실패다.

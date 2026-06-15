@@ -20,7 +20,7 @@
 지금 계획에서는 아래 항목을 모두 구현 범위 안에 둔다.
 
 - `AddZLinkFramework(...)` 등록 루트
-- channel 의 `server / client / publisher / subscriber` capability[^capability]
+- channel 의 `server / client / publisher / subscriber` 역할[^capability]
   (`EnableServer(...)`, `EnableClient(...)`, `EnablePublisher(...)`,
   `EnableSubscriber(...)` 빌더)
 - 채널 등록의 형태별 분기 — `AddClientServerChannel(...)`,
@@ -115,7 +115,7 @@ surface 테스트를 같이 갱신해야 한다.
 | `RegressionTests.DotNetDraftDocuments_AllExposeRegressionTestSection` | 범위 문서를 포함한 모든 draft 문서가 회귀 테스트 단락을 유지한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, publisher, subscriber)를 가리킨다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다.
 [^attribute]: attribute 는 `.NET` 에서 타입이나 메서드에 부가 메타데이터를 붙이는 선언 문법이다. framework 는 이 attribute 를 보고 handler 를 찾는다.
 [^assembly-scan]: assembly scan 은 어셈블리에 정의된 타입을 모두 훑어 보면서 조건에 맞는 항목을 찾아 등록하는 방식이다.

@@ -679,7 +679,7 @@ framework/languages/dotnet/samples/run_sample.sh
 2. drop 중 heartbeat timeout 또는 send failure가 관찰되는지 확인한다.
 3. drop 해제 뒤 reconnect와 `CONNECTION_READY`가 회복되는지 확인한다.
 4. reconnect 뒤 새 메시지가 전달되는지 확인한다.
-5. 이 테스트는 `CAP_NET_ADMIN` 같은 권한이 필요하므로 capability가 없으면 skip한다.
+5. 이 테스트는 `CAP_NET_ADMIN` 같은 권한이 필요하므로 역할이 없으면 skip한다.
 
 ## 후속 질문
 

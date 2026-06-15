@@ -19,7 +19,7 @@
 |------|---------------|
 | `core/include/zlink.h` | 모든 도메인 헤더를 포함하는 aggregate public header |
 | `core/include/zlink/common.h` | 버전 매크로, 공통 include, export 매크로, enum/error include |
-| `core/include/zlink/core.h` | errno/string/version helper, context lifecycle, proxy, capability, atomic, stopwatch, sleep, thread utility |
+| `core/include/zlink/core.h` | errno/string/version helper, context lifecycle, proxy, 역할, atomic, stopwatch, sleep, thread utility |
 | `core/include/zlink/message.h` | 메시지 저장소, routing id, zero-copy free callback, message lifecycle, multipart close |
 | `core/include/zlink/actor.h` | Actor 값 타입과 Actor result 구조체 |
 | `core/include/zlink/socket.h` | socket 생성, option, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, socket callback type |

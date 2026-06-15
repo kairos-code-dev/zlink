@@ -92,11 +92,11 @@
 | builder | `IZLinkFanoutChannelBuilder` | fanout (pub/sub) channel 등록 builder | 6.1 |
 | builder | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `IZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
-| builder | `IChannelServerCapabilityBuilder` | channel server capability builder | 6.1 |
-| builder | `IChannelClientCapabilityBuilder` | channel client capability builder | 6.1 |
-| builder | `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client capability builder | 6.1 |
-| builder | `IChannelPublisherCapabilityBuilder` | channel publisher capability builder | 6.1 |
-| builder | `IChannelSubscriberCapabilityBuilder` | channel subscriber capability builder | 6.1 |
+| builder | `IChannelServerCapabilityBuilder` | channel server 역할 builder | 6.1 |
+| builder | `IChannelClientCapabilityBuilder` | channel client 역할 builder | 6.1 |
+| builder | `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할 builder | 6.1 |
+| builder | `IChannelPublisherCapabilityBuilder` | channel publisher 역할 builder | 6.1 |
+| builder | `IChannelSubscriberCapabilityBuilder` | channel subscriber 역할 builder | 6.1 |
 | builder | `IZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `IZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `IZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
@@ -1926,7 +1926,7 @@ public DI 표면으로 등록한다.
 runtime 의 채널 구성 방식은 다음과 같다.
 
 - 등록된 `channelName` 마다 별도의 outbound channel 을 생성한다.
-- 각 channel 은 capability 마다 다시 별도의 outbound runtime 을 가진다.
+- 각 channel 은 역할 마다 다시 별도의 outbound runtime 을 가진다.
 - 특히 수동 연결은 `channel` 전체가 아니라 `channel + capability` 단위로
   관리한다.
 
@@ -1936,7 +1936,7 @@ runtime 의 채널 구성 방식은 다음과 같다.
 - `profile.subscriber` 수동 연결
 
 이유는 명확하다. `profile` channel 하나만으로는 "request client 연결인지,
-subscriber 연결인지" 를 식별할 수 없다. 그래서 framework 역시 capability
+subscriber 연결인지" 를 식별할 수 없다. 그래서 framework 역시 역할
 별 runtime 을 따로 관리하게 된다.
 
 packet key 해석 규칙은 다음 순서를 기본으로 본다.
@@ -2416,13 +2416,13 @@ SPOT discovery 와 node 집합은 `AddSpotMesh(...)` 안에서 함께 등록한�
 
 channel discovery 의 등록 위치는 다음과 같이 정해 둔다.
 
-- channel discovery 는 capability 별 builder 아래에 중복으로 두지 않는다.
+- channel discovery 는 역할 별 builder 아래에 중복으로 두지 않는다.
   framework 등록 루트에 한 번만 둔다.
 - 이 discovery registration 의 의미는 다음과 같다. framework 안의
-  discovery 기반 channel capability 들이 공유하는, registry endpoint 집합
+  discovery 기반 channel 역할 들이 공유하는, registry endpoint 집합
   을 가리킨다.
-- 반대로 manual 연결은 capability 별 runtime 설정에 해당한다. 그래서 각
-  capability builder 아래에 둔다.
+- 반대로 manual 연결은 역할 별 runtime 설정에 해당한다. 그래서 각
+  역할 builder 아래에 둔다.
 
 ```csharp
 public interface IZLinkEndpointConnections
@@ -2673,8 +2673,8 @@ public interface IZLinkFrameworkOptions
   - route mesh 채널을 등록한다. bind endpoint, socket option, routing option,
     manual connection을 한 builder 안에서 함께 설정한다.
 - `UseDiscovery(...AddRegistryEndpoint...)`
-  - 일반 channel capability들이 공유할 registry endpoint 집합을 등록한다.
-  - `client.UseDiscovery(...AddRegistryEndpoint...)`처럼 capability 아래에 다시 두지 않는다.
+  - 일반 channel 역할들이 공유할 registry endpoint 집합을 등록한다.
+  - `client.UseDiscovery(...AddRegistryEndpoint...)`처럼 역할 아래에 다시 두지 않는다.
 - `UseFilter<TFilter>()`
   - handler filter 타입을 framework pipeline에 등록한다.
 - `AddSpotMesh(...)`
@@ -2684,20 +2684,20 @@ public interface IZLinkFrameworkOptions
     mesh node builder는 `EnableRouter`, `EnablePubSub`,
     `AttachChannelClient`, `AttachSpotPublisherClient`,
     `AddSpotFactory<TSpot>(...)`, `AddEntrySpot<TEntrySpot>()`를 노출한다.
-    ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router capability
+    ActorGateway 는 별도 node builder 를 갖지 않고, stream 이 router 역할
     를 켠 SpotNode 를 `AttachActorGateway(...)` 로 참조한다.
 - `EnableServer(...)`
-  - local request/send handler를 받을 `ROUTER(server)` capability를 연다.
-  - 이 capability는 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
+  - local request/send handler를 받을 `ROUTER(server)` 역할을 연다.
+  - 이 역할은 local bind endpoint가 없으면 다른 프로세스에서 접근할 수
     없으므로, builder 안에서 `Bind(...)`를 같이 지정해야 한다.
 - `EnableClient(...)`
-  - request/send outbound 호출용 `DEALER(client)` capability를 연다.
+  - request/send outbound 호출용 `DEALER(client)` 역할을 연다.
 - `EnablePublisher(...)`
-  - 일반 channel event publish capability를 연다.
-  - 이 capability도 remote subscriber가 붙을 local bind endpoint가 필요하므로
+  - 일반 channel event publish 역할을 연다.
+  - 이 역할도 remote subscriber가 붙을 local bind endpoint가 필요하므로
     builder 안에서 `Bind(...)`를 같이 지정해야 한다.
 - `EnableSubscriber(...)`
-  - 일반 channel event subscribe capability를 연다.
+  - 일반 channel event subscribe 역할을 연다.
 - `AddStreamNode(...)`
   - framework Header 기반 packet session을 받을 STREAM node를 등록한다.
   - 한 node에는 stream session을 하나만 등록할 수 있다.
@@ -2708,14 +2708,14 @@ public interface IZLinkFrameworkOptions
 - 수동 연결은 `channel` 전체가 아니라 `channel + capability` 단위다.
 - manual `Connect(...)` 는 startup 과 런타임 제어 모두 endpoint 만 인자로
   받는다.
-- 같은 capability 안에서 `Discovery` 와 manual 연결을 섞지 않는다.
+- 같은 역할 안에서 `Discovery` 와 manual 연결을 섞지 않는다.
 - `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
-- publisher 는 outbound fan-out submit capability 로 간주한다. 이 초안
+- publisher 는 outbound fan-out submit 역할로 간주한다. 이 초안
   에서는 publisher 에 대해 별도의 manual peer 관리 표면을 두지 않는다.
 
 ### 6.2 channel 수동 연결 설정
 
-수동 연결은 startup builder 의 `UseManualConnections(...)` 에서 capability 단위로
+수동 연결은 startup builder 의 `UseManualConnections(...)` 에서 역할 단위로
 등록한다. public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리
 표면을 제공하지 않는다.
 
@@ -2724,8 +2724,8 @@ public interface IZLinkFrameworkOptions
 편집하는 용도이며, 실행 중인 socket 에 직접 연결 명령을 보내는 runtime handle 이
 아니다.
 
-discovery 모드인 capability 는 peer 집합의 소유권이 discovery 에 있다. 따라서
-수동 연결이 필요하면 해당 capability 를 manual 모드로 등록해야 한다.
+discovery 모드인 역할은 peer 집합의 소유권이 discovery 에 있다. 따라서
+수동 연결이 필요하면 해당 역할을 manual 모드로 등록해야 한다.
 
 ### 6.3 Spot 관리와 등록 인터페이스
 
@@ -3094,9 +3094,9 @@ public interface IZLinkEntrySpotOptions
 각 함수의 의미는 아래와 같다.
 
 - `EnableRouter(...)`
-  - spot-to-spot routed packet을 처리할 local router capability를 켠다.
+  - spot-to-spot routed packet을 처리할 local router 역할을 켠다.
 - `EnablePubSub(...)`
-  - 현재 SPOT channel 안의 publish/subscribe capability를 켠다.
+  - 현재 SPOT channel 안의 publish/subscribe 역할을 켠다.
 - `AttachChannelClient(...)`
   - 다른 channel로 send/request 할 outbound `DEALER(client)` 경로를 붙인다.
 - `AttachSpotPublisherClient(...)`
@@ -3119,25 +3119,25 @@ public interface IZLinkEntrySpotOptions
     실행 문맥에서 한 번 호출한다. Entry Spot actor packet은 이 실행 문맥에 전역으로
     세우지 않고 대상 actor의 mailbox로 보낸다.
 
-여기서 수동 연결은 channel 쪽과 마찬가지로 capability 단위로 다뤄야 한다.
+여기서 수동 연결은 channel 쪽과 마찬가지로 역할 단위로 다뤄야 한다.
 
-예를 들어 `router`, channel client, publish 쪽은 모두 각 capability 가
+예를 들어 `router`, channel client, publish 쪽은 모두 각 역할이
 사용할 endpoint 집합을 따로 관리한다.
 
 이 문서에서는 manual `Connect(...)` 시점에 remote router id 를 별도
 파라미터로 받지 않는다. 따라서 `UseManualConnections(...)` 도 한군데에
-모아 두지 않고, capability builder 별로 분리해 두는 편이 자연스럽다.
+모아 두지 않고, 역할 builder 별로 분리해 두는 편이 자연스럽다.
 
 소켓 옵션 역시 같은 방식으로 소유자를 나눠서 설명한다.
 
 - `ConfigureSocket(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`와 같은 공통 socket facade를
-    capability 아래에 노출하는 모델이다.
+    역할 아래에 노출하는 모델이다.
 - `ConfigurePublisherOptions(...)`, `ConfigureSubscriberOptions(...)`
   - 실제 `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions`와 같은
     `SPOT` pub/sub 전용 facade를 framework 등록 쪽으로 끌어올린다.
 - `ConfigureRouting(...)`
-  - capability가 routed peer와 맺는 연결 규칙을 따로 설정한다.
+  - 역할이 routed peer와 맺는 연결 규칙을 따로 설정한다.
   - framework public 표면에서는 remote `RoutingId`를 설정하지 않는다. discovery 기반
     경로는 resolver와 discovery registry가 위치값을 소유하고, manual 연결은 endpoint
     집합만 소유한다.
@@ -3146,7 +3146,7 @@ public interface IZLinkEntrySpotOptions
   - 실제 바인딩에서도 `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)`,
     `RouterSocket.RequestAsync(..., TimeSpan timeout, ...)`,
     `Spot.RequestToChannelAsync(..., TimeSpan timeout, ...)`처럼 호출 인자로 받는다.
-  - 위 등록 설정과 달리 capability runtime 기본값을 바꾸지 않는다.
+  - 위 등록 설정과 달리 역할 runtime 기본값을 바꾸지 않는다.
 
 `AddSpotMesh(channelName, ...)` 는 SPOT channel 이름과 node 묶음을 함께
 소유한다. 그래서 `AddNode(...)` 안에서 같은 channel 이름을 다시 받는
@@ -3159,8 +3159,8 @@ ActorGateway 도 같은 원칙을 따른다. 별도 `AddActorGatewayNode(...)` �
 
 정리하면, `SPOT` 등록 시점에도 다음 축들을 함께 드러내는 편이 맞다.
 
-- local routed router capability 활성화
-- local SPOT pub/sub capability 활성화
+- local routed router 역할 활성화
+- local SPOT pub/sub 역할 활성화
 - 외부 channel 호출용 client attach
 - 외부 SPOT publish client attach
 
@@ -3724,7 +3724,7 @@ public sealed class ZLinkPublishAttribute : Attribute
 패턴으로 읽힌다.
 
 publish handler 도 모든 subscriber channel 에 전역으로 자동 노출되지
-않는다. subscriber capability 를 가진 channel 이라 해도, 노출할 그룹은
+않는다. subscriber 역할을 가진 channel 이라 해도, 노출할 그룹은
 `AddHandlerGroup(...)` 으로 명시해야 한다.
 
 ```csharp
@@ -3826,7 +3826,7 @@ framework 가 강제하는 것은 class 구조 자체가 아니다. 핵심 규�
 
 여기서 실행 문맥의 구분은 다음과 같다.
 
-- 일반 channel messaging 의 실행 문맥은 inbound channel capability 다.
+- 일반 channel messaging 의 실행 문맥은 inbound channel 역할이다.
 - actor 와 spot 은 각각 고유한 실행 문맥을 가진다.
 
 class 구성 방식은 자유롭다. 주제별 handler 묶음 (`UserHandlers`) 도,
@@ -3859,18 +3859,18 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 ### 13.1 public service DI 등록 조건
 
 모든 public service interface 를 항상 DI 에 등록하지는 않는다. 생성자 주입은
-그 기능을 사용할 수 있다는 신호가 되므로, capability 가 없는 service 는 등록하지
+그 기능을 사용할 수 있다는 신호가 되므로, 역할이 없는 service 는 등록하지
 않는다. 자세한 결정 배경은
-[di-capability-exposure-policy.ko.md](../internals/di-capability-exposure-policy.ko.md) 에서
+[di-역할-exposure-policy.ko.md](../internals/di-역할-exposure-policy.ko.md) 에서
 다룬다.
 
 | Interface | DI 등록 조건 |
 |-----------|--------------|
 | `IZLinkChannelClient` | 항상 등록한다. channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkRouteClient` | 항상 등록한다. route channel 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
-| `IZLinkFanoutClient` | 항상 등록한다. publisher capability 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
+| `IZLinkFanoutClient` | 항상 등록한다. publisher 역할 누락은 호출 시 `ZLinkConfigurationException` 으로 처리한다 |
 | `IZLinkSpotManager` | `SpotNode` 가 하나 이상 있을 때 등록한다 |
-| `IZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상 있을 때 등록한다 |
+| `IZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상 있을 때 등록한다 |
 | `IZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록한다 |
 | `IZLinkBoundSessionFactory`, `IZLinkBoundSession` | actor bound session runtime 등록한다 |
 | `IZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록한다 |
@@ -3883,7 +3883,7 @@ channel 이름의 위치도 정해 둔다. handler class 나 method attribute �
 
 예: `options.AddClientServerChannel("api", channel => channel.EnableServer(...))`
 
-다만 outbound-only 앱이라면, server capability 를 가진 channel 이 아예
+다만 outbound-only 앱이라면, server 역할을 가진 channel 이 아예
 없을 수도 있어야 한다.
 
 ## 14. 결정된 기준

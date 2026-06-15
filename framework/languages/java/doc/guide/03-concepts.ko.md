@@ -18,7 +18,7 @@ request, send, publish를 호출한다.
 
 ## 2. Capability
 
-capability는 한 channel이나 SpotNode가 수행하는 역할이다. 같은 capability 안에서
+역할은 한 channel이나 SpotNode가 수행하는 역할이다. 같은 역할 안에서
 discovery와 manual connection을 섞지 않는다.
 
 예:
@@ -47,10 +47,10 @@ server framework에 의존하지 않는 `ZLinkStreamConnector` 모듈을 사용�
 
 ## 6. Spring DI
 
-Spring bean 주입은 capability 가능성을 암시해야 한다. SpotNode가 없으면
+Spring bean 주입은 역할 가능성을 암시해야 한다. SpotNode가 없으면
 `ZLinkSpotManager`를 등록하지 않고, actor factory가 없으면 `ZLinkActorManager`를
 등록하지 않는다. 자세한 기준은
-[DI capability policy](../internals/di-capability-exposure-policy.ko.md)가 소유한다.
+[DI 역할 policy](../internals/di-역할-exposure-policy.ko.md)가 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

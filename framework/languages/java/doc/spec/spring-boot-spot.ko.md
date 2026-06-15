@@ -14,7 +14,7 @@
 등록하고 관리하는 편을 기본으로 본다.
 
 - `addSpotMesh(...).useDiscovery(...addRegistryEndpoint...)` 기준의 discovery 등록
-- `SpotNode` bean 생성과 capability별 등록
+- `SpotNode` bean 생성과 역할별 등록
 - current channel publish/subscribe와 attach된 channel client 경로
 - local spot 인스턴스가 없는 외부 노드용 publisher client 경로
 - Entry Spot과 user Spot factory
@@ -25,7 +25,7 @@
 
 - `SpotNode`는 channel 이름을 직접 소유하지 않고, attach된 discovery view가 active
   channel 범위를 정한다.
-- capability는 `router`, `pub/sub`, attach된 channel client, attach된 spot
+- 역할은 `router`, `pub/sub`, attach된 channel client, attach된 spot
   publisher client로 나눠서 설명한다.
 - spot factory는 Spot type 기준으로 등록하고, 같은 Spot type 재등록은 덮어쓰지 않고
   예외로 본다.

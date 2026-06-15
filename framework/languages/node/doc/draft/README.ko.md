@@ -34,7 +34,7 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
   `Naming Policy`를 그대로 따른다. `Node.js`와 `TypeScript` 문서에서는 메서드는
   `camelCase`, 클래스와 decorator는 `PascalCase`를 쓴다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
-  설명한다. 같은 capability 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
+  설명한다. 같은 역할 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
 - send/publish의 async submit과 backpressure 의미는
   [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을
   따른다.
@@ -76,7 +76,7 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
 
 - `NestJS` module/provider lifecycle에 맞춘다.
 - channel messaging 기본 호출은 `channel name` 기준이다.
-- channel capability는 startup 시점에 등록한다.
+- channel 역할은 startup 시점에 등록한다.
 - 일반 request/send handler dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)`는 reply correlation 경로로 본다.
 - packet key 기본값은 payload constructor 이름 또는 schema 이름을 쓴다.

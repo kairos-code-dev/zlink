@@ -170,19 +170,19 @@ export interface ActorRef {
 | builder | `ZLinkDealerMeshChannelBuilder` | dealer mesh channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteChannelBuilder` | route channel 등록 builder | 6.1 |
 | builder | `ZLinkRouteMeshChannelBuilder` | route mesh channel 등록 builder | 6.1 |
-| builder | `ChannelServerCapabilityBuilder` | channel server capability builder | 6.1 |
-| builder | `ChannelClientCapabilityBuilder` | channel client capability builder | 6.1 |
-| builder | `DealerMeshChannelClientCapabilityBuilder` | dealer mesh client capability builder | 6.1 |
-| builder | `ChannelPublisherCapabilityBuilder` | channel publisher capability builder | 6.1 |
-| builder | `ChannelSubscriberCapabilityBuilder` | channel subscriber capability builder | 6.1 |
+| builder | `ChannelServerCapabilityBuilder` | channel server 역할 builder | 6.1 |
+| builder | `ChannelClientCapabilityBuilder` | channel client 역할 builder | 6.1 |
+| builder | `DealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할 builder | 6.1 |
+| builder | `ChannelPublisherCapabilityBuilder` | channel publisher 역할 builder | 6.1 |
+| builder | `ChannelSubscriberCapabilityBuilder` | channel subscriber 역할 builder | 6.1 |
 | builder | `ZLinkStreamNodeBuilder` | STREAM node 등록 builder | 6.1 |
 | builder | `ZLinkSpotNodeBuilder` | SPOT node 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshBuilder` | SPOT mesh 등록 builder | 6.3 |
 | builder | `ZLinkSpotMeshNodeBuilder` | SPOT mesh node 등록 builder | 6.3 |
-| builder | `SpotRouterCapabilityBuilder` | spot router capability builder | 6.3 |
-| builder | `SpotPubSubCapabilityBuilder` | spot pub/sub capability builder | 6.3 |
-| builder | `SpotPublisherClientCapabilityBuilder` | spot publisher client capability builder | 6.3 |
-| builder | `SpotChannelClientCapabilityBuilder` | spot channel client capability builder | 6.3 |
+| builder | `SpotRouterCapabilityBuilder` | spot router 역할 builder | 6.3 |
+| builder | `SpotPubSubCapabilityBuilder` | spot pub/sub 역할 builder | 6.3 |
+| builder | `SpotPublisherClientCapabilityBuilder` | spot publisher client 역할 builder | 6.3 |
+| builder | `SpotChannelClientCapabilityBuilder` | spot channel client 역할 builder | 6.3 |
 | builder | `ZLinkSpotRouteChannelAcceptanceBuilder` | spot route 수락 builder | 6.3 |
 | builder | `useDiscovery().addRegistryEndpoint(endpoint)` | discovery endpoint 직접 추가 | 6.1 |
 | builder | `ZLinkMetadataPolicyBuilder` | metadata forward 정책 builder | 6.1 |
@@ -1424,7 +1424,7 @@ export interface ZLinkMetadataPolicyBuilder {
 - `addFanoutChannel(...)`: pub/sub fanout 채널 등록.
 - `addDealerMeshChannel(...)`: DEALER mesh 채널 등록.
 - `addRouteChannel(...)` / `addRouteMeshChannel(...)`: route channel 등록.
-- `useDiscovery().addRegistryEndpoint(...)`: 일반 channel capability 가 공유할 registry endpoint 집합 등록.
+- `useDiscovery().addRegistryEndpoint(...)`: 일반 channel 역할이 공유할 registry endpoint 집합 등록.
 - `addStreamNode(...)`: STREAM node 등록(한 node 에 session 하나만).
 - `addSpotFactory(...)`: `ZLinkSpotManager` 가 사용할 spot factory 타입 등록.
 - `addSpotMesh(channelName).addNode(...)`: SPOT mesh 아래 SpotNode 등록.
@@ -1482,7 +1482,7 @@ export class AppModule {}
 | `configureMetadata(...)` | `metadata: { forward: [...] }` | nestjs-actor |
 | `useRegistrySpotRemoteAddresses(...)` | `spotRemoteAddresses: { namespace, routerChannelId? }` | nestjs-spot |
 
-#### channel capability builder
+#### channel 역할 builder
 
 ```ts
 export interface ChannelServerCapabilityBuilder {
@@ -1543,14 +1543,14 @@ export interface ZLinkStreamNodeBuilder {
 
 - handler 는 자동으로 모든 channel 에 열리지 않는다. module options 의 handler 매핑 또는 명시
   등록이 노출을 정한다.
-- `enableServer()` / `enablePublisher()` capability 는 다른 프로세스가 접근할 local bind
-  endpoint 가 필요하므로 builder 안에서 `bind(...)` 를 같이 지정한다.
-- 수동 연결은 `channel + capability` 단위다. 같은 capability 안에서 discovery 와 manual 을
+- `enableServer()` / `enablePublisher()` 로 여는 server·publisher 역할은 다른 프로세스가
+  접속해 올 local bind endpoint 가 필요하므로 builder 안에서 `bind(...)` 를 같이 지정한다.
+- 수동 연결은 `channel + capability` 단위다. 같은 역할 안에서 discovery 와 manual 을
   섞지 않는다. `client` 와 `subscriber` 는 서로 다른 연결 집합으로 본다.
 
 ### 6.2 channel 수동 연결
 
-수동 연결은 capability builder 의 `connect(...)` 에서 등록한다. public 계약은
+수동 연결은 역할 builder 의 `connect(...)` 에서 등록한다. public 계약은
 host 시작 뒤 endpoint 를 바꾸는 별도 runtime 연결 관리 표면을 제공하지 않는다.
 
 ```ts
@@ -1562,8 +1562,8 @@ export interface ZLinkEndpointConnections {
 ```
 
 이 표면은 설정 객체를 편집하는 용도이며 실행 중 socket 에 직접 연결 명령을 보내는 runtime
-handle 이 아니다. discovery 모드 capability 는 peer 소유권이 discovery 에 있으므로, 수동
-연결이 필요하면 해당 capability 를 manual 모드로 등록한다.
+handle 이 아니다. discovery 모드 역할은 peer 소유권이 discovery 에 있으므로, 수동
+연결이 필요하면 해당 역할을 manual 모드로 등록한다.
 
 ### 6.3 Spot 관리와 등록
 
@@ -1667,14 +1667,14 @@ export interface ZLinkSpotRouteChannelAcceptanceBuilder {
 }
 ```
 
-> Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub capability
+> Node builder 에서도 node 자체 `bind(...)` 는 없다. bind 는 router/pubSub 역할
 > builder 에서 지정한다. spot factory 타입은 root `addSpotFactory(...)` 또는 node-local
 > `addSpotFactory(...)` 로 등록한다.
 
 builder 함수 의미:
 
-- `enableRouter()`: spot-to-spot routed packet 을 처리할 local router capability 활성화.
-- `enablePubSub()`: 현재 SPOT channel 의 publish/subscribe capability 활성화.
+- `enableRouter()`: spot-to-spot routed packet 을 처리할 local router 역할 활성화.
+- `enablePubSub()`: 현재 SPOT channel 의 publish/subscribe 역할 활성화.
 - `configureEntrySpot(...)`: native Entry Spot facade 의 routing id 같은 Entry Spot
   옵션을 지정한다.
 - `addEntrySpot(...)`: 이 SpotNode 의 Entry Spot 타입을 등록한다. 같은 node 에 두 번
@@ -1749,8 +1749,8 @@ export interface ZLinkEntrySpotOptions {
 > (스펙 문서의 `IZLinkCommonSocketOptions` 등과 이름이 다름). `ZLinkRouteConfig` 는 `RoutingId`,
 > `ConnectRoutingId` 까지 포함한다. `TimeSpan?` 필드는 모두 `number`(ms)로 옮긴다.
 
-- `timeout(...)`(call 단위): request 한 번에만 적용. capability runtime 기본값을 바꾸지 않음.
-- `configureRouting(...)`: capability 가 routed peer 와 맺는 연결 규칙. public 표면에서 remote
+- `timeout(...)`(call 단위): request 한 번에만 적용. 역할 runtime 기본값을 바꾸지 않음.
+- `configureRouting(...)`: 역할이 routed peer 와 맺는 연결 규칙. public 표면에서 remote
   `RoutingId` 자체를 강제로 설정하지는 않으며, discovery 경로는 resolver/registry 가, manual
   연결은 endpoint 집합이 위치값을 소유한다.
 
@@ -2215,7 +2215,7 @@ export function ZLinkPublish(packetName?: string): MethodDecorator;
 읽힌다.
 
 현재 NestJS module 자동 discovery 는 handler decorator 로 등록된 provider metadata를
-registration 에 연결한다. publish handler 는 subscriber capability 가 있는 fanout channel 에서
+registration 에 연결한다. publish handler 는 subscriber 역할이 있는 fanout channel 에서
 `zlinkPublishHandler('events', 'Packet')` 로 등록한다. 같은 channel 안에서 packet name 이
 중복되면 startup validation 오류다.
 
@@ -2261,7 +2261,7 @@ wire 에 올릴 구체 DTO 로 한 번 변환한다.
 핵심 규칙은 하나다: "resolved packet key 하나는 동일한 실행 문맥 안에서 단 하나의 handler 에만
 매핑된다." 실행 문맥 구분:
 
-- 일반 channel messaging 의 실행 문맥은 inbound channel capability 다.
+- 일반 channel messaging 의 실행 문맥은 inbound channel 역할이다.
 - actor 와 spot 은 각각 고유한 실행 문맥을 가진다.
 
 class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 단일 class `UserGetHandler` 모두 허용).
@@ -2283,22 +2283,22 @@ class 구성 방식은 자유롭다(주제별 묶음 `UserHandlers`, packet 별 
 ### 13.1 public service DI 등록 조건
 
 모든 public service 를 항상 DI 에 등록하지는 않는다. 생성자 주입은 그 기능을 쓸 수 있다는
-신호이므로 capability 가 없는 service 는 등록하지 않는다.
+신호이므로 역할이 없는 service 는 등록하지 않는다.
 
 | Interface | DI 등록 조건 |
 |-----------|--------------|
 | `ZLinkChannelClient` | 항상 등록. channel 누락은 호출 시 `ZLinkConfigurationException` |
 | `ZLinkRouteClient` | 항상 등록. route channel 누락은 호출 시 `ZLinkConfigurationException` |
-| `ZLinkFanoutClient` | 항상 등록. publisher capability 누락은 호출 시 `ZLinkConfigurationException` |
+| `ZLinkFanoutClient` | 항상 등록. publisher 역할 누락은 호출 시 `ZLinkConfigurationException` |
 | `ZLinkSpotManager` | `SpotNode` 가 하나 이상일 때 등록 |
-| `ZLinkSpotPublisherClient` | Spot publisher client capability 가 하나 이상일 때 등록 |
+| `ZLinkSpotPublisherClient` | Spot publisher client 역할이 하나 이상일 때 등록 |
 | `ZLinkActorManager` | `SpotNode` 와 actor factory 가 모두 있을 때 등록 |
 | `ZLinkBoundSessionFactory` | framework runtime 과 함께 항상 등록 |
 | `ZLinkBoundSession` | actor bound session runtime 등록 시 |
 | `ZLinkSpotRemoteAddressResolver` | 해당 resolver registration 이 있을 때 등록 |
 
 channel 이름의 위치는 handler class/method decorator 가 아니라 channel registration 에 둔다.
-outbound-only 앱이라면 server capability 를 가진 channel 이 아예 없을 수도 있다.
+outbound-only 앱이라면 server 역할을 가진 channel 이 아예 없을 수도 있다.
 
 ## 14. 결정된 기준
 

@@ -600,13 +600,13 @@ if (rc == ZLINK_CONFIG_OK) {
 
 ## 14. Router channel에서 Spot으로 받기
 
-일반 SPOT mesh 외에도, router capability가 있는 channel의 `ROUTER`가 특정
+일반 SPOT mesh 외에도, router 역할이 있는 channel의 `ROUTER`가 특정
 `Spot`으로 메시지를 보낼 수 있다. 이때 `SpotNode`는 그 router channel의 route를
 받겠다고 명시해야 한다.
 
 framework에서는 `AcceptSpotRoutesFromChannel(...)`을 사용한다. 같은 표면으로
 client/server channel의 server `ROUTER`와 route mesh channel의 `ROUTER`를 모두
-지정할 수 있다. fanout channel과 dealer mesh channel은 router capability가 없으므로
+지정할 수 있다. fanout channel과 dealer mesh channel은 router 역할이 없으므로
 이 용도에 맞지 않는다.
 
 보내는 쪽에서는 이미 연결된 local egress channel 을 골라야 한다. target Spot 이름이나

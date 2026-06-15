@@ -118,7 +118,7 @@ app.add_zlink_framework([](auto &options) {
 });
 ```
 
-`enable_router(..., configure)`의 manual endpoint는 SPOT router capability peer다.
+`enable_router(..., configure)`의 manual endpoint는 SPOT router 역할 peer다.
 `accept_routes_from_channel(..., configure)`의 manual endpoint는 accepted route channel peer다.
 둘은 같은 endpoint 문자열을 쓸 수 있어도 서로 다른 설정 의도를 표현하므로 하나의 필드로 합치지
 않는다.

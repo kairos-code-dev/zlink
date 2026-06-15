@@ -326,7 +326,7 @@ compat:
 완료 메모:
 
 - 사용자가 알아야 할 interop/callback/option marshalling 세부사항을 `SocketKernel` 안으로 밀어 넣어 facade 설명 범위를 줄였다.
-- typed facade는 capability별 API만 노출하고, compat `Socket` 만 legacy union surface 를 유지하게 해 change amplification 을 줄였다.
+- typed facade는 역할별 API만 노출하고, compat `Socket` 만 legacy union surface 를 유지하게 해 change amplification 을 줄였다.
 - 남은 forwarding은 intentional tradeoff다. generic `Socket` compat 유지 비용 외에 추가 복잡도 감소를 위해 public breaking change를 감수할 이유가 현재는 없다.
 
 목표:

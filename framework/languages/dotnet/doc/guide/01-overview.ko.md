@@ -192,7 +192,7 @@ handler registration 이 정한다. 자세한 규칙은
 ## 9. 이 가이드 읽는 순서
 
 1. [02-getting-started](./02-getting-started.ko.md) — 패키지부터 첫 동작 확인까지
-2. [03-concepts](./03-concepts.ko.md) — `.NET` 표면 멘탈 모델 (channel, capability, DI)
+2. [03-concepts](./03-concepts.ko.md) — 핵심 개념 (channel, 역할, DI)
 3. [04-channel-messaging](./04-channel-messaging.ko.md) — request/send/pub-sub 상세
 4. [05-spot](./05-spot.ko.md) — room/stage/zone, timer, routed Spot 호출
 5. [06-actor-session](./06-actor-session.ko.md) — actor lifecycle, session actor dispatch

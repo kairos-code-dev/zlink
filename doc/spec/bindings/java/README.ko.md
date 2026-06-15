@@ -126,7 +126,7 @@ Java contract 카테고리는 규범적이다.
 
 | 패키지 | 목적 |
 | ------ | ---- |
-| `systems.zlink.contracts.core` | 라이브러리 진입점, context resource contract, routing id, version/capability helper, process 레벨 helper. |
+| `systems.zlink.contracts.core` | 라이브러리 진입점, context resource contract, routing id, version/역할 helper, process 레벨 helper. |
 | `systems.zlink.contracts.messaging` | 메시지 값, 수신 envelope, topic message, subscription event, payload ownership, 공통 메시지 메타데이터. |
 | `systems.zlink.contracts.sockets` | Socket resource contract, socket operation builder, socket option, send/recv/request/reply/publish surface. |
 | `systems.zlink.contracts.eventing` | Poller, poll event, monitor socket, monitor snapshot, timer resource contract. |
@@ -139,7 +139,7 @@ Runtime 패키지는 동일한 .NET 표준 분류를 Java 패키지 이름으로
 
 | 패키지 | 목적 |
 | ------ | ---- |
-| `systems.zlink.runtime.core` | Context 구현, context option 적용, runtime version/capability 호출. |
+| `systems.zlink.runtime.core` | Context 구현, context option 적용, runtime version/역할 호출. |
 | `systems.zlink.runtime.messaging` | 메시지 materialization, multipart progress, request progress, request 실행. |
 | `systems.zlink.runtime.sockets` | Socket kernel, socket family 구현, callback adapter, socket operation 실행. |
 | `systems.zlink.runtime.eventing` | Monitor, poller, poll event, timer, dispatch loop 구현. |
@@ -475,7 +475,7 @@ factory가 생성해야 한다.
 - `Zlink.createTimer()`
 - `Zlink.createTimer(Spot spot)`
 
-`Zlink`는 version, capability, strerror, proxy, shutdown, sleep, auto-HWM
+`Zlink`는 version, 역할, strerror, proxy, shutdown, sleep, auto-HWM
 재계산 같은 public static helper도 소유할 수 있다. 이 helper들은 runtime/native
 코드에 위임해도 되지만, public signature는 runtime 패키지나 native bridge 타입을
 언급하지 않는다.

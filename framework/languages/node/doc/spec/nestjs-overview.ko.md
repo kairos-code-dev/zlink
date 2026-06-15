@@ -2,7 +2,7 @@
 
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [handler-interfaces](./handler-interfaces.ko.md)
 
-[DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
+[DI 노출 정책](../internals/di-역할-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
 
 > 이 문서는 [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)을
 > 따른다. 개념·의미론·동작은 `framework/languages/dotnet` 과 **동일**하고,
@@ -208,7 +208,7 @@ NestJS 통합에서 application 이 구현하는 다음 객체는 NestJS DI 컨�
 | stream session 또는 session factory | `providers` + `streams` 설정 | stream 연결을 session 으로 활성화할 때 |
 | custom Spot remote address resolver | `providers` + resolver type 설정 | Spot outbound 가 remote address 를 해석할 때 |
 
-`ZLinkModule.forRoot(...)` 는 transport, node, capability, handler group 선택을
+`ZLinkModule.forRoot(...)` 는 transport, node, 역할, handler group 선택을
 선언하는 자리다. application 객체 그래프를 조립하는 자리가 아니다. node/channel
 handler 는 decorator 로 group 이름을 붙이고 channel 이 `handlerGroups` 로
 선택한다. Spot actor handler 는 spot actor handler decorator 로 대상 Spot 타입을
@@ -223,30 +223,30 @@ session 이 자기 내부 메시지를 어떻게 처리할지가 서로 섞이�
 factory, Spot, session 처럼 의존성을 받는 확장 지점은 NestJS provider 여야 한다는
 점이다.
 
-핵심 원칙은 **주입 가능성 = 기능 가능성**이다. 어떤 capability 도 등록하지
+핵심 원칙은 **주입 가능성 = 기능 가능성**이다. 어떤 역할도 등록하지
 않았는데 그 service 를 주입받을 수 있으면 안 된다. 따라서 일부 provider 는
-capability 조건이 충족될 때만 `providers`/`exports` 에 들어간다. 정식 정의는
-[di-capability-exposure-policy](../internals/di-capability-exposure-policy.ko.md)
+역할 조건이 충족될 때만 `providers`/`exports` 에 들어간다. 정식 정의는
+[di-역할-exposure-policy](../internals/di-역할-exposure-policy.ko.md)
 가 소유한다. 아래는 .NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`
 의 등록 조건을 옮긴 요약이다.
 
 `forRootFactory(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 registration 이
-DI 단계에서 확정되기 전에는 어떤 capability 가 필요한지 알 수 없다. 그래서 이 두
-경로는 capability 토큰을 export 하되, 해당 capability 가 없는 경우 provider 값은
-`null` 이다. 이 정책은 NestJS application context 가 optional capability 때문에
+DI 단계에서 확정되기 전에는 어떤 역할이 필요한지 알 수 없다. 그래서 이 두
+경로는 역할 토큰을 export 하되, 해당 역할이 없는 경우 provider 값은
+`null` 이다. 이 정책은 NestJS application context 가 optional 역할 때문에
 부팅 단계에서 실패하지 않게 하기 위한 것이다.
 
 ### 3.1 항상 등록되는 provider
 
-| provider token | 주입 타입 | .NET 대응 | capability 누락 시 |
+| provider token | 주입 타입 | .NET 대응 | 역할 누락 시 |
 |------|------|------|------|
-| `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | `IZLinkChannelClient` | 없는 channel/client capability 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | `IZLinkChannelClient` | 없는 channel/client 역할 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient`(`ZLinkMultipartRouteClient` 포함) | `IZLinkRouteClient`/`IZLinkMultipartRouteClient` | route channel 없으면 호출 시 `ZLinkConfigurationException` |
-| `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | `IZLinkFanoutClient` | publisher capability 없으면 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | `IZLinkFanoutClient` | publisher 역할 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | `IZLinkBoundSessionFactory` | binding 없는 actor 호출 시 `ActorSessionNotBound` |
 | `ZLINK_MESSAGE_METADATA_POLICY` | `ZLinkMessageMetadataPolicy` | `IZLinkMessageMetadataPolicy` | 항상 유효 |
 
-### 3.2 capability 가 있을 때만 등록되는 provider
+### 3.2 역할이 있을 때만 등록되는 provider
 
 | provider token | 주입 타입 | 등록 조건(.NET) | 미등록 시 |
 |------|------|------|------|
@@ -764,4 +764,4 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 | `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootFactory`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
 | `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
 
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)
+[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-역할-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)

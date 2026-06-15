@@ -63,7 +63,7 @@ IMPLEMENTATION-PLAN (지금 문서)  ← 순서·참조지도·DoD·함정표·�
 | [internals/lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md) | 시동/종료/실패 순서 |
 
 레퍼런스(해당 부분 구현 시 참조):
-[di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) ·
+[di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) ·
 [behavior-matrix](./internals/behavior-matrix.ko.md) ·
 [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) ·
 [regression-test-matrix](./internals/regression-test-matrix.ko.md) ·
@@ -286,18 +286,18 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 
 ### Phase 3 — 호스트/모듈 부트스트랩 + lifecycle
 - **선행:** P1.5, P2
-- **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
+- **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
 - **산출물:** `runtime/host/`, `runtime/configuration/`, `@zlink-systems/nestjs`(`ZLinkModule`)
 - **작업:**
   - `ZLinkModule.forRoot(options)` / `forRootFactory({useFactory, inject})` → `@nestjs/common` 실제 `DynamicModule`
-  - 등록 검증(forRoot 빌드 시점), provider 토큰 노출(capability→client)
+  - 등록 검증(forRoot 빌드 시점), provider 토큰 노출(역할→client)
   - 런타임 시동/종료를 `onApplicationBootstrap`/`onApplicationShutdown` 에 연결, **시동 순서·graceful close** 준수
   - 레지스트리/모니터링 모듈 분리(`ZLinkRegistryModule`, `ZLinkRegistryQueryClientModule`)
 - **DoD:**
   - [x] 빈 옵션으로 모듈 부트/셧다운이 lifecycle 순서대로 동작
   - [x] `@nestjs/core` application context 에서 provider 주입과 runtime lifecycle 이 동작
   - [x] 잘못된 등록이 forRoot 빌드 시 검증 예외
-  - [x] capability 별 injectable client 토큰 노출 규칙 일치
+  - [x] 역할 별 injectable client 토큰 노출 규칙 일치
 - **검증:** lifecycle/host e2e 미러(시동순서·실패롤백·종료순서)
 
 ### Phase 4 — channel messaging (슬라이스 1 완성)
@@ -310,7 +310,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
   - request/send/publish handler(interface + decorator 양쪽)
   - dispatch(local ROUTER ingress, outbound DEALER reply correlation), filter pipeline
   - outbound client: `ZLinkChannelClient`/`ZLinkFanoutClient` fluent builder(`requestToChannel(...).submit(...)`, `sendToChannel(...).submit(...)`, `publish(...).submit(...)`), packet key 해석 순서
-  - manual vs discovery 연결(같은 capability 에서 혼용 금지)
+  - manual vs discovery 연결(같은 역할에서 혼용 금지)
 - **DoD:**
   - [x] 서버 handler + 주입 client 로 **request/reply 1왕복 E2E** 통과
   - [x] send(one-way)·publish(fan-out) 동작

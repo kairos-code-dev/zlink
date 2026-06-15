@@ -299,12 +299,12 @@ public sealed class ProfileHandlers
 이 예시에서 중요한 점은 handler가 raw header part를 직접 받지 않는다는 점이다.
 필요한 metadata는 `ZLinkRequestContext` 같은 context에서 조회한다.
 
-또한 framework는 startup 시점에 channel별 역할을 등록하고, 필요한 capability만
+또한 framework는 startup 시점에 channel별 역할을 등록하고, 필요한 역할만
 여는 쪽을 기본 방향으로 본다.
 
 수동 연결을 둘 때는 `channel` 전체가 아니라 `channel + capability` 기준으로
 설정해야 한다. 예를 들어 `account.client` 수동 연결과 `account.subscriber`
-수동 연결은 별도 집합으로 보는 편이 맞다. 그리고 수동 연결 capability는 startup
+수동 연결은 별도 집합으로 보는 편이 맞다. 그리고 수동 연결 역할은 startup
 설정만이 아니라, 런타임 `Connect`, `Disconnect`, `ListConnections` 같은 제어도
 지원해야 한다.
 
@@ -343,7 +343,7 @@ request도 reply를 기다리는 async 호출로 설명한다. 다만 request pa
 - active SPOT channel view는 `AddSpotMesh(channelName, mesh => mesh.UseDiscovery(...))`가
   정한다. `UseSpotDiscovery(...)`와 `AddSpotNode(...)`를 분리하는 방식은 호환 경로로만
   남기고, 새 샘플은 mesh 등록을 기준으로 작성한다.
-- `SpotNode`는 router, pub/sub, attach된 외부 호출 capability를 가진다.
+- `SpotNode`는 router, pub/sub, attach된 외부 호출 역할을 가진다.
 - local spot 인스턴스는 등록 이름으로 만들고, lifecycle 안에서 packet, subscribe,
   timer를 등록한다.
 - spot timer 는 framework 가 만든 managed scheduler 를 사용한다. user Spot timer 는

@@ -88,7 +88,7 @@ framework 경계, backend 의존, lifecycle, 회귀 기준을 정의한다. spec
 |------|------|
 | [dotnet-to-node-surface-mapping](./internals/dotnet-to-node-surface-mapping.ko.md) | **이식 기준**(번역 규칙) |
 | [backend-dependency-policy](./internals/backend-dependency-policy.ko.md) | backend 교체 가능성, public surface 격리 |
-| [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) | capability 별 DI 노출 규칙 |
+| [di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) | 역할 별 DI 노출 규칙 |
 | [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md) | 시동/종료/실패 의미 |
 | [behavior-matrix](./internals/behavior-matrix.ko.md) | 기능별 동작 매트릭스 |
 | [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) | 범위·비목표 |

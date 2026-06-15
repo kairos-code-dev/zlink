@@ -12,7 +12,7 @@
 
 | 구분 | `.NET` | Java/Kotlin | 규칙 |
 |------|--------|-------------|------|
-| 개념 | channel, capability, Spot, actor, session, stream | 동일 | 재정의하지 않는다 |
+| 개념 | channel, 역할, Spot, actor, session, stream | 동일 | 재정의하지 않는다 |
 | 동작 | routing, correlation, lifecycle, dispatch 순서 | 동일 | 회귀 테스트로 검증한다 |
 | host 표면 | ASP.NET Core DI + hosted service | Spring Boot bean + lifecycle | host 모델만 바꾼다 |
 | 언어 표면 | C# attribute, `ValueTask`, record | Java annotation, `CompletionStage`, record/class | 언어 관례만 바꾼다 |

@@ -280,7 +280,7 @@ public interface IZLinkDispatchOptions
 
 ### 3.1 등록 코드
 
-이 등록 코드는 `SpotNode` 와 그 안의 capability(`router`, `pub/sub`, attach 된
+이 등록 코드는 `SpotNode` 와 그 안의 역할(`router`, `pub/sub`, attach 된
 channel client, attach 된 spot publisher client)를 한 번에 묶어 둔 모양이다.
 
 ```csharp
@@ -385,7 +385,7 @@ var app = builder.Build();
 app.Run();
 ```
 
-이 코드에서 capability[^capability] 와 attach 함수가 각각 다른 역할을 맡는다.
+이 코드에서 역할[^capability] 와 attach 함수가 각각 다른 역할을 맡는다.
 역할을 항목별로 짚어 보면 다음과 같다.
 
 - `AttachChannelClient("orders")`
@@ -409,7 +409,7 @@ app.Run();
   `ConfigurePublisher(...)`, `ConfigureSubscriber(...)`
   - 실제 `.NET` 바인딩의 `CommonSocketOptions`, route policy 옵션, outbound
     route policy 옵션, `SpotNodePublisherOptions`, `SpotNodeSubscriberOptions`
-    같은 typed facade[^typed-facade]를 capability별로 등록한다.
+    같은 typed facade[^typed-facade]를 역할별로 등록한다.
   - 호출 단위로 적용되는 `Timeout(...)`과 달리, 이쪽은 runtime의 기본 동작을
     정해 두는 설정이다.
 - `AddSpotFactory<SampleSpot>()`
@@ -419,12 +419,12 @@ app.Run();
     실제 생성 시점에는 이 이름을 키로 어떤 타입을 만들지 결정한다.
   - 이미 등록된 이름을 다시 사용하면 조용히 덮어쓰지 않고 예외를 던진다.
 
-### 3.1.1 capability별 수동 연결
+### 3.1.1 역할별 수동 연결
 
-이 절은 discovery 대신 endpoint 를 직접 지정해 capability 를 잇는 모양을
+이 절은 discovery 대신 endpoint 를 직접 지정해 역할을 잇는 모양을
 보여 준다.
 
-SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 capability 단위로 다뤄야
+SPOT 역시 일반 channel 과 마찬가지로 수동 연결은 역할 단위로 다뤄야
 한다.
 
 ```csharp
@@ -487,7 +487,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - `router`, `pub/sub`, attach 된 channel client, attach 된 spot publisher
   client 는 서로 별개의 연결 집합을 다룬다.
-- 같은 capability 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
+- 같은 역할 안에서는 `Discovery`[^discovery] 와 `Manual` 방식을 섞지
   않는다.
 - 같은 `SpotNode` 안에서 `spotRid` 은 비어 있으면 안 된다.
 - 이미 등록된 `spotRid` 을 다시 등록하면, 기존 값을 덮어쓰지 않고 예외가
@@ -498,7 +498,7 @@ builder.Services.AddZLinkFramework(options =>
   이미 connect 된 peer 집합을 대상으로 요청을 보내므로, remote `RoutingId` 를
   따로 넘기지 않아도 된다.
 - `pub/sub` 는 local publish 소켓과 local subscribe 소켓을 함께 쓰는
-  capability 다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
+  역할이다. 다만 수동 연결에서 등록하는 주소는 "다른 `SpotNode` 의 mesh
   publish bind 주소"라는 점에 유의한다.
 - 즉 `EnablePubSub(...).UseManualConnections(...).Connect(endpoint)` 는 local
   `SUB/XSUB` 쪽이 remote `PUB/XPUB` 주소에 붙는다는 의미다.
@@ -516,7 +516,7 @@ builder.Services.AddZLinkFramework(options =>
 - `SpotNode` 의 pub/sub 기본값
   - 실제 low-level 바인딩의 `SpotNode.PublisherOptions`,
     `SpotNode.SubscriberOptions` 에 대응한다.
-- capability 별 socket 기본값
+- 역할 별 socket 기본값
   - `router`, attach 된 channel client, attach 된 spot publisher client 가 각각
     가지고 있는 `CommonSocketOptions` 계열 기본값이다.
 
@@ -610,11 +610,11 @@ builder.Services.AddZLinkFramework(options =>
 - `pubsub.ConfigurePublisher(...)`,
   `pubsub.ConfigureSubscriber(...)` 는 실제 `.NET` 바인딩의
   `SpotNode.PublisherOptions`, `SpotNode.SubscriberOptions` 처럼, `SPOT` mesh
-  자체가 소유하는 옵션 facade 를 capability 표면으로 끌어올린 것이다.
+  자체가 소유하는 옵션 facade 를 역할 표면으로 끌어올린 것이다.
 - `router.ConfigureSocket(...)`, `client.ConfigureSocket(...)` 같은 표면은
   `CommonSocketOptions` 같은 공통 socket 기본 동작을 정한다.
 - `router.ConfigureRouting(...)`, `client.ConfigureRouting(...)` 은 route
-  policy 와 outbound route policy 에 대응하는 capability 전용 facade 다.
+  policy 와 outbound route policy 에 대응하는 역할 전용 facade 다.
 - `RequestToChannel(...).Timeout(...)` 같은 호출 단위 옵션은 그 호출 하나에만
   적용된다. 반면 위에 정리한 설정은 runtime 의 기본값을 잡는 용도다.
 
@@ -622,7 +622,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - framework 사용자는 low-level `spot_node_option` 이나 `setsockopt` 이름을
   표면에서 직접 마주칠 일이 없다.
-- 어떤 옵션이 node 전체에 적용되고, 어떤 옵션이 개별 capability 에만
+- 어떤 옵션이 node 전체에 적용되고, 어떤 옵션이 개별 역할 에만
   적용되는지 바로 구분할 수 있다.
 
 ### 3.1.2 spot 생성과 조회
@@ -1925,7 +1925,7 @@ runtime 이 reflection 을 어디까지 허용하느냐보다, hot path 에서 �
   draft 공용 계약이 room wrapper에 어떻게 매핑되는지를 보여 주는 상세 샘플이다.
 - packet dispatch의 기준은 header의 `msgId`다.
 - `IZLinkSpotManager`는 spot 생성과 조회 기능을 함께 제공한다.
-- attach된 channel client와 SPOT publish 설정은 capability별 builder에서
+- attach된 channel client와 SPOT publish 설정은 역할별 builder에서
   노출한다.
 
 ## 10. 회귀 테스트
@@ -1960,7 +1960,7 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 [^session]: session 은 한 client 연결을 framework 안에서 다루기 위한 논리 단위이며, 인증과 packet dispatch의 첫 진입점이 된다.
 [^direct-routed]: direct routed 호출은 routing id 와 spot rid 를 명시적으로 묶어 특정 인스턴스로 바로 보내는 방식이다.
 [^resolver]: resolver 는 이름이나 id 같은 논리 식별자를 받아 실제 transport 위치(주소, routing id 등)로 변환해 주는 컴포넌트다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, subscriber, publisher)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^typed-facade]: typed facade 는 native 옵션 키를 직접 노출하지 않고, 타입과 속성으로 감싸 IDE 자동완성과 컴파일 검증을 받게 하는 wrapper 인터페이스다.
 [^factory]: factory 는 이름이나 타입 정보를 받아 새 인스턴스를 만들어 주는 등록형 생성기다. SPOT 의 경우 spot 인스턴스 생성을 담당한다.
 [^discovery]: `Discovery` 는 Registry 같은 외부 서비스를 통해 peer 주소와 라우팅 정보를 자동으로 받아 오는 연결 방식이다.

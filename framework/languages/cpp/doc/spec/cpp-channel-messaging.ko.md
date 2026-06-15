@@ -15,7 +15,7 @@
 ## 인터페이스 경계
 
 channel public contract는 `contracts/channels/*`가 소유한다. 사용자가 보는 타입은
-channel builder, capability option, `message_bus_t`, `request_client_t`, `publisher_t`,
+channel builder, 역할 option, `message_bus_t`, `request_client_t`, `publisher_t`,
 call object, reliability event다. `ROUTER`/`DEALER` socket owner, recv pump, reply
 correlation table, send-ready queue, discovery watch state는 `src/runtime/channels/*`에
 둔다.
@@ -25,12 +25,12 @@ pending queue 구조를 사용자가 호출해야 하는 API처럼 해석하지 
 
 ## 1. Channel 의미
 
-channel은 framework에서 request/reply와 pub/sub capability를 묶는 이름이다.
-사용자는 raw socket을 직접 만들지 않고, channel 이름과 capability 설정으로 runtime을
+channel은 framework에서 request/reply와 pub/sub 역할을 묶는 이름이다.
+사용자는 raw socket을 직접 만들지 않고, channel 이름과 역할 설정으로 runtime을
 구성한다.
 
 channel 자체는 연결 주체가 아니다. 실제 endpoint, Discovery, timeout 같은 연결 설정은
-아래 capability builder에 둔다.
+아래 역할 builder에 둔다.
 
 - server
 - client
@@ -72,11 +72,11 @@ app.add_zlink_framework([](auto &options) {
 
 이 설정은 `profile` channel 전체가 아니라 `profile.client` 연결 집합에만 적용된다.
 같은 `profile` channel이라도 `profile.subscriber`는 별도 연결 집합으로 본다.
-같은 capability 안에서는 수동 연결과 Discovery 연결을 섞지 않는다.
+같은 역할 안에서는 수동 연결과 Discovery 연결을 섞지 않는다.
 `client()`는 registry discovery로 peer를 찾는 선언이므로 같은 설정에
 `options.use_discovery().add_registry_endpoint (...)`가 필요하다. discovery를 쓰지 않는 경우에는
 `client(endpoint)`로 manual connection을 명시한다. `client(endpoint)`와 fanout
-`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 capability
+`subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 manual endpoint를 역할
 snapshot에 추가한다.
 
 ## 3. Handler 등록
@@ -112,17 +112,17 @@ handler 안에서 blocking wait를 쓰지 않는다.
 
 ## 4. Dispatch 기준
 
-- 일반 request/send dispatch는 local server capability ingress 기준이다.
-- outbound client capability 수신은 pending request의 reply correlation 경로다.
+- 일반 request/send dispatch는 local server 역할 ingress 기준이다.
+- outbound client 역할 수신은 pending request의 reply correlation 경로다.
 - pending request correlation은 `channel_pending_requests_t`가 맡는다. request sequence와
   pending table은 public call object에 노출하지 않는다.
 - server ingress envelope dispatch는 `channel_packet_dispatcher_t`가 맡는다. request는
   reply writer를 통해 response/error envelope로 변환하고 command/send는 reply 없이
   handler dispatch만 수행한다.
-- channel capability runtime bundle은 `channel_runtime_bundle_t`가 맡는다. manual
-  connection set, dealer-mesh pending request owner, receive gate는 한 capability의 내부
+- channel 역할 runtime bundle은 `channel_runtime_bundle_t`가 맡는다. manual
+  connection set, dealer-mesh pending request owner, receive gate는 한 역할의 내부
   상태로 묶고 public builder나 call object에 노출하지 않는다.
-- channel capability 생성과 조회는 `channel_bundle_factory_t`와
+- channel 역할 생성과 조회는 `channel_bundle_factory_t`와
   `channel_runtime_manager_t`가 맡는다. manager는 `.NET`처럼 client/publisher bundle을
   lazy creation으로 만들고 inbound, client, publisher, route channel 초기화를 runtime
   state 안에서 정리한다.
@@ -143,31 +143,31 @@ handler 안에서 blocking wait를 쓰지 않는다.
   `options.add_route_mesh_channel(name)`으로 bind, routing id, manual connection, handler group을
   설정한다. route mesh channel은 local route endpoint를 열기 위해 `bind(...)`가 필요하다.
   SPOT route ingress에서 `accept_routes_from_channel(name)`으로 참조할 수 있는 channel은
-  client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router capability와
+  client/server channel 또는 route mesh channel뿐이다. 참조한 node는 router 역할과
   registry discovery 또는 accepted route manual endpoint를 가져야 한다.
   `zlink_builder_t::route_channel(name, configure)`와 `route_channel_builder_t`는 framework
   내부와 고급 확장용 낮은 수준 표면으로 남긴다.
 - dealer mesh channel은 `options.add_dealer_mesh_channel(name)`으로 선언하되 `bind(...)`
   또는 `connect(...)` 중 하나 이상을 함께 둔다. peer 획득 경로가 없으면 framework
   options 적용 시점에 실패한다.
-- client/server channel은 server 또는 client capability 중 하나 이상이 필요하고, fanout
-  channel은 publisher 또는 subscriber capability 중 하나 이상이 필요하다. 아무 역할도 없는
+- client/server channel은 server 또는 client 역할 중 하나 이상이 필요하고, fanout
+  channel은 publisher 또는 subscriber 역할 중 하나 이상이 필요하다. 아무 역할도 없는
   channel 선언은 framework options 적용 시점에 실패한다.
 - route receive path는 `route_receive_pump_t`와 `route_packet_dispatcher_t`가 맡는다.
   route handler가 있으면 `route_handler_registry_t`와 `route_handler_invoker_t`를 통해
   typed payload를 호출하고, handler가 없으면 request에 `route_handler_not_found` error
   envelope를 반환한다. framework 내부 routed packet은
   `route_internal_packet_dispatcher_t`와 composite dispatcher가 먼저 처리한다.
-- 같은 capability에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
+- 같은 역할에서 Discovery와 manual 연결을 같이 섞지 않는다. endpoint 인자 없는
   `client()` 또는 `subscriber()`는 discovery mode를 뜻하고, endpoint를 받는 overload는
   manual endpoint를 추가한다.
-- runtime 연결 제어가 필요하면 framework core의 capability 단위 connection manager가
-  담당한다. 사용자는 raw socket이 아니라 channel capability 표면으로 연결을 다룬다.
+- runtime 연결 제어가 필요하면 framework core의 역할 단위 connection manager가
+  담당한다. 사용자는 raw socket이 아니라 channel 역할 표면으로 연결을 다룬다.
 
 ## 5. Outbound-only host
 
 local handler 없이 outbound client만 쓰는 host도 가능해야 한다.
-이 경우 local server capability는 열지 않고 outbound client capability만 만든다.
+이 경우 local server 역할은 열지 않고 outbound client 역할만 만든다.
 
 ## 6. 회귀 테스트
 
@@ -191,7 +191,7 @@ channel messaging 회귀 테스트는 `.NET` framework의 channel 동작과 같�
   않는다.
 - pending request limit과 outbound queue limit을 넘으면 `request_rejected` 계열 결과를
   반환한다.
-- manual connection과 Discovery connection을 같은 capability에 섞으면 startup validation이
+- manual connection과 Discovery connection을 같은 역할에 섞으면 startup validation이
   실패한다.
 - route channel은 routing id 선택, routed request/reply, route handler not found, ambiguous
   route validation을 검증한다.

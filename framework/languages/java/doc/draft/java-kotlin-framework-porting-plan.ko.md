@@ -159,7 +159,7 @@ Java로 옮긴다. dispatch 기준은 local `ROUTER(server)` ingress다. outboun
 - `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` (annotation은 `Mapping` 접미사
   없이, publish는 `Event`가 아니다 — 함정표 §10 참조)
 - handler interface 기반 자동 등록
-- capability별 manual `connect`, `disconnect`, `listConnections`
+- 역할별 manual `connect`, `disconnect`, `listConnections`
 
 ### 4.3 3단계: Registry와 Monitoring
 
@@ -173,7 +173,7 @@ event로 올린다. Spring adapter에서는 `ApplicationEventPublisher`로도 �
 ### 4.4 4단계: SPOT
 
 Spot은 user Spot과 Entry Spot을 모두 지원해야 한다. `.NET`과 동일하게 SpotNode는
-capability를 조합한다.
+역할을 조합한다.
 
 - router
 - pub/sub
@@ -237,14 +237,14 @@ Spring lifecycle에 연결한다.
 handler class는 constructor injection으로 dependency를 받는다. context에서 Spring
 `ApplicationContext`를 꺼내는 service locator 방식은 기본 사용법으로 두지 않는다.
 
-DI에 노출되는 bean은 구성된 capability에 맞춘다. 없는 capability의 service를
+DI에 노출되는 bean은 구성된 역할에 맞춘다. 없는 역할의 service를
 무조건 등록하면 application이 잘못된 topology를 늦게 발견하므로 startup validation과
 bean 등록 정책을 함께 둔다.
 
 | 조건 | 노출 bean |
 |------|-----------|
-| channel client capability | `ZLinkClient` |
-| fanout publisher capability | `ZLinkFanoutClient` |
+| channel client 역할 | `ZLinkClient` |
+| fanout publisher 역할 | `ZLinkFanoutClient` |
 | route mesh channel | `ZLinkRouteClient` |
 | SpotNode + user Spot factory | `ZLinkSpotManager`, `ZLinkSpotClient` |
 | SpotNode + actor factory | `ZLinkActorManager` |
@@ -334,8 +334,8 @@ Java/Kotlin 구현은 `.NET` behavior matrix와 같은 판정을 내려야 한�
 - duplicate actor type factory
 - duplicate Spot factory type
 - duplicate Entry Spot registration
-- outbound capability에 discovery/manual 경로가 모두 없는 경우
-- 같은 capability 안에서 discovery와 manual connection을 함께 쓰는 경우
+- outbound 역할에 discovery/manual 경로가 모두 없는 경우
+- 같은 역할 안에서 discovery와 manual connection을 함께 쓰는 경우
 - server/publisher/route/stream endpoint 누락
 - stream node에 session type을 둘 이상 등록한 경우
 - route mesh channel 없이 Registry-backed Spot remote address resolver를 쓰는 경우

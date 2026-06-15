@@ -200,7 +200,7 @@ await events
 
 검증: `ChannelContracts.Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services`.
 
-## 2. Configuration — options · builder · capability · 연결
+## 2. Configuration — options · builder · 역할 · 연결
 
 > 사용법은 [02-getting-started](./02-getting-started.ko.md),
 > [04-channel-messaging](./04-channel-messaging.ko.md) §3·§6,
@@ -234,7 +234,7 @@ options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchM
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
 
-### 2.2 channel builder 와 capability
+### 2.2 channel builder 와 역할
 
 ```csharp
 options.AddClientServerChannel("api", channel =>
@@ -263,11 +263,11 @@ options.AddRouteMeshChannel("play-router", channel => channel.Bind("tcp://127.0.
 | `IZLinkDealerMeshChannelBuilder` | dealer mesh channel(`EnableClient`) |
 | `IZLinkRouteMeshChannelBuilder` | route mesh channel(`Bind`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
 | `IZLinkRouteChannelBuilder` | route channel 공통 빌더 표면 |
-| `IChannelServerCapabilityBuilder` | server capability(`Bind`, `ConfigureSocket`, `ConfigureRouting`) |
-| `IChannelClientCapabilityBuilder` | client capability(`ConfigureSocket`, `ConfigureRouting`, `UseManualConnections`) |
-| `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client capability(`Bind` 포함) |
-| `IChannelPublisherCapabilityBuilder` | publisher capability(`Bind`, `ConfigureSocket`) |
-| `IChannelSubscriberCapabilityBuilder` | subscriber capability(`ConfigureSocket`, `UseManualConnections`) |
+| `IChannelServerCapabilityBuilder` | server 역할(`Bind`, `ConfigureSocket`, `ConfigureRouting`) |
+| `IChannelClientCapabilityBuilder` | client 역할(`ConfigureSocket`, `ConfigureRouting`, `UseManualConnections`) |
+| `IDealerMeshChannelClientCapabilityBuilder` | dealer mesh client 역할(`Bind` 포함) |
+| `IChannelPublisherCapabilityBuilder` | publisher 역할(`Bind`, `ConfigureSocket`) |
+| `IChannelSubscriberCapabilityBuilder` | subscriber 역할(`ConfigureSocket`, `UseManualConnections`) |
 | `IZLinkEndpointConnections` | route mesh channel 의 수동 연결 집합(`Connect`/`Disconnect`/`ListConnections`) |
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
@@ -324,8 +324,8 @@ options.AddSpotMesh("play-mesh", mesh =>
 | `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
 | `IZLinkSpotRouteChannelAcceptanceBuilder` | `AcceptSpotRoutesFromChannel` 의 ingress 연결 설정(`UseManualConnections`) |
-| `ISpotRouterCapabilityBuilder` | spot router capability(`Bind`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
-| `ISpotPubSubCapabilityBuilder` | spot pub/sub capability(`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
+| `ISpotRouterCapabilityBuilder` | spot router 역할(`Bind`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
+| `ISpotPubSubCapabilityBuilder` | spot pub/sub 역할(`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
 | `ISpotPublisherClientCapabilityBuilder` | spot publisher client attach 설정 |
 | `ISpotChannelClientCapabilityBuilder` | spot 의 일반 channel client attach 설정 |
 | `IZLinkEndpointConnections` | spot route ingress 수동 연결 집합 |
@@ -334,7 +334,7 @@ options.AddSpotMesh("play-mesh", mesh =>
 
 ### 2.4 연결 집합 — role 별 endpoint 소유
 
-수동 연결은 capability(role) 단위로 별개 집합을 소유한다. 같은 endpoint 목록이라도
+수동 연결은 역할(role) 단위로 별개 집합을 소유한다. 같은 endpoint 목록이라도
 client·subscriber·spot router 가 서로 다른 연결 집합이다.
 
 ```csharp
@@ -348,8 +348,8 @@ spotRouteIngress.Connect("tcp://127.0.0.1:5006");  // IZLinkEndpointConnections
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkEndpointConnections` | client capability 수동 연결(`Connect`/`Disconnect`/`ListConnections`) |
-| `IZLinkEndpointConnections` | subscriber capability 수동 연결 |
+| `IZLinkEndpointConnections` | client 역할 수동 연결(`Connect`/`Disconnect`/`ListConnections`) |
+| `IZLinkEndpointConnections` | subscriber 역할 수동 연결 |
 | `IZLinkEndpointConnections` | spot router 수동 연결 |
 | `IZLinkEndpointConnections` | spot pub/sub 수동 연결 |
 | `IZLinkEndpointConnections` | spot publisher client 수동 연결 |

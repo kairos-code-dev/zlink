@@ -14,7 +14,7 @@
 
 | 구분 | dotnet | node | 비고 |
 |------|--------|------|------|
-| 개념(channel, capability, packet, spot, actor, session, stream) | 동일 | 동일 | 절대 재정의하지 않는다 |
+| 개념(channel, 역할, packet, spot, actor, session, stream) | 동일 | 동일 | 절대 재정의하지 않는다 |
 | 동작(라우팅, correlation, lifecycle, dispatch 순서) | 동일 | 동일 | 코드로 검증한다 |
 | 호스트 표면 | ASP.NET Core (DI + `IHostedService`) | NestJS (`DynamicModule` + lifecycle hook) | §3 |
 | 언어 표면 | C# (attribute, `ValueTask`, record) | TypeScript (decorator, `Promise`, interface) | §4 |
@@ -318,7 +318,7 @@ backend port 의 정확한 시그니처는 dotnet
 - spec: handler-interfaces, nestjs-overview, nestjs-channel-messaging,
   nestjs-spot, nestjs-actor, nestjs-stream, nestjs-registry, nestjs-monitoring,
   session-actor-dispatch, spot-node, stage-wrapper-on-spot
-- internals: backend-dependency-policy, di-capability-exposure-policy,
+- internals: backend-dependency-policy, di-역할-exposure-policy,
   lifecycle-and-failure-semantics, behavior-matrix,
   implementation-scope-and-nongoals, regression-test-matrix
 

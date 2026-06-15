@@ -122,7 +122,7 @@ ctest --test-dir core/build -N
 
 public C API, C++ sample, binding contract가 바뀐 단계에서는 해당 binding test도
 함께 실행한다. 각 언어별 명령은 해당 binding의 README와 기존 plan 문서의 명령을
-우선한다. 테스트 명령을 찾을 수 없으면 `doc/spec/bindings/README.md`의 capability
+우선한다. 테스트 명령을 찾을 수 없으면 `doc/spec/bindings/README.md`의 역할
 matrix와 각 binding 디렉토리의 build/test entry를 확인해 실행 가능한 test를
 추가한다.
 

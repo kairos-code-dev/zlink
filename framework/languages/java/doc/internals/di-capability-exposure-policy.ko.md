@@ -14,7 +14,7 @@
 | Bound session factory | framework runtime과 함께 **항상** 등록(`ZLinkBoundSessionFactory`) |
 | Spot manager | SpotNode가 있을 때만 등록 |
 | Spot outbound | SpotNode가 있을 때만 등록 |
-| Spot publisher client | attached Spot publisher client capability가 있을 때만 등록 |
+| Spot publisher client | attached Spot publisher client 역할이 있을 때만 등록 |
 | Actor manager | SpotNode와 actor factory가 모두 있을 때만 등록 |
 | Runtime event dispatcher | core runtime이 항상 등록(`ZLinkRuntimeEventDispatcher`) |
 | Runtime event publisher | monitoring configurer가 있을 때만 등록(monitoring publisher + hosted service) |
@@ -24,10 +24,10 @@
 ## 2. 설계 원칙
 
 사용자가 생성자에서 어떤 bean을 주입받으면 그 기능을 쓸 수 있다고 이해한다. 따라서
-capability가 없는 service를 빈 proxy로 등록하지 않는다.
+역할이 없는 service를 빈 proxy로 등록하지 않는다.
 
 예외는 channel, fanout, route처럼 target 이름을 호출 시점에 받는 multi-target
-client다. 이 client들은 bean으로 등록할 수 있지만, 없는 channel이나 capability는
+client다. 이 client들은 bean으로 등록할 수 있지만, 없는 channel이나 역할은
 호출 시 `ZLinkConfigurationException`으로 실패해야 한다.
 
 ## 3. 조건부 bean 표
@@ -40,7 +40,7 @@ client다. 이 client들은 bean으로 등록할 수 있지만, 없는 channel�
 | `ZLinkBoundSessionFactory` | framework runtime(항상) | actor에 현재 session binding이 없으면 호출 시 `ActorSessionNotBound` |
 | `ZLinkSpotManager` | 최소 1개 SpotNode | Spring DI resolve 실패 |
 | `ZLinkSpotOutbound` | 최소 1개 SpotNode | Spring DI resolve 실패 |
-| `ZLinkSpotPublisherClient` | attached Spot publisher client capability | Spring DI resolve 실패 |
+| `ZLinkSpotPublisherClient` | attached Spot publisher client 역할 | Spring DI resolve 실패 |
 | `ZLinkActorManager` | SpotNode + actor factory | Spring DI resolve 실패 |
 | `ZLinkRegistryQuery` | embedded registry | Spring DI resolve 실패 |
 | `ZLinkRegistryQueryClient` | query client 설정 | Spring DI resolve 실패 |
@@ -85,13 +85,13 @@ JUnit 테스트 이름은 `.NET` 테스트(`NodesAndServices`, `HandlerExposure`
 | `addZLinkFramework_registersActorManager_whenSpotNodeAndActorFactoryExist` | SpotNode와 actor factory가 있으면 `ZLinkActorManager`가 등록된다 |
 | `addZLinkFramework_doesNotRegisterSpotServices_withoutSpotNode` | SpotNode 없는 구성에서는 Spot service가 없다 |
 | `addZLinkFramework_registersSpotServices_whenSpotNodeExists` | SpotNode가 있으면 Spot service가 등록된다 |
-| `addZLinkFramework_doesNotRegisterSpotPublisher_withoutPublisherCapability` | SpotNode가 있어도 publisher capability가 없으면 Spot publisher service가 없다 |
-| `addZLinkFramework_registersSpotPublisher_whenPublisherCapabilityExists` | attached Spot publisher capability가 있으면 Spot publisher service가 등록된다 |
+| `addZLinkFramework_doesNotRegisterSpotPublisher_withoutPublisherCapability` | SpotNode가 있어도 publisher 역할이 없으면 Spot publisher service가 없다 |
+| `addZLinkFramework_registersSpotPublisher_whenPublisherCapabilityExists` | attached Spot publisher 역할이 있으면 Spot publisher service가 등록된다 |
 | `addZLinkFramework_registersBoundSessionFactory` | bound session factory는 framework runtime과 함께 항상 등록된다 |
 | `addZLinkFramework_allowsSpotRemoteAddressResolver_withoutSpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 resolver를 등록할 수 있다 |
 | `addZLinkFramework_doesNotRegisterSpotOutbound_withResolverOnly` | resolver만 있고 SpotNode가 없으면 `ZLinkSpotOutbound`는 없다 |
 | `routeClient_throwsConfigurationException_whenRouteChannelMissing` | route channel 누락 오류가 configuration error로 나온다 |
-| `channelClient_throwsConfigurationException_whenClientCapabilityMissing` | channel client capability 누락 오류가 configuration error로 나온다 |
+| `channelClient_throwsConfigurationException_whenClientCapabilityMissing` | channel client 역할 누락 오류가 configuration error로 나온다 |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

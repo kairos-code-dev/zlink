@@ -32,13 +32,13 @@
 이 절에서는 channel 등록의 두 가지 방식, 그리고 한 앱 안에서 이 둘을 어떻게 골라 쓰는지를
 샘플로 정리한다.
 
-framework 는 channel 마다 역할을 선언하게 되어 있다. request client capability[^capability]
+framework 는 channel 마다 역할을 선언하게 되어 있다. request client 역할[^capability]
 에 대해서는 두 가지 방식을 모두 지원한다.
 
 - `Discovery`[^discovery] 를 이용한 자동 연결
 - endpoint 집합만 등록하는 수동 연결
 
-다만 한 가지 제약이 있다. 같은 channel 의 request client capability 안에서는, 자동
+다만 한 가지 제약이 있다. 같은 channel 의 request client 역할 안에서는, 자동
 연결과 수동 연결 중 하나만 골라야 한다.
 
 ### 2.1 자동 연결 샘플
@@ -74,8 +74,8 @@ builder.Services.AddZLinkFramework(options =>
 
 이 경우 runtime 의 동작은 다음과 같다.
 
-- channel 별로 선언한 capability 를 만든다.
-- client capability 를 둔 channel 에 대해서는, `Discovery` channel view 를 붙잡아
+- channel 별로 선언한 역할을 만든다.
+- client 역할을 둔 channel 에 대해서는, `Discovery` channel view 를 붙잡아
   provider 집합을 관리한다.
 
 local handler 를 등록하지 않은 상태라면, 이 단계에서는 outbound `DEALER(client)`
@@ -114,7 +114,7 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 경우 framework 는 `Discovery` 를 강제하지 않는다. 호출자가, 어떤 channel 의 client
-capability 에 어떤 peer 를 붙일지 직접 정한다. channel 은 그 목록만 가지고 연결을
+역할에 어떤 peer 를 붙일지 직접 정한다. channel 은 그 목록만 가지고 연결을
 관리한다.
 
 여기서 짚어 둘 점이 하나 있다. 이 설정은 `profile` channel 전체가 아니라,
@@ -172,7 +172,7 @@ builder.Services.AddZLinkFramework(options =>
 
 ### 2.3.1 startup 수동 연결 설정 샘플
 
-수동 연결은 startup 등록에서 capability 단위로 설정한다. 아래 예시는
+수동 연결은 startup 등록에서 역할 단위로 설정한다. 아래 예시는
 `profile.client` 연결 집합을 설정하는 형태다.
 
 ```csharp
@@ -195,13 +195,13 @@ builder.Services.AddZLinkFramework(options =>
 예시로 읽어야 한다. framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도
 연결 관리 API 를 제공하지 않는다.
 
-subscriber capability 를 수동으로 운영한다면 어떻게 되는가. 그쪽은 그쪽대로,
+subscriber 역할을 수동으로 운영한다면 어떻게 되는가. 그쪽은 그쪽대로,
 `EnableSubscriber(...).UseManualConnections(...)` 에서 별도 endpoint 목록을
 설정한다.
 
 ### 2.3.2 소켓 옵션 설정 샘플
 
-소켓 옵션도 결국, capability 가 소유한 runtime 의 기본값으로 보는 편이 자연스럽다.
+소켓 옵션도 결국, 역할이 소유한 runtime 의 기본값으로 보는 편이 자연스럽다.
 즉 두 가지를 구분해서 설명해야 한다.
 
 - 요청 하나마다 주는 `Timeout(...)` 같은 호출 단위 옵션
@@ -276,15 +276,15 @@ builder.Services.AddZLinkFramework(options =>
 
 이 예시에서 의도하는 구분은 다음과 같다.
 
-- `server.ConfigureSocket(...)` 과 `client.ConfigureSocket(...)` 은, capability 가
+- `server.ConfigureSocket(...)` 과 `client.ConfigureSocket(...)` 은, 역할이
   들고 있는 socket 기본 동작을 정한다.
-- `server.ConfigureRouting(...)` 과 `client.ConfigureRouting(...)` 은, capability 별로
+- `server.ConfigureRouting(...)` 과 `client.ConfigureRouting(...)` 은, 역할 별로
   routed 연결 정책을 따로 둔다는 뜻이다. public 설정 이름은 `RequireKnownPeer`,
   `AllowPeerHandover`, `ProbeRouterOnConnect` 처럼 framework 의미가 드러나는 이름을
   쓴다. 하부 backend option 이름은 노출하지 않는다.
 - `client.RequestToChannel(...).Timeout(...)` 은 특정 호출 하나에만 적용되는 값이다. 실제
   low-level 바인딩에서도, `DealerSocket.RequestAsync(..., TimeSpan timeout, ...)` 처럼
-  호출 인자로 전달된다. 반면 위 `ConfigureSocket(...)` 설정은, capability 전체의
+  호출 인자로 전달된다. 반면 위 `ConfigureSocket(...)` 설정은, 역할 전체의
   기본값이다.
 
 이렇게 둬야 두 가지 이점이 생긴다.
@@ -600,8 +600,8 @@ public sealed class UserCacheRefreshedEvent
 - `IZLinkChannelClient` 는 하나만 주입받는다.
 - 요청 대상은 endpoint 가 아니라, `channel name` 이다.
 - local handler 를 등록한 경우에만, 이 앱은 `api` channel 에서 server 역할을 한다.
-- runtime 은 channel 마다 선언한 capability 에 맞는 runtime 만 만든다.
-- `account`, `profile` 처럼 client capability 를 둔 channel 은, 그 channel 전용의
+- runtime 은 channel 마다 선언한 역할에 맞는 runtime 만 만든다.
+- `account`, `profile` 처럼 client 역할을 둔 channel 은, 그 channel 전용의
   `Discovery` 와 outbound `DEALER(client)` socket 을 가진다.
 - dealer mesh channel 도 request/send 호출 표면은 `IZLinkChannelClient`를 그대로 쓴다. 차이는
   channel 등록이 `AddDealerMeshChannel(...)`이고, runtime 이 그 channel 의 mesh DEALER 를
@@ -843,12 +843,12 @@ app.MapPost("/profiles/get", async (
 
 - channel outbound 표면은, `IZLinkChannelClient` 하나로 고정한다.
 - 호출 대상은 endpoint 나 gateway 가 아니라, `channel name` 이다.
-- capability 는 `EnableServer`, `EnableClient`, `EnablePublisher`, `EnableSubscriber`
+- 역할은 `EnableServer`, `EnableClient`, `EnablePublisher`, `EnableSubscriber`
   로 명시 등록한다.
 - outbound-only 앱도, 같은 표면을 그대로 쓴다.
 - request / send / event handler 는, HTTP handler 와 비슷한 DI[^di] 감각으로 읽히도록
   유지한다.
-- event publish 는, publisher capability 가 열려 있는 channel 에서만 가능하다.
+- event publish 는, publisher 역할이 열려 있는 channel 에서만 가능하다.
 
 ## 10. 회귀 테스트
 
@@ -889,8 +889,8 @@ app.MapPost("/profiles/get", async (
 [^pubsub]: **publish / subscribe** 는 1:N 이벤트 fan-out 패턴이다. publisher 가 토픽에
     이벤트를 보내면 그 토픽을 구독한 모든 subscriber 가 함께 받는다.
 
-[^capability]: **capability** 는 한 channel 안에서 이 앱이 맡는 역할이다. server,
-    client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 capability 를
+[^capability]: **역할**은 한 channel 안에서 이 앱이 맡는 일이다. server,
+    client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 역할을
     동시에 가질 수도 있다(channel 타입에 따라).
 
 [^discovery]: **Discovery** 는 zlink core 의 자동 peer 발견 메커니즘이다. registry

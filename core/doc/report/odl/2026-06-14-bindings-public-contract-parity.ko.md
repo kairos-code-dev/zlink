@@ -3,11 +3,11 @@
 - **작성일**: 2026-06-14
 - **대상**: `bindings/{c,cpp,dotnet,go,java,node,python,rust}` 공개 API 표면
 - **기준(canonical)**: `bindings/c/include/zlink/**.h` — C 헤더가 계약의 substrate baseline (총 **182개 공개 `zlink_*` 함수**, 8개 영역)
-- **방식**: 언어별 병렬 정밀 매핑(capability 단위, 이름이 아닌 기능 기준) → 교차 대조. 헤드라인 갭은 소스 grep으로 직접 확정.
+- **방식**: 언어별 병렬 정밀 매핑(역할 단위, 이름이 아닌 기능 기준) → 교차 대조. 헤드라인 갭은 소스 grep으로 직접 확정.
 - **상태**: 조사와 구현 추적 리포트. §8의 확정 구현 항목은 코드와 spec README 반영 완료.
 
 > **읽는 법**: 바인딩은 C의 평면적 `*_part`/`get_set_option` 프리미티브를 빌더·RAII·타입 옵션 facade로 **관용적으로 재구성**한다.
-> 그런 재구성은 갭이 아니다. 아래 "갭"은 **실제 capability 누락**만 집계한다.
+> 그런 재구성은 갭이 아니다. 아래 "갭"은 **실제 역할 누락**만 집계한다.
 > 기호: ✓ 제공 · ✗ 누락 · ~ 관용적 대체/부분(아래 주석).
 
 > 🛑 **적용 전 필독 — §8 Spec 정합성 게이트.**
@@ -150,7 +150,7 @@
 | **UnhandledCallbackException 이벤트 / thread-affinity 헬퍼** | **.NET 전용** | 콜백 예외 허브 |
 | **Netty ByteBuf 통합 / `readIntLe`·`writeLongLe`** | **Java 전용** | message I/O 헬퍼 |
 
-> EXTRA 중 **네이티브 capability를 새로 추가하는 것은 없음** — 전부 관용적 facade거나 별도 직렬화 패키지다.
+> EXTRA 중 **네이티브 역할을 새로 추가하는 것은 없음** — 전부 관용적 facade거나 별도 직렬화 패키지다.
 
 ### ③ 헤더-바인딩 비대칭 정합성 조사 결과 (해소됨)
 
@@ -302,7 +302,7 @@ C는 평면 `*_part` 프리미티브(빌더 없음)이므로 상위 7개 바인�
 
 ## 7. 방법론·한계
 
-- 각 바인딩의 **공개 표면만** 집계(internal/runtime/native 제외). capability 매핑이라 이름이 달라도 동일 기능이면 제공으로 처리.
+- 각 바인딩의 **공개 표면만** 집계(internal/runtime/native 제외). 역할 매핑이라 이름이 달라도 동일 기능이면 제공으로 처리.
 - 헤드라인 갭(route table, rid-connect, atomic_counter)은 소스 grep으로 재확인 — test/ffi hit 제외 후 확정.
 - 미해결 caveat: Node `ctx_set_data`, Go `Message.adopt` 흡수 범위, **.NET `init_data` zero-copy/free_fn 의미**는 추가 확인 권장(매트릭스에 ~로 표기).
 - C 계약 자체도 일부 함수가 비대칭 — C 헤더에 `disconnect_peer_rid`는 있으나 `connect_peer_rid`는 없음(프롬프트 오기재였고 매트릭스에서 제외). 계약 설계 의도 확인 권장.

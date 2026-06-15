@@ -216,7 +216,7 @@ coroutine API를 강제하지 않는다.
 | Rust | 메서드는 `snake_case`, 타입은 `PascalCase` | framework가 bindings callback completion을 runtime별 `Future`나 channel로 변환한다. 사용자 표면은 `async fn`, `Future`, `Result<T, E>` 중심으로 투영한다. send/publish backpressure 의미는 public no-wait 옵션이 아니라 framework async submit 의미를 따른다. |
 
 세 언어 모두 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
-설명하고, 같은 capability 안에서 Discovery와 manual 연결을 섞지 않는다.
+설명하고, 같은 역할 안에서 Discovery와 manual 연결을 섞지 않는다.
 
 ## 5. Coroutine Adapter
 

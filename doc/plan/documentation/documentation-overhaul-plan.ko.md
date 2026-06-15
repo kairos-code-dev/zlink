@@ -351,7 +351,7 @@ NATS·ZeroMQ는 wire protocol 명세를 공개해 interop과 **새 바인딩 작
 - 효과: 코드 예제가 깨지면 빌드가 깨진다 → 문서 코드 부패를 막는다.
 
 ### 9.6 용어집(Glossary) (K8s)
-zlink는 SPOT, Actor, routing-id, capability, channel, ZMP, VSM, HWM 등 용어가
+zlink는 SPOT, Actor, routing-id, 역할, channel, ZMP, VSM, HWM 등 용어가
 많다. framework 가이드는 각주로 처리 중이나, 코어에는 중앙 용어집이 없다.
 
 - `doc/guide/glossary.*`를 신설한다. framework 가이드의 각주 정의와 정합을 맞추고,

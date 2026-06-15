@@ -1324,10 +1324,10 @@ git diff --check -- framework/languages/cpp bindings/cpp
 ### 발견한 위험 신호
 
 - 첫 channel runtime은 client/publisher 연결 여부와 pending queue 실패만 검증했고, local
-  server capability ingress에서 handler registry로 dispatch되는 경로가 없었다.
+  server 역할 ingress에서 handler registry로 dispatch되는 경로가 없었다.
 - outbound request는 timeout result를 만들었지만 pending request table과 reply correlation
   경계가 없어 `ROUTER -> DEALER` 임의 push와 pending reply completion을 구분하기 어려웠다.
-- `enable_server`, `enable_client`, `enable_publisher`, `enable_subscriber`가 같은 capability
+- `enable_server`, `enable_client`, `enable_publisher`, `enable_subscriber`가 같은 역할
   초기화 코드를 반복했다. 연결 정책이 늘어나면 네 곳이 따로 바뀔 위험이 있었다.
 
 ### 비교한 대안
@@ -1349,18 +1349,18 @@ pending request reservation, reply completion, drain은 `src/runtime/channels/*`
   `publisher_t` public contract를 추가했다.
 - `zlink_builder_t`에 `node`, `channel`, `max_pending`, `message_bus`, `request_client`,
   `publisher`, `channels`를 추가했다.
-- server/client/publisher/subscriber capability에 `bind`, `connect`, `use_discovery`를
-  추가하고, 같은 capability 안에서 manual endpoint와 discovery를 섞으면
+- server/client/publisher/subscriber 역할에 `bind`, `connect`, `use_discovery`를
+  추가하고, 같은 역할 안에서 manual endpoint와 discovery를 섞으면
   `request_protocol_error`로 실패하게 했다.
 - `message_bus_t` outbound send/publish/request는 channel name 기준으로만 호출한다.
-- missing client/publisher capability는 `disconnected`로 실패한다.
+- missing client/publisher 역할은 `disconnected`로 실패한다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
-- `channel_runtime_t` private runtime을 추가해 local server capability ingress에서
+- `channel_runtime_t` private runtime을 추가해 local server 역할 ingress에서
   `handler_registry_t::invoke(...)`로 request/send를 dispatch하게 했다.
 - outbound pending request table과 request sequence를 runtime state에 두고, 등록되지 않은
   reply completion은 `request_protocol_error`로 실패하게 했다.
 - `drain()`은 pending request table과 pending count를 정리한다.
-- capability enable 중복 코드는 `channel_builder_t::enable_capability(...)`로 모았다.
+- 역할 enable 중복 코드는 `channel_builder_t::enable_capability(...)`로 모았다.
 - `test_cpp_framework_channel_messaging`에서 manual path, outbound-only host,
   disconnected result, queue full result, local request/send dispatch, reply correlation,
   unmatched reply rejection을 검증했다.
@@ -3414,7 +3414,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 ### 발견한 위험 신호
 
 - C++에 `channel_runtime_bundle_t`와 `route_channel_runtime_t`는 생겼지만, `.NET`의
-  `ZLinkChannelBundleFactory`, `ZLinkChannelRuntimeManager`처럼 capability bundle 생성과
+  `ZLinkChannelBundleFactory`, `ZLinkChannelRuntimeManager`처럼 역할 bundle 생성과
   조회를 소유하는 내부 모듈이 없었다.
 - manager가 없으면 client/publisher lazy creation, inbound 초기화, monitoring source
   parsing, route channel lookup이 각각 call object, monitoring runtime, registry runtime에
@@ -3426,8 +3426,8 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| `channel_runtime_t`에 bundle map과 helper를 직접 추가 | 호출 지점이 적다 | 기존 outbound pending/reliability runtime과 capability owner가 섞인다 |
-| monitoring/registry/SPOT 쪽에서 필요한 bundle을 직접 만든다 | 당장 필요한 경로에 맞출 수 있다 | 같은 capability 생성 규칙이 여러 모듈로 새어 나온다 |
+| `channel_runtime_t`에 bundle map과 helper를 직접 추가 | 호출 지점이 적다 | 기존 outbound pending/reliability runtime과 역할 owner가 섞인다 |
+| monitoring/registry/SPOT 쪽에서 필요한 bundle을 직접 만든다 | 당장 필요한 경로에 맞출 수 있다 | 같은 역할 생성 규칙이 여러 모듈로 새어 나온다 |
 | `.NET`처럼 bundle factory, runtime manager, route dispatcher/pump를 private runtime으로 분리 | 책임이 깊고 파일 분류가 대응된다 | 내부 파일과 테스트가 늘어난다 |
 
 선택은 private runtime 분리다. bundle 생성 규칙은 factory가, state map과 lookup은 manager가,
@@ -3437,7 +3437,7 @@ route inbound dispatch는 dispatcher/pump가 맡는다.
 
 - `channel_runtime_state_t`에 server/client/publisher/subscriber bundle map과 route channel
   runtime map을 추가했다.
-- `channel_bundle_factory.*`를 추가해 capability snapshot에서 runtime bundle을 만들고
+- `channel_bundle_factory.*`를 추가해 역할 snapshot에서 runtime bundle을 만들고
   manual endpoint attachment를 처리하게 했다.
 - `channel_runtime_manager.*`를 추가해 client/publisher lazy creation, inbound/client/
   publisher 초기화, route channel 초기화와 lookup, monitoring source parsing을 담당하게
@@ -3489,7 +3489,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 | SPOT runtime에 route send/request를 직접 구현 | actor route 호출을 빨리 연결할 수 있다 | channel route와 actor route 상태가 중복된다 |
 | `.NET`처럼 route connection set과 route channel runtime을 private channel runtime으로 분리 | route transport 지식이 한 모듈에 모인다 | backend adapter 연결 전에도 내부 runtime 테스트가 필요하다 |
 
-선택은 private channel runtime 분리다. route channel은 channel runtime의 특수 capability로
+선택은 private channel runtime 분리다. route channel은 channel runtime의 특수 역할로
 보고, registry와 SPOT은 route channel id와 resolved routing id만 넘기도록 유지한다.
 
 ### 적용한 리팩토링
@@ -3529,7 +3529,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 - C++ channel runtime은 `.NET Runtime/Channels`의 packet dispatcher, reply writer,
   pending request table만 분리되어 있었고 runtime bundle, receive loop, message pump
   owner가 없었다.
-- manual connection set, receive gate, dealer-mesh pending request owner가 capability
+- manual connection set, receive gate, dealer-mesh pending request owner가 역할
   단위 내부 상태로 묶이지 않으면 이후 route runtime이나 native adapter가 붙을 때 같은
   상태 지식이 여러 모듈에 흩어질 위험이 있었다.
 - receive pump를 public call object나 builder 쪽으로 노출하면 사용자가 수신 순서와
@@ -3539,7 +3539,7 @@ ctest --test-dir framework/languages/cpp/build --output-on-failure
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| `channel_runtime_state_t`에 필드만 추가 | 변경 파일이 적다 | capability 단위 상태와 receive gate 책임이 큰 상태 객체에 섞인다 |
+| `channel_runtime_state_t`에 필드만 추가 | 변경 파일이 적다 | 역할 단위 상태와 receive gate 책임이 큰 상태 객체에 섞인다 |
 | receive pump를 public helper로 제공 | 테스트에서 직접 호출하기 쉽다 | raw 수신 루프가 public 계약처럼 보인다 |
 | `.NET`처럼 bundle, message pump, receive loop를 private runtime으로 분리 | public API를 유지하면서 내부 책임이 깊어진다 | 내부 파일과 테스트가 늘어난다 |
 
@@ -3549,7 +3549,7 @@ connection set은 `src/runtime/channels/*` 내부 모듈이 맡는다.
 ### 적용한 리팩토링
 
 - `channel_runtime_bundle.*`를 추가해 manual connection set, receive gate,
-  dealer-mesh pending request owner를 capability runtime 상태로 묶었다.
+  dealer-mesh pending request owner를 역할 runtime 상태로 묶었다.
 - `channel_message_pump.*`를 추가해 server ingress envelope dispatch를 packet dispatcher
   뒤에 숨겼다.
 - `channel_receive_loop.*`를 추가해 queued server message drain, reply 수집, receive
@@ -4303,7 +4303,7 @@ stream node 설정은 같은 key의 applier를 덮어써서 최종 상태만 한
   action을 추가하지 않고 같은 key의 applier를 갱신한다.
 - `apply()`는 일반 deferred action을 먼저 실행한 뒤 key 기반 applier를 한 번씩 실행한다.
 - `test_cpp_framework_module_hosted`에서 같은 `api-channel`에 server와 client를 함께 선언해도
-  최종 channel snapshot이 하나만 생기고 양쪽 capability가 모두 남는지 확인한다.
+  최종 channel snapshot이 하나만 생기고 양쪽 역할이 모두 남는지 확인한다.
 
 ### 재실행한 검증 명령
 
@@ -8770,41 +8770,41 @@ struct가 가장 단순하다. query module이 filter 의미를 소유하므로 
 - 기존 무인자 `service_summary()`와 `topology()`는 전체 snapshot API로 유지된다.
 - filter는 runtime/backend row 타입을 노출하지 않고 public value object만 사용한다.
 
-## 반복 POSD 재리뷰. Goal 9 capability builder draft surface 보정
+## 반복 POSD 재리뷰. Goal 9 역할 builder draft surface 보정
 
 ### 발견한 위험 신호
 
 - `cpp-framework-interfaces.ko.md`는 `client_capability_builder_t`,
-  `publisher_capability_builder_t` 같은 별도 타입과 per-capability timeout/pending option을
+  `publisher_capability_builder_t` 같은 별도 타입과 per-역할 timeout/pending option을
   public pseudo API로 적고 있었다.
-- 실제 C++ public header는 `.NET` channel capability builder와 같은 수준으로
+- 실제 C++ public header는 `.NET` channel 역할 builder와 같은 수준으로
   `capability_builder_t::bind/connect/use_discovery`만 제공한다.
 - 문서가 구현되지 않은 세부 option을 정식 표면처럼 보여 주면 사용자가 얕은 wrapper와 중복
   timeout 정책을 요구하게 된다. 이는 timeout/backpressure 지식이 call object, runtime queue,
-  capability builder로 흩어지는 change amplification이다.
+  역할 builder로 흩어지는 change amplification이다.
 
 ### 비교한 대안
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| 문서에 적힌 per-capability timeout API를 구현한다 | 문서와 코드는 맞는다 | `.NET` builder에도 없는 표면을 추가하고 timeout 정책이 분산된다 |
-| pseudo API를 삭제한다 | 거짓 표면이 사라진다 | channel capability의 실제 public shape가 문서에서 약해진다 |
-| pseudo API를 실제 `capability_builder_t`와 call/runtime timeout 정책으로 보정한다 | 문서와 코드가 맞고 public 표면을 늘리지 않는다 | per-capability timeout이 없다는 설명을 유지해야 한다 |
+| 문서에 적힌 per-역할 timeout API를 구현한다 | 문서와 코드는 맞는다 | `.NET` builder에도 없는 표면을 추가하고 timeout 정책이 분산된다 |
+| pseudo API를 삭제한다 | 거짓 표면이 사라진다 | channel 역할의 실제 public shape가 문서에서 약해진다 |
+| pseudo API를 실제 `capability_builder_t`와 call/runtime timeout 정책으로 보정한다 | 문서와 코드가 맞고 public 표면을 늘리지 않는다 | per-역할 timeout이 없다는 설명을 유지해야 한다 |
 
-선택은 세 번째 방식이다. C++ channel capability builder는 endpoint/discovery만 소유하고,
+선택은 세 번째 방식이다. C++ channel 역할 builder는 endpoint/discovery만 소유하고,
 request timeout은 call object가, pending queue 한도는 runtime builder가 소유한다.
 
 ### 적용한 리팩토링
 
-- `cpp-framework-interfaces.ko.md`의 channel capability pseudo API를 실제
+- `cpp-framework-interfaces.ko.md`의 channel 역할 pseudo API를 실제
   `capability_builder_t` 표면으로 정리했다.
-- 문서에 per-capability timeout/pending option을 만들지 않는 이유와 실제 소유자를 명시했다.
+- 문서에 per-역할 timeout/pending option을 만들지 않는 이유와 실제 소유자를 명시했다.
 
 ### 수정 후 점검
 
 - draft 문서는 존재하지 않는 `client_capability_builder_t::send_timeout(...)` 같은 public API를
   더 이상 정식 표면처럼 보여 주지 않는다.
-- 이번 보정 뒤 channel capability builder 문서/구현 불일치의 즉시 수정 이슈는 0개다.
+- 이번 보정 뒤 channel 역할 builder 문서/구현 불일치의 즉시 수정 이슈는 0개다.
 
 ## 반복 POSD 재리뷰. Goal 16 remote registry query client parity 보강
 
@@ -8953,10 +8953,10 @@ handler lookup table은 계속 runtime owner 안에 숨긴다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 기존 `publisher_channel_builder_t`에 subscriber와 handler group을 추가한다 | API 변경이 작다 | 이름이 publisher-only라 fanout 의도가 흐려진다 |
-| `.NET`처럼 `EnablePublisher`, `EnableSubscriber` 람다 builder를 그대로 옮긴다 | 원본과 이름이 가깝다 | C++ options layer에 capability pass-through 메서드가 늘어난다 |
+| `.NET`처럼 `EnablePublisher`, `EnableSubscriber` 람다 builder를 그대로 옮긴다 | 원본과 이름이 가깝다 | C++ options layer에 역할 pass-through 메서드가 늘어난다 |
 | `fanout_channel_builder_t`를 추가하고 `add_fanout_channel()`만 남긴다 | fanout 의도가 드러나고 이름이 하나로 모인다 | 기존 publisher-only 호출을 모두 바꿔야 한다 |
 
-선택은 세 번째 방식이다. C++ options layer는 낮은 수준 capability builder를 그대로 노출하지 않고,
+선택은 세 번째 방식이다. C++ options layer는 낮은 수준 역할 builder를 그대로 노출하지 않고,
 fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 builder에 모은다.
 
 ### 적용한 리팩토링
@@ -8964,7 +8964,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 - `fanout_channel_builder_t`를 추가했다.
 - `add_fanout_channel(...).enable_publisher(...)`, `.enable_subscriber()`, `.enable_subscriber(endpoint)`,
   `.use_handler_group(...)`을 제공한다.
-- publisher-only 별칭은 두지 않는다. publisher capability 는
+- publisher-only 별칭은 두지 않는다. publisher 역할은
   `add_fanout_channel(...).enable_publisher(...)`로 표현한다.
 - contract header regression이 fanout builder 반환형과 fluent 메서드를 고정한다.
 - module/options regression이 event channel의 publisher bind endpoint, subscriber connect endpoint,
@@ -8986,7 +8986,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 - `.NET`의 `AddDealerMeshChannel(...)`은 client bind, manual connection, handler group을
   dealer mesh channel이라는 사용자 개념 안에서 표현한다.
-- C++ runtime은 client capability의 bind/connect endpoint와 dealer mesh pending owner를 이미
+- C++ runtime은 client 역할의 bind/connect endpoint와 dealer mesh pending owner를 이미
   가지고 있었지만, high-level `zlink_framework_options_t`에는 이 의도를 드러내는
   `add_dealer_mesh_channel(...)` 표면이 없었다.
 - 사용자가 낮은 수준 `channel_builder_t::enable_client(...)`를 직접 조합해야 하면 dealer mesh와
@@ -9015,7 +9015,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 ### 수정 후 점검
 
-- application code는 dealer mesh channel을 만들기 위해 client capability의 bind/connect 조합이나
+- application code는 dealer mesh channel을 만들기 위해 client 역할의 bind/connect 조합이나
   pending request owner를 알 필요가 없다.
 - client/server, fanout, dealer mesh, route mesh channel 의도가 options layer에서 서로 분리된다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
@@ -9026,7 +9026,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 
 - `.NET` registration validation은 channel client role이 discovery 또는 manual connection 같은
   peer 획득 경로 없이 등록되면 startup 단계에서 실패시킨다.
-- C++ high-level `add_client_server_channel(...).enable_client()`는 client capability만 enabled로 만들고
+- C++ high-level `add_client_server_channel(...).enable_client()`는 client 역할만 enabled로 만들고
   discovery/manual endpoint를 명시하지 않았다. 이 경우 오류가 설정 시점이 아니라 실제 send/request
   호출 시점의 disconnected 결과로 밀린다.
 - fanout `subscriber()`도 endpoint 없이 role만 enabled로 만들 수 있었다. 이는 호출자가 설정 오류와
@@ -9038,7 +9038,7 @@ fanout channel의 publisher/subscriber/handler group 연결을 하나의 깊은 
 |------|------|------|
 | 현재처럼 호출 시 disconnected를 반환한다 | 구현 변경이 작다 | 설정 오류를 늦게 발견하고 `.NET` startup validation 기대와 다르다 |
 | `enable_client()`/`enable_subscriber()`를 금지하고 endpoint 인자만 허용한다 | 모호함이 없다 | registry discovery 기반 샘플 설정이 장황해지고 `.NET EnableClient()` 경험과 멀어진다 |
-| 인자 없는 `enable_client()`/`enable_subscriber()`를 discovery-backed로 정의하고 discovery가 없으면 `apply()`에서 실패시킨다 | 사용자 의도가 분명하고 설정 오류를 startup에서 잡는다 | options state가 discovery-backed capability를 추적해야 한다 |
+| 인자 없는 `enable_client()`/`enable_subscriber()`를 discovery-backed로 정의하고 discovery가 없으면 `apply()`에서 실패시킨다 | 사용자 의도가 분명하고 설정 오류를 startup에서 잡는다 | options state가 discovery-backed 역할을 추적해야 한다 |
 
 선택은 세 번째 방식이다. 인자 없는 role 활성화는 registry discovery 기반 연결이라는 의미로 닫고,
 manual 연결은 endpoint 인자를 받는 overload로 분리한다.
@@ -9046,9 +9046,9 @@ manual 연결은 endpoint 인자를 받는 overload로 분리한다.
 ### 적용한 리팩토링
 
 - `discovery_options_builder_t::add(...)`가 registry discovery endpoint를 options state에도 기록한다.
-- `add_client_server_channel(...).enable_client()`는 client capability에 `use_discovery()`를 적용한다.
-- `add_fanout_channel(...).enable_subscriber()`는 subscriber capability에 `use_discovery()`를 적용한다.
-- discovery-backed capability가 있는데 registry discovery endpoint가 없으면 `zlink_framework_options_t::apply()`가
+- `add_client_server_channel(...).enable_client()`는 client 역할에 `use_discovery()`를 적용한다.
+- `add_fanout_channel(...).enable_subscriber()`는 subscriber 역할에 `use_discovery()`를 적용한다.
+- discovery-backed 역할이 있는데 registry discovery endpoint가 없으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
 - module/options regression이 정상 `.enable_client()` snapshot의 discovery flag와 discovery 없는 `.enable_client()` 실패를
   검증한다.
@@ -9287,42 +9287,42 @@ options 적용 시점에 명확히 실패시킨다.
 - route mesh 선언과 validation 책임이 options layer에 모여 public API가 얕아지지 않는다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
-## 반복 POSD 재리뷰. SPOT node capability validation 보강
+## 반복 POSD 재리뷰. SPOT node 역할 validation 보강
 
 ### 발견한 위험 신호
 
-- `.NET` registration validation은 SPOT node가 router 또는 pub/sub capability 없이 등록되면 startup
+- `.NET` registration validation은 SPOT node가 router 또는 pub/sub 역할 없이 등록되면 startup
   단계에서 실패시킨다.
 - C++ high-level `add_spot_mesh(...).add_node(...)`는 discovery view를 자동으로 붙이지만, discovery는 실행
-  capability가 아니다. `enable_router(...)`와 `enable_pub_sub(...)`가 모두 빠져도 options 적용이
+  역할이 아니다. `enable_router(...)`와 `enable_pub_sub(...)`가 모두 빠져도 options 적용이
   가능했다.
-- capability 없는 SPOT node는 실제 메시지 ingress/egress 역할이 불분명해지고, 사용자가 discovery
-  설정과 runtime capability를 혼동하게 만든다.
+- 역할 없는 SPOT node는 실제 메시지 ingress/egress 역할이 불분명해지고, 사용자가 discovery
+  설정과 runtime 역할을 혼동하게 만든다.
 
 ### 비교한 대안
 
 | 대안 | 장점 | 단점 |
 |------|------|------|
-| runtime spot initializer에서 capability 없는 node를 실패시킨다 | runtime snapshot 기준으로 판단할 수 있다 | high-level 설정 오류가 늦게 드러난다 |
-| `add_spot_mesh(...).add_node(...)`가 기본 router capability를 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
-| options state가 SPOT node 선언과 router/pub-sub capability 보유 여부를 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 discovery와 capability 의미를 분리한다 | options state가 작은 validation metadata를 가진다 |
+| runtime spot initializer에서 역할 없는 node를 실패시킨다 | runtime snapshot 기준으로 판단할 수 있다 | high-level 설정 오류가 늦게 드러난다 |
+| `add_spot_mesh(...).add_node(...)`가 기본 router 역할을 자동으로 켠다 | 사용자 코드가 짧다 | endpoint를 추측할 수 없어 호출자에게 숨은 default를 만든다 |
+| options state가 SPOT node 선언과 router/pub-sub 역할 보유 여부를 추적하고 `apply()`에서 검증한다 | `.NET` startup validation과 맞고 discovery와 역할 의미를 분리한다 | options state가 작은 validation metadata를 가진다 |
 
-선택은 세 번째 방식이다. discovery는 peer discovery 의미로 유지하고, runtime capability는
+선택은 세 번째 방식이다. discovery는 peer discovery 의미로 유지하고, runtime 역할은
 `enable_router(...)` 또는 `enable_pub_sub(...)`로 명시하게 한다.
 
 ### 적용한 리팩토링
 
 - SPOT node 선언을 options state에 기록한다.
-- `enable_router(...)`와 `enable_pub_sub(...)` 호출은 해당 node가 runtime capability를 가진 것으로
+- `enable_router(...)`와 `enable_pub_sub(...)` 호출은 해당 node가 runtime 역할을 가진 것으로
   기록한다.
-- runtime capability 없는 SPOT node가 있으면 `zlink_framework_options_t::apply()`가
+- runtime 역할 없는 SPOT node가 있으면 `zlink_framework_options_t::apply()`가
   `request_protocol_error`로 실패한다.
-- module/options regression이 capability 없이 spot만 등록한 node의 apply 실패를 검증한다.
-- `cpp-framework-interfaces.ko.md`에 SPOT node capability 필수 규칙을 적었다.
+- module/options regression이 역할 없이 spot만 등록한 node의 apply 실패를 검증한다.
+- `cpp-framework-interfaces.ko.md`에 SPOT node 역할 필수 규칙을 적었다.
 
 ### 수정 후 점검
 
-- application code는 discovery view와 SPOT runtime capability를 혼동하지 않아도 된다.
+- application code는 discovery view와 SPOT runtime 역할을 혼동하지 않아도 된다.
 - 설정 오류는 SPOT runtime 시작 뒤가 아니라 framework options apply 단계에서 드러난다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
@@ -9333,7 +9333,7 @@ options 적용 시점에 명확히 실패시킨다.
 - `.NET` registration validation은 `AcceptSpotRoutesFromChannel(...)` 대상 channel이
   router-capable ingress인지 startup 단계에서 검증한다.
 - C++ high-level `accept_routes_from_channel(...)`은 channel 이름을 handler exposure 예외로만
-  기록했다. 그래서 router capability 누락, fanout/dealer mesh 오용, 미등록 channel, 모호한
+  기록했다. 그래서 router 역할 누락, fanout/dealer mesh 오용, 미등록 channel, 모호한
   channel 이름, registry discovery 누락이 더 늦은 단계로 흘러갈 수 있었다.
 - route relay는 registry snapshot과 route channel 의미에 의존한다. 이 지식을 호출자나 runtime
   실패 메시지에 흩어 두면 정보 은닉이 깨진다.
@@ -9354,10 +9354,10 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 - client/server channel, fanout channel, route mesh channel, dealer mesh channel 선언을
   options state에서 구분해 추적한다.
 - `accept_routes_from_channel(...)`은 node별 accepted route channel로 기록한다.
-- accepted route channel을 가진 node가 router capability를 켜지 않았거나, 대상 channel이
+- accepted route channel을 가진 node가 router 역할을 켜지 않았거나, 대상 channel이
   client/server 또는 route mesh가 아니거나, registry discovery가 없으면 `apply()`가
   `request_protocol_error`로 실패한다.
-- module/options regression이 router capability 누락, unknown channel, fanout channel 오용,
+- module/options regression이 router 역할 누락, unknown channel, fanout channel 오용,
   ambiguous channel 이름, registry discovery 누락을 검증한다.
 - `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 accepted route channel
   validation 규칙을 적었다.
@@ -9413,10 +9413,10 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 ### 발견한 위험 신호
 
 - `.NET` registration validation은 SPOT node가 attach한 channel client와 publisher client가
-  실제 등록된 capability인지 startup 단계에서 검증한다.
+  실제 등록된 역할인지 startup 단계에서 검증한다.
 - C++ high-level `attach_channel_client(...)`는 이름만 low-level snapshot으로 넘겼고,
   `attach_publisher(...)`는 low-level builder에는 있지만 high-level fluent options 표면에는 없었다.
-- attach 대상 channel이 없거나 capability가 맞지 않는 오류가 runtime 내부까지 흘러가면,
+- attach 대상 channel이 없거나 역할이 맞지 않는 오류가 runtime 내부까지 흘러가면,
   호출자는 SPOT node 설정 오류와 channel 연결 오류를 구분해야 한다.
 
 ### 비교한 대안
@@ -9425,7 +9425,7 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 |------|------|------|
 | low-level `spot_node_builder_t` snapshot만 유지한다 | public options state가 작다 | high-level sample과 `.NET` startup validation의 오류 위치가 어긋난다 |
 | attached client를 일반 `channel_client_t` 주입으로만 대체한다 | surface가 줄어든다 | SPOT node별 attach 의도를 표현하지 못하고 `.NET` sample 구조와 달라진다 |
-| high-level options가 node별 attach 의도와 channel capability를 추적하고 `apply()`에서 검증한다 | attach 정책이 설정 layer에 모이고 오류가 이른 시점에 드러난다 | options state가 validation metadata를 더 가진다 |
+| high-level options가 node별 attach 의도와 channel 역할을 추적하고 `apply()`에서 검증한다 | attach 정책이 설정 layer에 모이고 오류가 이른 시점에 드러난다 | options state가 validation metadata를 더 가진다 |
 
 선택은 세 번째 방식이다. attached client는 SPOT node configuration의 의미이므로, runtime bundle
 생성 실패가 아니라 framework options validation으로 닫는 편이 호출자 부담을 줄인다.
@@ -9433,13 +9433,13 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 ### 적용한 리팩토링
 
 - `spot_node_options_builder_t::attach_publisher(...)`를 high-level fluent options에 추가했다.
-- client/server channel 등록 여부와 fanout channel의 publisher capability를 options state에서
+- client/server channel 등록 여부와 fanout channel의 publisher 역할을 options state에서
   추적한다.
 - node별 attached channel client와 attached publisher를 options state에 기록한다.
 - attached channel client는 등록된 client/server channel과 registry discovery를 요구한다.
-- attached publisher는 등록된 fanout publisher capability와 SPOT node pub/sub capability를
+- attached publisher는 등록된 fanout publisher 역할과 SPOT node pub/sub 역할을
   요구하고, publisher channel 중복 attach를 거부한다.
-- module/options regression이 정상 publisher attach와 missing channel, missing capability,
+- module/options regression이 정상 publisher attach와 missing channel, missing 역할,
   missing discovery, duplicate publisher attach를 검증한다.
 - `cpp-framework-interfaces.ko.md`에 attached client/publisher validation 규칙을 적었다.
 
@@ -9449,17 +9449,17 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 - low-level builder 표면과 high-level fluent options 표면의 역할 차이가 줄었다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
-## 반복 POSD 재리뷰. Channel capability shape validation 보강
+## 반복 POSD 재리뷰. Channel 역할 shape validation 보강
 
 ### 발견한 위험 신호
 
-- `.NET` `ValidateChannelShape`는 client/server channel이 server 또는 client capability를 하나도
-  켜지 않았거나, fanout channel이 publisher 또는 subscriber capability를 하나도 켜지 않으면
+- `.NET` `ValidateChannelShape`는 client/server channel이 server 또는 client 역할을 하나도
+  켜지 않았거나, fanout channel이 publisher 또는 subscriber 역할을 하나도 켜지 않으면
   startup 단계에서 실패시킨다.
 - C++ high-level `add_client_server_channel(name)`과 `add_fanout_channel(name)`은 선언만 해도 action을
   등록할 수 있었다. 아무 역할도 없는 channel은 public API에서 의미가 없고, 이후 runtime snapshot
   해석으로 오류가 미뤄질 수 있다.
-- 역할 없는 channel 선언을 허용하면 사용자가 channel kind와 capability를 별도로 추적해야 하므로
+- 역할 없는 channel 선언을 허용하면 사용자가 channel kind와 역할을 별도로 추적해야 하므로
   호출자 부담이 늘어난다.
 
 ### 비교한 대안
@@ -9468,20 +9468,20 @@ runtime socket 오류보다 먼저 사용자 설정 오류로 닫는 편이 호�
 |------|------|------|
 | low-level `zlink_builder_t`가 빈 channel snapshot을 무시한다 | 실행 오류는 줄어든다 | 사용자 설정 실수를 조용히 숨긴다 |
 | builder 생성자에서 즉시 실패시킨다 | 가장 이른 실패다 | fluent builder에서 나중에 `.enable_server(...)`, `.enable_client(...)`를 붙이는 정상 사용을 막는다 |
-| options state가 channel 선언과 capability 보유 여부를 추적하고 `apply()`에서 검증한다 | fluent chaining을 보존하면서 `.NET` startup validation과 맞춘다 | options state가 validation metadata를 가진다 |
+| options state가 channel 선언과 역할 보유 여부를 추적하고 `apply()`에서 검증한다 | fluent chaining을 보존하면서 `.NET` startup validation과 맞춘다 | options state가 validation metadata를 가진다 |
 
 선택은 세 번째 방식이다. channel builder는 단계적으로 구성되므로 생성자에서 실패시키지 않고,
 최종 options 적용 시점에 의미 없는 선언을 닫는다.
 
 ### 적용한 리팩토링
 
-- client/server channel 선언과 server/client capability 보유 여부를 options state에서 대조한다.
-- fanout channel 선언과 publisher/subscriber capability 보유 여부를 options state에서 대조한다.
-- capability가 하나도 없는 client/server 또는 fanout channel은 `apply()`가
+- client/server channel 선언과 server/client 역할 보유 여부를 options state에서 대조한다.
+- fanout channel 선언과 publisher/subscriber 역할 보유 여부를 options state에서 대조한다.
+- 역할이 하나도 없는 client/server 또는 fanout channel은 `apply()`가
   `request_protocol_error`로 실패한다.
 - module/options regression이 역할 없는 client/server channel과 fanout channel의 apply 실패를
   검증한다.
-- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 channel capability shape
+- `cpp-framework-interfaces.ko.md`와 `cpp-channel-messaging.ko.md`에 channel 역할 shape
   validation 규칙을 적었다.
 
 ### 수정 후 점검
@@ -9547,7 +9547,7 @@ state가 닫고, 서로 다른 group이 같은 channel에 같은 packet을 노�
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | registry discovery만 허용한다 | 구현이 작다 | `.NET` manual accepted route 사용 흐름과 맞지 않는다 |
-| accepted route manual endpoint를 client/server channel client endpoint로 합친다 | 기존 channel snapshot을 재사용한다 | route ingress 설정이 channel client capability로 새어 나간다 |
+| accepted route manual endpoint를 client/server channel client endpoint로 합친다 | 기존 channel snapshot을 재사용한다 | route ingress 설정이 channel client 역할로 새어 나간다 |
 | accepted route channel snapshot과 manual endpoint builder를 별도로 둔다 | accepted route ingress 의도가 분리되고 `.NET` peer source 정책과 맞는다 | snapshot type과 options state가 늘어난다 |
 
 선택은 세 번째 방식이다. accepted route ingress는 SPOT node의 설정이며, registry remote address
@@ -9584,7 +9584,7 @@ resolver와 같은 필드에 섞지 않는다. peer source는 discovery 또는 r
   제공하고, attached channel client는 discovery 또는 manual connection으로 peer를 얻을 수 있다.
 - C++ high-level attach 표면은 channel 이름만 받았고 attached channel client에 registry discovery를
   항상 요구했다.
-- C++ validation은 attached channel client 대상이 client/server client capability를 가져야 한다고
+- C++ validation은 attached channel client 대상이 client/server client 역할을 가져야 한다고
   보았지만, `.NET`은 server-only client/server channel에도 SPOT node가 자체 outbound dealer를
   attach할 수 있다.
 - attach 호출마다 low-level action을 쌓는 방식은 같은 attach를 다시 configure할 때 duplicate
@@ -9595,11 +9595,11 @@ resolver와 같은 필드에 섞지 않는다. peer source는 discovery 또는 r
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | 기존 이름-only attach만 유지한다 | 표면이 작다 | `.NET` manual attach flow와 맞지 않는다 |
-| channel client의 `client(endpoint)` 설정을 attach manual endpoint로 재사용한다 | 새 builder가 없다 | channel capability 설정과 SPOT attach 설정이 섞인다 |
+| channel client의 `client(endpoint)` 설정을 attach manual endpoint로 재사용한다 | 새 builder가 없다 | channel 역할 설정과 SPOT attach 설정이 섞인다 |
 | attach별 builder와 상세 snapshot을 추가하고 apply 시점에 한 번 materialize한다 | attach 의도와 peer source가 분리되고 duplicate action을 피한다 | snapshot type과 options state가 늘어난다 |
 
 선택은 세 번째 방식이다. attached client/publisher는 SPOT node configuration의 일부이므로, channel
-capability 설정과 섞지 않고 attach별 endpoint 목록을 별도 값으로 둔다.
+역할 설정과 섞지 않고 attach별 endpoint 목록을 별도 값으로 둔다.
 
 ### 적용한 리팩토링
 
@@ -9611,7 +9611,7 @@ capability 설정과 섞지 않고 attach별 endpoint 목록을 별도 값으로
 - attach 호출은 action list가 아니라 options state에 기록하고, `apply()`에서 한 번 low-level snapshot으로
   materialize하도록 정리했다.
 - attached channel client validation은 registry discovery 또는 attach별 manual endpoint 중 하나가
-  있으면 통과하도록 바꿨고, 대상 channel은 client capability가 아니라 client/server channel
+  있으면 통과하도록 바꿨고, 대상 channel은 client 역할이 아니라 client/server channel
   등록 여부만 요구한다.
 - module/options regression이 discovery 없는 attached channel client manual endpoint와 attached
   publisher manual endpoint snapshot을 검증한다.
@@ -9676,10 +9676,10 @@ bind하면서 성공 여부를 결정하게 둔다.
 |------|------|------|
 | 단일 endpoint 정책을 문서화한다 | 구현 변경이 작다 | `.NET` manual connection collection 기대와 맞지 않는다 |
 | `clients({ ... })`, `subscribers({ ... })` 같은 새 API를 추가한다 | 복수 endpoint 의도가 드러난다 | 기존 fluent chain과 다르고 public 표면이 불필요하게 늘어난다 |
-| 기존 `client(endpoint)`와 `subscriber(endpoint)` 반복 호출을 endpoint 추가로 정의한다 | C++ fluent style을 유지하고 low-level capability 의미와 맞다 | discovery mode 전환 시 manual 목록을 명확히 비워야 한다 |
+| 기존 `client(endpoint)`와 `subscriber(endpoint)` 반복 호출을 endpoint 추가로 정의한다 | C++ fluent style을 유지하고 low-level 역할 의미와 맞다 | discovery mode 전환 시 manual 목록을 명확히 비워야 한다 |
 
 선택은 세 번째 방식이다. C++에서는 `Connect(...)` 컬렉션 builder 대신 같은 fluent method를 반복
-호출하는 것이 자연스럽고, low-level capability snapshot도 이미 목록을 소유한다.
+호출하는 것이 자연스럽고, low-level 역할 snapshot도 이미 목록을 소유한다.
 
 ### 적용한 리팩토링
 
@@ -9693,7 +9693,7 @@ bind하면서 성공 여부를 결정하게 둔다.
 
 ### 수정 후 점검
 
-- high-level builder가 low-level capability의 manual connection collection 의미를 잃지 않는다.
+- high-level builder가 low-level 역할의 manual connection collection 의미를 잃지 않는다.
 - C++ 사용자는 새 public 타입 없이 `.NET`의 manual connection collection과 같은 사용자 흐름을
   갖는다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
@@ -9739,11 +9739,11 @@ bind하면서 성공 여부를 결정하게 둔다.
 ### 발견한 위험 신호
 
 - `.NET`의 `ISpotRouterCapabilityBuilder`와 `ISpotPubSubCapabilityBuilder`는
-  `UseManualConnections(...)`를 제공해 registry discovery 없이 capability peer를 직접 지정할
+  `UseManualConnections(...)`를 제공해 registry discovery 없이 역할 peer를 직접 지정할
   수 있다.
 - C++ high-level `enable_router(...)`와 `enable_pub_sub(...)`는 bind endpoint와 routing id만
   보존했고, manual peer를 표현할 방법이 없었다.
-- attach channel client, attached publisher, accepted route의 manual endpoint를 capability peer로
+- attach channel client, attached publisher, accepted route의 manual endpoint를 역할 peer로
   재사용하면 서로 다른 설계 결정을 한 필드에 섞어 정보 은닉이 약해진다.
 
 ### 비교한 대안
@@ -9751,10 +9751,10 @@ bind하면서 성공 여부를 결정하게 둔다.
 | 대안 | 장점 | 단점 |
 |------|------|------|
 | router/pub-sub manual peer를 지원하지 않는다 | public 표면이 작다 | `.NET`의 고정 endpoint SPOT topology 흐름과 맞지 않는다 |
-| attach/accepted route manual endpoint를 capability peer로 재사용한다 | 새 builder가 적다 | attach, route ingress, SPOT capability 의도가 섞인다 |
-| router/pub-sub capability별 configure builder와 snapshot 필드를 추가한다 | peer source 책임이 분리되고 `.NET` configure 흐름과 맞다 | public builder 타입과 snapshot 필드가 늘어난다 |
+| attach/accepted route manual endpoint를 역할 peer로 재사용한다 | 새 builder가 적다 | attach, route ingress, SPOT 역할 의도가 섞인다 |
+| router/pub-sub 역할별 configure builder와 snapshot 필드를 추가한다 | peer source 책임이 분리되고 `.NET` configure 흐름과 맞다 | public builder 타입과 snapshot 필드가 늘어난다 |
 
-선택은 세 번째 방식이다. SPOT router/pub-sub manual peer는 capability 자체의 연결 정책이며,
+선택은 세 번째 방식이다. SPOT router/pub-sub manual peer는 역할 자체의 연결 정책이며,
 attached channel client나 accepted route ingress의 peer와 다른 정보다. C++에서는
 `enable_router(endpoint, [](auto &router) { router.connect(peer); })`처럼 fluent configure builder로
 표현한다.
@@ -9768,12 +9768,12 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
   `spot_pub_sub_capability_builder_t`를 추가했다.
 - `spot_node_options_builder_t::enable_router(endpoint, configure)`와
   `enable_pub_sub(endpoint, configure)` overload를 추가해 routing id와 manual peer를 같은
-  capability configure 안에서 설정하게 했다.
+  역할 configure 안에서 설정하게 했다.
 - contract header, SPOT runtime, registry topology regression과 draft 문서를 갱신했다.
 
 ### 수정 후 점검
 
-- SPOT capability peer, attached client peer, accepted route peer가 public snapshot에서 분리된다.
+- SPOT 역할 peer, attached client peer, accepted route peer가 public snapshot에서 분리된다.
 - registry discovery 없이 고정 endpoint SPOT topology를 `.NET`과 같은 사용자 흐름으로 구성할 수
   있다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
@@ -9845,7 +9845,7 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
   보존하고 조회할 수 있게 했다.
 - high-level `client_server_channel_builder_t::enable_spot_route_egress(...)`와
   `route_mesh_channel_builder_t::enable_spot_route_egress(...)`를 추가했다.
-- client/server channel egress는 client capability가 없으면 options 적용 시점에 실패하게 했다.
+- client/server channel egress는 client 역할이 없으면 options 적용 시점에 실패하게 했다.
 - contract header, channel messaging, registry topology, module hosted regression과 draft 문서를
   갱신했다.
 
@@ -9853,7 +9853,7 @@ attached channel client나 accepted route ingress의 peer와 다른 정보다. C
 
 - egress target은 handler group, accepted route ingress, manual peer 목록과 분리된다.
 - route mesh egress target은 `options.apply()` 이후 route runtime까지 보존된다.
-- client/server egress는 local client capability가 없으면 즉시 설정 오류로 드러난다.
+- client/server egress는 local client 역할이 없으면 즉시 설정 오류로 드러난다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
 
 ## 반복 POSD 재리뷰. STREAM typed session registration parity 보강

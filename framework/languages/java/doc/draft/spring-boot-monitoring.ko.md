@@ -54,7 +54,7 @@ configurer가 없으면 monitoring runner를 만들지 않는다.
 
 | Source | 등록 메서드 | source name 기준 |
 |--------|-------------|------------------|
-| socket | `addSocketEvents(...)` | channel capability logical name |
+| socket | `addSocketEvents(...)` | channel 역할 logical name |
 | registry | `addRegistryEvents(...)` | embedded registry logical name |
 | spot | `addSpotEvents(...)` | SpotNode name |
 

@@ -35,8 +35,8 @@ flowchart LR
 
 ## 0. gRPC 를 쓰던 웹 서비스라면
 
-이 축은 게임 서버 전용이 아니다. 일반 웹/마이크로서비스 백엔드에서 **서비스 간
-gRPC 를 대체**하는 용도로 그대로 쓴다. 서비스마다 host:port 를 알리거나 앞단에
+channel messaging 은 일반 웹·마이크로서비스 백엔드에서 **서비스 간 gRPC 를
+대체**하는 용도로 쓴다. 서비스마다 host:port 를 알리거나 앞단에
 gateway/로드밸런서를 둘 필요 없이, 논리 `channel name` + discovery 로 호출을 묶는다.
 `.proto` IDL·HTTP/2 전용 인프라·코드 생성 없이 DTO(record)와 typed handler 만으로
 gRPC 의 네 가지 호출 형태를 얻는다.
@@ -88,7 +88,7 @@ var placed = await client
 
 ## 1. 두 가지 channel 종류
 
-| 등록 메서드 | transport | capability | 용도 |
+| 등록 메서드 | transport | 역할 | 용도 |
 |-------------|-----------|------------|------|
 | `AddClientServerChannel` | DEALER → ROUTER | `EnableServer` / `EnableClient` | request, send |
 | `AddFanoutChannel` | PUB / SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
@@ -292,7 +292,7 @@ public sealed class PriceService(IZLinkChannelClient client)
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
 - `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
-- channel 이나 client capability 가 없으면 socket 을 만들지 않고
+- channel 이나 client 역할이 없으면 socket 을 만들지 않고
   `ZLinkConfigurationException` 으로 실패한다(`IZLinkChannelClient` 자체는 항상 DI 에
   등록되어 있다).
 
@@ -351,7 +351,7 @@ filter 도 `new` 가 아니라 .NET DI 에서 resolve 된다.
 ## 6. 연결 제어
 
 기본은 `UseDiscovery(...AddRegistryEndpoint...)` 자동 연결이다([03-concepts](./03-concepts.ko.md) §5).
-수동 연결은 startup builder 에서 capability 단위로 설정한다.
+수동 연결은 startup builder 에서 역할 단위로 설정한다.
 
 ```csharp
 // 등록 시점 수동 연결 (capability 단위)
@@ -466,7 +466,7 @@ public sealed class UserCacheRefreshedEventHandler
 
 - **handler 가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
   않는다. `AddHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
-- **`ZLinkConfigurationException`** → channel 이 없거나 해당 capability 가 없는
+- **`ZLinkConfigurationException`** → channel 이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
   client 에 연결 경로 없음. fail-fast 다([03-concepts](./03-concepts.ko.md) §4).

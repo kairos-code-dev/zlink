@@ -346,7 +346,7 @@ zlink_config_result_t zlink_spot_node_attach_router_channel_discovery(
   void *discovery);
 ```
 
-이 API들은 `SpotNode`의 routed router를 router capability가 있는 channel의
+이 API들은 `SpotNode`의 routed router를 router 역할이 있는 channel의
 `ROUTER` peer에 연결한다. 연결된 router channel은
 `zlink_router_send_spot_part()` 또는 `zlink_router_request_spot_part()`로
 target node routing id와 target spot routing id를 지정해 local `Spot`으로

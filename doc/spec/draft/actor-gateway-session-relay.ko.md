@@ -428,7 +428,7 @@ ActorGateway 는 public socket endpoint 가 아니라 SpotNode 내부 runtime �
 | `spot.h` 항목 | 현재 구현 요약 | 변경 또는 유지 결정 |
 |---------------|----------------|---------------------|
 | `zlink_spot_node_options_t` | `mode` 하나만 가진다 | ActorGateway flag 를 넣지 않는다. struct ABI 변경을 피하고 lazy init 을 사용한다 |
-| `zlink_spot_node_new(...)` | SpotNode 를 만들고 mode 로 pubsub/routed capability 를 정한다 | signature 유지. ActorGateway state 는 관련 API 호출 시 lazy init 한다 |
+| `zlink_spot_node_new(...)` | SpotNode 를 만들고 mode 로 pubsub/routed 역할을 정한다 | signature 유지. ActorGateway state 는 관련 API 호출 시 lazy init 한다 |
 | `zlink_spot_node_destroy(...)` | node owned socket, spot facade, actor state 를 정리한다 | signature 유지. lazy gateway state, stream attach state, bound session mapping 을 함께 정리해야 한다 |
 | `zlink_spot_new(...)` | user Spot facade 를 만들고 routed mode 면 request/reply state 를 만든다 | signature 유지. ActorGateway state 가 있으면 facade 등록/해제 때 actor lifecycle queue 와 join queue 정리를 기존처럼 유지한다 |
 | `zlink_spot_node_entry_spot(...)` | Entry Spot facade 를 만든다 | signature 유지. Entry Spot 은 Actor 생성의 초기 current Spot 이지만 direct join target 으로는 계속 거부한다 |
@@ -883,7 +883,7 @@ framework 적용 항목만 남긴다.
 | `IZLinkSpotClient.SendChannel(...)` / `RequestChannel(...)` | current Spot 에서 attached channel client 로 메시징 | ActorGateway 와 직접 관련 없음. session actor relay 대체 수단으로 설명하면 안 된다 |
 | `IZLinkRoutedSpotClient` / `ViaEgressChannel(...)` | current Spot 밖에서 target Spot 으로 routed Spot 메시징 | 유지한다. ActorGateway session relay 와 별도 기능임을 문서에 분리한다 |
 | `ZLinkSpotRemoteAddress` | Spot routed egress resolver 결과 | 유지한다. ActorGateway remote locator 와 다른 spot-only 의미를 명시하되, 별도 public Spot ref handle 은 두지 않는다 |
-| `IZLinkSpotNodeBuilder.EnableRouter(...)` | public routed Spot/Spot mesh router capability | ActorGateway lazy init 조건과 다르다. ActorGateway 가 내부적으로 router 를 쓰더라도 이 API 를 session relay 설정으로 쓰지 않는다 |
+| `IZLinkSpotNodeBuilder.EnableRouter(...)` | public routed Spot/Spot mesh router 역할 | ActorGateway lazy init 조건과 다르다. ActorGateway 가 내부적으로 router 를 쓰더라도 이 API 를 session relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AcceptSpotRoutesFromChannel(...)` | external route channel 에서 이 SpotNode 로 routed Spot packet 을 받도록 연결 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder.AttachChannelClient(...)` / `AttachClientServerChannelClient(...)` | Spot handler 가 channel client 로 나갈 수 있게 dealer 를 붙인다 | ActorGateway relay 설정으로 쓰지 않는다 |
 | `IZLinkSpotNodeBuilder` | SpotNode routing/bind/factory 설정 | ActorGateway 를 켜는 API 는 추가하지 않는다. ActorGateway 는 routed SpotNode 위에서 lazy init 된다 |

@@ -2,7 +2,7 @@
 [문서 목록](../../../../doc/README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Channel Messaging — request · send · pub/sub](./04-channel-messaging.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# 3. 핵심 개념 — .NET 표면 멘탈 모델
+# 3. .NET ZLink Framework 이해를 위한 핵심 개념
 
 > 개념의 정식 의미는 공통 스펙([interaction-model](../../../../doc/spec/interaction-model.ko.md),
 > [message-model](../../../../doc/spec/message-model.ko.md),
@@ -10,10 +10,10 @@
 > 정식 정의는 [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가
 > 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
-이 다섯 가지 개념만 잡으면 나머지 챕터가 전부 변주로 읽힌다: **channel · capability ·
+이 다섯 가지 개념만 잡으면 나머지 챕터가 전부 변주로 읽힌다: **channel · 역할 ·
 handler · client · DI/lifecycle**.
 
-## 0. 용어 빠르게 잡기 (주니어용)
+## 0. 용어 빠르게 잡기
 
 가이드에 자주 나오는 용어를 **한 줄 풀이**로 먼저 잡는다. 다른 챕터에서 낯선 단어가
 나오면 이 표로 돌아오면 된다(정식 정의는 위 spec 링크가 다룬다).
@@ -21,7 +21,7 @@ handler · client · DI/lifecycle**.
 | 용어 | 한 줄 풀이 |
 |------|-----------|
 | **channel(채널)** | 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
-| **capability(역할/능력)** | 한 channel 이 맡는 역할 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
+| **역할** | 한 channel 이 맡는 역할 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
 | **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core` 의 컨트롤러 액션과 같은 위치 |
 | **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkChannelClient`) |
 | **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
@@ -67,24 +67,23 @@ handler · client · DI/lifecycle**.
 handler 는 결과를 **반환값**으로 돌려준다. request handler 는 `ValueTask<TReply>`,
 send/publish handler 는 `ValueTask` 다.
 
-## 3. capability — channel 이 맡는 역할
+## 3. 역할 — channel 이 맡는 일
 
-channel 은 `AddZLinkFramework(options => ...)` 안에서 등록하고, 그 channel 이 가질
-역할을 capability 로 선언한다. transport 매핑은 channel 종류가 정한다.
+channel 은 `AddZLinkFramework(options => ...)` 안에서 등록하고, 역할을 선언한다. transport 매핑은 channel 종류가 정한다.
 
-| 등록 메서드 | transport | capability |
+| 등록 메서드 | transport | 역할 |
 |-------------|-----------|------------|
 | `AddClientServerChannel` | DEALER → ROUTER | `EnableServer()` / `EnableClient()` |
 | `AddFanoutChannel` | PUB / SUB | `EnablePublisher()` / `EnableSubscriber()` |
 
-| capability | 의미 | 비고 |
+| 역할 | 의미 | 비고 |
 |------------|------|------|
 | `EnableServer()` | 이 channel 의 request/send 를 local handler 가 받는다 | `Bind(...)` 필수 |
 | `EnableClient()` | 이 channel 로 request/send 를 내보낸다 | outbound 전용 앱 가능 |
 | `EnablePublisher()` | 이 channel 로 이벤트를 publish 한다 | `Bind(...)` 필수 |
 | `EnableSubscriber()` | 이 channel 의 이벤트를 구독한다 | |
 
-한 channel 이 여러 capability 를 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를
+한 channel 이 여러 역할을 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를
 구독). server/publisher 는 외부가 접근할 endpoint 가 필요하므로 `Bind(...)`가
 필수고, client/subscriber 는 필요 없다.
 
@@ -109,7 +108,7 @@ startup 에서 즉시 예외로 막힌다.
 
 - channel 이름 중복 등록
 - 같은 channel 안에서 `kind + packet name` 중복(요청/단방향/이벤트 × packet 이름)
-- client capability 에 `Discovery`도 수동 연결도 없는 경우
+- client 역할에 `Discovery`도 수동 연결도 없는 경우
 - 허용되지 않는 handler 반환형
 
 ## 5. 연결: Discovery vs 수동
@@ -117,12 +116,12 @@ startup 에서 즉시 예외로 막힌다.
 - **기본은 channel 별 `Discovery` 자동 연결**이다. `options.UseDiscovery(...AddRegistryEndpoint...)` 를
   한 번 호출하면 이후 등록되는 모든 client/subscriber 가 이 Registry view 를
   기본 연결로 쓴다.
-- **수동 연결**이 필요하면 capability builder 의
+- **수동 연결**이 필요하면 역할 builder 의
   `UseManualConnections(peers => peers.Connect("tcp://10.0.10.15:7301"))` 로
-  지정한다. 수동 연결은 **capability 단위**(같은 channel 의 client 와 subscriber 는
+  지정한다. 수동 연결은 **역할 단위**(같은 channel 의 client 와 subscriber 는
   별도 연결 집합)이고, endpoint 만 받는다(remote routing id 는 받지 않는다).
 
-| 전역 `UseDiscovery` | capability `UseManualConnections` | 결과 |
+| 전역 `UseDiscovery` | 역할 `UseManualConnections` | 결과 |
 |:---:|:---:|---|
 | O | X | Discovery 자동 연결 |
 | O | O | 수동 연결 우선 |
@@ -141,7 +140,7 @@ framework public 계약은 host 시작 뒤 endpoint 를 바꾸는 별도 연결 
   따른다. handler 의존성은 **생성자 주입**으로 받는다(context 에서 service locator
   로 꺼내지 않는다).
 - framework runtime 은 hosted service 로 호스트 시작/종료에 함께 묶인다. channel
-  runtime 은 startup 에서 등록 capability 를 보고 생성되고, shutdown 에서
+  runtime 은 startup 에서 등록 역할을 보고 생성되고, shutdown 에서
   정리된다.
 - outbound 는 **목적별 client 를 주입**받아 호출한다.
 

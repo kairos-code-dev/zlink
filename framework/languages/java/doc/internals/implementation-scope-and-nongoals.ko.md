@@ -13,7 +13,7 @@
 - channel builder 4종: client/server, fanout, dealer mesh, route mesh
 - `ZLinkClient`, `ZLinkFanoutClient`, `ZLinkRouteClient`
 - handler interface와 annotation mapping
-- global discovery와 capability별 manual connection
+- global discovery와 역할별 manual connection
 - backend adapter layer
 - runtime building block: `Runtime/Execution/`의 serial executor(session/spot
   콜백 직렬 dispatch), polling backoff, bounded task set, runtime task runner

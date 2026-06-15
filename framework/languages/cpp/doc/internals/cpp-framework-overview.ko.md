@@ -169,7 +169,7 @@ host/runtime 표면으로만 구체화한다.
   `Naming Policy`를 그대로 따른다. `C++` 문서에서는 메서드는 `snake_case`,
   타입은 `_t` 접미사를 기준으로 적는다.
 - 수동 연결은 `channel + capability` 또는 `spot node + capability` 단위로
-  설명한다. 같은 capability 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
+  설명한다. 같은 역할 안에서는 `Discovery`와 manual 연결을 섞지 않는다.
 - send/publish의 async submit과 backpressure 의미는
   [framework 공통 비동기 정책](../../../../doc/spec/async-execution-policy.ko.md)을
   따른다.
@@ -243,7 +243,7 @@ connector가 붙는 흐름을 포함한다. STREAM과 ActorGateway 기반 actor/
 - zlink framework가 application host/runtime 역할 일부를 직접 제공한다.
 - 기능과 사용성 개념은 `.NET` framework와 동일하게 잡고, C++20 표현으로만 바꾼다.
 - channel messaging 기본 호출은 `channel name` 기준이다.
-- channel capability는 startup 시점에 등록한다.
+- channel 역할은 startup 시점에 등록한다.
 - 일반 request/send handler dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)`는 reply correlation 경로로 본다.
 - packet key 기본값은 payload 타입 이름을 쓴다.

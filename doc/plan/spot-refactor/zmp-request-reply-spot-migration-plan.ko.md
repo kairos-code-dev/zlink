@@ -45,7 +45,7 @@ ZMP multipart control part 로 표현된다.
 
 ## 2.1 구현 중 정리해도 되는 항목
 
-- capability 광고 필드 이름
+- 역할 광고 필드 이름
 - SPOT rid 길이 제한
 - topology/status 노출 필드 이름
 - SPOT 공개 타입 이름

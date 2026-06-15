@@ -643,7 +643,7 @@ import path로 노출하지 않는다. 대신 public package/module tree 안의 
 
 고정 카테고리는 아래와 같다.
 
-- `Core/`: context, version, capability, utility resource.
+- `Core/`: context, version, 역할, utility resource.
 - `Messaging/`: message, routing id, received, topic message, multipart.
 - `Sockets/`: socket contracts, socket implementations, socket options.
 - `Eventing/`: monitor, poller, timer, readiness event.
@@ -1346,7 +1346,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - 예: routing id 길이 제한
   - 예: send failure contract
   - 예: typed option ownership
-- 여러 언어가 공유하는 capability, owner, no-data, error, naming 규칙은 이
+- 여러 언어가 공유하는 역할, owner, no-data, error, naming 규칙은 이
   정책 문서가 한 번만 소유한다. 언어별 spec 은 같은 규칙을 다시 설계하지
   않고, 이 문서의 계약을 언어 관례에 맞게 표현한다.
 - 언어별 spec 이 이 문서와 다른 규칙을 필요로 하면, 개별 문서부터 바꾸지
@@ -1371,9 +1371,9 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - dynamic binding은 export 제한과 surface test로 같은 규칙을 강제해야 한다.
 - generic root base 또는 raw compat base는 공통 lifecycle과 공통 관리 기능만
   외부에 노출한다.
-- capability-specific shared base는 모든 descendant가 공통으로 가지는 능력만
+- 역할-specific shared base는 모든 descendant가 공통으로 가지는 능력만
   외부에 노출할 수 있다.
-- socket-type-specific capability를 generic root base나 raw compat base로
+- socket-type-specific 역할을 generic root base나 raw compat base로
   올리면 안 된다.
 - public base에서 외부 접근을 허용해도 되는 공통 기능 예:
   - `bind`, `unbind`
@@ -1409,15 +1409,15 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - topic/socket-type-specific option facade
   - canonical 이름을 우회하는 legacy alias
     - 예: `recvHandler(...)`, `subscribeHandler(...)`
-- capability-specific shared base는 descendant 전부에 공통인 capability에 한해
+- 역할-specific shared base는 descendant 전부에 공통인 역할에 한해
   허용할 수 있다.
   - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
     `subscribe`
   - 예: publisher-only base의 `publish`, `setSendReadyHandler`
   - 예: discovery-capable socket base의 `attachDiscovery`
-- 위 capability는 capability matrix에서 `Y`인 concrete socket type에만
+- 위 역할은 역할 matrix에서 `Y`인 concrete socket type에만
   public으로 존재해야 한다.
-- capability matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
+- 역할 matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
   안 된다.
 - perf, sample, helper, compat layer도 canonical public surface 규칙을
   우회하는 base entry를 새 기준처럼 사용하면 안 된다.
@@ -2070,7 +2070,7 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 - 관련 없는 소켓은 관련 없는 함수에 접근할 수 없어야 한다.
   - 예: `PairSocket`에 publish/subscribe/xpub control surface 금지
   - 예: `StreamSocket`에 일반 connect surface 금지
-- 소켓 타입별 option도 타입별 capability facade로만 노출한다.
+- 소켓 타입별 option도 타입별 역할 facade로만 노출한다.
 
 ### 소켓 클래스 네이밍/구조 규칙 (중요)
 - **소켓 클래스 이름은 core C API 의 socket 타입 이름을 그대로 따른다**:
@@ -2195,7 +2195,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 - `—`인 능력은 어떤 언어 바인딩에서도 해당 소켓 타입 클래스에 존재하면
   안 된다.
 - Socket Capability Matrix가 다루지 않는 service layer 기능은 별도
-  capability matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
+  역할 matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
   수 있다.
 - 특히 다음 위반이 자주 발생하므로 주의한다:
   - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
@@ -2414,7 +2414,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 
 바인딩 surface는 아래 책임 분리를 따른다.
 
-| Public owner | Actor capability |
+| Public owner | Actor 역할 |
 |---|---|
 | `SpotNode` | local Actor 생성/조회, async remote Actor lookup, async destroy, async join/leave, node-level Actor snapshot |
 | `Actor` | Actor ref 보유, Actor recv, bound STREAM session message send, bound session close |
@@ -2542,7 +2542,7 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 ### Actor Capability Matrix
 
 Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
-걸친 독립 service layer 기능이다. 각 바인딩은 아래 capability를 언어별
+걸친 독립 service layer 기능이다. 각 바인딩은 아래 역할을 언어별
 관례에 맞는 public surface로 노출해야 한다.
 
 | Capability | Public owner | Core substrate |
@@ -2774,11 +2774,11 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 - 서비스 계층도 Test Matrix와 동일한 카테고리로 테스트한다.
 
 #### 서비스 계층 Surface 테스트
-- SpotNode capability matrix 정렬 확인
-- Spot capability matrix 정렬 확인
-- Discovery capability matrix 정렬 확인
-- Registry capability matrix 정렬 확인 (구현된 경우)
-- RegistryQueryClient capability matrix 정렬 확인 (구현된 경우)
+- SpotNode 역할 matrix 정렬 확인
+- Spot 역할 matrix 정렬 확인
+- Discovery 역할 matrix 정렬 확인
+- Registry 역할 matrix 정렬 확인 (구현된 경우)
+- RegistryQueryClient 역할 matrix 정렬 확인 (구현된 경우)
 - service TLS helper 존재 확인
 - typed domain object 존재 확인 (SpotNodeStatus, MemberPeerEntry,
   SpotNodeSocketEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
@@ -2858,7 +2858,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
 | RegistryQueryClient | Target (조회 전용 클라이언트) |
 
 ### Callback API 정책
-- callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.
+- callback 등록 API는 각 소켓 타입의 역할에 따라 노출한다.
 - 위 Callback Capabilities 표가 기준이다.
 - canonical handler 등록 이름:
   - `setDispatchHandler`: SPOT unified readable notification callback 등록
@@ -2898,7 +2898,7 @@ Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`, `Discovery`에
   맡는다.
 - `request()` 는 thread blocking API 가 아니다.
 - request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
-  별도 추상 레이어가 아니라 기존 표면에 capability 를 얹는다.
+  별도 추상 레이어가 아니라 기존 표면에 역할을 얹는다.
 
 #### 공개 표면에 두지 않는 API
 
@@ -3535,7 +3535,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 - **public raw `setOption(key, value)` / `getOption(key)` bag 은 금지.**
 - **public raw `setsockopt/getsockopt` bag 도 금지.**
 - 공용 옵션은 언어에 맞는 typed surface (facade) 로만 노출한다.
-- 특화 옵션도 언어에 맞는 capability surface (facade) 로만 노출한다.
+- 특화 옵션도 언어에 맞는 역할 surface (facade) 로만 노출한다.
 - raw enum key + 범용 setter/getter 를 돌리는 public 경로가 spec 에
   남아 있으면 정책 위반. (`set_option(ZLINK_OPT_*, value)` 같은 C 계약이
   바인딩 public API 로 올라오면 안 됨. 바인딩 내부에서 native 호출 경로는
@@ -3544,9 +3544,9 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
   두 방식 중 고를 필요 없게 한다.
 - 예:
   - Java/.NET: `CommonSocketOptions`, `RouterSocketOptions`
-  - Go: typed method set, capability interface
+  - Go: typed method set, 역할 interface
   - Rust: typed builder, method set, newtype
-  - Python/Node: property, namespace object, capability object, typed method set
+  - Python/Node: property, namespace object, 역할 object, typed method set
 
 #### Option Facade Canonical 타입 이름
 - 각 바인딩은 아래 canonical facade 타입을 제공해야 한다.
@@ -4368,7 +4368,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 
 ### 언어 간 Capability 표 (Target)
-이 표는 `.NET` 기준으로 정리한 target capability 표다. 이미 구현된 바인딩의 현재
+이 표는 `.NET` 기준으로 정리한 target 역할 표다. 이미 구현된 바인딩의 현재
 public surface가 이 표와 다르면, 해당 항목은 구조 정렬 또는 breaking cleanup 작업의
 목표로 해석한다. 단, `Internal-only` 항목은 target 상태에서도 public API, sample,
 guide, spec signature에 노출하지 않는다.
@@ -4439,7 +4439,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - optimization guard test로 hot path가 정책에서 금지한 느린 경로로 퇴행하지
   않았는지 검증한다.
 - callback mode와 direct mode가 함께 허용되지 않는 경로는 충돌 규칙을 검증한다.
-- option 테스트는 typed option surface와 잘못된 capability 접근 차단을 함께
+- option 테스트는 typed option surface와 잘못된 역할 접근 차단을 함께
   검증한다.
 - 성능 회귀 검증은 별도 Perf Policy가 담당한다. 기능 테스트가 perf benchmark를
   대체하거나, perf benchmark가 public contract test를 대체하면 안 된다.
@@ -4465,7 +4465,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - contract 계약 변경: contract test 동반
 - blocking/non-blocking 계약 변경: behavior test 동반
 - ownership/receive shape 변경: callback regression 또는 ownership test 동반
-- option surface 변경: typed option surface test와 negative capability test 동반
+- option surface 변경: typed option surface test와 negative 역할 test 동반
 - codec extension 변경: 해당 codec extension test 동반
 - helper/facade 변경: helper/facade contract test 동반
 - hot path 구현 변경: optimization guard test 또는 perf regression gate 동반
@@ -4519,7 +4519,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 
 ### Required: Surface 테스트
 - canonical public API surface test
-- socket type capability 분리 확인
+- socket type 역할 분리 확인
 - typed option surface 존재 확인
 - socket 공통 TLS helper 존재 확인
 - service TLS helper 존재 확인
@@ -4606,7 +4606,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 ### Required: Option 테스트
 - common option typed getter/setter
 - socket type별 typed option getter/setter
-- 잘못된 소켓 타입에서 option capability 접근 차단
+- 잘못된 소켓 타입에서 option 역할 접근 차단
 - raw integer 대신 enum/boolean surface가 제공되는지 확인
 
 ### Required: Ownership 테스트
@@ -4762,7 +4762,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
   남아 있지 않은가
 - raw option bag이 public에 남아 있지 않은가
 - option 값이 enum/boolean/value object로 승격되었는가
-- 타입별 capability가 제대로 닫혀 있는가
+- 타입별 역할이 제대로 닫혀 있는가
 - blocking send 실패가 예외 또는 오류 경로로 반드시 caller에 전달되는가
 - `send` 실패가 backpressure/not-ready를 포함해 모든 오류를 예외로 전달하는가
 - binding이 truncation/overflow를 선검증하는가
@@ -4907,7 +4907,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
    - deprecated alias가 남아 있지 않다.
    - Callback API Policy의 canonical 이름(`setPacketHandler`,
      `setDispatchHandler`, `setSendReadyHandler`)이
-     해당 capability에 맞게 존재한다.
+     해당 역할에 맞게 존재한다.
 
 3. **얕은 래퍼 제거**
    - native 함수를 1:1로 감싸기만 하는 public 타입이 없다.
@@ -5023,7 +5023,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 
 ### 옵션 표면 후속 작업
 - raw option bag 잔존 여부 조사
-- socket type별 option capability 누수 여부 조사
+- socket type별 option 역할 누수 여부 조사
 - option value가 아직 `int`에 머무는 항목 목록화
 - context option도 같은 기준으로 typed facade 적용 여부 검토
 
@@ -5057,7 +5057,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../perf/PERF_POLICY.md)에서 전 
 - value boundary 검증 테스트 추가
   - 예: `RoutingId` 최대 길이
   - 예: `Duration` overflow
-- option negative capability 테스트 보강
+- option negative 역할 테스트 보강
 - ownership/callback regression 유지 여부 확인
 
 ## 바인딩 요구사항

@@ -187,7 +187,7 @@ Go는 import 경로가 공개 API이므로 공개 통합 `contracts` 패키지 �
 그 패키지 안의 소스 파일을 사용해 공개 서브패키지를 만들지 않고 공통 카테고리
 맵을 미러링한다.
 
-- `core.go`: context, option, version/capability 헬퍼, routing id, 패키지 레벨
+- `core.go`: context, option, version/역할 헬퍼, routing id, 패키지 레벨
   유틸리티 계약.
 - `messaging.go`: message, received metadata, topic message, subscription
   event, 공통 payload 헬퍼.
@@ -233,7 +233,7 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
   생성한다.
 - `NewAtomicCounter()`, `NewStopwatch()`, `NewThread(...)`는 호출자가 소유하는
   유틸리티 리소스를 생성한다.
-- Version, capability, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
+- Version, 역할, strerror, proxy, sleep, multipart cleanup 헬퍼는 공개
   계약 함수다. 이 함수들 뒤의 cgo 호출은 private으로 유지한다.
 
 ## 계약 카테고리 맵
@@ -241,7 +241,7 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
 이 카테고리는 통합된 `bindings/go/contracts/` 패키지의 export 식별자에 매핑된다.
 이들은 리뷰 소유권 라벨이며 Go 서브패키지 이름이 아니다.
 
-- `Core`: context, context option, routing id, version/capability 헬퍼, 런타임
+- `Core`: context, context option, routing id, version/역할 헬퍼, 런타임
   유틸리티 계약.
 - `Messaging`: message, received metadata, topic message, subscription event,
   stream packet 콜백, builder payload 헬퍼.
@@ -306,7 +306,7 @@ Go 생성은 공개 생성자와 리소스 메서드로 노출된다.
 
 공개 `contracts` 패키지 트리를 훑어보기 쉽게 유지한다.
 
-- Core 식별자는 context, version/capability 헬퍼, option, 런타임 유틸리티를
+- Core 식별자는 context, version/역할 헬퍼, option, 런타임 유틸리티를
   포함한다.
 - Messaging 식별자는 message, routing id, received metadata, topic message,
   subscription event 타입을 포함한다.
@@ -327,7 +327,7 @@ cgo 호출, 네이티브 메모리 관리, request 진행을 위해서만 존재
 Go 패키지는 공통 .NET 표준 정책에 정합될 때 다음 안정된 사용자 대상 기능을
 커버해야 한다.
 
-- Context 수명, context option, shutdown, auto-HWM 재계산, version, capability,
+- Context 수명, context option, shutdown, auto-HWM 재계산, version, 역할,
   strerror.
 - Message ownership, 멀티파트 payload, routing id, received metadata, topic
   message, subscription event, stream packet 콜백.

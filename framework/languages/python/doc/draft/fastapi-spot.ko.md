@@ -24,7 +24,7 @@
 현재 공통 정책 기준으로는 아래를 같이 지켜야 한다.
 
 - active channel 범위는 node 생성이 아니라 attach된 discovery view가 정한다.
-- capability는 `router`, `pub/sub`, attach된 channel client, attach된 spot
+- 역할은 `router`, `pub/sub`, attach된 channel client, attach된 spot
   publisher client로 나눠서 설명한다.
 - spot factory는 `spot_name`과 함께 등록하고, 같은 이름 재등록은 덮어쓰지 않고
   예외로 본다.

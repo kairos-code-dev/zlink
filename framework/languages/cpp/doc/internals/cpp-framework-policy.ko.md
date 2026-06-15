@@ -655,7 +655,7 @@ app.add_zlink_framework([](auto &options) {
 
 - zlink context 생성과 종료
 - socket lifecycle 관리
-- channel capability 연결
+- channel 역할 연결
 - spot node lifecycle
 - service discovery 연결
 - CAPI dispatch callback과 handler dispatch binding
@@ -1181,8 +1181,8 @@ Discovery와 topology는 zlink framework의 차별화 축이다.
 - peer awareness
 - topology snapshot
 
-애플리케이션 코드는 가능하면 channel과 capability를 기준으로 연결을 설정한다.
-직접 peer endpoint를 넣는 manual 연결도 지원하되, 같은 capability 안에서 Discovery와
+애플리케이션 코드는 가능하면 channel과 역할을 기준으로 연결을 설정한다.
+직접 peer endpoint를 넣는 manual 연결도 지원하되, 같은 역할 안에서 Discovery와
 manual 연결을 섞지 않는다.
 
 Registry-backed 기본값은 Spot remote address 조회에 사용한다. session actor relay는
@@ -1510,7 +1510,7 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
   event를 남긴다.
 - pub/sub에서 subscriber 하나가 느리거나 끊겨도 publisher와 다른 subscriber를 같이 죽이지
   않는다.
-- manual connection과 Discovery connection을 같은 capability에 섞으면 startup validation이
+- manual connection과 Discovery connection을 같은 역할에 섞으면 startup validation이
   실패한다.
 - scoped service는 handler dispatch, stream session, Spot activation 경계를 넘지 않는다.
 - STREAM header validation 실패는 application handler로 전달되지 않는다.

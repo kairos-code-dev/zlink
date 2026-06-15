@@ -336,7 +336,7 @@ routed channel builder는 transport mesh 설정만 가진다. handler 등록을 
 아래에 두면 transport 설정과 domain dispatch 설정이 섞인다.
 
 actor handler는 전역 actor registry가 아니라 actor 객체의 실행 문맥 안에서 등록한다.
-host 설정은 actor factory와 routed channel capability만 등록하고, packet handler는
+host 설정은 actor factory와 routed channel 역할만 등록하고, packet handler는
 actor 객체가 자기 lifecycle 진입 단계 (binding별 이름은 다르지만 의미상 `Configure()`)
 에서 등록한다. spot handler도 같은 방식으로 spot 객체 안에서 등록한다.
 
@@ -764,7 +764,7 @@ server가 늘고 줄 수 있는 구조이므로, 수동 peer endpoint를 sample 
   참여한다.
 - service channel client와 routed channel은 global discovery 설정이 있으면
   discovery 기반으로 peer를 찾는다.
-- 같은 capability에서 discovery와 수동 연결을 섞으면 startup에서 실패한다.
+- 같은 역할에서 discovery와 수동 연결을 섞으면 startup에서 실패한다.
 - sample은 discovery 연결 실패를 retry loop나 sleep으로 숨기지 않는다.
 - 바로 연결되지 않으면 registry/discovery/topology 상태를 먼저 확인할 수 있어야
   한다.
@@ -1030,7 +1030,7 @@ session actor helper와 resolver 기반 `SessionProxy` 표면으로 통일하는
 | 테스트 | 확인 내용 |
 |--------|-----------|
 | discovery service/routed channel | 수동 연결 없이 registry/discovery로 service request와 routed request가 통과한다. |
-| discovery/manual 혼합 실패 | 같은 capability에서 두 방식을 섞으면 startup에서 실패한다. |
+| discovery/manual 혼합 실패 | 같은 역할에서 두 방식을 섞으면 startup에서 실패한다. |
 | discovery failure를 retry로 숨기지 않음 | sample과 helper가 retry loop나 warmup sleep 없이 실패를 드러낸다. |
 | registry metadata resolver sample | registry discovery metadata sample이 actor/spot resolver 구현에서 route를 읽는다. |
 | registry 기본 구현 없음 | framework DI 기본값으로 registry 기반 resolver가 자동 등록되지 않는다. |

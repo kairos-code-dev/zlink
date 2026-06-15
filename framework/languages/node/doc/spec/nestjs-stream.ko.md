@@ -418,7 +418,7 @@ actor 를 쓰는 stream server 는 fluent builder 의 `actorFactory(...)` 와
 - 등록 시점에 이 node 가 framework Header 기반 packet 경로라는 사실이 분명하게
   드러난다.
 - `attachActorGateway` 는 session→actor bind/relay 가 향할 SpotNode 이름을
-  연결한다. 참조 대상 SpotNode 는 router capability 를 켜야 한다. actor 로 relay
+  연결한다. 참조 대상 SpotNode 는 router 역할을 켜야 한다. actor 로 relay
   하지 않는 순수 stream node 는 이 키를 생략한다.
 
 ## 5. serializer 계층

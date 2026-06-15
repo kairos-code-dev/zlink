@@ -13,8 +13,8 @@
 |------|------|
 | duplicate channel name | startup validation 오류 |
 | 같은 channel에 중복 `kind + packetName` handler | startup validation 오류 |
-| client capability에 discovery/manual 경로 없음 | startup validation 오류 |
-| 같은 capability에서 discovery와 manual connection 혼용 | startup validation 오류 |
+| client 역할에 discovery/manual 경로 없음 | startup validation 오류 |
+| 같은 역할에서 discovery와 manual connection 혼용 | startup validation 오류 |
 | server/publisher/route/stream endpoint 누락 | startup validation 오류 |
 | duplicate actor type factory | startup validation 오류 |
 | actor factory without SpotNode | startup validation 오류 |
@@ -68,8 +68,8 @@ Behavior Matrix의 판정은 `.NET` 테스트(`Channels`, `HandlerExposure`,
 | 판정 항목 | JUnit 테스트 (클래스 / 메서드) |
 |-----------|--------------------------------|
 | duplicate channel name | `ChannelsTest.addZLinkFramework_throws_whenChannelNameIsDuplicated` |
-| client capability에 discovery/manual 경로 없음 | `ChannelsTest.addZLinkFramework_throws_whenClientHasNoPeerAcquisitionPath` |
-| 같은 route capability에서 discovery + manual 혼용 | `ChannelsTest.addZLinkFramework_throws_whenRouteChannelMixesDiscoveryAndManualConnections` |
+| client 역할에 discovery/manual 경로 없음 | `ChannelsTest.addZLinkFramework_throws_whenClientHasNoPeerAcquisitionPath` |
+| 같은 route 역할에서 discovery + manual 혼용 | `ChannelsTest.addZLinkFramework_throws_whenRouteChannelMixesDiscoveryAndManualConnections` |
 | server endpoint 누락 | `HandlerExposureTest.addZLinkFramework_throws_whenServerHasNoBindEndpoint` |
 | publisher endpoint 누락 | `RegistryAndMonitoringTest.addZLinkFramework_throws_whenPublisherHasNoBindEndpoint` |
 | handler group exposure 없음 | `HandlerExposureTest.addZLinkFramework_throws_whenServerHasNoHandlerExposure` |
@@ -83,7 +83,7 @@ Behavior Matrix의 판정은 `.NET` 테스트(`Channels`, `HandlerExposure`,
 | local-only SpotNode 허용 | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` |
 | spot mesh가 전역 discovery 상속 허용 | `NodesAndServicesTest.addZLinkFramework_allowsSpotMeshToInheritGlobalDiscovery` |
 | monitoring source 이름 불일치 | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` |
-| monitoring source가 등록 capability와 불일치 | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceDoesNotMatchRegisteredCapability` |
+| monitoring source가 등록 역할과 불일치 | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceDoesNotMatchRegisteredCapability` |
 | registry pub endpoint 누락 | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenPubEndpointIsMissing` |
 | registry router endpoint 누락 | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenRouterEndpointIsMissing` |
 | session actor dispatch가 actor remote address resolver를 요구하지 않음 | `NodesAndServicesTest.sessionActorDispatch_doesNotRequireActorRemoteAddressResolver` |

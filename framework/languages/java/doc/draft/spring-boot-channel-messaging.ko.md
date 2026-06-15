@@ -24,7 +24,7 @@
 
 ## 2. 등록 방식
 
-같은 capability는 자동 연결과 수동 연결 중 하나만 선택한다.
+같은 역할은 자동 연결과 수동 연결 중 하나만 선택한다.
 
 ```java
 @Configuration
@@ -71,7 +71,7 @@ options.addClientServerChannel("profile", channel -> {
 });
 ```
 
-앱 전체에서는 capability별로 방식을 나눠 쓸 수 있다.
+앱 전체에서는 역할별로 방식을 나눠 쓸 수 있다.
 예를 들어 `profile.client`는 discovery, `account.client`는 manual로 둘 수 있다.
 
 중요한 점은 수동 연결이 `channel` 전체 설정이 아니라 `channel + capability`
@@ -82,7 +82,7 @@ options.addClientServerChannel("profile", channel -> {
 하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는 모델이므로,
 startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
 
-manual capability는 startup 등록만이 아니라 런타임 `connect`, `disconnect`,
+manual 역할은 startup 등록만이 아니라 런타임 `connect`, `disconnect`,
 `listConnections` 제어도 지원해야 한다.
 
 일반 `PUB/SUB` event publish는 `ZLinkFanoutClient` 같은 별도 surface로 설명한다.

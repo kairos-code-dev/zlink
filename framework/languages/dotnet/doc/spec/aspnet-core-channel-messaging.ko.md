@@ -61,11 +61,11 @@
 먼저 각 channel 이 어떤 역할을 열지 선언한다. client 역할은 자동 연결과 수동 연결을 둘
 다 지원한다. 다만 한 가지 규칙이 있다.
 
-> **같은 channel 의 같은 client capability 안에서 두 방식을 섞지는 않는다.** 둘 중
+> **같은 channel 의 같은 client 역할 안에서 두 방식을 섞지는 않는다.** 둘 중
 > 하나만 고른다.
 
 여기서 "channel 을 등록한다" 는 말이 곧 "소켓 한 쌍을 만든다" 는 뜻은 아니다. 사용자
-입장에서는 capability[^capability], 즉 역할 단위로 읽는 편이 자연스럽다.
+입장에서는 역할[^capability], 즉 역할 단위로 읽는 편이 자연스럽다.
 
 - `EnableServer()` -- 이 channel 로 들어오는 request / send 를 local handler 가 받게
   한다. 서버 역할이므로 `server.Bind(...)` 로 자기 endpoint 를 함께 정한다.
@@ -126,7 +126,7 @@ builder.Services.AddZLinkFramework(options =>
 ##### 자동 연결을 켜는 방법
 
 자동 연결은 `options.UseDiscovery(...AddRegistryEndpoint...)` 를 **한 번** 부르면 켜진다. 그 뒤에 등록되는
-모든 client / subscriber capability 는, 별도 신호 없이도 이 전역 Discovery 를 기본
+모든 client / subscriber 역할은, 별도 신호 없이도 이 전역 Discovery 를 기본
 연결 방식으로 쓴다. 즉 `channel.EnableClient()` 만 호출해도, 그 channel 은 자동으로
 Discovery 기반 연결로 동작한다.
 
@@ -160,7 +160,7 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 이 경우 framework 는 해당 channel 에 Discovery 를 강제하지 않는다. 그 channel 의
-client capability 는 사용자가 직접 적어 준 peer 목록만 보고 연결을 관리한다.
+client 역할은 사용자가 직접 적어 준 peer 목록만 보고 연결을 관리한다.
 
 지금 초안에서 수동 연결은 remote `RoutingId`[^rid] 를 받지 않는다. 이유는 다음과 같다.
 binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방식이라, framework
@@ -176,10 +176,10 @@ binding 하부 모델이 "이미 connect 된 DEALER 를 attach 한다" 는 방�
 예를 들면 `profile` channel 은 Discovery 자동 연결로 두고, `account` channel 은 수동
 연결로 둘 수 있다.
 
-channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` 를 불렀는지
+channel 별 연결 방식은, 역할 빌더가 `UseManualConnections(...)` 를 불렀는지
 여부로 정해진다.
 
-| 전역 `UseDiscovery(...AddRegistryEndpoint...)` | capability `UseManualConnections(...)` | 그 capability의 연결 방식 |
+| 전역 `UseDiscovery(...AddRegistryEndpoint...)` | 역할 `UseManualConnections(...)` | 그 역할의 연결 방식 |
 | --- | --- | --- |
 | 있음 | 없음 | Discovery 자동 연결 |
 | 있음 | 있음 | 수동 연결 (수동 우선) |
@@ -188,11 +188,11 @@ channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` �
 
 정리하면 다음과 같다.
 
-- `options.UseDiscovery(...AddRegistryEndpoint...)` 는 모든 client / subscriber capability 의 **기본값**이다.
+- `options.UseDiscovery(...AddRegistryEndpoint...)` 는 모든 client / subscriber 역할의 **기본값**이다.
 - 특정 channel 만 수동으로 바꾸고 싶을 때는, 그 channel 안에서
   `EnableClient(client => client.UseManualConnections(...))` 또는
   `EnableSubscriber(subscriber => subscriber.UseManualConnections(...))` 를 명시한다.
-- 이때 명시한 capability 만 수동으로 분류되고, 나머지는 그대로 전역 Discovery 를 쓴다.
+- 이때 명시한 역할만 수동으로 분류되고, 나머지는 그대로 전역 Discovery 를 쓴다.
 
 이렇게 나눠 두는 이유는 zlink core 의 동작 때문이다. Discovery 가 붙은 DEALER 는,
 수동 `connect`, `disconnect`, `unbind`, `close` 를 받지 않는다. 따라서 framework 역시
@@ -205,7 +205,7 @@ channel 별 연결 방식은, capability 빌더가 `UseManualConnections(...)` �
 
 #### SPOT route 수신과 router-capable channel
 
-SPOT으로 들어오는 routed 메시지는 `ROUTER` capability가 필요하다. 따라서
+SPOT으로 들어오는 routed 메시지는 `ROUTER` 역할이 필요하다. 따라서
 `SpotNode`가 특정 channel에서 오는 SPOT route를 받으려면
 `AcceptSpotRoutesFromChannel(channelName)`을 사용한다.
 
@@ -214,13 +214,13 @@ SPOT으로 들어오는 routed 메시지는 `ROUTER` capability가 필요하다.
 - `AddClientServerChannel(...)`의 server `ROUTER`
 - `AddRouteMeshChannel(...)`의 route mesh `ROUTER`
 
-`AddFanoutChannel(...)`과 `AddDealerMeshChannel(...)`은 router capability가 없으므로
+`AddFanoutChannel(...)`과 `AddDealerMeshChannel(...)`은 router 역할이 없으므로
 SPOT route 수신 대상이 아니다. `ClientServerChannel`의 server `ROUTER`에서도
 SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으로 제한하지 않는다.
 
-#### 수동 연결은 channel이 아니라 capability 단위다
+#### 수동 연결은 channel이 아니라 역할 단위다
 
-또 하나 짚어 둘 점이 있다. 수동 연결은 **channel 전체 설정이 아니라 capability 별
+또 하나 짚어 둘 점이 있다. 수동 연결은 **channel 전체 설정이 아니라 역할 별
 설정** 이라는 점이다. 같은 `profile` channel 이라도, 다음 두 가지는 서로 다른 연결
 집합으로 관리된다.
 
@@ -231,7 +231,7 @@ SPOT으로 보낼 수 있으므로, 이 기능은 `RouteMeshChannel` 전용으�
 같은 형태는 사용하지 않고, 대신 역할별 빌더 안에 둔다. 즉
 `EnableClient(client => ...)`, `EnableSubscriber(subscriber => ...)` 안쪽이다.
 
-수동 연결을 쓰는 capability 에 대해서는, startup builder 에서 다음 동작을 호출할 수
+수동 연결을 쓰는 역할에 대해서는, startup builder 에서 다음 동작을 호출할 수
 있는 연결 집합 표면을 둔다.
 
 - `Connect`
@@ -281,8 +281,8 @@ builder.Services.AddZLinkFramework(options =>
 
 - `IZLinkChannelClient` 는 DI 로 주입받는다.
 - 호출 대상은 gateway 주소가 아니라 **channel 이름**이다.
-- runtime 은 등록된 channel capability 를 보고, 필요한 만큼만 runtime 을 만든다.
-- client capability 가 있는 channel 은, 그 channel 전용 Discovery 뷰와 outbound DEALER
+- runtime 은 등록된 channel 역할을 보고, 필요한 만큼만 runtime 을 만든다.
+- client 역할이 있는 channel 은, 그 channel 전용 Discovery 뷰와 outbound DEALER
   를 하나씩 가진다.
 
 여기서 outbound DEALER 는 framework 입장에서 주로 한 가지 역할을 맡는다. 바로
@@ -380,7 +380,7 @@ builder.Services.AddZLinkFramework(options =>
 - handler 코드는 어느 물리 channel 로 매핑될지 신경 쓸 필요가 없다. 그룹 이름만 알면
   된다. 배포 시점에 channel topology 가 바뀌어도, handler 코드는 그대로 유지된다.
 
-event handler 도 같은 규칙을 따른다. fanout channel 이라면, subscriber capability 쪽에서
+event handler 도 같은 규칙을 따른다. fanout channel 이라면, subscriber 역할 쪽에서
 같은 방식으로 그룹을 끌어 붙인다.
 
 ```csharp
@@ -444,7 +444,7 @@ handler 인스턴스 생성도 framework 가 직접 `new` 하지 않는다. 대�
 - "어느 channel 에 그 그룹을 노출할지" 는 channel 등록 쪽이 정한다.
 
 따라서 channel 이름은 메서드 attribute 의 기본 속성으로 두지 않는다. 반대로
-outbound-only 앱이라면, server capability 가 있는 channel 자체를 두지 않을 수도 있어야
+outbound-only 앱이라면, server 역할이 있는 channel 자체를 두지 않을 수도 있어야
 한다.
 
 ### 3.3.1 handler scope와 dispatch key
@@ -734,7 +734,7 @@ DEALER 또는 dealer mesh DEALER 를 선택한다.
   충분히 동작한다.
 - 다만 그 경우에도 한 가지는 필요하다. **어떤** remote channel 에 접근할지를, startup
   단계에서 미리 한 번 선언해 두어야 한다.
-- channel 이 없거나 client capability 가 없으면 runtime 은 socket 을 새로 만들지 않고
+- channel 이 없거나 client 역할이 없으면 runtime 은 socket 을 새로 만들지 않고
   `ZLinkConfigurationException` 으로 실패한다.
 
 ### 5.3 IZLinkFanoutClient
@@ -989,7 +989,7 @@ builder.Services.AddZLinkFramework(options =>
 
 - framework core 는, channel 별 typed wrapper 를 기본 표면으로 제공하지 않는다. 공용
   outbound 표면은 `IZLinkChannelClient` 하나로 유지한다.
-- channel runtime 은 host startup 단계에서 등록된 capability 를 보고 만든다. host
+- channel runtime 은 host startup 단계에서 등록된 역할을 보고 만든다. host
   shutdown 단계에서 정리한다. lazy first-call 생성으로 숨기지 않는다. 즉 설정 오류는,
   startup 단계에서 미리 드러나도록 한다.
 - topology query 는 운영용 HTTP endpoint 전용의 숨은 API 로 두지 않는다. 앱 내부에서도
@@ -1010,7 +1010,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 
 특히 다음 두 동작은 startup 에서 실패하거나, 독립 dispatch 로 동작해야 한다.
 
-- capability 별 peer 획득 방식
+- 역할 별 peer 획득 방식
 - handler 매핑
 
 그래서 아래 테스트를 유지한다.
@@ -1018,7 +1018,7 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `ChannelsTests.AddZLinkFramework_Throws_WhenChannelNameIsDuplicated` | 같은 channel 이름을 중복 등록하면 startup validation 예외가 난다. |
-| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client capability에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
+| `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath` | client 역할에 Discovery나 수동 연결이 없으면 시작 전에 실패한다. |
 | `ClientServerTests.ManualClient_Request_And_Send_Work_Across_Hosts` | 수동 연결 client가 request와 send를 모두 처리한다. |
 | `ClientServerTests.DiscoveryClient_Request_And_Send_Work_Across_Hosts` | Discovery 기반 client가 request와 send를 모두 처리한다. |
 | `FiltersAndHttpTests.HttpHandler_Uses_SameServiceProvider_ToResolve_IZLinkChannelClient` | HTTP handler가 같은 DI container에서 `IZLinkChannelClient`를 받아 호출한다. |
@@ -1058,8 +1058,8 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 [^router]: **ROUTER** 소켓은 들어오는 요청에 routing id 를 붙여 식별해 주는 서버 쪽
     소켓이다. 응답은 그 routing id 를 보고 원래 발신자에게 다시 돌려보낸다.
 
-[^capability]: **capability** 는 한 channel 안에서 이 앱이 맡는 역할이다. server,
-    client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 capability 를
+[^capability]: **역할**은 한 channel 안에서 이 앱이 맡는 일이다. server,
+    client, publisher, subscriber 네 가지가 있다. 한 channel 이 둘 이상의 역할을
     동시에 가질 수도 있다(channel 타입에 따라).
 
 [^codec]: **codec** 은 payload 를 바이트 배열과 객체 사이로 변환하는 직렬화기다. JSON,

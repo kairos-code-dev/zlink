@@ -188,7 +188,7 @@
 - `Message` lifecycle과 diagnostic API가 canonical surface를 따르는가
 - blocking / non-blocking naming 구분이 문서와 일치하는가
 - 같은 능력을 여러 타입/이름/경로로 중복 노출하고 있지 않은가
-- generic base에 socket-type-specific capability를 올려두지 않았는가
+- generic base에 socket-type-specific 역할을 올려두지 않았는가
 - TLS, monitor, service layer, registry/query client surface가 정책 설명과 일치하는가
 - raw compat base, hidden transport switch, temporal sequencing 의존 API가 남아 있지 않은가
 - send/recv, message ownership, callback, monitor, service hot path에 불필요한 allocation/copy/indirection이 추가되지 않았는가

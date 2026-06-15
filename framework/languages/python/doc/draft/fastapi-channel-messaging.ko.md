@@ -76,8 +76,8 @@ class UserHandlers:
 
 - 일반 request/send dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)` 수신은 pending request의 reply correlation 경로다.
-- 같은 capability에서 discovery와 manual을 같이 섞지 않는다.
-- manual capability는 런타임 `connect`, `disconnect`, `list_connections`도 지원해야 한다.
+- 같은 역할에서 discovery와 manual을 같이 섞지 않는다.
+- manual 역할은 런타임 `connect`, `disconnect`, `list_connections`도 지원해야 한다.
 
 ## 4. Outbound-only 앱
 

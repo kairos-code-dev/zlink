@@ -298,10 +298,10 @@ class ZLinkSpotEvent(ZLinkRuntimeEvent):
     event: ZLinkSpotEventKind
 ```
 
-현재 초안에서는 capability 값을 `True`와 object로 섞지 않고, 항상 object로 두는
-편을 기준으로 본다. 즉 `client=ClientCapabilityOptions()`는 client capability만
+현재 초안에서는 역할 값을 `True`와 object로 섞지 않고, 항상 object로 두는
+편을 기준으로 본다. 즉 `client=ClientCapabilityOptions()`는 client 역할만
 켠다는 뜻이고, `client=ClientCapabilityOptions(manual_connections=[...])`는 같은
-capability의 manual 연결까지 같이 준다는 뜻이다.
+역할의 manual 연결까지 같이 준다는 뜻이다.
 
 ## 2. Client
 
@@ -489,9 +489,9 @@ class ZLinkSendHandler(Protocol[TMessage]):
 
 ## 5. 중요한 규칙
 
-- 같은 capability는 자동 연결과 수동 연결 중 하나만 선택한다.
+- 같은 역할은 자동 연결과 수동 연결 중 하나만 선택한다.
 - 수동 연결은 `channel + capability` 단위로 관리한다.
-- manual capability는 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
+- manual 역할은 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
   `list_connections`도 지원해야 한다.
 - 일반 channel messaging의 handler dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)` 수신은 reply correlation 경로로 본다.

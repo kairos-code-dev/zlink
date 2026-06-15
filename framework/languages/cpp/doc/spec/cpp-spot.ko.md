@@ -66,7 +66,7 @@ app.add_zlink_framework([](auto &options) {
 ```
 
 `spot_node.use_discovery(channel_name)`의 `channel_name`은 active SPOT channel view를
-뜻한다. 같은 SPOT node가 여러 channel capability를 attach할 수 있으므로 discovery
+뜻한다. 같은 SPOT node가 여러 channel 역할을 attach할 수 있으므로 discovery
 대상 이름을 생략하지 않는다.
 
 registry discovery를 쓰지 않는 topology에서는 attach별 manual endpoint를 명시한다.
@@ -86,7 +86,7 @@ options.spot_node("stage-spot-node")
 ```
 
 `enable_router(..., configure)`와 `enable_pub_sub(..., configure)`의 manual endpoint는
-SPOT capability 자체의 peer다. `attach_channel_client(...)`,
+SPOT 역할 자체의 peer다. `attach_channel_client(...)`,
 `attach_publisher(...)`, `accept_routes_from_channel(...)`에 주는 manual endpoint는 각각
 attached channel client, publisher client, accepted route ingress의 peer이므로 같은 값으로
 섞어 표현하지 않는다.

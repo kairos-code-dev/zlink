@@ -9,7 +9,7 @@
 # ZLink Framework Node.js DI Capability Exposure Policy
 
 > 이 문서는 `Node.js` `ZLink Framework`(NestJS)에서 DI 로 노출되는 public service 표면을 어떤
-> capability 구성과 묶는지 정리하고, 현재 .NET 코드에 반영된 정책을 그대로 옮겨
+> 역할 구성과 묶는지 정리하고, 현재 .NET 코드에 반영된 정책을 그대로 옮겨
 > 기록한다. 개념·의미론은 .NET 과 동일하며, 표면(IServiceCollection → DynamicModule,
 > constructor injection → provider token 주입)만 NestJS 로 바꾼다. 표기가 어긋나면
 > `framework/languages/dotnet/src` 코드가 최종 기준이다.
@@ -31,7 +31,7 @@
 이 문서의 목표는 다음 질문에 답하는 것이다.
 
 - 어떤 service 를 항상 DI 에 등록해도 되는가?
-- 어떤 service 는 capability 가 있을 때만 DI 에 등록해야 하는가?
+- 어떤 service 는 역할이 있을 때만 DI 에 등록해야 하는가?
 - 어떤 조합은 startup validation 단계에서 바로 막아야 하는가?
 - runtime 사용 시점에 실패해야 하는 경우라면 어떤 예외와 메시지를 써야 하는가?
 
@@ -53,11 +53,11 @@
 
 사용자가 public service 를 생성자에서(`@Inject(token)`) 받았다면, 기본적으로 그
 기능을 쓸 수 있다고 이해한다. 따라서 provider 등록은 단순 convenience 가 아니라
-capability 계약의 일부로 본다.
+역할 계약의 일부로 본다.
 
 예외는 multi-target client 이다. 예를 들어 `ZLinkChannelClient` 는 channel 이름을
 인자로 받기 때문에 모든 channel 을 미리 알 수 없다. 이 경우 provider 자체는
-등록할 수 있지만, 잘못된 channel 이름이나 capability 누락은 호출 시 명확한
+등록할 수 있지만, 잘못된 channel 이름이나 역할 누락은 호출 시 명확한
 configuration error 로 실패해야 한다.
 
 ### 2.2 Spot 과 Actor 는 SpotNode 에 묶인다
@@ -81,7 +81,7 @@ NestJS 에서 이 validation 은 `forRoot(...)` 의 `DynamicModule` 생성 시�
 
 호출 시점에만 알 수 있는 오류는 `ZLinkConfigurationException` 또는
 `ZLinkFrameworkException` 으로 명확하게 낸다. NestJS 의 일반 `Error` 만으로
-capability 누락을 표현하지 않는다.
+역할 누락을 표현하지 않는다.
 
 ## 3. DI 노출 정책
 
@@ -95,11 +95,11 @@ token 은 framework 가 export 한다. 아래 표는 .NET interface ↔ node pro
 다음 service 는 framework runtime 전체의 기본 표면이거나, target 이름을 호출
 시점에 받는 multi-target client 이므로 항상 등록해도 된다.
 
-| provider token | 주입 타입 | 이유 | capability 누락 시 동작 |
+| provider token | 주입 타입 | 이유 | 역할 누락 시 동작 |
 |----------------|-----------|------|------------------------|
-| `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | channel 이름을 호출 시점에 받는 outbound client | channel 이 없거나 client capability 가 없으면 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_CHANNEL_CLIENT` | `ZLinkChannelClient` | channel 이름을 호출 시점에 받는 outbound client | channel 이 없거나 client 역할이 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_ROUTE_CLIENT` | `ZLinkRouteClient` (`ZLinkMultipartRouteClient` 포함) | route channel id 를 호출 시점에 받는 outbound route client | route channel 이 없으면 호출 시 `ZLinkConfigurationException` |
-| `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | fanout channel 이름을 호출 시점에 받는 publisher | publisher capability 가 없으면 호출 시 `ZLinkConfigurationException` |
+| `ZLINK_FANOUT_CLIENT` | `ZLinkFanoutClient` | fanout channel 이름을 호출 시점에 받는 publisher | publisher 역할이 없으면 호출 시 `ZLinkConfigurationException` |
 | `ZLINK_BOUND_SESSION_FACTORY` | `ZLinkBoundSessionFactory` | actor bound session factory | binding 없는 actor 에서 호출 시 `ActorSessionNotBound` |
 | `ZLINK_MESSAGE_METADATA_POLICY` | `ZLinkMessageMetadataPolicy` | 메시지 metadata 복사 정책 | 항상 유효 |
 
@@ -109,19 +109,19 @@ application 코드는 actor 생성 또는 Entry Spot join 같은 도메인 흐�
 `ActorRef` 를 얻어 session actor handle 에 bind 한다.
 
 위 service 는 항상 주입 가능하더라도, 내부에서 없는 channel 을 자동으로 만들면
-안 된다. 없는 channel 또는 capability 는 즉시 설정 오류로 처리한다.
+안 된다. 없는 channel 또는 역할은 즉시 설정 오류로 처리한다.
 
-### 3.2 capability 가 있을 때만 등록하는 service
+### 3.2 역할이 있을 때만 등록하는 service
 
-다음 service 는 특정 runtime capability 가 없으면 기능 자체가 성립하지 않는다.
-따라서 해당 capability 가 등록된 경우에만 provider 를 module 의 `providers` /
+다음 service 는 특정 runtime 역할이 없으면 기능 자체가 성립하지 않는다.
+따라서 해당 역할이 등록된 경우에만 provider 를 module 의 `providers` /
 `exports` 에 추가한다.
 
 | provider token | 주입 타입 | 등록 조건 | 등록하지 않을 때 |
 |----------------|-----------|-----------|------------------|
 | `ZLINK_SPOT_MANAGER` | `ZLinkSpotManager` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 (`UnknownDependenciesException`) |
 | `ZLINK_SPOT_OUTBOUND` | `ZLinkSpotOutbound` | 최소 1개 이상의 `SpotNode` | DI resolve 실패 |
-| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client capability(attached spot publisher client) | DI resolve 실패 |
+| `ZLINK_SPOT_PUBLISHER_CLIENT` | `ZLinkSpotPublisherClient` | 최소 1개 이상의 Spot publisher client 역할(attached spot publisher client) | DI resolve 실패 |
 | `ZLINK_ACTOR_MANAGER` | `ZLinkActorManager` | 최소 1개 이상의 `SpotNode` **와** 최소 1개 이상의 actor factory | DI resolve 실패 |
 
 이 정책은 사용자가 잘못된 기능을 생성자에서 바로 요구했을 때, 해당 token 이
@@ -133,9 +133,9 @@ validation 과 동일하게 시작 단계에서 잡힌다.
 `forRootFactory(...)` 와 handler discovery 를 쓰는 `forRoot(...)` 는 예외다.
 NestJS 는 async factory 결과나 `DiscoveryService` 기반 registration 결과를 받기
 전에 `DynamicModule` 의 provider 목록을 확정해야 하므로, 최종 registration 에 따라
-provider 자체를 제거할 수 없다. 이 경로들은 위 capability token 을 export 하되,
-registration 에 capability 가 없으면 provider 값으로 `null` 을 돌려 application
-context 부팅을 유지한다. 사용자는 이 구성에서 optional capability 를 주입할 때
+provider 자체를 제거할 수 없다. 이 경로들은 위 역할 token 을 export 하되,
+registration 에 역할이 없으면 provider 값으로 `null` 을 돌려 application
+context 부팅을 유지한다. 사용자는 이 구성에서 optional 역할을 주입할 때
 `null` 가능성을 명시적으로 처리해야 한다.
 
 ### 3.3 구성에 따라 등록하는 service
@@ -214,9 +214,9 @@ resolver 구현을 DI 로 제공할 수 있지만, local spot 문맥이 없으�
 ### 4.3 Spot publisher client
 
 `ZLinkSpotPublisherClient`(`ZLINK_SPOT_PUBLISHER_CLIENT`)는 attached Spot
-publisher client capability 가 있을 때만 등록한다.
+publisher client 역할이 있을 때만 등록한다.
 
-Spot publisher client capability 없이 외부 publish service 를 주입받고 싶다면,
+Spot publisher client 역할 없이 외부 publish service 를 주입받고 싶다면,
 그 애플리케이션은 일반 fanout publisher 인 `ZLinkFanoutClient` 를 써야 한다.
 두 표면은 같은 publish 동작처럼 보일 수 있지만, 전자는 Spot mesh 의 attached
 publisher client 를 전제로 하고 후자는 일반 channel publisher 를 전제로 한다.
@@ -235,28 +235,28 @@ ActorSessionNotBound
 
 ## 5. 호출 시점 오류 규칙
 
-항상 등록되는 multi-target client 는 호출 인자로 capability 를 선택한다. 이 경우
+항상 등록되는 multi-target client 는 호출 인자로 역할을 선택한다. 이 경우
 provider 등록 시점에는 정확한 대상이 없으므로 호출 시점 오류를 허용한다. 단, 오류는
 configuration error 로 표현한다.
 
 | 호출 | 오류 조건 | 예외 |
 |------|-----------|------|
-| `ZLinkChannelClient.requestToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `ZLinkChannelClient.sendToChannel(channelName, ...)` | channel 이 없거나 client capability 가 없음 | `ZLinkConfigurationException` |
-| `ZLinkFanoutClient.publishToChannel(channelName, ...)` | channel 이 없거나 publisher capability 가 없음 | `ZLinkConfigurationException` |
+| `ZLinkChannelClient.requestToChannel(channelName, ...)` | channel 이 없거나 client 역할이 없음 | `ZLinkConfigurationException` |
+| `ZLinkChannelClient.sendToChannel(channelName, ...)` | channel 이 없거나 client 역할이 없음 | `ZLinkConfigurationException` |
+| `ZLinkFanoutClient.publishToChannel(channelName, ...)` | channel 이 없거나 publisher 역할이 없음 | `ZLinkConfigurationException` |
 | `ZLinkRouteClient.send(routerChannelId, ...)` | route mesh channel 이 없음 | `ZLinkConfigurationException` |
 
-capability 누락은 NestJS 일반 `Error` 가 아니라 위 예외로 처리한다.
+역할 누락은 NestJS 일반 `Error` 가 아니라 위 예외로 처리한다.
 
 ## 6. 구현 반영 항목
 
 이 정책은 다음 코드 경로에 반영한다(.NET 대응 경로는 괄호로 표기).
 
 1. `ZLinkFrameworkRegistrationValidator`(.NET `ZLinkFrameworkRegistrationValidator`)
-   에 capability validation 을 둔다. `forRoot` 는 `DynamicModule` 을 만들기 전에
+   에 역할 validation 을 둔다. `forRoot` 는 `DynamicModule` 을 만들기 전에
    호출하고, `forRootFactory` 는 NestJS 가 factory 를 실행한 뒤 호출한다.
 2. framework module factory(.NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`)
-   에서 public service provider 를 capability 조건에 따라 `providers` / `exports`
+   에서 public service provider 를 역할 조건에 따라 `providers` / `exports`
    에 넣는다.
 3. missing bound session factory/service 는 public DI 표면에서 제거한다.
 4. channel / route / publisher runtime lookup 실패는 `ZLinkConfigurationException`
@@ -277,13 +277,13 @@ capability 누락은 NestJS 일반 `Error` 가 아니라 위 예외로 처리한
 | `NodesAndServices.forRoot_DoesNot_Register_SpotServices_Without_SpotNode` | SpotNode 없는 구성에서는 Spot service 가 DI 에 없다 |
 | `NodesAndServices.forRoot_Registers_SpotServices_When_SpotNode_Exists` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
 | `NodesAndServices.forRoot_Registers_ActorManager_When_SpotNode_And_ActorFactory_Exist` | SpotNode 와 actor factory 가 있으면 `ZLINK_ACTOR_MANAGER` 가 등록된다 |
-| `NodesAndServices.forRoot_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
-| `NodesAndServices.forRoot_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher capability 가 있으면 Spot publisher service 가 DI 에 등록된다 |
+| `NodesAndServices.forRoot_DoesNot_Register_SpotPublisher_Without_PublisherCapability` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
+| `NodesAndServices.forRoot_Registers_SpotPublisher_When_PublisherCapability_Exists` | Spot publisher 역할이 있으면 Spot publisher service 가 DI 에 등록된다 |
 | `NodesAndServices.forRoot_Registers_BoundSession_Factory` | bound session factory 는 framework runtime 과 함께 등록된다 |
 | `NodesAndServices.forRoot_Allows_SpotRemoteAddressResolver_Without_SpotNode` | remote address 정보만 제공하는 서버는 SpotNode 없이 `ZLINK_SPOT_REMOTE_ADDRESS_RESOLVER` 를 등록할 수 있다 |
 | `NodesAndServices.forRoot_DoesNot_Register_SpotOutbound_With_Resolver_Only` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `ZLINK_SPOT_OUTBOUND` 는 DI 에 없다 |
 | `HandlerExposure.RouteClient_Throws_ConfigurationException_When_RouteChannel_Missing` | route channel 누락 오류가 configuration error 로 나온다 |
-| `HandlerExposure.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client capability 누락 오류가 configuration error 로 나온다 |
+| `HandlerExposure.ChannelClient_Throws_ConfigurationException_When_ClientCapability_Missing` | channel client 역할 누락 오류가 configuration error 로 나온다 |
 
 ## 8. 적용 후 기대 상태
 

@@ -37,8 +37,8 @@ flowchart LR
   Caller["caller 앱<br/>(enableClient)"] -- "requestToChannel('price', ...)" --> PriceServer["price-server 앱<br/>(enableServer + handler)"]
 ```
 
-- `price-server` : `price` channel에 server capability를 열고 handler를 둔다.
-- `caller` : `price` channel에 client capability만 열고 호출한다.
+- `price-server` : `price` channel에 server 역할을 열고 handler를 둔다.
+- `caller` : `price` channel에 client 역할만 열고 호출한다.
 
 두 앱은 서로의 주소를 직접 모른다. 위치는 `Discovery`(또는 수동 연결)가 해결한다.
 
@@ -83,8 +83,9 @@ public class PriceServerConfig implements ZLinkFrameworkConfigurer {
 }
 ```
 
-핵심: server capability는 `bind(...)`가 필수다. 다른 프로세스가 접근할 local
-endpoint가 있어야 한다.
+핵심: server 역할을 하려면 `bind(...)`가 필수다. server는 요청을 받는 쪽이라,
+다른 앱이 접속해 올 주소를 미리 열어 둬야 하기 때문이다. 요청을 보내기만 하는
+client는 이 주소가 필요 없다.
 
 ## 5. caller: outbound client
 
@@ -119,7 +120,7 @@ public final class PriceController {
 `enableClient()`만 선언한 앱은 inbound handler 없이 outbound 전용으로 동작한다.
 `bind(...)`는 필요 없다. `requestToChannel`은 target endpoint를 받지 않는다.
 `Discovery`나 manual connection 설정이 peer acquisition을 담당한다. client
-capability에 둘 다 없으면 startup validation 오류다.
+역할에 둘 다 없으면 startup validation 오류다.
 
 ## 6. Registry 띄우기
 

@@ -212,7 +212,7 @@ dispatch가 없도록 한다.
 
 | 영역 | 공개 객체와 역할 | 소유 계약 헤더 |
 |------|-------------------|----------------|
-| Core | `context_t`, context 옵션, routing id, version/capability 헬퍼 | `Contracts/Core/` |
+| Core | `context_t`, context 옵션, routing id, version/역할 헬퍼 | `Contracts/Core/` |
 | Messaging | `message_t`, `received_t`, `topic_message_t`, `subscription_event_t`, multipart 헬퍼 | `Contracts/Messaging/` |
 | Sockets | `pair_socket_t`, `dealer_socket_t`, `router_socket_t`, `pub_socket_t`, `sub_socket_t`, `xpub_socket_t`, `xsub_socket_t`, `stream_socket_t`, send/recv/request/reply 빌더 | `Contracts/Sockets/` |
 | Eventing | `socket_monitor_t`, monitor 이벤트, poller, poll 이벤트, timer, readiness 헬퍼 | `Contracts/Eventing/` |
@@ -389,7 +389,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 네임스페이스로 투영한다.
 
 - `Core/`: context, context 옵션, routing id, utility 리소스, 그리고 version 또는
-  capability 헬퍼 같은 공개 free function.
+  역할 헬퍼 같은 공개 free function.
 - `Messaging/`: message, received metadata, topic message, subscription event, stream
   packet callback, 빌더 payload 헬퍼. codec 헬퍼는 코어 바인딩의 미선언 placeholder가
   아니라 `bindings/cpp/codecs/` 아래 별도 확장 패키지로 둔다.
@@ -443,7 +443,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 
 완성된 C++ 바인딩의 공개 헤더는 다음 그룹을 다룬다.
 
-- Core: context, version/capability 헬퍼, context 옵션, shutdown, 자동 HWM 재계산,
+- Core: context, version/역할 헬퍼, context 옵션, shutdown, 자동 HWM 재계산,
   `atomic_counter_t`, `stopwatch_t`, `thread_t`.
 - Messaging: message ownership, 빌더 multipart 입력, received metadata, topic message,
   subscription event, routing id, callback 타입.

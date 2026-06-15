@@ -79,7 +79,7 @@ flowchart TD
 
 ## 5. 더 보기
 
-- 표면 멘탈 모델: [03-concepts](./03-concepts.ko.md)
+- 핵심 개념: [03-concepts](./03-concepts.ko.md)
 - ZLink 을 어디에 쓰나(새 서비스 도입 판단): [12-grpc-alternative](./12-grpc-alternative.ko.md)
 - 모든 계약 인터페이스를 코드로(ContractTests 검증): [11-interface-catalog](./11-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../spec/handler-interfaces.ko.md)

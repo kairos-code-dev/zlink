@@ -50,7 +50,7 @@ options.spot_node("stage-spot-node")
   });
 ```
 
-router/pub-sub manual endpoint는 SPOT node capability의 peer이고, attached channel manual
+router/pub-sub manual endpoint는 SPOT node 역할의 peer이고, attached channel manual
 endpoint는 channel client peer다. sample에서는 둘을 분리해 적어야 실제 topology 의도가
 흐려지지 않는다.
 

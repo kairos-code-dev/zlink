@@ -1274,9 +1274,9 @@ public interface ZLinkHandlerFilter {
 
 - 일반 channel messaging의 request/send dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)` 수신은 reply correlation 경로로 본다.
-- 같은 capability는 자동 연결 또는 수동 연결 중 하나만 선택한다.
+- 같은 역할은 자동 연결 또는 수동 연결 중 하나만 선택한다.
 - 수동 연결은 `channel + capability` 단위로 관리한다.
-- manual capability는 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
+- 수동 연결 역할은 startup 등록뿐 아니라 런타임 `connect`, `disconnect`,
   `listConnections`도 지원해야 한다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
 - stream session은 header 기반 `ZLinkSession` 하나로 둔다.

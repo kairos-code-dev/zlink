@@ -54,16 +54,16 @@ plane에서는 Registry topology snapshot/query 또는 원격 `RegistryQueryClie
 전체 provider 집합을 읽을 수도 있다.
 
 여기서 중요한 점은 연결 정책을 `channel` 전체가 아니라 **channel 안의 역할별
-capability** 기준으로 봐야 한다는 점이다. 예를 들면 `profile.client`와
+역할** 기준으로 봐야 한다는 점이다. 예를 들면 `profile.client`와
 `profile.subscriber`는 서로 다른 연결 집합이다.
 
 - `profile.client`는 request/send용 outbound `DEALER(client)` 연결을 뜻한다.
 - `profile.subscriber`는 event subscribe용 `SUB` 연결을 뜻한다.
 
-같은 capability는 자동 연결과 수동 연결을 동시에 가질 수는 없다. zlink core에서
+같은 역할은 자동 연결과 수동 연결을 동시에 가질 수는 없다. zlink core에서
 `Discovery`가 붙은 `DEALER`는 수동 `connect`를 허용하지 않기 때문이다.
 따라서 framework는 `channel + capability`마다 연결 방식을 하나씩 고르고, 앱
-전체에서는 capability별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
+전체에서는 역할별로 다른 방식을 나눠 쓰는 모델로 설명하는 편이 맞다.
 
 이 구조가 일반적인 gateway 기반 호출 모델과 어떻게 다른지, 왜 gateway 없이도
 location transparency를 얻을 수 있는지는 [overview.ko.md](./overview.ko.md)의
@@ -119,7 +119,7 @@ view를 소유하는 모델"로 읽는 편이 맞다. 즉:
 - `audit` channel은 `EnablePublisher()`만 가질 수 있다.
 
 즉 outward API는 공용 client 하나로 보이더라도, 내부 runtime은 channel마다
-역할별 capability를 가질 수 있다. 현재 스펙은 이 channel별 capability 구조를
+역할별 역할을 가질 수 있다. 현재 스펙은 이 channel별 역할 구조를
 기본 방향으로 본다.
 
 그리고 channel messaging의 일반 handler dispatch는 local `ROUTER(server)`가
@@ -177,15 +177,15 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 - 수동 연결은 `channel` 전체가 아니라 `channel + capability` 단위로 둔다.
 - 같은 channel이라도 `client`, `subscriber`는 서로 다른 endpoint 집합을 가질 수
   있다.
-- 수동 연결 capability는 startup 등록뿐 아니라 런타임 `connect`,
+- 수동 연결 역할은 startup 등록뿐 아니라 런타임 `connect`,
   `disconnect`, `list` 제어도 지원해야 한다.
-- 다만 같은 capability 안에서는 `Discovery`와 수동 연결을 섞지 않는다.
+- 다만 같은 역할 안에서는 `Discovery`와 수동 연결을 섞지 않는다.
 - actor 모델은 discovery 기반 자동 연결을 권장한다. session-bound actor와 actor
   route resolver는 reconnect, scale-in/out, 위치 갱신을 dynamic하게 다루므로
   manual peer set과 잘 맞지 않는다. manual 연결은 single-peer 테스트나 sample
   topology 검증에서만 actor 경로에 함께 쓴다.
 
-`SPOT`도 같은 원칙으로 capability별 manual 연결을 나눠서 봐야 한다.
+`SPOT`도 같은 원칙으로 역할별 manual 연결을 나눠서 봐야 한다.
 
 - `router` manual 연결도 endpoint 집합만 관리한다. 이 문서에서는 `connect()`
   호출 시 remote router id를 별도 파라미터로 받지 않는다.
@@ -218,7 +218,7 @@ channel name은 배포와 topology를 나타내는 값이므로 handler method a
 ### 5.4 runtime monitoring source 이름
 
 runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 보이는 편이
-맞다. source 이름은 topology와 capability를 읽을 수 있게 잡아야 한다.
+맞다. source 이름은 topology와 역할을 읽을 수 있게 잡아야 한다.
 
 - socket event source는 `channel + capability` 또는 `spot node + capability`
   기준이 자연스럽다.
@@ -230,11 +230,11 @@ runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 �
 - spot event source는 `spot node` 등록 이름을 쓴다.
   예: `stage-node`
 
-즉 monitoring source 이름도 channel grouping과 capability 구분 원칙을 그대로
+즉 monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대로
 따르는 편이 더 자연스럽다.
 
 즉 공용 표면은 "channel별 역할 등록 방식"을 먼저 보이고, 내부 구현은
-"channel별 capability + capability별 transport 매핑"을 기본으로 두는 편이 좋다.
+"channel별 역할 + 역할별 transport 매핑"을 기본으로 두는 편이 좋다.
 
 ## 6. 범위 밖에 두는 것
 

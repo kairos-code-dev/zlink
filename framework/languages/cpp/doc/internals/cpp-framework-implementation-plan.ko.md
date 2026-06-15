@@ -193,7 +193,7 @@ Blueprint/Game Thread 표면만 담고, transport와 codec 구현은 `Private`�
   - Public contract: channel option builder, `request_client_t`, `publisher_t`, typed request/send/publish calls.
   - Runtime owner: channel runtime이 bind/connect/discovery, reply correlation, pending requests, subscription fan-out을
     소유한다.
-  - Error contract: timeout, disconnected, handler not found, request rejected, duplicate capability.
+  - Error contract: timeout, disconnected, handler not found, request rejected, duplicate 역할.
   - Regression contract: server-to-client, dealer mesh, router mesh, pub/sub, route channel, outbound-only host.
 - Goal 10:
   - Public contract: bounded queue, timeout, retry/dead-letter hook, idempotency hook option.
@@ -612,7 +612,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 구현 항목:
 
 - `add_client_server_channel(...)`
-- server/client/publisher/subscriber capability
+- server/client/publisher/subscriber 역할
 - `bind(...)`
 - `connect(...)`
 - `use_discovery(...)`
@@ -628,7 +628,7 @@ framework와 같은 사용성으로 제공하는 것이다.
 완료 기준:
 
 - channel messaging 기본 호출은 channel name 기준이다.
-- 같은 capability 안에서 discovery와 manual connection을 섞지 않는다.
+- 같은 역할 안에서 discovery와 manual connection을 섞지 않는다.
 - pending queue 한도 초과는 `request_rejected`로 실패한다.
 - route handler가 없으면 request는 handler not found 계열 error로 닫힌다.
 

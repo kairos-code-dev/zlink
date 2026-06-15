@@ -40,7 +40,7 @@
 3. backend adapter 계층을 통해 channel, registry, monitoring, Spot, actor/session,
    stream runtime을 구현한다.
 4. 필요한 Java binding gap은 bindings/java public API와 contract test로 먼저 닫는다.
-5. Spring Boot starter, SmartLifecycle, handler scanner, DI capability exposure,
+5. Spring Boot starter, SmartLifecycle, handler scanner, DI 역할 노출,
    validation failure 의미를 `.NET` 기준으로 맞춘다.
 6. stream connector와 JSON, MessagePack, Protobuf codec helper, lifecycle event,
    manual dispatch, request timeout, reconnect 의미를 구현한다.

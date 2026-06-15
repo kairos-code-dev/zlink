@@ -63,7 +63,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-node capability 는 서로 독립이다.
+node 역할은 서로 독립이다.
 
 | node 함수 | 의미 |
 |-----------|------|

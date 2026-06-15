@@ -43,9 +43,9 @@ framework 구현은 아래 C++ binding 타입을 기준으로 삼는다.
 |----------------|------------------|----------------------|
 | runtime context | `zlink::context_t` | app lifecycle 안에서 생성하고 종료한다. |
 | message buffer | `zlink::message_t`, `zlink::multipart_t` | serializer가 typed payload를 변환하는 내부 메시지 단위다. |
-| request/reply channel | `zlink::router_socket_t`, `zlink::dealer_socket_t` | channel server/client capability 구현에 사용한다. |
-| pub/sub channel | `zlink::pub_socket_t`, `zlink::sub_socket_t` | topic publish/subscribe capability 구현에 사용한다. |
-| stream ingress | `zlink::stream_socket_t` | STREAM packet/session capability 구현에 사용한다. |
+| request/reply channel | `zlink::router_socket_t`, `zlink::dealer_socket_t` | channel server/client 역할 구현에 사용한다. |
+| pub/sub channel | `zlink::pub_socket_t`, `zlink::sub_socket_t` | topic publish/subscribe 역할 구현에 사용한다. |
+| stream ingress | `zlink::stream_socket_t` | STREAM packet/session 역할 구현에 사용한다. |
 | discovery | `zlink::service::discovery_t` | registry 기반 channel/spot 연결에 사용한다. |
 | registry | `zlink::service::registry_t`, `zlink::service::registry_query_client_t` | embedded registry와 topology query에 사용한다. |
 | spot node | `zlink::service::spot_node_t` | spot lifecycle과 channel attach를 관리한다. |
@@ -161,17 +161,17 @@ header를 만들고, error code는 stable string으로 기록한다.
 handler result를 response envelope로 감싸며, command/send는 reply 없이 dispatch한다.
 
 `src/runtime/channels/channel_bundle_factory.*`는 `.NET`의
-`ZLinkChannelBundleFactory`에 대응한다. channel capability snapshot에서 client, server,
+`ZLinkChannelBundleFactory`에 대응한다. channel 역할 snapshot에서 client, server,
 publisher, subscriber runtime bundle을 만들고 manual endpoint attachment를 bundle 내부로
 옮긴다.
 
 `src/runtime/channels/channel_runtime_manager.*`는 `.NET`의
-`ZLinkChannelRuntimeManager`에 대응한다. capability bundle lazy creation, inbound/client/
+`ZLinkChannelRuntimeManager`에 대응한다. 역할 bundle lazy creation, inbound/client/
 publisher 초기화, route channel lookup, monitoring source parsing을 담당한다.
 
 `src/runtime/channels/channel_runtime_bundle.*`는 `.NET`의
 `ZLinkChannelRuntimeBundle`에 대응한다. manual connection set, receive gate,
-dealer-mesh pending request owner를 capability 내부 상태로 묶고 public contract에는
+dealer-mesh pending request owner를 역할 내부 상태로 묶고 public contract에는
 노출하지 않는다.
 
 `src/runtime/channels/channel_message_pump.*`와
@@ -620,7 +620,7 @@ framework 내부는 아래 binding 타입을 조합한다.
 
 ## 7. Channel Builder
 
-channel은 framework에서 request/reply와 pub/sub capability를 묶는 이름이다.
+channel은 framework에서 request/reply와 pub/sub 역할을 묶는 이름이다.
 
 ```cpp
 namespace zlink::framework {
@@ -656,7 +656,7 @@ public:
 
 요청 timeout은 call object의 `.timeout(...)`과 route request fluent 표면에서 설정한다. pending
 queue 상한은 `zlink_builder_t::max_pending(...)`이 runtime 단위로 소유한다. C++ draft는
-`.NET` capability builder에 없는 per-capability timeout/pending option을 만들지 않는다.
+`.NET` 역할 builder에 없는 per-역할 timeout/pending option을 만들지 않는다.
 
 내부 매핑은 아래와 같다.
 
@@ -667,12 +667,12 @@ queue 상한은 `zlink_builder_t::max_pending(...)`이 runtime 단위로 소유�
 | publisher | `zlink::pub_socket_t` |
 | subscriber | `zlink::sub_socket_t` |
 
-같은 channel 안에서도 capability별 연결 집합은 분리한다. 예를 들어
+같은 channel 안에서도 역할별 연결 집합은 분리한다. 예를 들어
 `orders.client`와 `orders.subscriber`는 같은 channel 이름을 공유하지만 서로 다른
 socket과 연결 정책을 가진다.
 
 따라서 `bind`, `connect`, `use_discovery` 같은 연결 설정은 channel 전체가 아니라
-`server`, `client`, `publisher`, `subscriber` capability builder에 둔다.
+`server`, `client`, `publisher`, `subscriber` 역할 builder에 둔다.
 
 ## 8. Handler Registry
 
@@ -1407,8 +1407,8 @@ public:
 경로와 Entry Spot join 경로에 제한한다. 일반 application handler와 client는 channel
 name과 topic을 먼저 사용한다.
 
-SPOT node는 router 또는 pub/sub capability 중 하나 이상을 켜야 한다. `add_spot_mesh(...).add_node(...)`는
-discovery view만 연결하므로 실행 capability가 아니다. `enable_router(...)`나
+SPOT node는 router 또는 pub/sub 역할 중 하나 이상을 켜야 한다. `add_spot_mesh(...).add_node(...)`는
+discovery view만 연결하므로 실행 역할이 아니다. `enable_router(...)`나
 `enable_pub_sub(...)` 없이 node를 선언하면 options 적용 시점에 설정 오류로 실패한다.
 
 `.NET`의 일반 packet handler registry와 같은 역할은 C++에서 `spot_context_t::handlers()`가
@@ -1637,7 +1637,7 @@ app.add_zlink_framework ([&](zlink::framework::zlink_framework_options_t &option
 `enable_client()`처럼 endpoint 인자 없이 client role을 켜면 registry discovery로 peer를 찾는다는 뜻이다.
 이 경우 같은 options 안에 `options.use_discovery().add_registry_endpoint (...)`가 있어야 한다. 특정 endpoint를 직접
 붙일 때는 `enable_client(endpoint)`를 사용한다. `enable_client(endpoint)`와 fanout
-`enable_subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 capability의 manual endpoint
+`enable_subscriber(endpoint)`는 반복 호출할 수 있고, 호출 순서대로 같은 역할의 manual endpoint
 목록에 추가된다. fanout subscriber도 discovery/manual 선택 규칙은 같다. discovery endpoint도
 연결 경계의 일부이므로 빈 문자열이나 공백만 있는 문자열은 `options.use_discovery().add_registry_endpoint (...)`에서
 즉시 거부한다.
@@ -1708,7 +1708,7 @@ route mesh channel은 local route endpoint를 열어야 하므로 `bind(...)`가
 시점에 설정 오류로 실패한다.
 `.NET`의 `EnableSpotRouteEgress(...)`에 해당하는 C++ fluent 표면은
 `enable_spot_route_egress(target_channel_name)`이다. client/server channel에서 이 설정을 쓰려면
-local client capability가 필요하고, route mesh channel에서는 route channel registration에 target
+local client 역할이 필요하고, route mesh channel에서는 route channel registration에 target
 SPOT node channel 이름을 보존한다.
 fluent options에서 channel 이름, handler group 이름, endpoint, SPOT node 이름, stream node
 이름처럼 식별자나 연결 주소로 쓰이는 값은 빈 문자열이나 공백 문자열을 허용하지 않는다.
@@ -1718,18 +1718,18 @@ framework error로 닫는다.
 연결한다. attached client peer는 registry discovery 또는 attach별 manual endpoint로 얻는다.
 manual endpoint를 쓰려면
 `attach_channel_client(name, [](auto &client) { client.connect(endpoint); })`처럼 명시한다.
-SPOT router와 pub/sub capability도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
+SPOT router와 pub/sub 역할도 registry discovery 없이 고정 peer를 붙일 수 있다. 이때는
 `enable_router(endpoint, [](auto &router) { router.connect(peer); })` 또는
-`enable_pub_sub(endpoint, [](auto &pub_sub) { pub_sub.connect(peer); })`처럼 capability별
+`enable_pub_sub(endpoint, [](auto &pub_sub) { pub_sub.connect(peer); })`처럼 역할별
 manual endpoint를 기록한다. routing id도 같은 configure callback 안에서
 `router.set_routing_id(...)`, `pub_sub.set_routing_id(...)`로 지정할 수 있다.
 `attach_publisher(...)`는 등록된 fanout publisher channel을 SPOT node에 연결하며, 해당 node는
-`enable_pub_sub(...)` capability를 가져야 한다. publisher attach도
+`enable_pub_sub(...)` 역할을 가져야 한다. publisher attach도
 `attach_publisher(name, [](auto &publisher) { publisher.connect(endpoint); })`로 manual endpoint를
 기록할 수 있다. 같은 publisher channel을 여러 SPOT node에 중복 attach하면 options 적용 시점에
 실패한다.
 `accept_routes_from_channel(...)`은 SPOT route ingress를 여는 설정이다. 이 설정을 둔
-SPOT node는 `enable_router(...)`로 router capability를 켜야 하며, 대상 channel은
+SPOT node는 `enable_router(...)`로 router 역할을 켜야 하며, 대상 channel은
 client/server channel 또는 route mesh channel이어야 한다. fanout channel, dealer mesh
 channel, 등록되지 않은 channel, client/server와 route mesh가 같은 이름을 쓰는 모호한
 channel은 options 적용 시점에 실패한다. route peer는 registry discovery 또는 accepted route
@@ -2104,7 +2104,7 @@ int main(int argc, char **argv)
   `request_client_t`, `publisher_t` 주입 표면과 맞춘다.
 - handler와 publisher 표면은 channel name을 먼저 받고, topic 또는 packet name을
   그 다음에 받는 형태로 맞춘다.
-- channel 연결 설정은 channel 전체가 아니라 capability builder에 둔다.
+- channel 연결 설정은 channel 전체가 아니라 역할 builder에 둔다.
 - SPOT 문서는 binding의 `service::spot_node_t`, `service::spot_t` 기능을 framework
   builder와 `spot_context_t`로 감싸는 방식으로 정리한다.
 - SPOT discovery 설정은 `spot_node.use_discovery(channel_name)`처럼 active SPOT

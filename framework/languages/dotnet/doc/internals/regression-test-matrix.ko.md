@@ -59,14 +59,14 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate channel 이름 등록 (`AddClientServerChannel`, `AddFanoutChannel`) | `unit` | startup validation 예외 |
-| 같은 channel 이름을 client-server와 fanout capability로 동시에 등록 | `unit` | startup validation 예외 |
-| server capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
+| 같은 channel 이름을 client-server와 fanout 역할로 동시에 등록 | `unit` | startup validation 예외 |
+| server 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | `AddClientServerChannel(...).EnableClient(c => c.UseManualConnections(...))` | `integration-single-process` | manual request/send 성공 |
 | `AddClientServerChannel(...).EnableClient(...)` + 전역 `UseDiscovery(...AddRegistryEndpoint...)` | `integration-single-process` | discovery 기반 request/send 성공 |
 | `AddFanoutChannel(...).EnableSubscriber(s => s.UseManualConnections(...))` | `integration-single-process` | manual 기반 subscribe 성공 |
-| client capability에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
-| 같은 capability에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
-| publisher capability에 bind endpoint 없음 | `unit` | startup validation 예외 |
+| client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
+| 같은 역할에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
+| publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
 | handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.AddHandlerGroup("...")`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
@@ -105,13 +105,13 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | actor manager with SpotNode and actor factory | `unit` | SpotNode 와 actor factory 가 모두 있으면 `IZLinkActorManager` 가 DI 에 등록된다 |
 | Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `IZLinkSpotManager` 가 DI 에 없다 |
 | Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
-| Spot publisher without publisher capability | `unit` | SpotNode 가 있어도 publisher capability 가 없으면 Spot publisher service 는 DI 에 없다 |
-| Spot publisher with publisher capability | `unit` | Spot publisher capability 가 있으면 `IZLinkSpotPublisherClient` 가 DI 에 등록된다 |
+| Spot publisher without publisher 역할 | `unit` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
+| Spot publisher with publisher 역할 | `unit` | Spot publisher 역할이 있으면 `IZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot remote address resolver without SpotNode | `unit` | remote address 정보만 제공하는 서버는 SpotNode 없이 `IZLinkSpotRemoteAddressResolver` 를 등록할 수 있다 |
 | Spot outbound with resolver only | `unit` | Spot remote address resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
 | route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
-| channel client missing at call time | `unit` | `IZLinkChannelClient` 호출 시 channel client capability 가 없으면 `ZLinkConfigurationException` |
+| channel client missing at call time | `unit` | `IZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
 
 ## 5. Spot Regression 항목
 
@@ -150,7 +150,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | Spot route channel manual connect | `integration-single-process` | `AcceptSpotRoutesFromChannel(...)` 수동 endpoint가 binding public API를 통해 router channel peer로 적용된다 |
 | Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
 | route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `RoutingId`로 route mesh egress target peer 를 선택한다 |
-| Spot route egress capability validation | `unit` | routed Spot egress 는 client-server client capability 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
+| Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
 | spot 종료 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `IZLinkSpotContext.AddHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
 | Entry Spot actor mailbox dispatch | `integration-single-process` | Entry Spot actor packet이 actor별 입력 순서를 보존한 뒤 Entry Spot 실행 queue에서 순서대로 처리된다 |

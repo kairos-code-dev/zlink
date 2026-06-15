@@ -19,7 +19,7 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 |------|------|
 | [01-overview](./guide/01-overview.ko.md) | 한 줄 정의, 아키텍처, 통합 축 |
 | [02-getting-started](./guide/02-getting-started.ko.md) | 첫 channel request까지 |
-| [03-concepts](./guide/03-concepts.ko.md) | channel, capability, Spring DI 멘탈 모델 |
+| [03-concepts](./guide/03-concepts.ko.md) | channel, 역할, Spring DI 멘탈 모델 |
 | [04-feature-map](./guide/04-feature-map.ko.md) | 기능별 사용 시점과 구현 문서 연결 |
 | [05-channel-messaging](./guide/05-channel-messaging.ko.md) | request/send/pub-sub |
 | [06-spot](./guide/06-spot.ko.md) | Spot 생성, 조회, timer |
@@ -55,7 +55,7 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 |------|------|
 | [dotnet-to-java-surface-mapping](./internals/dotnet-to-java-surface-mapping.ko.md) | 이식 기준과 번역 규칙 |
 | [backend-dependency-policy](./internals/backend-dependency-policy.ko.md) | Java binding 의존 격리 |
-| [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) | capability별 Spring bean 노출 규칙 |
+| [di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) | 역할별 Spring bean 노출 규칙 |
 | [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md) | 시동, 종료, 실패 의미 |
 | [behavior-matrix](./internals/behavior-matrix.ko.md) | 기능별 validation/runtime 판정 |
 | [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) | 구현 범위와 비목표 |

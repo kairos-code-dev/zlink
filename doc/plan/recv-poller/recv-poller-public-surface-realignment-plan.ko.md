@@ -1181,7 +1181,7 @@ service facade 추가 규칙:
 
 원칙:
 
-- mode separation 위반은 capability mismatch가 아니라 same-handle usage
+- mode separation 위반은 역할 mismatch가 아니라 same-handle usage
   conflict로 본다.
 - 따라서 기본 실패 errno는 `EBUSY`로 통일한다.
 - 이미 각 API가 더 강한 existing contract를 갖는 경우에는 그 계약을

@@ -6,12 +6,12 @@
 ## 기본 원칙
 
 framework option builder 는 설정 객체를 조회하는 표면이 아니라, runtime 등록 모델을
-만드는 표면이다. 따라서 상태를 추가하거나 capability 를 켜는 메서드는 그 동작이
+만드는 표면이다. 따라서 상태를 추가하거나 역할을 켜는 메서드는 그 동작이
 이름에 드러나야 한다.
 
 - `add*` 는 새 등록 항목이나 반복 가능한 값을 추가할 때 사용한다.
   예: `addClientServerChannel`, `addRegistryEndpoint`, `add_forwarded_metadata_key`
-- `enable*` 는 이미 선택한 등록 항목 안에서 capability 를 켤 때 사용한다.
+- `enable*` 는 이미 선택한 등록 항목 안에서 역할을 켤 때 사용한다.
   예: `enableServer`, `enableClient`, `enable_publisher`
 - `use*` 는 기존 등록 항목에 적용되는 선택 정책이나 설정 영역을 열 때 쓴다. 그 안에서
   실제로 값을 추가하는 메서드는 `add*` 로 명확하게 쓴다.
@@ -25,7 +25,7 @@ framework option builder 는 설정 객체를 조회하는 표면이 아니라, 
 
 `server()`, `client()`, `publisher()`, `subscriber()`, `router()`, `dealer()` 처럼 명사만
 있는 이름은 피한다. 이런 이름은 단순 조회처럼 보이지만, framework option builder 에서는
-대부분 capability 를 활성화한다. 실제 동작이 활성화라면 `enableServer()` 또는
+대부분 역할을 활성화한다. 실제 동작이 활성화라면 `enableServer()` 또는
 `enable_server()` 처럼 쓴다.
 
 Discovery 자체는 `UseDiscovery` / `useDiscovery` / `use_discovery` 로 연다. 다만 그 안에서
@@ -42,7 +42,7 @@ metadata forwarding key 도 같은 규칙을 따른다. `Forward(key)` 또는 `f
 
 각 언어는 그 언어의 일반 표기법을 따른다.
 
-| 언어 | 등록 예 | capability 예 | discovery 예 |
+| 언어 | 등록 예 | 역할 예 | discovery 예 |
 |------|---------|---------------|--------------|
 | .NET | `AddClientServerChannel` | `EnableServer` | `UseDiscovery(d => d.AddRegistryEndpoint(...))` |
 | Java | `addClientServerChannel` | `enableServer` | `useDiscovery(d -> d.addRegistryEndpoint(...))` |

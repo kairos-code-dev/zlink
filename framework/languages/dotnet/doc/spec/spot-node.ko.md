@@ -35,7 +35,7 @@ core는 SpotNode bind 이후 Entry Spot rid 변경을 잠그기 때문에 이 �
 2. `ConfigureEntrySpot(...)`에서 `RoutingId`가 설정되어 있으면
    `entrySpot.SetRoutingId(...)`를 호출한다.
 3. SpotNode를 bind한다.
-4. discovery, route channel, publisher 같은 node capability를 붙인다.
+4. discovery, route channel, publisher 같은 node 역할을 붙인다.
 5. Entry Spot activation을 만든다.
 6. Entry Spot dispatch pump를 붙인다.
 7. 이후 Actor 생성과 Actor remote address publish는 설정된 Entry Spot rid를 사용한다.

@@ -140,7 +140,7 @@ module) 로 이미 올라와 있어야 한다.
 > 모듈에서 주입하는 방식도 허용한다. 의미는 동일하다 — source 등록은 framework 등록과
 > 같은 application 에 있어야 한다.
 
-여기서 한 가지 짚어 둘 점이 있다. 일반 channel capability[^capability] 와 SPOT
+여기서 한 가지 짚어 둘 점이 있다. 일반 channel 역할[^capability] 와 SPOT
 mesh 는 각자 자신의 discovery source 를 가진다. 즉 registry endpoint 집합을
 공급하는 곳이 둘로 나뉜다.
 
@@ -545,7 +545,7 @@ export class DiscoveryStatusProbe {
 
 Monitoring 문서의 항목은 다음을 확인한다.
 
-- 등록한 source 이름이 실제 runtime capability 와 맞는지
+- 등록한 source 이름이 실제 runtime 역할과 맞는지
 - Registry 와 SPOT 상태 변화가 typed event 와 snapshot 으로 관찰되는지
 - timer handler failure 가 polling interval 을 기다리지 않고 typed event 로 관찰되는지
 - raw monitor event 를 그대로 외부로 새어 보내지 않는다는 정책이 public surface
@@ -568,7 +568,7 @@ Monitoring 문서의 항목은 다음을 확인한다.
 [^raw-monitor]: raw monitor 는 하부 socket 계층에서 직접 발생하는 저수준 이벤트(연결 성공, 끊김 등)를 그대로 수신하는 메커니즘이다.
 [^snapshot-diff]: snapshot diff 는 일정 주기로 상태 스냅샷을 읽고, 이전 스냅샷과 비교해서 차이가 있을 때만 event 를 합성하는 방식이다.
 [^polling]: polling 은 주기적으로 상태를 직접 조회해서 변화를 감지하는 방식이다. push 기반 event 가 없을 때 사용한다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, subscriber, publisher)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, client, subscriber, publisher)를 가리킨다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

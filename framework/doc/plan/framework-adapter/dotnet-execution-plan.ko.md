@@ -242,7 +242,7 @@ public API와 backend를 떼어 놓는 핵심 단계다.
 
 이 단계에서 구현할 것:
 
-- channel capability adapter
+- channel 역할 adapter
 - discovery adapter
 - spot node / spot manager adapter
 - stream node adapter
@@ -603,7 +603,7 @@ framework 설계 blocker로 보지 않는다. 완료 판정의 직접 gate는
 
 아래 경우만 구현 진행을 잠시 멈추고 판단을 다시 한다.
 
-- `bindings/dotnet` backend가 실제로 제공하지 않는 capability를 framework spec이
+- `bindings/dotnet` backend가 실제로 제공하지 않는 역할을 framework spec이
   필수로 요구하는 경우
 - 여섯 runtime RID 중 하나에서 backend 자체가 동작하지 않아 framework 계층으로는
   해결할 수 없는 경우

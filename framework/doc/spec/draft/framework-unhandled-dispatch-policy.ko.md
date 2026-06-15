@@ -255,7 +255,7 @@ constructor injection 이 동작해야 한다. 이 규칙은 DealerMesh 에 새�
 동일하게 적용한다.
 
 `EnableClient(...)` 이름은 이 초안의 구현 범위에서는 유지한다. 이 이름은 "이 channel 이
-outbound 전용 client 다"라는 뜻이 아니라 "이 channel 이 DEALER socket capability 를 가진다"는
+outbound 전용 client 다"라는 뜻이 아니라 "이 channel 이 DEALER socket 역할을 가진다"는
 뜻으로 문서화한다. 이름 변경은 이 정책 구현과 별도 breaking change 로 분리해야 한다.
 
 DealerMeshChannel 에서 기록해야 하는 outbound 단계는 아래와 같다.
@@ -1074,7 +1074,7 @@ outbound path 에도 message flow telemetry 를 심어야 한다.
    request receive/reply API 를 둔다.
 3. DealerMesh bundle 은 outbound submitter 와 같은 DEALER socket 을 소유하는 receive loop 를
    함께 가진다.
-4. `ZLinkChannelRuntimeManager` 는 DealerMesh client capability 시작 시 inbound pump 도
+4. `ZLinkChannelRuntimeManager` 는 DealerMesh client 역할 시작 시 inbound pump 도
    시작한다.
 5. DealerMesh dispatcher 는 response/error 를 pending completion 으로 먼저 보내고,
    request/send 는 handler dispatch 로 보낸다.

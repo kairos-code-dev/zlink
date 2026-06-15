@@ -4,7 +4,7 @@
 
 [Framework 문서](../../../doc/README.ko.md) | [공통 스펙](../../../doc/spec/README.ko.md)
 
-[공통 스펙](../../../doc/spec/README.ko.md) | [비동기 실행](../../../doc/spec/async-execution-policy.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
+[공통 스펙](../../../doc/spec/README.ko.md) | [비동기 실행](../../../doc/spec/async-execution-policy.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-역할-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
 
 # ZLink Framework for .NET
 
@@ -92,7 +92,7 @@
   `Systems.Zlink.*`를 사용한다. 예를 들어 framework는
   `Systems.Zlink.Framework`, Stream Connector는 `Systems.Zlink.Stream.Connector`가 된다.
 - 수동 연결은 `channel + capability`[^capability] 또는 `spot node + capability`
-  단위로 설명한다. 같은 capability 안에서는 `Discovery` 기반 자동 연결과 manual
+  단위로 설명한다. 같은 역할 안에서는 `Discovery` 기반 자동 연결과 manual
   연결을 섞지 않는다.
 - send 는 기본적으로 async submit 으로 설명한다. backpressure[^backpressure]는
   public no-wait 옵션을 따로 두지 않고, nonblocking send 와 pending queue,
@@ -141,7 +141,7 @@
 |------|------|
 | [guide/01-overview.ko.md](./guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
 | [guide/02-getting-started.ko.md](./guide/02-getting-started.ko.md) | 패키지부터 최소 예제 동작 확인까지 |
-| [guide/03-concepts.ko.md](./guide/03-concepts.ko.md) | `.NET` 표면 멘탈 모델과 공통 스펙 매핑 |
+| [guide/03-concepts.ko.md](./guide/03-concepts.ko.md) | 핵심 개념과 공통 스펙 매핑 |
 | [guide/04-channel-messaging.ko.md](./guide/04-channel-messaging.ko.md) | request / send / pub-sub 등록과 호출 사용법 |
 | [guide/05-spot.ko.md](./guide/05-spot.ko.md) | room / stage / zone 같은 동적 SPOT 등록과 호출 사용법 |
 | [guide/06-actor-session.ko.md](./guide/06-actor-session.ko.md) | actor lifecycle 과 session actor dispatch 사용법 |
@@ -195,8 +195,8 @@
 
 | 문서 | 다루는 범위 |
 |------|------------|
-| [behavior-matrix.ko.md](./internals/behavior-matrix.ko.md) | capability 조합별 기대 동작, startup validation, 허용 / 비허용 조합 |
-| [di-capability-exposure-policy.ko.md](./internals/di-capability-exposure-policy.ko.md) | DI 로 노출되는 public service interface 와 capability 등록 조건 |
+| [behavior-matrix.ko.md](./internals/behavior-matrix.ko.md) | 역할 조합별 기대 동작, startup validation, 허용 / 비허용 조합 |
+| [di-역할-exposure-policy.ko.md](./internals/di-역할-exposure-policy.ko.md) | DI 로 노출되는 public service interface 와 역할 등록 조건 |
 | [lifecycle-and-failure-semantics.ko.md](./internals/lifecycle-and-failure-semantics.ko.md) | startup / shutdown 순서, fail-fast[^fail-fast] 규칙, reconnect 와 runtime error 의 의미 |
 | [regression-test-matrix.ko.md](./internals/regression-test-matrix.ko.md) | 구현 중에도 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
 | [implementation-scope-and-nongoals.ko.md](./internals/implementation-scope-and-nongoals.ko.md) | 현재 계획의 전체 구현 범위, 비목표, 완료 판정 기준 |
@@ -241,7 +241,7 @@
   직접 호출한다.
 - channel messaging handler 는 attribute scan[^attribute-scan] 으로 찾는다.
   다만 발견된 handler 를 모든 channel 에 전역으로 노출하지 않는다.
-  대신 `EnableServer(...)` 또는 `EnableSubscriber(...)` 같은 inbound capability
+  대신 `EnableServer(...)` 또는 `EnableSubscriber(...)` 같은 inbound 역할
   등록 시점에 어느 channel 로 매핑할지 명시한다.
 - `[ZLinkRequest]`, `[ZLinkSend]`, `[ZLinkPublish]` 는 channel 이름을 인자로 받지
   않는다. channel 이름은 배포 환경과 topology 의 값이므로, handler attribute 가
@@ -289,7 +289,7 @@
 [^wire-transport]: wire / transport 레벨은 실제 네트워크 위에서 바이트가 흘러가는 계층을 가리키며, 그 위에 framework 의 추상화가 쌓인다.
 [^reverse-dns]: 역순 도메인 규칙(reverse-DNS) 은 도메인 이름을 거꾸로 뒤집어 namespace 충돌을 피하는 관례다. `zlink.systems` 도메인이면 `Systems.Zlink.*` 가 된다.
 [^nuget]: NuGet 은 `.NET` 의 표준 패키지 매니저로, 라이브러리를 package id 단위로 배포·설치한다.
-[^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, subscriber, publisher)를 가리킨다.
+[^capability]: **역할**은 어떤 노드(channel, spot 등)가 외부에 노출하는 기능 단위(예: server, subscriber, publisher)를 가리킨다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
 [^stream-actor-bridge]: stream-to-actor bridge 는 STREAM 으로 들어온 외부 트래픽을 framework 내부의 actor 메시지로 이어 주는 연결 지점을 가리킨다.
 [^session-actor-dispatch]: session actor dispatch 는 클라이언트 세션에서 들어온 요청을, 그 세션과 묶인 actor 로 자동 전달하는 패턴이다.

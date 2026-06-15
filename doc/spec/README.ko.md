@@ -44,7 +44,7 @@ cross-language 정책과 언어별 스펙을 충족하는 구현체는 적합한
 
 | 문서 | 설명 |
 |------|------|
-| [정책](./bindings/README.md) | Cross-language 바인딩 계약 (POSD, capability matrix, naming, domain object) |
+| [정책](./bindings/README.md) | Cross-language 바인딩 계약 (POSD, 역할 matrix, naming, domain object) |
 | [C](./bindings/c/README.md) | C 바인딩 스펙 |
 | [C++](./bindings/cpp/README.md) | C++ 바인딩 스펙 |
 | [Java](./bindings/java/README.md) | Java 바인딩 스펙 |

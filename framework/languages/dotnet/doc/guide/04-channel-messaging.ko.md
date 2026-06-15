@@ -249,6 +249,23 @@ group 매핑으로 등록한다.
 > 같은 channel 안에서 `kind + packet 이름` 이 겹치면 **시작 단계에서 예외**다. 다른
 > channel 끼리는 같은 packet 이름을 재사용해도 된다.
 
+### 잘못된 등록은 시작 단계에서 막힌다
+
+channel 종류가 handler 종류를 강제한다 — client/server 는 request·send 만, fanout 은
+publish 만 받는다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
+런타임에 조용히 무시되거나 잘못 라우팅되지 않고 **`AddZLinkFramework` 시작 단계에서
+`ZLinkConfigurationException` 으로 즉시 실패**한다. 즉 잘못된 배선은 빌드가 아니라
+**부팅이 깨지므로** 운영에 나가기 전에 드러난다.
+
+| 잘못된 등록 | 시작 단계 예외 메시지 |
+|-------------|----------------------|
+| client/server channel 에 publish handler 등록 | `client/server channel '{name}' cannot register publish handlers` |
+| fanout channel 에 request/send handler 등록 | `fanout channel '{name}' cannot register send or request handlers` |
+| 같은 channel 이름을 client/server 와 fanout 으로 등록 | `Duplicate channel name '{name}'` — 두 종류는 같은 channel 이름 공간을 공유한다 |
+| 종류가 맞지 않는 handler 그룹 매핑(예: fanout 에 request 그룹) | `maps handler group '{group}' with incompatible handler kind` |
+| handler 를 노출했지만 받을 역할이 없음(server/subscriber 미등록) | `exposes handlers but does not enable server/subscriber capability` |
+| 같은 channel 에 `kind + packet 이름` 중복 | `Duplicate request/send/publish handler '{channel}:{packet}'` |
+
 ## 4. outbound 호출
 
 ### request / send — `IZLinkChannelClient`

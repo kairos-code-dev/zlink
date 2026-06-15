@@ -52,6 +52,11 @@
 | 같은 channel capability 안에서 discovery + manual 함께 등록 | 비허용 | startup validation 오류. 단, routed Spot route mesh egress 는 수동 연결을 실제 transport 로 쓰고 discovery/query 를 target ROUTER `RoutingId` metadata 조회에만 쓰는 좁은 예외를 둔다 |
 | 같은 channel server에 같은 `kind + packetName` handler 중복 | 비허용 | startup validation 오류 |
 | 다른 channel server에 같은 `kind + packetName` handler 등록 | 허용 | channel별로 handler namespace가 분리되어 있다 |
+| client/server channel에 publish handler 등록(typed 또는 publish 그룹 매핑) | 비허용 | startup validation 오류: `client/server channel '{name}' cannot register publish handlers` |
+| fanout channel에 request/send handler 등록 | 비허용 | startup validation 오류: `fanout channel '{name}' cannot register send or request handlers` |
+| 종류가 맞지 않는 handler 그룹을 channel에 매핑(예: fanout에 request 그룹) | 비허용 | startup validation 오류: `maps handler group '{group}' with incompatible handler kind` |
+| handler를 노출했지만 받을 역할(server/subscriber)이 없음 | 비허용 | startup validation 오류: `exposes handlers but does not enable server/subscriber capability` |
+| 같은 channel 이름을 client/server와 fanout으로 중복 등록 | 비허용 | startup validation 오류: `Duplicate channel name '{name}'`. client/server·fanout은 같은 channel 이름 공간을 공유한다 |
 | `channel.AddHandlerGroup("...")`로 명시한 그룹의 handler만 그 channel에서 dispatch | 허용 | `[ZLinkHandlerGroup("...")]` attribute와 매핑을 조합해서 노출 범위를 제한한다 |
 | 같은 channel에 여러 그룹 매핑 | 허용 | `AddHandlerGroup`을 여러 번 호출해 그룹들의 합집합을 한 채널에 노출한다 |
 | `AddHandlerGroup`이 가리키는 그룹에 handler 0개 | 비허용 | startup validation 오류 |

@@ -168,7 +168,7 @@ nonblocking send + pending queue + ready notification 으로 처리한다.
 - `Async(...)` / `Async<T>(...)` 의 완료는 **transport 위임까지**만
   보장한다. remote handler 완료나 subscriber 수신을 보장하지 않는다.
 - `Request(...).Timeout(...)` 은 **reply 대기 시간**만 정한다. submit 단계의
-  backpressure 대기 한계는 channel/socket 의 `SendTimeout`(기본 200ms)을 따른다.
+  backpressure 대기 한계는 channel/socket 의 `SendTimeout`(기본 1000ms)을 따른다.
 - `Send`/`Publish` 에는 `Timeout` 이 없다(응답을 기다리지 않으므로).
 
 ## 8. 더 깊이

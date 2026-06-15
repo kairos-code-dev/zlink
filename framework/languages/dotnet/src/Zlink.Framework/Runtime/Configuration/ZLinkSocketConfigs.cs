@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Configuration;
 
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 {
-    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(200);
+    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(1000);
 
     public long MaxMessageSize { get; set; }
 
@@ -69,7 +69,7 @@ internal sealed class ZLinkOutboundRouteConfig : IZLinkOutboundRouteConfig
 
 internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
 {
-    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(200);
+    private TimeSpan? _sendTimeout = TimeSpan.FromMilliseconds(1000);
 
     public int SendHighWaterMark { private get; set; }
 

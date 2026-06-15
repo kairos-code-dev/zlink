@@ -1962,9 +1962,10 @@ timeout 은 request 와 send 간에 다르게 다룬다.
 - send backpressure 의 대기 한계는 builder 가 아니라, channel 또는
   socket 의 `SendTimeout` 옵션을 따른다.
 - framework channel/socket option 의 `SendTimeout` 기본값은
-  `TimeSpan.FromMilliseconds(200)` 이다. async submit runtime 은 core
-  socket 의 기본값을 사용하지 않는다. 대신 framework 가 socket/channel
-  option 에 설정한 resolved `SendTimeout` 값을 읽는다. 사용자가
+  `TimeSpan.FromMilliseconds(1000)` 이며, core socket 기본값(1000ms)과
+  동일하다. async submit runtime 은 core socket 의 기본값을 직접
+  사용하지 않고, framework 가 socket/channel option 에 설정한 resolved
+  `SendTimeout` 값을 읽는다. 사용자가
   `SendTimeout = null` 로 명시한 경우에 한해, core `-1` 과 같은 무한 대기
   로 본다.
 - `RequestToChannel(...).Async<TReply>(...)` 도 마찬가지다. request packet 을

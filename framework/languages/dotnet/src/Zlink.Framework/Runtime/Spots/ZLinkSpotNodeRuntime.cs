@@ -313,7 +313,7 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _frameworkRegistration.SpotDiscovery?.ChannelName ?? _registration.SpotNodeName,
             _frameworkRegistration.DefaultTimeout,
             _registration.Router?.SocketConfig.SendTimeout
-                ?? TimeSpan.FromMilliseconds(200),
+                ?? TimeSpan.FromMilliseconds(1000),
             ResolveAttachedChannelSubmitter);
         activation.Configure();
         await activation.InitializeAsync(_stopSource.Token)

@@ -35,7 +35,7 @@ dotnet add package Systems.Zlink.Framework
 
 ```mermaid
 flowchart LR
-  Caller["caller 앱<br/>(EnableClient)"] -- "Request(\"price\", ...)" --> PriceServer["price-server 앱<br/>(EnableServer + handler)"]
+  Caller["caller 앱<br/>(EnableClient)"] -- "Request('price', ...)" --> PriceServer["price-server 앱<br/>(EnableServer + handler)"]
 ```
 
 - `price-server` : `price` channel 에 server capability 를 열고 handler 를 둔다.

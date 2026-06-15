@@ -34,7 +34,7 @@ Spring Boot starter가 lifecycle owner가 되는 방식을 public 사용 경로�
 
 ```mermaid
 flowchart LR
-  Caller["caller 앱<br/>(enableClient)"] -- "requestToChannel(\"price\", ...)" --> PriceServer["price-server 앱<br/>(enableServer + handler)"]
+  Caller["caller 앱<br/>(enableClient)"] -- "requestToChannel('price', ...)" --> PriceServer["price-server 앱<br/>(enableServer + handler)"]
 ```
 
 - `price-server` : `price` channel에 server capability를 열고 handler를 둔다.

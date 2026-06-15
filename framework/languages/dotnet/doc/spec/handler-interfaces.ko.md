@@ -3861,7 +3861,7 @@ packet 별 단일 class (`UserGetHandler`) 도 모두 허용된다.
 모든 public service interface 를 항상 DI 에 등록하지는 않는다. 생성자 주입은
 그 기능을 사용할 수 있다는 신호가 되므로, 역할이 없는 service 는 등록하지
 않는다. 자세한 결정 배경은
-[di-역할-exposure-policy.ko.md](../internals/di-역할-exposure-policy.ko.md) 에서
+[di-capability-exposure-policy.ko.md](../internals/di-capability-exposure-policy.ko.md) 에서
 다룬다.
 
 | Interface | DI 등록 조건 |

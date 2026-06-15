@@ -2,7 +2,7 @@
 
 [문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [handler-interfaces](./handler-interfaces.ko.md)
 
-[DI 노출 정책](../internals/di-역할-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
+[DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md) | [Backend 의존 정책](../internals/backend-dependency-policy.ko.md)
 
 > 이 문서는 [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md)을
 > 따른다. 개념·의미론·동작은 `framework/languages/dotnet` 과 **동일**하고,
@@ -226,7 +226,7 @@ factory, Spot, session 처럼 의존성을 받는 확장 지점은 NestJS provid
 핵심 원칙은 **주입 가능성 = 기능 가능성**이다. 어떤 역할도 등록하지
 않았는데 그 service 를 주입받을 수 있으면 안 된다. 따라서 일부 provider 는
 역할 조건이 충족될 때만 `providers`/`exports` 에 들어간다. 정식 정의는
-[di-역할-exposure-policy](../internals/di-역할-exposure-policy.ko.md)
+[di-capability-exposure-policy](../internals/di-capability-exposure-policy.ko.md)
 가 소유한다. 아래는 .NET `ZLinkFrameworkServiceRegistrar.AddPublicClients(...)`
 의 등록 조건을 옮긴 요약이다.
 
@@ -764,4 +764,4 @@ backend 스왑 지점의 전부다. framework 의 다른 어떤 코드도 `@zlin
 | `nestjs-module.test.js` | `ZLinkModule.forRoot/forRootFactory`, provider token 노출, startup validation, 실제 NestJS application context 주입, lifecycle 연결이 동작한다. |
 | `documentation-regression.test.js › node implementation reference docs declare regression coverage sections` | 이 overview 가 자기 회귀 테스트 단락을 유지한다. |
 
-[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-역할-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)
+[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [DI 노출 정책](../internals/di-capability-exposure-policy.ko.md) | [Lifecycle/Failure](../internals/lifecycle-and-failure-semantics.ko.md)

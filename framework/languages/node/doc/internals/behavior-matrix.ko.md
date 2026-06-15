@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../README.ko.md)
@@ -195,5 +195,5 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

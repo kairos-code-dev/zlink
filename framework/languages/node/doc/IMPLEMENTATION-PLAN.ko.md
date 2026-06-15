@@ -63,7 +63,7 @@ IMPLEMENTATION-PLAN (지금 문서)  ← 순서·참조지도·DoD·함정표·�
 | [internals/lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md) | 시동/종료/실패 순서 |
 
 레퍼런스(해당 부분 구현 시 참조):
-[di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) ·
+[di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) ·
 [behavior-matrix](./internals/behavior-matrix.ko.md) ·
 [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) ·
 [regression-test-matrix](./internals/regression-test-matrix.ko.md) ·
@@ -286,7 +286,7 @@ Phase 가 만든 코드를 **POSD(Philosophy of Software Design) 원칙으로 �
 
 ### Phase 3 — 호스트/모듈 부트스트랩 + lifecycle
 - **선행:** P1.5, P2
-- **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
+- **입력:** [nestjs-overview §2~4](./spec/nestjs-overview.ko.md), [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md), [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) / dotnet `Runtime/Host/`, `Runtime/Configuration/`, `AspNetCore/`
 - **산출물:** `runtime/host/`, `runtime/configuration/`, `@zlink-systems/nestjs`(`ZLinkModule`)
 - **작업:**
   - `ZLinkModule.forRoot(options)` / `forRootFactory({useFactory, inject})` → `@nestjs/common` 실제 `DynamicModule`

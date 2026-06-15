@@ -50,7 +50,7 @@ server framework에 의존하지 않는 `ZLinkStreamConnector` 모듈을 사용�
 Spring bean 주입은 역할 가능성을 암시해야 한다. SpotNode가 없으면
 `ZLinkSpotManager`를 등록하지 않고, actor factory가 없으면 `ZLinkActorManager`를
 등록하지 않는다. 자세한 기준은
-[DI 역할 policy](../internals/di-역할-exposure-policy.ko.md)가 소유한다.
+[DI 역할 policy](../internals/di-capability-exposure-policy.ko.md)가 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

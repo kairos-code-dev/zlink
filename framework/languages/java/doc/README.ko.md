@@ -55,7 +55,7 @@ backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, �
 |------|------|
 | [dotnet-to-java-surface-mapping](./internals/dotnet-to-java-surface-mapping.ko.md) | 이식 기준과 번역 규칙 |
 | [backend-dependency-policy](./internals/backend-dependency-policy.ko.md) | Java binding 의존 격리 |
-| [di-역할-exposure-policy](./internals/di-역할-exposure-policy.ko.md) | 역할별 Spring bean 노출 규칙 |
+| [di-capability-exposure-policy](./internals/di-capability-exposure-policy.ko.md) | 역할별 Spring bean 노출 규칙 |
 | [lifecycle-and-failure-semantics](./internals/lifecycle-and-failure-semantics.ko.md) | 시동, 종료, 실패 의미 |
 | [behavior-matrix](./internals/behavior-matrix.ko.md) | 기능별 validation/runtime 판정 |
 | [implementation-scope-and-nongoals](./internals/implementation-scope-and-nongoals.ko.md) | 구현 범위와 비목표 |

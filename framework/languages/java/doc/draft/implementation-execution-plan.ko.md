@@ -459,7 +459,7 @@ P0 빌드 골격 (정규 모듈/패키지 표)
 2. **`SmartLifecycle` 기반** start/stop을 구현한다. runtime 시동/종료는
    `SmartLifecycle`로 한다(역순 종료를 만족). `ApplicationRunner`는 one-shot
    readiness 신호 용도로만 쓰고 runtime lifecycle에는 쓰지 않는다.
-3. [DI 역할 policy](./internals/di-역할-exposure-policy.ko.md)에 맞춰 bean
+3. [DI 역할 policy](./internals/di-capability-exposure-policy.ko.md)에 맞춰 bean
    노출 조건을 구현한다.
 4. Spring `ApplicationEventPublisher` monitoring bridge를 선택 기능으로 둔다.
 

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -202,5 +202,5 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

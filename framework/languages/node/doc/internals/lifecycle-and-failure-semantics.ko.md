@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework Node.js Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework Node.js Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md)
@@ -304,5 +304,5 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js DI Capability Exposure Policy](./di-역할-exposure-policy.ko.md) | [다음: ZLink Framework Node.js Regression Test Matrix](./regression-test-matrix.ko.md)
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework Node.js Regression Test Matrix](./regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

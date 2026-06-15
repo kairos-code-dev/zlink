@@ -44,3 +44,8 @@ await fanoutClient
 |--------|-----------|
 | channel client public surface | `ZLinkChannelClient`가 `sendToChannel`/`requestToChannel` fluent call을 제공한다. |
 | event handler group mapping | fanout publish가 `ZLinkFanoutClient.publish(...).submit()` 표면을 사용한다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Node.js Interface Catalog](./handler-interfaces.ko.md) | [다음: Draft -- ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -1,5 +1,9 @@
 [English](./03-1-pair.md) | [한국어](./03-1-pair.ko.md)
 
+<!-- zlink-nav:start -->
+[← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+<!-- zlink-nav:end -->
+
 # PAIR Socket
 
 ## 1. Overview
@@ -332,3 +336,8 @@ zlink_set_option(socket, ZLINK_OPT_LINGER, &linger, sizeof(linger));
     ```rust
     --8<-- "bindings/rust/samples/pair_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← Socket Patterns](./03-0-socket-patterns.md) | [PUB/SUB →](./03-2-pubsub.md)
+<!-- zlink-nav:bottom:end -->

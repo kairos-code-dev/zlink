@@ -106,3 +106,8 @@ Entry Spot은 actor 생성 직후의 기본 위치이며, 인증이나 target us
 Entry Spot timer는 Entry Spot의 actor packet, actor lifecycle callback, request
 continuation과 같은 직렬 실행 줄에서 실행된다. user Spot timer도 같은 Spot의 packet,
 subscription, actor handler와 같은 실행 문맥 안에서 직렬화한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Spring Boot Registry](./spring-boot-registry.ko.md) | [다음: Draft -- ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -87,3 +87,8 @@ export class ActorRelaySession implements ZLinkSession {
 |--------|-----------|
 | header session node | `onDispatch(header, payload)`가 호출된다. |
 | session actor relay bridge | session에서 actor bind와 relay가 public session 표면으로 동작한다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- Node.js STREAM Open Items](./stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

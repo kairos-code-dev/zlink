@@ -569,3 +569,8 @@ Monitoring 문서의 항목은 다음을 확인한다.
 [^snapshot-diff]: snapshot diff 는 일정 주기로 상태 스냅샷을 읽고, 이전 스냅샷과 비교해서 차이가 있을 때만 event 를 합성하는 방식이다.
 [^polling]: polling 은 주기적으로 상태를 직접 조회해서 변화를 감지하는 방식이다. push 기반 event 가 없을 때 사용한다.
 [^capability]: capability 는 어떤 노드(channel, spot 등)가 외부에 노출하는 역할이나 기능 단위(예: server, client, subscriber, publisher)를 가리킨다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Session Actor Dispatch](./session-actor-dispatch.ko.md) | [다음: ZLink Framework NestJS Registry](./nestjs-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

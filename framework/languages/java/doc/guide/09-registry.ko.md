@@ -117,3 +117,8 @@ runtime의 discovery view가 peer 선택을 담당한다. Registry를 key-value 
 - 위치 해결 흐름 첫 예제: [02-getting-started §6](./02-getting-started.ko.md)
 - topology 변화를 runtime event로 관찰: [10-monitoring](./10-monitoring.ko.md)
 - 정식 계약: [spring-boot-registry](../spec/spring-boot-registry.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: STREAM](./08-stream.ko.md) | [다음: Monitoring](./10-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

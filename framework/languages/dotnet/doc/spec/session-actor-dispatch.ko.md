@@ -1567,3 +1567,8 @@ session actor dispatch 항목은 다음 요소가 하나의 흐름으로 맞물�
 [^entry-spot]: Entry Spot은 모든 actor가 처음 거치는 공용 입구 역할의 Spot이다. user Spot으로 옮겨 가기 전까지 actor가 머무는 위치다.
 [^user-spot]: user Spot은 room이나 game처럼 application 도메인이 정의한 Spot으로, 같은 Spot 안의 actor들이 공유 상태를 두고 상호작용하는 곳이다.
 [^topology]: topology는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 표현하는 구성 정보다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Actor](./aspnet-core-actor.ko.md) | [다음: ZLink Framework ASP.NET Core Monitoring](./aspnet-core-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

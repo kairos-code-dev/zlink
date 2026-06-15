@@ -410,3 +410,8 @@ STREAM 문서의 항목이 확인해야 하는 것은 다음이다.
 [^di]: DI(Dependency Injection)는 객체가 필요한 의존 컴포넌트를 직접 생성하지 않고 컨테이너로부터 주입받는 방식이다. `ASP.NET Core`에서는 `IServiceCollection` 기반으로 처리한다.
 [^backpressure]: backpressure는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
 [^codec]: codec은 객체와 바이트 표현 사이의 직렬화/역직렬화를 담당하는 컴포넌트다. 예: Protobuf, MessagePack, JSON.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md) | [다음: ZLink Framework ASP.NET Core Actor](./aspnet-core-actor.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

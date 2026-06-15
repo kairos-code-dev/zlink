@@ -46,3 +46,8 @@ const found = await spotManager.get(room.spotRid);
 |--------|-----------|
 | duplicate Spot factory type | Spot factory가 type key 기준으로 등록된다. |
 | Registry Spot RID route | 생성된 Spot은 `spotRid` 기준으로 조회된다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework NestJS Registry](./nestjs-registry.ko.md) | [다음: Draft -- ZLink Framework NestJS STREAM](./nestjs-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

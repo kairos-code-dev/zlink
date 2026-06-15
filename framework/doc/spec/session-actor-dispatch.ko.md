@@ -1124,3 +1124,8 @@ sample 검증도 필요하다.
 - actor가 client로 send할 때 `SessionProxy`만 사용한다.
 - registry 기반 resolver sample은 resolver 구현 예일 뿐 framework 기본값처럼 보이지
   않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Actor Model](./actor-model.ko.md) | [다음: ZLink Framework Use Case Validation](./usecase-validation.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -111,3 +111,8 @@ async def publish_stage_state(
         StageStateUpdated(request.stage_rid, request.user_count),
     )
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Python Interface Catalog](./handler-interfaces.ko.md) | [다음: Draft -- Python Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

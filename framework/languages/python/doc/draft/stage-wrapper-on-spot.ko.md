@@ -21,3 +21,8 @@
 
 상태와 도메인 메서드는 stage wrapper에 두고, packet handler와 외부 channel 호출은
 별도 객체로 분리하는 편이 맞다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Python SPOT Samples](./spot-samples.ko.md) | [다음: Draft -- Python STREAM Open Items](./stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -47,3 +47,8 @@ await fanoutClient
 |--------|-----------|
 | public surface scope | 비목표 API가 public surface에 없다. |
 | channel client public surface | fluent call builder 표면을 제공한다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Node.js Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: Draft -- ZLink Framework Node.js SPOT Samples](./spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

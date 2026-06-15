@@ -105,3 +105,8 @@ private:
 
 session actor relay는 route mesh packet을 application 코드에서 만들지 않는다. STREAM
 session은 attach된 ActorGateway를 통해 actor로 packet을 넘긴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: C++ Stream Connector 가이드](../../connector/doc/guide/INDEX.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

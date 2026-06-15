@@ -1,5 +1,9 @@
 [English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
 
+<!-- zlink-nav:start -->
+[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+<!-- zlink-nav:end -->
+
 # SPOT Actor 사용 가이드
 
 이 문서는 Actor 생성, Spot join/leave, 종료, 세션 바인딩 흐름을 설명한다.
@@ -319,3 +323,8 @@ C 샘플에는 Actor 흐름을 나누어 보여 주는 세 파일이 있다.
 | 방 단위 Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
 | gateway session에서 remote Actor로 relay | `bindings/c/samples/actor_gateway_relay_sample.c` |
 | 단일 사용자 queue 직렬화 | `bindings/c/samples/actor_single_player_queue_sample.c` |
+
+---
+<!-- zlink-nav:bottom:start -->
+[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+<!-- zlink-nav:bottom:end -->

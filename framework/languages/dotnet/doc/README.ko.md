@@ -220,6 +220,10 @@
 | [stream-samples.ko.md](./guide/samples/stream-samples.ko.md) | STREAM framework Header 기반 packet session 과 등록 코드를 한 번에 보여 주는 샘플 |
 | [tictactoe-game-sample.ko.md](./guide/samples/tictactoe-game-sample.ko.md) | API 서버, Play 서버, STREAM connector, SPOT actor 를 함께 사용하는 틱택토 게임 샘플 초안(TicTacToe direct + session actor dispatch contract) |
 | [bingo-game-sample.ko.md](./guide/samples/bingo-game-sample.ko.md) | matching room 기반 빙고 샘플 설계 노트. Session 서버, API 서버, Play 서버, Entry Spot lobby, room host 시작, timer 진행을 함께 보여 준다. |
+| [supportchat-sample.ko.md](./guide/samples/supportchat-sample.ko.md) | 1:1 고객 상담 샘플. session gateway, conversation Spot, reconnect 이전성, idle timer→close, bound push 를 함께 보여 준다(JSON). |
+| [deliverydispatch-sample.ko.md](./guide/samples/deliverydispatch-sample.ko.md) | 배송 배차 샘플. HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 stream push 를 함께 보여 준다(JSON). |
+| [shoppingmall-checkout-sample.ko.md](./guide/samples/shoppingmall-checkout-sample.ko.md) | 주문 체크아웃 샘플. event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out(2×2) 을 함께 보여 준다(JSON). |
+| [gamequest-sample.ko.md](./guide/samples/gamequest-sample.ko.md) | quest 진행 샘플. gameplay event fanout 구독, player owner routing, quest event sourcing, reward idempotency 를 함께 보여 준다(JSON). |
 
 ### 2.5 범위 원칙
 
@@ -295,3 +299,8 @@
 [^session-actor-dispatch]: session actor dispatch 는 클라이언트 세션에서 들어온 요청을, 그 세션과 묶인 actor 로 자동 전달하는 패턴이다.
 [^fail-fast]: fail-fast 는 잘못된 설정이나 상태를 발견하면 즉시 예외를 던지고 실행을 멈추는 전략이다. 늦게 발견되어 더 큰 문제로 번지는 것을 막는다.
 [^attribute-scan]: attribute scan 은 어셈블리에 정의된 타입과 메서드를 훑어 보면서 특정 attribute 가 붙은 항목을 찾아 등록하는 방식이다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../doc/README.ko.md) | [다음: ZLink Framework for .NET — 개요](./guide/01-overview.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

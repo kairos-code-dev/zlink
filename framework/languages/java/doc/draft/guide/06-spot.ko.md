@@ -42,3 +42,8 @@ validation 오류다.
 
 Spot timer는 일반 scheduler helper가 아니라 Spot lifecycle에 묶인다. timer handler
 exception은 monitoring event로 관찰된다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Channel Messaging](./05-channel-messaging.ko.md) | [다음: Actor/Session](./07-actor-session.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

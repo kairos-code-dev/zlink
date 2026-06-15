@@ -170,3 +170,8 @@ handler 를 맡는다.
 [^dto]: DTO(Data Transfer Object) 는 컴포넌트 사이에서 데이터를 옮기기 위해 정의한 단순 데이터 클래스를 가리킨다.
 [^spot]: `SPOT` 은 동적으로 생성ㆍ소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Stream Connector For .NET](./streaming-client.ko.md) | [다음: Bingo Game Sample](./bingo-game-sample.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

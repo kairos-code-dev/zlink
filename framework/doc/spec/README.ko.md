@@ -269,3 +269,8 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 
 이렇게 해야 구현 가능한 계약과 미결 항목이 섞이지 않고, 다른 언어가 같은
 수준으로 문서를 작성할 때도 빠진 부분을 한눈에 비교할 수 있다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework 문서](../README.ko.md) | [다음: ZLink Framework Overview](./overview.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

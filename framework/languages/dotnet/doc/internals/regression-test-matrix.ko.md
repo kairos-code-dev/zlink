@@ -292,3 +292,8 @@ backend gate 와 별도로 유지한다.
 [^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^binding-token]: session binding token 은 actor 와 stream session 의 연결 상태를 식별하는 토큰으로, 재연결 시 어느 binding 이 최신인지 구분하는 데 쓰인다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Lifecycle And Failure Semantics](./lifecycle-and-failure-semantics.ko.md) | [다음: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

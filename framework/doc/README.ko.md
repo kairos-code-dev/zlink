@@ -76,3 +76,8 @@ Bingo는 분리된 Session/API/Play gateway 구조를, TicTacToe는 API와 Play 
 - 새 문서를 추가하면 이 목록과 해당 디렉토리 `README.ko.md`를 함께 갱신한다.
 - 아직 닫히지 않은 항목은 정식 문서에 섞지 않고 해당 `draft/`로 분리한다.
 - 구현 계획과 worklog는 [plan/](./plan)에 둔다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](./README.ko.md) | [다음: ZLink Framework 공통 스펙](./spec/README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

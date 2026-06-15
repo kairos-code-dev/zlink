@@ -248,3 +248,8 @@ actor.context.boundSession.send(PlayerJoined(...)).submit()
 
 Kotlin DSL은 등록 코드를 짧게 만들 뿐이고, actor lifecycle 의미는 Java contract와
 같다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Spring Boot SPOT](./spring-boot-spot.ko.md) | [다음: Draft -- ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

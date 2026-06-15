@@ -143,3 +143,8 @@ connector.connect().submit()
 connector는 heartbeat, reconnect, manual dispatch, request timeout, compression,
 packet name resolver를 option으로 받는다. Kotlin 표면은 이 Java connector 위에
 `suspend`와 `Flow` extension을 얹는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot SPOT](./spring-boot-spot.ko.md) | [다음: Java Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

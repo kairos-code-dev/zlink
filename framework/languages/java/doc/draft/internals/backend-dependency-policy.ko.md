@@ -99,3 +99,8 @@ status는 꼭 필요한 경우 optional detail로만 둔다.
 | backend factory wrappers | factory가 channel, spot, stream, registry, monitoring adapter 5종을 모두 만들어 내고, wrapper 생성이 adapter 내부에 머문다 |
 | no reflection bypass | framework 코드가 binding non-public member를 reflection으로 호출하지 않는다 |
 | adapter-only native construction | native object 생성은 adapter 내부에서만 일어난다 |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [표면 매핑](./dotnet-to-java-surface-mapping.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

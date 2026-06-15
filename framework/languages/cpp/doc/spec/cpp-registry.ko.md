@@ -175,3 +175,8 @@ lookup 성공뿐 아니라 잘못된 의존이 생기지 않는지도 검증한�
   같은 correlation id를 남기는 정책.
 
 CTest label은 `framework-zlink-registry`를 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md) | [다음: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

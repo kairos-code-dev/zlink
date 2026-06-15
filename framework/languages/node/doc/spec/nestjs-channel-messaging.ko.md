@@ -1207,3 +1207,8 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 [^lifecycle]: **lifecycle** 은 컴포넌트가 시작·실행·종료를 거치는 단계 흐름을 가리킨다.
     NestJS 의 `onApplicationBootstrap` / `onApplicationShutdown` hook 으로 시작·종료
     시점을 잡아 둔다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Node.js Interface Catalog](./handler-interfaces.ko.md) | [다음: ZLink Framework NestJS SPOT Integration](./nestjs-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

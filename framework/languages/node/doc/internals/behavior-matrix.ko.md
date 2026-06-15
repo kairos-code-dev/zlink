@@ -192,3 +192,8 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 [^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
 </content>
 </invoke>
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: .NET → Node.js 표면 매핑 정책](./dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

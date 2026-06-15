@@ -707,3 +707,8 @@ Registry 가 framework 보다 먼저 시작되어야 한다는 순서 또한 회
 [^lifecycle-hook]: NestJS lifecycle hook은 모듈/provider가 부트스트랩·종료될 때 호출되는 콜백이다. `onApplicationBootstrap`은 모든 provider 준비 후, `onApplicationShutdown`은 graceful 종료 시점에 호출된다(dotnet `IHostedService`의 `StartAsync`/`StopAsync`에 대응한다).
 [^di]: DI(Dependency Injection)는 객체가 필요한 의존성을 직접 만들지 않고 외부에서 주입받도록 하는 패턴이며, `NestJS`의 표준 provider 컨테이너가 이를 담당한다.
 [^cluster]: cluster는 여러 Registry 인스턴스가 서로 topology를 동기화하면서 함께 동작하는 묶음을 가리킨다. 단일 장애점을 피하기 위해 운영 환경에서 자주 쓴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Monitoring](./nestjs-monitoring.ko.md) | [다음: ZLink Framework Node.js Sample Implementation Plan](../sample-implementation-plan.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

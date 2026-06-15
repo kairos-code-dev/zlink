@@ -61,3 +61,8 @@ front 계층일 수 있다.
 - 단순 broadcast만이 아니라 target grouping을 함께 고려해야 한다.
 - backpressure나 느린 subscriber 문제를 운영 관점에서 어떻게 볼지 나중에
   별도 설계가 필요하다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Stage State Sync](./06-stage-state-sync.ko.md) | [다음: Use Case -- Scatter Gather Query](./08-scatter-gather-query.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

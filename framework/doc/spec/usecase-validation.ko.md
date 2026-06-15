@@ -62,3 +62,8 @@ use case를 설명할 틀을 갖추었는지를 본다.
 - 새 use case를 추가하면 이 문서 표에도 같은 줄을 추가한다.
 - 어떤 케이스가 `부분 만족`이면, 부족한 항목을 공통 문서에 반영한 뒤 다시
   판정을 갱신한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Session Actor Dispatch Usability (Policy)](./session-actor-dispatch.ko.md) | [다음: ZLink Framework Use Cases](./use-cases/README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

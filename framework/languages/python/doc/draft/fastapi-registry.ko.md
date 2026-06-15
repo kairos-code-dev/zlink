@@ -19,3 +19,8 @@
 
 일반 request 핫패스는 각 channel discovery view를 기준으로 설명하고, registry query는
 운영 점검과 topology snapshot 용도로 분리한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework FastAPI Monitoring](./fastapi-monitoring.ko.md) | [다음: Draft -- ZLink Framework FastAPI SPOT](./fastapi-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

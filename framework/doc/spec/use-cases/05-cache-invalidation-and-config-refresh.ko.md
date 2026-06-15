@@ -45,3 +45,8 @@
   표현해야 한다.
 - payload가 매우 작아도 과한 ceremony 없이 발행할 수 있어야 한다.
 - 프레임워크 사용자는 "subscribe 하나 붙이면 된다"고 느껴야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Domain Event Fanout](./04-domain-event-fanout.ko.md) | [다음: Use Case -- Stage State Sync](./06-stage-state-sync.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

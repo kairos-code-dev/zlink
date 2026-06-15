@@ -253,3 +253,8 @@ delegate 모델을 우선하고 coroutine API를 public 표면에 강제하지 �
 
 언어별 문서에서 이 정책과 다른 실행 의미가 필요해지면, 먼저 이 공통 문서를 수정한 뒤
 언어별 문서를 맞춘다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: framework API](./framework-api.ko.md) | [다음: Actor 모델](./actor-model.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -459,3 +459,8 @@ wrapper 전용 API 가 생기면, 이 표에는 실제로 실행되는 테스트
 [^heartbeat]: heartbeat는 연결이 살아 있는지를 확인하기 위해 일정 주기로 보내는 짧은 신호 메시지다.
 [^per-spot-scope]: per-spot scope는 spot 하나가 살아 있는 동안에만 유지되는 DI scope다. spot이 사라지면 그 scope에서 만든 객체들도 함께 정리된다.
 [^registry]: registry는 분산 노드의 위치, 상태, topology 정보를 모아 두는 서비스다. discovery의 데이터 출처 역할을 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core SPOT Integration](./aspnet-core-spot.ko.md) | [다음: ZLink Framework ASP.NET Core STREAM Integration](./aspnet-core-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -1245,3 +1245,8 @@ actor join 문맥이 함께 검증되어야 한다. 또한 spot 이름과 id 를
 [^lock-contention]: lock contention 은 여러 thread 가 같은 lock 을 동시에 잡으려고 다투면서 대기가 누적되어 처리량이 떨어지는 상태를 가리킨다.
 [^rid]: `rid` 는 routing id 의 약칭으로, transport 계층에서 특정 peer 를 가리키는 식별자다.
 [^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Channel Messaging](./aspnet-core-channel-messaging.ko.md) | [다음: Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -468,3 +468,8 @@ builder.Services.AddZLinkFramework(options =>
 - ActorGateway relay 적용 상태: [draft/actor-gateway-session-relay](../draft/actor-gateway-session-relay.ko.md)
 - 전체 예제: [tictactoe 샘플](./samples/tictactoe-game-sample.ko.md), [bingo 샘플](./samples/bingo-game-sample.ko.md)
 - 외부 client 를 STREAM 으로 받는 법: [07-stream](./07-stream.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: SPOT](./05-spot.ko.md) | [다음: STREAM — 외부 client](./07-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

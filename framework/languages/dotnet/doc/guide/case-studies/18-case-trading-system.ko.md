@@ -234,3 +234,8 @@ sequenceDiagram
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
 - 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [07-stream](../07-stream.ko.md)
 - 전체 인터페이스 카탈로그(spec): [spec/handler-interfaces](../../spec/handler-interfaces.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 게임 채팅](./17-3-case-game-chat.ko.md) | [다음: ZLink Framework .NET Interface Catalog (spec)](../../spec/handler-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

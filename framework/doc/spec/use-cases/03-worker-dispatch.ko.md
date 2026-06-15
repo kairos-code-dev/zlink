@@ -64,3 +64,8 @@ worker 중 하나가 처리하면 충분하고, 호출자는 결과를 기다릴
 
 따라서 현재 스펙에서는 이 케이스를 **중요하지만 1차 MVP 고정 범위는 아님**으로
 본다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Playhouse Play To API](./02-playhouse-play-to-api.ko.md) | [다음: Use Case -- Domain Event Fanout](./04-domain-event-fanout.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

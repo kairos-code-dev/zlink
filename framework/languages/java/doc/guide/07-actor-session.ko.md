@@ -246,3 +246,8 @@ gateway 역할에서는 STREAM session이 쓸 local SpotNode를 `attachActorGate
 - STREAM session 작성: [08-stream](./08-stream.ko.md)
 - actor 런타임 오류 관찰: [10-monitoring](./10-monitoring.ko.md)
 - 전체 계약: [spring-boot-actor-session](../spec/spring-boot-actor-session.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Spot](./06-spot.ko.md) | [다음: STREAM](./08-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

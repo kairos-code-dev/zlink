@@ -41,3 +41,8 @@ raw session public type은 채택하지 않는다. raw stream write는 `ZLinkStr
 |--------|-----------|
 | header session node | `onDispatch(header, payload)`가 호출된다. |
 | 같은 node에 session 중복 등록 | 한 node에 session type을 중복 등록하면 startup validation 오류다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework NestJS SPOT](./nestjs-spot.ko.md) | [다음: Draft -- ZLink Framework Node.js SPOT Samples](./spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

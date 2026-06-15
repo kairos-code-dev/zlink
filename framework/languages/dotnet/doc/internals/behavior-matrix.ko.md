@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: Bingo Game Sample](../guide/samples/bingo-game-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+[문서 목록](../../../../doc/README.ko.md) | [이전: GameQuest Sample](../guide/samples/gamequest-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
@@ -183,3 +183,8 @@ runtime integration 테스트도 같은 변경에 함께 포함시킨다.
 [^binding-token]: session binding token 은 actor 와 stream session 의 연결 상태를 식별하는 토큰으로, 재연결 시 어느 binding 이 최신인지 구분하는 데 쓰인다.
 [^snapshot-diff-polling]: snapshot diff polling 은 일정 주기로 전체 스냅샷을 가져온 뒤 직전 스냅샷과 비교해 변경된 부분만 이벤트로 올리는 방식이다.
 [^topology]: topology 는 어떤 노드(channel, spot, registry 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: GameQuest Sample](../guide/samples/gamequest-sample.ko.md) | [다음: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

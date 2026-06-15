@@ -205,3 +205,8 @@ request continuation 과 동시에 실행되지 않는다. room, stage, match �
 | session actor dispatch | `stream` + actor create/dispatch + session proxy |
 | scatter-gather query | `scatter-gather` |
 | workflow orchestration | `request-response` + `publish-subscribe` 조합 |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Overview](./overview.ko.md) | [다음: ZLink Framework Message Model](./message-model.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

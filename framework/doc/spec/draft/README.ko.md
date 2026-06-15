@@ -26,3 +26,8 @@
 - 요구가 생기면 먼저 use case 또는 draft 문서에 기록한다.
 - 정식 공통 스펙은 구현과 공개 계약이 고정된 뒤 `spec/`으로 승격한다.
 - 언어별 상세는 공통 스펙에서 개념을 먼저 닫은 뒤 해당 언어 문서로 내린다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [다음: Draft -- ZLink Stream Connector](./streaming-client.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

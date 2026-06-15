@@ -68,3 +68,8 @@ public final class ActorRelaySession implements ZLinkSession {
 
 `STREAM`은 recv loop를 직접 드러내기보다 session registration으로 설명한다. raw
 session public type은 현재 포팅 기준이 아니다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Java STREAM Open Items](../../draft/stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

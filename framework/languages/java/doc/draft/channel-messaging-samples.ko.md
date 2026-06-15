@@ -145,3 +145,8 @@ routeClient.request(
 
 routed channel은 target node를 직접 지정하는 application route 용도다. session actor
 dispatch는 이 샘플 경로가 아니라 `STREAM`의 ActorGateway attach 경로를 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For Java](./README.ko.md) | [다음: Draft -- ZLink Framework Java Interface Catalog](./handler-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

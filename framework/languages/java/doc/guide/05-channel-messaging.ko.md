@@ -45,3 +45,8 @@ fanout은 reply를 기대하지 않는 event 전파다.
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
 session actor relay는 route mesh를 흉내 내지 않고 ActorGateway를 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Feature Map](./04-feature-map.ko.md) | [다음: Spot](./06-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

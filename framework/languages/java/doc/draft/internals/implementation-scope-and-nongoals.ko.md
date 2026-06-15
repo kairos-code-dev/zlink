@@ -75,3 +75,8 @@
 | connector separate module | Stream Connector가 server framework module에 의존하지 않는다 |
 | sample public API only | sample이 framework/connector public API만 사용한다 |
 | no backend leakage | binding concrete type이 public surface에 없다 |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [Regression Matrix](./regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

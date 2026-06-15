@@ -1,5 +1,9 @@
 [English](./07-1-discovery.md) | [한국어](./07-1-discovery.ko.md)
 
+<!-- zlink-nav:start -->
+[← Services](./07-0-services.md) | [SPOT →](./07-3-spot.md)
+<!-- zlink-nav:end -->
+
 # Service Discovery
 
 > **Normative status: Illustrative — Needs refresh.**
@@ -411,4 +415,6 @@ via `connect_registry()` is for **HA (failover)**, not for service visibility.
 - [Registry Guide](./07-4-registry.md) -- Cluster setup, topology introspection, and operational patterns
 
 ---
-[← Services Overview](./07-0-services.md) | [SPOT →](./07-3-spot.md)
+<!-- zlink-nav:bottom:start -->
+[← Services](./07-0-services.md) | [SPOT →](./07-3-spot.md)
+<!-- zlink-nav:bottom:end -->

@@ -92,3 +92,8 @@ publisher.publish(
     .packet_name = "profile.cache-refreshed",
   });
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For C++](../README.ko.md) | [다음: Spec -- ZLink Framework C++ Channel Messaging](../spec/cpp-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

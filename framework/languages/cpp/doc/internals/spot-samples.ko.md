@@ -152,3 +152,8 @@ private:
 
 actor에서 client로 push할 때도 application route mesh channel을 직접 만들지 않는다.
 framework runtime의 bound session 경로를 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Alignment](../spec/handler-interfaces.ko.md) | [다음: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

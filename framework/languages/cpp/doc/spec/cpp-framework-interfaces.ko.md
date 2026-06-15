@@ -2113,3 +2113,8 @@ int main(int argc, char **argv)
   `session_actor_t::relay(...)` 표면으로 맞춘다.
 - SPOT timer는 CAPI timer `fire_count`를 기반으로 `timer_options_t`, `timer_tick_t`,
   overrun policy, timer failure monitoring을 포함하는 표면으로 맞춘다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Channel Messaging](./cpp-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

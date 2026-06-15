@@ -92,3 +92,8 @@ play 서버는 `profile`, `inventory` 같은 `channel name`만 기준으로
 - `SPOT` 기반 stage 구조와 충돌하지 않아야 한다.
 - 게임 서버에서 쓰는 요청은 일반 웹 백엔드 RPC와 같은 프로그래밍 모델로 보여야
   한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Service To Service RPC](./01-service-to-service-rpc.ko.md) | [다음: Use Case -- Worker Dispatch](./03-worker-dispatch.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

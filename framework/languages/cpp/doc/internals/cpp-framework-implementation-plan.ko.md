@@ -1680,3 +1680,8 @@ framework/languages/cpp/doc/draft/cpp-framework-implementation-plan.ko.md의 Goa
 이 문서와 실제 코드가 충돌하면 먼저 충돌 항목을 적고, 이 문서 또는 구현 중 하나를
 명시적으로 정리한 뒤 진행한다. 전체 작업은 Goal 1부터 Goal 22까지 미구현, 오구현,
 미검증 항목이 0개가 될 때까지 반복한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For C++](../README.ko.md) | [다음: Draft -- ZLink Framework C++ Policy](./cpp-framework-policy.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

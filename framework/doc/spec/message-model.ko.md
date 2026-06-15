@@ -203,3 +203,8 @@ binding 또는 framework 위에 얹는 별도 codec extension/provider 계층으
   use case가 더 모인 뒤 별도 계약 문서에서 다룬다.
 - `STREAM` monitor 이벤트를 session error로 어디까지 승격할지는 `STREAM` 바인딩
   문서에서 다룬다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Interaction Model](./interaction-model.ko.md) | [다음: ZLink Framework Channel Topology](./channel-topology.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -1,5 +1,9 @@
 [English](./07-3-spot.md) | [한국어](./07-3-spot.ko.md)
 
+<!-- zlink-nav:start -->
+[← Discovery](./07-1-discovery.ko.md) | [SPOT Actor →](./07-4-actor.ko.md)
+<!-- zlink-nav:end -->
+
 # SPOT 사용 가이드
 
 이 문서는 애플리케이션 개발자가 SPOT을 어떻게 쓰는지 설명한다.
@@ -618,3 +622,8 @@ core API를 직접 사용할 때는 `zlink_spot_node_connect_router_channel_peer
 ## 15. Actor C sample
 
 [SPOT Actor 가이드](./07-4-actor.ko.md#5-actor-c-sample)를 본다.
+
+---
+<!-- zlink-nav:bottom:start -->
+[← Discovery](./07-1-discovery.ko.md) | [SPOT Actor →](./07-4-actor.ko.md)
+<!-- zlink-nav:bottom:end -->

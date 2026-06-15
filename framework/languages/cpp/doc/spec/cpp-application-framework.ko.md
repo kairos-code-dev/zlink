@@ -543,3 +543,8 @@ CTest label은 최소 아래처럼 나눈다.
 
 샘플 회귀 테스트는 실행 파일 성공만 보면 안 된다. HTTP request, zlink channel request,
 STREAM connector request, notification callback, server-side log를 모두 확인해야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](./cpp-framework-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

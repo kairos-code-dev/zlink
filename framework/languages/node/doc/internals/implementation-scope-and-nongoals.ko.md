@@ -139,3 +139,8 @@ surface 테스트를 같이 갱신해야 한다.
 [^release-gate]: release gate 는 새 버전을 배포하기 전에 반드시 통과해야 하는 검증 단계(테스트, 빌드, 점검)의 묶음이다.
 [^public-surface]: public surface 는 외부 사용자에게 노출되는 모든 타입·메서드·decorator 의 총합을 가리킨다.
 [^backend-leakage]: backend leakage 는 framework 내부에서만 써야 할 backend 구현 타입이 public API 로 새어 나오는 현상을 가리킨다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Node Regression Test Matrix](./regression-test-matrix.ko.md) | [다음: ZLink Framework Node Backend Dependency Policy](./backend-dependency-policy.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

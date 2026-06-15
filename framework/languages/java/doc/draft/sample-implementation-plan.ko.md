@@ -257,3 +257,8 @@ sample gate는 최소한 아래를 자동 확인한다.
 확인하기 위한 기능 축 검증이다. 현재 Phase 10 최소 gate는
 `JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse`이며,
 Java STREAM request frame과 Node STREAM response frame을 서로 decode한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Java STREAM Samples](./stream-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

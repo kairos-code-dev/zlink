@@ -1090,3 +1090,8 @@ framework/languages/dotnet 의 ZLink framework와 동일한 아키텍처, 기능
 - 실행하지 못한 검증은 미검증으로 남겨.
 - sleep이나 임시 store로 readiness 문제를 숨기지 마.
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [Java 묶음](./README.ko.md) | [포팅 계획](./java-kotlin-framework-porting-plan.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

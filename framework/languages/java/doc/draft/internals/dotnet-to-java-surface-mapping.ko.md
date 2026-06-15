@@ -225,3 +225,8 @@ handler를 모든 channel에 자동으로 열지 않는다.
 Java 문서와 `.NET` 문서가 다르면 `.NET` 코드가 기능 기준이다. Java 구현 중 binding
 public API가 부족하면 framework 내부에서 reflection이나 internal 접근으로 우회하지
 않고 Java binding public API를 추가한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [Java draft](../README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

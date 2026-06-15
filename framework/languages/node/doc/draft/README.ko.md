@@ -81,3 +81,8 @@ module/provider/decorator 구조 안에서 zlink runtime을 자연스럽게 설�
 - outbound `DEALER(client)`는 reply correlation 경로로 본다.
 - packet key 기본값은 payload constructor 이름 또는 schema 이름을 쓴다.
 - `rid` 지정은 `SPOT` spot-to-spot 경로에만 남긴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [다음: Draft -- ZLink Framework Node.js Channel Messaging Samples](./channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

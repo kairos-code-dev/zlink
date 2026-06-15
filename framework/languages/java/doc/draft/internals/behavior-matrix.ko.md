@@ -89,3 +89,8 @@ Behavior Matrix의 판정은 `.NET` 테스트(`Channels`, `HandlerExposure`,
 | session actor dispatch가 actor remote address resolver를 요구하지 않음 | `NodesAndServicesTest.sessionActorDispatch_doesNotRequireActorRemoteAddressResolver` |
 | send/publish async submit가 caller를 막지 않음 | `ZLinkAsyncSubmitterTest.submitAsync_failsPendingItemWhenSendTimeoutExpires` |
 | pending request cleanup(stop) | `ZLinkAsyncSubmitterTest.disposeAsync_failsPendingItems` |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [Lifecycle](./lifecycle-and-failure-semantics.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

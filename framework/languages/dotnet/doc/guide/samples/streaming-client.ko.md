@@ -1036,3 +1036,8 @@ Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 �
 [^nuget]: NuGet은 `.NET`의 표준 패키지 매니저로, 라이브러리를 package id 단위로 배포·설치한다.
 [^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 ZLink의 추상이다.
 [^wire]: wire는 네트워크 회선 위로 실제로 흘러가는 바이트 형태를 가리키는 표현이다. 같은 메시지라도 메모리상 표현과 wire 표현이 서로 다를 수 있다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md) | [다음: TicTacToe Game Sample](./tictactoe-game-sample.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

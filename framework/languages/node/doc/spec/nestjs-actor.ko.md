@@ -1338,3 +1338,8 @@ context 만 다룬다는 원칙을 함께 검증한다.
 
 [^identity]: identity는 객체가 누구인지를 식별하는 1급 값이다. actor의 경우
     `actorId`가 identity로, application이 정한 도메인 단위를 그대로 따라간다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework NestJS SPOT](./nestjs-spot.ko.md) | [다음: ZLink Framework Session Actor Dispatch](./session-actor-dispatch.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

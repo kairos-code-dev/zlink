@@ -266,3 +266,8 @@ capability 누락은 `InvalidOperationException` 이 아니라 위 예외로 처
 
 결과적으로 “주입은 되지만 실제로는 쓸 수 없는 service”를 줄이고, 잘못된 구성은
 가능한 한 애플리케이션 시작 단계에서 드러낸다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Behavior Matrix](./behavior-matrix.ko.md) | [다음: ZLink Framework .NET Lifecycle And Failure Semantics](./lifecycle-and-failure-semantics.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -79,3 +79,8 @@ location-transparent 호출이 가능해야 한다.
 - payload codec은 고정하지 않아야 한다.
 - 기본 packet key를 안정적으로 정할 수 있어야 한다.
 - 기본 규칙만으로 부족하면 `PacketName` 같은 explicit override가 있어야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Use Cases](./README.ko.md) | [다음: Use Case -- Playhouse Play To API](./02-playhouse-play-to-api.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

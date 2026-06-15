@@ -140,3 +140,8 @@ header만 읽는 장점도 잃는다.
 ## 7. 다음 문서
 
 전체 문서 목록과 읽는 순서는 [README.ko.md](./README.ko.md)를 참고한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework 공통 스펙](./README.ko.md) | [다음: ZLink Framework Interaction Model](./interaction-model.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

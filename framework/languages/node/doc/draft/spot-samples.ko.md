@@ -134,3 +134,8 @@ export class StagePublishController {
 |--------|-----------|
 | duplicate Spot factory type | Spot factory가 type key 기준으로 등록된다. |
 | spot context channel request 경로 | channel request가 `context.outbound.requestToChannel(...).submit()`으로 호출된다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework NestJS STREAM](./nestjs-stream.ko.md) | [다음: Draft -- Node.js Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

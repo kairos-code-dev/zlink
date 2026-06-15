@@ -267,3 +267,8 @@ public sealed class SendMarketplaceMessageHandler(
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
 - 공통 채팅 개요: [17-case-chat-messaging](./17-case-chat-messaging.ko.md)
 - 다음 케이스: [17-2-case-live-commerce-chat](./17-2-case-live-commerce-chat.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 채팅·메시징 플랫폼](./17-case-chat-messaging.ko.md) | [다음: 케이스 — 라이브 커머스·라이브스트림 채팅](./17-2-case-live-commerce-chat.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

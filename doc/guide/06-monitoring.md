@@ -1,5 +1,9 @@
 [English](./06-monitoring.md) | [한국어](./06-monitoring.ko.md)
 
+<!-- zlink-nav:start -->
+[← TLS/Security](./05-tls-security.md) | [Services →](./07-0-services.md)
+<!-- zlink-nav:end -->
+
 # Monitoring API Usage
 
 ## 1. Overview
@@ -728,3 +732,8 @@ API for production event loops.
     ```rust
     --8<-- "bindings/rust/samples/monitor_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← TLS/Security](./05-tls-security.md) | [Services →](./07-0-services.md)
+<!-- zlink-nav:bottom:end -->

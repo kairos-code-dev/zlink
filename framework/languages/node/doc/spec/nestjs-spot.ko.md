@@ -1131,3 +1131,8 @@ join 문맥이 함께 검증되어야 한다. 또한 spot 클래스와 id 를 �
 | `entrySpot packet handlers use entrySpot serialization` | Entry Spot 일반 packet handler 가 user Spot 처럼 Spot 단위 직렬 실행 줄을 사용한다. |
 | `entrySpot timer waits for entrySpot callbacks` | Entry Spot timer callback 이 같은 Entry Spot의 다른 callback 과 동시에 실행되지 않는다. |
 | `entrySpot timer does not reenter same timer` | Entry Spot timer 는 같은 timer callback 을 겹쳐 실행하지 않는다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework NestJS Channel Messaging](./nestjs-channel-messaging.ko.md) | [다음: Node.js Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

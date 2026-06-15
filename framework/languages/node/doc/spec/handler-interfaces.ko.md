@@ -2328,3 +2328,8 @@ filter order / handler-result / spot actor registry / local session relay)도 �
 
 [^public-contract]: 라이브러리가 외부에 약속한 공식 API. 한 번 공개되면 호환성을 깨지 않고는 변경하기 어렵다.
 [^transport]: 메시지가 실제로 네트워크나 IPC 위에서 오가는 하부 계층. ZLink 에서는 socket, stream, route 등이 이에 해당한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [표면 매핑 정책](../internals/dotnet-to-node-surface-mapping.ko.md) | [다음: ZLink Framework NestJS Channel Messaging](./nestjs-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

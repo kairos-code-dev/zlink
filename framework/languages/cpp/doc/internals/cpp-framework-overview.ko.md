@@ -254,3 +254,8 @@ connector가 붙는 흐름을 포함한다. STREAM과 ActorGateway 기반 actor/
 - user Spot timer는 같은 core SPOT dispatch boundary에서 순서 정책을 따르고, Entry
   Spot timer는 Entry Spot actor packet, lifecycle callback, request continuation과
   같은 Entry Spot 실행 줄에서 처리한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [다음: Draft -- ZLink Framework C++ Channel Messaging Samples](./channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

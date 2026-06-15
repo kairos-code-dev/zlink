@@ -55,3 +55,8 @@
 - timeout과 에러 모델이 "한 요청/한 응답"에만 묶이지 않아야 한다.
 - 프레임워크 adapter가 1차 MVP에서 이 기능을 직접 제공할지, 응용 helper로
   둘지는 따로 결정해야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Real Time Notification Fanout](./07-real-time-notification-fanout.ko.md) | [다음: Use Case -- Workflow Orchestration](./09-workflow-orchestration.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

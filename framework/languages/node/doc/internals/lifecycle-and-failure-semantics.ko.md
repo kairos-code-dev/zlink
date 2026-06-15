@@ -301,3 +301,8 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^graceful-timeout]: graceful timeout 은 정상 종료를 시도할 때 작업이 자발적으로 마무리될 때까지 기다려 주는 최대 시간이다. 이 시간을 넘기면 강제로 중단할 수 있다.
 </content>
 </invoke>
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Node.js DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework Node.js Regression Test Matrix](./regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

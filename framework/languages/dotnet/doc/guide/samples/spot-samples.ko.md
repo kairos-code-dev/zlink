@@ -1977,3 +1977,8 @@ SPOT 샘플은 room / stage / zone 같은 상위 모델이 framework public 표�
 [^marker-interface]: marker interface 는 멤버 없이 타입을 식별하는 용도로만 사용하는 인터페이스다. 코드 생성된 타입에 직접 붙이기 어려운 경우가 많다.
 [^dispatch-mode]: dispatch mode 는 들어온 메시지를 handler 로 어떻게 연결할지를 정하는 전략 선택값이다. compiled 와 dynamic 처럼 reflection 허용 범위로 구분한다.
 [^late-binding]: late binding 은 호출 대상이나 타입을 컴파일 시점이 아니라 실행 시점에 결정하는 방식이다. 유연하지만 hot path 비용이 높다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: ZLink Framework .NET STREAM Samples](./stream-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

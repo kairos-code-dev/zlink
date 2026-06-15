@@ -226,3 +226,8 @@ write backpressure, ActorGateway attach 경계를 함께 검증한다.
 - shutdown 중 새 session accept를 멈추고 기존 session cleanup을 완료한다.
 
 CTest label은 `framework-zlink-stream`을 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Alignment](./handler-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -166,3 +166,8 @@ options.addRouteMeshChannel("play-route", route -> {
 Registry-backed Spot remote address 기본 구현을 쓰려면 route mesh channel이 필요하다.
 route mesh channel이 둘 이상이면 `useRegistrySpotRemoteAddresses(...)`에서 router
 channel id를 명시해야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Java SPOT Samples](../guide/samples/spot-samples.ko.md) | [다음: ZLink Framework Spring Boot Monitoring](./spring-boot-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -218,3 +218,8 @@ release gate command:
 ```bash
 ./framework/languages/java/samples/run_samples.sh
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [Scope](./implementation-scope-and-nongoals.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

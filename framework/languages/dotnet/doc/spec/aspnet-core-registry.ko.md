@@ -552,3 +552,8 @@ Registry 가 framework 보다 먼저 시작되어야 한다는 순서 또한 회
 [^hosted-service]: hosted service는 `ASP.NET Core` 호스트가 시작·종료될 때 함께 시작·종료되는 백그라운드 컴포넌트를 가리킨다(`IHostedService`).
 [^di]: DI(Dependency Injection)는 객체가 필요한 의존성을 직접 만들지 않고 외부에서 주입받도록 하는 패턴이며, `ASP.NET Core`의 표준 서비스 컨테이너가 이를 담당한다.
 [^cluster]: cluster는 여러 Registry 인스턴스가 서로 topology를 동기화하면서 함께 동작하는 묶음을 가리킨다. 단일 장애점을 피하기 위해 운영 환경에서 자주 쓴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Monitoring](./aspnet-core-monitoring.ko.md) | [다음: ZLink Framework .NET Channel Messaging Samples](../guide/samples/channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

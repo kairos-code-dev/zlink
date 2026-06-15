@@ -96,3 +96,8 @@
 
 현재는 진입 문서만 있다.
 즉 `Rust` 상세 초안은 **대표 프레임워크와 설계 방향만 잡은 단계**다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

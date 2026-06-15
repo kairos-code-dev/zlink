@@ -42,3 +42,8 @@ class ZLinkRawStreamSession(Protocol):
         payload: Message,
     ) -> None: ...
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework FastAPI SPOT](./fastapi-spot.ko.md) | [다음: Draft -- ZLink Framework Python Interface Catalog](./handler-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

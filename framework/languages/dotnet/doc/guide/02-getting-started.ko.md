@@ -185,3 +185,8 @@ builder.Build().Run();
 | room/stage 같은 동적 노드 | [05-spot](./05-spot.ko.md) |
 | 외부 game/mobile client 받기 | [07-stream](./07-stream.ko.md) |
 | 실행 가능한 전체 예제 | [guide/samples](./samples/channel-messaging-samples.ko.md) |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET — 개요](./01-overview.ko.md) | [다음: 핵심 개념 — .NET 표면 멘탈 모델](./03-concepts.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

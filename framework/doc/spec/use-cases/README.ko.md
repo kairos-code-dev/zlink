@@ -44,3 +44,8 @@
 - 비슷해 보이는 케이스라도 운영 요구가 다르면 문서를 분리한다.
   예를 들어 일반 `domain event fanout`과 `real-time notification fanout`은
   둘 다 fan-out이지만, 대상 선택과 지연 요구가 다르므로 따로 적는 편이 낫다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Use Case Validation](../usecase-validation.ko.md) | [다음: Use Case -- Service To Service RPC](./01-service-to-service-rpc.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

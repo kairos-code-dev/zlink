@@ -199,3 +199,8 @@ framework에서 고정한다. 특히 session actor relay가 application route me
   ActorGateway bind, player move relay, game ended push를 server/client log로 검증한다.
 
 CTest label은 `framework-zlink-actor-gateway`를 사용한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ SPOT](./cpp-spot.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

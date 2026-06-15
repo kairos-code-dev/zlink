@@ -59,10 +59,33 @@ flowchart TD
 - **외부 게임/모바일 client** → STREAM(서버) + Stream Connector(client).
 - **연결 서버와 로직 서버 분리(재접속 이전성)** → session actor dispatch.
 
-## 4. 더 보기
+## 4. 기능을 실제로 보여 주는 샘플
+
+각 샘플은 의도가 겹치지 않게 서로 다른 기능 묶음을 맡는다. "이 기능을 실행 코드로
+보고 싶다" 면 아래에서 정본 샘플로 이동한다. 도입 판단(언제·왜)은 연결된 케이스
+스터디가, 실행은 샘플이 맡는다.
+
+| 샘플 | 핵심 기능 묶음 | codec | 케이스 스터디 | deep-dive 문서 |
+|------|----------------|:-----:|---------------|----------------|
+| TicTacToe | 수동 endpoint 직접 연결, STREAM auth, actor game join | MessagePack | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [TicTacToe](./samples/tictactoe-game-sample.ko.md) |
+| Bingo | Registry/Discovery 분리 gateway, Entry Spot, room Spot timer, bound push | Protobuf | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [Bingo](./samples/bingo-game-sample.ko.md) |
+| SupportChat | conversation Spot, reconnect 이전성, idle timer→close, bound push | JSON | [17 채팅·메시징](./case-studies/17-case-chat-messaging.ko.md) | [SupportChat](./samples/supportchat-sample.ko.md) |
+| DeliveryDispatch | HTTP intake, timeout 재배정, status fanout, delivery Spot, 고객 push | JSON | [16 라이드헤일링](./case-studies/16-case-ride-hailing.ko.md) | [DeliveryDispatch](./samples/deliverydispatch-sample.ko.md) |
+| ShoppingMall(Checkout) | event sourcing, OrderId owner routing, projection rebuild, 보상, scale-out | JSON | [13 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md) | [ShoppingMallCheckout](./samples/shoppingmall-checkout-sample.ko.md) |
+| GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [GameQuest](./samples/gamequest-sample.ko.md) |
+
+> 기능별 사용법은 04~09 가, 샘플의 언어 중립 정본 시나리오는
+> [spec/sample](../../../../doc/spec/sample/README.ko.md) 가 소유한다.
+
+## 5. 더 보기
 
 - 표면 멘탈 모델: [03-concepts](./03-concepts.ko.md)
 - ZLink 을 어디에 쓰나(새 서비스 도입 판단): [12-grpc-alternative](./12-grpc-alternative.ko.md)
 - 모든 계약 인터페이스를 코드로(ContractTests 검증): [11-interface-catalog](./11-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - 동작/검증 기준: [internals/behavior-matrix](../internals/behavior-matrix.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Monitoring](./09-monitoring.ko.md) | [다음: 인터페이스 카탈로그](./11-interface-catalog.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

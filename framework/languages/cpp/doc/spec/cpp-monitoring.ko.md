@@ -167,3 +167,8 @@ app.metrics()
     3,
     {{"surface", "http"}});
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Policy](../internals/cpp-framework-policy.ko.md) | [다음: Spec -- ZLink Framework C++ Registry](./cpp-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

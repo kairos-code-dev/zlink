@@ -244,3 +244,8 @@ runtime monitoring은 raw socket 이름보다 logical source 이름을 먼저 �
 
 이 둘은 필요해지면 고급 문서에서 다루되, 현재 `ZLink Framework` 초안의 중심에는 두지
 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Message Model](./message-model.ko.md) | [다음: ZLink Framework API](./framework-api.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

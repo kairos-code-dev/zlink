@@ -192,3 +192,8 @@ handler registration 이 정한다. 자세한 규칙은
     [18 트레이딩](./case-studies/18-case-trading-system.ko.md)
 13. [guide/samples](./samples/channel-messaging-samples.ko.md) — 등록 코드와 실행 흐름을 확인하는 기능별 샘플
 14. [spec/](../spec/handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework for .NET](../README.ko.md) | [다음: Getting Started](./02-getting-started.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

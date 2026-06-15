@@ -45,3 +45,8 @@ source 이름은 logical name을 쓰는 편이 자연스럽다.
 - discovery: `profile.client.discovery`
 - registry: `registry`
 - spot: `stage-node`
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework FastAPI Channel Messaging](./fastapi-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework FastAPI Registry](./fastapi-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

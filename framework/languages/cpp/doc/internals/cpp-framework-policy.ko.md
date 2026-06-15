@@ -1547,3 +1547,8 @@ CTest sample smoke는 모든 역할 실행 파일을 `framework-sample-smoke` la
 이 문서 기준으로 C++ framework core 구현을 시작하기 위한 추가 사용자 결정 항목은 없다.
 dead-letter 저장소, 재처리 표면, YAML 같은 추가 configuration source는
 core framework 계약 밖의 확장으로 별도 설계한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Interface Design](../spec/cpp-framework-interfaces.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](../spec/cpp-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

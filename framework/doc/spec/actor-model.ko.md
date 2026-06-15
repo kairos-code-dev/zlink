@@ -347,3 +347,8 @@ binding마다 이름은 케이싱 규칙에 따라 다르지만, 의미는 다�
 - session-bound actor의 local 생성 또는 handle 준비 + bind는 `CreateAndBindActorAsync(...)`와
   `BindActorHandleAsync(...)`가 묶는다. 두 API 모두 local `SpotNode` actor runtime을
   대상으로 하며 remote node를 직접 지정하지 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework API](./framework-api.ko.md) | [다음: Session Actor Dispatch Usability (Policy)](./session-actor-dispatch.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

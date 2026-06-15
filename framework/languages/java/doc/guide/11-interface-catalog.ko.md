@@ -25,3 +25,8 @@
 
 Kotlin wrapper는 Java API 위의 thin wrapper다. Java와 다른 lifecycle, buffering,
 error 의미를 만들지 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Monitoring](./10-monitoring.ko.md) | [다음: gRPC 대안](./12-grpc-alternative.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

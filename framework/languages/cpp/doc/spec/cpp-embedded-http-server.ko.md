@@ -864,3 +864,8 @@ TLS context, executor tuning은 runtime option이나 내부 구현으로 숨긴�
 - Drogon repository: <https://github.com/drogonframework/drogon>
 - Oat++ 공식 문서: <https://oatpp.io/docs/start/>
 - Oat++ repository: <https://github.com/oatpp/oatpp>
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ HTTP Hosting](./cpp-http-hosting.ko.md) | [다음: Spec -- ZLink Framework C++ Monitoring](./cpp-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

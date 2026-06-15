@@ -176,3 +176,8 @@ nonblocking send + pending queue + ready notification 으로 처리한다.
 - request/send/pub-sub 전체 사용법: [04-channel-messaging](./04-channel-messaging.ko.md)
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - 기능 선택 기준: [10-feature-map](./10-feature-map.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Channel Messaging — request · send · pub/sub](./04-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

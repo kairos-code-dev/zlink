@@ -146,3 +146,8 @@ public final class StagePublishController {
     }
 }
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework Java Interface Catalog](../../spec/handler-interfaces.ko.md) | [다음: ZLink Framework Spring Boot Channel Messaging](../../spec/spring-boot-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

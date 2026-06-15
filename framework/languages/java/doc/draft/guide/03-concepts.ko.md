@@ -54,3 +54,8 @@ Spring bean 주입은 capability 가능성을 암시해야 한다. SpotNode가 �
 `ZLinkSpotManager`를 등록하지 않고, actor factory가 없으면 `ZLinkActorManager`를
 등록하지 않는다. 자세한 기준은
 [DI capability policy](../internals/di-capability-exposure-policy.ko.md)가 소유한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Getting Started](./02-getting-started.ko.md) | [다음: Feature Map](./04-feature-map.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

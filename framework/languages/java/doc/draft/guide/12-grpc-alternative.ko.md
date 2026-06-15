@@ -26,3 +26,8 @@
 ZLink는 gRPC를 대체하는 범용 RPC 문법이 아니라, zlink core의 channel, Spot, STREAM
 기능을 application framework 표면으로 올리는 계층이다. 단순 CRUD RPC만 필요하면 gRPC가
 더 작고 익숙할 수 있다. 동적 room/session routing이 핵심이면 ZLink가 더 적합하다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: 인터페이스 카탈로그](./11-interface-catalog.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

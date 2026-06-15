@@ -1,5 +1,9 @@
 English | [한국어](./01-overview.ko.md)
 
+<!-- zlink-nav:start -->
+[Core API →](./02-core-api.md)
+<!-- zlink-nav:end -->
+
 # zlink Overview and Getting Started
 
 ## 1. What Is zlink?
@@ -182,4 +186,6 @@ int main(void) {
 - [SPOT Actor Guide](./07-4-actor.md)
 
 ---
+<!-- zlink-nav:bottom:start -->
 [Core API →](./02-core-api.md)
+<!-- zlink-nav:bottom:end -->

@@ -71,3 +71,8 @@
 - 실패를 숨기는 대기나 임시 store를 넣지 말고, 드러난 readiness/relay/dispatch 버그를 실제 구현으로 수정한다.
 - 모든 gate가 통과하고 unrelated dirty tree를 분리해 확인한 뒤에만 Java 포팅 범위 변경을 commit/push한다.
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [Java 묶음](./README.ko.md) | [실행 계획](./implementation-execution-plan.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

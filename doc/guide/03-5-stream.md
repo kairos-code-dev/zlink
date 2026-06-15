@@ -1,5 +1,9 @@
 [English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
 
+<!-- zlink-nav:start -->
+[← ROUTER](./03-4-router.md) | [Proxy →](./03-6-proxy.md)
+<!-- zlink-nav:end -->
+
 # STREAM Socket
 
 ## 1. Overview
@@ -309,3 +313,8 @@ These tests use STREAM server + raw client paths.
     ```rust
     --8<-- "bindings/rust/samples/stream_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← ROUTER](./03-4-router.md) | [Proxy →](./03-6-proxy.md)
+<!-- zlink-nav:bottom:end -->

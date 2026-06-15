@@ -154,3 +154,8 @@ reconnect, codec helper를 제공한다.
 - 전체 예제: [stream 샘플](./samples/stream-samples.ko.md)
 - client connector 상세: [stream-connector](../spec/stream-connector.ko.md)
 - 서버 정식 계약: [spring-boot-stream](../spec/spring-boot-stream.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Actor/Session](./07-actor-session.ko.md) | [다음: Registry](./09-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

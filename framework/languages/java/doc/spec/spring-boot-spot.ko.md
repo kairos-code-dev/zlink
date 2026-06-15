@@ -118,3 +118,8 @@ handler, actor lifecycle member callback, timer callback은 같은 Entry Spot �
 같은 Entry Spot의 다음 dispatch를 시작한다. 이 구분은 Entry Spot이 actor 입구 역할을 하고,
 user Spot이 room, stage, zone 같은 도메인 상태를 보관한다는 실행 모델을 유지하기 위한
 것이다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot Registry](./spring-boot-registry.ko.md) | [다음: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

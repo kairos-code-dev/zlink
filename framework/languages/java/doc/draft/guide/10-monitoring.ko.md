@@ -118,3 +118,8 @@ Spring application event bridge는 선택 기능이다. public 기준은 typed h
 - topology 스냅샷 조회: [09-registry](./09-registry.ko.md)
 - timer 정책: [06-spot](./06-spot.ko.md)
 - 정식 계약: [spring-boot-monitoring](../spring-boot-monitoring.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Registry](./09-registry.ko.md) | [다음: 인터페이스 카탈로그](./11-interface-catalog.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -147,3 +147,8 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 [^dto]: DTO(Data Transfer Object) 는 계층 간에 값을 옮기는 용도의 단순한 데이터 구조다.
 [^backend-adapter]: backend adapter layer 는 framework 의 표면과 실제 저수준 backend 사이를 잇는 중간 계층이다. backend 가 바뀌어도 public API 가 흔들리지 않게 해 준다.
 [^lifecycle]: lifecycle 은 컴포넌트가 시작·동작·종료되는 전체 수명 주기와, 각 단계에서 일어나는 일들을 가리킨다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md) | [다음: Draft -- ZLink Framework .NET STREAM Decisions](../draft/stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

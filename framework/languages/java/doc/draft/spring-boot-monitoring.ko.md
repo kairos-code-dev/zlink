@@ -143,3 +143,8 @@ runtime을 멈춘다. 일시적인 registry query 실패나 spot snapshot 실패
 - timer handler exception은 spot runtime event로 관찰된다.
 - `ZLinkRuntimeEventHandler<T>` 실패는 monitoring runner를 중단하지 않는다.
 - Spring application event bridge를 켜도 typed handler가 계속 호출된다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Spring Boot Channel Messaging](./spring-boot-channel-messaging.ko.md) | [다음: Draft -- ZLink Framework Spring Boot Registry](./spring-boot-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

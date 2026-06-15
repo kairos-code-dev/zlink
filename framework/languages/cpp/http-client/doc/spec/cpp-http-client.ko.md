@@ -331,3 +331,8 @@ ctest --test-dir framework/languages/cpp/build -L http-client-e2e
 ctest --test-dir framework/languages/cpp/build -L http-client-https
 ctest --test-dir framework/languages/cpp/build -L http-client-regression
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: Draft -- ZLink Stream Connector For C++](../../../connector/doc/draft/cpp-stream-connector.ko.md) | [다음: Spec -- ZLink Framework C++ HTTP Hosting](../../../doc/spec/cpp-http-hosting.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

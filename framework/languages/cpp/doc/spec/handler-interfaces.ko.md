@@ -230,3 +230,8 @@ Session actor relay는 application route mesh channel을 쓰지 않는다. STREA
 - session actor relay는 ActorGateway attach와 logical actor handle 기준으로 설명한다.
 - Registry는 Spot remote address 조회 기본값으로 쓰고 actor-session binding 저장소로
   쓰지 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md) | [다음: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

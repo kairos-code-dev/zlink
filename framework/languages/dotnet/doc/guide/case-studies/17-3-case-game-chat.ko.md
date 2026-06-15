@@ -300,3 +300,8 @@ public sealed class SendPartyChatHandler
 - 공통 채팅 개요: [17-case-chat-messaging](./17-case-chat-messaging.ko.md)
 - 이전 케이스: [17-2-case-live-commerce-chat](./17-2-case-live-commerce-chat.ko.md)
 - 다음 케이스: [18-case-trading-system](./18-case-trading-system.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 라이브 커머스·라이브스트림 채팅](./17-2-case-live-commerce-chat.ko.md) | [다음: 케이스 — 트레이딩 시스템](./18-case-trading-system.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

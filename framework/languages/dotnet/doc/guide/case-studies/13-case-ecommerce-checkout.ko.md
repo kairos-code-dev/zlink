@@ -7,8 +7,9 @@
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다. 이
 > 문서는 실행 가능한 샘플이 아니라 **도입 판단과 아키텍처 매핑**을 위한 사례다.
 > "ZLink 가 무엇을 줄이고 **무엇은 그대로 남는지**" 를 가장 분명히 보여 준다.
-> 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이, 실행 가능한
-> 구현 학습은 `guide/samples/` 문서가 소유한다.
+> 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이 소유하고,
+> 같은 체크아웃 도메인을 event sourcing 으로 빌드·실행해 보는 샘플은
+> [ShoppingMallCheckout](#7-실행-가능한-샘플--shoppingmallcheckout)이다(§7).
 
 > **이 케이스에서 ZLink 이 좋은 지점**
 > - 서비스 간 request/send/pub-sub 배선을 하나의 channel 모델로 줄인다.
@@ -326,8 +327,54 @@ mesh sidecar hop 이 빠지고, 위치 해결은 Registry view 가 미리 끝낸
 - **영속/replay 이벤트**: at-least-once 영속 큐가 필요하면 Kafka 유지.
 - **mTLS/HTTP edge**: 인증 edge·브라우저 호환·외부 공개 API 는 별도 계층.
 
-## 7. 더 보기
+## 7. 실행 가능한 샘플 — ShoppingMallCheckout
+
+§6 에서 "그대로 남는다" 고 한 보상·idempotency·event 영속을, ZLink owner routing 과
+event sourcing 으로 **애플리케이션 안에서** 견고하게 구성하는 모습을 실행해 보는 샘플이
+ShoppingMallCheckout 이다. Kafka 를 다시 만드는 것이 아니라, 외부 HTTP API 와 stateful
+workflow owner 를 분리해도 상태 전이·복구·audit·조회 projection 이 분명함을 보여 준다.
+
+- 구현 학습(deep-dive): [ShoppingMallCheckout Sample 문서](../samples/shoppingmall-checkout-sample.ko.md)
+- 실행 코드: [.NET ShoppingMall 샘플](../../../samples/ShoppingMall)
+- 공통 시나리오(언어 중립 정본): [spec/sample/event/shoppingmall-checkout](../../../../../doc/spec/sample/event/shoppingmall-checkout.ko.md)
+
+### 서버 구성 — stateless API + stateful order owner
+
+| 서버 | instance | 책임 |
+|------|:--------:|------|
+| `CommerceApi` | 2 | HTTP API, 입력 검증, idempotency lookup, projection **조회만** (event append 안 함) |
+| `OrderWorkflow` | 2 | `OrderWorkflowSpot` 호스팅, `OrderId` owner 로 상태 전이·event append·projection 갱신 |
+| stores | 1 set | `OrderEventStore`(기준 stream) + `OrderReadModelStore`(projection) + `CommerceStateStore` |
+
+어느 `CommerceApi` instance 가 받아도 `OrderId` 기준 같은 `OrderWorkflowSpot` owner 로
+route 된다(케이스 §3 의 channel routing 을 owner 소유권으로 확장).
+
+### 케이스 본문 너머로 이 샘플이 더 보여 주는 것
+
+- **event sourcing**: `OrderWorkflowSpot` 만 `OrderEventStore` 에 append 하고,
+  projection 을 삭제해도 stream replay 로 다시 만든다(`RebuildOrderProjectionReq`).
+- **idempotency 를 owner 안에서**: 같은 `IdempotencyKey` 는 같은 `OrderId` 로 모이고,
+  pending → started mapping 으로 중복 시작과 중간 실패 복구를 구분한다.
+- **보상 흐름**: 결제 실패 시 `InventoryReleasedEvent → OrderFailedEvent` 로 재고 예약을
+  되돌린다(성공/재고실패/결제실패 3 branch 의 event sequence 고정).
+- **scale-out routing**: 서로 다른 주문은 서로 다른 `OrderWorkflow` instance 에서 동시
+  처리되고, 두 instance 어디서 조회해도 같은 projection 을 반환한다.
+- **codec**: 읽기 쉬운 JSON payload.
+
+### client self-check 가 검증하는 의미
+
+성공 주문은 `Created → Confirmed` projection 과 `OrderStartedEvent →
+InventoryReservedEvent → PaymentAuthorizedEvent → OrderConfirmedEvent` append 를,
+중복 시작은 같은 `OrderId` 반환과 event 무중복 append 를, 결제 실패는 보상 event 와
+`Failed` 사유를, projection rebuild 는 event replay 만으로 재생성을 검증한다.
+
+## 8. 더 보기
 
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md) (공통 경계는 §4 경계 절)
 - 사용법 정식: [04-channel-messaging](../04-channel-messaging.ko.md)
 - 다음 케이스: [14-case-microservice-mesh](./14-case-microservice-mesh.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink 을 어디에 쓰나](../12-grpc-alternative.ko.md) | [다음: 케이스 — 내부 마이크로서비스 mesh + 운영](./14-case-microservice-mesh.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

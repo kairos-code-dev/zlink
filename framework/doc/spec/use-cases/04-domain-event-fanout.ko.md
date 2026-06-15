@@ -50,3 +50,8 @@
 - request-response와 별도의 상호작용 모델이 필요하다.
 - one-way 이벤트와 응답이 있는 호출을 같은 API로 억지로 묶지 않는 편이 좋다.
 - NestJS의 `@EventPattern`처럼 event 전용 표면이 있는 편이 이해하기 쉽다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Worker Dispatch](./03-worker-dispatch.ko.md) | [다음: Use Case -- Cache Invalidation And Config Refresh](./05-cache-invalidation-and-config-refresh.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

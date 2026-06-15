@@ -917,3 +917,8 @@ app.MapPost("/profiles/get", async (
 
 [^di]: **DI** = Dependency Injection. `ASP.NET Core` 가 기본으로 제공하는 의존성 주입
     컨테이너다. `builder.Services.Add...()` 로 등록하고 생성자 매개변수로 받아 쓴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework ASP.NET Core Registry Integration](../../spec/aspnet-core-registry.ko.md) | [다음: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

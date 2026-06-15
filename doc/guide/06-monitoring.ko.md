@@ -1,5 +1,9 @@
 [English](./06-monitoring.md) | [한국어](./06-monitoring.ko.md)
 
+<!-- zlink-nav:start -->
+[← TLS/보안](./05-tls-security.ko.md) | [서비스 개요 →](./07-0-services.ko.md)
+<!-- zlink-nav:end -->
+
 # 모니터링 API 사용법
 
 ## 1. 개요
@@ -750,3 +754,8 @@ if (items[0].revents & ZLINK_POLLIN)
     ```rust
     --8<-- "bindings/rust/samples/monitor_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← TLS/보안](./05-tls-security.ko.md) | [서비스 개요 →](./07-0-services.ko.md)
+<!-- zlink-nav:bottom:end -->

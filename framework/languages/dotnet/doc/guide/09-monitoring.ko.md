@@ -173,3 +173,8 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 - 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [11-interface-catalog](./11-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
 - 정식 계약: [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)
 - topology 스냅샷 조회: [08-registry](./08-registry.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Registry](./08-registry.ko.md) | [다음: 기능 맵](./10-feature-map.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

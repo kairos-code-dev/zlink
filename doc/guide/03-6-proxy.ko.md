@@ -1,5 +1,9 @@
 [English](./03-6-proxy.md) | [한국어](./03-6-proxy.ko.md)
 
+<!-- zlink-nav:start -->
+[← STREAM](./03-5-stream.ko.md) | [Transport →](./04-transports.ko.md)
+<!-- zlink-nav:end -->
+
 # 프록시 패턴
 
 ## 1. 개요
@@ -195,4 +199,6 @@ flowchart LR
 | **모니터링** | capture 소켓으로 통과 메시지 기록 |
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← STREAM](./03-5-stream.ko.md) | [Transport →](./04-transports.ko.md)
+<!-- zlink-nav:bottom:end -->

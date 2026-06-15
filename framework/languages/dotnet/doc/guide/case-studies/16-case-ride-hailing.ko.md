@@ -7,7 +7,8 @@
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > 대량 위치 fan-out + 지역(zone) 단위 매칭을 다루며, **geo-index·영속 이력은
 > 그대로 남고** 라이브 전파·연결·매칭 직렬화가 ZLink 로 들어오는 사례다. 이 문서는
-> 실행 가능한 샘플이 아니라 도입 판단과 책임 경계 설명을 맡는다.
+> 도입 판단과 책임 경계 설명을 맡고, 같은 "요청→배정→실시간 상태 push" 구조를
+> 빌드·실행해 보는 샘플은 [DeliveryDispatch](#7-실행-가능한-샘플--deliverydispatch)다(§7).
 
 > **이 케이스에서 ZLink 이 좋은 지점**
 > - STREAM 이 위치 연결을 받고, pub/sub 가 다운스트림 fan-out 을 한다.
@@ -232,8 +233,53 @@ sequenceDiagram
   ZLink 는 geo 질의나 영속 큐를 대신하지 않는다. 공통 경계는
   [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
-## 7. 더 보기
+## 7. 실행 가능한 샘플 — DeliveryDispatch
+
+라이드헤일링과 같은 "요청을 만들고 수행자를 배정한 뒤 상태를 실시간으로 보여 주는"
+구조를 작게 실행해 보는 샘플이 DeliveryDispatch(배송 배차)다. 외부 경계(고객 HTTP·
+stream)는 그대로 두고, **내부 배차 메시징·상태 fanout·delivery 별 상태 참여**를 ZLink
+역할 메시지로 구성한다.
+
+- 구현 학습(deep-dive): [DeliveryDispatch Sample 문서](../samples/deliverydispatch-sample.ko.md)
+- 실행 코드: [.NET DeliveryDispatch 샘플](../../../samples/DeliveryDispatch)
+- 공통 시나리오(언어 중립 정본): [spec/sample/deliverydispatch](../../../../../doc/spec/sample/deliverydispatch/README.ko.md)
+
+### 서버 구성과 ZLink 요소
+
+| 프로세스 | 책임 | ZLink 요소 |
+|----------|------|------------|
+| `DispatchApi` | 고객 HTTP `POST /deliveries` 수신 → `AssignDelivery` 전달 | client-server channel client |
+| `DispatchCenter` | 배차 접수, 배송원 선택, timeout, 재배정 | channel server/client + dispatch worker |
+| `Courier` | 제안 수락 또는 의도적 무응답(timeout) | channel server (`OfferDelivery`) |
+| `Tracking` | 상태 event 기록, `DeliveryTrackingSpot`, status fanout publish | fanout publisher + Spot mesh + actor factory |
+| `Session` | 고객 stream session, delivery subscription, 상태 push | stream node + fanout subscriber |
+
+### 케이스 본문 너머로 이 샘플이 더 보여 주는 것
+
+- **timeout 재배정을 1급 흐름으로**: 샘플은 `delivery-success` 와 `delivery-reassign`
+  두 흐름을 **반드시** 포함한다. Courier A 를 `timeout-reassign` mode(성공 건은 수락,
+  reassign 건만 무응답), Courier B 를 `accept` mode 로 띄워 무응답 → 재제안 → 수락이
+  실제로 일어난다.
+- **fanout 으로 고객까지 도달**: Tracking 이 `DeliveryStatusNotify` 를 fanout 으로
+  publish 하고 Session 이 구독해 stream 으로 push 한다(케이스 §3 의 pub/sub fan-out).
+- **`DeliveryTrackingSpot`**: 고객 actor 가 관심 delivery 에 join 하는 구조 — zone SPOT
+  대신 delivery 단위 참여를 보여 준다.
+- **codec**: 읽기 쉬운 JSON payload.
+
+### client self-check 가 검증하는 의미
+
+`delivery-success` 는 `Assigned → Accepted → PickedUp → Delivered` 가 순서대로,
+`delivery-reassign` 은 `Assigned → Reassigned → Accepted → PickedUp → Delivered` 가
+순서대로 도착하는지 확인하고, 재배정 건의 `Accepted`/`PickedUp`/`Delivered` 가 `courier-b`
+처리임을 검증한다. 서버 evidence check 가 두 delivery 의 상태 순서를 누락 없이 기록한다.
+
+## 8. 더 보기
 
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
 - 사용법: [04-channel-messaging](../04-channel-messaging.ko.md), [05-spot](../05-spot.ko.md), [07-stream](../07-stream.ko.md)
 - 다음 케이스: [17-case-chat-messaging](./17-case-chat-messaging.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 실시간 멀티플레이 게임](./15-case-realtime-game.ko.md) | [다음: 케이스 — 채팅·메시징 플랫폼](./17-case-chat-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

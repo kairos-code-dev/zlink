@@ -577,3 +577,8 @@ dispatch loop를 framework host가 직접 관리하는 것이다. application이
 
 지금 단계에서는 이름보다 "그 프레임워크 사용자가 낯설지 않게 느끼는가"를 더
 중요하게 본다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: ZLink Framework Channel Topology](./channel-topology.ko.md) | [다음: ZLink Framework Actor Model](./actor-model.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

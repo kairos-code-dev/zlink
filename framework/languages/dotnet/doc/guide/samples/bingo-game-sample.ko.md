@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../doc/README.ko.md) | [이전: TicTacToe Game Sample](./tictactoe-game-sample.ko.md) | [다음: ZLink Framework .NET Behavior Matrix](../../internals/behavior-matrix.ko.md)
+[문서 목록](../../../../../doc/README.ko.md) | [이전: TicTacToe Game Sample](./tictactoe-game-sample.ko.md) | [다음: SupportChat Sample](./supportchat-sample.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Matching Room Game Sample: Bingo
@@ -350,3 +350,8 @@ matching 흐름은 다음과 같다.
 | `RegressionTests.Bingo_Uses_RegistryBacked_Defaults_Without_Sample_Metadata_Store` | Bingo 샘플이 sample-only registry metadata store 없이 Registry 기본 API 를 사용한다. |
 
 [^public-contract]: public contract 는 외부 사용자에게 공개되어 변경 시 호환성을 책임져야 하는 API 표면을 뜻한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: TicTacToe Game Sample](./tictactoe-game-sample.ko.md) | [다음: SupportChat Sample](./supportchat-sample.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -416,3 +416,8 @@ heartbeat timeout 기준, reconnect delay 계산, pending request 실패 규칙�
   certificate validation 생략"으로 맞춘다.
 - WebSocket path는 endpoint URI에 포함한다. 별도 path option을 두지 않는다.
 - codec extension은 Stream Connector package 계열의 별도 package로 둔다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: ZLink Framework 공통 스펙 — Draft](./README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -92,3 +92,8 @@ JUnit 테스트 이름은 `.NET` 테스트(`NodesAndServices`, `HandlerExposure`
 | `addZLinkFramework_doesNotRegisterSpotOutbound_withResolverOnly` | resolver만 있고 SpotNode가 없으면 `ZLinkSpotOutbound`는 없다 |
 | `routeClient_throwsConfigurationException_whenRouteChannelMissing` | route channel 누락 오류가 configuration error로 나온다 |
 | `channelClient_throwsConfigurationException_whenClientCapabilityMissing` | channel client capability 누락 오류가 configuration error로 나온다 |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [표면 매핑](./dotnet-to-java-surface-mapping.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

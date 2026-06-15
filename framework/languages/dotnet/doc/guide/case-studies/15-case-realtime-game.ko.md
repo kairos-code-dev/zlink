@@ -8,9 +8,9 @@
 > STREAM·SPOT·actor·session actor dispatch 가 한 도메인에 모두 맞는 사례. 등록
 > 정식은 [05-spot](../05-spot.ko.md)·[06-actor-session](../06-actor-session.ko.md)·
 > [07-stream](../07-stream.ko.md)이 소유한다. 실행 가능한 구현 학습은
-> [TicTacToe 샘플](../samples/tictactoe-game-sample.ko.md)과
-> [Bingo 샘플](../samples/bingo-game-sample.ko.md)이 맡고, 이 문서는 게임 도메인에
-> ZLink 를 넣을지 판단하는 케이스 스터디다.
+> [TicTacToe 샘플](../samples/tictactoe-game-sample.ko.md)·
+> [Bingo 샘플](../samples/bingo-game-sample.ko.md)·GameQuest 세 샘플이 각기 다른
+> 각도로 맡고(§7), 이 문서는 게임 도메인에 ZLink 를 넣을지 판단하는 케이스 스터디다.
 
 > **이 케이스에서 ZLink 이 좋은 지점**
 > - STREAM 이 client 연결을 받고, session actor dispatch 가 재접속 이전성을 다룬다.
@@ -257,9 +257,54 @@ binding 만 새 stream 으로 옮겨 붙는다.
   의 인메모리 상태는 그 lifetime 동안만 유지된다. 공통 경계는
   [12-grpc-alternative](../12-grpc-alternative.ko.md)의 §4 경계 절 참고.
 
-## 7. 더 보기
+## 7. 실행 가능한 샘플 — 게임 백엔드 3선
+
+이 케이스의 흐름은 세 샘플이 서로 다른 각도로 실행해 보여 준다. 셋은 같은 기능을
+반복하지 않고, 게임 백엔드의 다른 난제를 하나씩 맡는다.
+
+| 샘플 | 맡는 난제 | 핵심 요소 | codec |
+|------|-----------|-----------|:-----:|
+| [TicTacToe](../samples/tictactoe-game-sample.ko.md) | 가장 작은 실시간 game 흐름 | 수동 endpoint, STREAM auth, room Spot | MessagePack |
+| [Bingo](../samples/bingo-game-sample.ko.md) | matching room + 분리 gateway | Registry/Discovery, Entry Spot, timer, bound push | Protobuf |
+| ShoppingMall 류 GameQuest | gameplay event 누적 → quest 진행 | **fanout 구독 + event sourcing + projection** | JSON |
+
+TicTacToe·Bingo 는 §3 의 STREAM·SPOT·actor 를 실시간 방 루프로 보여 주는 deep-dive
+문서를 따로 가진다. 여기서는 본문이 다루지 않은 세 번째 각도, **GameQuest** 를 짚는다.
+
+### GameQuest — fanout + event sourcing 으로 quest 진행
+
+room 루프가 아니라, 여러 gameplay 영역(combat·inventory·mission·feature·world)에서
+생긴 event 를 누적해 quest 진행을 결정하는 샘플이다. realtime 방 상태와는 다른 게임
+백엔드 난제 — **흩어진 gameplay fact 의 player 단위 집계와 replay** — 를 맡는다.
+
+- 구현 학습(deep-dive): [GameQuest Sample 문서](../samples/gamequest-sample.ko.md)
+- 실행 코드: [.NET GameQuest 샘플](../../../samples/GameQuest)
+- 공통 시나리오(언어 중립 정본): [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)
+
+| 서버 | instance | 책임 |
+|------|:--------:|------|
+| `GameApi` | 2 | stateless action API, WebSocket session, gameplay event **publish** |
+| `QuestMission` | 2 | gameplay event **구독**, `PlayerId` owner 로 `PlayerQuestSpot` route |
+| stores | 1 set | `QuestStore`(event stream + projection) + GameApi 측 gameplay/subscription store |
+
+- **fanout 으로 결합 분리**: `QuestMission` 은 event publisher 의 물리 endpoint 를 모른 채
+  여러 gameplay event type 을 구독한다.
+- **player 단위 owner**: 같은 `PlayerId` 의 event 는 항상 같은 `PlayerQuestSpot` owner
+  흐름에서 처리·append·projection update 된다.
+- **event sourcing**: owner 흐름이 progress/completion/reward event 를 append 하고(reward 는
+  `SourceEventId` 기준 idempotent), `(PlayerId, QuestId)` stream replay 로 projection 을 다시
+  만드는 경로는 self-check 가 검증한다.
+- **누락 보정**: fanout event 누락 가능성은 gameplay snapshot 재동기화로 보정하고, 그
+  결과도 quest domain event 로 남긴다.
+
+## 8. 더 보기
 
 - 케이스 허브: [12-grpc-alternative](../12-grpc-alternative.ko.md)
 - 사용법: [05-spot](../05-spot.ko.md), [06-actor-session](../06-actor-session.ko.md), [07-stream](../07-stream.ko.md)
-- 실행 예제: [tictactoe 샘플](../samples/tictactoe-game-sample.ko.md), [bingo 샘플](../samples/bingo-game-sample.ko.md)
+- 실행 예제: [tictactoe 샘플](../samples/tictactoe-game-sample.ko.md), [bingo 샘플](../samples/bingo-game-sample.ko.md), [GameQuest 샘플](../../../samples/GameQuest)
 - 다음 케이스: [16-case-ride-hailing](./16-case-ride-hailing.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 내부 마이크로서비스 mesh + 운영](./14-case-microservice-mesh.ko.md) | [다음: 케이스 — 라이드헤일링 실시간 디스패치](./16-case-ride-hailing.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

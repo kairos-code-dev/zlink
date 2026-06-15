@@ -1,5 +1,9 @@
 [English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
 
+<!-- zlink-nav:start -->
+[← SPOT Actor](./07-4-actor.md) | [Routing ID →](./08-routing-id.md)
+<!-- zlink-nav:end -->
+
 # Registry (Central Service Directory)
 
 > **Normative status: Illustrative — Needs refresh.**
@@ -639,4 +643,6 @@ Recommended workflow:
 - [Registry API Reference](../api/registry.md) -- Complete API documentation
 
 ---
-[← SPOT](./07-3-spot.md) | [Routing ID →](./08-routing-id.md)
+<!-- zlink-nav:bottom:start -->
+[← SPOT Actor](./07-4-actor.md) | [Routing ID →](./08-routing-id.md)
+<!-- zlink-nav:bottom:end -->

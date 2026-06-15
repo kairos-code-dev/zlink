@@ -352,3 +352,8 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 - typed helper packet name resolver와 codec selection
 - typed request/reply decode
 - Kotlin coroutine/Flow wrapper smoke
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Draft -- Java STREAM Decisions And Open Items](./stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

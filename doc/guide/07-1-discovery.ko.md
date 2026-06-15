@@ -1,5 +1,9 @@
 [English](./07-1-discovery.md) | [한국어](./07-1-discovery.ko.md)
 
+<!-- zlink-nav:start -->
+[← 서비스 개요](./07-0-services.ko.md) | [SPOT →](./07-3-spot.ko.md)
+<!-- zlink-nav:end -->
+
 # Service Discovery
 
 > **규범 상태(Normative status): 설명 목적(Illustrative) — 갱신 필요.**
@@ -462,4 +466,6 @@ Discovery가 하나의 Registry에만 연결해도 다른 Registry에 등록된 
 - [Registry 가이드](./07-4-registry.ko.md) — 클러스터 구성, 토폴로지 조회, 운영 패턴
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← 서비스 개요](./07-0-services.ko.md) | [SPOT →](./07-3-spot.ko.md)
+<!-- zlink-nav:bottom:end -->

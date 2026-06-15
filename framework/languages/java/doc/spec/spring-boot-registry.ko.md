@@ -142,3 +142,8 @@ shutdown은 반대 순서다. framework runtime을 먼저 멈추고 registry end
 - remote query client는 topology snapshot을 읽을 수 있다.
 - Registry와 framework를 함께 등록한 host에서 registry가 먼저 bind된다.
 - request hot path는 `ZLinkRegistryQuery`를 직접 호출하지 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot Monitoring](./spring-boot-monitoring.ko.md) | [다음: ZLink Framework Spring Boot SPOT](./spring-boot-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

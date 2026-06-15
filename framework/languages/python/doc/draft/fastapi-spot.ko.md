@@ -45,3 +45,8 @@
 다만 이것도 current channel publish나 attach된 channel 호출보다 앞에 두지는 않는다.
 또한 `spot_name` 기준 생성과 `spot_rid -> spot_name` 조회는 `ZLinkSpotManager`가
 같이 맡는 편이 맞다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework FastAPI Registry](./fastapi-registry.ko.md) | [다음: Draft -- ZLink Framework FastAPI STREAM](./fastapi-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

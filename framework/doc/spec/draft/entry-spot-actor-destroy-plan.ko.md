@@ -738,3 +738,8 @@ goal을 완료로 표시하기 전에 아래 질문에 모두 "예"라고 답해
 | user Spot `onLeaveActor`에서 자동 삭제를 수행함 | Entry Spot destroy API만 actor를 삭제할 수 있음을 테스트로 확인한다. |
 | stale packet이 새 actor generation을 건드림 | generation guard 또는 actor instance identity 검사를 runtime 테스트에 넣는다. |
 | public 함수 이름은 언어별로 달라도 의미가 갈라짐 | 공통 contract matrix를 두고 각 언어 테스트 이름과 검증 내용을 같은 의미로 맞춘다. |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [상위: Draft](./README.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

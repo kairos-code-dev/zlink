@@ -279,3 +279,8 @@ public sealed class PinMessageHandler
 - 공통 채팅 개요: [17-case-chat-messaging](./17-case-chat-messaging.ko.md)
 - 이전 케이스: [17-1-case-marketplace-chat](./17-1-case-marketplace-chat.ko.md)
 - 다음 케이스: [17-3-case-game-chat](./17-3-case-game-chat.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: 케이스 — 마켓플레이스 구매자·판매자 채팅](./17-1-case-marketplace-chat.ko.md) | [다음: 케이스 — 게임 채팅](./17-3-case-game-chat.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

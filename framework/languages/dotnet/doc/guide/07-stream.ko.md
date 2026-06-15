@@ -274,3 +274,8 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 - 서버 정식 계약: [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md)
 - 미확정 결정 사항: [draft/stream-open-items](../draft/stream-open-items.ko.md)
 - 전체 예제: [STREAM 샘플](./samples/stream-samples.ko.md), [Stream Connector 가이드](./samples/streaming-client.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Actor · Session Actor Dispatch](./06-actor-session.ko.md) | [다음: Registry — topology 조회](./08-registry.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

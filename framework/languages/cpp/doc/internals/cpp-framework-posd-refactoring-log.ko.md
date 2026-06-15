@@ -10310,3 +10310,8 @@ handler dispatch는 이미 검증된 값을 받는다.
 - actor disconnected는 `.NET`처럼 change result 없이 별도 handler로 남는다.
 - lifecycle handler는 정의된 membership change만 받는다.
 - 잔여 POSD 위험 신호와 리팩토링 이슈는 0개다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Implementation Plan](./cpp-framework-implementation-plan.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

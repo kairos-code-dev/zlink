@@ -220,3 +220,8 @@ resolver/store 를 등록한다([06-actor-session](./06-actor-session.ko.md) §5
 - 이 챕터 계약의 실행 검증 예문(options/query/query client): [11-interface-catalog](./11-interface-catalog.ko.md) §6 — 검증 클래스 `RegistryContracts`
 - 정식 계약: [spec/aspnet-core-registry](../spec/aspnet-core-registry.ko.md)
 - runtime 이벤트로 topology 변화 관찰: [09-monitoring](./09-monitoring.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: STREAM](./07-stream.ko.md) | [다음: Monitoring — runtime 이벤트](./09-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

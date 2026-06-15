@@ -1,5 +1,9 @@
 [English](./02-core-api.md) | [한국어](./02-core-api.ko.md)
 
+<!-- zlink-nav:start -->
+[← 개요](./01-overview.ko.md) | [소켓 패턴 →](./03-0-socket-patterns.ko.md)
+<!-- zlink-nav:end -->
+
 # Core C API 상세 가이드
 
 ## 1. Context API
@@ -418,4 +422,6 @@ int main(void) {
 ```
 
 ---
-[← 개요](./01-overview.ko.md) | [Socket Pattern →](./03-0-socket-patterns.ko.md)
+<!-- zlink-nav:bottom:start -->
+[← 개요](./01-overview.ko.md) | [소켓 패턴 →](./03-0-socket-patterns.ko.md)
+<!-- zlink-nav:bottom:end -->

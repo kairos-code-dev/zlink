@@ -37,3 +37,8 @@ stage wrapper는 게임 기능을 직접 뜻하지 않는다.
 wrapper가 timer를 제공할 때도 SPOT timer 계약을 그대로 따라야 한다. 즉 tick metadata,
 overrun policy, handler exception monitoring을 숨기지 않고 wrapper 옵션으로 사상한다.
 room이나 stage 상태 변경은 core SPOT dispatch boundary 안에서만 처리한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ SPOT Samples](../internals/spot-samples.ko.md) | [다음: Draft -- C++ STREAM Decisions](../internals/stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

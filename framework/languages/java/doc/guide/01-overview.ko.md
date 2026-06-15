@@ -65,3 +65,8 @@ Java/Kotlin 표면을 대조해야 할 때는
 9. [10-monitoring](./10-monitoring.ko.md)
 10. [11-interface-catalog](./11-interface-catalog.ko.md)
 11. [12-grpc-alternative](./12-grpc-alternative.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [다음: Getting Started](./02-getting-started.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

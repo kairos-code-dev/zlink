@@ -686,3 +686,8 @@ Handler shape regression matrix:
 | ambiguous route mode | typed shape와 raw shape가 한 handler에 있으면 실패 |
 | invalid return type | raw route가 DTO를 반환하면 실패 |
 | content length | handler가 준 `Content-Length`는 runtime 최종값으로 보정 |
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink HTTP Client For C++](../../http-client/doc/spec/cpp-http-client.ko.md) | [다음: Spec -- ZLink Framework C++ Embedded HTTP Server](./cpp-embedded-http-server.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

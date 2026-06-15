@@ -69,3 +69,8 @@ feature map의 모든 항목은 구현, 테스트, sample 중 하나 이상에�
 - 표면 멘탈 모델: [03-concepts](./03-concepts.ko.md)
 - ZLink를 어디에 쓰나(도입 판단): [12-grpc-alternative](./12-grpc-alternative.ko.md)
 - 전체 public interface: [11-interface-catalog](./11-interface-catalog.ko.md)
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Concepts](./03-concepts.ko.md) | [다음: Channel Messaging](./05-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

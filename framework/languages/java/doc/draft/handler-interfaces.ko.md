@@ -1158,3 +1158,8 @@ public interface ZLinkHandlerFilter {
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
 - stream session은 header 기반 `ZLinkSession` 하나로 둔다.
 - actor/session relay는 ActorGateway와 `ZLinkBoundSession`을 기준으로 구현한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Java Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: Draft -- ZLink Framework Java SPOT Samples](./spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

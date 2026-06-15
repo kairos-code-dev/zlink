@@ -462,3 +462,8 @@ STREAM 샘플은 다음을 하나의 흐름으로 보여 준다.
 [^handler]: handler는 들어온 요청·메시지·packet을 받아 실제 처리를 수행하는 사용자 코드를 가리킨다.
 [^transport]: transport는 실제 네트워크 위에서 바이트를 실어 나르는 계층을 뜻한다(TCP, TLS, WS, WSS 등). 그 위에 framework의 packet/session 추상이 올라간다.
 [^lifecycle]: lifecycle은 어떤 컴포넌트가 생성·시작·종료에 이르는 동안 거치는 단계와 순서를 묶어 부르는 말이다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../../doc/README.ko.md) | [이전: ZLink Framework .NET SPOT Samples](./spot-samples.ko.md) | [다음: ZLink Stream Connector For .NET](./streaming-client.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

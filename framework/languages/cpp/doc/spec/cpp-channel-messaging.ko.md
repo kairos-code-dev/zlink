@@ -200,3 +200,8 @@ channel messaging 회귀 테스트는 `.NET` framework의 channel 동작과 같�
 
 CTest label은 `framework-zlink-channel`을 사용한다. 전체 zlink 회귀 묶음에서는
 `framework-zlink` label에도 포함한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework C++ Channel Messaging Samples](../internals/channel-messaging-samples.ko.md) | [다음: Spec -- ZLink Framework C++ Interface Design](./cpp-framework-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

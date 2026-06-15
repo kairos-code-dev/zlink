@@ -27,3 +27,8 @@
 - 다른 channel 호출: `ZLinkSpotOutbound`
 
 즉 `Stage` 안에 모든 packet 처리와 외부 호출을 몰아 넣지 않는 편이 맞다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](./spring-boot-stream.ko.md) | [다음: Java STREAM Open Items](../draft/stream-open-items.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

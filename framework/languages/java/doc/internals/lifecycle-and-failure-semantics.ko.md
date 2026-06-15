@@ -99,3 +99,8 @@ cancellation 정책에 따라 정리한다.
 `onConnected()`는 connection ready 이후 호출한다. `onError(...)`는 session과
 매칭되는 transport error만 받는다. handshake 실패나 bind 실패는 monitoring event로
 남긴다. 같은 session의 dispatch callback은 직렬로 실행한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [Behavior Matrix](./behavior-matrix.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

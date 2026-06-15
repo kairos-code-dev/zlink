@@ -424,3 +424,8 @@ bind/accept/close 실패는 session callback이 아니라 monitoring event로 �
   shutdown/cancellation/exception/serial ordering이 Java core와 같은 의미로 test된다.
 - `samples/java/*`와 `samples/kotlin/*` 아래의 `TicTacToe`, `Bingo` sample이 실제
   connector와 framework public API만 사용해 self-check를 통과한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [Java 묶음](./README.ko.md) | [다음: Draft -- ZLink Framework Java Interface Catalog](./handler-interfaces.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

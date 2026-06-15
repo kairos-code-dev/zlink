@@ -301,3 +301,8 @@ sequenceDiagram
 - gRPC Load Balancing on Kubernetes without Tears — https://kubernetes.io/blog/2018/11/07/grpc-load-balancing-on-kubernetes-without-tears/
 - System Design Study: Netflix's adoption of Service Mesh — https://vivekbansal.substack.com/p/system-design-study-netflixs-adoption
 - Scaling Microservices: Lessons from Netflix, Uber, Amazon, and Spotify — https://www.netguru.com/blog/scaling-microservices
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: 인터페이스 카탈로그](./11-interface-catalog.ko.md) | [다음: 케이스 — 전자상거래 체크아웃](./case-studies/13-case-ecommerce-checkout.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

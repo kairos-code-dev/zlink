@@ -55,3 +55,8 @@
 
 이 use case는 중요한 운영 시나리오지만, 현재 스펙에서는 아직 공통 metadata
 요구를 드러내는 참고 케이스에 가깝다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Scatter Gather Query](./08-scatter-gather-query.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

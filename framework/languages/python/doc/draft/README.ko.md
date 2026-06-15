@@ -81,3 +81,8 @@ zlink runtime을 자연스럽게 묶는 것이다.
 - outbound `DEALER(client)`는 reply correlation 경로로 본다.
 - packet key 기본값은 payload 타입 이름을 쓴다.
 - `rid` 지정은 `SPOT` spot-to-spot 경로에만 남긴다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [다음: Draft -- ZLink Framework Python Channel Messaging Samples](./channel-messaging-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -496,3 +496,8 @@ class ZLinkSendHandler(Protocol[TMessage]):
 - 일반 channel messaging의 handler dispatch는 local `ROUTER(server)` ingress 기준이다.
 - outbound `DEALER(client)` 수신은 reply correlation 경로로 본다.
 - `ROUTER -> DEALER` 임의 push는 channel messaging 공용 계약에 넣지 않는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework FastAPI STREAM](./fastapi-stream.ko.md) | [다음: Draft -- ZLink Framework Python SPOT Samples](./spot-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

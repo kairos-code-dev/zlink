@@ -199,3 +199,8 @@ lifecycle 과 failure semantics 항목은 다음을 모두 테스트로 못 박�
 [^high-water-mark]: high water mark 는 pending queue 같은 버퍼에 쌓아 둘 수 있는 항목 수의 상한선이다. 이 한계를 넘으면 흐름 제어가 발동한다.
 [^per-spot-scope]: per-spot scope 는 SPOT 인스턴스마다 별도로 만들어지는 DI scope 다. 그 scope 안에서 spot 전용 handler 들이 resolve 된다.
 [^graceful-timeout]: graceful timeout 은 정상 종료를 시도할 때 작업이 자발적으로 마무리될 때까지 기다려 주는 최대 시간이다. 이 시간을 넘기면 강제로 중단할 수 있다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET DI Capability Exposure Policy](./di-capability-exposure-policy.ko.md) | [다음: ZLink Framework .NET Regression Test Matrix](./regression-test-matrix.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

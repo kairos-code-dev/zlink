@@ -1119,3 +1119,8 @@ channel 문서의 항목은 다음 흐름이 함께 깨지지 않아야 한다.
 [^ihostedservice]: **IHostedService** 는 `ASP.NET Core` 호스트의 시작 / 종료 시점에
     돌릴 백그라운드 서비스 인터페이스다. `StartAsync` / `StopAsync` 두 메서드로
     lifecycle 을 잡는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Interface Catalog](./handler-interfaces.ko.md) | [다음: ZLink Framework ASP.NET Core SPOT Integration](./aspnet-core-spot.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

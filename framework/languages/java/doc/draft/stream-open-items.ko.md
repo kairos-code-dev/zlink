@@ -42,3 +42,8 @@
 구현의 필수 범위는 `spring-boot-stream.ko.md`, `stream-connector.ko.md`,
 `sample-implementation-plan.ko.md`에 적힌 server session, actor relay, connector,
 sample smoke 기준으로 닫는다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- Java Stage Wrapper On SPOT](./stage-wrapper-on-spot.ko.md) | [다음: Draft -- ZLink Framework Java STREAM Samples](./stream-samples.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

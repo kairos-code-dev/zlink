@@ -1,5 +1,9 @@
 English | [한국어](./04-transports.ko.md)
 
+<!-- zlink-nav:start -->
+[← Proxy](./03-6-proxy.md) | [TLS/Security →](./05-tls-security.md)
+<!-- zlink-nav:end -->
+
 # Transport Guide
 
 ## 1. Transport Types
@@ -301,4 +305,6 @@ printf("Bound endpoint: %s\n", endpoint);
 For performance comparisons, see the [Performance Guide](./10-performance.md).
 
 ---
-[← STREAM](./03-5-stream.md) | [TLS Security →](./05-tls-security.md)
+<!-- zlink-nav:bottom:start -->
+[← Proxy](./03-6-proxy.md) | [TLS/Security →](./05-tls-security.md)
+<!-- zlink-nav:bottom:end -->

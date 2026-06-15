@@ -1,5 +1,9 @@
 [English](./07-0-services.md) | [한국어](./07-0-services.ko.md)
 
+<!-- zlink-nav:start -->
+[← 모니터링](./06-monitoring.ko.md) | [Discovery →](./07-1-discovery.ko.md)
+<!-- zlink-nav:end -->
+
 # 서비스 계층 개요
 
 ## 1. 서비스 계층이란
@@ -260,4 +264,6 @@ flowchart TB
 - 모든 서비스는 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← 모니터링](./06-monitoring.ko.md) | [Discovery →](./07-1-discovery.ko.md)
+<!-- zlink-nav:bottom:end -->

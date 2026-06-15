@@ -156,3 +156,8 @@ public class RegistryConfig {
 - room/stage/zone은 [Spot](../spec/spring-boot-spot.ko.md)을 본다.
 - 외부 client는 [STREAM](../spec/spring-boot-stream.ko.md)과
   [Stream Connector](../spec/stream-connector.ko.md)를 본다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../README.ko.md) | [이전: Overview](./01-overview.ko.md) | [다음: Concepts](./03-concepts.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

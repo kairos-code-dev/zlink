@@ -74,3 +74,8 @@ await event_publisher.publish(
     ZLinkSendOptions(packet_name="profile.cache-refreshed"),
 )
 ```
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework For Python](./README.ko.md) | [다음: Draft -- ZLink Framework FastAPI Channel Messaging](./fastapi-channel-messaging.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

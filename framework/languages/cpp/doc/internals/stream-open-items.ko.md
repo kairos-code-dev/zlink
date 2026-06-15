@@ -32,3 +32,8 @@ core public 표면 밖의 extension 검토 범위다.
   만들고, `on_disconnected(...)`와 binding cleanup이 끝난 뒤 scope를 닫는다.
 - `on_error(...)`는 application handler 예외를 받지 않는다. monitor에서 관찰 가능한
   session-scoped transport 오류만 `stream_error_t`로 변환해 전달한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- C++ Stage Wrapper On SPOT](../spec/stage-wrapper-on-spot.ko.md) | [다음: C++ Stream Connector 가이드](../../connector/doc/guide/INDEX.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

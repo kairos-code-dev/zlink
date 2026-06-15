@@ -83,3 +83,8 @@ class UserHandlers:
 
 local handler 없이 outbound client만 쓰는 앱도 가능해야 한다.
 이 경우 local `ROUTER(server)`는 열지 않고 outbound `DEALER(client)`만 만든다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Draft -- ZLink Framework Python Channel Messaging Samples](./channel-messaging-samples.ko.md) | [다음: Draft -- ZLink Framework FastAPI Monitoring](./fastapi-monitoring.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -51,3 +51,8 @@
 - event 모델이 실시간 상태 동기화에도 자연스럽게 확장되어야 한다.
 - `playhouse`용 특수 기능처럼 닫지 말고, 일반적인 실시간 state sync 패턴으로
   설명할 수 있어야 한다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../README.ko.md) | [이전: Use Case -- Cache Invalidation And Config Refresh](./05-cache-invalidation-and-config-refresh.ko.md) | [다음: Use Case -- Real Time Notification Fanout](./07-real-time-notification-fanout.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

@@ -290,3 +290,8 @@ SPOT 회귀 테스트는 `.NET` framework의 Spot, actor, timer 기대값을 C++
 
 CTest label은 `framework-zlink-spot`을 사용한다. timer 전용 항목은 `timer` label에도
 포함할 수 있다.
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: Spec -- ZLink Framework C++ Registry](./cpp-registry.ko.md) | [다음: Spec -- ZLink Framework C++ STREAM](./cpp-stream.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

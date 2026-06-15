@@ -750,3 +750,8 @@ await timer.CancelAsync();   // IZLinkTimer
 - 언어 중립 정식 정의: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)
 - 기능 선택 지도: [10-feature-map](./10-feature-map.ko.md)
 - 계약 테스트 소스: `framework/languages/dotnet/tests/Zlink.Framework.ContractTests`
+
+---
+<!-- framework-adapter-nav:bottom:start -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: 기능 맵](./10-feature-map.ko.md) | [다음: ZLink 을 어디에 쓰나](./12-grpc-alternative.ko.md)
+<!-- framework-adapter-nav:bottom:end -->

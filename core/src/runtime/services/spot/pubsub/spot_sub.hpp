@@ -21,11 +21,6 @@ namespace zlink
 class socket_base_t;
 class spot_node_t;
 struct spot_runtime_t;
-namespace part_helper_internal
-{
-struct handle_state_t;
-}
-
 typedef void (*spot_sub_direct_handler_fn) (const zlink_routing_id_t *source_rid_,
                                             const char *topic_,
                                             size_t topic_len_,
@@ -79,10 +74,6 @@ class spot_sub_t
     int fill_monitor_snapshot (zlink_monitor_status_t *out_) const;
     socket_base_t *poller_socket () const { return socket (); }
     socket_base_t *snapshot_socket () const { return socket (); }
-    std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
-    void
-    set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
-    void clear_part_helper_state ();
     int set_direct_handler (spot_sub_direct_handler_fn handler_, void *userdata_);
     int recv (zlink_routing_id_t *source_rid_out_,
               zlink_msg_t **parts_,
@@ -171,7 +162,6 @@ class spot_sub_t
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
     std::atomic<bool> _destroying;
-    std::shared_ptr<part_helper_internal::handle_state_t> _part_helper_state;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_sub_t)
 };

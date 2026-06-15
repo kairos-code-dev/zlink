@@ -9,13 +9,11 @@
 #include "services/common/service_public_api.hpp"
 #include "services/common/service_mode_state.hpp"
 #include "services/spot/common/spot_defaults.hpp"
-#include "services/spot/common/spot_message_parts_internal.hpp"
 
 #include <atomic>
 #include <string.h>
 #include <deque>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
@@ -29,19 +27,13 @@ namespace spot_reqrep_internal
 {
 struct spot_request_reply_state_t;
 }
-namespace part_helper_internal
-{
-struct handle_state_t;
-}
 }
 
 struct spot_logical_pubsub_message_t
 {
-    ~spot_logical_pubsub_message_t () { zlink::spot_clear_msg_parts (&parts); }
-
     zlink_routing_id_t source_rid;
     std::string topic_id;
-    zlink::spot_owned_msg_parts_t parts;
+    std::vector<std::string> parts;
 };
 
 struct spot_logical_state_t
@@ -105,8 +97,6 @@ struct spot_handle_t
     zlink::spot_node_pub_defaults_t pending_pub_defaults;
     zlink::spot_node_sub_defaults_t pending_sub_defaults;
     zlink::service_mode_state_t mode_state;
-    std::mutex part_helper_mutex;
-    std::shared_ptr<zlink::part_helper_internal::handle_state_t> part_helper_state;
 };
 
 #endif

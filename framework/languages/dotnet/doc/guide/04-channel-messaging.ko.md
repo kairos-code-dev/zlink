@@ -5,7 +5,7 @@
 # 4. Channel Messaging — request · send · pub/sub
 
 > 정식 계약은 [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)와
-> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 소유한다. 이
+> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 다룬다. 이
 > 챕터는 그 표면을 실제로 어떻게 등록하고 호출하는지 사용법 중심으로 다룬다.
 
 channel messaging 은 framework 의 가장 기본 축이다. 세 가지 상호작용을 다룬다.

@@ -5,7 +5,7 @@
 # 9. Monitoring — runtime 이벤트 관찰
 
 > 정식 계약은 [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md)가
-> 소유한다.
+> 다룬다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, registry
 status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime

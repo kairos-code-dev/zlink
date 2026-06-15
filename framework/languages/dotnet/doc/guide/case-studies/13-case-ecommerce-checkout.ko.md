@@ -7,7 +7,7 @@
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다. 이
 > 문서는 실행 가능한 샘플이 아니라 **도입 판단과 아키텍처 매핑**을 위한 사례다.
 > "ZLink 가 무엇을 줄이고 **무엇은 그대로 남는지**" 를 가장 분명히 보여 준다.
-> 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이 소유하고,
+> 사용법 정식은 [04-channel-messaging](../04-channel-messaging.ko.md)이 다루고,
 > 같은 체크아웃 도메인을 event sourcing 으로 빌드·실행해 보는 샘플은
 > [ShoppingMallCheckout](#7-실행-가능한-샘플--shoppingmallcheckout)이다(§7).
 

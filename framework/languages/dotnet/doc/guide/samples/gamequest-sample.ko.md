@@ -9,7 +9,7 @@
 > 이 문서는 실행 가능한 GameQuest 샘플 설명이다. 게임 백엔드에 ZLink 를 도입할지
 > 판단하려면 [15-case-realtime-game](../case-studies/15-case-realtime-game.ko.md)을 먼저
 > 보고, 이 문서에서는 DTO, 서버 구조, 실행 흐름을 확인한다. 언어 중립 정본 시나리오는
-> [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)이 소유한다.
+> [spec/sample/event/gamequest](../../../../../doc/spec/sample/event/gamequest.ko.md)이 다룬다.
 
 ## 1. 목적
 

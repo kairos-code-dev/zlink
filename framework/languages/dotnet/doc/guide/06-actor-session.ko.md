@@ -5,7 +5,7 @@
 # 6. Actor · Session Actor Dispatch
 
 > 정식 계약은 [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와
-> [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)가 소유한다.
+> [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)가 다룬다.
 > 이 챕터는 SPOT([05-spot](./05-spot.ko.md)) 을 먼저 읽었다고 가정한다.
 >
 > 🔰 actor·session·binding·Entry Spot 용어가 낯설면 [03-concepts §0](./03-concepts.ko.md)

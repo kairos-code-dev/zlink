@@ -4,7 +4,7 @@
 
 # 10. 기능 맵 — 무엇을, 얼마나 쉽게, 언제
 
-> 각 기능의 사용법은 앞 챕터(04~09)가, 정식 계약은 spec 문서가 소유한다. 이 문서는
+> 각 기능의 사용법은 앞 챕터(04~09)가, 정식 계약은 spec 문서가 다룬다. 이 문서는
 > 기능 선택을 돕는 지도다.
 
 ## 1. 난이도 기준
@@ -75,7 +75,7 @@ flowchart TD
 | GameQuest | fanout 구독, player owner, quest event sourcing, reward idempotency | JSON | [15 실시간 게임](./case-studies/15-case-realtime-game.ko.md) | [GameQuest](./samples/gamequest-sample.ko.md) |
 
 > 기능별 사용법은 04~09 가, 샘플의 언어 중립 정본 시나리오는
-> [spec/sample](../../../../doc/spec/sample/README.ko.md) 가 소유한다.
+> [spec/sample](../../../../doc/spec/sample/README.ko.md) 가 다룬다.
 
 ## 5. 더 보기
 

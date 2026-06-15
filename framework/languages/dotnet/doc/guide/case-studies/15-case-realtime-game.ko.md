@@ -7,7 +7,7 @@
 > [12-grpc-alternative](../12-grpc-alternative.ko.md)의 케이스 스터디 중 하나다.
 > STREAM·SPOT·actor·session actor dispatch 가 한 도메인에 모두 맞는 사례. 등록
 > 정식은 [05-spot](../05-spot.ko.md)·[06-actor-session](../06-actor-session.ko.md)·
-> [07-stream](../07-stream.ko.md)이 소유한다. 실행 가능한 구현 학습은
+> [07-stream](../07-stream.ko.md)이 다룬다. 실행 가능한 구현 학습은
 > [TicTacToe 샘플](../samples/tictactoe-game-sample.ko.md)·
 > [Bingo 샘플](../samples/bingo-game-sample.ko.md)·GameQuest 세 샘플이 각기 다른
 > 각도로 맡고(§7), 이 문서는 게임 도메인에 ZLink 를 넣을지 판단하는 케이스 스터디다.

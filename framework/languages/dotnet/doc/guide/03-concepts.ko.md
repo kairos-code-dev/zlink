@@ -8,7 +8,7 @@
 > [message-model](../../../../doc/spec/message-model.ko.md),
 > [channel-topology](../../../../doc/spec/channel-topology.ko.md))이, 인터페이스의
 > 정식 정의는 [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가
-> 소유한다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
+> 다룬다. 이 문서는 그 의미가 `.NET`에서 어떤 모양으로 보이는지 정리한다.
 
 이 다섯 가지 개념만 잡으면 나머지 챕터가 전부 변주로 읽힌다: **channel · capability ·
 handler · client · DI/lifecycle**.
@@ -16,7 +16,7 @@ handler · client · DI/lifecycle**.
 ## 0. 용어 빠르게 잡기 (주니어용)
 
 가이드에 자주 나오는 용어를 **한 줄 풀이**로 먼저 잡는다. 다른 챕터에서 낯선 단어가
-나오면 이 표로 돌아오면 된다(정식 정의는 위 spec 링크가 소유).
+나오면 이 표로 돌아오면 된다(정식 정의는 위 spec 링크가 다룬다).
 
 | 용어 | 한 줄 풀이 |
 |------|-----------|

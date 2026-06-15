@@ -8,7 +8,7 @@
 > 짧은 경로를 다룬다. 등록 시그니처와 옵션 전체는
 > [04-channel-messaging](./04-channel-messaging.ko.md)과
 > [spec/aspnet-core-channel-messaging](../spec/aspnet-core-channel-messaging.ko.md)이
-> 소유한다.
+> 다룬다.
 >
 > 🔰 **용어가 낯설면** [03-concepts §0 "용어 빠르게 잡기"](./03-concepts.ko.md)를
 > 먼저 펼쳐 두고 읽으면 channel·handler·client·SPOT 같은 단어가 바로 잡힌다.
@@ -92,8 +92,9 @@ public sealed class GetPriceHandler
 
 핵심 두 가지:
 
-- **server capability 는 `Bind(...)` 가 필수**다. 다른 프로세스가 접근할 local
-  endpoint 가 있어야 한다.
+- **server 역할을 하려면 `Bind(...)` 가 필수**다. server 는 요청을 *받는* 쪽이라,
+  다른 앱이 접속해 올 주소(위 예제의 `tcp://0.0.0.0:7301`)를 미리 열어 둬야 하기
+  때문이다. 요청을 보내기만 하는 client 는 이 주소가 필요 없다(§5).
 - handler 를 channel 에 노출하는 방법은 두 가지다. 위 예제처럼
   `AddRequestHandler<THandler>()`로 **직접 등록**하거나, handler class 에 group 을
   붙이고 `AddHandlerGroup(...)`으로 노출한다. 자세한 차이는

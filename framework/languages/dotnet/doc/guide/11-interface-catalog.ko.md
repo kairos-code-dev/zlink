@@ -7,7 +7,7 @@
 > 이 챕터는 framework adapter 가 노출하는 **모든 public 계약 인터페이스**를 한곳에
 > 모아, 각 인터페이스가 실제로 어떻게 쓰이는지 코드와 함께 보여 준다. 개념·사용
 > 흐름은 앞 챕터(04~09)가, 언어 중립 정식 정의는
-> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 소유한다. 이 문서는
+> [spec/handler-interfaces](../spec/handler-interfaces.ko.md)가 다룬다. 이 문서는
 > 그 둘을 잇는 **실행 검증된 예문 색인**이다.
 
 ## 0. 이 카탈로그를 읽는 법

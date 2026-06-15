@@ -8,7 +8,7 @@
 > ZLink Framework 의 기능을 **읽고 바로 따라 쓸 수 있도록** 개념과 사용법을
 > 직접 설명한다. 개념의 **언어 중립 정식 정의**는 [공통 스펙
 > 개요](../../../../doc/spec/overview.ko.md)가, `.NET` 표면의 **정식 계약**은
-> [spec/](../spec/handler-interfaces.ko.md) 문서가 소유한다. 두 표기가 어긋나면
+> [spec/](../spec/handler-interfaces.ko.md) 문서가 다룬다. 두 표기가 어긋나면
 > spec 이 우선이다.
 
 ## 1. 한 줄 정의

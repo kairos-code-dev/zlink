@@ -9,7 +9,7 @@
 > 이 문서는 실행 가능한 SupportChat 샘플 설명이다. 채팅·상담 도메인에 ZLink 를
 > 도입할지 판단하려면 [17-case-chat-messaging](../case-studies/17-case-chat-messaging.ko.md)을
 > 먼저 보고, 이 문서에서는 DTO, 서버 구조, 실행 흐름을 확인한다. 언어 중립 정본
-> 시나리오는 [spec/sample/supportchat](../../../../../doc/spec/sample/supportchat/README.ko.md)이 소유한다.
+> 시나리오는 [spec/sample/supportchat](../../../../../doc/spec/sample/supportchat/README.ko.md)이 다룬다.
 
 ## 1. 목적
 

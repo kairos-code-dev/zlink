@@ -6,7 +6,7 @@
 
 > 정식 계약은 [spec/aspnet-core-spot](../spec/aspnet-core-spot.ko.md),
 > [spec/spot-node](../spec/spot-node.ko.md), [spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가
-> 소유한다. 이 챕터는 SPOT 을 등록하고 다루는 사용법 중심이다.
+> 다룬다. 이 챕터는 SPOT 을 등록하고 다루는 사용법 중심이다.
 >
 > 🔰 SPOT·actor·Entry Spot 등 용어가 낯설면 [03-concepts §0](./03-concepts.ko.md)의
 > 한 줄 풀이를 먼저 본다.
@@ -450,7 +450,7 @@ send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper 는 그
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 
 자세한 추가 요건(실행 컨텍스트 계약, 생성 시 초기 메타데이터, directory)은
-[spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가 소유한다.
+[spec/stage-wrapper-on-spot](../spec/stage-wrapper-on-spot.ko.md)가 다룬다.
 
 ## 7. 자주 막히는 곳
 

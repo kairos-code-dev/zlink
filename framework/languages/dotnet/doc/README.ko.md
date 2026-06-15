@@ -4,7 +4,7 @@
 
 [Framework 문서](../../../doc/README.ko.md) | [공통 스펙](../../../doc/spec/README.ko.md)
 
-[공통 스펙](../../../doc/spec/README.ko.md) | [비동기 실행](../../../doc/spec/async-execution-policy.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [STREAM Decisions](./draft/stream-open-items.ko.md) | [SPOT Timer Draft](./draft/spot-timer-policy.ko.md) | [Registry Routing Defaults Draft](./draft/registry-backed-routing-defaults.ko.md) | [Session Attached Actor Route Draft](./draft/session-attached-actor-route.ko.md) | [Channel Handler Exposure Draft](./draft/channel-handler-exposure-and-spot-route-transport.ko.md) | [ActorGateway Draft](./draft/actor-gateway-session-relay.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
+[공통 스펙](../../../doc/spec/README.ko.md) | [비동기 실행](../../../doc/spec/async-execution-policy.ko.md) | [인터페이스](./spec/handler-interfaces.ko.md) | [channel](./spec/aspnet-core-channel-messaging.ko.md) | [SPOT](./spec/aspnet-core-spot.ko.md) | [SpotNode](./spec/spot-node.ko.md) | [Stage wrapper](./spec/stage-wrapper-on-spot.ko.md) | [STREAM](./spec/aspnet-core-stream.ko.md) | [Actor](./spec/aspnet-core-actor.ko.md) | [Session Actor Dispatch](./spec/session-actor-dispatch.ko.md) | [Stream Connector](./guide/samples/streaming-client.ko.md) | [Unity 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | [Monitoring](./spec/aspnet-core-monitoring.ko.md) | [Registry](./spec/aspnet-core-registry.ko.md) | [Behavior Matrix](./internals/behavior-matrix.ko.md) | [DI Capability](./internals/di-capability-exposure-policy.ko.md) | [Regression Matrix](./internals/regression-test-matrix.ko.md) | [Lifecycle](./internals/lifecycle-and-failure-semantics.ko.md) | [Scope](./internals/implementation-scope-and-nongoals.ko.md) | [Backend Policy](./internals/backend-dependency-policy.ko.md) | [channel 샘플](./guide/samples/channel-messaging-samples.ko.md) | [SPOT 샘플](./guide/samples/spot-samples.ko.md) | [STREAM 샘플](./guide/samples/stream-samples.ko.md)
 
 # ZLink Framework for .NET
 
@@ -183,7 +183,6 @@
 | [aspnet-core-stream.ko.md](./spec/aspnet-core-stream.ko.md) | STREAM 개념, framework session packet, monitor 기반 lifecycle, recv 비지원 방향 |
 | [streaming-client.ko.md](./guide/samples/streaming-client.ko.md) | `.NET` Stream Connector, TCP / TLS / WS / WSS transport, header / payload packet 송수신, manual dispatch |
 | [Unity Stream Connector 가이드](../../../../doc/guide/unity-stream-connector.ko.md) | Unity `MonoBehaviour`에서 공통 connector의 `Dispatch.Async()`를 호출하는 사용법 |
-| [stream-open-items.ko.md](./draft/stream-open-items.ko.md) | STREAM serializer, write, monitor-event mapping 의 결정 기준 |
 | [aspnet-core-monitoring.ko.md](./spec/aspnet-core-monitoring.ko.md) | socket / registry / spot runtime monitoring 이벤트와 snapshot 조회 모델 |
 | [stage-wrapper-on-spot.ko.md](./spec/stage-wrapper-on-spot.ko.md) | `playhouse` Stage 같은 상위 모델을 SPOT 위에 감쌀 때 추가로 필요한 조건 |
 | [aspnet-core-registry.ko.md](./spec/aspnet-core-registry.ko.md) | Registry 의 embedded / standalone 구동, topology 조회, 클러스터링 |
@@ -202,9 +201,6 @@
 | [regression-test-matrix.ko.md](./internals/regression-test-matrix.ko.md) | 구현 중에도 항상 유지해야 할 회귀 테스트 항목, CI 계층, release gate |
 | [implementation-scope-and-nongoals.ko.md](./internals/implementation-scope-and-nongoals.ko.md) | 현재 계획의 전체 구현 범위, 비목표, 완료 판정 기준 |
 | [backend-dependency-policy.ko.md](./internals/backend-dependency-policy.ko.md) | 현재 backend 의존 관계와 향후 저수준 라이브러리 교체 기준 |
-| [registry-backed-routing-defaults.ko.md](./draft/registry-backed-routing-defaults.ko.md) | Registry 기반 actor remote address 와 Spot route 기본 구현 초안 |
-| [session-attached-actor-route.ko.md](./draft/session-attached-actor-route.ko.md) | session attach 시점의 actor remote address 저장, remote address update, resolver 사용 범위 초안 |
-| [channel-handler-exposure-and-spot-route-transport.ko.md](./draft/channel-handler-exposure-and-spot-route-transport.ko.md) | channel handler group/typed handler 노출 정책과 Spot route transport 분리 초안 |
 
 ### 2.4 샘플 문서
 

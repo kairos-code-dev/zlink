@@ -1,6 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md) | [다음: Draft -- ZLink Framework .NET STREAM Decisions](../draft/stream-open-items.ko.md)
-<!-- framework-adapter-nav:end -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md)<!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
@@ -150,5 +149,4 @@ backend 의존 정책은 framework 의 public API 와 adapter factory 두 축으
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md) | [다음: Draft -- ZLink Framework .NET STREAM Decisions](../draft/stream-open-items.ko.md)
-<!-- framework-adapter-nav:bottom:end -->
+[문서 목록](../../../../doc/README.ko.md) | [이전: ZLink Framework .NET Implementation Scope And Non-Goals](./implementation-scope-and-nongoals.ko.md)<!-- framework-adapter-nav:bottom:end -->

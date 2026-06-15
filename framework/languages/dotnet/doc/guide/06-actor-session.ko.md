@@ -454,9 +454,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> relay transport 의 정확한 적용 상태와 회귀 기준은
-> [draft/actor-gateway-session-relay](../draft/actor-gateway-session-relay.ko.md)가
-> 소유한다. 노드 등록 시그니처는
+> 노드 등록 시그니처는
 > [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md)와 샘플 코드를 기준으로
 > 확인한다.
 
@@ -465,7 +463,6 @@ builder.Services.AddZLinkFramework(options =>
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [11-interface-catalog](./11-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
 - bound session push 계약: [11-interface-catalog](./11-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
 - 정식 계약: [spec/aspnet-core-actor](../spec/aspnet-core-actor.ko.md), [spec/session-actor-dispatch](../spec/session-actor-dispatch.ko.md)
-- ActorGateway relay 적용 상태: [draft/actor-gateway-session-relay](../draft/actor-gateway-session-relay.ko.md)
 - 전체 예제: [tictactoe 샘플](./samples/tictactoe-game-sample.ko.md), [bingo 샘플](./samples/bingo-game-sample.ko.md)
 - 외부 client 를 STREAM 으로 받는 법: [07-stream](./07-stream.ko.md)
 

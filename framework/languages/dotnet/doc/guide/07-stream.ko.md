@@ -272,7 +272,6 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 - 이 챕터 계약의 실행 검증 예문(session/context/push/bound session): [11-interface-catalog](./11-interface-catalog.ko.md) §5 — 검증 클래스 `StreamContracts`
 - 서버 정식 계약: [spec/aspnet-core-stream](../spec/aspnet-core-stream.ko.md)
-- 미확정 결정 사항: [draft/stream-open-items](../draft/stream-open-items.ko.md)
 - 전체 예제: [STREAM 샘플](./samples/stream-samples.ko.md), [Stream Connector 가이드](./samples/streaming-client.ko.md)
 
 ---

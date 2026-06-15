@@ -4,7 +4,7 @@
 
 [스펙 목차](../../../../doc/spec/draft/README.ko.md)
 
-[.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [STREAM Decisions](../draft/stream-open-items.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
+[.NET 묶음](../README.ko.md) | [인터페이스](./handler-interfaces.ko.md) | [STREAM 샘플](../guide/samples/stream-samples.ko.md) | [channel](./aspnet-core-channel-messaging.ko.md) | [SPOT](./aspnet-core-spot.ko.md)
 
 # ZLink Framework ASP.NET Core STREAM Integration
 

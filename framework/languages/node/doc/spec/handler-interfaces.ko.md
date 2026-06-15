@@ -1190,7 +1190,7 @@ timeout 규칙:
 - `submit()` 은 handler 완료 대기가 아니라, framework 가 transport 에 위임할 수 있을 때까지
   기다리는 비동기 submit 이다.
 - send backpressure 한계는 builder 가 아니라 channel/socket 의 `sendTimeout` 옵션을 따른다.
-  framework 기본값은 200ms 이며, `sendTimeout = null` 명시 시 무한 대기로 본다.
+  framework 기본값은 core socket 과 동일한 1000ms 이며, `sendTimeout = null` 명시 시 무한 대기로 본다.
 - public no-wait 옵션은 제공하지 않는다. temporary backpressure 는 내부 queue + ready
   notification 으로 처리한다.
 

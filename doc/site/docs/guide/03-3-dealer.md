@@ -1,5 +1,9 @@
 [English](./03-3-dealer.md) | [한국어](./03-3-dealer.ko.md)
 
+<!-- zlink-nav:start -->
+[← PUB/SUB](./03-2-pubsub.md) | [ROUTER →](./03-4-router.md)
+<!-- zlink-nav:end -->
+
 # DEALER Socket
 
 ## 1. Overview
@@ -440,3 +444,8 @@ zlink_connect(dealer, endpoint);  /* identified as D1 */
     ```rust
     --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← PUB/SUB](./03-2-pubsub.md) | [ROUTER →](./03-4-router.md)
+<!-- zlink-nav:bottom:end -->

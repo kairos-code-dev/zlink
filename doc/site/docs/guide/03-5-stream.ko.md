@@ -1,5 +1,9 @@
 [English](./03-5-stream.md) | [한국어](./03-5-stream.ko.md)
 
+<!-- zlink-nav:start -->
+[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+<!-- zlink-nav:end -->
+
 # STREAM 소켓
 
 ## 1. 개요
@@ -373,3 +377,8 @@ STREAM 소켓으로 원시 바이트를 주고받는 자립형 예제다(모든 
     ```rust
     --8<-- "bindings/rust/samples/stream_packet_callback_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← ROUTER](./03-4-router.ko.md) | [프록시 →](./03-6-proxy.ko.md)
+<!-- zlink-nav:bottom:end -->

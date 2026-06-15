@@ -1,5 +1,9 @@
 [English](./07-4-registry.md) | [한국어](./07-4-registry.ko.md)
 
+<!-- zlink-nav:start -->
+[← SPOT Actor](./07-4-actor.ko.md) | [Routing ID →](./08-routing-id.ko.md)
+<!-- zlink-nav:end -->
+
 # Registry (중앙 서비스 디렉토리)
 
 > **규범 상태(Normative status): 설명 목적(Illustrative) — 갱신 필요.**
@@ -674,4 +678,6 @@ registry 스냅샷을 질의해 서비스 엔드포인트를 조회하는 자립
 - [Registry API 레퍼런스](../api/registry.ko.md) -- 전체 API 문서
 
 ---
-[← SPOT](./07-3-spot.ko.md) | [Routing ID →](./08-routing-id.ko.md)
+<!-- zlink-nav:bottom:start -->
+[← SPOT Actor](./07-4-actor.ko.md) | [Routing ID →](./08-routing-id.ko.md)
+<!-- zlink-nav:bottom:end -->

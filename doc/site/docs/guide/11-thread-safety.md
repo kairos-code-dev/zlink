@@ -1,5 +1,9 @@
 [English](./11-thread-safety.md) | [한국어](./11-thread-safety.ko.md)
 
+<!-- zlink-nav:start -->
+[← Performance](./10-performance.md) | [Socket Options →](./12-socket-options.md)
+<!-- zlink-nav:end -->
+
 # Thread-Safety Guide
 
 ## 1. The Short Answer
@@ -357,4 +361,7 @@ void *control(void *arg)
 > For implementation details (admission gates, ordering semantics, cost
 > model), see [Thread-Safety Internals](../internals/thread-safety.md).
 
+---
+<!-- zlink-nav:bottom:start -->
 [← Performance](./10-performance.md) | [Socket Options →](./12-socket-options.md)
+<!-- zlink-nav:bottom:end -->

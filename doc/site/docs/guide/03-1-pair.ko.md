@@ -1,5 +1,9 @@
 [English](./03-1-pair.md) | [한국어](./03-1-pair.ko.md)
 
+<!-- zlink-nav:start -->
+[← 소켓 패턴](./03-0-socket-patterns.ko.md) | [PUB/SUB →](./03-2-pubsub.ko.md)
+<!-- zlink-nav:end -->
+
 # PAIR 소켓
 
 ## 1. 개요
@@ -332,3 +336,8 @@ PAIR 소켓으로 메시지를 주고받는 자립형 예제다(모든 바인딩
     ```rust
     --8<-- "bindings/rust/samples/pair_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← 소켓 패턴](./03-0-socket-patterns.ko.md) | [PUB/SUB →](./03-2-pubsub.ko.md)
+<!-- zlink-nav:bottom:end -->

@@ -1,5 +1,9 @@
 English | [한국어](./01-overview.ko.md)
 
+<!-- zlink-nav:start -->
+[Core API →](./02-core-api.md)
+<!-- zlink-nav:end -->
+
 # zlink Overview and Getting Started
 
 ## 1. What Is zlink?
@@ -163,4 +167,6 @@ int main(void) {
 - [TLS Security Configuration](./05-tls-security.md)
 
 ---
+<!-- zlink-nav:bottom:start -->
 [Core API →](./02-core-api.md)
+<!-- zlink-nav:bottom:end -->

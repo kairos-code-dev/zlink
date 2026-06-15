@@ -1,5 +1,9 @@
 [English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
 
+<!-- zlink-nav:start -->
+[← SPOT](./07-3-spot.md) | [Registry →](./07-4-registry.md)
+<!-- zlink-nav:end -->
+
 # SPOT Actor Guide
 
 This guide covers Actor creation, Spot join/leave, teardown, and session binding.
@@ -314,3 +318,8 @@ C samples showing three Actor patterns:
 | Per-room Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
 | Gateway session relay to remote Actor | `bindings/c/samples/actor_gateway_relay_sample.c` |
 | Single-user queue serialization | `bindings/c/samples/actor_single_player_queue_sample.c` |
+
+---
+<!-- zlink-nav:bottom:start -->
+[← SPOT](./07-3-spot.md) | [Registry →](./07-4-registry.md)
+<!-- zlink-nav:bottom:end -->

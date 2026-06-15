@@ -1,5 +1,9 @@
 English | [한국어](./03-0-socket-patterns.ko.md)
 
+<!-- zlink-nav:start -->
+[← Core API](./02-core-api.md) | [PAIR →](./03-1-pair.md)
+<!-- zlink-nav:end -->
+
 # Socket Patterns Overview and Selection Guide
 
 ## 1. Overview
@@ -252,4 +256,6 @@ zlink_ctx_term(ctx);
 > completion.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Core API](./02-core-api.md) | [PAIR →](./03-1-pair.md)
+<!-- zlink-nav:bottom:end -->

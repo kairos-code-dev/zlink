@@ -1,5 +1,9 @@
 [English](./03-2-pubsub.md) | [한국어](./03-2-pubsub.ko.md)
 
+<!-- zlink-nav:start -->
+[← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+<!-- zlink-nav:end -->
+
 # PUB/SUB/XPUB/XSUB 발행-구독
 
 ## 1. 개요
@@ -649,3 +653,8 @@ PUB로 토픽을 발행하고 SUB로 구독·수신하는 자립형 예제다(�
     ```rust
     --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← PAIR](./03-1-pair.ko.md) | [DEALER →](./03-3-dealer.ko.md)
+<!-- zlink-nav:bottom:end -->

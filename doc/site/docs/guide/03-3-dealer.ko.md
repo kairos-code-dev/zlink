@@ -1,5 +1,9 @@
 [English](./03-3-dealer.md) | [한국어](./03-3-dealer.ko.md)
 
+<!-- zlink-nav:start -->
+[← PUB/SUB](./03-2-pubsub.ko.md) | [ROUTER →](./03-4-router.ko.md)
+<!-- zlink-nav:end -->
+
 # DEALER 소켓
 
 ## 1. 개요
@@ -431,3 +435,8 @@ DEALER→ROUTER 요청을 비동기 콜백으로 받는 변형이다.
     ```rust
     --8<-- "bindings/rust/samples/request_reply_async_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← PUB/SUB](./03-2-pubsub.ko.md) | [ROUTER →](./03-4-router.ko.md)
+<!-- zlink-nav:bottom:end -->

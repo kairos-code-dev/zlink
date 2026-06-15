@@ -1,5 +1,9 @@
 [English](./07-3-spot.md) | [한국어](./07-3-spot.ko.md)
 
+<!-- zlink-nav:start -->
+[← Discovery](./07-1-discovery.md) | [SPOT Actor →](./07-4-actor.md)
+<!-- zlink-nav:end -->
+
 # SPOT Guide
 
 This guide explains how application developers use SPOT.
@@ -523,3 +527,8 @@ The underlying `SpotNode` is not affected.
 ## 14. Actor C samples
 
 See the [SPOT Actor Guide](./07-4-actor.md#5-actor-c-samples).
+
+---
+<!-- zlink-nav:bottom:start -->
+[← Discovery](./07-1-discovery.md) | [SPOT Actor →](./07-4-actor.md)
+<!-- zlink-nav:bottom:end -->

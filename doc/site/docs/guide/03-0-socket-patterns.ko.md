@@ -1,5 +1,9 @@
 [English](./03-0-socket-patterns.md) | [한국어](./03-0-socket-patterns.ko.md)
 
+<!-- zlink-nav:start -->
+[← Core API](./02-core-api.ko.md) | [PAIR →](./03-1-pair.ko.md)
+<!-- zlink-nav:end -->
+
 # 소켓 패턴 개요 및 선택 가이드
 
 ## 1. 개요
@@ -249,4 +253,6 @@ zlink_ctx_term(ctx);
 > completion처럼 사용 패턴이 분명한 경우에만 쓴다.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Core API](./02-core-api.ko.md) | [PAIR →](./03-1-pair.ko.md)
+<!-- zlink-nav:bottom:end -->

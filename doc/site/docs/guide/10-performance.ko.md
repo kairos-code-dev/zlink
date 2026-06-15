@@ -1,5 +1,9 @@
 [English](./10-performance.md) | [한국어](./10-performance.ko.md)
 
+<!-- zlink-nav:start -->
+[← Message API](./09-message-api.ko.md) | [스레드 안전성 →](./11-thread-safety.ko.md)
+<!-- zlink-nav:end -->
+
 # 성능 특성 및 튜닝 가이드
 
 ## 1. Transport별 성능 특성
@@ -522,4 +526,6 @@ void on_pong(const zlink_routing_id_t *source_rid,
 > Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Message API](./09-message-api.ko.md) | [스레드 안전성 →](./11-thread-safety.ko.md)
+<!-- zlink-nav:bottom:end -->

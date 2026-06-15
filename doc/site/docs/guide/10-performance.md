@@ -1,5 +1,9 @@
 [English](./10-performance.md) | [한국어](./10-performance.ko.md)
 
+<!-- zlink-nav:start -->
+[← Message API](./09-message-api.md) | [Thread Safety →](./11-thread-safety.md)
+<!-- zlink-nav:end -->
+
 # Performance Characteristics and Tuning Guide
 
 ## 1. Performance Characteristics by Transport
@@ -526,4 +530,6 @@ void on_pong(const zlink_routing_id_t *source_rid,
 > For details on internal optimization mechanisms such as speculative I/O and gather write, see [architecture.md](../internals/architecture.md).
 
 ---
-[← Message API](./09-message-api.md) | [Thread-Safety →](./11-thread-safety.md)
+<!-- zlink-nav:bottom:start -->
+[← Message API](./09-message-api.md) | [Thread Safety →](./11-thread-safety.md)
+<!-- zlink-nav:bottom:end -->

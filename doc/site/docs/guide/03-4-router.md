@@ -1,5 +1,9 @@
 [English](./03-4-router.md) | [한국어](./03-4-router.ko.md)
 
+<!-- zlink-nav:start -->
+[← DEALER](./03-3-dealer.md) | [STREAM →](./03-5-stream.md)
+<!-- zlink-nav:end -->
+
 # ROUTER Socket
 
 ## 1. Overview
@@ -501,3 +505,8 @@ event shape.
     ```rust
     --8<-- "bindings/rust/samples/dealer_router_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← DEALER](./03-3-dealer.md) | [STREAM →](./03-5-stream.md)
+<!-- zlink-nav:bottom:end -->

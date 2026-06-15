@@ -1,5 +1,9 @@
 [English](./09-message-api.md) | [한국어](./09-message-api.ko.md)
 
+<!-- zlink-nav:start -->
+[← Routing ID](./08-routing-id.ko.md) | [성능 →](./10-performance.ko.md)
+<!-- zlink-nav:end -->
+
 # Message API 상세
 
 > **Normative status: Illustrative — Needs refresh.**
@@ -628,4 +632,6 @@ request-reply 흐름은 전용 API 로 연다.
 - 메시지 메타데이터 직렬화 경로는 공개 계약이 아니다.
 
 ---
-[← Routing ID](./08-routing-id.ko.md) | [Performance →](./10-performance.ko.md)
+<!-- zlink-nav:bottom:start -->
+[← Routing ID](./08-routing-id.ko.md) | [성능 →](./10-performance.ko.md)
+<!-- zlink-nav:bottom:end -->

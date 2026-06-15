@@ -1,5 +1,9 @@
 [English](./03-2-pubsub.md) | [한국어](./03-2-pubsub.ko.md)
 
+<!-- zlink-nav:start -->
+[← PAIR](./03-1-pair.md) | [DEALER →](./03-3-dealer.md)
+<!-- zlink-nav:end -->
+
 # PUB/SUB/XPUB/XSUB Publish-Subscribe
 
 ## 1. Overview
@@ -702,3 +706,8 @@ When multiple SUBs subscribe to the same topic, the XPUB subscription is maintai
     ```rust
     --8<-- "bindings/rust/samples/pubsub_recv_sample.rs:doc"
     ```
+
+---
+<!-- zlink-nav:bottom:start -->
+[← PAIR](./03-1-pair.md) | [DEALER →](./03-3-dealer.md)
+<!-- zlink-nav:bottom:end -->

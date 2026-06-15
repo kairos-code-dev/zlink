@@ -1,5 +1,9 @@
 [English](./07-0-services.md) | [한국어](./07-0-services.ko.md)
 
+<!-- zlink-nav:start -->
+[← Monitoring](./06-monitoring.md) | [Discovery →](./07-1-discovery.md)
+<!-- zlink-nav:end -->
+
 # Service Layer Overview
 
 ## 1. What is the Service Layer
@@ -218,4 +222,6 @@ flowchart TB
 - All services operate independently and can share the same Registry cluster.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Monitoring](./06-monitoring.md) | [Discovery →](./07-1-discovery.md)
+<!-- zlink-nav:bottom:end -->

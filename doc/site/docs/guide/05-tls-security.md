@@ -1,5 +1,9 @@
 English | [한국어](./05-tls-security.ko.md)
 
+<!-- zlink-nav:start -->
+[← Transport](./04-transports.md) | [Monitoring →](./06-monitoring.md)
+<!-- zlink-nav:end -->
+
 # TLS/SSL Configuration and Security Guide
 
 ## 1. Overview
@@ -310,4 +314,6 @@ zlink_ctx_term(ctx);
 ```
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Transport](./04-transports.md) | [Monitoring →](./06-monitoring.md)
+<!-- zlink-nav:bottom:end -->

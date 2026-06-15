@@ -1,5 +1,9 @@
 [English](./04-transports.md) | [한국어](./04-transports.ko.md)
 
+<!-- zlink-nav:start -->
+[← 프록시](./03-6-proxy.ko.md) | [TLS/보안 →](./05-tls-security.ko.md)
+<!-- zlink-nav:end -->
+
 # Transport 가이드
 
 ## 1. Transport 종류
@@ -314,4 +318,6 @@ printf("Bound endpoint: %s\n", endpoint);
 성능 비교는 [성능 가이드](./10-performance.ko.md)를 참고.
 
 ---
-[← STREAM](./03-5-stream.ko.md) | [TLS 보안 →](./05-tls-security.ko.md)
+<!-- zlink-nav:bottom:start -->
+[← 프록시](./03-6-proxy.ko.md) | [TLS/보안 →](./05-tls-security.ko.md)
+<!-- zlink-nav:bottom:end -->

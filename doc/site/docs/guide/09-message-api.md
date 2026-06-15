@@ -1,5 +1,9 @@
 [English](./09-message-api.md) | [한국어](./09-message-api.ko.md)
 
+<!-- zlink-nav:start -->
+[← Routing ID](./08-routing-id.md) | [Performance →](./10-performance.md)
+<!-- zlink-nav:end -->
+
 # Message API Reference
 
 > **Normative status: Illustrative.**
@@ -465,4 +469,6 @@ From the message API perspective, the key points are:
   encode it as a multipart payload frame.
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← Routing ID](./08-routing-id.md) | [Performance →](./10-performance.md)
+<!-- zlink-nav:bottom:end -->

@@ -1,5 +1,9 @@
 [English](./07-4-actor.md) | [한국어](./07-4-actor.ko.md)
 
+<!-- zlink-nav:start -->
+[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+<!-- zlink-nav:end -->
+
 # SPOT Actor 사용 가이드
 
 이 문서는 Actor가 무엇이고 언제 쓰는지를 먼저 설명하고, 두 가지 대표 시나리오를
@@ -212,3 +216,8 @@ sequenceDiagram
   `actor_room_server`, `actor_gateway_relay`.
 - 정확한 계약: [SPOT spec](https://github.com/kairos-code-dev/zlink/blob/main/doc/spec/core/service/spot.ko.md). 개념·언제 쓰나:
   [서비스 개요 §멘탈 모델](./07-0-services.ko.md).
+
+---
+<!-- zlink-nav:bottom:start -->
+[← SPOT](./07-3-spot.ko.md) | [Registry →](./07-4-registry.ko.md)
+<!-- zlink-nav:bottom:end -->

@@ -1,5 +1,9 @@
 [English](./03-6-proxy.md) | [한국어](./03-6-proxy.ko.md)
 
+<!-- zlink-nav:start -->
+[← STREAM](./03-5-stream.md) | [Transport →](./04-transports.md)
+<!-- zlink-nav:end -->
+
 # Proxy Pattern
 
 ## 1. Overview
@@ -196,4 +200,6 @@ flowchart LR
 | **Monitoring** | Capture socket records all passing messages |
 
 ---
+<!-- zlink-nav:bottom:start -->
 [← STREAM](./03-5-stream.md) | [Transport →](./04-transports.md)
+<!-- zlink-nav:bottom:end -->

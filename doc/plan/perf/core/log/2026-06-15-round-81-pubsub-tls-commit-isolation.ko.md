@@ -57,3 +57,67 @@
     maxmsgsize 정책을 변경하지 않는다.
 - 추가로 실행한 회귀 테스트:
   - 예정.
+
+## 실행 결과
+
+### `fb4855bc6`
+
+- worktree: `/tmp/zlink-fb4855-pubsub-tls`
+- build:
+  - `cmake -S core -B core/build -DCMAKE_BUILD_TYPE=Release`
+  - `cmake --build core/build -j$(nproc)`
+  - 통과.
+- perf build:
+  - `cmake -S bindings/c -B bindings/c/build -DCMAKE_BUILD_TYPE=Release -DZLINK_C_BUILD_BENCHMARKS=ON`
+- perf command:
+  - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern PUBSUB --transports tls --duration 5 --runs 3 --connect-ready-timeout-ms 5000 --results-tag round81_fb4855_pubsub_tls`
+- runner runtime:
+  - `/tmp/zlink-fb4855-pubsub-tls/core/build/lib/libzlink.so.6.0.4`
+- report:
+  - `/tmp/zlink-fb4855-pubsub-tls/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260615_140054_round81_fb4855_pubsub_tls.txt`
+- load_avg:
+  - `2.30 12.36 13.37`
+- result:
+  - `MULTI_PUBSUB/tls/64B = 2,241,060.6 ops/s`
+
+### `17223f779`
+
+- build:
+  - `cmake --build core/build -j$(nproc)`
+  - 통과.
+- perf command:
+  - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern PUBSUB --transports tls --duration 5 --runs 3 --connect-ready-timeout-ms 5000 --results-tag round81_17223_pubsub_tls`
+- runner runtime:
+  - `/tmp/zlink-fb4855-pubsub-tls/core/build/lib/libzlink.so.6.0.3`
+- report:
+  - `/tmp/zlink-fb4855-pubsub-tls/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260615_140536_round81_17223_pubsub_tls.txt`
+- load_avg:
+  - `2.67 10.46 12.66`
+- result:
+  - `MULTI_PUBSUB/tls/64B = 2,289,029.0 ops/s`
+
+### `52e5e8b74`
+
+- build:
+  - `cmake -S core -B core/build -DCMAKE_BUILD_TYPE=Release -DWITH_OPENPGM=OFF`
+  - `cmake --build core/build -j$(nproc)`
+  - 통과.
+- perf command:
+  - `PERF_FAIL_FAST=1 PERF_MSG_SIZES=64 bindings/c/perf/run_benchmarks_multi.sh --reuse-build --pattern PUBSUB --transports tls --duration 5 --runs 3 --connect-ready-timeout-ms 5000 --results-tag round81_52e5_pubsub_tls`
+- runner runtime:
+  - `/tmp/zlink-fb4855-pubsub-tls/core/build/lib/libzlink.so.6.0.3`
+- report:
+  - `/tmp/zlink-fb4855-pubsub-tls/bindings/c/perf/results/multi/report/perf_c_multi_linux_20260615_141015_round81_52e5_pubsub_tls.txt`
+- load_avg:
+  - `2.61 10.16 12.35`
+- result:
+  - `MULTI_PUBSUB/tls/64B = 2,326,630.2 ops/s`
+
+## 판정
+
+- `fb4855bc6`는 이미 낮은 군이므로 command-body clamp 이후만 원인으로 볼 수 없다.
+- `52e5e8b74`에서 `17223f779`로 갈 때의 하락은 약 `-1.6%`라 `msg_t::data()/size()` inline 변경 하나로 `PUBSUB/tls`의 큰 회귀를 설명하기 어렵다.
+- `1b60c0159` May26 replay `2,460,474.8 ops/s`와 `52e5e8b74` `2,326,630.2 ops/s` 사이에는 약 `-5.4%` 차이가 있다.
+  이 구간에는 `bindings/c/perf` refresh가 크게 섞여 있으므로, 이 차이를 core regression으로 단정하지 않는다.
+- 따라서 `PUBSUB/tls`만 보고 보안 guard나 core 구조를 되돌리는 것은 근거가 약하다.
+- 다음 후보는 `PUBSUB/tls` 전용 특수 분기가 아니라 전체 one-way 64B hot path에서 상태를 늘리지 않는 변경으로 다시 고른다.

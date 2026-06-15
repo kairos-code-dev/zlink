@@ -425,6 +425,16 @@ zlink_submit_result_t zlink_spot_send_spot_part (void *spot_,
         return zlink::submit_result_internal::from_errno (errno);
     }
 
+    if (part_flag_ == ZLINK_PART_FINAL
+        && !zlink::part_helper_internal::send_sequence_active (spot_)) {
+        zlink_msg_t *parts = part_;
+        const zlink_submit_result_t result =
+          spot_send_spot_impl (spot_, dest_node_rid_, dest_spot_rid_, parts, 1u, flags_);
+        if (result != ZLINK_SUBMIT_OK)
+            zlink::part_helper_internal::consume_send_part (part_);
+        return result;
+    }
+
     send_sequence_spec_t spec =
       make_send_spec (zlink::part_helper_internal::send_family_spot_send_spot, flags_);
     set_rid_pair (&spec, dest_node_rid_, dest_spot_rid_);

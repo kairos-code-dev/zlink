@@ -137,6 +137,27 @@ options.add_client_server_channel ("inventory.service")
 
 [7장 →](./07-channel-messaging.ko.md)
 
+### zlink core 와 기본 소켓 패턴
+
+위 채널 패턴들은 zlink core 의 소켓 위에서 돈다. framework 는 직접 소켓을 열지 않고,
+zlink core(C API)가 제공하는 소켓 패턴을 C++ 바인딩이 타입으로 노출하며, framework 가
+channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보인다.
+
+| framework 구성 | 하부 소켓 | 쓰임 |
+|----------------|-----------|------|
+| client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
+| fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
+| mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
+| STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
+
+각 소켓의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
+자세히 다룬다:
+[소켓 패턴 개요](../../../../../doc/guide/03-0-socket-patterns.ko.md) ·
+[DEALER](../../../../../doc/guide/03-3-dealer.ko.md) ·
+[ROUTER](../../../../../doc/guide/03-4-router.ko.md) ·
+[PUB/SUB](../../../../../doc/guide/03-2-pubsub.ko.md) ·
+[STREAM](../../../../../doc/guide/03-5-stream.ko.md)
+
 ### SPOT — 상태 단위를 락 없이 관리
 
 SPOT은 게임 룸, 지원 대화, 주문 처리 단위처럼 **"하나의 상태 영역"** 과 그

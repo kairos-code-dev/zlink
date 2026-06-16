@@ -1,6 +1,6 @@
 plugins {
     `java-library`
-    id("org.jetbrains.kotlin.jvm") version "2.1.0"
+    id("org.jetbrains.kotlin.jvm")
 }
 
 fun sampleProject(name: String) = project("${sampleRootPath()}:$name")

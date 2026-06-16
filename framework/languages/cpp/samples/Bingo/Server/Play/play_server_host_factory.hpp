@@ -15,6 +15,7 @@
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
+#include <zlink/framework/extensions/remote_actor_packet_handler.hpp>
 
 #include <memory>
 
@@ -57,69 +58,10 @@ class play_spot_gateway_wiring_service_t final : public zlink::framework::hosted
     void stop () noexcept override {}
 };
 
-class remote_actor_packet_handler_t
-{
-  public:
-    using request_type = remote_actor_packet_req_t;
-    using reply_type = remote_actor_packet_res_t;
-
-    using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::detail::spot_node_runtime_t,
-                                          zlink::framework::detail::actor_gateway_runtime_t,
-                                          zlink::framework::serializer_registry_t>;
-
-    explicit remote_actor_packet_handler_t (
-      zlink::framework::detail::spot_node_runtime_t &spots,
-      zlink::framework::detail::actor_gateway_runtime_t &gateway,
-      zlink::framework::serializer_registry_t &serializers) :
-        _spots (spots), _gateway (gateway), _serializers (serializers)
-    {
-    }
-
-    zlink::framework::task_t<remote_actor_packet_res_t>
-    handle (const remote_actor_packet_req_t &request)
-    {
-        auto actor_ref = zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (request.actor_node_rid),
-          request.actor_type, request.actor_id, request.actor_generation);
-        auto reply = _spots.relay_actor_packet (
-          actor_ref,
-          _gateway.actor_context (actor_ref),
-          request.relayed_packet_name,
-          zlink::message_t::from (request.payload),
-          _provider,
-          _serializers,
-          zlink::framework::spot_actor_message_metadata_t{request.metadata});
-        if (!reply) {
-            co_return zlink::framework::result_t<remote_actor_packet_res_t>::failure (
-              reply.error_kind (),
-              reply.error () ? reply.error ()->what () : "remote actor relay failed");
-        }
-
-        remote_actor_packet_res_t response;
-        if (auto actor = _spots.actor_instance<player_actor_t> (actor_ref);
-            actor && !actor->get ().context.actor_ref ().empty ()) {
-            const auto &updated = actor->get ().context.actor_ref ();
-            response.actor_ref_present = true;
-            response.actor_node_rid = std::string (updated.node_rid ().value ());
-            response.actor_type = std::string (updated.actor_type ());
-            response.actor_id = std::string (updated.actor_id ());
-            response.actor_generation = updated.generation ();
-        }
-        if (reply.value ()) {
-            response.has_reply = true;
-            response.reply_payload = reply.value ()->to_bytes ();
-        }
-        co_return zlink::framework::result_t<remote_actor_packet_res_t>::success (
-          std::move (response));
-    }
-
-  private:
-    zlink::framework::detail::spot_node_runtime_t &_spots;
-    zlink::framework::detail::actor_gateway_runtime_t &_gateway;
-    zlink::framework::serializer_registry_t &_serializers;
-    zlink::framework::service_provider_t _provider;
-};
+using remote_actor_packet_handler_t =
+  zlink::framework::extensions::remote_actor_packet_handler_t<player_actor_t,
+                                                              remote_actor_packet_req_t,
+                                                              remote_actor_packet_res_t>;
 
 class play_server_host_factory_t
 {
@@ -135,10 +77,15 @@ class play_server_host_factory_t
                                                const sample_topology_t &topology,
                                                bool auto_stop = true)
     {
+        auto notifications =
+          std::make_shared<bingo_notification_publisher_t> (topology.notification_channel_endpoint);
+        bingo_room_spot_t::use_notification_publisher (notifications);
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
         app.add_hosted_service (std::make_unique<play_spot_gateway_wiring_service_t> ());
+        app.add_hosted_service (
+          std::make_unique<bingo_notification_publisher_hosted_service_t> (notifications));
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.services ().add_singleton<bingo_room_allocator_t> ();
             options.handlers ()

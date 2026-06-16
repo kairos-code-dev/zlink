@@ -1,8 +1,8 @@
 import 'reflect-metadata';
+import { Message } from '@zlink-systems/zlink';
 import * as net from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import * as connector from '@zlink-systems/stream-connector';
-import { Message } from '@zlink-systems/zlink';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { closeNestRuntime, retry, waitForShutdown } from '../runtime-support';
 import { BingoSession } from './Sessions/bingo-session';
@@ -153,8 +153,7 @@ async function relayToChannel(
   }
   const payload = withPlayerIdentity(request, context.actorId, context.displayName);
   return await retry(() => channelClient
-      .requestToChannel(channelName, payload)
-      .packetName(packetName)
+      .requestToChannel(channelName, Message.from(payload))
       .submit<unknown>(), { delayMs: 25, maxAttempts: 200 });
 }
 

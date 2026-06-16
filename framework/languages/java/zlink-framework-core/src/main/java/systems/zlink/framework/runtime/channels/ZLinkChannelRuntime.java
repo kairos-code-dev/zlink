@@ -47,7 +47,6 @@ import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
@@ -277,46 +276,46 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
+    public ZLinkSendCall sendToChannel(String channelName, Message message) {
         return new SendCall(
             requireClient(channelName),
-            serializer.serialize(message),
+            Message.from(message),
             Optional.of(defaultPacketName(message)));
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Message message) {
         return new RequestCall(
             requireClient(channelName),
-            serializer.serialize(message),
+            Message.from(message),
             Optional.of(defaultPacketName(message)),
             defaultTimeout);
     }
 
     @Override
-    public <TMessage> ZLinkPublishCall publish(String channelName, String topic, TMessage message) {
+    public ZLinkPublishCall publish(String channelName, String topic, Message message) {
         return new PublishCall(
             requirePublisher(channelName),
             topic,
-            serializer.serialize(message),
+            Message.from(message),
             Optional.of(defaultPacketName(message)));
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendTo(String channelName, RoutingId target, TMessage message) {
+    public ZLinkSendCall sendTo(String channelName, RoutingId target, Message message) {
         return new RouteSendCall(
             requireRouteRouter(channelName),
             target,
-            serializer.serialize(message),
+            Message.from(message),
             Optional.of(defaultPacketName(message)));
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestTo(String channelName, RoutingId target, TMessage message) {
+    public ZLinkRequestCall requestTo(String channelName, RoutingId target, Message message) {
         return new RouteRequestCall(
             requireRouteRouter(channelName),
             target,
-            serializer.serialize(message),
+            Message.from(message),
             Optional.of(defaultPacketName(message)),
             defaultTimeout);
     }
@@ -1662,13 +1661,11 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
         return List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload);
     }
 
-    private static String defaultPacketName(Object message) {
+    private static String defaultPacketName(Message message) {
         if (message == null) {
             return "Null";
         }
-        Class<?> messageType = message.getClass();
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return message.packetName().orElse("Message");
     }
 
     public interface SpotRelayIngress {

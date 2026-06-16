@@ -230,7 +230,7 @@ export class ZLinkSpotNodeRuntimeManager {
     channelName: string,
     topic: string,
     packetName: string | undefined,
-    event: unknown,
+    event: Message,
     signal?: AbortSignal
   ): Promise<void> {
     const bundle = this.publisherBundles.get(channelName);
@@ -547,7 +547,7 @@ export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherCli
     channelName: string,
     topic: string,
     packetName: string | undefined,
-    event: unknown,
+    event: Message,
     signal?: AbortSignal
   ): Promise<void> {
     const manager = this.manager();
@@ -1153,11 +1153,11 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly routedTransport?: ZLinkSpotRoutedTransport
   ) {}
 
-  sendToSpot<TMessage>(spotRid: RoutingId, message: TMessage): ZLinkSendCall {
+  sendToSpot(spotRid: RoutingId, message: Message): ZLinkSendCall {
     return wrapRoutedSpotSendCall(this.serial, this.requireRemoteAddressResolver(), this.requireRoutedTransport(), spotRid, message);
   }
 
-  requestToSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkRequestCall {
+  requestToSpot(spotRid: RoutingId, request: Message): ZLinkRequestCall {
     return wrapRoutedSpotRequestCall(
       this.serial,
       this.requireRemoteAddressResolver(),
@@ -1167,15 +1167,15 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  publish<TEvent>(topic: string, event: TEvent): ZLinkPublishCall {
+  publish(topic: string, event: Message): ZLinkPublishCall {
     return wrapPublishCall(this.serial, this.requireFanoutClient().publish(topic, event));
   }
 
-  sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall {
+  sendToChannel(channelName: string, message: Message): ZLinkSendCall {
     return wrapSendCall(this.serial, this.requireChannelClient().sendToChannel(channelName, message));
   }
 
-  requestToChannel<TRequest>(channelName: string, request: TRequest): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: Message): ZLinkRequestCall {
     return wrapRequestCall(this.serial, this.requireChannelClient().requestToChannel(channelName, request));
   }
 
@@ -1211,14 +1211,14 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
 }
 
 export interface ZLinkSpotRoutedTransport {
-  sendToSpot<TMessage>(
+  sendToSpot(
     remoteAddress: ZLinkSpotRemoteAddress,
-    message: TMessage,
+    message: Message,
     options: ZLinkSpotRoutedSendOptions
   ): Promise<void>;
-  requestToSpot<TRequest, TReply = unknown>(
+  requestToSpot<TReply = unknown>(
     remoteAddress: ZLinkSpotRemoteAddress,
-    request: TRequest,
+    request: Message,
     options: ZLinkSpotRoutedRequestOptions
   ): Promise<TReply>;
 }
@@ -1372,12 +1372,12 @@ async function createProviderInstance<T>(
     : new (type as new (arg: unknown) => T)(fallbackArg);
 }
 
-function wrapRoutedSpotSendCall<TMessage>(
+function wrapRoutedSpotSendCall(
   serial: ZLinkSpotSerialExecutor,
   resolver: ZLinkSpotRemoteAddressResolver,
   transport: ZLinkSpotRoutedTransport,
   spotRid: RoutingId,
-  message: TMessage
+  message: Message
 ): ZLinkSendCall {
   let selectedPacketName: string | undefined;
   return {
@@ -1394,12 +1394,12 @@ function wrapRoutedSpotSendCall<TMessage>(
   };
 }
 
-function wrapRoutedSpotRequestCall<TRequest>(
+function wrapRoutedSpotRequestCall(
   serial: ZLinkSpotSerialExecutor,
   resolver: ZLinkSpotRemoteAddressResolver,
   transport: ZLinkSpotRoutedTransport,
   spotRid: RoutingId,
-  request: TRequest
+  request: Message
 ): ZLinkRequestCall {
   let selectedPacketName: string | undefined;
   let selectedTimeoutMs: number | undefined;
@@ -1416,7 +1416,7 @@ function wrapRoutedSpotRequestCall<TRequest>(
       const pending = startRequestOnSerial<TReply>(serial, async () => {
         const remoteAddress = await resolver.resolve(spotRid, signal);
         return {
-          pending: transport.requestToSpot<TRequest, TReply>(remoteAddress, request, {
+          pending: transport.requestToSpot<TReply>(remoteAddress, request, {
             packetName: selectedPacketName,
             timeoutMs: selectedTimeoutMs,
             signal

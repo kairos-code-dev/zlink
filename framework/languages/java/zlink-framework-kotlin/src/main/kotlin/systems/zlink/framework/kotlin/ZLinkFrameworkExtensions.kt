@@ -2,6 +2,7 @@ package systems.zlink.framework.kotlin
 
 import kotlinx.coroutines.future.await
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
 import systems.zlink.framework.channels.ZLinkRequestCall
@@ -13,38 +14,38 @@ suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TRep
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
 
-suspend fun <TMessage> ZLinkClient.send(
+suspend fun ZLinkClient.send(
     channelName: String,
-    message: TMessage,
+    message: Message,
 ) {
     sendToChannel(channelName, message).submit().await()
 }
 
-suspend inline fun <reified TReply, TMessage> ZLinkClient.request(
+suspend inline fun <reified TReply> ZLinkClient.request(
     channelName: String,
-    message: TMessage,
+    message: Message,
 ): TReply =
     requestToChannel(channelName, message).awaitReply()
 
-suspend fun <TMessage> ZLinkFanoutClient.publishToTopic(
+suspend fun ZLinkFanoutClient.publishToTopic(
     channelName: String,
     topic: String,
-    message: TMessage,
+    message: Message,
 ) {
     publish(channelName, topic, message).submit().await()
 }
 
-suspend fun <TMessage> ZLinkRouteClient.send(
+suspend fun ZLinkRouteClient.send(
     channelName: String,
     target: RoutingId,
-    message: TMessage,
+    message: Message,
 ) {
     sendTo(channelName, target, message).submit().await()
 }
 
-suspend inline fun <reified TReply, TMessage> ZLinkRouteClient.request(
+suspend inline fun <reified TReply> ZLinkRouteClient.request(
     channelName: String,
     target: RoutingId,
-    message: TMessage,
+    message: Message,
 ): TReply =
     requestTo(channelName, target, message).awaitReply()

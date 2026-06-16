@@ -2,6 +2,7 @@ package systems.zlink.framework.spring;
 
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
@@ -13,10 +14,10 @@ final class ZLinkFrameworkSpotPublisherClientBean implements ZLinkSpotPublisherC
     }
 
     @Override
-    public <TEvent> ZLinkPublishCall publishSpot(
+    public ZLinkPublishCall publishSpot(
         String channelName,
         String topic,
-        TEvent message) {
+        Message message) {
         return lifecycle.spotPublisherClient().publishSpot(channelName, topic, message);
     }
 }

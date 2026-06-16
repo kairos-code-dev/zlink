@@ -497,7 +497,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request) {
+        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Message request) {
             if (spotRid == null) {
                 throw new ZLinkConfigurationException("spotRid is required");
             }
@@ -613,13 +613,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
     private final class JoinSpotCall implements ZLinkActorJoinSpotCall {
         private final DefaultActorContext context;
         private final RoutingId spotRid;
-        private final Object request;
+        private final Message request;
         private final Duration timeout;
 
         JoinSpotCall(
             DefaultActorContext context,
             RoutingId spotRid,
-            Object request,
+            Message request,
             Duration timeout) {
             this.context = context;
             this.spotRid = spotRid;
@@ -641,9 +641,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
             if (replyType == null) {
                 throw new ZLinkConfigurationException("replyType is required");
             }
-            Message requestPart = request instanceof Message message
-                ? Message.from(message.toByteArray())
-                : serializer.serialize(request);
+            Message requestPart = Message.from(request);
             try {
                 return spotNode.joinActor(
                         context.actorRef,

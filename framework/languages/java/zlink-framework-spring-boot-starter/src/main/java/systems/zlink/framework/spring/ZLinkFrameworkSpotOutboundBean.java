@@ -3,6 +3,7 @@ package systems.zlink.framework.spring;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
@@ -16,33 +17,33 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendToSpot(RoutingId spotRid, TMessage message) {
+    public ZLinkSendCall sendToSpot(RoutingId spotRid, Message message) {
         return lifecycle.spotOutbound().sendToSpot(spotRid, message);
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestToSpot(
+    public ZLinkRequestCall requestToSpot(
         RoutingId spotRid,
-        TMessage request) {
+        Message request) {
         return lifecycle.spotOutbound().requestToSpot(spotRid, request);
     }
 
     @Override
-    public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
+    public ZLinkPublishCall publish(String topic, Message message) {
         return lifecycle.spotOutbound().publish(topic, message);
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendToChannel(
+    public ZLinkSendCall sendToChannel(
         String channelName,
-        TMessage message) {
+        Message message) {
         return lifecycle.spotOutbound().sendToChannel(channelName, message);
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestToChannel(
+    public ZLinkRequestCall requestToChannel(
         String channelName,
-        TMessage request) {
+        Message request) {
         return lifecycle.spotOutbound().requestToChannel(channelName, request);
     }
 }

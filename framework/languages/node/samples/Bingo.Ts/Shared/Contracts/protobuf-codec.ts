@@ -1,6 +1,5 @@
 import * as connector from '@zlink-systems/stream-connector';
 import { loadProtobufJs } from '@zlink-systems/stream-connector-protobuf';
-import { Message } from '@zlink-systems/zlink';
 import path from 'node:path';
 
 type EncodedPayload = {
@@ -85,14 +84,6 @@ const bingoProtobufCodec = {
     return fromBingoProto(payload) as TPayload;
   }
 };
-
-function bingoMessage(value: unknown, packetName?: string): Message {
-  return Message.from(toBingoProto(value, undefined, packetName).payload);
-}
-
-function readBingoMessage<TValue = unknown>(message: { data(): Uint8Array }): TValue {
-  return fromBingoProto<TValue>({ codec: protobufCodec, payload: message.data() });
-}
 
 function bingoPayloadBase64(value: unknown, packetName?: string): string {
   return Buffer.from(toBingoProto(value, undefined, packetName).payload).toString('base64');
@@ -264,8 +255,6 @@ function resolveProtoPath(): string {
 }
 
 export {
-  bingoMessage,
-  readBingoMessage,
   bingoProtobufCodec,
   bingoPayloadBase64,
   fromBingoProto,

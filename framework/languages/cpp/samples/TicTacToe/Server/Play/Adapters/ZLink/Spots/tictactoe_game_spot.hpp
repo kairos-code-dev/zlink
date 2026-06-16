@@ -95,7 +95,7 @@ class tictactoe_game_spot_t : public zlink::framework::spot_t, public tictactoe_
             if (actor_id == source_actor_id || actor == nullptr) {
                 continue;
             }
-            (void) actor->context.bound_session ().send (notify);
+            (void) actor->context.bound_session ().send (notify).async ().result ();
         }
     }
 

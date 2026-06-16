@@ -1,15 +1,16 @@
 package systems.zlink.framework.channels;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 
 public interface ZLinkRouteClient {
-    <TMessage> ZLinkSendCall sendTo(
+    ZLinkSendCall sendTo(
         String channelName,
         RoutingId target,
-        TMessage message);
+        Message message);
 
-    <TMessage> ZLinkRequestCall requestTo(
+    ZLinkRequestCall requestTo(
         String channelName,
         RoutingId target,
-        TMessage message);
+        Message message);
 }

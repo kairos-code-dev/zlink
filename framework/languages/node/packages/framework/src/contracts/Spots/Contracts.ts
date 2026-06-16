@@ -120,11 +120,11 @@ export interface ZLinkSpotActorReplyOptions {
 }
 
 export interface ZLinkSpotOutbound {
-  sendToSpot<TMessage>(spotRid: RoutingId, message: TMessage): ZLinkSendCall;
-  requestToSpot<TRequest>(spotRid: RoutingId, request: TRequest): ZLinkRequestCall;
-  publish<TEvent>(topic: string, event: TEvent): ZLinkPublishCall;
-  sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall;
-  requestToChannel<TRequest>(channelName: string, request: TRequest): ZLinkRequestCall;
+  sendToSpot(spotRid: RoutingId, message: Message): ZLinkSendCall;
+  requestToSpot(spotRid: RoutingId, request: Message): ZLinkRequestCall;
+  publish(topic: string, event: Message): ZLinkPublishCall;
+  sendToChannel(channelName: string, message: Message): ZLinkSendCall;
+  requestToChannel(channelName: string, request: Message): ZLinkRequestCall;
 }
 
 export enum ZLinkSpotCreateState {

@@ -1,8 +1,10 @@
 package systems.zlink.framework.channels;
 
+import systems.zlink.contracts.messaging.Message;
+
 public interface ZLinkFanoutClient {
-    <TMessage> ZLinkPublishCall publish(
+    ZLinkPublishCall publish(
         String channelName,
         String topic,
-        TMessage message);
+        Message message);
 }

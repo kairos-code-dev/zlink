@@ -149,7 +149,7 @@ final class SessionActorsRuntimeIntegrationTest {
         Zlink.version();
         try (ZLinkFrameworkRuntime runtime = startChannelJoinRuntime()) {
             String actorId = runtime.client()
-                .requestToChannel("play", "player-1")
+                .requestToChannel("play", Message.from("player-1").withPacketName("Ensure"))
                 .packetName("Ensure")
                 .timeout(Duration.ofSeconds(2))
                 .submit(String.class)
@@ -251,7 +251,7 @@ final class SessionActorsRuntimeIntegrationTest {
 
             assertThrows(ZlinkSubmitException.class, () -> actor.context()
                     .boundSession()
-                    .send("push")
+                    .send(Message.from("push").withPacketName("Push"))
                     .packetName("Push")
                     .submit()
                     .toCompletableFuture()

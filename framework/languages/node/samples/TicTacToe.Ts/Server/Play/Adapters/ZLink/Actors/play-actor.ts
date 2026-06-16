@@ -1,11 +1,12 @@
 import type {
+  Message,
   ZLinkActor,
   ZLinkActorContext
 } from '@zlink-systems/framework';
 import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
 
 type PlayClient = {
-  send(message: unknown): {
+  send(message: Message): {
     packetName(packetName: string): {
       metadata(key: string, value: string): {
         submit(signal?: AbortSignal): Promise<void>;
@@ -54,7 +55,7 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.destroyAfterEntrySpotJoin = true;
   }
 
-  async push(packetName: string, payload: unknown): Promise<void> {
+  async push(packetName: string, payload: Message): Promise<void> {
     if (this.client === null) {
       return;
     }

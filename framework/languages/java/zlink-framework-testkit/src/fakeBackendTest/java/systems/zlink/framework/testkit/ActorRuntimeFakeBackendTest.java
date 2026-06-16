@@ -126,7 +126,7 @@ final class ActorRuntimeFakeBackendTest {
                 .join();
 
             var joined = actor.context()
-                .joinSpot(spotRid, "join-request")
+                .joinSpot(spotRid, Message.from("join-request").withPacketName("Join"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -260,7 +260,7 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
             roomActor.context()
-                .joinSpot(spotRid, "join-request")
+                .joinSpot(spotRid, Message.from("join-request").withPacketName("Join"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();

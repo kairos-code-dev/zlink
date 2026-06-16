@@ -1,28 +1,29 @@
 package systems.zlink.framework.spots;
 
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 
 public interface ZLinkSpotOutbound {
-    <TMessage> ZLinkSendCall sendToSpot(
+    ZLinkSendCall sendToSpot(
         RoutingId spotRid,
-        TMessage message);
+        Message message);
 
-    <TMessage> ZLinkRequestCall requestToSpot(
+    ZLinkRequestCall requestToSpot(
         RoutingId spotRid,
-        TMessage request);
+        Message request);
 
-    <TEvent> ZLinkPublishCall publish(
+    ZLinkPublishCall publish(
         String topic,
-        TEvent message);
+        Message message);
 
-    <TMessage> ZLinkSendCall sendToChannel(
+    ZLinkSendCall sendToChannel(
         String channelName,
-        TMessage message);
+        Message message);
 
-    <TMessage> ZLinkRequestCall requestToChannel(
+    ZLinkRequestCall requestToChannel(
         String channelName,
-        TMessage request);
+        Message request);
 }

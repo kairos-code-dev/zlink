@@ -19,7 +19,6 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -373,11 +372,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public <TMessage> ZLinkSessionSendCall send(TMessage message) {
+        public ZLinkSessionSendCall send(Message message) {
             return new SessionSendCall(
                 stream,
                 routingId,
-                serializer.serialize(message),
+                Message.from(message),
                 defaultPacketName(message),
                 Map.of(),
                 false,
@@ -385,11 +384,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public <TMessage> ZLinkSessionReplyCall reply(TMessage message) {
+        public ZLinkSessionReplyCall reply(Message message) {
             return new SessionReplyCall(
                 stream,
                 routingId,
-                serializer.serialize(message),
+                Message.from(message),
                 context,
                 defaultPacketName(message),
                 Map.of(),
@@ -525,13 +524,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
     }
 
-    private static String defaultPacketName(Object message) {
+    private static String defaultPacketName(Message message) {
         if (message == null) {
             return "Null";
         }
-        Class<?> messageType = message.getClass();
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return message.packetName().orElse("Message");
     }
 
     private static ZLinkStreamCodec defaultCodec(ZLinkFrameworkRegistration registration) {

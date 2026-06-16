@@ -11,6 +11,7 @@ import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
@@ -92,36 +93,36 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
+    public ZLinkSendCall sendToChannel(String channelName, Message message) {
         return requireRuntime().client().sendToChannel(channelName, message);
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Message message) {
         return requireRuntime().client().requestToChannel(channelName, message);
     }
 
     @Override
-    public <TMessage> ZLinkPublishCall publish(
+    public ZLinkPublishCall publish(
         String channelName,
         String topic,
-        TMessage message) {
+        Message message) {
         return requireRuntime().fanout().publish(channelName, topic, message);
     }
 
     @Override
-    public <TMessage> ZLinkSendCall sendTo(
+    public ZLinkSendCall sendTo(
         String channelName,
         RoutingId target,
-        TMessage message) {
+        Message message) {
         return requireRuntime().route().sendTo(channelName, target, message);
     }
 
     @Override
-    public <TMessage> ZLinkRequestCall requestTo(
+    public ZLinkRequestCall requestTo(
         String channelName,
         RoutingId target,
-        TMessage message) {
+        Message message) {
         return requireRuntime().route().requestTo(channelName, target, message);
     }
 

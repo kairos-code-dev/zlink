@@ -1,6 +1,7 @@
 import type { ZLinkPublishCall } from './Calls';
+import type { Message } from '../Common';
 
 export interface ZLinkFanoutClient {
-  publish<TEvent>(topic: string, event: TEvent): ZLinkPublishCall;
-  publishToChannel<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall;
+  publish(topic: string, event: Message): ZLinkPublishCall;
+  publishToChannel(channelName: string, topic: string, event: Message): ZLinkPublishCall;
 }

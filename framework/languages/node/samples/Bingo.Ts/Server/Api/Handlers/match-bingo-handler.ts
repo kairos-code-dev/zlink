@@ -1,4 +1,5 @@
 import { Inject } from '@nestjs/common';
+import { Message } from '@zlink-systems/zlink';
 import { ZLINK_CHANNEL_CLIENT, zlinkRequestHandler } from '@zlink-systems/nestjs';
 import { PacketNames, allocateBingoRoomReq, matchBingoApiRes } from '../../../Shared/Contracts/messages';
 import { SampleNames } from '../../Configuration/sample-names';
@@ -18,7 +19,7 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoReq, MatchBingo
 
   async handle(request: MatchBingoReq): Promise<MatchBingoApiRes> {
     const allocated = await this.zlinkClient
-      .requestToChannel(SampleNames.playChannel, allocateBingoRoomReq(request.mode))
+      .requestToChannel(SampleNames.playChannel, Message.from(allocateBingoRoomReq(request.mode)))
       .submit<AllocateBingoRoomRes>();
     return matchBingoApiRes(allocated.roomId);
   }

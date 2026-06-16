@@ -1,8 +1,9 @@
 import type { ZLinkRequestCall, ZLinkSendCall } from './Calls';
+import type { Message } from '../Common';
 
 export interface ZLinkChannelClient {
-  send<TMessage>(message: TMessage): ZLinkSendCall;
-  request<TRequest>(request: TRequest): ZLinkRequestCall;
-  sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall;
-  requestToChannel<TRequest>(channelName: string, request: TRequest): ZLinkRequestCall;
+  send(message: Message): ZLinkSendCall;
+  request(request: Message): ZLinkRequestCall;
+  sendToChannel(channelName: string, message: Message): ZLinkSendCall;
+  requestToChannel(channelName: string, request: Message): ZLinkRequestCall;
 }

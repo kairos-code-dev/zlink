@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkPacket;
@@ -24,13 +25,13 @@ final class ChannelRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
-                .sendToChannel("profile", "hello")
+                .sendToChannel("profile", Message.from("hello").withPacketName("Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
                 .join();
             String reply = runtime.client()
-                .requestToChannel("profile", "question")
+                .requestToChannel("profile", Message.from("question").withPacketName("Question"))
                 .packetName("Question")
                 .submit(String.class)
                 .toCompletableFuture()
@@ -63,22 +64,22 @@ final class ChannelRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
-                .sendToChannel("profile", new ProfileGreeting("hello"))
+                .sendToChannel("profile", message("hello", "ProfileGreeting"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             runtime.client()
-                .requestToChannel("profile", new ProfileQuestion("question"))
+                .requestToChannel("profile", message("question", "ProfileQuestion"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.route()
-                .sendTo("route", RoutingId.from("peer"), new ProfileGreeting("hello"))
+                .sendTo("route", RoutingId.from("peer"), message("hello", "ProfileGreeting"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             runtime.route()
-                .requestTo("route", RoutingId.from("peer"), new ProfileQuestion("question"))
+                .requestTo("route", RoutingId.from("peer"), message("question", "ProfileQuestion"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -154,5 +155,9 @@ final class ChannelRuntimeFakeBackendTest {
 
     @ZLinkPacket("ProfileQuestion")
     public record ProfileQuestion(String value) {
+    }
+
+    private static Message message(String value, String packetName) {
+        return Message.from(value).withPacketName(packetName);
     }
 }

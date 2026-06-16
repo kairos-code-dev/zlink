@@ -22,7 +22,6 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamHeader;
@@ -73,11 +72,11 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     }
 
     @Override
-    public <TMessage> ZLinkBoundSessionSendCall send(TMessage message) {
+    public ZLinkBoundSessionSendCall send(Message message) {
         return new SendCall(
             spotNode,
             actorRef,
-            serializer.serialize(message),
+            Message.from(message),
             packetNameFor(message),
             Map.of(),
             Optional.empty(),
@@ -204,12 +203,10 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         return frame.array();
     }
 
-    private static String packetNameFor(Object message) {
+    private static String packetNameFor(Message message) {
         if (message == null) {
             return "Null";
         }
-        Class<?> messageType = message.getClass();
-        ZLinkPacket packet = messageType.getAnnotation(ZLinkPacket.class);
-        return packet == null ? messageType.getSimpleName() : packet.value();
+        return message.packetName().orElse("Message");
     }
 }

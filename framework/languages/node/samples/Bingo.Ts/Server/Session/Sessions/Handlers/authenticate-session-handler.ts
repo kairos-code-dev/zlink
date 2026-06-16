@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Message } from '@zlink-systems/zlink';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../../Configuration/sample-names';
 import { retry } from '../../../runtime-support';
@@ -25,7 +26,7 @@ class SessionAuthenticator {
 
   async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateSessionRes> {
     const authenticated = await retry(() => this.zlinkClient
-        .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
+        .requestToChannel(SampleNames.apiChannel, Message.from(authenticatePlayerReq(request.accessToken)))
         .submit<AuthenticatePlayerRes>(), { delayMs: 25, maxAttempts: 200 });
 
     if (!authenticated.accepted || !authenticated.actorId || !authenticated.displayName) {
@@ -33,7 +34,10 @@ class SessionAuthenticator {
     }
 
     const ensured = await retry(() => this.zlinkClient
-        .requestToChannel(SampleNames.playChannel, ensurePlayerActorReq(authenticated.actorId, authenticated.displayName))
+        .requestToChannel(
+          SampleNames.playChannel,
+          Message.from(ensurePlayerActorReq(authenticated.actorId, authenticated.displayName))
+        )
         .submit<EnsurePlayerActorRes>(), { delayMs: 25, maxAttempts: 200 });
 
     await context.actors.bind(ensured.actor);

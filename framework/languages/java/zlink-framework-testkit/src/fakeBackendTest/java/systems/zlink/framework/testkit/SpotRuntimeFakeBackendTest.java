@@ -161,13 +161,13 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToChannel("play-events", "hello")
+                .sendToChannel("play-events", message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
                 .join();
             OutboundSpot.context.outbound()
-                .requestToChannel("play-rpc", "ping")
+                .requestToChannel("play-rpc", message("ping", "Ping"))
                 .packetName("Ping")
                 .submit(String.class);
         }
@@ -317,7 +317,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), "hello")
+                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
@@ -325,7 +325,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), "ping")
+                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "Ping"))
                     .packetName("Ping")
                     .submit(String.class)
                     .toCompletableFuture()
@@ -368,14 +368,14 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), new SpotGreeting("hello"))
+                .sendToSpot(RoutingId.from("target-spot"), message("hello", "SpotGreeting"))
                 .submit()
                 .toCompletableFuture()
                 .join();
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), new SpotQuestion("ping"))
+                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "SpotQuestion"))
                     .submit(String.class)
                     .toCompletableFuture()
                     .join());
@@ -455,7 +455,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), "hello")
+                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
@@ -491,7 +491,7 @@ final class SpotRuntimeFakeBackendTest {
             assertEquals(
                 "reply",
                 OutboundSpot.context.outbound()
-                    .requestToSpot(RoutingId.from("target-spot"), "ping")
+                    .requestToSpot(RoutingId.from("target-spot"), message("ping", "Ping"))
                     .packetName("Ping")
                     .submit(String.class)
                     .toCompletableFuture()
@@ -524,7 +524,7 @@ final class SpotRuntimeFakeBackendTest {
             assertThrows(
                 CompletionException.class,
                 () -> OutboundSpot.context.outbound()
-                    .sendToSpot(RoutingId.from("target-spot"), "hello")
+                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                     .packetName("Ping")
                     .submit()
                     .toCompletableFuture()
@@ -553,7 +553,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), "hello")
+                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                 .packetName("Ping")
                 .submit()
                 .toCompletableFuture()
@@ -587,7 +587,7 @@ final class SpotRuntimeFakeBackendTest {
                 .join();
 
             OutboundSpot.context.outbound()
-                .sendToSpot(RoutingId.from("target-spot"), "hello")
+                .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping"))
                 .packetName("Ping")
                 .submit()
                 .toCompletableFuture()
@@ -621,7 +621,7 @@ final class SpotRuntimeFakeBackendTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> OutboundSpot.context.outbound()
-                    .sendToSpot(RoutingId.from("target-spot"), "hello"));
+                    .sendToSpot(RoutingId.from("target-spot"), message("hello", "Ping")));
         }
     }
 
@@ -657,7 +657,7 @@ final class SpotRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotPublisherClient()
-                .publishSpot("game.stage", "stage.events", "opened")
+                .publishSpot("game.stage", "stage.events", message("opened", "StageOpened"))
                 .packetName("StageOpened")
                 .submit()
                 .toCompletableFuture()
@@ -1198,7 +1198,7 @@ final class SpotRuntimeFakeBackendTest {
             assertThrows(
                 ZLinkConfigurationException.class,
                 () -> runtime.spotPublisherClient()
-                    .publishSpot("missing", "stage.events", "opened"));
+                    .publishSpot("missing", "stage.events", message("opened", "StageOpened")));
         }
     }
 
@@ -1468,7 +1468,7 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotCreateResponse onCreate(Message request) {
             outbound
-                .sendToChannel("play-events", "hello")
+                .sendToChannel("play-events", message("hello", "Greeting"))
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
@@ -1684,5 +1684,9 @@ final class SpotRuntimeFakeBackendTest {
 
     @ZLinkPacket("SpotQuestion")
     public record SpotQuestion(String value) {
+    }
+
+    private static Message message(String value, String packetName) {
+        return Message.from(value).withPacketName(packetName);
     }
 }

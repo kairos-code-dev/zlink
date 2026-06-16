@@ -696,7 +696,7 @@ test('node samples use the codecs required by the common specs', () => {
       if (/addSerializer\s*\(|bingoProtobufSerializer|bingoProtobufContentType/.test(content)) {
         violations.push(relative);
       }
-      if (sample === 'Bingo.Ts' && /createProtobufMessage|readProtobufMessage/.test(content)) {
+      if (sample === 'Bingo.Ts' && /createProtobufMessage|readProtobufMessage|bingoMessage|readBingoMessage/.test(content)) {
         violations.push(`${relative}:protobuf-message-helper`);
       }
       if (sample === 'Bingo.Ts'

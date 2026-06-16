@@ -212,6 +212,13 @@ int dispatch_external_router_delivery (zlink::spot_node_t *origin_node_,
         return -1;
     }
 
+    zlink_routing_id_t destination_node_rid;
+    if (zlink::spot_reqrep_internal::peek_spot_routed_destination_node_rid (
+          &(*combined_)[0], combined_->size (), &destination_node_rid)) {
+        return send_external_router_once (zlink::spot_node_access_t::runtime (origin_node_),
+                                          &destination_node_rid, combined_, flags_);
+    }
+
     parsed_spot_envelope_t envelope;
     if (!zlink::spot_reqrep_internal::parse_spot_routed_envelope (&(*combined_)[0],
                                                                   combined_->size (), &envelope)) {

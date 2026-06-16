@@ -1,9 +1,10 @@
 package systems.zlink.framework.actors;
 
 import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.messaging.Message;
 
 public interface ZLinkBoundSession {
-    <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
+    ZLinkBoundSessionSendCall send(Message message);
 
     CompletionStage<Void> disconnect();
 }

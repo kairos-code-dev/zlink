@@ -50,6 +50,9 @@ if (useLocalBindings) {
         name = "zlink-bindings-java"
         dependencySubstitution {
             substitute(module("systems.zlink:zlink")).using(project(":"))
+            substitute(module("systems.zlink:zlink-codec-protobuf")).using(project(":zlink-codec-protobuf"))
+            substitute(module("systems.zlink:zlink-codec-json")).using(project(":zlink-codec-json"))
+            substitute(module("systems.zlink:zlink-codec-messagepack")).using(project(":zlink-codec-messagepack"))
         }
     }
 }

@@ -240,6 +240,10 @@ export function utf8Decode(value: Uint8Array): string {
 }
 
 function inferPacketName(message: unknown): string {
+  const messagePacketName = tryMessagePacketName(message);
+  if (messagePacketName !== undefined) {
+    return messagePacketName;
+  }
   if (typeof message === 'object' && message !== null) {
     const constructor = (message as { constructor?: { name?: string } }).constructor;
     if (constructor?.name !== undefined && constructor.name.length > 0 && !isStructuralPayloadName(constructor.name)) {
@@ -262,6 +266,20 @@ function isStructuralPayloadName(name: string): boolean {
     'Symbol',
     'Date'
   ].includes(name);
+}
+
+function tryMessagePacketName(message: unknown): string | undefined {
+  if (typeof message !== 'object' || message === null || !('packetName' in message)) {
+    return undefined;
+  }
+  const packetName = (message as { packetName?: () => unknown }).packetName;
+  if (typeof packetName !== 'function') {
+    return undefined;
+  }
+  const resolved = packetName.call(message);
+  return typeof resolved === 'string' && resolved.trim().length > 0
+    ? resolved
+    : undefined;
 }
 
 function encodeStreamMetadata(metadata: ReadonlyMap<string, string>): Uint8Array {

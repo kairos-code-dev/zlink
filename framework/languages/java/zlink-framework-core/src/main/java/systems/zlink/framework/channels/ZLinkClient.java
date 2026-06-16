@@ -1,11 +1,13 @@
 package systems.zlink.framework.channels;
 
-public interface ZLinkClient {
-    <TMessage> ZLinkSendCall sendToChannel(
-        String channelName,
-        TMessage message);
+import systems.zlink.contracts.messaging.Message;
 
-    <TMessage> ZLinkRequestCall requestToChannel(
+public interface ZLinkClient {
+    ZLinkSendCall sendToChannel(
         String channelName,
-        TMessage message);
+        Message message);
+
+    ZLinkRequestCall requestToChannel(
+        String channelName,
+        Message message);
 }

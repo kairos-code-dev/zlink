@@ -1,3 +1,5 @@
+import type { Message } from '@zlink-systems/framework';
+
 const PacketNames = Object.freeze({
   authenticateReq: 'AuthenticateReq',
   authenticateRes: 'AuthenticateRes',
@@ -153,11 +155,11 @@ export interface TicTacToeActor {
   markDisconnected(): void;
   markForDestroyAfterRoomLeave(): void;
   destroyAfterEntrySpotJoin: boolean;
-  push(packetName: string, payload: unknown): Promise<void>;
+  push(packetName: string, payload: Message): Promise<void>;
 }
 
 export interface TicTacToeActorClient {
-  send(message: unknown): {
+  send(message: Message): {
     packetName(packetName: string): {
       metadata(key: string, value: string): {
         submit(signal?: AbortSignal): Promise<void>;

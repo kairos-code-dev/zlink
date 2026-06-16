@@ -422,12 +422,12 @@ final class StreamSessionTest {
                 .thenCompose(actor -> {
                     boundCount = context.actors().bound().size();
                     return context.client()
-                        .send("payload")
+                        .send(Message.from("payload").withPacketName("Notify"))
                         .packetName("Notify")
                         .submit();
                 })
                 .thenCompose(ignored -> context.client()
-                    .reply("reply")
+                    .reply(Message.from("reply").withPacketName("Reply"))
                     .submit())
                 .toCompletableFuture()
                 .join();
@@ -497,7 +497,7 @@ final class StreamSessionTest {
             Message payload) {
             DispatcherSession.handled.add("handler:" + payload.toUtf8String());
             context.client()
-                .reply("authenticated")
+                .reply(Message.from("authenticated").withPacketName("Authenticated"))
                 .submit()
                 .toCompletableFuture()
                 .join();
@@ -538,7 +538,7 @@ final class StreamSessionTest {
             ZLinkStreamHeader header,
             Message payload) {
             context.client()
-                .reply("reply")
+                .reply(Message.from("reply").withPacketName("Reply"))
                 .submit()
                 .whenComplete((ignored, error) -> {
                     if (error != null) {
@@ -601,13 +601,13 @@ final class StreamSessionTest {
             ZLinkStreamHeader header,
             Message payload) {
             context.client()
-                .send("notify")
+                .send(Message.from("notify").withPacketName("Notify"))
                 .packetName("Notify")
                 .metadata("trace", "send-trace")
                 .compress()
                 .submit()
                 .thenCompose(ignored -> context.client()
-                    .reply("reply")
+                    .reply(Message.from("reply").withPacketName("Reply"))
                     .metadata("trace", "reply-trace")
                     .compress()
                     .submit())

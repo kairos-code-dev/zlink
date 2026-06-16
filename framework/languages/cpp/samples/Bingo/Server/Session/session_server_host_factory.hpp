@@ -5,6 +5,7 @@
 #include "../Configuration/sample_names.hpp"
 #include "../Configuration/sample_topology.hpp"
 #include "../../Shared/Contracts/messages.hpp"
+#include "Notifications/bingo_notification_subscriber_service.hpp"
 #include "../host_support.hpp"
 #include "Sessions/bingo_session.hpp"
 
@@ -28,6 +29,8 @@ class session_server_host_factory_t
         if (auto_stop) {
             app.add_hosted_service (std::make_unique<stop_after_start_service_t> (app));
         }
+        app.add_hosted_service (std::make_unique<bingo_notification_subscriber_service_t> (
+          topology.notification_channel_endpoint));
         app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
             options.codecs ()
               .add_protobuf ()

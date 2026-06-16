@@ -231,6 +231,10 @@ function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHea
 }
 
 function resolveChannelPacketName(payload: unknown): string {
+  const messagePacketName = tryMessagePacketName(payload);
+  if (messagePacketName !== undefined) {
+    return messagePacketName;
+  }
   if (payload !== null && typeof payload === 'object' && 'constructor' in payload) {
     const name = (payload as { constructor?: { name?: string } }).constructor?.name;
     if (name !== undefined && name !== 'Object') {
@@ -238,6 +242,20 @@ function resolveChannelPacketName(payload: unknown): string {
     }
   }
   throw new ZLinkConfigurationException('Channel packetName is required when the payload type cannot provide one.');
+}
+
+function tryMessagePacketName(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null || !('packetName' in payload)) {
+    return undefined;
+  }
+  const packetName = (payload as { packetName?: () => unknown }).packetName;
+  if (typeof packetName !== 'function') {
+    return undefined;
+  }
+  const resolved = packetName.call(payload);
+  return typeof resolved === 'string' && resolved.trim().length > 0
+    ? resolved
+    : undefined;
 }
 
 function parseWireJson(payload: string): unknown {

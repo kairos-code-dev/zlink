@@ -326,11 +326,10 @@ function withPlayerIdentity<TRequest extends object>(
   actorId: string,
   displayName: string
 ): TRequest & PlayerIdentity {
-  return {
-    ...request,
-    actorId,
-    displayName
-  };
+  const value = request as TRequest & Partial<PlayerIdentity>;
+  value.actorId = actorId;
+  value.displayName = displayName;
+  return value as TRequest & PlayerIdentity;
 }
 
 function playerJoinedNotify(

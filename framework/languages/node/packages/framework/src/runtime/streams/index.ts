@@ -569,7 +569,7 @@ export class ZLinkStreamBindingRuntime {
 
   async sendBoundSession(
     actorId: string,
-    message: unknown,
+    message: Message,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
@@ -957,11 +957,11 @@ class ZLinkSessionLocalActorBindings {
 class DefaultZLinkSessionClient implements ZLinkSessionClient {
   constructor(private readonly context: DefaultZLinkSessionContext) {}
 
-  send<TMessage>(message: TMessage): ZLinkSessionSendCall {
+  send(message: Message): ZLinkSessionSendCall {
     return new DefaultZLinkSessionSendCall(this.context, message);
   }
 
-  reply<TMessage>(message: TMessage): ZLinkSessionReplyCall {
+  reply(message: Message): ZLinkSessionReplyCall {
     return new DefaultZLinkSessionReplyCall(this.context, message);
   }
 }
@@ -1012,7 +1012,7 @@ export class DefaultZLinkBoundSession implements ZLinkBoundSession {
     private readonly actorId: string
   ) {}
 
-  send<TMessage>(message: TMessage): ZLinkBoundSessionSendCall {
+  send(message: Message): ZLinkBoundSessionSendCall {
     return new DefaultZLinkBoundSessionSendCall(this.runtime, this.actorId, message);
   }
 
@@ -1117,7 +1117,7 @@ class ZLinkSessionRequestTracker {
   }
 }
 
-class DefaultZLinkBoundSessionSendCall<TMessage> implements ZLinkBoundSessionSendCall {
+class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
   private selectedPacketName: string | undefined;
   private readonly selectedMetadata = new Map<string, string>();
   private executed = false;
@@ -1125,7 +1125,7 @@ class DefaultZLinkBoundSessionSendCall<TMessage> implements ZLinkBoundSessionSen
   constructor(
     private readonly runtime: ZLinkStreamBindingRuntime,
     private readonly actorId: string,
-    private readonly message: TMessage
+    private readonly message: Message
   ) {}
 
   metadata(key: string, value: string): this {
@@ -1151,7 +1151,7 @@ class DefaultZLinkBoundSessionSendCall<TMessage> implements ZLinkBoundSessionSen
   }
 }
 
-class DefaultZLinkSessionSendCall<TMessage> implements ZLinkSessionSendCall {
+class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
   private selectedPacketName: string | undefined;
   private readonly selectedMetadata = new Map<string, string>();
   private compressionEnabled = false;
@@ -1159,7 +1159,7 @@ class DefaultZLinkSessionSendCall<TMessage> implements ZLinkSessionSendCall {
 
   constructor(
     private readonly context: DefaultZLinkSessionContext,
-    private readonly message: TMessage
+    private readonly message: Message
   ) {}
 
   metadata(key: string, value: string): this {
@@ -1199,14 +1199,14 @@ class DefaultZLinkSessionSendCall<TMessage> implements ZLinkSessionSendCall {
   }
 }
 
-class DefaultZLinkSessionReplyCall<TMessage> implements ZLinkSessionReplyCall {
+class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
   private readonly selectedMetadata = new Map<string, string>();
   private compressionEnabled = false;
   private executed = false;
 
   constructor(
     private readonly context: DefaultZLinkSessionContext,
-    private readonly message: TMessage
+    private readonly message: Message
   ) {}
 
   metadata(key: string, value: string): this {

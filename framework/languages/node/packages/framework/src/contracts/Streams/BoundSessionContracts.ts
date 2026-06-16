@@ -1,5 +1,7 @@
+import type { Message } from '../Common';
+
 export interface ZLinkBoundSession {
-  send<TMessage>(message: TMessage): ZLinkBoundSessionSendCall;
+  send(message: Message): ZLinkBoundSessionSendCall;
   disconnect(signal?: AbortSignal): Promise<void>;
 }
 

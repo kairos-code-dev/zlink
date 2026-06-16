@@ -81,7 +81,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
       if (joined.actorId === actor.actorId) {
         continue;
       }
-      await joined.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+        await joined.actor.push(PacketNames.gameStateNotify, BindingMessage.from(gameStateNotify(state)) as Message);
     }
     if (isTerminal(state.status)) {
       setImmediate(() => {
@@ -96,7 +96,10 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
     const change = match.tick();
     if (change.changed) {
       for (const player of match.players.values()) {
-        await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(change.state));
+        await player.actor.push(
+          PacketNames.gameStateNotify,
+          BindingMessage.from(gameStateNotify(change.state)) as Message
+        );
       }
     }
     await this.leaveFinishedActors();
@@ -115,9 +118,9 @@ class TicTacToeGameSpot implements ZLinkSpot<PlaySpotActor> {
         }
         await player.actor.push(
           PacketNames.playerJoinedNotify,
-          playerJoinedNotify(roomId, result.joined.actorId, result.joined.mark, state)
+          BindingMessage.from(playerJoinedNotify(roomId, result.joined.actorId, result.joined.mark, state)) as Message
         );
-        await player.actor.push(PacketNames.gameStateNotify, gameStateNotify(state));
+        await player.actor.push(PacketNames.gameStateNotify, BindingMessage.from(gameStateNotify(state)) as Message);
       }
     }
     return joinGameRes(roomId, result.joined.actorId, result.joined.mark, state);

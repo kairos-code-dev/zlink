@@ -2647,7 +2647,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public <TMessage> ZLinkSendCall sendToSpot(RoutingId spotRid, TMessage message) {
+        public ZLinkSendCall sendToSpot(RoutingId spotRid, Message message) {
             requireRoutingId(spotRid);
             if (channels != null && !egressChannels.isEmpty()) {
                 if (egressChannels.size() > 1) {
@@ -2658,19 +2658,19 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     channels,
                     egressChannels.get(0),
                     spotRid,
-                    serializer.serialize(message),
+                    Message.from(message),
                     Optional.of(defaultPacketName(message)));
             }
             return new SpotToSpotSendCall(
                 backendSpot,
                 nodeRid,
                 spotRid,
-                serializer.serialize(message),
+                Message.from(message),
                 Optional.of(defaultPacketName(message)));
         }
 
         @Override
-        public <TMessage> ZLinkRequestCall requestToSpot(RoutingId spotRid, TMessage request) {
+        public ZLinkRequestCall requestToSpot(RoutingId spotRid, Message request) {
             requireRoutingId(spotRid);
             if (channels != null && !egressChannels.isEmpty()) {
                 if (egressChannels.size() > 1) {
@@ -2681,7 +2681,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     channels,
                     egressChannels.get(0),
                     spotRid,
-                    serializer.serialize(request),
+                    Message.from(request),
                     Optional.of(defaultPacketName(request)),
                     defaultTimeout);
             }
@@ -2689,35 +2689,35 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 backendSpot,
                 nodeRid,
                 spotRid,
-                serializer.serialize(request),
+                Message.from(request),
                 Optional.of(defaultPacketName(request)),
                 defaultTimeout);
         }
 
         @Override
-        public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
+        public ZLinkPublishCall publish(String topic, Message message) {
             return new SpotPublishCall(
                 backendSpot,
                 topic,
-                serializer.serialize(message),
+                Message.from(message),
                 Optional.of(defaultPacketName(message)));
         }
 
         @Override
-        public <TMessage> ZLinkSendCall sendToChannel(String channelName, TMessage message) {
+        public ZLinkSendCall sendToChannel(String channelName, Message message) {
             return new SpotChannelSendCall(
                 backendSpot,
                 channelName,
-                serializer.serialize(message),
+                Message.from(message),
                 Optional.of(defaultPacketName(message)));
         }
 
         @Override
-        public <TMessage> ZLinkRequestCall requestToChannel(String channelName, TMessage request) {
+        public ZLinkRequestCall requestToChannel(String channelName, Message request) {
             return new SpotChannelRequestCall(
                 backendSpot,
                 channelName,
-                serializer.serialize(request),
+                Message.from(request),
                 Optional.of(defaultPacketName(request)),
                 defaultTimeout);
         }
@@ -2839,43 +2839,43 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private final class AmbientSpotOutbound implements ZLinkSpotOutbound {
         @Override
-        public <TMessage> ZLinkSendCall sendToSpot(RoutingId spotRid, TMessage message) {
+        public ZLinkSendCall sendToSpot(RoutingId spotRid, Message message) {
             return requireCurrentOutbound().sendToSpot(spotRid, message);
         }
 
         @Override
-        public <TMessage> ZLinkRequestCall requestToSpot(
+        public ZLinkRequestCall requestToSpot(
             RoutingId spotRid,
-            TMessage request) {
+            Message request) {
             return requireCurrentOutbound().requestToSpot(spotRid, request);
         }
 
         @Override
-        public <TEvent> ZLinkPublishCall publish(String topic, TEvent message) {
+        public ZLinkPublishCall publish(String topic, Message message) {
             return requireCurrentOutbound().publish(topic, message);
         }
 
         @Override
-        public <TMessage> ZLinkSendCall sendToChannel(
+        public ZLinkSendCall sendToChannel(
             String channelName,
-            TMessage message) {
+            Message message) {
             return requireCurrentOutbound().sendToChannel(channelName, message);
         }
 
         @Override
-        public <TMessage> ZLinkRequestCall requestToChannel(
+        public ZLinkRequestCall requestToChannel(
             String channelName,
-            TMessage request) {
+            Message request) {
             return requireCurrentOutbound().requestToChannel(channelName, request);
         }
     }
 
     private final class DefaultSpotPublisherClient implements ZLinkSpotPublisherClient {
         @Override
-        public <TEvent> ZLinkPublishCall publishSpot(
+        public ZLinkPublishCall publishSpot(
             String channelName,
             String topic,
-            TEvent message) {
+            Message message) {
             if (channelName == null || channelName.isBlank()) {
                 throw new ZLinkConfigurationException("SPOT publisher channel name is required");
             }
@@ -2889,7 +2889,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             return new ExternalSpotPublishCall(
                 channelName,
                 topic,
-                serializer.serialize(message),
+                Message.from(message),
                 Optional.of(defaultPacketName(message)));
         }
     }
@@ -3342,11 +3342,11 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
             .orElseGet(() -> List.of(payload));
     }
 
-    private static String defaultPacketName(Object message) {
+    private static String defaultPacketName(Message message) {
         if (message == null) {
             return "Null";
         }
-        return resolvePacketName(message.getClass());
+        return message.packetName().orElse("Message");
     }
 
     private static ParsedPacket parsePacket(List<Message> parts) {

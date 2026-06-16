@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
@@ -74,7 +75,7 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", "hello")
+                .requestToChannel("profile", message("hello"))
                 .packetName("Echo")
                 .submit(String.class)
                 .toCompletableFuture()
@@ -100,7 +101,7 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", "hello")
+                .requestToChannel("profile", message("hello"))
                 .packetName("Echo")
                 .submit(String.class)
                 .toCompletableFuture()
@@ -159,7 +160,7 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", "hello")
+                .requestToChannel("profile", message("hello"))
                 .packetName("String")
                 .submit(String.class)
                 .toCompletableFuture()
@@ -186,13 +187,13 @@ final class ChannelMessagingTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             String reply = runtime.client()
-                .requestToChannel("profile", "hello")
+                .requestToChannel("profile", message("hello"))
                 .packetName("AnnotatedEcho")
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
             runtime.client()
-                .sendToChannel("profile", "changed")
+                .sendToChannel("profile", message("changed"))
                 .packetName("ProfileChanged")
                 .submit()
                 .toCompletableFuture()
@@ -453,12 +454,12 @@ final class ChannelMessagingTest {
             assertEquals("warmup", awaitSharedRouteReply(source, targetRid, "warmup:1"));
 
             CompletionStage<String> slow = source.route()
-                .requestTo("route", targetRid, "slow:40")
+                .requestTo("route", targetRid, message("slow:40"))
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
             CompletionStage<String> fast = source.route()
-                .requestTo("route", targetRid, "fast:1")
+                .requestTo("route", targetRid, message("fast:1"))
                 .packetName("SharedPacket")
                 .timeout(Duration.ofSeconds(3))
                 .submit(String.class);
@@ -518,7 +519,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return client.client()
-                    .requestToChannel("profile", "hello")
+                    .requestToChannel("profile", message("hello"))
                     .packetName("Echo")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -536,7 +537,7 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && FANOUT_LATCH.get().getCount() > 0) {
             publisher.fanout()
-                .publish("events", "score", "home:1")
+                .publish("events", "score", message("home:1"))
                 .packetName("ScoreChanged")
                 .submit()
                 .toCompletableFuture()
@@ -549,7 +550,7 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && SEND_LATCH.get().getCount() > 0) {
             runtime.client()
-                .sendToChannel("profile", "changed")
+                .sendToChannel("profile", message("changed"))
                 .packetName("ProfileChanged")
                 .submit()
                 .toCompletableFuture()
@@ -564,7 +565,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, "hello")
+                    .requestTo("route", targetRid, message("hello"))
                     .packetName("Echo")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -584,7 +585,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, "hello")
+                    .requestTo("route", targetRid, message("hello"))
                     .packetName("String")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -607,7 +608,7 @@ final class ChannelMessagingTest {
         while (System.nanoTime() < deadline) {
             try {
                 return source.route()
-                    .requestTo("route", targetRid, message)
+                    .requestTo("route", targetRid, message(message))
                     .packetName("SharedPacket")
                     .timeout(Duration.ofMillis(100))
                     .submit(String.class)
@@ -625,7 +626,7 @@ final class ChannelMessagingTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline && ROUTE_SEND_LATCH.get().getCount() > 0) {
             source.route()
-                .sendTo("route", targetRid, "ping")
+                .sendTo("route", targetRid, message("ping"))
                 .packetName("Notice")
                 .submit()
                 .toCompletableFuture()
@@ -646,6 +647,10 @@ final class ChannelMessagingTest {
             }
         }
         throw new IllegalStateException("failed to allocate tcp port");
+    }
+
+    private static Message message(String value) {
+        return Message.from(value).withPacketName("String");
     }
 
     private static boolean isBindable(int port) {

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.streams.ZLinkSessionActor;
@@ -34,7 +35,7 @@ final class ActorSessionStateTest {
                 .toCompletableFuture()
                 .join();
             actor.context()
-                .joinSpot(spotRid, "join")
+                .joinSpot(spotRid, Message.from("join").withPacketName("Join"))
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -55,7 +56,7 @@ final class ActorSessionStateTest {
             assertTrue(RemoteActorGatewayTest.GameSpot.disconnectCount == 0);
             actor.context()
                 .boundSession()
-                .send("push")
+                .send(Message.from("push").withPacketName("Push"))
                 .packetName("Push")
                 .submit()
                 .toCompletableFuture()

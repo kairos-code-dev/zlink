@@ -18,7 +18,19 @@ namespace zlink::samples::bingo
 class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_game_t
 {
   public:
-    using bingo_room_game_t::bingo_room_game_t;
+    bingo_room_spot_t () : _publisher (notification_publisher_or_default ())
+    {
+    }
+
+    explicit bingo_room_spot_t (std::string room_id) :
+        bingo_room_game_t (std::move (room_id)), _publisher (notification_publisher_or_default ())
+    {
+    }
+
+    static void use_notification_publisher (std::shared_ptr<bingo_notification_publisher_t> publisher)
+    {
+        notification_publisher () = std::move (publisher);
+    }
 
     void configure (zlink::framework::spot_context_t &context)
     {
@@ -52,9 +64,10 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
         (void) bingo_room_game_t::submit_card (actor.actor.actor_id, request.card);
         if (should_draw ()) {
             while (const auto drawn = draw_next ()) {
-                publisher.publish_drawn (*drawn);
+                _publisher->publish_drawn (*drawn);
                 if (!drawn->state.winners.empty ()) {
-                    publisher.publish_ended ({drawn->state});
+                    game_ended_notify_t ended{drawn->state};
+                    _publisher->publish_ended (ended);
                     leave_finished_actors ();
                     break;
                 }
@@ -67,8 +80,23 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
     {
         actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
         const auto &state = snapshot ();
+        auto joined = std::find_if (
+          state.players.begin (), state.players.end (),
+          [&actor] (const bingo_player_state_t &player) {
+              return player.actor_id == actor.actor.actor_id;
+          });
+        if (joined != state.players.end ()) {
+            player_joined_notify_t notify{state.room_id,
+                                          joined->actor_id,
+                                          joined->display_name,
+                                          joined->seat,
+                                          joined->is_host,
+                                          state};
+            _publisher->publish_joined (notify);
+        }
         if (state.players.size () == 2) {
-            publisher.publish_started ({state});
+            game_started_notify_t started{state};
+            _publisher->publish_started (started);
         }
     }
 
@@ -80,9 +108,22 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
 
     void onDisconnectActor (const player_actor_t &actor) { actor.mark_disconnected (); }
 
-    bingo_notification_publisher_t publisher;
-
   private:
+    static std::shared_ptr<bingo_notification_publisher_t> &notification_publisher ()
+    {
+        static std::shared_ptr<bingo_notification_publisher_t> publisher;
+        return publisher;
+    }
+
+    static std::shared_ptr<bingo_notification_publisher_t> notification_publisher_or_default ()
+    {
+        auto publisher = notification_publisher ();
+        if (publisher == nullptr) {
+            publisher = std::make_shared<bingo_notification_publisher_t> ();
+        }
+        return publisher;
+    }
+
     void leave_finished_actors ()
     {
         if (cleanup_started || snapshot ().winners.empty ()) {
@@ -107,6 +148,7 @@ class bingo_room_spot_t : public zlink::framework::spot_t, public bingo_room_gam
     }
 
     zlink::framework::spot_context_t _context;
+    std::shared_ptr<bingo_notification_publisher_t> _publisher;
     std::map<std::string, player_actor_t *> actors;
     bool cleanup_started = false;
 };

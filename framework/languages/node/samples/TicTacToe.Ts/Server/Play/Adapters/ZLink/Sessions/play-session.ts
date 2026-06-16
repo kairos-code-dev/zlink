@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { Message } from '@zlink-systems/zlink';
 import { PacketNames, PlaceMarkReq, authenticatePlayerReq, authenticateRes } from '../../../../../Shared/Contracts/messages';
 import { SampleNames, SampleTimings } from '../../../../Configuration/sample-settings';
 import { TicTacToeGameSpot } from '../Spots/tictactoe-game-spot';
@@ -96,7 +97,7 @@ class PlaySession implements ZLinkSession {
   async authenticate(header: PlaySessionHeader, request: AuthenticateReq): Promise<void> {
     void header;
     const authenticated = await this.dependencies.apiClient
-      .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
+      .requestToChannel(SampleNames.apiChannel, Message.from(authenticatePlayerReq(request.accessToken)))
       .submit<AuthenticatePlayerRes>();
     this.actor = await this.dependencies.actorManager.getOrCreate(
       authenticated.actorId,
@@ -104,7 +105,7 @@ class PlaySession implements ZLinkSession {
     );
     this.actor.displayName = authenticated.displayName;
     this.actor.attachClient(this.context.client as TicTacToeActorClient);
-    await this.context.client.reply(authenticateRes(authenticated.actorId, authenticated.displayName)).submit();
+    await this.context.client.reply(Message.from(authenticateRes(authenticated.actorId, authenticated.displayName))).submit();
   }
 
   async joinGame(header: PlaySessionHeader, request: JoinGameReq): Promise<void> {
@@ -118,7 +119,7 @@ class PlaySession implements ZLinkSession {
       createActorRequestContext(PacketNames.joinGameReq),
       request
     );
-    await this.context.client.reply(result).submit();
+    await this.context.client.reply(Message.from(result as object)).submit();
   }
 
   async placeMark(header: PlaySessionHeader, request: PlaceMarkStreamReq): Promise<void> {
@@ -140,7 +141,7 @@ class PlaySession implements ZLinkSession {
         new PlaceMarkReq(request.cell)
       )
     );
-    await this.context.client.reply(result).submit();
+    await this.context.client.reply(Message.from(result as object)).submit();
   }
 }
 

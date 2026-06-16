@@ -52,19 +52,19 @@ import {
 } from './channel-envelope';
 
 export interface ZLinkChannelClientTransport {
-  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void>;
+  send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): Promise<void>;
   request<TReply>(
     channelName: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
-  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSpotPublisherClientTransport {
-  publishSpot(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void>;
+  publishSpot(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkRouteClientTransport {
@@ -72,14 +72,14 @@ export interface ZLinkRouteClientTransport {
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    message: unknown,
+    message: Message,
     signal?: AbortSignal
   ): Promise<void>;
   request<TReply>(
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply>;
@@ -88,21 +88,21 @@ export interface ZLinkRouteClientTransport {
 export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport {
   constructor(private readonly manager: () => ZLinkChannelRuntimeManager | undefined) {}
 
-  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+  async send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): Promise<void> {
     return this.requireManager().send(channelName, packetName, message, signal);
   }
 
   async request<TReply>(
     channelName: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
     return this.requireManager().request(channelName, packetName, request, timeoutMs, signal);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void> {
     return this.requireManager().publish(channelName, topic, packetName, event, signal);
   }
 
@@ -122,7 +122,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    message: unknown,
+    message: Message,
     signal?: AbortSignal
   ): Promise<void> {
     return this.requireManager().routeSend(routerChannelId, targetNodeRid, packetName, message, signal);
@@ -132,7 +132,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
@@ -141,15 +141,15 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
 
   async sendToSpot(
     remoteAddress: ZLinkSpotRemoteAddress,
-    message: unknown,
+    message: Message,
     options: { readonly packetName?: string; readonly signal?: AbortSignal }
   ): Promise<void> {
     return this.requireManager().routeSendToSpot(remoteAddress, options.packetName, message, options.signal);
   }
 
-  async requestToSpot<TRequest, TReply = unknown>(
+  async requestToSpot<TReply = unknown>(
     remoteAddress: ZLinkSpotRemoteAddress,
-    request: TRequest,
+    request: Message,
     options: { readonly packetName?: string; readonly timeoutMs?: number; readonly signal?: AbortSignal }
   ): Promise<TReply> {
     return this.requireManager().routeRequestToSpot<TReply>(
@@ -245,7 +245,7 @@ export class ZLinkChannelRuntimeManager {
     return tasks;
   }
 
-  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+  async send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     const dealer = this.sockets.clientDealer(channelName);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message, undefined, undefined, this.codecs) as readonly Message[];
@@ -258,7 +258,7 @@ export class ZLinkChannelRuntimeManager {
   async request<TReply>(
     channelName: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
@@ -288,7 +288,7 @@ export class ZLinkChannelRuntimeManager {
     );
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     const publisher = this.sockets['publisher'](channelName);
     const parts = encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic, this.codecs) as readonly Message[];
@@ -306,7 +306,7 @@ export class ZLinkChannelRuntimeManager {
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    message: unknown,
+    message: Message,
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
@@ -322,7 +322,7 @@ export class ZLinkChannelRuntimeManager {
     routerChannelId: string,
     targetNodeRid: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
@@ -356,7 +356,7 @@ export class ZLinkChannelRuntimeManager {
   async routeSendToSpot(
     remoteAddress: ZLinkSpotRemoteAddress,
     packetName: string | undefined,
-    message: unknown,
+    message: Message,
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
@@ -371,7 +371,7 @@ export class ZLinkChannelRuntimeManager {
   async routeRequestToSpot<TReply>(
     remoteAddress: ZLinkSpotRemoteAddress,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
@@ -638,7 +638,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     private readonly publisher?: PubSocket
   ) {}
 
-  async send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): Promise<void> {
+  async send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     appendParts(
       this.dealer.send(),
@@ -649,7 +649,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
   async request<TReply>(
     channelName: string,
     packetName: string | undefined,
-    request: unknown,
+    request: Message,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
@@ -665,7 +665,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     return decodeChannelReply<TReply>(reply);
   }
 
-  async publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): Promise<void> {
+  async publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');
@@ -1042,31 +1042,35 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
     private readonly transport?: ZLinkChannelClientTransport
   ) {}
 
-  send<TMessage>(channelNameOrMessage: string | TMessage, maybeMessage?: TMessage): ZLinkSendCall {
-    const channelName = typeof channelNameOrMessage === 'string' ? channelNameOrMessage : '';
-    const message = typeof channelNameOrMessage === 'string' ? maybeMessage : channelNameOrMessage;
+  send(message: Message): ZLinkSendCall {
+    return this.sendInternal('', message);
+  }
+
+  request(request: Message): ZLinkRequestCall {
+    return this.requestInternal('', request);
+  }
+
+  sendToChannel(channelName: string, message: Message): ZLinkSendCall {
+    return this.sendInternal(channelName, message);
+  }
+
+  requestToChannel(channelName: string, request: Message): ZLinkRequestCall {
+    return this.requestInternal(channelName, request);
+  }
+
+  private sendInternal(channelName: string, message: Message): ZLinkSendCall {
     return new DefaultZLinkSendCall(
       () => this.requireClientChannel(channelName),
       (packetName, signal) => this.requireTransport().send(channelName, packetName, message, signal)
     );
   }
 
-  request<TRequest>(channelNameOrRequest: string | TRequest, maybeRequest?: TRequest): ZLinkRequestCall {
-    const channelName = typeof channelNameOrRequest === 'string' ? channelNameOrRequest : '';
-    const request = typeof channelNameOrRequest === 'string' ? maybeRequest : channelNameOrRequest;
+  private requestInternal(channelName: string, request: Message): ZLinkRequestCall {
     return new DefaultZLinkRequestCall(
       () => this.requireClientChannel(channelName),
       (packetName, timeoutMs, signal) => this.requireTransport().request(channelName, packetName, request, timeoutMs, signal),
       this.registration.requestTimeoutMs
     );
-  }
-
-  sendToChannel<TMessage>(channelName: string, message: TMessage): ZLinkSendCall {
-    return this.send(channelName, message);
-  }
-
-  requestToChannel<TRequest>(channelName: string, request: TRequest): ZLinkRequestCall {
-    return this.request(channelName, request);
   }
 
   private requireClientChannel(channelName: string): void {
@@ -1130,18 +1134,19 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
     private readonly transport?: ZLinkChannelClientTransport
   ) {}
 
-  publish<TEvent>(topicOrChannelName: string, eventOrTopic: TEvent | string, maybeEvent?: TEvent): ZLinkPublishCall {
-    const channelName = maybeEvent === undefined ? '' : topicOrChannelName;
-    const topic = maybeEvent === undefined ? topicOrChannelName : String(eventOrTopic);
-    const event = maybeEvent === undefined ? eventOrTopic : maybeEvent;
+  publish(topic: string, event: Message): ZLinkPublishCall {
+    return this.publishInternal('', topic, event);
+  }
+
+  publishToChannel(channelName: string, topic: string, event: Message): ZLinkPublishCall {
+    return this.publishInternal(channelName, topic, event);
+  }
+
+  private publishInternal(channelName: string, topic: string, event: Message): ZLinkPublishCall {
     return new DefaultZLinkPublishCall(
       () => this.requirePublisherChannel(channelName),
       (packetName, signal) => this.requireTransport().publish(channelName, topic, packetName, event, signal)
     );
-  }
-
-  publishToChannel<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall {
-    return this.publish(channelName, topic, event);
   }
 
   private requirePublisherChannel(channelName: string): void {
@@ -1164,14 +1169,14 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     private readonly transport?: ZLinkRouteClientTransport
   ) {}
 
-  send<TMessage>(routerChannelId: string, targetNodeRid: string, message: TMessage): ZLinkSendCall {
+  send(routerChannelId: string, targetNodeRid: string, message: Message): ZLinkSendCall {
     return new DefaultZLinkSendCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, signal) => this.requireTransport().send(routerChannelId, targetNodeRid, packetName, message, signal)
     );
   }
 
-  request<TRequest>(routerChannelId: string, targetNodeRid: string, request: TRequest): ZLinkRequestCall {
+  request(routerChannelId: string, targetNodeRid: string, request: Message): ZLinkRequestCall {
     return new DefaultZLinkRequestCall(
       () => this.requireRouteChannel(routerChannelId),
       (packetName, timeoutMs, signal) => this.requireTransport().request(routerChannelId, targetNodeRid, packetName, request, timeoutMs, signal),
@@ -1199,7 +1204,7 @@ export class DefaultZLinkSpotPublisherClient implements ZLinkSpotPublisherClient
     private readonly transport?: ZLinkSpotPublisherClientTransport
   ) {}
 
-  publishSpot<TEvent>(channelName: string, topic: string, event: TEvent): ZLinkPublishCall {
+  publishSpot(channelName: string, topic: string, event: Message): ZLinkPublishCall {
     return new DefaultZLinkPublishCall(
       () => this.requireSpotPublisherChannel(channelName),
       (packetName, signal) => this.requireTransport().publishSpot(channelName, topic, packetName, event, signal)

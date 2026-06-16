@@ -223,7 +223,7 @@ final class StreamSessionTest {
             if (!"Ping".equals(header.packetName())) {
                 throw new IllegalArgumentException("unexpected packet: " + header.packetName());
             }
-            context.client().reply("pong").submit().toCompletableFuture().join();
+            context.client().reply(Message.from("pong").withPacketName("Pong")).submit().toCompletableFuture().join();
         }
     }
 
@@ -266,7 +266,7 @@ final class StreamSessionTest {
                         .joinEntrySpot(RoutingId.from("play-node"))
                         .submit()
                         .thenCompose(ignored -> context.actors().bind(actor)))
-                    .thenCompose(ignored -> context.client().reply("bound").submit())
+                    .thenCompose(ignored -> context.client().reply(Message.from("bound").withPacketName("Bound")).submit())
                     .toCompletableFuture()
                     .join();
                 return;

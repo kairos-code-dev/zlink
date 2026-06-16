@@ -12,7 +12,6 @@ import systems.zlink.stream.connector.ZLinkStreamLifecycleCall
 import systems.zlink.stream.connector.ZLinkStreamMessage
 import systems.zlink.stream.connector.ZLinkStreamRequestCall
 import systems.zlink.stream.connector.ZLinkStreamSendCall
-import systems.zlink.stream.connector.ZLinkStreamTypedRequestCall
 import systems.zlink.stream.connector.ZLinkStreamWaitCall
 
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector =
@@ -46,13 +45,7 @@ class ZLinkKotlinStreamConnector(
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall =
         ZLinkKotlinSendCall(inner.send(payload))
 
-    fun send(payload: Any): ZLinkKotlinSendCall =
-        ZLinkKotlinSendCall(inner.send(payload))
-
     fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall =
-        inner.request(payload)
-
-    fun request(payload: Any): ZLinkStreamTypedRequestCall =
         inner.request(payload)
 
     inline fun <reified TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload> =
@@ -87,7 +80,7 @@ class ZLinkKotlinSendCall(
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload =
     submit().await()
 
-suspend inline fun <reified TReply> ZLinkStreamTypedRequestCall.await(): TReply =
+suspend inline fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply =
     submit(TReply::class.java).await()
 
 suspend inline fun <reified TPayload> ZLinkStreamWaitCall.await(): ZLinkStreamMessage<TPayload> =

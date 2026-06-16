@@ -93,7 +93,6 @@ session 객체는 stream 객체를 직접 인자로 받지 않는다. session �
 ```java
 context.client()
     .send(new Welcome("player-42"))
-    .packetName("Welcome")
     .submit();
 ```
 

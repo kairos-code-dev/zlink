@@ -98,24 +98,33 @@ public final class UserHandlers {
 ## 5. Options 예시
 
 ```java
+@ZLinkPacket("profile.get")
+public record GetProfilePacket(String accountId) {
+}
+
 var reply = client.requestToChannel(
     "profile",
-    new GetProfileRequest(accountId)
+    new GetProfilePacket(accountId)
 ).timeout(Duration.ofMillis(200))
- .packetName("profile.get")
  .submit(GetProfileReply.class);
 ```
 
-기본은 payload 타입 이름이고, `packetName`은 정말 필요할 때만 override한다.
+기본은 payload 타입 이름이다. 타입 이름 대신 외부 계약 이름을 써야 하면 payload 타입에
+`@ZLinkPacket(...)`을 붙인다. 같은 payload 타입을 호출마다 다른 packet 이름으로 보내야
+하는 예외에서만 `packetName(...)`을 per-call override로 쓴다.
 
 ## 6. 일반 event publish
 
 ```java
+@ZLinkPacket("profile.cache-refreshed")
+public record ProfileCacheRefreshedEvent(String accountId) {
+}
+
 CompletionStage<Void> submitted = fanoutClient.publish(
     "profile",
     "profile.cache-refreshed",
-    new ProfileCacheRefreshed(accountId)
-).packetName("profile.cache-refreshed")
+    new ProfileCacheRefreshedEvent(accountId)
+)
  .submit();
 ```
 

@@ -7,7 +7,7 @@ import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 
 @ZLinkHandlerGroup("api")
 public final class AuthenticatePlayerHandler {
-    @ZLinkRequest(packetName = "AuthenticatePlayerReq")
+    @ZLinkRequest
     public AuthenticatePlayerRes handle(AuthenticatePlayerReq request) {
         String actorId = request.accessToken().trim();
         if (actorId.isBlank()) {

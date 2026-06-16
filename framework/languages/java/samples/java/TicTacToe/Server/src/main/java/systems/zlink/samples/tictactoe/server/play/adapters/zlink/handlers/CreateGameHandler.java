@@ -29,7 +29,7 @@ public final class CreateGameHandler {
         this.gameCreator = gameCreator;
     }
 
-    @ZLinkRequest(packetName = "CreateGameReq")
+    @ZLinkRequest
     public CreateGameRes create(CreateGameReq request) {
         TicTacToeGameCreator.GameRoom room = gameCreator.nextRoom(request.gameName());
         await(spots.getObject().create(TicTacToeGame.class, RoutingId.from(room.roomId())));

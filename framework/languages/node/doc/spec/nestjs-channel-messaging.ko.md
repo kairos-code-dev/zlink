@@ -934,8 +934,12 @@ const reply = await client
   .timeout(200)
   .submit<GetProfileReply>();
 
+interface RefreshProfileCachePayload {
+  readonly accountId: string;
+}
+
 await client
-  .sendToChannel('profile', new RefreshProfileCacheCommand(accountId))
+  .sendToChannel('profile', { accountId } satisfies RefreshProfileCachePayload)
   .packetName('profile.refresh-cache')
   .submit();
 ```

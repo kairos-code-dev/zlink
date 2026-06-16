@@ -288,9 +288,9 @@ server push를 기다릴 때는 codec helper가 아니라 기본 connector의 wa
 core wait builder의 `where`를 사용한다. sample client는 server push를 기다릴 때
 connector member `waitFor(...).where(...).submit(...)` 또는 Kotlin wrapper
 `waitFor<T>(...).where { ... }.await()` 형태를 사용한다.
-첫 구현의 typed helper는 기본 connector smoke와 같은 `String`, `byte[]`, `Message`
-payload를 지원한다. 복합 DTO 직렬화는 JSON/MessagePack/Protobuf 라이브러리 선택과
-schema 정책이 닫힌 뒤 확장한다.
+typed helper는 codec helper가 encode/decode할 수 있는 업무 객체 payload를 기준으로
+동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 typed helper의 유일한 대상이
+아니라, 기본 connector 표면과 codec helper 양쪽에서 함께 다루는 하위 경로다.
 
 Kotlin extension은 typed helper 위에 얇게 얹는다.
 

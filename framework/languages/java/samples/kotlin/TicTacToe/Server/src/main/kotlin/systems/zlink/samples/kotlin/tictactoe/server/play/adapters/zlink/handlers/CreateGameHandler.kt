@@ -19,7 +19,7 @@ class CreateGameHandler(
     private val settings: SampleSettings,
     private val gameCreator: TicTacToeGameCreator,
 ) {
-    @ZLinkRequest(packetName = "CreateGameReq")
+    @ZLinkRequest
     suspend fun create(request: CreateGameReq): CreateGameRes {
         val room = gameCreator.nextRoom(request.gameName)
         spots.getObject().create(TicTacToeGame::class.java, RoutingId.from(room.roomId)).await()

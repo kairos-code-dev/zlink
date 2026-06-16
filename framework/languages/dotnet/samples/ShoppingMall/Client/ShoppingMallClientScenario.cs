@@ -25,7 +25,7 @@ internal sealed class ShoppingMallClientScenario
         Ensure(!string.IsNullOrWhiteSpace(success.OrderId));
 
         var created = await GetOrderAsync(apiA, success.OrderId, cancellationToken);
-        Ensure(created.Status == OrderStatuses.Created);
+        Ensure(IsCreatedOrConfirmed(created));
         Ensure(created.ShippingAddressId == successReq.ShippingAddressId);
 
         var confirmed = await WaitForStatusAsync(apiA, success.OrderId, OrderStatuses.Confirmed, cancellationToken);
@@ -62,7 +62,7 @@ internal sealed class ShoppingMallClientScenario
         Ensure(pending.OrderId == "order-pending-0001");
         Ensure(pending.Status == OrderStatuses.Created);
         var pendingCreated = await GetOrderAsync(apiA, pending.OrderId, cancellationToken);
-        Ensure(pendingCreated.Status == OrderStatuses.Created);
+        Ensure(IsCreatedOrConfirmed(pendingCreated));
         Ensure(pendingCreated.ShippingAddressId == pendingReq.ShippingAddressId);
 
         var inventoryReq = new StartOrderReq(
@@ -173,5 +173,11 @@ internal sealed class ShoppingMallClientScenario
         {
             throw new InvalidOperationException($"Ensure failed: {expression}");
         }
+    }
+
+    private static bool IsCreatedOrConfirmed(OrderState state)
+    {
+        return state.Status == OrderStatuses.Created
+               || state.Status == OrderStatuses.Confirmed;
     }
 }

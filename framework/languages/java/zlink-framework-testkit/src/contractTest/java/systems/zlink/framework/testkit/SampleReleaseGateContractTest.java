@@ -561,7 +561,8 @@ final class SampleReleaseGateContractTest {
                 && !apiSource.contains("addRequestHandler"),
             "TicTacToe direct sample must expose the Api server role through annotation-discovered handlers");
         assertTrue(authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
-                && authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
+                && authHandlerSource.contains("@ZLinkRequest")
+                && !authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
                 && createGameHandlerSource.contains("@RequestBody")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),
@@ -925,7 +926,8 @@ final class SampleReleaseGateContractTest {
                 && !apiSource.contains("addRequestHandler"),
             "Kotlin TicTacToe direct sample must expose the Api server role through annotation-discovered handlers");
         assertTrue(authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
-                && authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
+                && authHandlerSource.contains("@ZLinkRequest")
+                && !authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
                 && createGameHandlerSource.contains("@RequestBody")
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),

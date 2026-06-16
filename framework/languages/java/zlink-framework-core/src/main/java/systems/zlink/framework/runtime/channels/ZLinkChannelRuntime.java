@@ -58,6 +58,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkRoutedSpotRelayPackets;
 
 public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, AutoCloseable {
@@ -276,47 +277,57 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
     }
 
     @Override
-    public ZLinkSendCall sendToChannel(String channelName, Message message) {
+    public ZLinkSendCall sendToChannel(String channelName, Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
         return new SendCall(
             requireClient(channelName),
-            Message.from(message),
-            Optional.of(defaultPacketName(message)));
+            encoded.payload(),
+            Optional.of(encoded.packetName()));
     }
 
     @Override
-    public ZLinkRequestCall requestToChannel(String channelName, Message message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
         return new RequestCall(
             requireClient(channelName),
-            Message.from(message),
-            Optional.of(defaultPacketName(message)),
+            encoded.payload(),
+            Optional.of(encoded.packetName()),
             defaultTimeout);
     }
 
     @Override
-    public ZLinkPublishCall publish(String channelName, String topic, Message message) {
+    public ZLinkPublishCall publish(String channelName, String topic, Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
         return new PublishCall(
             requirePublisher(channelName),
             topic,
-            Message.from(message),
-            Optional.of(defaultPacketName(message)));
+            encoded.payload(),
+            Optional.of(encoded.packetName()));
     }
 
     @Override
-    public ZLinkSendCall sendTo(String channelName, RoutingId target, Message message) {
+    public ZLinkSendCall sendTo(String channelName, RoutingId target, Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSendCall(
             requireRouteRouter(channelName),
             target,
-            Message.from(message),
-            Optional.of(defaultPacketName(message)));
+            encoded.payload(),
+            Optional.of(encoded.packetName()));
     }
 
     @Override
-    public ZLinkRequestCall requestTo(String channelName, RoutingId target, Message message) {
+    public ZLinkRequestCall requestTo(String channelName, RoutingId target, Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteRequestCall(
             requireRouteRouter(channelName),
             target,
-            Message.from(message),
-            Optional.of(defaultPacketName(message)),
+            encoded.payload(),
+            Optional.of(encoded.packetName()),
             defaultTimeout);
     }
 
@@ -1659,13 +1670,6 @@ public final class ZLinkChannelRuntime implements ZLinkClient, ZLinkFanoutClient
             return List.of(payload);
         }
         return List.of(Message.from(packetName.get().getBytes(StandardCharsets.UTF_8)), payload);
-    }
-
-    private static String defaultPacketName(Message message) {
-        if (message == null) {
-            return "Null";
-        }
-        return message.packetName().orElse("Message");
     }
 
     public interface SpotRelayIngress {

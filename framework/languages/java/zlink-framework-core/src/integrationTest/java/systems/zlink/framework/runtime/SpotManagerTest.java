@@ -306,7 +306,7 @@ final class SpotManagerTest {
             PublishingSpot.ticks.incrementAndGet();
             spot.context()
                 .outbound()
-                .publish("heartbeat", Message.from("tick").withPacketName("Heartbeat"))
+                .publish("heartbeat", "tick")
                 .packetName("Heartbeat")
                 .submit()
                 .thenRun(PublishingSpot.timerPublished::countDown)

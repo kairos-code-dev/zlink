@@ -31,7 +31,17 @@ public interface ZLinkStreamConnector {
 
     ZLinkStreamSendCall send(ZLinkStreamEncodedPayload payload);
 
+    default ZLinkStreamSendCall send(Object payload) {
+        Objects.requireNonNull(payload, "payload");
+        return send(encodeTypedPayload(payload));
+    }
+
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
+
+    default ZLinkStreamRequestCall request(Object payload) {
+        Objects.requireNonNull(payload, "payload");
+        return request(encodeTypedPayload(payload));
+    }
 
     AutoCloseable observeInbound(ZLinkStreamInboundObserver observer);
 
@@ -84,6 +94,12 @@ public interface ZLinkStreamConnector {
                 "typed stream payload API requires ZLinkStreamConnectorOptions.typedCodec");
         }
         return codec;
+    }
+
+    private ZLinkStreamEncodedPayload encodeTypedPayload(Object payload) {
+        return requireTypedCodec().encode(
+            options().nameResolver().resolve(payload.getClass()),
+            payload);
     }
 
 }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import java.time.Duration
+import kotlin.jvm.JvmName
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.ZLinkStreamError
@@ -45,7 +46,13 @@ class ZLinkKotlinStreamConnector(
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall =
         ZLinkKotlinSendCall(inner.send(payload))
 
+    fun send(payload: Any): ZLinkKotlinSendCall =
+        ZLinkKotlinSendCall(inner.send(payload))
+
     fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall =
+        inner.request(payload)
+
+    fun request(payload: Any): ZLinkStreamRequestCall =
         inner.request(payload)
 
     inline fun <reified TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload> =
@@ -79,6 +86,10 @@ class ZLinkKotlinSendCall(
 
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload =
     submit().await()
+
+@JvmName("awaitTyped")
+suspend inline fun <reified TReply> ZLinkStreamRequestCall.await(): TReply =
+    submit(TReply::class.java).await()
 
 suspend inline fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply =
     submit(TReply::class.java).await()

@@ -28,6 +28,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
@@ -497,14 +498,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager {
         }
 
         @Override
-        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Message request) {
+        public ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request) {
             if (spotRid == null) {
                 throw new ZLinkConfigurationException("spotRid is required");
             }
             if (request == null) {
                 throw new ZLinkConfigurationException("request is required");
             }
-            return new JoinSpotCall(this, spotRid, request, defaultTimeout);
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, request);
+            return new JoinSpotCall(this, spotRid, encoded.payload(), defaultTimeout);
         }
 
         long setBoundSession(ZLinkBoundSession boundSession) {

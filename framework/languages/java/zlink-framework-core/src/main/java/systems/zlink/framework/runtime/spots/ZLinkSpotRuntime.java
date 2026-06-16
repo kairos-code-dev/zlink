@@ -67,6 +67,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.handlers.ZLinkSuspendHandlerInvoker;
+import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -2647,8 +2648,10 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         }
 
         @Override
-        public ZLinkSendCall sendToSpot(RoutingId spotRid, Message message) {
+        public ZLinkSendCall sendToSpot(RoutingId spotRid, Object message) {
             requireRoutingId(spotRid);
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             if (channels != null && !egressChannels.isEmpty()) {
                 if (egressChannels.size() > 1) {
                     throw new ZLinkConfigurationException(
@@ -2658,20 +2661,22 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     channels,
                     egressChannels.get(0),
                     spotRid,
-                    Message.from(message),
-                    Optional.of(defaultPacketName(message)));
+                    encoded.payload(),
+                    Optional.of(encoded.packetName()));
             }
             return new SpotToSpotSendCall(
                 backendSpot,
                 nodeRid,
                 spotRid,
-                Message.from(message),
-                Optional.of(defaultPacketName(message)));
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
         }
 
         @Override
-        public ZLinkRequestCall requestToSpot(RoutingId spotRid, Message request) {
+        public ZLinkRequestCall requestToSpot(RoutingId spotRid, Object request) {
             requireRoutingId(spotRid);
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, request);
             if (channels != null && !egressChannels.isEmpty()) {
                 if (egressChannels.size() > 1) {
                     throw new ZLinkConfigurationException(
@@ -2681,44 +2686,50 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                     channels,
                     egressChannels.get(0),
                     spotRid,
-                    Message.from(request),
-                    Optional.of(defaultPacketName(request)),
+                    encoded.payload(),
+                    Optional.of(encoded.packetName()),
                     defaultTimeout);
             }
             return new SpotToSpotRequestCall(
                 backendSpot,
                 nodeRid,
                 spotRid,
-                Message.from(request),
-                Optional.of(defaultPacketName(request)),
+                encoded.payload(),
+                Optional.of(encoded.packetName()),
                 defaultTimeout);
         }
 
         @Override
-        public ZLinkPublishCall publish(String topic, Message message) {
+        public ZLinkPublishCall publish(String topic, Object message) {
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             return new SpotPublishCall(
                 backendSpot,
                 topic,
-                Message.from(message),
-                Optional.of(defaultPacketName(message)));
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
         }
 
         @Override
-        public ZLinkSendCall sendToChannel(String channelName, Message message) {
+        public ZLinkSendCall sendToChannel(String channelName, Object message) {
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             return new SpotChannelSendCall(
                 backendSpot,
                 channelName,
-                Message.from(message),
-                Optional.of(defaultPacketName(message)));
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
         }
 
         @Override
-        public ZLinkRequestCall requestToChannel(String channelName, Message request) {
+        public ZLinkRequestCall requestToChannel(String channelName, Object request) {
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, request);
             return new SpotChannelRequestCall(
                 backendSpot,
                 channelName,
-                Message.from(request),
-                Optional.of(defaultPacketName(request)),
+                encoded.payload(),
+                Optional.of(encoded.packetName()),
                 defaultTimeout);
         }
     }
@@ -2839,33 +2850,33 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
 
     private final class AmbientSpotOutbound implements ZLinkSpotOutbound {
         @Override
-        public ZLinkSendCall sendToSpot(RoutingId spotRid, Message message) {
+        public ZLinkSendCall sendToSpot(RoutingId spotRid, Object message) {
             return requireCurrentOutbound().sendToSpot(spotRid, message);
         }
 
         @Override
         public ZLinkRequestCall requestToSpot(
             RoutingId spotRid,
-            Message request) {
+            Object request) {
             return requireCurrentOutbound().requestToSpot(spotRid, request);
         }
 
         @Override
-        public ZLinkPublishCall publish(String topic, Message message) {
+        public ZLinkPublishCall publish(String topic, Object message) {
             return requireCurrentOutbound().publish(topic, message);
         }
 
         @Override
         public ZLinkSendCall sendToChannel(
             String channelName,
-            Message message) {
+            Object message) {
             return requireCurrentOutbound().sendToChannel(channelName, message);
         }
 
         @Override
         public ZLinkRequestCall requestToChannel(
             String channelName,
-            Message request) {
+            Object request) {
             return requireCurrentOutbound().requestToChannel(channelName, request);
         }
     }
@@ -2875,7 +2886,7 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         public ZLinkPublishCall publishSpot(
             String channelName,
             String topic,
-            Message message) {
+            Object message) {
             if (channelName == null || channelName.isBlank()) {
                 throw new ZLinkConfigurationException("SPOT publisher channel name is required");
             }
@@ -2886,11 +2897,13 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
                 throw new ZLinkConfigurationException(
                     "SPOT publisher client is not configured: " + channelName);
             }
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             return new ExternalSpotPublishCall(
                 channelName,
                 topic,
-                Message.from(message),
-                Optional.of(defaultPacketName(message)));
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
         }
     }
 
@@ -3340,13 +3353,6 @@ public final class ZLinkSpotRuntime implements ZLinkSpotManager, ZLinkChannelRun
         return packetName
             .map(name -> List.of(Message.from(name.getBytes(StandardCharsets.UTF_8)), payload))
             .orElseGet(() -> List.of(payload));
-    }
-
-    private static String defaultPacketName(Message message) {
-        if (message == null) {
-            return "Null";
-        }
-        return message.packetName().orElse("Message");
     }
 
     private static ParsedPacket parsePacket(List<Message> parts) {

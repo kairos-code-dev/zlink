@@ -24,6 +24,7 @@ import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
+import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
@@ -372,25 +373,29 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         }
 
         @Override
-        public ZLinkSessionSendCall send(Message message) {
+        public ZLinkSessionSendCall send(Object message) {
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             return new SessionSendCall(
                 stream,
                 routingId,
-                Message.from(message),
-                defaultPacketName(message),
+                encoded.payload(),
+                encoded.packetName(),
                 Map.of(),
                 false,
                 defaultCodec);
         }
 
         @Override
-        public ZLinkSessionReplyCall reply(Message message) {
+        public ZLinkSessionReplyCall reply(Object message) {
+            ZLinkPayloadEncoding.EncodedPayload encoded =
+                ZLinkPayloadEncoding.encode(serializer, message);
             return new SessionReplyCall(
                 stream,
                 routingId,
-                Message.from(message),
+                encoded.payload(),
                 context,
-                defaultPacketName(message),
+                encoded.packetName(),
                 Map.of(),
                 false);
         }
@@ -522,13 +527,6 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 payload.close();
             }
         }
-    }
-
-    private static String defaultPacketName(Message message) {
-        if (message == null) {
-            return "Null";
-        }
-        return message.packetName().orElse("Message");
     }
 
     private static ZLinkStreamCodec defaultCodec(ZLinkFrameworkRegistration registration) {

@@ -1686,7 +1686,7 @@ final class SpotRuntimeFakeBackendTest {
     public record SpotQuestion(String value) {
     }
 
-    private static Message message(String value, String packetName) {
-        return Message.from(value).withPacketName(packetName);
+    private static String message(String value, String packetName) {
+        return value;
     }
 }

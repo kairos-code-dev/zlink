@@ -2,7 +2,6 @@ package systems.zlink.framework.actors;
 
 import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -17,7 +16,7 @@ public interface ZLinkActorContext {
 
     <TSpot extends ZLinkSpot> TSpot getSpot(Class<TSpot> spotType);
 
-    default ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Message request) {
+    default ZLinkActorJoinSpotCall joinSpot(RoutingId spotRid, Object request) {
         throw new ZLinkConfigurationException(
             "joinSpot is only available on framework-managed actor contexts");
     }

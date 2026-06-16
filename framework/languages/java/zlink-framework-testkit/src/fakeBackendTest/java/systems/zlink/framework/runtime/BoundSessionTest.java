@@ -37,7 +37,7 @@ final class BoundSessionTest {
 
             actor.context()
                 .boundSession()
-                .send(Message.from("push").withPacketName("Push"))
+                .send("push")
                 .packetName("Push")
                 .submit()
                 .toCompletableFuture()

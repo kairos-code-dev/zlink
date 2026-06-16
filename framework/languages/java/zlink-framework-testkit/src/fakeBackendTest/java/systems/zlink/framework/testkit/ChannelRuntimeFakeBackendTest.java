@@ -9,7 +9,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkPacket;
@@ -25,13 +24,13 @@ final class ChannelRuntimeFakeBackendTest {
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.client()
-                .sendToChannel("profile", Message.from("hello").withPacketName("Greeting"))
+                .sendToChannel("profile", "hello")
                 .packetName("Greeting")
                 .submit()
                 .toCompletableFuture()
                 .join();
             String reply = runtime.client()
-                .requestToChannel("profile", Message.from("question").withPacketName("Question"))
+                .requestToChannel("profile", "question")
                 .packetName("Question")
                 .submit(String.class)
                 .toCompletableFuture()
@@ -157,7 +156,7 @@ final class ChannelRuntimeFakeBackendTest {
     public record ProfileQuestion(String value) {
     }
 
-    private static Message message(String value, String packetName) {
-        return Message.from(value).withPacketName(packetName);
+    private static String message(String value, String packetName) {
+        return value;
     }
 }

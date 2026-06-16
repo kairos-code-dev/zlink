@@ -11,7 +11,6 @@ import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory;
@@ -93,12 +92,12 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkSendCall sendToChannel(String channelName, Message message) {
+    public ZLinkSendCall sendToChannel(String channelName, Object message) {
         return requireRuntime().client().sendToChannel(channelName, message);
     }
 
     @Override
-    public ZLinkRequestCall requestToChannel(String channelName, Message message) {
+    public ZLinkRequestCall requestToChannel(String channelName, Object message) {
         return requireRuntime().client().requestToChannel(channelName, message);
     }
 
@@ -106,7 +105,7 @@ public final class ZLinkFrameworkLifecycle
     public ZLinkPublishCall publish(
         String channelName,
         String topic,
-        Message message) {
+        Object message) {
         return requireRuntime().fanout().publish(channelName, topic, message);
     }
 
@@ -114,7 +113,7 @@ public final class ZLinkFrameworkLifecycle
     public ZLinkSendCall sendTo(
         String channelName,
         RoutingId target,
-        Message message) {
+        Object message) {
         return requireRuntime().route().sendTo(channelName, target, message);
     }
 
@@ -122,7 +121,7 @@ public final class ZLinkFrameworkLifecycle
     public ZLinkRequestCall requestTo(
         String channelName,
         RoutingId target,
-        Message message) {
+        Object message) {
         return requireRuntime().route().requestTo(channelName, target, message);
     }
 

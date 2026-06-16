@@ -1,9 +1,7 @@
 package systems.zlink.framework.streams;
 
-import systems.zlink.contracts.messaging.Message;
-
 public interface ZLinkSessionClient {
-    ZLinkSessionSendCall send(Message message);
+    ZLinkSessionSendCall send(Object message);
 
-    ZLinkSessionReplyCall reply(Message message);
+    ZLinkSessionReplyCall reply(Object message);
 }

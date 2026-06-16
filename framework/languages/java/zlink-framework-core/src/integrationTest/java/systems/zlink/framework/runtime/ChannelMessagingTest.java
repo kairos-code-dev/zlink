@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkInvocationContext;
 import systems.zlink.framework.ZLinkNext;
@@ -649,8 +648,8 @@ final class ChannelMessagingTest {
         throw new IllegalStateException("failed to allocate tcp port");
     }
 
-    private static Message message(String value) {
-        return Message.from(value).withPacketName("String");
+    private static String message(String value) {
+        return value;
     }
 
     private static boolean isBindable(int port) {

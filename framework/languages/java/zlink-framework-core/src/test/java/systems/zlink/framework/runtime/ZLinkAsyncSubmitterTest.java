@@ -30,7 +30,7 @@ final class ZLinkAsyncSubmitterTest {
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
             var submitted = runtime.fanout()
-                .publish("events", "topic", Message.from("payload").withPacketName("Event"))
+                .publish("events", "topic", "payload")
                 .packetName("Event")
                 .submit();
 
@@ -51,7 +51,7 @@ final class ZLinkAsyncSubmitterTest {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.client()
-                    .requestToChannel("profile", Message.from("hello").withPacketName("Echo"))
+                    .requestToChannel("profile", "hello")
                     .packetName("Echo")
                     .submit(String.class)
                     .toCompletableFuture()
@@ -69,7 +69,7 @@ final class ZLinkAsyncSubmitterTest {
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend());
         var pending = runtime.client()
-            .requestToChannel("profile", Message.from("hello").withPacketName("Echo"))
+            .requestToChannel("profile", "hello")
             .packetName("Echo")
             .submit(String.class)
             .toCompletableFuture();

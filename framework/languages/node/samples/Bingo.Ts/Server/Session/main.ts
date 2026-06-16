@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import { Message } from '@zlink-systems/zlink';
 import * as net from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import * as connector from '@zlink-systems/stream-connector';
@@ -153,7 +152,8 @@ async function relayToChannel(
   }
   const payload = withPlayerIdentity(request, context.actorId, context.displayName);
   return await retry(() => channelClient
-      .requestToChannel(channelName, Message.from(payload))
+      .requestToChannel(channelName, payload)
+      .packetName(packetName)
       .submit<unknown>(), { delayMs: 25, maxAttempts: 200 });
 }
 

@@ -1,11 +1,11 @@
-import type { Message, RoutingId } from '../Common';
+import type { RoutingId } from '../Common';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from './Calls';
 
 export interface ZLinkRouteClient {
-  send(routerChannelId: string, targetNodeRid: RoutingId, message: Message): ZLinkSendCall;
-  request(routerChannelId: string, targetNodeRid: RoutingId, request: Message): ZLinkRequestCall;
+  send(routerChannelId: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
+  request(routerChannelId: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
 }
 
 export interface ZLinkSpotPublisherClient {
-  publishSpot(channelName: string, topic: string, event: Message): ZLinkPublishCall;
+  publishSpot(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
 }

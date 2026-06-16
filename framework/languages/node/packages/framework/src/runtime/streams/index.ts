@@ -68,7 +68,7 @@ export interface ZLinkStreamMessageFactory {
 }
 
 export interface ZLinkBoundSessionTransport {
-  send(actorId: string, message: Message, options: ZLinkBoundSessionSendOptions): Promise<void>;
+  send(actorId: string, message: unknown, options: ZLinkBoundSessionSendOptions): Promise<void>;
   disconnect(actorId: string, options: ZLinkBoundSessionDisconnectOptions): Promise<void>;
 }
 
@@ -569,7 +569,7 @@ export class ZLinkStreamBindingRuntime {
 
   async sendBoundSession(
     actorId: string,
-    message: Message,
+    message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
@@ -957,11 +957,11 @@ class ZLinkSessionLocalActorBindings {
 class DefaultZLinkSessionClient implements ZLinkSessionClient {
   constructor(private readonly context: DefaultZLinkSessionContext) {}
 
-  send(message: Message): ZLinkSessionSendCall {
+  send(message: unknown): ZLinkSessionSendCall {
     return new DefaultZLinkSessionSendCall(this.context, message);
   }
 
-  reply(message: Message): ZLinkSessionReplyCall {
+  reply(message: unknown): ZLinkSessionReplyCall {
     return new DefaultZLinkSessionReplyCall(this.context, message);
   }
 }
@@ -1012,7 +1012,7 @@ export class DefaultZLinkBoundSession implements ZLinkBoundSession {
     private readonly actorId: string
   ) {}
 
-  send(message: Message): ZLinkBoundSessionSendCall {
+  send(message: unknown): ZLinkBoundSessionSendCall {
     return new DefaultZLinkBoundSessionSendCall(this.runtime, this.actorId, message);
   }
 
@@ -1125,7 +1125,7 @@ class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
   constructor(
     private readonly runtime: ZLinkStreamBindingRuntime,
     private readonly actorId: string,
-    private readonly message: Message
+    private readonly message: unknown
   ) {}
 
   metadata(key: string, value: string): this {
@@ -1159,7 +1159,7 @@ class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
 
   constructor(
     private readonly context: DefaultZLinkSessionContext,
-    private readonly message: Message
+    private readonly message: unknown
   ) {}
 
   metadata(key: string, value: string): this {
@@ -1206,7 +1206,7 @@ class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
 
   constructor(
     private readonly context: DefaultZLinkSessionContext,
-    private readonly message: Message
+    private readonly message: unknown
   ) {}
 
   metadata(key: string, value: string): this {

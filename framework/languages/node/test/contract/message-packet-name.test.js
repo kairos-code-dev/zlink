@@ -5,7 +5,7 @@ const zlink = require('../../../../../bindings/node/dist');
 const connector = require('../../packages/stream-connector/dist');
 const framework = require('../../packages/framework/dist/internal');
 
-test('Message.from(class instance) supplies packetName to channel send envelopes', async () => {
+test('class instance payload supplies packetName to channel send envelopes', async () => {
   class GetProfileReq {
     constructor(id) {
       this.id = id;
@@ -30,7 +30,7 @@ test('Message.from(class instance) supplies packetName to channel send envelopes
     router.bind(endpoint);
     dealer.connect(endpoint);
 
-    await client.sendToChannel('api', zlink.Message.from(new GetProfileReq(7))).submit();
+    await client.sendToChannel('api', new GetProfileReq(7)).submit();
 
     const received = await recvRouterMessage(router);
     const envelope = decodeDotnetEnvelope(received.parts);
@@ -45,7 +45,7 @@ test('Message.from(class instance) supplies packetName to channel send envelopes
   }
 });
 
-test('Message.from(class instance) supplies packetName to stream send calls', async () => {
+test('class instance payload supplies packetName to stream send calls', async () => {
   class Ready {
     constructor(ok) {
       this.ok = ok;
@@ -75,7 +75,7 @@ test('Message.from(class instance) supplies packetName to stream send calls', as
     async close() {}
   });
 
-  await context.client.send(zlink.Message.from(new Ready(true))).submit();
+  await context.client.send(new Ready(true)).submit();
 
   assert.equal(written.length, 1);
   const frame = connector.ZlinkStreamFrameCodec.decode(written[0]);

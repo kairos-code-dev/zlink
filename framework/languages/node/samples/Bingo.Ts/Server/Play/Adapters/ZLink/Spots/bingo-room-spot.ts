@@ -1,24 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
-import { BingoRoomStatus, numberDrawnNotify, playerJoinedNotify, roomJoinError, stateEnvelope, submitBingoCardRes } from '../../../../../Shared/Contracts/messages';
+import { BingoRoomStatus, numberDrawnNotify, playerJoinedNotify, stateEnvelope, submitBingoCardRes } from '../../../../../Shared/Contracts/messages';
 import { BingoRoomGame } from '../../../Domain/Bingo/bingo-room-game';
-import { createRoomSettings, roomSettingsFromPayload } from '../../../Domain/Bingo/bingo-room-models';
+import { createRoomSettings } from '../../../Domain/Bingo/bingo-room-models';
 import { BingoNotificationPublisher } from '../Notifications/bingo-notification-publisher';
 import type {
-  Message,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotCreateResponse,
   ZLinkSpotContext
 } from '@zlink-systems/framework';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
 import type {
+  BingoRoomSettings,
   BingoRoomGame as BingoRoomGameType,
   BingoRoomSnapshot
 } from '../../../Domain/Bingo/bingo-room-game';
 import type {
-  BingoRoomSettingsPayload,
-  BingoRoomJoinReq,
   SubmitBingoCardReq,
   SubmitBingoCardRes
 } from '../../../../../Shared/Contracts/messages';
@@ -50,16 +46,11 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
     BingoRoomSpot.notifications = notifications;
   }
 
-  async onCreate(request: Message): Promise<ZLinkSpotCreateResponse> {
-    const settings = roomSettingsFromPayload(request.value<BingoRoomSettingsPayload>());
+  async onInitialize(): Promise<void> {
     this.roomId = this.context.spotRid;
-    this.game = new BingoRoomGame(this.roomId, settings);
-    return { accepted: true };
   }
 
-  async onActorJoin(actor: PlayerActorType, request: Message): Promise<ZLinkSpotActorJoinResponse> {
-    const admission = request.value<BingoRoomJoinReq>();
-    actor.displayName = admission.displayName ?? actor.displayName;
+  async onActorJoin(actor: PlayerActorType): Promise<ZLinkSpotActorJoinResponse> {
     try {
       const joined = this.game.join(actor);
       const state = this.snapshot();
@@ -78,13 +69,16 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActorType> {
           this.requireNotifications().gameStarted(player.actor, stateEnvelope(this.snapshot()))
         ));
       }
-      return { accepted: true, reply: BindingMessage.from(stateEnvelope(this.snapshot())) };
+      return { accepted: true };
     } catch (error) {
       return {
-        accepted: false,
-        reply: BindingMessage.from(roomJoinError(error instanceof Error ? error.message : String(error)))
+        accepted: false
       };
     }
+  }
+
+  initializeRoom(settings: BingoRoomSettings): void {
+    this.game = new BingoRoomGame(this.roomId, settings);
   }
 
   async onJoinActor(actor: PlayerActorType): Promise<void> {

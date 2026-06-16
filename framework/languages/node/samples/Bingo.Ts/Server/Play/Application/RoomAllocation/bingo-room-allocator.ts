@@ -1,10 +1,8 @@
 import { Inject } from '@nestjs/common';
-import { Message } from '@zlink-systems/zlink';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { BingoNotificationPublisher } from '../../Adapters/ZLink/Notifications/bingo-notification-publisher';
 import { createRoomSettings } from '../../Domain/Bingo/bingo-room-models';
 import { BingoRoomSpot } from '../../Adapters/ZLink/Spots/bingo-room-spot';
-import { bingoRoomSettingsPayload } from '../../../../Shared/Contracts/messages';
 import type {
   ZLinkSpotManager
 } from '@zlink-systems/framework';
@@ -44,12 +42,13 @@ class BingoRoomAllocator {
     ) {
       this.roomSeq += 1;
       settings = createRoomSettings(mode, this.roomSeq);
-      const request = Message.from(bingoRoomSettingsPayload(settings));
-      const created = await this.spotManager.create(BingoRoomSpot, request);
-      request.close();
+      const created = await this.spotManager.create(BingoRoomSpot);
       if (created.state !== ZLinkSpotCreateState.Created) {
         throw new Error('Bingo room creation was rejected.');
       }
+      await this.executeInRoom(created.spotRid, (room) => {
+        room.initializeRoom(settings);
+      });
       this.currentRoomId = created.spotRid;
       this.currentRoomSettings = settings;
       this.reservedSeats = 0;

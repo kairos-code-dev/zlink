@@ -1,4 +1,4 @@
-import type { Message, RoutingId, Type } from '../Common';
+import type { RoutingId, Type } from '../Common';
 import type { ZLinkBoundSession } from '../Streams';
 import type { ZLinkSpot } from '../Spots';
 import type { ZLinkActorJoinEntrySpotCall, ZLinkActorJoinSpotCall } from './ZLinkActorFactory';
@@ -9,6 +9,6 @@ export interface ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
   getSpot(): ZLinkSpot;
   getSpot<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): TSpot;
-  joinSpot(spotRid: RoutingId, request?: Message): ZLinkActorJoinSpotCall;
+  joinSpot(spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall;
   joinEntrySpot(nodeRid: RoutingId): ZLinkActorJoinEntrySpotCall;
 }

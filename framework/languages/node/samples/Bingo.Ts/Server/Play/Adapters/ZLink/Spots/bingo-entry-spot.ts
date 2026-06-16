@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
-import { Message } from '@zlink-systems/zlink';
-import { bingoRoomJoinReq, matchBingoRes } from '../../../../../Shared/Contracts/messages';
+import { matchBingoRes } from '../../../../../Shared/Contracts/messages';
 import { BingoRoomAllocator } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   ZLinkEntrySpot,
@@ -9,13 +8,9 @@ import type {
 import type { BingoRoomAllocator as BingoRoomAllocatorType } from '../../../Application/RoomAllocation/bingo-room-allocator';
 import type {
   MatchBingoReq,
-  MatchBingoRes,
-  RoomJoinError,
-  StateEnvelope
+  MatchBingoRes
 } from '../../../../../Shared/Contracts/messages';
 import type { PlayerActor as PlayerActorType } from '../Actors/player-actor';
-
-type BingoJoinReply = Partial<StateEnvelope & RoomJoinError>;
 
 class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
   readonly context!: ZLinkEntrySpotContext;
@@ -24,17 +19,12 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
 
   async matchActor(actor: PlayerActorType, request: MatchBingoReq): Promise<MatchBingoRes> {
     const roomId = await this.roomDirectory.allocate(request.mode);
-    const joinRequest = Message.from(bingoRoomJoinReq(roomId, actor.actorId, actor.displayName));
-    try {
-      const joined = await actor.context.joinSpot(roomId, joinRequest).submit<BingoJoinReply>();
-      const reply: BingoJoinReply = joined.reply ?? {};
-      if (joined.resultCode !== 0) {
-        throw new Error(reply.error ?? `Room ${roomId} rejected actor '${actor.actorId}'.`);
-      }
-      return matchBingoRes(roomId, reply.state);
-    } finally {
-      joinRequest.close();
+    const joined = await actor.context.joinSpot(roomId).submit<void>();
+    if (joined.resultCode !== 0) {
+      throw new Error(`Room ${roomId} rejected actor '${actor.actorId}'.`);
     }
+    const state = await this.roomDirectory.executeInRoom(roomId, (room) => room.snapshot());
+    return matchBingoRes(roomId, state);
   }
 
   async onJoinActor(actor: PlayerActorType): Promise<void> {

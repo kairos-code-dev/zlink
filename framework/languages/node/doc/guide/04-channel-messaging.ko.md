@@ -6,9 +6,16 @@ send 는 one-way 명령에, publish 는 여러 subscriber 로 이벤트를 보�
 ## 1. request
 
 ```ts
+class GetProfileReq {
+  constructor(readonly userId: string) {}
+
+  packetName(): string {
+    return 'GetProfile';
+  }
+}
+
 await client
-  .requestToChannel('profile', { userId: 'u1' })
-  .packetName('GetProfile')
+  .requestToChannel('profile', new GetProfileReq('u1'))
   .timeout(1000)
   .submit();
 ```
@@ -19,20 +26,38 @@ await client
 ## 2. send
 
 ```ts
+class WarmProfileCmd {
+  constructor(readonly userId: string) {}
+
+  packetName(): string {
+    return 'WarmProfile';
+  }
+}
+
 await client
-  .sendToChannel('profile', { userId: 'u1' })
-  .packetName('WarmProfile')
+  .sendToChannel('profile', new WarmProfileCmd('u1'))
   .submit();
 ```
 
 ## 3. publish
 
 ```ts
+class ProfileChangedEvent {
+  constructor(readonly userId: string) {}
+
+  packetName(): string {
+    return 'ProfileChanged';
+  }
+}
+
 await fanout
-  .publish('profile.changed', { userId: 'u1' })
-  .packetName('ProfileChanged')
+  .publish('profile.changed', new ProfileChangedEvent('u1'))
   .submit();
 ```
+
+plain object를 바로 넘겨도 되지만, 그 경우 framework가 packet 이름을 추론할 수 없으면
+`.packetName(...)` override가 필요하다. guide의 기본 예시는 object payload가 타입에서
+자기 packet 이름을 제공하는 경로를 기준으로 둔다.
 
 ## 4. handler 노출
 

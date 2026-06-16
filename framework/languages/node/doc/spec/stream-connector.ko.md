@@ -35,6 +35,18 @@ observer callback은 receive 경로에서 직접 실행하지 않는다. callbac
 queue 기본 크기는 1024개 notification이다. 테스트나 제한된 client 환경에서는
 `maxInboundObserverNotifications` option으로 조정할 수 있다.
 
+## 회귀 테스트
+
+stream connector 문서는 connector 표면이 framework server 표면과 다른 책임을 가진다는 점을
+계속 유지해야 한다. 아래 회귀 항목이 이 문서와 구현을 함께 고정한다.
+
+- `test/contract/documentation-regression.test.js`
+  - spec 문서가 회귀 테스트 절을 계속 포함하는지 확인한다.
+- `test/contract/stream-connector*.test.js`
+  - connector wait builder, codec decode, inbound observer가 public surface대로 동작하는지 확인한다.
+- `samples/*`
+  - sample client가 connector helper와 `waitFor(...)`를 기본 경로로 사용하는지 확인한다.
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
 [문서 목록](../../../../doc/README.ko.md)

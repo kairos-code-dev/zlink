@@ -2,6 +2,8 @@ import { Message, type MessageLike } from '@zlink-systems/zlink';
 import { randomUUID } from 'node:crypto';
 import type { ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import { resolveFrameworkPacketName } from '../messaging/packet-name';
+import { selectDefaultSerializer } from '../messaging/payload-codec';
 
 export const JSON_CONTENT_TYPE = 'application/json';
 export const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -50,7 +52,7 @@ export function encodeChannelEnvelopeParts(
   const header: ZLinkChannelEnvelopeHeader = {
     kind,
     channelName,
-    messageName: packetName ?? resolveChannelPacketName(payload),
+    messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
     contentType: encoded.contentType,
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
@@ -72,7 +74,7 @@ export function encodeChannelPublishEnvelopeParts(
   const header: ZLinkChannelEnvelopeHeader = {
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
-    messageName: packetName ?? resolveChannelPacketName(payload),
+    messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
     contentType: encoded.contentType,
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: null,
@@ -177,29 +179,12 @@ function encodePayload(value: unknown, codecs: ZLinkChannelEnvelopeCodecRegistry
   readonly contentType: string;
   readonly message: MessageLike;
 } {
-  const serializerEntry = defaultSerializerEntry(codecs);
-  if (
-    serializerEntry !== undefined
-    && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))
-  ) {
-    const [contentType, serializer] = serializerEntry;
+  const serializer = selectDefaultSerializer(codecs);
+  if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
+    const contentType = requireDefaultSerializerContentType(codecs, serializer);
     return { contentType, message: Buffer.from(serializer.serialize(value).data()) };
   }
   return { contentType: contentTypeOf(value), message: toMessageLike(value) };
-}
-
-function defaultSerializerEntry(
-  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined
-): readonly [string, ZLinkMessageSerializer] | undefined {
-  if (codecs === undefined || codecs.serializers.size === 0) {
-    return undefined;
-  }
-  if (codecs.serializers.size === 1) {
-    return codecs.serializers.entries().next().value;
-  }
-  throw new ZLinkConfigurationException(
-    'Channel payload serializer is ambiguous because more than one serializer is registered.'
-  );
 }
 
 function toMessageLike(value: unknown): MessageLike {
@@ -230,32 +215,19 @@ function decodeChannelHeader(parts: readonly Message[]): ZLinkChannelEnvelopeHea
   return validateChannelHeader(parseWireJson(parts[0].data().toString()));
 }
 
-function resolveChannelPacketName(payload: unknown): string {
-  const messagePacketName = tryMessagePacketName(payload);
-  if (messagePacketName !== undefined) {
-    return messagePacketName;
+function requireDefaultSerializerContentType(
+  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
+  serializer: ZLinkMessageSerializer
+): string {
+  if (codecs === undefined) {
+    throw new ZLinkConfigurationException('Channel payload serializer registry is unavailable.');
   }
-  if (payload !== null && typeof payload === 'object' && 'constructor' in payload) {
-    const name = (payload as { constructor?: { name?: string } }).constructor?.name;
-    if (name !== undefined && name !== 'Object') {
-      return name;
+  for (const [contentType, registered] of codecs.serializers.entries()) {
+    if (registered === serializer) {
+      return contentType;
     }
   }
-  throw new ZLinkConfigurationException('Channel packetName is required when the payload type cannot provide one.');
-}
-
-function tryMessagePacketName(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || !('packetName' in payload)) {
-    return undefined;
-  }
-  const packetName = (payload as { packetName?: () => unknown }).packetName;
-  if (typeof packetName !== 'function') {
-    return undefined;
-  }
-  const resolved = packetName.call(payload);
-  return typeof resolved === 'string' && resolved.trim().length > 0
-    ? resolved
-    : undefined;
+  throw new ZLinkConfigurationException('Channel payload serializer is not registered under a content type.');
 }
 
 function parseWireJson(payload: string): unknown {

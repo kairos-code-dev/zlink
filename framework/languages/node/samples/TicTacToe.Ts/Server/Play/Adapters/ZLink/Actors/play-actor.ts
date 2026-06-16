@@ -1,12 +1,11 @@
 import type {
-  Message,
   ZLinkActor,
   ZLinkActorContext
 } from '@zlink-systems/framework';
 import type { TicTacToeActor } from '../../../../../Shared/Contracts/messages';
 
 type PlayClient = {
-  send(message: Message): {
+  send(message: unknown): {
     packetName(packetName: string): {
       metadata(key: string, value: string): {
         submit(signal?: AbortSignal): Promise<void>;
@@ -23,7 +22,7 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   destroyAfterEntrySpotJoin: boolean;
   disconnected: boolean;
   private nextSeq: number;
-  private client: PlayClient | null;
+  private client: PlayClient | undefined;
 
   constructor(actorId: string, displayName: string, context: ZLinkActorContext) {
     this.actorId = actorId;
@@ -32,7 +31,7 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.destroyAfterEntrySpotJoin = false;
     this.disconnected = false;
     this.nextSeq = 0;
-    this.client = null;
+    this.client = undefined;
   }
 
   attachClient(client: PlayClient): void {
@@ -42,12 +41,12 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
 
   detachClient(client: PlayClient): void {
     if (this.client === client) {
-      this.client = null;
+      this.client = undefined;
     }
   }
 
   markDisconnected(): void {
-    this.client = null;
+    this.client = undefined;
     this.disconnected = true;
   }
 
@@ -55,8 +54,8 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
     this.destroyAfterEntrySpotJoin = true;
   }
 
-  async push(packetName: string, payload: Message): Promise<void> {
-    if (this.client === null) {
+  async push(packetName: string, payload: unknown): Promise<void> {
+    if (this.client === undefined) {
       return;
     }
     this.nextSeq += 1;

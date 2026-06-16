@@ -1,7 +1,5 @@
-import type { Message } from '../Common';
-
 export interface ZLinkBoundSession {
-  send(message: Message): ZLinkBoundSessionSendCall;
+  send(message: unknown): ZLinkBoundSessionSendCall;
   disconnect(signal?: AbortSignal): Promise<void>;
 }
 

@@ -25,6 +25,7 @@ import {
   ZLinkFrameworkException
 } from '../../contracts';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
+import type { ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import type {
   ZLinkBackendActorJoinEntrySpotResult,
@@ -32,10 +33,15 @@ import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
+import {
+  decodeFrameworkPayloadMessage,
+  encodeFrameworkPayloadMessage
+} from '../messaging/payload-codec';
 
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
   readonly joinCoordinator?: ZLinkActorJoinCoordinator;
+  readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly nativeActorNode?: ZLinkBackendSpotNode;
   readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
   readonly actorCreatedNotifier?: (
@@ -58,7 +64,7 @@ export interface ZLinkActorJoinCoordinator {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult>;
+  ): Promise<ZLinkActorJoinResult<Message>>;
   joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
@@ -193,7 +199,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const factory = await this.createFactory(actorType);
     const context = state.ensureContext(
       this.options.joinCoordinator,
-      this.options.boundSessionFactory
+      this.options.boundSessionFactory,
+      this.options.messageSerializers
     );
     const actor = await factory.create(actorId, context, signal);
     try {
@@ -307,10 +314,16 @@ export class ZLinkActorRuntimeState {
 
   ensureContext(
     joinCoordinator: ZLinkActorJoinCoordinator | undefined,
-    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined
+    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
+    messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ): ZLinkActorContext {
     if (this.context === undefined) {
-      this.context = new DefaultZLinkActorContext(this, joinCoordinator, boundSessionFactory);
+      this.context = new DefaultZLinkActorContext(
+        this,
+        joinCoordinator,
+        boundSessionFactory,
+        messageSerializers
+      );
     }
     return this.context;
   }
@@ -426,7 +439,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult> {
+  ): Promise<ZLinkActorJoinResult<Message>> {
     throwIfAborted(signal);
     const actorRef = state.ensureNativeActorRef(this.options.node);
     const { result, parts } = await new Promise<{
@@ -527,7 +540,8 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
   constructor(
     private readonly state: ZLinkActorRuntimeState,
     private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined,
-    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined
+    boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {
     this.boundSession = boundSessionFactory?.(state.actorId) ?? new UnboundZLinkSession();
   }
@@ -551,14 +565,14 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     return spot;
   }
 
-  joinSpot(spotRid: RoutingId, request?: Message): ZLinkActorJoinSpotCall {
+  joinSpot(spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
     return new DefaultZLinkActorJoinSpotCall(
       this.state,
       this.requireActor(),
       this.requireJoinCoordinator(),
       spotRid,
-      request ?? BindingMessage.from(Buffer.alloc(0)),
-      request === undefined
+      request,
+      this.messageSerializers
     );
   }
 
@@ -868,8 +882,8 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     private readonly actor: ZLinkActor,
     private readonly coordinator: ZLinkActorJoinCoordinator,
     private readonly spotRid: RoutingId,
-    private readonly request: Message,
-    private readonly ownsRequest: boolean
+    private readonly request: unknown,
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {}
 
   timeout(timeoutMs: number): this {
@@ -877,41 +891,32 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     return this;
   }
 
-  async submit<TReply = Message>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+  async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
+    const requestMessage = this.request === undefined
+      ? BindingMessage.from(Buffer.alloc(0))
+      : encodeFrameworkPayloadMessage(this.request, this.messageSerializers);
+    const ownsRequest = this.request === undefined || !isMessage(this.request);
     try {
       const result = await this.coordinator.joinSpot(
         this.actor,
         this.state,
         this.spotRid,
-        this.request,
+        requestMessage,
         this.timeoutMs,
         signal
       );
       return {
         ...result,
-        reply: result.reply === undefined ? undefined : decodeJoinReply<TReply>(result.reply)
+        reply: result.reply === undefined
+          ? undefined
+          : decodeFrameworkPayloadMessage<TReply>(result.reply, this.messageSerializers)
       };
     } finally {
-      if (this.ownsRequest) {
-        this.request.close();
+      if (ownsRequest) {
+        requestMessage.close();
       }
     }
   }
-}
-
-function decodeJoinReply<TReply>(reply: Message): TReply {
-  const state = reply as unknown as {
-    _hasValue?: boolean;
-    _value?: unknown;
-  };
-  if (state._hasValue === true) {
-    return state._value as TReply;
-  }
-  const data = reply.data();
-  if (data.length === 0) {
-    return undefined as TReply;
-  }
-  return JSON.parse(data.toString('utf8')) as TReply;
 }
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
@@ -982,6 +987,12 @@ function toFrameworkActorRef(actor: ZLinkBackendActorRef): ActorRef {
 
 function packetKey(kind: ZLinkActorPacketKind, actorType: Type<ZLinkActor>, packetName: string): string {
   return `${kind}:${actorType.name}:${packetName}`;
+}
+
+function isMessage(value: unknown): value is Message {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { data?: unknown }).data === 'function';
 }
 
 function actorDispatchHandlerNotFound(message: string): ZLinkFrameworkException {

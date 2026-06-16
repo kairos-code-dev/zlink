@@ -1,8 +1,8 @@
-import type { ActorRef, Message } from '../Common';
+import type { ActorRef } from '../Common';
 import type { ZLinkActor } from './ZLinkActor';
 import type { ZLinkActorContext } from './ZLinkActorContext';
 
-export interface ZLinkActorJoinResult<TReply = Message> {
+export interface ZLinkActorJoinResult<TReply = unknown> {
   readonly resultCode: number;
   readonly actor: ActorRef;
   readonly reply?: TReply;
@@ -10,7 +10,7 @@ export interface ZLinkActorJoinResult<TReply = Message> {
 
 export interface ZLinkActorJoinSpotCall {
   timeout(timeoutMs: number): this;
-  submit<TReply = Message>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+  submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall {

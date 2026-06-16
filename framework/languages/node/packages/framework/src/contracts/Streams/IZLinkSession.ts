@@ -27,8 +27,8 @@ export interface ZLinkSessionContext {
 }
 
 export interface ZLinkSessionClient {
-  send(message: Message): ZLinkSessionSendCall;
-  reply(message: Message): ZLinkSessionReplyCall;
+  send(message: unknown): ZLinkSessionSendCall;
+  reply(message: unknown): ZLinkSessionReplyCall;
 }
 
 export interface ZLinkSessionSendCall {

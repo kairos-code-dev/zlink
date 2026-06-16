@@ -34,9 +34,16 @@ const game = await manager.find(result.spotRid);
 Spot 안에서는 `context.outbound` 를 통해 channel 또는 다른 Spot 으로 보낸다.
 
 ```ts
+class LoadMatchReq {
+  constructor(readonly gameId: string) {}
+
+  packetName(): string {
+    return 'LoadMatch';
+  }
+}
+
 await spot.context.outbound
-  .requestToChannel('match.api', { gameId })
-  .packetName('LoadMatch')
+  .requestToChannel('match.api', new LoadMatchReq(gameId))
   .submit();
 ```
 

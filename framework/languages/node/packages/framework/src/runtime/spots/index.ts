@@ -1153,11 +1153,11 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly routedTransport?: ZLinkSpotRoutedTransport
   ) {}
 
-  sendToSpot(spotRid: RoutingId, message: Message): ZLinkSendCall {
+  sendToSpot(spotRid: RoutingId, message: unknown): ZLinkSendCall {
     return wrapRoutedSpotSendCall(this.serial, this.requireRemoteAddressResolver(), this.requireRoutedTransport(), spotRid, message);
   }
 
-  requestToSpot(spotRid: RoutingId, request: Message): ZLinkRequestCall {
+  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkRequestCall {
     return wrapRoutedSpotRequestCall(
       this.serial,
       this.requireRemoteAddressResolver(),
@@ -1167,15 +1167,15 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  publish(topic: string, event: Message): ZLinkPublishCall {
+  publish(topic: string, event: unknown): ZLinkPublishCall {
     return wrapPublishCall(this.serial, this.requireFanoutClient().publish(topic, event));
   }
 
-  sendToChannel(channelName: string, message: Message): ZLinkSendCall {
+  sendToChannel(channelName: string, message: unknown): ZLinkSendCall {
     return wrapSendCall(this.serial, this.requireChannelClient().sendToChannel(channelName, message));
   }
 
-  requestToChannel(channelName: string, request: Message): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
     return wrapRequestCall(this.serial, this.requireChannelClient().requestToChannel(channelName, request));
   }
 
@@ -1213,12 +1213,12 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
 export interface ZLinkSpotRoutedTransport {
   sendToSpot(
     remoteAddress: ZLinkSpotRemoteAddress,
-    message: Message,
+    message: unknown,
     options: ZLinkSpotRoutedSendOptions
   ): Promise<void>;
   requestToSpot<TReply = unknown>(
     remoteAddress: ZLinkSpotRemoteAddress,
-    request: Message,
+    request: unknown,
     options: ZLinkSpotRoutedRequestOptions
   ): Promise<TReply>;
 }
@@ -1377,7 +1377,7 @@ function wrapRoutedSpotSendCall(
   resolver: ZLinkSpotRemoteAddressResolver,
   transport: ZLinkSpotRoutedTransport,
   spotRid: RoutingId,
-  message: Message
+  message: unknown
 ): ZLinkSendCall {
   let selectedPacketName: string | undefined;
   return {
@@ -1399,7 +1399,7 @@ function wrapRoutedSpotRequestCall(
   resolver: ZLinkSpotRemoteAddressResolver,
   transport: ZLinkSpotRoutedTransport,
   spotRid: RoutingId,
-  request: Message
+  request: unknown
 ): ZLinkRequestCall {
   let selectedPacketName: string | undefined;
   let selectedTimeoutMs: number | undefined;

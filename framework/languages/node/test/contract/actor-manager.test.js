@@ -446,7 +446,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
 
   assert.equal(joinResult.resultCode, 0);
   assert.deepEqual(joinResult.actor, actorRef);
-  assert.equal(joinResult.reply.data().toString(), 'joined');
+  assert.equal(joinResult.reply, 'joined');
   assert.equal(entryResult, actorRef);
   assert.deepEqual(calls, [
     'joinSpot:alice:alice:stage-1:hello:25',
@@ -505,7 +505,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
 
   assert.equal(result.resultCode, 7);
   assert.deepEqual(result.actor, joinedRef);
-  assert.equal(result.reply.data().toString(), 'native-reply');
+  assert.equal(result.reply, 'native-reply');
   assert.equal(actor.context.isJoined, true);
   assert.equal(actor.context.spotRid, 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
@@ -515,7 +515,6 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
     'join:1:node-a:stage-1:payload:hello:25'
   ]);
   request.close();
-  result.reply.close();
 });
 
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {

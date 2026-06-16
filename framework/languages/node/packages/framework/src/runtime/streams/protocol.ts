@@ -3,6 +3,7 @@ import type {
   ZlinkStreamHeader
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
+import { resolveFrameworkPacketName } from '../messaging/packet-name';
 
 const defaultMaxDecompressedPayloadSize = 64 * 1024;
 
@@ -35,7 +36,7 @@ export interface ZLinkStreamFrameHeader {
 }
 
 export function resolvePacketName(message: unknown, explicitPacketName: string | undefined): string {
-  const packetName = explicitPacketName ?? inferPacketName(message);
+  const packetName = resolveFrameworkPacketName(message, explicitPacketName, 'Stream');
   if (packetName.trim().length === 0) {
     throw new Error('Stream packet name must not be empty.');
   }
@@ -237,49 +238,6 @@ export function utf8Encode(value: string): Uint8Array {
 
 export function utf8Decode(value: Uint8Array): string {
   return new TextDecoder().decode(value);
-}
-
-function inferPacketName(message: unknown): string {
-  const messagePacketName = tryMessagePacketName(message);
-  if (messagePacketName !== undefined) {
-    return messagePacketName;
-  }
-  if (typeof message === 'object' && message !== null) {
-    const constructor = (message as { constructor?: { name?: string } }).constructor;
-    if (constructor?.name !== undefined && constructor.name.length > 0 && !isStructuralPayloadName(constructor.name)) {
-      return constructor.name;
-    }
-  }
-  throw new ZLinkConfigurationException('Stream packetName is required when the payload type cannot provide one.');
-}
-
-function isStructuralPayloadName(name: string): boolean {
-  return [
-    'Object',
-    'Array',
-    'Buffer',
-    'Uint8Array',
-    'String',
-    'Number',
-    'Boolean',
-    'BigInt',
-    'Symbol',
-    'Date'
-  ].includes(name);
-}
-
-function tryMessagePacketName(message: unknown): string | undefined {
-  if (typeof message !== 'object' || message === null || !('packetName' in message)) {
-    return undefined;
-  }
-  const packetName = (message as { packetName?: () => unknown }).packetName;
-  if (typeof packetName !== 'function') {
-    return undefined;
-  }
-  const resolved = packetName.call(message);
-  return typeof resolved === 'string' && resolved.trim().length > 0
-    ? resolved
-    : undefined;
 }
 
 function encodeStreamMetadata(metadata: ReadonlyMap<string, string>): Uint8Array {

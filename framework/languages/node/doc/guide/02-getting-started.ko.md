@@ -35,7 +35,13 @@ channel client 는 NestJS provider token 으로 주입한다.
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLinkPacket } from '@zlink-systems/framework';
 import type { ZLinkChannelClient } from '@zlink-systems/framework';
+
+@ZLinkPacket('GetProfile')
+class GetProfileReq {
+  constructor(readonly id: string) {}
+}
 
 @Injectable()
 export class ProfileClient {
@@ -46,13 +52,15 @@ export class ProfileClient {
 
   getProfile(id: string) {
     return this.client
-      .requestToChannel('api', { id })
-      .packetName('GetProfile')
+      .requestToChannel('api', new GetProfileReq(id))
       .timeout(1000)
       .submit();
   }
 }
 ```
+
+기본 경로에서는 payload 타입이 packet 이름을 스스로 제공해야 한다. plain object literal처럼
+타입에서 이름을 안정적으로 얻을 수 없는 경우에만 `.packetName(...)` override를 쓴다.
 
 ## 2. handler group
 

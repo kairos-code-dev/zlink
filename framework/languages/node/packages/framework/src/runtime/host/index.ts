@@ -168,6 +168,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
   createActorManagerOptions(): Pick<
     ZLinkActorManagerOptions,
     | 'joinCoordinator'
+    | 'messageSerializers'
     | 'nativeActorNode'
     | 'actorCreatedNodeRidProvider'
     | 'actorCreatedNotifier'
@@ -185,6 +186,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime {
         },
         native: new ZLinkLazyNativeJoinCoordinator(() => this.requirePrimarySpotNode())
       }),
+      messageSerializers: this.options.registration.messageSerializers,
       actorCreatedNodeRidProvider: () => this.spotNodeRuntime?.primaryNode?.routingId,
       actorCreatedNotifier: (nodeRid, actor, signal) =>
         this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, signal) ?? Promise.resolve(),
@@ -236,7 +238,7 @@ class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult> {
+  ): Promise<ZLinkActorJoinResult<Message>> {
     const localSpotManager = this.options.localSpotManager();
     if (localSpotManager === undefined || !localSpotManager.hasActiveSpot(spotRid)) {
       return this.options.native.joinSpot(actor, state, spotRid, request, timeoutMs, signal);
@@ -311,7 +313,7 @@ class ZLinkLazyNativeJoinCoordinator implements ZLinkActorJoinCoordinator {
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
-  ): Promise<ZLinkActorJoinResult> {
+  ): Promise<ZLinkActorJoinResult<Message>> {
     return new ZLinkActorNativeJoinCoordinator({ node: this.nodeProvider() })
       .joinSpot(actor, state, spotRid, request, timeoutMs, signal);
   }

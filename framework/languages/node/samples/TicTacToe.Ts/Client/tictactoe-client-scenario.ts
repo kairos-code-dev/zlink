@@ -183,13 +183,21 @@ class TicTacToeClientScenario {
 }
 
 function createPlayerClient(endpoint: string): ZlinkStreamConnector {
-  return connector.zlinkStreamConnectorFactory.create({
+  const client = connector.zlinkStreamConnectorFactory.create({
     endpoint,
     codec: json.zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
   });
+  client.observeInbound((observation) => {
+    console.log(
+      `stream-inbound sample=TicTacToe client=player kind=${observation.kind} ` +
+      `name=${observation.name} seq=${observation.requestSeq?.toString() ?? '-'} ` +
+      `bytes=${observation.payloadLength}`
+    );
+  });
+  return client;
 }
 
 function stateOf(message: { state: unknown }): GameState {

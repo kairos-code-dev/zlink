@@ -22,6 +22,10 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxPendingDispatchCallbacks { get; init; } = 1024;
 
+    public int MaxInboundObserverNotifications { get; init; } = 1024;
+
+    public int MaxInboundObserverPayloadPreviewBytes { get; init; }
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public ZlinkStreamDispatchMode DispatchMode { get; init; } = ZlinkStreamDispatchMode.Manual;

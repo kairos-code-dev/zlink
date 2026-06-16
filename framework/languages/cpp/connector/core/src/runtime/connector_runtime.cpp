@@ -379,6 +379,56 @@ connector_t::~connector_t () = default;
 connector_t::connector_t (connector_t &&) noexcept = default;
 connector_t &connector_t::operator= (connector_t &&) noexcept = default;
 
+inbound_observer_registration_t::inbound_observer_registration_t (
+  std::shared_ptr<void> state, std::uint64_t id) :
+    _state (std::move (state)), _id (id)
+{
+}
+
+inbound_observer_registration_t::~inbound_observer_registration_t ()
+{
+    close ();
+}
+
+inbound_observer_registration_t::inbound_observer_registration_t (
+  inbound_observer_registration_t &&other) noexcept :
+    _state (std::move (other._state)), _id (std::exchange (other._id, 0))
+{
+}
+
+inbound_observer_registration_t &
+inbound_observer_registration_t::operator= (inbound_observer_registration_t &&other) noexcept
+{
+    if (this != &other) {
+        close ();
+        _state = std::move (other._state);
+        _id = std::exchange (other._id, 0);
+    }
+    return *this;
+}
+
+void inbound_observer_registration_t::close ()
+{
+    if (!_state || _id == 0) {
+        return;
+    }
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    for (auto &observer : state->inbound_observers) {
+        if (observer && observer->id == _id) {
+            observer->active.store (false);
+            break;
+        }
+    }
+    _state.reset ();
+    _id = 0;
+}
+
+inbound_observer_registration_t::operator bool () const noexcept
+{
+    return _state && _id != 0;
+}
+
 bool connector_t::is_connected () const
 {
     return detail::state_from (_state)->state == connection_state_t::connected;
@@ -605,6 +655,7 @@ void connect_websocket_secure_transport_async (
 result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
 {
     state->close_requested.store (false);
+    state->connect_started = true;
     auto parsed = parse_connect_options (state);
     if (!parsed) {
         return result_t<void>::failure (parsed.error_code (),
@@ -689,6 +740,7 @@ result_t<void> connector_t::connect ()
 void connector_t::connect (std::function<void (result_t<void>)> callback)
 {
     auto state = detail::state_from (_state);
+    state->connect_started = true;
     auto parsed = parse_connect_options (state);
     if (!parsed) {
         detail::schedule_delivery (
@@ -794,6 +846,12 @@ result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
         state->pending_requests.clear ();
         state->pending_sends.clear ();
         state->pending_writes.clear ();
+        for (auto &observer : state->inbound_observers) {
+            if (observer) {
+                observer->active.store (false);
+            }
+        }
+        state->inbound_observers.clear ();
         state->read_in_progress = false;
         state->inbound_buffer.clear ();
         state->dispatch_queue.clear ();
@@ -859,6 +917,21 @@ connector_t &connector_t::on_error (std::function<void (const error_t &)> handle
 {
     detail::state_from (_state)->error_handlers.push_back (std::move (handler));
     return *this;
+}
+
+inbound_observer_registration_t
+connector_t::observe_inbound (std::function<void (const inbound_observation_t &)> observer)
+{
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    if (state->connect_started) {
+        return {};
+    }
+    auto entry = std::make_shared<detail::inbound_observer_entry_t> ();
+    entry->id = state->next_inbound_observer_id++;
+    entry->callback = std::move (observer);
+    state->inbound_observers.push_back (entry);
+    return inbound_observer_registration_t (_state, entry->id);
 }
 
 connector_t &connector_t::on_disconnected (std::function<void ()> handler)

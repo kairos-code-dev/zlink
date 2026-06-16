@@ -17,6 +17,7 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler;
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload;
 import systems.zlink.stream.connector.ZLinkStreamErrorHandler;
+import systems.zlink.stream.connector.ZLinkStreamInboundObserver;
 import systems.zlink.stream.connector.ZLinkStreamLifecycleCall;
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler;
 import systems.zlink.stream.connector.ZLinkStreamPacketName;
@@ -95,11 +96,11 @@ final class ZLinkStreamJsonTest {
     }
 
     @Test
-    void connectorTypedRequestUsesConfiguredCodec() throws Exception {
+    void encodedRequestCanDecodeTypedReplyWithConfiguredCodec() throws Exception {
         FakeConnector connector = new FakeConnector(optionsWithCodec());
 
         AnnotatedPayload reply = connector
-            .request(new AnnotatedPayload("hello"))
+            .request(ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("hello")))
             .submit(AnnotatedPayload.class)
             .toCompletableFuture()
             .get();
@@ -258,6 +259,11 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
+        public AutoCloseable observeInbound(ZLinkStreamInboundObserver observer) {
+            return () -> { };
+        }
+
+        @Override
         public AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler) {
             return () -> { };
         }
@@ -334,6 +340,11 @@ final class ZLinkStreamJsonTest {
         public CompletionStage<ZLinkStreamEncodedPayload> submit() {
             return CompletableFuture.completedFuture(
                 ZLinkStreamJson.encode("custom.packet", new AnnotatedPayload("reply")));
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+            return submit().thenApply(reply -> ZLinkStreamJson.decode(reply, replyType));
         }
     }
 }

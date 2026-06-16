@@ -14,8 +14,8 @@ internal static class Program
 
         var streamEndpoint = ReadOption(args, "--stream-endpoint")
             ?? throw new ArgumentException("Missing --stream-endpoint.");
-        await using var client1 = CreateClient(streamEndpoint);
-        await using var client2 = CreateClient(streamEndpoint);
+        await using var client1 = CreateClient(streamEndpoint, "player1");
+        await using var client2 = CreateClient(streamEndpoint, "player2");
 
         await new BingoClientScenario().RunAsync(
             client1,
@@ -23,15 +23,27 @@ internal static class Program
         Console.WriteLine("bingo=completed");
     }
 
-    private static IZlinkStreamConnector CreateClient(string streamEndpoint)
+    private static IZlinkStreamConnector CreateClient(string streamEndpoint, string clientName)
     {
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = SampleTimings.ConnectTimeout,
             RequestTimeout = SampleTimings.RequestTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
         });
+        connector.ObserveInbound((observation, _) =>
+        {
+            Console.WriteLine(
+                "stream-inbound sample=Bingo client={0} kind={1} name={2} seq={3} bytes={4}",
+                clientName,
+                observation.Kind,
+                observation.Name,
+                observation.RequestSeq?.Value.ToString() ?? "-",
+                observation.PayloadLength);
+            return ValueTask.CompletedTask;
+        });
+        return connector;
     }
 
     private static string? ReadOption(string[] args, string name)

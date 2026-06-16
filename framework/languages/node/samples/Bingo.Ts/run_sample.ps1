@@ -145,7 +145,17 @@ try {
     Wait-Port "session" $env:BINGO_SESSION_ENDPOINT
     Wait-DiscoveryReady $env:BINGO_REGISTRY_ROUTER_ENDPOINT
 
-    node (Join-Path $scriptDir "dist/Client/main.js")
+    $clientLog = Join-Path $logDir "client.log"
+    node (Join-Path $scriptDir "dist/Client/main.js") *> $clientLog
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo" -Quiet)) {
+        throw "Bingo.Ts client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* seq=[0-9]" -Quiet)) {
+        throw "Bingo.Ts client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
+        throw "Bingo.Ts client did not write stream-inbound push marker."
+    }
 }
 finally {
     for ($i = $processes.Count - 1; $i -ge 0; $i--) {

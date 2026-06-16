@@ -70,6 +70,12 @@ struct connector_options_t
     /// Maximum encoded metadata bytes accepted by send and request calls.
     std::size_t max_metadata_size = 8 * 1024;
 
+    /// Maximum pending inbound observer notifications before new notifications are dropped.
+    std::size_t max_inbound_observer_notifications = 1024;
+
+    /// Maximum payload bytes copied into an inbound observer snapshot.
+    std::size_t max_inbound_observer_payload_preview_bytes = 0;
+
     /// Disables TLS server certificate validation when true.
     bool skip_server_certificate_validation = false;
 

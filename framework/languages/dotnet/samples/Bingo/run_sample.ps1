@@ -52,7 +52,17 @@ try {
     Wait-SampleTcpEndpoint "session-stream" $env:BINGO_STREAM_ENDPOINT
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Probe/Bingo.Probe.csproj") -Arguments @("--registry-endpoint", $env:BINGO_REGISTRY_ROUTER_ENDPOINT, "--timeout-seconds", "10")
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-endpoint", $env:BINGO_STREAM_ENDPOINT)
+    $clientLog = Join-Path $LogDir "client.log"
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--stream-endpoint", $env:BINGO_STREAM_ENDPOINT) *> $clientLog
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo" -Quiet)) {
+        throw "Bingo client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* seq=[0-9]" -Quiet)) {
+        throw "Bingo client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
+        throw "Bingo client did not write stream-inbound push marker."
+    }
 }
 finally {
     Stop-SampleProcesses

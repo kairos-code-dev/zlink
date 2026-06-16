@@ -115,6 +115,7 @@ public sealed partial class StreamConnectorTests
     [Theory]
     [InlineData("MaxReceivedMessages")]
     [InlineData("MaxPendingDispatchCallbacks")]
+    [InlineData("MaxInboundObserverNotifications")]
     public async Task QueueLimitsMustBePositive(string optionName)
     {
         var options = optionName switch
@@ -129,11 +130,30 @@ public sealed partial class StreamConnectorTests
                 Endpoint = new Uri("tcp://127.0.0.1:1"),
                 MaxPendingDispatchCallbacks = 0
             },
+            "MaxInboundObserverNotifications" => new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                MaxInboundObserverNotifications = 0
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(optionName), optionName, null)
         };
 
         var exception = Assert.Throws<ZlinkStreamException>(() =>
             ZlinkStreamConnectorFactory.Create(options));
+
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task InboundObserverPayloadPreviewLimitMustNotBeNegative()
+    {
+        var exception = Assert.Throws<ZlinkStreamException>(() =>
+            ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                MaxInboundObserverPayloadPreviewBytes = -1
+            }));
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
         await Task.CompletedTask;

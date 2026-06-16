@@ -734,6 +734,240 @@ int main ()
     }
     receive_connector.close ();
 
+    zlink::stream_socket_t observer_server (context);
+    observer_server.options ().notify (false);
+    observer_server.bind ("tcp://127.0.0.1:0");
+    const auto observer_endpoint = observer_server.options ().last_endpoint ();
+    std::thread observer_server_thread ([&observer_server] {
+        zlink::received_t inbound;
+        if (observer_server.recv (inbound) != 0) {
+            return;
+        }
+        std::string buffer =
+          inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+        auto frame = try_read_server_frame (buffer);
+        if (!frame || frame->header.kind != zlink::stream_connector::message_kind_t::request) {
+            inbound.close ();
+            return;
+        }
+        auto control = make_server_frame (zlink::stream_connector::message_kind_t::control, 0,
+                                          "$zlink.heartbeat.pong", "");
+        inbound.send ().message (control).submit ();
+        auto push = make_server_frame (zlink::stream_connector::message_kind_t::send, 0,
+                                       "observer.push", "push");
+        inbound.send ().message (push).submit ();
+        auto reply =
+          make_server_frame (zlink::stream_connector::message_kind_t::response,
+                             frame->header.request_seq.value (), "reply", "observer-reply");
+        inbound.send ().message (reply).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t observer_options;
+    observer_options.endpoint = observer_endpoint;
+    observer_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+    observer_options.request_timeout = std::chrono::milliseconds (100);
+    observer_options.max_inbound_observer_payload_preview_bytes = 3;
+    auto observer_connector =
+      zlink::stream_connector::connector_factory_t::create (observer_options);
+    std::mutex observed_mutex;
+    std::condition_variable observed_changed;
+    std::vector<zlink::stream_connector::inbound_observation_t> observations;
+    auto observer_registration = observer_connector.observe_inbound (
+      [&] (const zlink::stream_connector::inbound_observation_t &observation) {
+          {
+              std::lock_guard<std::mutex> lock (observed_mutex);
+              observations.push_back (observation);
+          }
+          observed_changed.notify_all ();
+      });
+    if (!observer_registration || !observer_connector.connect ()) {
+        observer_server_thread.join ();
+        return 80;
+    }
+    if (observer_connector.observe_inbound (
+          [] (const zlink::stream_connector::inbound_observation_t &) {})
+        || !observer_connector.request (login_request_t{})
+              .packet_name ("observer.request")
+              .timeout (std::chrono::milliseconds (100))
+              .submit<login_reply_t> ()) {
+        observer_connector.close ();
+        observer_server_thread.join ();
+        return 81;
+    }
+    {
+        std::unique_lock<std::mutex> lock (observed_mutex);
+        observed_changed.wait_for (lock, std::chrono::milliseconds (100), [&] {
+            const auto saw_response =
+              std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+                  return item.kind == zlink::stream_connector::message_kind_t::response
+                         && item.name == "reply" && item.request_seq.has_value ()
+                         && item.payload_length == std::string ("observer-reply").size ()
+                         && item.payload_preview == std::vector<std::uint8_t>{'o', 'b', 's'};
+              });
+            const auto saw_push =
+              std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+                  return item.kind == zlink::stream_connector::message_kind_t::send
+                         && item.name == "observer.push";
+              });
+            const auto saw_control =
+              std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+                  return item.kind == zlink::stream_connector::message_kind_t::control
+                         && item.name == "$zlink.heartbeat.pong";
+              });
+            return saw_response && saw_push && saw_control;
+        });
+        const auto saw_response =
+          std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+              return item.kind == zlink::stream_connector::message_kind_t::response
+                     && item.name == "reply" && item.request_seq.has_value ()
+                     && item.payload_length == std::string ("observer-reply").size ()
+                     && item.payload_preview == std::vector<std::uint8_t>{'o', 'b', 's'};
+          });
+        const auto saw_push =
+          std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+              return item.kind == zlink::stream_connector::message_kind_t::send
+                     && item.name == "observer.push";
+          });
+        const auto saw_control =
+          std::any_of (observations.begin (), observations.end (), [] (const auto &item) {
+              return item.kind == zlink::stream_connector::message_kind_t::control
+                     && item.name == "$zlink.heartbeat.pong";
+          });
+        if (!saw_response || !saw_push || !saw_control) {
+            observer_connector.close ();
+            observer_server_thread.join ();
+            return 82;
+        }
+    }
+    observer_registration.close ();
+    auto before_dispose_count = observations.size ();
+    zlink::stream_connector::detail::connector_runtime_t::from (observer_connector)
+      .receive_packet (
+        zlink::stream_connector::packet_t{"after.dispose",
+                                          {},
+                                          zlink::stream_connector::codec_t::raw,
+                                          false,
+                                          zlink::message_t::from (std::string ("ignored"))});
+    std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    if (observations.size () != before_dispose_count) {
+        observer_connector.close ();
+        observer_server_thread.join ();
+        return 83;
+    }
+    observer_connector.close ();
+    observer_server_thread.join ();
+
+    zlink::stream_socket_t failing_observer_server (context);
+    failing_observer_server.options ().notify (false);
+    failing_observer_server.bind ("tcp://127.0.0.1:0");
+    const auto failing_observer_endpoint = failing_observer_server.options ().last_endpoint ();
+    std::thread failing_observer_server_thread ([&failing_observer_server] {
+        zlink::received_t inbound;
+        if (failing_observer_server.recv (inbound) != 0) {
+            return;
+        }
+        auto push = make_server_frame (zlink::stream_connector::message_kind_t::send, 0,
+                                       "observer.failure", "push");
+        inbound.send ().message (push).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t failing_observer_options;
+    failing_observer_options.endpoint = failing_observer_endpoint;
+    failing_observer_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::manual;
+    failing_observer_options.request_timeout = std::chrono::milliseconds (100);
+    auto failing_observer_connector =
+      zlink::stream_connector::connector_factory_t::create (failing_observer_options);
+    std::atomic_bool observer_failed_seen{false};
+    failing_observer_connector.on_error ([] (const zlink::stream_connector::error_t &) {
+        throw std::runtime_error ("observer error handler failed");
+    });
+    failing_observer_connector.on_error ([&] (const zlink::stream_connector::error_t &error) {
+        if (error.code == zlink::stream_connector::error_code_t::observer_failed) {
+            observer_failed_seen = true;
+        }
+    });
+    auto failing_registration = failing_observer_connector.observe_inbound (
+      [] (const zlink::stream_connector::inbound_observation_t &) {
+          throw std::runtime_error ("observer failed");
+      });
+    if (!failing_registration || !failing_observer_connector.connect ()
+        || !failing_observer_connector.send (login_request_t{})
+              .packet_name ("observer.failure.trigger")
+              .submit ()) {
+        failing_observer_connector.close ();
+        failing_observer_server_thread.join ();
+        return 84;
+    }
+    const auto failure_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (100);
+    while (!observer_failed_seen && std::chrono::steady_clock::now () < failure_deadline) {
+        failing_observer_connector.dispatch ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    failing_observer_connector.close ();
+    failing_observer_server_thread.join ();
+    if (!observer_failed_seen) {
+        return 85;
+    }
+
+    zlink::stream_socket_t dropped_observer_server (context);
+    dropped_observer_server.options ().notify (false);
+    dropped_observer_server.bind ("tcp://127.0.0.1:0");
+    const auto dropped_observer_endpoint = dropped_observer_server.options ().last_endpoint ();
+    std::thread dropped_observer_server_thread ([&dropped_observer_server] {
+        zlink::received_t inbound;
+        if (dropped_observer_server.recv (inbound) != 0) {
+            return;
+        }
+        for (int index = 0; index < 16; ++index) {
+            auto push = make_server_frame (zlink::stream_connector::message_kind_t::send, 0,
+                                           "observer.overflow." + std::to_string (index), "push");
+            inbound.send ().message (push).submit ();
+        }
+        auto reply = make_server_frame (zlink::stream_connector::message_kind_t::response, 1,
+                                        "reply", "observer-overflow-reply");
+        inbound.send ().message (reply).submit ();
+        inbound.close ();
+    });
+    zlink::stream_connector::connector_options_t dropped_observer_options;
+    dropped_observer_options.endpoint = dropped_observer_endpoint;
+    dropped_observer_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+    dropped_observer_options.request_timeout = std::chrono::milliseconds (100);
+    dropped_observer_options.max_inbound_observer_notifications = 1;
+    auto dropped_observer_connector =
+      zlink::stream_connector::connector_factory_t::create (dropped_observer_options);
+    std::atomic_bool observer_dropped_seen{false};
+    std::atomic_int overflow_observations{0};
+    dropped_observer_connector.on_error ([&] (const zlink::stream_connector::error_t &error) {
+        if (error.code == zlink::stream_connector::error_code_t::observer_dropped) {
+            observer_dropped_seen = true;
+        }
+    });
+    auto dropped_registration = dropped_observer_connector.observe_inbound (
+      [&] (const zlink::stream_connector::inbound_observation_t &) {
+          ++overflow_observations;
+          std::this_thread::sleep_for (std::chrono::milliseconds (20));
+      });
+    if (!dropped_registration || !dropped_observer_connector.connect ()) {
+        dropped_observer_connector.close ();
+        dropped_observer_server_thread.join ();
+        return 86;
+    }
+    auto overflow_reply = dropped_observer_connector.request (login_request_t{})
+                            .packet_name ("observer.overflow.trigger")
+                            .timeout (std::chrono::milliseconds (100))
+                            .submit<login_reply_t> ();
+    const auto dropped_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (100);
+    while (!observer_dropped_seen && std::chrono::steady_clock::now () < dropped_deadline) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    dropped_observer_connector.close ();
+    dropped_observer_server_thread.join ();
+    if (!overflow_reply || !observer_dropped_seen || overflow_observations.load () <= 0) {
+        return 87;
+    }
+
     auto oversized_payload =
       connector
         .send (zlink::stream_connector::packet_t{"oversized.payload",
@@ -1327,11 +1561,10 @@ int main ()
     if (!oversized_receive_connector.connect ()) {
         return 120;
     }
-    auto oversized_receive_result =
-      oversized_receive_connector.request (login_request_t{})
-        .packet_name ("oversized.receive.request")
-        .timeout (std::chrono::milliseconds (100))
-        .submit<login_reply_t> ();
+    auto oversized_receive_result = oversized_receive_connector.request (login_request_t{})
+                                      .packet_name ("oversized.receive.request")
+                                      .timeout (std::chrono::milliseconds (100))
+                                      .submit<login_reply_t> ();
     oversized_receive_server_thread.join ();
     if (oversized_receive_result
         || oversized_receive_result.error_code ()
@@ -1760,10 +1993,9 @@ int main ()
         }
     }
 
-    auto request_after_reconnect_failure =
-      reconnect_connector.request (login_request_t{})
-        .packet_name ("after.reconnect.failure")
-        .submit<login_reply_t> ();
+    auto request_after_reconnect_failure = reconnect_connector.request (login_request_t{})
+                                             .packet_name ("after.reconnect.failure")
+                                             .submit<login_reply_t> ();
     if (request_after_reconnect_failure
         || request_after_reconnect_failure.error_code ()
              != zlink::stream_connector::error_code_t::disconnected) {

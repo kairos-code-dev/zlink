@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <optional>
 
@@ -63,6 +64,17 @@ void publish_error (const connector_state_t &state, const error_t &error)
     }
 }
 
+void publish_observer_error (const connector_state_t &state, const error_t &error) noexcept
+{
+    for (const auto &handler : state.error_handlers) {
+        try {
+            handler (error);
+        }
+        catch (...) {
+        }
+    }
+}
+
 std::vector<std::uint8_t> message_to_bytes (const zlink::message_t &message)
 {
     return message.to_bytes ();
@@ -85,6 +97,8 @@ struct inbound_frame_t
     message_kind_t kind = message_kind_t::send;
     std::optional<std::uint64_t> request_seq;
     packet_t packet;
+    std::size_t payload_length = 0;
+    std::vector<std::uint8_t> payload_preview;
 };
 
 result_t<packet_t> decode_packet (connector_state_t &state,
@@ -104,9 +118,8 @@ result_t<packet_t> decode_packet (connector_state_t &state,
                                                 "LZ4 compression is not enabled");
         }
         try {
-            payload =
-              lz4_compression_codec_t{}.decompress (payload,
-                                                    state.options.max_receive_payload_size);
+            payload = lz4_compression_codec_t{}.decompress (payload,
+                                                            state.options.max_receive_payload_size);
         }
         catch (const std::exception &ex) {
             return result_t<packet_t>::failure (error_code_t::decompression_failed, ex.what ());
@@ -180,6 +193,70 @@ std::optional<error_t> take_inbound_error (connector_state_t &state)
     return error;
 }
 
+void enqueue_inbound_observer_notification (std::shared_ptr<connector_state_t> state,
+                                            const stream_header_t &header,
+                                            std::size_t payload_length,
+                                            std::vector<std::uint8_t> payload_preview)
+{
+    std::vector<std::shared_ptr<inbound_observer_entry_t>> observers;
+    {
+        observers.reserve (state->inbound_observers.size ());
+        for (const auto &observer : state->inbound_observers) {
+            if (observer && observer->active.load () && observer->callback) {
+                observers.push_back (observer);
+            }
+        }
+    }
+    if (observers.empty ()) {
+        return;
+    }
+    const auto pending =
+      state->pending_inbound_observer_notifications.fetch_add (1) + static_cast<std::size_t> (1);
+    if (pending > state->options.max_inbound_observer_notifications) {
+        state->pending_inbound_observer_notifications.fetch_sub (1);
+        if (!state->inbound_observer_drop_report_pending.exchange (true)) {
+            publish_observer_error (
+              *state,
+              error_t{
+                error_code_t::observer_dropped,
+                "Inbound observer notification was dropped because the observer queue is full."});
+            state->inbound_observer_drop_report_pending.store (false);
+        }
+        return;
+    }
+    inbound_observation_t observation;
+    observation.kind = header.kind;
+    observation.name = header.name;
+    observation.codec = header.codec;
+    observation.request_seq = header.request_seq;
+    observation.metadata = header.metadata;
+    observation.payload_length = payload_length;
+    observation.compressed = has_flag (header.flags, header_flags_t::payload_compressed);
+    observation.received_at = steady_clock_t::now ();
+    observation.payload_preview = std::move (payload_preview);
+    post_runtime_operation ([state = std::move (state), observers = std::move (observers),
+                             observation = std::move (observation)] () mutable {
+        for (const auto &observer : observers) {
+            if (!observer || !observer->active.load ()) {
+                continue;
+            }
+            try {
+                observer->callback (observation);
+            }
+            catch (const std::exception &ex) {
+                publish_observer_error (
+                  *state, error_t{error_code_t::observer_failed,
+                                  "Inbound observer callback failed: " + std::string (ex.what ())});
+            }
+            catch (...) {
+                publish_observer_error (*state, error_t{error_code_t::observer_failed,
+                                                        "Inbound observer callback failed."});
+            }
+        }
+        state->pending_inbound_observer_notifications.fetch_sub (1);
+    });
+}
+
 result_t<std::vector<std::uint8_t>> encode_packet_frame (connector_state_t &state,
                                                          message_kind_t kind,
                                                          const packet_t &packet,
@@ -235,9 +312,10 @@ result_t<void> write_packet_frame (connector_state_t &state,
     return result_t<void>::success ();
 }
 
-result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::time_point deadline)
+result_t<packet_t> read_packet_frame (std::shared_ptr<connector_state_t> state,
+                                      steady_clock_t::time_point deadline)
 {
-    auto prefix_result = read_exact_until (state, 6, deadline);
+    auto prefix_result = read_exact_until (*state, 6, deadline);
     if (!prefix_result) {
         return result_t<packet_t>::failure (
           prefix_result.error_code (), prefix_result.error () ? prefix_result.error ()->message
@@ -248,19 +326,19 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
     const auto payload_size =
       (static_cast<std::size_t> (prefix[2]) << 24) | (static_cast<std::size_t> (prefix[3]) << 16)
       | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
-    if (auto limits = validate_inbound_frame_limits (state, header_size, payload_size); !limits) {
+    if (auto limits = validate_inbound_frame_limits (*state, header_size, payload_size); !limits) {
         return result_t<packet_t>::failure (
           limits.error_code (),
           limits.error () ? limits.error ()->message : "stream connector frame is too large");
     }
-    auto header_bytes = read_exact_until (state, header_size, deadline);
+    auto header_bytes = read_exact_until (*state, header_size, deadline);
     if (!header_bytes) {
         return result_t<packet_t>::failure (header_bytes.error_code (),
                                             header_bytes.error ()
                                               ? header_bytes.error ()->message
                                               : "stream connector header read failed");
     }
-    auto payload_bytes = read_exact_until (state, payload_size, deadline);
+    auto payload_bytes = read_exact_until (*state, payload_size, deadline);
     if (!payload_bytes) {
         return result_t<packet_t>::failure (payload_bytes.error_code (),
                                             payload_bytes.error ()
@@ -273,7 +351,14 @@ result_t<packet_t> read_packet_frame (connector_state_t &state, steady_clock_t::
         return result_t<packet_t>::failure (decoded.error_code (), decoded.error ()->message);
     }
     auto header = decoded.value ();
-    return decode_packet (state, header, std::move (payload_bytes.value ()));
+    const auto preview_length = std::min (state->options.max_inbound_observer_payload_preview_bytes,
+                                          payload_bytes.value ().size ());
+    std::vector<std::uint8_t> payload_preview (payload_bytes.value ().begin (),
+                                               payload_bytes.value ().begin ()
+                                                 + static_cast<std::ptrdiff_t> (preview_length));
+    enqueue_inbound_observer_notification (state, header, payload_size,
+                                           std::move (payload_preview));
+    return decode_packet (*state, header, std::move (payload_bytes.value ()));
 }
 
 result_t<void> send_due_heartbeat (connector_state_t &state)
@@ -358,12 +443,18 @@ std::optional<result_t<inbound_frame_t>> try_take_inbound_frame (connector_state
                                                    decoded.error ()->message);
     }
     auto header = decoded.value ();
+    const auto preview_length =
+      std::min (state.options.max_inbound_observer_payload_preview_bytes, payload_bytes.size ());
+    std::vector<std::uint8_t> payload_preview (payload_bytes.begin (),
+                                               payload_bytes.begin ()
+                                                 + static_cast<std::ptrdiff_t> (preview_length));
     auto packet = decode_packet (state, header, std::move (payload_bytes));
     if (!packet) {
         return result_t<inbound_frame_t>::failure (packet.error_code (), packet.error ()->message);
     }
     return result_t<inbound_frame_t>::success (
-      inbound_frame_t{header.kind, header.request_seq, std::move (packet.value ())});
+      inbound_frame_t{header.kind, header.request_seq, std::move (packet.value ()), payload_size,
+                      std::move (payload_preview)});
 }
 
 void complete_pending_request (std::shared_ptr<connector_state_t> state,
@@ -449,6 +540,15 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
                 break;
             }
             auto value = std::move (frame->value ());
+            stream_header_t observation_header{
+              value.kind,
+              value.packet.codec,
+              value.packet.compressed ? header_flags_t::payload_compressed : header_flags_t::none,
+              value.request_seq,
+              value.packet.name,
+              value.packet.metadata};
+            enqueue_inbound_observer_notification (state, observation_header, value.payload_length,
+                                                   std::move (value.payload_preview));
             if (value.kind == message_kind_t::response && value.request_seq
                 && state->pending_requests.find (*value.request_seq)
                      != state->pending_requests.end ()) {
@@ -764,7 +864,7 @@ result_t<zlink::message_t> submit_request (std::shared_ptr<void> state_handle,
     }
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
-        auto received = read_packet_frame (*state, deadline);
+        auto received = read_packet_frame (state, deadline);
         if (!received) {
             state->pending_requests.erase (seq);
             return result_t<zlink::message_t>::failure (received.error_code (),

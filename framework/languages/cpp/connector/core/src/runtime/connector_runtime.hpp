@@ -53,7 +53,14 @@ struct pending_wait_t
     std::function<void (result_t<packet_t>)> callback;
 };
 
-class connector_state_t
+struct inbound_observer_entry_t
+{
+    std::uint64_t id = 0;
+    std::function<void (const inbound_observation_t &)> callback;
+    std::atomic_bool active{true};
+};
+
+class connector_state_t : public std::enable_shared_from_this<connector_state_t>
 {
   public:
     explicit connector_state_t (connector_options_t options) :
@@ -77,6 +84,11 @@ class connector_state_t
     std::vector<std::function<void (const connection_state_changed_t &)>> state_handlers;
     std::vector<std::function<void (const error_t &)>> error_handlers;
     std::vector<std::function<void ()>> disconnected_handlers;
+    std::uint64_t next_inbound_observer_id = 1;
+    std::vector<std::shared_ptr<inbound_observer_entry_t>> inbound_observers;
+    std::atomic_size_t pending_inbound_observer_notifications{0};
+    std::atomic_bool inbound_observer_drop_report_pending{false};
+    bool connect_started = false;
     codec_t default_codec = codec_t::raw;
     bool json_enabled = true;
     bool message_pack_enabled = false;

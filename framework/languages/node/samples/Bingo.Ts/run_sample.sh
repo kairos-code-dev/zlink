@@ -185,4 +185,7 @@ start_server session dist/Server/Session/main.js
 wait_port session "${BINGO_SESSION_ENDPOINT}"
 wait_discovery_ready
 
-node "${SCRIPT_DIR}/dist/Client/main.js"
+node "${SCRIPT_DIR}/dist/Client/main.js" >"${LOG_DIR}/client.log" 2>&1
+grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"

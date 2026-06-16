@@ -93,5 +93,8 @@ wait_port api-http "$API_HTTP_ENDPOINT"
   exit 1
 }
 
+grep -q "stream-inbound sample=TicTacToe" "$LOG_DIR/client.log"
+grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "$LOG_DIR/client.log"
+grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "$LOG_DIR/client.log"
 echo "tictactoe full client/server self-check completed"
 echo "tictactoe actor lifecycle sample gate completed"

@@ -73,12 +73,23 @@ public static class TicTacToeClientConnections
         string streamEndpoint,
         TicTacToeClientOptions options)
     {
-        return ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(streamEndpoint),
             ConnectTimeout = options.StreamTimeout,
             RequestTimeout = options.StreamTimeout,
             DispatchMode = ZlinkStreamDispatchMode.Immediate,
         });
+        connector.ObserveInbound((observation, _) =>
+        {
+            Console.WriteLine(
+                "stream-inbound sample=TicTacToe client=player kind={0} name={1} seq={2} bytes={3}",
+                observation.Kind,
+                observation.Name,
+                observation.RequestSeq?.Value.ToString() ?? "-",
+                observation.PayloadLength);
+            return ValueTask.CompletedTask;
+        });
+        return connector;
     }
 }

@@ -120,7 +120,17 @@ try {
     Wait-Port "api-channel" $env:TICTACTOE_API_ENDPOINT
     Wait-Port "api-http" $env:TICTACTOE_API_HTTP_ENDPOINT
 
-    node (Join-Path $scriptDir "dist/Client/main.js")
+    $clientLog = Join-Path $logDir "client.log"
+    node (Join-Path $scriptDir "dist/Client/main.js") *> $clientLog
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe" -Quiet)) {
+        throw "TicTacToe.Ts client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* seq=[0-9]" -Quiet)) {
+        throw "TicTacToe.Ts client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* name=.*Notify" -Quiet)) {
+        throw "TicTacToe.Ts client did not write stream-inbound push marker."
+    }
 }
 finally {
     for ($i = $processes.Count - 1; $i -ge 0; $i--) {

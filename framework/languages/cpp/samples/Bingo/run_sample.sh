@@ -122,6 +122,9 @@ wait_port session-stream "$SESSION_STREAM_ENDPOINT"
   exit 1
 }
 
+grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.log"
+grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.log"
+grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.log"
 cleanup
 trap - EXIT
 

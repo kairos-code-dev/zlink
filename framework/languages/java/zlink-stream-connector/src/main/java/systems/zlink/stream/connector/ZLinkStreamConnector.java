@@ -33,15 +33,7 @@ public interface ZLinkStreamConnector {
 
     ZLinkStreamRequestCall request(ZLinkStreamEncodedPayload payload);
 
-    default ZLinkStreamSendCall send(Object payload) {
-        return send(encodeTypedPayload(payload));
-    }
-
-    default ZLinkStreamTypedRequestCall request(Object payload) {
-        return new DefaultZLinkStreamTypedRequestCall(
-            request(encodeTypedPayload(payload)),
-            requireTypedCodec());
-    }
+    AutoCloseable observeInbound(ZLinkStreamInboundObserver observer);
 
     default ZLinkStreamWaitCall waitFor(String name) {
         return new DefaultZLinkStreamWaitCall(
@@ -84,14 +76,6 @@ public interface ZLinkStreamConnector {
     AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler);
 
     AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);
-
-    private ZLinkStreamEncodedPayload encodeTypedPayload(Object payload) {
-        ZLinkStreamTypedCodec codec = requireTypedCodec();
-        String packetName = payload == null
-            ? "Null"
-            : options().nameResolver().resolve(payload.getClass());
-        return codec.encode(packetName, payload);
-    }
 
     private ZLinkStreamTypedCodec requireTypedCodec() {
         ZLinkStreamTypedCodec codec = options().typedCodec();

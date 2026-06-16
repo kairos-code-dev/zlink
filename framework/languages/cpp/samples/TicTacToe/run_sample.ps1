@@ -85,6 +85,15 @@ try {
         Get-Content (Join-Path $LogDir "api.err") -ErrorAction SilentlyContinue
         exit $LASTEXITCODE
     }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=TicTacToe" -Quiet)) {
+        throw "TicTacToe C++ client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=TicTacToe .* seq=[0-9]" -Quiet)) {
+        throw "TicTacToe C++ client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=TicTacToe .* name=.*Notify" -Quiet)) {
+        throw "TicTacToe C++ client did not write stream-inbound push marker."
+    }
 }
 finally {
     if ($PlayProcess -and -not $PlayProcess.HasExited) {

@@ -14,6 +14,7 @@ import {
   ZlinkStreamException,
   ZlinkStreamHeader,
   ZlinkStreamHeaderFlags,
+  ZlinkStreamInboundObservation,
   ZlinkStreamMessage,
   ZlinkStreamMessageKind,
   ZlinkStreamMetadata,
@@ -31,6 +32,7 @@ import { connectorError, delay, subscription, throwIfAborted, toStreamError, utf
 import { compressPayload, decompressIfNeeded } from './Protocol/Compression/ZlinkStreamCompressionCodec';
 import { ZlinkStreamPendingRequests } from './ZlinkStreamPendingRequests';
 import { ZlinkStreamMessageHandlers } from './ZlinkStreamMessageHandlers';
+import { ZlinkStreamInboundObservers } from './ZlinkStreamInboundObservers';
 
 export const zlinkStreamConnectorFactory = {
   create(options: ZlinkStreamConnectorOptions): ZlinkStreamConnector {
@@ -52,11 +54,17 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private receiveLoopAbort: AbortController | undefined;
   private lastInboundAt = 0;
+  private readonly inboundObservers: ZlinkStreamInboundObservers;
 
   readonly options: RequiredZlinkStreamConnectorOptions;
 
   constructor(options: ZlinkStreamConnectorOptions) {
     this.options = normalizeOptions(options);
+    this.inboundObservers = new ZlinkStreamInboundObservers(
+      this.options.maxInboundObserverNotifications,
+      this.options.maxInboundObserverPayloadPreviewBytes,
+      (error, signal) => this.publishError(error, signal)
+    );
   }
 
   get isConnected(): boolean {
@@ -158,6 +166,15 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   request(payload: unknown, messageType?: Function): ZlinkStreamRequestCall {
     const encoded = this.encodePayload(payload, messageType);
     return new ZlinkStreamRequestBuilder(this, this.resolveNameOrDefault(encoded), encoded);
+  }
+
+  observeInbound(
+    observer: (observation: ZlinkStreamInboundObservation, signal?: AbortSignal) => Promise<void> | void
+  ): Disposable {
+    if (this.currentState !== ZlinkStreamConnectionState.Created) {
+      throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'Inbound observers must be registered before connecting.');
+    }
+    return this.inboundObservers.add(observer);
   }
 
   on<TPayload = ZlinkStreamEncodedPayload>(
@@ -297,6 +314,7 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   }
 
   private async dispatchFrame(header: ZlinkStreamHeader, payload: Uint8Array, signal?: AbortSignal): Promise<void> {
+    this.inboundObservers.enqueue(header, payload, signal);
     if (header.kind === ZlinkStreamMessageKind.Response && header.requestSeq !== undefined) {
       try {
         this.pendingRequests.resolve(header.requestSeq, { codec: header.codec, payload: this.payloadForHeader(header, payload) });

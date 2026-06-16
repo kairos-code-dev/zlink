@@ -159,4 +159,7 @@ wait_port api-http "${API_BIND_URL}"
 wait_port api-channel "${API_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
-  --api-url "${API_PUBLIC_URL}"
+  --api-url "${API_PUBLIC_URL}" >"${LOG_DIR}/client.log" 2>&1
+grep -q "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"

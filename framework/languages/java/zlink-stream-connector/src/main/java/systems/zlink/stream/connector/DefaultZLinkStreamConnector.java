@@ -49,11 +49,14 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private final ZLinkStreamDispatchQueue dispatchQueue = new ZLinkStreamDispatchQueue();
     private final AtomicLong nextRequestSeq = new AtomicLong();
     private final ZLinkStreamPendingRequests pendingRequests = new ZLinkStreamPendingRequests();
+    private final ZLinkStreamInboundObserverDispatcher inboundObservers =
+        new ZLinkStreamInboundObserverDispatcher(this::publishError);
 
     private volatile ZLinkStreamConnectionState state = ZLinkStreamConnectionState.DISCONNECTED;
     private volatile ZLinkStreamTransportConnection connection;
     private volatile ScheduledFuture<?> heartbeatTask;
     private volatile long lastInboundNanos = System.nanoTime();
+    private volatile boolean connectStarted;
     private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
     DefaultZLinkStreamConnector(ZLinkStreamConnectorOptions options) {
@@ -101,6 +104,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         if (isConnected()) {
             return CompletableFuture.completedFuture(null);
         }
+        connectStarted = true;
 
         return connectOnceStage();
     }
@@ -229,6 +233,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         closeQuietly(current);
         failPending(new IOException("connector closed"));
         dispatchQueue.clear();
+        inboundObservers.close();
         transitionTo(ZLinkStreamConnectionState.CLOSED);
         if (wasConnected) {
             notifyDisconnected();
@@ -264,6 +269,16 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Objects.requireNonNull(handler, "handler");
         handlers.computeIfAbsent(name, ignored -> new CopyOnWriteArrayList<>()).add(handler);
         return () -> handlers.getOrDefault(name, List.of()).remove(handler);
+    }
+
+    @Override
+    public AutoCloseable observeInbound(ZLinkStreamInboundObserver observer) {
+        Objects.requireNonNull(observer, "observer");
+        if (connectStarted) {
+            throw new IllegalStateException(
+                "inbound observers must be registered before connecting");
+        }
+        return inboundObservers.add(observer);
     }
 
     @Override
@@ -382,6 +397,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             ZLinkStreamWireProtocol.decodeHeader(encodedHeader);
         lastInboundNanos = System.nanoTime();
         byte[] decodedPayload = decodePayload(header, payload);
+        inboundObservers.enqueue(header, payload);
         if (header.kind() == ZLinkStreamWireProtocol.KIND_CONTROL) {
             dispatchControl(header, decodedPayload);
             return;
@@ -796,7 +812,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         };
     }
 
-    private static ZLinkStreamCodec fromWireCodec(int codec) {
+    static ZLinkStreamCodec fromWireCodec(int codec) {
         return switch (codec) {
             case ZLinkStreamWireProtocol.CODEC_RAW -> ZLinkStreamCodec.RAW;
             case ZLinkStreamWireProtocol.CODEC_JSON -> ZLinkStreamCodec.JSON;
@@ -932,6 +948,17 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         @Override
         public CompletionStage<ZLinkStreamEncodedPayload> submit() {
             return connector.submitRequest(payload, timeout, compressed);
+        }
+
+        @Override
+        public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+            Objects.requireNonNull(replyType, "replyType");
+            ZLinkStreamTypedCodec codec = connector.options().typedCodec();
+            if (codec == null) {
+                throw new IllegalStateException(
+                    "typed stream reply API requires ZLinkStreamConnectorOptions.typedCodec");
+            }
+            return submit().thenApply(reply -> codec.decode(reply, replyType));
         }
     }
 

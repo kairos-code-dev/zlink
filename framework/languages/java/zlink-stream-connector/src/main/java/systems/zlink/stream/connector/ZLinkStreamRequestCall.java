@@ -16,4 +16,10 @@ public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall timeout(Duration timeout);
 
     CompletionStage<ZLinkStreamEncodedPayload> submit();
+
+    <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+
+    default <TReply> TReply await(Class<TReply> replyType) throws Exception {
+        return ZLinkStreamCompletions.await(submit(replyType));
+    }
 }

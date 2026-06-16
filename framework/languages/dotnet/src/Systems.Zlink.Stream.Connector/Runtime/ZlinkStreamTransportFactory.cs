@@ -135,6 +135,20 @@ internal static class ZlinkStreamTransportFactory
                 ZlinkStreamErrorCode.ValidationFailed,
                 "MaxPendingDispatchCallbacks must be positive.");
         }
+
+        if (options.MaxInboundObserverNotifications <= 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "MaxInboundObserverNotifications must be positive.");
+        }
+
+        if (options.MaxInboundObserverPayloadPreviewBytes < 0)
+        {
+            throw ZlinkStreamConnector.Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "MaxInboundObserverPayloadPreviewBytes must not be negative.");
+        }
     }
 
     public static async ValueTask<IZlinkStreamConnection> ConnectAsync(

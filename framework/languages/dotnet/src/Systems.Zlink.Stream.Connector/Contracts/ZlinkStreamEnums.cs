@@ -60,6 +60,8 @@ public enum ZlinkStreamErrorCode
     TlsValidationFailed,
     DecompressionFailed,
     UserCallbackFailed,
+    ObserverFailed,
+    ObserverDropped,
     RemoteError
 }
 

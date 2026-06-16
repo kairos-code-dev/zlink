@@ -45,7 +45,17 @@ try {
     Wait-SampleTcpEndpoint "api-http" $apiBindUrl
     Wait-SampleTcpEndpoint "api-channel" $apiChannelEndpoint
 
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiPublicUrl)
+    $clientLog = Join-Path $LogDir "client.log"
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiPublicUrl) *> $clientLog
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe" -Quiet)) {
+        throw "TicTacToe client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* seq=[0-9]" -Quiet)) {
+        throw "TicTacToe client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path $clientLog -Pattern "stream-inbound sample=TicTacToe .* name=.*Notify" -Quiet)) {
+        throw "TicTacToe client did not write stream-inbound push marker."
+    }
 }
 finally {
     Stop-SampleProcesses

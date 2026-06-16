@@ -72,6 +72,8 @@ enum class error_code_t
     tls_validation_failed,
     decompression_failed,
     user_callback_failed,
+    observer_failed,
+    observer_dropped,
     remote_error,
     closed,
     canceled

@@ -133,6 +133,10 @@ public sealed class ZlinkStreamConnectorOptions
 
     public int MaxReceivePayloadSize { get; init; } = 64 * 1024;
 
+    public int MaxInboundObserverNotifications { get; init; } = 1024;
+
+    public int MaxInboundObserverPayloadPreviewBytes { get; init; }
+
     public bool SkipServerCertificateValidation { get; init; }
 
     public ZlinkStreamDispatchMode DispatchMode { get; init; } =
@@ -526,6 +530,9 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     IDisposable On(
         string name,
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
+
+    IDisposable ObserveInbound(
+        Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer);
 }
 
 public sealed record ZlinkStreamConnectionStateChanged(
@@ -561,6 +568,15 @@ stream connector 의 public option 에는 `SendTimeout` 을 두지 않는다. �
 connector send 는 request / reply 대기와 의미가 다른 fire-and-forget submit 이다.
 여기에 timeout 옵션을 노출하면, request timeout 과 의미가 뒤섞이게 된다. connector
 에서 timeout 이 필요한 공개 옵션은, request 의 reply 대기용인 `RequestTimeout` 뿐이다.
+
+`ObserveInbound(...)`는 수신 frame을 읽기 전용으로 기록하거나 측정하기 위한 등록 API다.
+등록은 `Connect.Async()` 전에만 허용한다. observation에는 message kind, packet name,
+codec, request sequence, metadata, payload byte length, 압축 여부, 수신 시간이 들어간다.
+payload 본문은 기본으로 제공하지 않으며, preview option을 켠 경우에만 제한된 byte copy를
+제공한다. observer callback은 receive 경로에서 직접 실행하지 않으므로, 느린 로그 출력이나
+metrics 전송이 request 완료와 handler dispatch를 막으면 안 된다. callback 실패는
+`ObserverFailed`, queue overflow는 `ObserverDropped` 오류로 보고하지만 원래 frame 처리는
+계속된다.
 
 ## 10. Send / Request Builder API 초안
 
@@ -688,6 +704,8 @@ public enum ZlinkStreamErrorCode
     TlsValidationFailed,
     DecompressionFailed,
     UserCallbackFailed,
+    ObserverFailed,
+    ObserverDropped,
     // 서버가 kind=Error로 응답했고 request id가 없거나 부합하지 않을 때 발생하는
     // 일반 원격 오류 코드.
     RemoteError
@@ -1006,6 +1024,7 @@ Stream Connector 항목은 다음을 각각 분리해서 검증한다.
 - codec
 - compression
 - error handling
+- inbound observer
 
 Connector API 를 수정하는 경우에는, 아래 테스트 이름과 문서 설명을 반드시 함께 맞춰
 두어야 한다.

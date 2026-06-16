@@ -53,6 +53,26 @@ class tictactoe_client_scenario_t
               connector_options);
             core_client1.codecs ().add_json ();
             core_client2.codecs ().add_json ();
+            [[maybe_unused]] auto inbound_log1 = core_client1.observe_inbound (
+              [] (const zlink::stream_connector::inbound_observation_t &observation) {
+                  std::cout << "stream-inbound sample=TicTacToe client=player kind="
+                            << static_cast<int> (observation.kind) << " name=" << observation.name
+                            << " seq="
+                            << (observation.request_seq
+                                  ? std::to_string (*observation.request_seq)
+                                  : std::string ("-"))
+                            << " bytes=" << observation.payload_length << '\n';
+              });
+            [[maybe_unused]] auto inbound_log2 = core_client2.observe_inbound (
+              [] (const zlink::stream_connector::inbound_observation_t &observation) {
+                  std::cout << "stream-inbound sample=TicTacToe client=player kind="
+                            << static_cast<int> (observation.kind) << " name=" << observation.name
+                            << " seq="
+                            << (observation.request_seq
+                                  ? std::to_string (*observation.request_seq)
+                                  : std::string ("-"))
+                            << " bytes=" << observation.payload_length << '\n';
+              });
 
             auto client1 = zlink::stream_e2e_client::use (core_client1);
             auto client2 = zlink::stream_e2e_client::use (core_client2);
@@ -63,6 +83,16 @@ class tictactoe_client_scenario_t
             auto recreate_client = zlink::stream_connector::connector_factory_t::create (
               connector_options);
             recreate_client.codecs ().add_json ();
+            [[maybe_unused]] auto recreate_inbound_log = recreate_client.observe_inbound (
+              [] (const zlink::stream_connector::inbound_observation_t &observation) {
+                  std::cout << "stream-inbound sample=TicTacToe client=player kind="
+                            << static_cast<int> (observation.kind) << " name=" << observation.name
+                            << " seq="
+                            << (observation.request_seq
+                                  ? std::to_string (*observation.request_seq)
+                                  : std::string ("-"))
+                            << " bytes=" << observation.payload_length << '\n';
+              });
             auto client3 = zlink::stream_e2e_client::use (recreate_client);
             return run_recreate_check (client3, options);
         }

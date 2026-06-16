@@ -158,8 +158,11 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Probe/Bingo.Probe.csproj" -- \
   --timeout-seconds 10
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \
-  --stream-endpoint "${BINGO_STREAM_ENDPOINT}"
+  --stream-endpoint "${BINGO_STREAM_ENDPOINT}" >"${LOG_DIR}/client.log" 2>&1
 
+grep -q "stream-inbound sample=Bingo" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "${LOG_DIR}/client.log"
+grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${LOG_DIR}/client.log"
 grep -q "bingo room: actor left. room=.*actor=player-1" "${LOG_DIR}/play.log"
 grep -q "bingo room: actor left. room=.*actor=player-2" "${LOG_DIR}/play.log"
 grep -q "entry spot: actor destroy completed. actor=player-1" "${LOG_DIR}/play.log"

@@ -20,6 +20,7 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
     private readonly IZlinkStreamPacketNameResolver _nameResolver;
     private readonly ZlinkStreamConnectorLifecycle _lifecycle;
     private readonly ZlinkStreamFrameSender _frameSender;
+    private readonly ZlinkStreamInboundObserverDispatcher _inboundObservers;
     private readonly ZlinkStreamReceiveDispatcher _receiveDispatcher;
     private readonly ZlinkStreamReceiveLoop _receiveLoop;
     private int _disposed;
@@ -34,6 +35,11 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _taskRunner,
             options.DispatchMode,
             options.MaxPendingDispatchCallbacks);
+        _inboundObservers = new ZlinkStreamInboundObserverDispatcher(
+            _taskRunner,
+            _callbacks,
+            options.MaxInboundObserverNotifications,
+            options.MaxInboundObserverPayloadPreviewBytes);
 
         _headerCodec = ZlinkStreamDefaultCodecFactory.Header();
         _compressionCodec = CreateCompressionCodec(options.Compression, options.MaxReceivePayloadSize);
@@ -52,7 +58,8 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
             _typedHandlers,
             _receivedMessages,
             _frameSender,
-            _callbacks);
+            _callbacks,
+            _inboundObservers);
         _receiveLoop = new ZlinkStreamReceiveLoop(
             _receiveDispatcher,
             () => _lifecycle.Connection,
@@ -146,6 +153,21 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
 
     public IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload)
         => new ZlinkStreamRequestBuilder(this, ResolveNameOrDefault(payload), payload);
+
+    public IDisposable ObserveInbound(
+        Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(observer);
+        if (_lifecycle.State != ZlinkStreamConnectionState.Created)
+        {
+            throw Error(
+                ZlinkStreamErrorCode.ValidationFailed,
+                "Inbound observers must be registered before connecting.");
+        }
+
+        return _inboundObservers.Add(observer);
+    }
 
     public IDisposable On(
         string name,

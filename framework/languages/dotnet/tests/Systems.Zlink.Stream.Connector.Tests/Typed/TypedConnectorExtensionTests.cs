@@ -259,6 +259,10 @@ public sealed partial class StreamConnectorTests
                 CallbackPayloadResult = NextCallbackPayloadResult
             };
 
+        public IDisposable ObserveInbound(
+            Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer)
+            => new Subscription(() => { });
+
         public IDisposable On(
             string name,
             Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler)

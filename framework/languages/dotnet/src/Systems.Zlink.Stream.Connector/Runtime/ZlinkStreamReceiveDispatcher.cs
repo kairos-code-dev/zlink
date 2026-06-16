@@ -8,13 +8,15 @@ internal sealed class ZlinkStreamReceiveDispatcher(
     ZlinkStreamTypedHandlerRegistry typedHandlers,
     ZlinkStreamReceivedMessages receivedMessages,
     ZlinkStreamFrameSender frameSender,
-    ZlinkStreamConnectorCallbacks callbacks)
+    ZlinkStreamConnectorCallbacks callbacks,
+    ZlinkStreamInboundObserverDispatcher inboundObservers)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async ValueTask DispatchPacketAsync(ZlinkStreamFrame frame, CancellationToken cancellationToken)
     {
         var header = headerCodec.Decode(frame.Header);
+        inboundObservers.Enqueue(header, frame.Payload);
 
         if (header.Kind == ZlinkStreamMessageKind.Control)
         {

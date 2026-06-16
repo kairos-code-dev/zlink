@@ -23,6 +23,10 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
   validatePositive(options.requestTimeoutMs ?? 30000, 'RequestTimeout');
   validatePositive(options.maxSendPayloadSize ?? 64 * 1024, 'MaxSendPayloadSize');
   validatePositive(options.maxReceivePayloadSize ?? 64 * 1024, 'MaxReceivePayloadSize');
+  validatePositive(options.maxInboundObserverNotifications ?? 1024, 'MaxInboundObserverNotifications');
+  if ((options.maxInboundObserverPayloadPreviewBytes ?? 0) < 0) {
+    throw connectorError(ZlinkStreamErrorCode.ValidationFailed, 'MaxInboundObserverPayloadPreviewBytes must not be negative.');
+  }
   validateHeartbeat(options.heartbeat);
   validateReconnect(options.reconnect);
 
@@ -45,6 +49,8 @@ export function normalizeOptions(options: ZlinkStreamConnectorOptions): Required
     },
     maxSendPayloadSize: options.maxSendPayloadSize ?? 64 * 1024,
     maxReceivePayloadSize: options.maxReceivePayloadSize ?? 64 * 1024,
+    maxInboundObserverNotifications: options.maxInboundObserverNotifications ?? 1024,
+    maxInboundObserverPayloadPreviewBytes: options.maxInboundObserverPayloadPreviewBytes ?? 0,
     skipServerCertificateValidation: options.skipServerCertificateValidation ?? false,
     dispatchMode: options.dispatchMode ?? ZlinkStreamDispatchMode.Manual,
     compression: options.compression ?? ZlinkStreamCompression.None,

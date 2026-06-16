@@ -7,8 +7,8 @@ import { loadSampleConfig } from './Configuration/sample-config';
 async function main(): Promise<void> {
   const config = loadSampleConfig();
 
-  const client1 = createClient(config.sessionEndpoint);
-  const client2 = createClient(config.sessionEndpoint);
+  const client1 = createClient(config.sessionEndpoint, 'player1');
+  const client2 = createClient(config.sessionEndpoint, 'player2');
   try {
     await new BingoClientScenario().run(client1, client2);
   } finally {
@@ -21,14 +21,22 @@ async function main(): Promise<void> {
   console.log('PASS Bingo.Ts');
 }
 
-function createClient(sessionEndpoint: string): ZlinkStreamConnector {
-  return connector.zlinkStreamConnectorFactory.create({
+function createClient(sessionEndpoint: string, clientName: string): ZlinkStreamConnector {
+  const client = connector.zlinkStreamConnectorFactory.create({
     endpoint: sessionEndpoint,
     codec: bingoProtobufCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
     requestTimeoutMs: SampleTimings.requestTimeout,
     heartbeat: { enabled: false }
   });
+  client.observeInbound((observation) => {
+    console.log(
+      `stream-inbound sample=Bingo client=${clientName} kind=${observation.kind} ` +
+      `name=${observation.name} seq=${observation.requestSeq?.toString() ?? '-'} ` +
+      `bytes=${observation.payloadLength}`
+    );
+  });
+  return client;
 }
 
 main().catch((error: unknown) => {

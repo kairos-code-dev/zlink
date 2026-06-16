@@ -40,6 +40,18 @@ export interface ZlinkStreamConnectionStateChanged {
   readonly error?: ZlinkStreamError;
 }
 
+export interface ZlinkStreamInboundObservation {
+  readonly kind: ZlinkStreamMessageKind;
+  readonly name: string;
+  readonly codec: ZlinkStreamCodec;
+  readonly requestSeq?: bigint;
+  readonly metadata: ZlinkStreamMetadata;
+  readonly payloadLength: number;
+  readonly isCompressed: boolean;
+  readonly receivedAt: Date;
+  readonly payloadPreview: Uint8Array;
+}
+
 export interface ZlinkStreamResult {
   readonly isSuccess: boolean;
   readonly error?: ZlinkStreamError;

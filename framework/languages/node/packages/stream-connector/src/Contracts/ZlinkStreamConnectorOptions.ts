@@ -16,6 +16,8 @@ export interface ZlinkStreamConnectorOptions {
   readonly reconnect?: ZlinkStreamReconnectOptions;
   readonly maxSendPayloadSize?: number;
   readonly maxReceivePayloadSize?: number;
+  readonly maxInboundObserverNotifications?: number;
+  readonly maxInboundObserverPayloadPreviewBytes?: number;
   readonly skipServerCertificateValidation?: boolean;
   readonly dispatchMode?: ZlinkStreamDispatchMode;
   readonly compression?: ZlinkStreamCompression;
@@ -64,6 +66,8 @@ export interface RequiredZlinkStreamConnectorOptions {
   readonly reconnect: Required<ZlinkStreamReconnectOptions>;
   readonly maxSendPayloadSize: number;
   readonly maxReceivePayloadSize: number;
+  readonly maxInboundObserverNotifications: number;
+  readonly maxInboundObserverPayloadPreviewBytes: number;
   readonly skipServerCertificateValidation: boolean;
   readonly dispatchMode: ZlinkStreamDispatchMode;
   readonly compression: ZlinkStreamCompression;

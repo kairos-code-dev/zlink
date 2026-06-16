@@ -65,6 +65,7 @@ public interface ZLinkStreamConnector {
     AutoCloseable onErrorReceived(ZLinkStreamErrorHandler handler);
     AutoCloseable onDisconnected(ZLinkStreamDisconnectedHandler handler);
     AutoCloseable onConnectionStateChanged(ZLinkStreamConnectionStateHandler handler);
+    AutoCloseable observeInbound(ZLinkStreamInboundObserver observer);
 }
 
 public interface ZLinkStreamLifecycleCall {
@@ -362,6 +363,8 @@ public enum ZLinkStreamErrorCode {
     TLS_VALIDATION_FAILED,
     DECOMPRESSION_FAILED,
     USER_CALLBACK_FAILED,
+    OBSERVER_FAILED,
+    OBSERVER_DROPPED,
     REMOTE_ERROR
 }
 ```
@@ -369,7 +372,36 @@ public enum ZLinkStreamErrorCode {
 callback 실패는 connector runtime을 조용히 중단시키지 않는다. `USER_CALLBACK_FAILED`
 error event로 올리고, connector lifecycle은 명시된 상태 전이 규칙을 따른다.
 
-## 12. Kotlin 표면
+## 12. Inbound Observer
+
+`observeInbound(...)`는 수신 frame을 읽기 전용으로 관찰하는 API다. client code는
+connector를 만든 뒤 `connect().submit()` 또는 `connect().await()`를 호출하기 전에
+observer를 등록한다. 연결이 시작된 뒤 등록하면 invalid state 오류로 실패한다.
+
+```java
+try (AutoCloseable log = connector.observeInbound(observation -> {
+    System.out.printf(
+        "stream-inbound kind=%s name=%s seq=%s bytes=%d%n",
+        observation.kind(),
+        observation.packetName(),
+        observation.requestSeq(),
+        observation.payloadLength());
+})) {
+    connector.connect().await();
+}
+```
+
+`ZLinkStreamInboundObservation`은 message kind, packet name, codec, request sequence,
+metadata, payload byte length, 압축 여부, 수신 시간, payload preview를 담는다. metadata와
+preview는 복사된 값이므로 observer가 값을 바꿔도 dispatch와 pending request 완료에
+영향을 주지 않는다. payload preview 기본 길이는 0이다. 첫 Java 구현은 observer queue
+크기를 1024개 notification으로 고정한다.
+
+observer callback은 receive 경로에서 직접 실행하지 않는다. callback 실패는
+`OBSERVER_FAILED`, bounded queue overflow는 `OBSERVER_DROPPED` error event로 보고한다.
+두 오류는 관찰 기능의 진단 신호이며 원래 수신 frame의 처리 결과를 바꾸지 않는다.
+
+## 13. Kotlin 표면
 
 Kotlin module은 Java connector 위의 thin wrapper다. Kotlin 사용자 code는 Java `submit()`을
 직접 호출하지 않고 Kotlin wrapper의 suspend `await()`를 사용한다. 이 `await()`는 Java blocking
@@ -416,7 +448,7 @@ Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 
 handler를 `callbackFlow`로 감싼다. 따라서 manual dispatch mode에서는 Java와 마찬가지로
 Kotlin wrapper의 `dispatch().await()`가 호출되어야 collector가 메시지나 error event를 받는다.
 
-## 13. 검증 기준
+## 14. 검증 기준
 
 Java connector는 아래 테스트를 별도 suite로 가진다.
 
@@ -434,6 +466,7 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 - JSON, MessagePack, Protobuf codec smoke
 - typed helper packet name resolver와 codec selection
 - typed request/reply decode
+- inbound observer response/send/control 관찰, callback 실패, queue overflow
 - Kotlin coroutine/Flow wrapper smoke
 
 ---

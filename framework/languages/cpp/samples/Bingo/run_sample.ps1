@@ -82,6 +82,15 @@ try {
         Get-Content (Join-Path $LogDir "registry.err") -ErrorAction SilentlyContinue
         exit $LASTEXITCODE
     }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=Bingo" -Quiet)) {
+        throw "Bingo C++ client did not write stream-inbound marker."
+    }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=Bingo .* seq=[0-9]" -Quiet)) {
+        throw "Bingo C++ client did not write sequenced stream-inbound response marker."
+    }
+    if (-not (Select-String -Path (Join-Path $LogDir "client.log") -Pattern "stream-inbound sample=Bingo .* name=.*Notify" -Quiet)) {
+        throw "Bingo C++ client did not write stream-inbound push marker."
+    }
 }
 finally {
     foreach ($Process in $Processes) {

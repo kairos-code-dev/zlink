@@ -13,6 +13,7 @@ final class ProtobufMessages {
         systems.zlink.contracts.messaging.Message message =
             systems.zlink.contracts.messaging.Message.allocate(
                 value.getSerializedSize());
+        message.withPacketName(value.getClass().getSimpleName());
         try {
             CodedOutputStream output =
                 CodedOutputStream.newInstance(message.mutableDataBuffer());

@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.Optional;
 import sun.misc.Unsafe;
 
 /**
@@ -39,6 +40,7 @@ public final class Message implements AutoCloseable {
     private boolean more;
     private int cachedSize;
     private long cachedAddress;
+    private String packetName;
 
     static {
         ContractAccess.register(new ContractAccess.MessageAccess() {
@@ -152,6 +154,7 @@ public final class Message implements AutoCloseable {
         this.more = false;
         this.cachedSize = 0;
         this.cachedAddress = 0L;
+        this.packetName = null;
     }
 
     private Message(Object adoptedMsg) {
@@ -162,6 +165,7 @@ public final class Message implements AutoCloseable {
         this.closed = false;
         this.recvArmed = false;
         this.more = false;
+        this.packetName = null;
         cachePayload((int) ContractAccess.nativeMessageSize(adoptedMsg));
     }
 
@@ -176,6 +180,7 @@ public final class Message implements AutoCloseable {
         this.more = false;
         this.cachedSize = 0;
         this.cachedAddress = 0L;
+        this.packetName = null;
     }
 
     private Message(boolean raw) {
@@ -241,6 +246,7 @@ public final class Message implements AutoCloseable {
                 msg.cachedAddress, size);
         }
         msg.more = source.more;
+        msg.packetName = source.packetName;
         return msg;
     }
 
@@ -255,6 +261,7 @@ public final class Message implements AutoCloseable {
         target.valid = true;
         target.recvArmed = false;
         target.more = moreFlag;
+        target.packetName = packetName;
         if (size > 0) {
             target.cachePayload(size);
         } else {
@@ -318,6 +325,7 @@ public final class Message implements AutoCloseable {
         msg.valid = true;
         msg.recvArmed = false;
         msg.more = source.more;
+        msg.packetName = source.packetName;
         msg.cachePayload(source.cachedSize);
         return msg;
     }
@@ -387,6 +395,18 @@ public final class Message implements AutoCloseable {
 
     public int size() {
         return valid && !closed ? cachedSize : 0;
+    }
+
+    public Optional<String> packetName() {
+        return Optional.ofNullable(packetName);
+    }
+
+    public Message withPacketName(String packetName) {
+        if (packetName == null || packetName.isBlank()) {
+            throw new IllegalArgumentException("packetName is required");
+        }
+        this.packetName = packetName;
+        return this;
     }
 
     public boolean more() {

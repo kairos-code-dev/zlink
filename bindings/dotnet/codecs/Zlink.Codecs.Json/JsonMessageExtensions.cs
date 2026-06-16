@@ -20,7 +20,7 @@ public static class JsonMessageExtensions
     {
         ArgumentNullException.ThrowIfNull(message);
         return JsonSerializer.Deserialize<T>(message.AsReadOnlySpan(),
-            options)!;
+            options ?? DefaultOptions)!;
     }
 
     public static Message Encode<T>(this T value,
@@ -32,7 +32,8 @@ public static class JsonMessageExtensions
     public static Message ToJson<T>(this T value,
         JsonSerializerOptions? options = null)
     {
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value, options);
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value,
+            options ?? DefaultOptions);
         return Message.From(payload);
     }
 }

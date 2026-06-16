@@ -810,6 +810,32 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
   );
 });
 
+test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered without actor type', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor(actorId) {
+      this.actorId = actorId;
+    }
+  }
+  class MoveRequestHandler {
+    async handle(spot, actor, context, request) {
+      events.push(`${spot.name}:${actor.actorId}:${context.packetName}:${request}`);
+      return 'ok';
+    }
+  }
+  const actorHandlers = new framework.ZLinkSpotActorHandlerRegistryRuntime();
+  const registry = new framework.DefaultZLinkSpotHandlerRegistry(actorHandlers);
+  registry.actorRequest('move', MoveRequestHandler);
+
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry: actorHandlers,
+    spot: { name: 'game' }
+  });
+
+  assert.equal(await dispatcher.dispatchRequest(new PlayerActor('alice'), 'move', 'x'), 'ok');
+  assert.deepEqual(events, ['game:alice:move:x']);
+});
+
 test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts', async () => {
   const events = [];
   const acceptReply = zlink.Message.from('accept-reply');

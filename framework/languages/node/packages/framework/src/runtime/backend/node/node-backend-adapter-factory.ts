@@ -170,7 +170,23 @@ function wrapBackendObject<T extends { close(): void }>(nativeInstance: T): T & 
           await closeWithBusyRetry(target);
         };
       }
-      return Reflect.get(target, property, receiver);
+      if (property === 'attachDiscovery') {
+        return (discovery: ZLinkBackendDiscovery) =>
+          (target as unknown as { attachDiscovery(discovery: unknown): void })
+            .attachDiscovery(unwrapBackendObject(discovery));
+      }
+      if (property === 'attachChannelDealer') {
+        return (discovery: ZLinkBackendDiscovery, dealer: ZLinkBackendDealerSocket) =>
+          (target as unknown as { attachChannelDealer(discovery: unknown, dealer: unknown): void })
+            .attachChannelDealer(unwrapBackendObject(discovery), unwrapBackendObject(dealer));
+      }
+      if (property === 'attachSpotRouteChannelDiscovery') {
+        return (channelName: string, discovery: ZLinkBackendDiscovery) =>
+          (target as unknown as { attachSpotRouteChannelDiscovery(channelName: string, discovery: unknown): void })
+            .attachSpotRouteChannelDiscovery(channelName, unwrapBackendObject(discovery));
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
     }
   }) as T & ZLinkBackendObject;
 }
@@ -197,9 +213,25 @@ function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & ZLinkBa
       if (actorGateway !== undefined) {
         return actorGateway;
       }
-      return Reflect.get(target, property, receiver);
+      if (property === 'attachDiscovery') {
+        return (discovery: ZLinkBackendDiscovery) =>
+          (target as unknown as { attachDiscovery(discovery: unknown): void })
+            .attachDiscovery(unwrapBackendObject(discovery));
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
     }
   }) as T & ZLinkBackendObject;
+}
+
+function unwrapBackendObject(value: unknown): unknown {
+  if (typeof value === 'object' && value !== null) {
+    const nativeInstance = (value as Partial<ZLinkBackendObject>).nativeInstance;
+    if (nativeInstance !== undefined) {
+      return nativeInstance;
+    }
+  }
+  return value;
 }
 
 interface ZLinkSocketLifecycleState {
@@ -433,13 +465,30 @@ function hasDisconnectRid(target: unknown): target is { disconnectRid(routingId:
 
 function closeSocketEndpoints(target: unknown, boundEndpoints: Set<string>, connectedEndpoints: Set<string>): void {
   for (const endpoint of connectedEndpoints) {
-    (target as { disconnect(endpoint: string): void }).disconnect(endpoint);
+    try {
+      (target as { disconnect(endpoint: string): void }).disconnect(endpoint);
+    } catch (error) {
+      if (!isEndpointCloseIgnorableError(error)) {
+        throw error;
+      }
+    }
     connectedEndpoints.delete(endpoint);
   }
   for (const endpoint of boundEndpoints) {
-    (target as { unbind(endpoint: string): void }).unbind(endpoint);
+    try {
+      (target as { unbind(endpoint: string): void }).unbind(endpoint);
+    } catch (error) {
+      if (!isEndpointCloseIgnorableError(error)) {
+        throw error;
+      }
+    }
     boundEndpoints.delete(endpoint);
   }
+}
+
+function isEndpointCloseIgnorableError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    ((error as { code: unknown }).code === 604 || (error as { code: unknown }).code === zlink.ConnectResult.NotFound);
 }
 
 async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
@@ -460,7 +509,8 @@ async function closeWithBusyRetry(target: { close(): void }): Promise<void> {
 }
 
 function isBusyCloseError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && (error as { code: unknown }).code === 401;
+  return error instanceof Error && 'code' in error &&
+    ([401, 403, 404].includes((error as { code: number }).code));
 }
 
 function disableSocketLinger(target: unknown): void {

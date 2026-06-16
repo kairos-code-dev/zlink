@@ -10,6 +10,7 @@ import type {
   ZLinkActor,
   ZLinkChannelPublishHandlerRegistration,
   ZLinkChannelRequestHandlerRegistration,
+  ZLinkChannelSendHandlerRegistration,
   ZLinkClientCapabilityOptions,
   ZLinkDealerMeshChannelOptions,
   ZLinkChannelOptions,
@@ -19,13 +20,17 @@ import type {
   ZLinkPublisherCapabilityOptions,
   ZLinkPublishContext,
   ZLinkRequestContext,
+  ZLinkSendContext,
   ZLinkRouteChannelOptions,
   ZLinkRouteChannelRequestHandlerRegistration,
   ZLinkRouteChannelSendHandlerRegistration,
+  ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkEntrySpot,
+  ZLinkEntrySpotActorSendHandlerRegistration,
   ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkSpot,
+  ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkRegistryOptions,
   ZLinkRegistryQueryClientOptions,
@@ -34,6 +39,7 @@ import type {
   ZLinkSpotRemoteAddressResolver,
   ZLinkSession,
   ZLinkSessionFactory,
+  ZLinkTimerOptions,
   ZLinkStreamNodeOptions
 } from '@zlink-systems/framework';
 
@@ -117,6 +123,11 @@ interface ZLinkNestHandlerDiscoveryOptions {
   readonly handlerGroups?: readonly string[];
 }
 
+interface ZLinkNestManualHandlerOptions {
+  readonly packetName: string;
+  readonly handlerType: Type;
+}
+
 type Mutable<T> = {
   -readonly [K in keyof T]: T[K];
 };
@@ -125,12 +136,16 @@ export interface ZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDis
   readonly server?: { readonly bind?: string };
   readonly client?: ZLinkClientCapabilityOptions;
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
+  readonly requestHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
+  readonly sendHandlers?: readonly ZLinkChannelSendHandlerRegistration[];
+  readonly sendHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
 export interface ZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly subscriber?: ZLinkClientCapabilityOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
+  readonly publishHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
 export interface ZLinkNestDealerMeshChannelOptions extends ZLinkDealerMeshChannelOptions {}
@@ -141,6 +156,8 @@ export interface ZLinkNestRouterMeshOptions extends ZLinkNestHandlerDiscoveryOpt
   readonly routingId?: string;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
+  readonly sendHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
+  readonly requestHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
   readonly handlers?: ZLinkRouteChannelOptions['handlers'];
 }
 
@@ -148,6 +165,14 @@ export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';
 
 export interface ZLinkNestHandlerOptions {
   readonly methodName?: string;
+  readonly decodePayload?: (
+    payload: Buffer,
+    context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+  ) => unknown;
+  readonly encodeResult?: (
+    result: unknown,
+    context: ZLinkRequestContext | ZLinkRouteRequestContext
+  ) => unknown;
 }
 
 export interface ZLinkNestProviderDiscoveryOptions {
@@ -155,6 +180,13 @@ export interface ZLinkNestProviderDiscoveryOptions {
 }
 
 export type ZLinkNestTypeResolver<T> = Type<T> | (() => Type<T>);
+
+export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, TActor extends ZLinkActor> {
+  readonly spot: ZLinkNestTypeResolver<TSpot>;
+  readonly actor: ZLinkNestTypeResolver<TActor>;
+  readonly packetName: string;
+  readonly methodName?: string;
+}
 
 export interface ZLinkNestSpotActorRequestHandlerOptions<TSpot extends ZLinkSpot, TActor extends ZLinkActor> {
   readonly spot: ZLinkNestTypeResolver<TSpot>;
@@ -168,6 +200,21 @@ export interface ZLinkNestEntrySpotActorRequestHandlerOptions<TEntrySpot extends
   readonly actor: ZLinkNestTypeResolver<TActor>;
   readonly packetName: string;
   readonly methodName?: string;
+}
+
+export interface ZLinkNestEntrySpotActorSendHandlerOptions<TEntrySpot extends ZLinkEntrySpot, TActor extends ZLinkActor> {
+  readonly entrySpot: ZLinkNestTypeResolver<TEntrySpot>;
+  readonly actor: ZLinkNestTypeResolver<TActor>;
+  readonly packetName: string;
+  readonly methodName?: string;
+}
+
+export interface ZLinkNestSpotTimerHandlerOptions<TSpot extends ZLinkSpot = ZLinkSpot> {
+  readonly spot?: ZLinkNestTypeResolver<TSpot>;
+  readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
+  readonly name?: string;
+  readonly periodMs?: number;
+  readonly options?: ZLinkTimerOptions;
 }
 
 export interface ZLinkModuleOptions extends Omit<
@@ -202,12 +249,15 @@ export type ZLinkNestFrameworkAdditionalOptions = Omit<
 export interface ZLinkNestClientServerChannelBuilder {
   server(bind: string | undefined): this;
   client(endpoint?: string | readonly string[]): this;
+  requestHandler(packetName: string, handlerType: Type): this;
+  sendHandler(packetName: string, handlerType: Type): this;
   handlerGroup(groupName: string): this;
 }
 
 export interface ZLinkNestFanoutChannelBuilder {
   publisher(bind: string | undefined): this;
   subscriber(endpoint?: string | readonly string[]): this;
+  publishHandler(packetName: string, handlerType: Type): this;
   handlerGroup(groupName: string): this;
 }
 
@@ -215,6 +265,8 @@ export interface ZLinkNestRouterMeshBuilder {
   bind(endpoint: string | undefined): this;
   routingId(routingId: string | undefined): this;
   connect(endpoint: string | readonly string[] | undefined): this;
+  sendHandler(packetName: string, handlerType: Type): this;
+  requestHandler(packetName: string, handlerType: Type): this;
   handlerGroup(groupName: string): this;
 }
 
@@ -249,6 +301,7 @@ export const ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:
 
 const nestHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestHandlerMetadata[]>();
 const nestSpotActorHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotActorHandlerMetadata[]>();
+const nestSpotTimerHandlerMetadataByToken = new Map<unknown, readonly ZLinkNestSpotTimerHandlerMetadata[]>();
 const nestSpotTimerHandlerTokens = new Set<unknown>();
 
 export function zlinkFramework(): ZLinkNestFrameworkOptionsBuilder {
@@ -302,6 +355,22 @@ export function zlinkSpotActorRequestHandler<TSpot extends ZLinkSpot, TActor ext
   };
 }
 
+export function zlinkSpotActorSendHandler<TSpot extends ZLinkSpot, TActor extends ZLinkActor>(
+  options: ZLinkNestSpotActorSendHandlerOptions<TSpot, TActor>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotActorHandlerMetadata(target as Type, {
+      actor: options.actor,
+      handlerType: target as Type,
+      kind: 'spotActorSend',
+      methodName: options.methodName ?? 'handle',
+      packetName: options.packetName,
+      spot: options.spot
+    });
+  };
+}
+
 export function zlinkEntrySpotActorRequestHandler<TEntrySpot extends ZLinkEntrySpot, TActor extends ZLinkActor>(
   options: ZLinkNestEntrySpotActorRequestHandlerOptions<TEntrySpot, TActor>
 ): ClassDecorator {
@@ -318,10 +387,38 @@ export function zlinkEntrySpotActorRequestHandler<TEntrySpot extends ZLinkEntryS
   };
 }
 
-export function zlinkSpotTimerHandler(): ClassDecorator {
+export function zlinkEntrySpotActorSendHandler<TEntrySpot extends ZLinkEntrySpot, TActor extends ZLinkActor>(
+  options: ZLinkNestEntrySpotActorSendHandlerOptions<TEntrySpot, TActor>
+): ClassDecorator {
+  return (target: Function) => {
+    Injectable()(target as Type);
+    appendNestSpotActorHandlerMetadata(target as Type, {
+      actor: options.actor,
+      entrySpot: options.entrySpot,
+      handlerType: target as Type,
+      kind: 'entrySpotActorSend',
+      methodName: options.methodName ?? 'handle',
+      packetName: options.packetName
+    });
+  };
+}
+
+export function zlinkSpotTimerHandler<TSpot extends ZLinkSpot = ZLinkSpot>(
+  options: ZLinkNestSpotTimerHandlerOptions<TSpot> = {}
+): ClassDecorator {
   return (target: Function) => {
     Injectable()(target as Type);
     nestSpotTimerHandlerTokens.add(target);
+    if (options.name !== undefined && options.periodMs !== undefined) {
+      appendNestSpotTimerHandlerMetadata(target as Type, {
+        entrySpot: options.entrySpot,
+        handlerType: target as Type,
+        name: options.name,
+        options: options.options,
+        periodMs: options.periodMs,
+        spot: options.spot
+      });
+    }
   };
 }
 
@@ -335,6 +432,8 @@ export function zlinkHandler(
   return (target: Function) => {
     Injectable()(target as Type);
     appendNestHandlerMetadata(target as Type, {
+      decodePayload: options.decodePayload,
+      encodeResult: options.encodeResult,
       groupName,
       kind,
       methodName: options.methodName ?? 'handle',
@@ -428,6 +527,22 @@ class DefaultZLinkNestClientServerChannelBuilder implements ZLinkNestClientServe
     return this;
   }
 
+  requestHandler(packetName: string, handlerType: Type): this {
+    this.options = {
+      ...this.options,
+      requestHandlerTypes: [...(this.options.requestHandlerTypes ?? []), { packetName, handlerType }]
+    };
+    return this;
+  }
+
+  sendHandler(packetName: string, handlerType: Type): this {
+    this.options = {
+      ...this.options,
+      sendHandlerTypes: [...(this.options.sendHandlerTypes ?? []), { packetName, handlerType }]
+    };
+    return this;
+  }
+
   build(): ZLinkNestClientServerChannelOptions {
     return this.options;
   }
@@ -448,6 +563,14 @@ class DefaultZLinkNestFanoutChannelBuilder implements ZLinkNestFanoutChannelBuil
 
   handlerGroup(groupName: string): this {
     this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+    return this;
+  }
+
+  publishHandler(packetName: string, handlerType: Type): this {
+    this.options = {
+      ...this.options,
+      publishHandlerTypes: [...(this.options.publishHandlerTypes ?? []), { packetName, handlerType }]
+    };
     return this;
   }
 
@@ -476,6 +599,22 @@ class DefaultZLinkNestRouterMeshBuilder implements ZLinkNestRouterMeshBuilder {
 
   handlerGroup(groupName: string): this {
     this.options = { ...this.options, handlerGroups: [...(this.options.handlerGroups ?? []), groupName] };
+    return this;
+  }
+
+  sendHandler(packetName: string, handlerType: Type): this {
+    this.options = {
+      ...this.options,
+      sendHandlerTypes: [...(this.options.sendHandlerTypes ?? []), { packetName, handlerType }]
+    };
+    return this;
+  }
+
+  requestHandler(packetName: string, handlerType: Type): this {
+    this.options = {
+      ...this.options,
+      requestHandlerTypes: [...(this.options.requestHandlerTypes ?? []), { packetName, handlerType }]
+    };
     return this;
   }
 
@@ -558,9 +697,15 @@ interface ZLinkNestHandlerMetadata {
   readonly kind: ZLinkNestHandlerKind;
   readonly packetName: string;
   readonly methodName: string;
+  readonly decodePayload?: ZLinkNestHandlerOptions['decodePayload'];
+  readonly encodeResult?: ZLinkNestHandlerOptions['encodeResult'];
 }
 
-type ZLinkNestSpotActorHandlerKind = 'spotActorRequest' | 'entrySpotActorRequest';
+type ZLinkNestSpotActorHandlerKind =
+  | 'spotActorSend'
+  | 'spotActorRequest'
+  | 'entrySpotActorSend'
+  | 'entrySpotActorRequest';
 
 interface ZLinkNestSpotActorHandlerMetadata {
   readonly kind: ZLinkNestSpotActorHandlerKind;
@@ -568,6 +713,15 @@ interface ZLinkNestSpotActorHandlerMetadata {
   readonly methodName: string;
   readonly handlerType: Type;
   readonly actor: ZLinkNestTypeResolver<ZLinkActor>;
+  readonly spot?: ZLinkNestTypeResolver<ZLinkSpot>;
+  readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
+}
+
+interface ZLinkNestSpotTimerHandlerMetadata {
+  readonly handlerType: Type;
+  readonly name: string;
+  readonly periodMs: number;
+  readonly options?: ZLinkTimerOptions;
   readonly spot?: ZLinkNestTypeResolver<ZLinkSpot>;
   readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;
 }
@@ -620,6 +774,18 @@ function readNestSpotActorHandlerMetadata(handlerToken: InjectionToken | undefin
     return [];
   }
   return nestSpotActorHandlerMetadataByToken.get(handlerToken) ?? [];
+}
+
+function appendNestSpotTimerHandlerMetadata(handlerToken: InjectionToken, metadata: ZLinkNestSpotTimerHandlerMetadata): void {
+  const current = readNestSpotTimerHandlerMetadata(handlerToken);
+  nestSpotTimerHandlerMetadataByToken.set(handlerToken, [...current, metadata]);
+}
+
+function readNestSpotTimerHandlerMetadata(handlerToken: InjectionToken | undefined): readonly ZLinkNestSpotTimerHandlerMetadata[] {
+  if (handlerToken === undefined) {
+    return [];
+  }
+  return nestSpotTimerHandlerMetadataByToken.get(handlerToken) ?? [];
 }
 
 function hasNestSpotTimerHandlerMetadata(handlerToken: InjectionToken | undefined): boolean {
@@ -865,7 +1031,11 @@ function createDiscoveredOptions(
   const routerMeshes = new Map<string, ZLinkRouteChannelOptions>();
   const providerRefs = discoverProviderRefs(discovery, moduleRef);
   const spotActorProviderRefs = discoverSpotActorProviderRefs(discovery, moduleRef);
-  const spotNodes = createDiscoveredSpotNodeOptions(registrationOptions.spotNodes, spotActorProviderRefs);
+  const spotTimerProviderRefs = discoverSpotTimerProviderRefs(discovery, moduleRef);
+  const spotNodes = createDiscoveredSpotNodeOptions(
+    registrationOptions.spotNodes,
+    spotActorProviderRefs,
+    spotTimerProviderRefs);
 
   for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
     const requestHandlers = createDiscoveredRequestHandlers(
@@ -873,23 +1043,40 @@ function createDiscoveredOptions(
       channel.handlerGroups,
       moduleRef
     );
+    const sendHandlers = createDiscoveredSendHandlers(
+      providerRefs,
+      channel.handlerGroups,
+      moduleRef
+    );
+    const manualRequestHandlers = createManualRequestHandlers(channel.requestHandlerTypes, moduleRef);
+    const manualSendHandlers = createManualSendHandlers(channel.sendHandlerTypes, moduleRef);
     channels[channelName] = {
       ...channels[channelName],
       requestHandlers: channel.server === undefined
         ? channels[channelName]?.requestHandlers
         : [
             ...(channels[channelName]?.requestHandlers ?? []),
+            ...manualRequestHandlers,
             ...requestHandlers
+          ],
+      sendHandlers: channel.server === undefined
+        ? channels[channelName]?.sendHandlers
+        : [
+            ...(channels[channelName]?.sendHandlers ?? []),
+            ...manualSendHandlers,
+            ...sendHandlers
           ]
     };
   }
 
   for (const [channelName, channel] of Object.entries(options.fanoutChannels ?? {})) {
     const publishHandlers = createDiscoveredPublishHandlers(providerRefs, channel.handlerGroups, moduleRef);
+    const manualPublishHandlers = createManualPublishHandlers(channel.publishHandlerTypes, moduleRef);
     channels[channelName] = {
       ...channels[channelName],
       publishHandlers: [
         ...(channels[channelName]?.publishHandlers ?? []),
+        ...manualPublishHandlers,
         ...publishHandlers
       ]
     };
@@ -913,14 +1100,18 @@ function createDiscoveredOptions(
       routerMesh.handlerGroups,
       moduleRef
     );
+    const manualRequestHandlers = createManualRouteRequestHandlers(routerMesh.requestHandlerTypes, moduleRef);
+    const manualSendHandlers = createManualRouteSendHandlers(routerMesh.sendHandlerTypes, moduleRef);
     routerMeshes.set(routerMeshName, {
       ...existing,
       requestHandlers: [
         ...(existing.requestHandlers ?? []),
+        ...manualRequestHandlers,
         ...requestHandlers
       ],
       sendHandlers: [
         ...(existing.sendHandlers ?? []),
+        ...manualSendHandlers,
         ...sendHandlers
       ]
     });
@@ -936,9 +1127,10 @@ function createDiscoveredOptions(
 
 function createDiscoveredSpotNodeOptions(
   value: ZLinkFrameworkRegistrationOptions['spotNodes'],
-  refs: readonly DiscoveredNestSpotActorProvider[]
+  refs: readonly DiscoveredNestSpotActorProvider[],
+  timerRefs: readonly DiscoveredNestSpotTimerProvider[] = []
 ): ZLinkFrameworkRegistrationOptions['spotNodes'] {
-  if (refs.length === 0) {
+  if (refs.length === 0 && timerRefs.length === 0) {
     return value;
   }
   const spotNodes = toMutableSpotNodeRecord(value);
@@ -947,8 +1139,52 @@ function createDiscoveredSpotNodeOptions(
     throw new framework.ZLinkConfigurationException('ZLink SPOT actor handlers require a registered SpotNode.');
   }
 
+  for (const ref of timerRefs) {
+    if (ref.metadata.entrySpot !== undefined) {
+      const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
+      const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
+      if (matches.length === 0) {
+        throw new framework.ZLinkConfigurationException(
+          `ZLink Entry Spot timer handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`
+        );
+      }
+      for (const [, spotNode] of matches) {
+        spotNode.entrySpotTimerHandlers = [
+          ...(spotNode.entrySpotTimerHandlers ?? []),
+          {
+            entrySpotType,
+            handlerType: ref.handlerKey,
+            name: ref.metadata.name,
+            options: ref.metadata.options,
+            periodMs: ref.metadata.periodMs
+          }
+        ];
+      }
+      continue;
+    }
+    const spotType = resolveNestType(ref.metadata.spot, 'spot');
+    const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
+    if (matches.length === 0) {
+      throw new framework.ZLinkConfigurationException(
+        `ZLink SPOT timer handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`
+      );
+    }
+    for (const [, spotNode] of matches) {
+      spotNode.spotTimerHandlers = [
+        ...(spotNode.spotTimerHandlers ?? []),
+        {
+          handlerType: ref.handlerKey,
+          name: ref.metadata.name,
+          options: ref.metadata.options,
+          periodMs: ref.metadata.periodMs,
+          spotType
+        }
+      ];
+    }
+  }
+
   for (const ref of refs) {
-    if (ref.metadata.kind === 'entrySpotActorRequest') {
+    if (ref.metadata.kind === 'entrySpotActorSend' || ref.metadata.kind === 'entrySpotActorRequest') {
       const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
       const actorType = resolveNestType(ref.metadata.actor, 'actor');
       const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
@@ -964,11 +1200,19 @@ function createDiscoveredSpotNodeOptions(
           handlerType: ref.handlerKey,
           packetName: ref.metadata.packetName
         };
-        assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorRequestHandlers, next);
-        spotNode.entrySpotActorRequestHandlers = [
-          ...(spotNode.entrySpotActorRequestHandlers ?? []),
-          next
-        ];
+        if (ref.metadata.kind === 'entrySpotActorSend') {
+          assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorSendHandlers, next);
+          spotNode.entrySpotActorSendHandlers = [
+            ...(spotNode.entrySpotActorSendHandlers ?? []),
+            next
+          ];
+        } else {
+          assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorRequestHandlers, next);
+          spotNode.entrySpotActorRequestHandlers = [
+            ...(spotNode.entrySpotActorRequestHandlers ?? []),
+            next
+          ];
+        }
       }
       continue;
     }
@@ -988,11 +1232,19 @@ function createDiscoveredSpotNodeOptions(
         packetName: ref.metadata.packetName,
         spotType
       };
-      assertUniqueSpotActorHandler(spotNode.spotActorRequestHandlers, next);
-      spotNode.spotActorRequestHandlers = [
-        ...(spotNode.spotActorRequestHandlers ?? []),
-        next
-      ];
+      if (ref.metadata.kind === 'spotActorSend') {
+        assertUniqueSpotActorHandler(spotNode.spotActorSendHandlers, next);
+        spotNode.spotActorSendHandlers = [
+          ...(spotNode.spotActorSendHandlers ?? []),
+          next
+        ];
+      } else {
+        assertUniqueSpotActorHandler(spotNode.spotActorRequestHandlers, next);
+        spotNode.spotActorRequestHandlers = [
+          ...(spotNode.spotActorRequestHandlers ?? []),
+          next
+        ];
+      }
     }
   }
 
@@ -1034,8 +1286,8 @@ function isClassType(value: unknown): value is Type {
 }
 
 function assertUniqueEntrySpotActorHandler(
-  existing: readonly ZLinkEntrySpotActorRequestHandlerRegistration[] | undefined,
-  next: ZLinkEntrySpotActorRequestHandlerRegistration
+  existing: readonly (ZLinkEntrySpotActorSendHandlerRegistration | ZLinkEntrySpotActorRequestHandlerRegistration)[] | undefined,
+  next: ZLinkEntrySpotActorSendHandlerRegistration | ZLinkEntrySpotActorRequestHandlerRegistration
 ): void {
   if ((existing ?? []).some((handler) =>
     handler.entrySpotType === next.entrySpotType &&
@@ -1049,8 +1301,8 @@ function assertUniqueEntrySpotActorHandler(
 }
 
 function assertUniqueSpotActorHandler(
-  existing: readonly ZLinkSpotActorRequestHandlerRegistration[] | undefined,
-  next: ZLinkSpotActorRequestHandlerRegistration
+  existing: readonly (ZLinkSpotActorSendHandlerRegistration | ZLinkSpotActorRequestHandlerRegistration)[] | undefined,
+  next: ZLinkSpotActorSendHandlerRegistration | ZLinkSpotActorRequestHandlerRegistration
 ): void {
   if ((existing ?? []).some((handler) =>
     handler.spotType === next.spotType &&
@@ -1072,6 +1324,7 @@ function createRegistrationOptions(options: ZLinkModuleOptions): ZLinkFrameworkR
     channels[name] = {
       client: channel.client,
       requestHandlers: channel.requestHandlers,
+      sendHandlers: channel.sendHandlers,
       server: channel.server
     };
   }
@@ -1159,6 +1412,13 @@ interface DiscoveredNestSpotActorProvider {
   readonly metadata: ZLinkNestSpotActorHandlerMetadata;
 }
 
+interface DiscoveredNestSpotTimerProvider {
+  readonly handlerKey: Type;
+  readonly handlerName: string;
+  readonly token: InjectionToken;
+  readonly metadata: ZLinkNestSpotTimerHandlerMetadata;
+}
+
 function createDiscoveredRequestHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,
@@ -1166,7 +1426,8 @@ function createDiscoveredRequestHandlers(
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'request', (ref, metadata) => ({
     async handle(payload: Buffer, context: ZLinkRequestContext) {
-      return await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+      const result = await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+      return encodeHandlerResult(metadata, result, context);
     }
   }));
 }
@@ -1191,6 +1452,76 @@ function createDiscoveredPublishHandlers(
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'publish', (ref, metadata) => ({
     async handle(payload: Buffer, context: ZLinkPublishContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+    }
+  }));
+}
+
+function createManualRequestHandlers(
+  handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['requestHandlers']> {
+  return (handlerTypes ?? []).map((registration) => ({
+    packetName: registration.packetName,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkRequestContext) {
+        return await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
+      }
+    }
+  }));
+}
+
+function createManualPublishHandlers(
+  handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['publishHandlers']> {
+  return (handlerTypes ?? []).map((registration) => ({
+    packetName: registration.packetName,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkPublishContext) {
+        await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
+      }
+    }
+  }));
+}
+
+function createManualSendHandlers(
+  handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['sendHandlers']> {
+  return (handlerTypes ?? []).map((registration) => ({
+    packetName: registration.packetName,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkSendContext) {
+        await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
+      }
+    }
+  }));
+}
+
+function createManualRouteSendHandlers(
+  handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
+  return (handlerTypes ?? []).map((registration) => ({
+    packetName: registration.packetName,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+        await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
+      }
+    }
+  }));
+}
+
+function createManualRouteRequestHandlers(
+  handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['requestHandlers']> {
+  return (handlerTypes ?? []).map((registration) => ({
+    packetName: registration.packetName,
+    handler: {
+      async handle(payload: Buffer, context: ZLinkRouteRequestContext) {
+        return await invokeManualHandler(moduleRef, registration.handlerType, payload, context);
+      }
     }
   }));
 }
@@ -1364,6 +1695,67 @@ function discoverSpotActorProviderRefs(discovery: DiscoveryService, moduleRef: M
   return refs;
 }
 
+function discoverSpotTimerProviderRefs(discovery: DiscoveryService, moduleRef: ModuleRef): DiscoveredNestSpotTimerProvider[] {
+  const refs: DiscoveredNestSpotTimerProvider[] = [];
+  const seen = new Set<string>();
+
+  for (const wrapper of discovery.getProviders()) {
+    const token = wrapper.token as InjectionToken | undefined;
+    if (token === undefined) {
+      continue;
+    }
+
+    const candidates = [wrapper.metatype, wrapper.instance?.constructor, token]
+      .filter((value): value is InjectionToken =>
+        typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol'
+      );
+    for (const handlerKey of new Set(candidates)) {
+      for (const metadata of readNestSpotTimerHandlerMetadata(handlerKey)) {
+        if (typeof handlerKey !== 'function') {
+          throw new framework.ZLinkConfigurationException('ZLink SPOT timer handler decorators must be applied to class providers.');
+        }
+        const handlerName = handlerKeyName(handlerKey);
+        const key = `${String(token)}:${handlerName}:${metadata.name}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        refs.push({
+          handlerKey: handlerKey as Type,
+          handlerName,
+          token,
+          metadata
+        });
+      }
+    }
+  }
+
+  for (const [handlerKey, metadataList] of nestSpotTimerHandlerMetadataByToken) {
+    if (typeof handlerKey !== 'function') {
+      continue;
+    }
+    if (tryGetProviderInstance(moduleRef, handlerKey) === undefined) {
+      continue;
+    }
+    const handlerName = handlerKeyName(handlerKey);
+    for (const metadata of metadataList) {
+      const key = `${String(handlerKey)}:${handlerName}:${metadata.name}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      refs.push({
+        handlerKey: handlerKey as Type,
+        handlerName,
+        token: handlerKey as Type,
+        metadata
+      });
+    }
+  }
+
+  return refs;
+}
+
 function isInjectionToken(value: unknown): value is InjectionToken {
   return typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol';
 }
@@ -1381,7 +1773,7 @@ async function invokeDiscoveredHandler(
   ref: DiscoveredNestProvider,
   metadata: ZLinkNestHandlerMetadata,
   payload: Buffer,
-  context: ZLinkRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+  context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
 ): Promise<unknown> {
   const instance = moduleRef.get(ref.token, { strict: false }) as Record<string, unknown>;
   const methodName = metadata.methodName ?? 'handle';
@@ -1391,7 +1783,23 @@ async function invokeDiscoveredHandler(
       `Discovered handler ${ref.handlerName}.${methodName} is not callable.`
     );
   }
-  return await method.call(instance, decodePayload(payload), context);
+  return await method.call(instance, decodePayload(metadata, payload, context), context);
+}
+
+async function invokeManualHandler(
+  moduleRef: ModuleRef,
+  handlerType: Type,
+  payload: Buffer,
+  context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+): Promise<unknown> {
+  const instance = moduleRef.get(handlerType, { strict: false }) as Record<string, unknown>;
+  const method = instance.handle;
+  if (typeof method !== 'function') {
+    throw new framework.ZLinkConfigurationException(
+      `Manual handler ${handlerType.name}.handle is not callable.`
+    );
+  }
+  return await method.call(instance, decodePayload(undefined, payload, context), context);
 }
 
 function handlerKeyName(handlerKey: InjectionToken): string {
@@ -1404,8 +1812,28 @@ function handlerKeyName(handlerKey: InjectionToken): string {
   return handlerKey;
 }
 
-function decodePayload(payload: Buffer | Uint8Array | string | unknown): unknown {
+function encodeHandlerResult(
+  metadata: ZLinkNestHandlerMetadata,
+  result: unknown,
+  context: ZLinkRequestContext | ZLinkRouteRequestContext
+): unknown {
+  return metadata.encodeResult === undefined
+    ? result
+    : metadata.encodeResult(result, context);
+}
+
+function decodePayload(
+  metadata: ZLinkNestHandlerMetadata | undefined,
+  payload: Buffer | Uint8Array | string | unknown,
+  context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+): unknown {
   if (Buffer.isBuffer(payload) || payload instanceof Uint8Array) {
+    if (metadata?.decodePayload !== undefined) {
+      return metadata.decodePayload(Buffer.from(payload), context);
+    }
+    if (context.contentType !== undefined && context.contentType !== 'application/json') {
+      return Buffer.from(payload);
+    }
     return parseWireJson(Buffer.from(payload).toString());
   }
   if (typeof payload === 'string') {
@@ -1677,10 +2105,6 @@ function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryServi
       }
     },
     async create<T>(type: Type<T>): Promise<T> {
-      const existing = this.get?.(type);
-      if (existing !== undefined) {
-        return existing;
-      }
       return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
     }
   };
@@ -1715,6 +2139,10 @@ function createSpotManager(
 ): unknown {
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
+    spotTimerHandlers: [...registration.spotNodes.values()]
+      .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
+    spotActorSendHandlers: [...registration.spotNodes.values()]
+      .flatMap((spotNode) => [...(spotNode.spotActorSendHandlers ?? [])]),
     spotActorRequestHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
     ...runtime.createSpotManagerOptions?.(),

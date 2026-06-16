@@ -9,10 +9,14 @@ export interface ZLinkActorHandlerRegistry {
   addHandler(handlerType: Type): this;
 }
 
-export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+export interface ZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkActor> extends ZLinkActorHandlerRegistry {
   addPacket(handlerType: Type, packetName?: string): this;
+  packet(packetName: string, handlerType: Type): this;
   addSubscribe(handlerType: Type, topic: string): this;
+  subscribe(topic: string, handlerType: Type): this;
   addSpotHandler(handlerType: Type): this;
+  actorSend(packetName: string, handlerType: Type, actorType?: Type<TActor>): this;
+  actorRequest(packetName: string, handlerType: Type, actorType?: Type<TActor>): this;
 }
 
 /**
@@ -47,15 +51,18 @@ export interface ZLinkWorkerCall<T> {
   ): void;
 }
 
-export interface ZLinkSpotContext {
+export interface ZLinkSpotContext<
+  TActor extends ZLinkActor = ZLinkActor,
+  TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
+> {
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
-  readonly handlers: ZLinkSpotHandlerRegistry;
+  readonly handlers: ZLinkSpotHandlerRegistry<TActor>;
   readonly outbound: ZLinkSpotOutbound;
-  leaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
-  addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
+  addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
     periodMs: number,
     handlerType: Type<THandler>,
@@ -75,14 +82,17 @@ export interface ZLinkSpotContext {
   runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
 }
 
-export interface ZLinkEntrySpotContext {
+export interface ZLinkEntrySpotContext<
+  TActor extends ZLinkActor = ZLinkActor,
+  TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
+> {
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
-  readonly handlers: ZLinkSpotHandlerRegistry;
+  readonly handlers: ZLinkSpotHandlerRegistry<TActor>;
   readonly outbound: ZLinkSpotOutbound;
-  destroyActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  addTimer<THandler extends ZLinkSpotTimerHandler<ZLinkEntrySpot>>(
+  destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
+  addTimer<THandler extends ZLinkSpotTimerHandler<TEntrySpot>>(
     name: string,
     periodMs: number,
     handlerType: Type<THandler>,

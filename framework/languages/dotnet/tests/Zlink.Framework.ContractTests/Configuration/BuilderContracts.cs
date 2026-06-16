@@ -101,10 +101,18 @@ public sealed class BuilderContracts
 
         options.AddRouteMeshChannel("play-router", channel =>
         {
-            channel.Bind("tcp://127.0.0.1:5300");
-            channel.ConfigureSocket(socket => socket.TcpNoDelay = true);
-            channel.ConfigureRouting(route => route.RoutingId = RoutingId.From("router"));
-            channel.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5301"));
+            channel.EnableServer(server =>
+            {
+                server.Bind("tcp://127.0.0.1:5300");
+                server.ConfigureSocket(socket => socket.TcpNoDelay = true);
+                server.ConfigureRouting(route => route.RoutingId = RoutingId.From("router"));
+            });
+            channel.EnableClient(client =>
+            {
+                client.ConfigureSocket(socket => socket.Immediate = true);
+                client.ConfigureRouting(route => route.ProbeRouterOnConnect = true);
+                client.UseManualConnections(connections => connections.Connect("tcp://127.0.0.1:5301"));
+            });
             channel.AddHandlerGroup("play");
             channel.AddSendHandler<RouteSendHandler, ApiEvent>();
             channel.AddSendHandler<AttributeRouteSendHandler>("route.event");
@@ -428,6 +436,9 @@ public sealed class BuilderContracts
 
     private sealed class DealerMeshChannelBuilder : IZLinkDealerMeshChannelBuilder
     {
+        public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null) =>
+            configure?.Invoke(new CapabilityBuilder());
+
         public void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null) =>
             configure?.Invoke(new CapabilityBuilder());
 
@@ -448,6 +459,12 @@ public sealed class BuilderContracts
 
     private sealed class RouteMeshChannelBuilder : IZLinkRouteMeshChannelBuilder
     {
+        public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null) =>
+            configure?.Invoke(new CapabilityBuilder());
+
+        public void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null) =>
+            configure?.Invoke(new CapabilityBuilder());
+
         public void Bind(string endpoint) { }
 
         public void ConfigureSocket(Action<IZLinkSocketConfig> configure) =>

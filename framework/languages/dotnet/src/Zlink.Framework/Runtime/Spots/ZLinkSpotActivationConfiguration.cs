@@ -47,6 +47,56 @@ internal sealed partial class ZLinkSpotActivation
         _subscriptions.Add(topic, typeof(THandler));
     }
 
+    internal async ValueTask ApplyScannedHandlerAsync(
+        ZLinkScannedSpotHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (handler.SpotType != Spot.GetType())
+        {
+            return;
+        }
+
+        EnsureConfigurationOpen();
+        switch (handler.Kind)
+        {
+            case ZLinkScannedSpotHandlerKind.Packet:
+                _packets.Add(handler.HandlerType, handler.PacketName);
+                return;
+            case ZLinkScannedSpotHandlerKind.Subscription:
+                _subscriptions.Add(
+                    handler.Topic ?? throw new InvalidOperationException("Scanned SPOT subscription requires a topic."),
+                    handler.HandlerType);
+                return;
+            case ZLinkScannedSpotHandlerKind.ActorSend:
+            case ZLinkScannedSpotHandlerKind.ActorRequest:
+                RequireActorHandlers().AddPacket(
+                    handler.HandlerType,
+                    handler.ActorType ?? throw new InvalidOperationException("Scanned SPOT actor handler requires an actor type."),
+                    handler.PacketName);
+                return;
+            case ZLinkScannedSpotHandlerKind.Timer:
+                _ = await _timers.AddAsync(
+                    handler.TimerName ?? throw new InvalidOperationException("Scanned SPOT timer requires a name."),
+                    handler.TimerPeriod,
+                    null,
+                    handler.HandlerType,
+                    Spot.GetType(),
+                    StopToken,
+                    (descriptor, tick, ct) => ExecuteSerializedAsync(
+                        async static (activation, state, innerCt) =>
+                        {
+                            await activation.InvokeTimerAsync(state.Descriptor, state.Tick, innerCt);
+                        },
+                        (Descriptor: descriptor, Tick: tick),
+                        ct),
+                    PublishTimerFailureAsync,
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            default:
+                throw new InvalidOperationException($"Unsupported scanned SPOT handler kind '{handler.Kind}'.");
+        }
+    }
+
     public void AddHandler<THandler>()
         where THandler : class
     {
@@ -85,12 +135,43 @@ internal sealed partial class ZLinkSpotActivation
         AddActorPacketCore<THandler, TActor>(packetName);
     }
 
+    public void AddActorSend<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+        {
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+        }
+
+        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Command);
+    }
+
+    public void AddActorRequest<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        if (string.IsNullOrWhiteSpace(packetName))
+        {
+            throw new InvalidOperationException("Actor packet name must not be empty.");
+        }
+
+        AddActorPacketCore<THandler, TActor>(packetName, ZLinkMessageKind.Request);
+    }
+
     private void AddActorPacketCore<THandler, TActor>(string? packetName)
+        where THandler : class
+        where TActor : IZLinkActor =>
+        AddActorPacketCore<THandler, TActor>(packetName, expectedKind: null);
+
+    private void AddActorPacketCore<THandler, TActor>(
+        string? packetName,
+        ZLinkMessageKind? expectedKind)
         where THandler : class
         where TActor : IZLinkActor
     {
         EnsureConfigurationOpen();
-        RequireActorHandlers().AddPacket(typeof(THandler), typeof(TActor), packetName);
+        RequireActorHandlers().AddPacket(typeof(THandler), typeof(TActor), packetName, expectedKind);
     }
 
     private ZLinkSpotActorHandlerRegistry RequireActorHandlers()

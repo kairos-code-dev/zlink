@@ -561,9 +561,12 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_NE (api_factory.find (".listen (topology.api_http_endpoint)"), std::string::npos);
     EXPECT_NE (api_factory.find (".map_post<create_game_http_handler_t> (\"/games\")"),
                std::string::npos);
-    EXPECT_NE (api_factory.find (".add_message_pack"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_message_pack"), std::string::npos);
-    EXPECT_NE (client.find (".add_message_pack"), std::string::npos);
+    EXPECT_NE (api_factory.find (".add_json"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_json"), std::string::npos);
+    EXPECT_NE (client.find (".add_json"), std::string::npos);
+    EXPECT_EQ (api_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (client.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (api_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
@@ -587,7 +590,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointsWithoutSessionGa
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
     EXPECT_NE (client.find ("connector_options.endpoint = room.play_endpoint"), std::string::npos);
-    EXPECT_NE (client.find ("client1.request<authenticate_res_t>"), std::string::npos);
+    EXPECT_NE (client.find ("client1.request (authenticate_req_t"), std::string::npos);
+    EXPECT_NE (client.find (".async<authenticate_res_t> ()"), std::string::npos);
     EXPECT_NE (client.find ("client1.wait_for<game_state_notify_t>"), std::string::npos);
     EXPECT_EQ (client.find ("tictactoe-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
@@ -601,6 +605,7 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     const auto session_factory =
       read_file (bingo_root / "Server/Session/session_server_host_factory.hpp");
     const auto client = read_file (bingo_root / "Client/bingo_client_scenario.hpp");
+    const auto client_main = read_file (bingo_root / "Client/main.cpp");
 
     EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
     EXPECT_NE (session_factory.find ("options.add_spot_mesh"), std::string::npos);
@@ -616,11 +621,14 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     EXPECT_NE (api_framework.find (".add_protobuf"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_protobuf"), std::string::npos);
     EXPECT_NE (session_factory.find (".add_protobuf"), std::string::npos);
-    EXPECT_NE (client.find (".add_protobuf"), std::string::npos);
+    EXPECT_NE (client_main.find ("core_client1.codecs ().add_protobuf ()"), std::string::npos);
+    EXPECT_NE (client_main.find ("core_client2.codecs ().add_protobuf ()"), std::string::npos);
+    EXPECT_EQ (client.find (".add_protobuf"), std::string::npos);
     EXPECT_EQ (api_framework.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (session_factory.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find (".add_message_pack"), std::string::npos);
+    EXPECT_EQ (client_main.find (".add_message_pack"), std::string::npos);
     EXPECT_EQ (client.find ("bingo-client.log"), std::string::npos);
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
 }

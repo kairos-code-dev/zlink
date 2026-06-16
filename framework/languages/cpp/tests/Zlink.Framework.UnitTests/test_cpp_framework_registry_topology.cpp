@@ -302,9 +302,9 @@ int main ()
     options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
     options.use_registry_spot_remote_addresses ("game.route");
     options.add_route_mesh_channel ("game.route")
-      .bind (framework_route_endpoint)
+      .enable_server (framework_route_endpoint)
       .set_routing_id (zlink::routing_id_t::from ("7200"))
-      .connect ("tcp://peer:7201")
+      .enable_client ("tcp://peer:7201")
       .enable_spot_route_egress ("game.route");
     options.add_spot_mesh ("game.spots")
       .add_node ("game-node")
@@ -359,7 +359,10 @@ int main ()
     const auto &route_runtime = route_manager.get_route_channel ("game.route");
     if (!route_runtime.routing_id () || route_runtime.routing_id ()->to_string () != "7200"
         || !route_runtime.spot_route_egress_target ()
-        || *route_runtime.spot_route_egress_target () != "game.route") {
+        || *route_runtime.spot_route_egress_target () != "game.route"
+        || route_runtime.list_connections ().size () != 2
+        || route_runtime.list_connections ()[0] != framework_route_endpoint
+        || route_runtime.list_connections ()[1] != "tcp://peer:7201") {
         return 20;
     }
 
@@ -392,8 +395,9 @@ int main ()
     const auto late_pub_endpoint = unique_tcp ("late-pub");
     late_options.use_discovery ().add_registry_endpoint ("tcp://registry:5551");
     late_options.add_route_mesh_channel ("late.route")
-      .bind (late_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from ("7400"));
+      .enable_server (late_route_endpoint)
+      .set_routing_id (zlink::routing_id_t::from ("7400"))
+      .enable_client ();
     late_options.add_spot_mesh ("late.spots")
       .add_node ("late-node")
       .enable_router (late_router_endpoint)

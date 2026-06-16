@@ -16,7 +16,9 @@ exports.zlinkRequestHandler = zlinkRequestHandler;
 exports.zlinkSendHandler = zlinkSendHandler;
 exports.zlinkPublishHandler = zlinkPublishHandler;
 exports.zlinkDiscoverProviders = zlinkDiscoverProviders;
+exports.zlinkSpotActorSendHandler = zlinkSpotActorSendHandler;
 exports.zlinkSpotActorRequestHandler = zlinkSpotActorRequestHandler;
+exports.zlinkEntrySpotActorSendHandler = zlinkEntrySpotActorSendHandler;
 exports.zlinkEntrySpotActorRequestHandler = zlinkEntrySpotActorRequestHandler;
 exports.zlinkSpotTimerHandler = zlinkSpotTimerHandler;
 exports.zlinkHandler = zlinkHandler;
@@ -46,6 +48,7 @@ exports.ZLINK_REGISTRY_QUERY = Symbol.for('@zlink-systems/framework:registry-que
 exports.ZLINK_REGISTRY_QUERY_CLIENT = Symbol.for('@zlink-systems/framework:registry-query-client');
 const nestHandlerMetadataByToken = new Map();
 const nestSpotActorHandlerMetadataByToken = new Map();
+const nestSpotTimerHandlerMetadataByToken = new Map();
 const nestSpotTimerHandlerTokens = new Set();
 function zlinkFramework() {
     return new DefaultZLinkNestFrameworkOptionsBuilder();
@@ -75,6 +78,19 @@ function zlinkSpotActorRequestHandler(options) {
         });
     };
 }
+function zlinkSpotActorSendHandler(options) {
+    return (target) => {
+        (0, common_1.Injectable)()(target);
+        appendNestSpotActorHandlerMetadata(target, {
+            actor: options.actor,
+            handlerType: target,
+            kind: 'spotActorSend',
+            methodName: options.methodName ?? 'handle',
+            packetName: options.packetName,
+            spot: options.spot
+        });
+    };
+}
 function zlinkEntrySpotActorRequestHandler(options) {
     return (target) => {
         (0, common_1.Injectable)()(target);
@@ -88,10 +104,33 @@ function zlinkEntrySpotActorRequestHandler(options) {
         });
     };
 }
-function zlinkSpotTimerHandler() {
+function zlinkEntrySpotActorSendHandler(options) {
+    return (target) => {
+        (0, common_1.Injectable)()(target);
+        appendNestSpotActorHandlerMetadata(target, {
+            actor: options.actor,
+            entrySpot: options.entrySpot,
+            handlerType: target,
+            kind: 'entrySpotActorSend',
+            methodName: options.methodName ?? 'handle',
+            packetName: options.packetName
+        });
+    };
+}
+function zlinkSpotTimerHandler(options = {}) {
     return (target) => {
         (0, common_1.Injectable)()(target);
         nestSpotTimerHandlerTokens.add(target);
+        if (options.name !== undefined && options.periodMs !== undefined) {
+            appendNestSpotTimerHandlerMetadata(target, {
+                entrySpot: options.entrySpot,
+                handlerType: target,
+                name: options.name,
+                options: options.options,
+                periodMs: options.periodMs,
+                spot: options.spot
+            });
+        }
     };
 }
 function zlinkHandler(groupName, kind, packetName, options = {}) {
@@ -324,6 +363,16 @@ function readNestSpotActorHandlerMetadata(handlerToken) {
     }
     return nestSpotActorHandlerMetadataByToken.get(handlerToken) ?? [];
 }
+function appendNestSpotTimerHandlerMetadata(handlerToken, metadata) {
+    const current = readNestSpotTimerHandlerMetadata(handlerToken);
+    nestSpotTimerHandlerMetadataByToken.set(handlerToken, [...current, metadata]);
+}
+function readNestSpotTimerHandlerMetadata(handlerToken) {
+    if (handlerToken === undefined) {
+        return [];
+    }
+    return nestSpotTimerHandlerMetadataByToken.get(handlerToken) ?? [];
+}
 function hasNestSpotTimerHandlerMetadata(handlerToken) {
     return handlerToken !== undefined && nestSpotTimerHandlerTokens.has(handlerToken);
 }
@@ -538,7 +587,8 @@ function createDiscoveredOptions(options, discovery, moduleRef) {
     const routerMeshes = new Map();
     const providerRefs = discoverProviderRefs(discovery, moduleRef);
     const spotActorProviderRefs = discoverSpotActorProviderRefs(discovery, moduleRef);
-    const spotNodes = createDiscoveredSpotNodeOptions(registrationOptions.spotNodes, spotActorProviderRefs);
+    const spotTimerProviderRefs = discoverSpotTimerProviderRefs(discovery, moduleRef);
+    const spotNodes = createDiscoveredSpotNodeOptions(registrationOptions.spotNodes, spotActorProviderRefs, spotTimerProviderRefs);
     for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
         const requestHandlers = createDiscoveredRequestHandlers(providerRefs, channel.handlerGroups, moduleRef);
         channels[channelName] = {
@@ -590,8 +640,8 @@ function createDiscoveredOptions(options, discovery, moduleRef) {
         spotNodes
     };
 }
-function createDiscoveredSpotNodeOptions(value, refs) {
-    if (refs.length === 0) {
+function createDiscoveredSpotNodeOptions(value, refs, timerRefs = []) {
+    if (refs.length === 0 && timerRefs.length === 0) {
         return value;
     }
     const spotNodes = toMutableSpotNodeRecord(value);
@@ -599,8 +649,47 @@ function createDiscoveredSpotNodeOptions(value, refs) {
     if (spotNodeEntries.length === 0) {
         throw new framework.ZLinkConfigurationException('ZLink SPOT actor handlers require a registered SpotNode.');
     }
+    for (const ref of timerRefs) {
+        if (ref.metadata.entrySpot !== undefined) {
+            const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
+            const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
+            if (matches.length === 0) {
+                throw new framework.ZLinkConfigurationException(`ZLink Entry Spot timer handler '${ref.handlerName}' targets an Entry Spot that is not registered on any SpotNode.`);
+            }
+            for (const [, spotNode] of matches) {
+                spotNode.entrySpotTimerHandlers = [
+                    ...(spotNode.entrySpotTimerHandlers ?? []),
+                    {
+                        entrySpotType,
+                        handlerType: ref.handlerKey,
+                        name: ref.metadata.name,
+                        options: ref.metadata.options,
+                        periodMs: ref.metadata.periodMs
+                    }
+                ];
+            }
+            continue;
+        }
+        const spotType = resolveNestType(ref.metadata.spot, 'spot');
+        const matches = spotNodeEntries.filter(([, spotNode]) => (spotNode.spotFactories ?? []).includes(spotType));
+        if (matches.length === 0) {
+            throw new framework.ZLinkConfigurationException(`ZLink SPOT timer handler '${ref.handlerName}' targets a Spot type that is not registered on any SpotNode.`);
+        }
+        for (const [, spotNode] of matches) {
+            spotNode.spotTimerHandlers = [
+                ...(spotNode.spotTimerHandlers ?? []),
+                {
+                    handlerType: ref.handlerKey,
+                    name: ref.metadata.name,
+                    options: ref.metadata.options,
+                    periodMs: ref.metadata.periodMs,
+                    spotType
+                }
+            ];
+        }
+    }
     for (const ref of refs) {
-        if (ref.metadata.kind === 'entrySpotActorRequest') {
+        if (ref.metadata.kind === 'entrySpotActorSend' || ref.metadata.kind === 'entrySpotActorRequest') {
             const entrySpotType = resolveNestType(ref.metadata.entrySpot, 'entrySpot');
             const actorType = resolveNestType(ref.metadata.actor, 'actor');
             const matches = spotNodeEntries.filter(([, spotNode]) => spotNode.entrySpotType === entrySpotType);
@@ -614,11 +703,20 @@ function createDiscoveredSpotNodeOptions(value, refs) {
                     handlerType: ref.handlerKey,
                     packetName: ref.metadata.packetName
                 };
-                assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorRequestHandlers, next);
-                spotNode.entrySpotActorRequestHandlers = [
-                    ...(spotNode.entrySpotActorRequestHandlers ?? []),
-                    next
-                ];
+                if (ref.metadata.kind === 'entrySpotActorSend') {
+                    assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorSendHandlers, next);
+                    spotNode.entrySpotActorSendHandlers = [
+                        ...(spotNode.entrySpotActorSendHandlers ?? []),
+                        next
+                    ];
+                }
+                else {
+                    assertUniqueEntrySpotActorHandler(spotNode.entrySpotActorRequestHandlers, next);
+                    spotNode.entrySpotActorRequestHandlers = [
+                        ...(spotNode.entrySpotActorRequestHandlers ?? []),
+                        next
+                    ];
+                }
             }
             continue;
         }
@@ -635,11 +733,20 @@ function createDiscoveredSpotNodeOptions(value, refs) {
                 packetName: ref.metadata.packetName,
                 spotType
             };
-            assertUniqueSpotActorHandler(spotNode.spotActorRequestHandlers, next);
-            spotNode.spotActorRequestHandlers = [
-                ...(spotNode.spotActorRequestHandlers ?? []),
-                next
-            ];
+            if (ref.metadata.kind === 'spotActorSend') {
+                assertUniqueSpotActorHandler(spotNode.spotActorSendHandlers, next);
+                spotNode.spotActorSendHandlers = [
+                    ...(spotNode.spotActorSendHandlers ?? []),
+                    next
+                ];
+            }
+            else {
+                assertUniqueSpotActorHandler(spotNode.spotActorRequestHandlers, next);
+                spotNode.spotActorRequestHandlers = [
+                    ...(spotNode.spotActorRequestHandlers ?? []),
+                    next
+                ];
+            }
         }
     }
     return spotNodes;
@@ -913,6 +1020,60 @@ function discoverSpotActorProviderRefs(discovery, moduleRef) {
     }
     return refs;
 }
+function discoverSpotTimerProviderRefs(discovery, moduleRef) {
+    const refs = [];
+    const seen = new Set();
+    for (const wrapper of discovery.getProviders()) {
+        const token = wrapper.token;
+        if (token === undefined) {
+            continue;
+        }
+        const candidates = [wrapper.metatype, wrapper.instance?.constructor, token]
+            .filter((value) => typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol');
+        for (const handlerKey of new Set(candidates)) {
+            for (const metadata of readNestSpotTimerHandlerMetadata(handlerKey)) {
+                if (typeof handlerKey !== 'function') {
+                    throw new framework.ZLinkConfigurationException('ZLink SPOT timer handler decorators must be applied to class providers.');
+                }
+                const handlerName = handlerKeyName(handlerKey);
+                const key = `${String(token)}:${handlerName}:${metadata.name}`;
+                if (seen.has(key)) {
+                    continue;
+                }
+                seen.add(key);
+                refs.push({
+                    handlerKey: handlerKey,
+                    handlerName,
+                    token,
+                    metadata
+                });
+            }
+        }
+    }
+    for (const [handlerKey, metadataList] of nestSpotTimerHandlerMetadataByToken) {
+        if (typeof handlerKey !== 'function') {
+            continue;
+        }
+        if (tryGetProviderInstance(moduleRef, handlerKey) === undefined) {
+            continue;
+        }
+        const handlerName = handlerKeyName(handlerKey);
+        for (const metadata of metadataList) {
+            const key = `${String(handlerKey)}:${handlerName}:${metadata.name}`;
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            refs.push({
+                handlerKey: handlerKey,
+                handlerName,
+                token: handlerKey,
+                metadata
+            });
+        }
+    }
+    return refs;
+}
 function isInjectionToken(value) {
     return typeof value === 'function' || typeof value === 'string' || typeof value === 'symbol';
 }
@@ -1169,6 +1330,10 @@ function providerToken(provider) {
 function createSpotManager(registration, moduleRef, discovery) {
     return new framework.DefaultZLinkSpotManager({
         spotFactories: [...registration.spotFactories],
+        spotTimerHandlers: [...registration.spotNodes.values()]
+            .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
+        spotActorSendHandlers: [...registration.spotNodes.values()]
+            .flatMap((spotNode) => [...(spotNode.spotActorSendHandlers ?? [])]),
         spotActorRequestHandlers: [...registration.spotNodes.values()]
             .flatMap((spotNode) => [...(spotNode.spotActorRequestHandlers ?? [])]),
         providerResolver: moduleRef === undefined ? undefined : createProviderResolver(moduleRef, discovery),

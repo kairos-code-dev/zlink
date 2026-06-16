@@ -11,14 +11,22 @@ internal sealed class ZLinkSpotPacketRegistry
 
     public void Add(Type handlerType)
     {
-        _registrations.Add(new ZLinkSpotPacketRegistration(handlerType));
+        Add(handlerType, packetName: null);
+    }
+
+    public void Add(Type handlerType, string? packetName)
+    {
+        _registrations.Add(new ZLinkSpotPacketRegistration(handlerType, packetName));
     }
 
     public void Bind(object spot)
     {
         foreach (var packet in _registrations)
         {
-            var descriptor = ZLinkSpotDescriptorFactory.CreatePacketDescriptor(packet.HandlerType, spot.GetType());
+            var descriptor = ZLinkSpotDescriptorFactory.CreatePacketDescriptor(
+                packet.HandlerType,
+                spot.GetType(),
+                packet.PacketName);
             _descriptorsByName.Add(descriptor.MessageName, descriptor);
         }
     }

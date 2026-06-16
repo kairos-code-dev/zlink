@@ -128,8 +128,14 @@ static_assert (!has_blocking_submit<zlink::framework::route_send_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::route_request_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_request_call_t, std::uint64_t>);
-static_assert (!has_blocking_submit<zlink::framework::typed_route_request_call_t<int>>);
-static_assert (!has_callback_async<zlink::framework::typed_route_request_call_t<int>, int>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::channel_request_call_t &> ()
+                             .async<int> ()),
+                 zlink::framework::task_t<int>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ()
+                             .async<int> ()),
+                 zlink::framework::task_t<int>>);
 
 template <typename T> concept has_blocking_wait = requires (T value)
 {
@@ -324,8 +330,8 @@ struct typed_config_t
 };
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::channel_client_t &> ()
-                                          .request<named_reply_t> ("sample", named_request_t{})),
-                              zlink::framework::request_call_t<named_reply_t>>);
+                                          .request ("sample", named_request_t{})),
+                              zlink::framework::channel_request_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_send_call_t &> ()
                                           .metadata ("trace-id", "abc")),
@@ -340,24 +346,18 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::send_call
                               zlink::framework::send_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ()
+  std::is_same_v<decltype (std::declval<zlink::framework::channel_request_call_t &> ()
                              .packet_name ("packet")),
-                 zlink::framework::request_call_t<named_reply_t> &>);
+                 zlink::framework::channel_request_call_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::request_call_t<named_reply_t> &> ()
+  std::is_same_v<decltype (std::declval<zlink::framework::channel_request_call_t &> ()
                              .metadata ("trace-id", "abc")),
-                 zlink::framework::request_call_t<named_reply_t> &>);
+                 zlink::framework::channel_request_call_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_request_call_t &> ()
                                           .metadata ("trace-id", "abc")),
                               zlink::framework::route_request_call_t &>);
-
-static_assert (
-  std::is_same_v<
-    decltype (std::declval<zlink::framework::typed_route_request_call_t<named_reply_t> &> ()
-                .metadata ("trace-id", "abc")),
-    zlink::framework::typed_route_request_call_t<named_reply_t> &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ()
                                           .metadata ("trace-id", "abc")),
@@ -468,6 +468,21 @@ static_assert (
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
+                             .enable_server ("tcp://127.0.0.1:5200")),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
+                             .enable_client ()),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
+                             .enable_client ("tcp://127.0.0.1:5201")),
+                 zlink::framework::dealer_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::dealer_mesh_channel_builder_t &> ()
                              .connect ("tcp://127.0.0.1:5201")),
                  zlink::framework::dealer_mesh_channel_builder_t &>);
 
@@ -488,6 +503,21 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_cha
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
                              .enable_spot_route_egress ("play.route")),
+                 zlink::framework::route_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                             .enable_server ("tcp://127.0.0.1:5300")),
+                 zlink::framework::route_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                             .enable_client ()),
+                 zlink::framework::route_mesh_channel_builder_t &>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_channel_builder_t &> ()
+                             .enable_client ("tcp://127.0.0.1:5301")),
                  zlink::framework::route_mesh_channel_builder_t &>);
 
 static_assert (

@@ -76,7 +76,11 @@ internal sealed class ZLinkSpotActorHandlerRegistry
         _expectedSpotType = expectedSpotType;
     }
 
-    public void AddPacket(Type handlerType, Type actorType, string? packetName)
+    public void AddPacket(
+        Type handlerType,
+        Type actorType,
+        string? packetName,
+        ZLinkMessageKind? expectedKind = null)
     {
         EnsureNotBound();
         var descriptor = ZLinkSpotActorHandlerDescriptorFactory.CreatePacket(
@@ -85,6 +89,12 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             handlerType,
             actorType,
             packetName);
+        if (expectedKind is not null && descriptor.Kind != expectedKind)
+        {
+            throw new InvalidOperationException(
+                $"Actor packet handler '{handlerType}' handles '{descriptor.Kind}', but registration expects '{expectedKind}'.");
+        }
+
         AddPacketDescriptor(descriptor);
     }
 

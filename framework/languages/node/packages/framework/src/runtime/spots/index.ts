@@ -6,6 +6,8 @@ import type {
   ZLinkActor,
   ZLinkChannelClient,
   ZLinkEntrySpot,
+  ZLinkEntrySpotTimerHandlerRegistration,
+  ZLinkEntrySpotActorSendHandlerRegistration,
   ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkEntrySpotContext,
   ZLinkFanoutClient,
@@ -14,6 +16,8 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkSpot,
+  ZLinkSpotTimerHandlerRegistration,
+  ZLinkSpotActorSendHandlerRegistration,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotContext,
@@ -59,6 +63,8 @@ import {
 
 export interface ZLinkSpotManagerOptions {
   readonly spotFactories: readonly Type<ZLinkSpot>[];
+  readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
+  readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly nodeRid?: RoutingId;
   readonly nodeRidProvider?: () => RoutingId | undefined;
@@ -194,6 +200,8 @@ export class ZLinkSpotNodeRuntimeManager {
       nodeRid: node.routingId,
       spotNodeName,
       providerResolver: this.options.providerResolver,
+      timerHandlers: spotNode.entrySpotTimerHandlers,
+      actorSendHandlers: spotNode.entrySpotActorSendHandlers,
       actorRequestHandlers: spotNode.entrySpotActorRequestHandlers,
       workerRuntime: this.workerRuntime,
       destroyActor: (nodeRid, actor, signal) => {
@@ -205,7 +213,7 @@ export class ZLinkSpotNodeRuntimeManager {
     });
     try {
       await activation.create();
-      activation.configure();
+      await activation.configure();
       await activation.initialize();
     } catch (error) {
       await activation.dispose();
@@ -362,6 +370,8 @@ interface ZLinkSpotPublisherBundle {
 
 interface ZLinkEntrySpotActivationOptions {
   readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly timerHandlers?: readonly ZLinkEntrySpotTimerHandlerRegistration[];
+  readonly actorSendHandlers?: readonly ZLinkEntrySpotActorSendHandlerRegistration[];
   readonly actorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
   readonly nativeSpot: ZLinkBackendSpot;
   readonly nodeRid: RoutingId;
@@ -378,7 +388,8 @@ interface ZLinkEntrySpotActivationOptions {
 export class ZLinkEntrySpotActivation {
   private readonly serial = new ZLinkSpotSerialExecutor();
   private readonly timers = new ZLinkSpotTimerRegistry();
-  private readonly handlers = new DefaultZLinkSpotHandlerRegistry();
+  private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
+  private readonly handlers = new DefaultZLinkSpotHandlerRegistry(this.actorHandlers);
   private readonly outbound: DefaultZLinkSpotOutbound;
   private readonly workerRuntime: ZLinkSpotWorkerRuntime;
   private initialized = false;
@@ -393,9 +404,24 @@ export class ZLinkEntrySpotActivation {
     this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
     this.context = this.createContext();
     this.entrySpot = undefined as unknown as ZLinkEntrySpot;
+    for (const handler of options.actorSendHandlers ?? []) {
+      if (handler.entrySpotType === options.entrySpotType) {
+        this.handlers.addActorPacketRegistration(
+          ZLinkActorPacketKind.Send,
+          handler.handlerType,
+          handler.actorType,
+          handler.packetName
+        );
+      }
+    }
     for (const handler of options.actorRequestHandlers ?? []) {
       if (handler.entrySpotType === options.entrySpotType) {
-        this.handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
+        this.handlers.addActorPacketRegistration(
+          ZLinkActorPacketKind.Request,
+          handler.handlerType,
+          handler.actorType,
+          handler.packetName
+        );
       }
     }
   }
@@ -421,10 +447,23 @@ export class ZLinkEntrySpotActivation {
       enumerable: false,
       value: this.context
     });
+    for (const handler of this.options.timerHandlers ?? []) {
+      if (handler.entrySpotType === this.options.entrySpotType) {
+        await this.timers.add(
+          handler.name,
+          handler.periodMs,
+          handler.options,
+          handler.handlerType as Type<ZLinkSpotTimerHandler<ZLinkEntrySpot>>,
+          this.serial,
+          this.entrySpot,
+          this.options.providerResolver
+        );
+      }
+    }
   }
 
-  configure(): void {
-    this.entrySpot.configure?.();
+  async configure(): Promise<void> {
+    await this.entrySpot.configure?.();
   }
 
   async initialize(): Promise<void> {
@@ -698,17 +737,26 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   ): Promise<ZLinkSpotCreateResult> {
     this.requireRegisteredFactory(spotType);
     const serial = new ZLinkSpotSerialExecutor();
-    const handlers = new DefaultZLinkSpotHandlerRegistry();
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
+    const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
+    for (const handler of this.options.spotActorSendHandlers ?? []) {
+      if (handler.spotType === spotType) {
+        handlers.addActorPacketRegistration(
+          ZLinkActorPacketKind.Send,
+          handler.handlerType,
+          handler.actorType,
+          handler.packetName
+        );
+      }
+    }
     for (const handler of this.options.spotActorRequestHandlers ?? []) {
       if (handler.spotType === spotType) {
-        handlers.addActorPacketRegistration(handler.handlerType, handler.actorType, handler.packetName);
-        actorHandlers.addPacket({
-          kind: ZLinkActorPacketKind.Request,
-          packetName: handler.packetName,
-          actorType: handler.actorType,
-          handlerType: handler.handlerType
-        });
+        handlers.addActorPacketRegistration(
+          ZLinkActorPacketKind.Request,
+          handler.handlerType,
+          handler.actorType,
+          handler.packetName
+        );
       }
     }
     const timers = new ZLinkSpotTimerRegistry();
@@ -741,7 +789,21 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     };
 
     try {
-      spot.configure?.();
+      await spot.configure?.();
+      for (const handler of this.options.spotTimerHandlers ?? []) {
+        if (handler.spotType === spotType) {
+          await timers.add(
+            handler.name,
+            handler.periodMs,
+            handler.options,
+            handler.handlerType as Type<ZLinkSpotTimerHandler<ZLinkSpot>>,
+            serial,
+            spot,
+            this.options.providerResolver,
+            signal
+          );
+        }
+      }
       let createResponse: ZLinkSpotCreateResponse | undefined;
       await serial.execute(async () => {
         createResponse = await spot.onCreate?.(request, signal);
@@ -841,16 +903,19 @@ export interface ZLinkSpotHandlerRegistration {
     | 'handler'
     | 'packet'
     | 'subscribe'
-    | 'actorPacket'
+    | 'actorSend'
+    | 'actorRequest'
     | 'spotHandler';
   readonly handlerType: Type;
   readonly packetName?: string;
   readonly topic?: string;
-  readonly actorType?: Type;
+  readonly actorType?: Type<ZLinkActor>;
 }
 
-export class DefaultZLinkSpotHandlerRegistry implements ZLinkSpotHandlerRegistry {
+export class DefaultZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkActor> implements ZLinkSpotHandlerRegistry<TActor> {
   private readonly entries: ZLinkSpotHandlerRegistration[] = [];
+
+  constructor(private readonly actorHandlers?: ZLinkSpotActorHandlerRegistryRuntime) {}
 
   addHandler(handlerType: Type): this {
     this.entries.push({ kind: 'handler', handlerType });
@@ -862,9 +927,47 @@ export class DefaultZLinkSpotHandlerRegistry implements ZLinkSpotHandlerRegistry
     return this;
   }
 
-  addActorPacketRegistration(handlerType: Type, actorType: Type, packetName: string): this {
-    this.entries.push({ kind: 'actorPacket', handlerType, actorType, packetName });
+  packet(packetName: string, handlerType: Type): this {
+    return this.addPacket(handlerType, packetName);
+  }
+
+  addActorPacketRegistration(
+    kind: ZLinkActorPacketKind,
+    handlerType: Type,
+    actorType: Type<TActor>,
+    packetName: string
+  ): this {
+    this.entries.push({
+      kind: kind === ZLinkActorPacketKind.Send ? 'actorSend' : 'actorRequest',
+      handlerType,
+      actorType,
+      packetName
+    });
+    this.actorHandlers?.addPacket({
+      kind,
+      packetName,
+      actorType,
+      handlerType
+    });
     return this;
+  }
+
+  actorSend(packetName: string, handlerType: Type, actorType: Type<TActor> = Object as unknown as Type<TActor>): this {
+    return this.addActorPacketRegistration(
+      ZLinkActorPacketKind.Send,
+      handlerType,
+      actorType,
+      packetName
+    );
+  }
+
+  actorRequest(packetName: string, handlerType: Type, actorType: Type<TActor> = Object as unknown as Type<TActor>): this {
+    return this.addActorPacketRegistration(
+      ZLinkActorPacketKind.Request,
+      handlerType,
+      actorType,
+      packetName
+    );
   }
 
   addSubscribe(handlerType: Type, topic: string): this {
@@ -873,6 +976,10 @@ export class DefaultZLinkSpotHandlerRegistry implements ZLinkSpotHandlerRegistry
     }
     this.entries.push({ kind: 'subscribe', handlerType, topic });
     return this;
+  }
+
+  subscribe(topic: string, handlerType: Type): this {
+    return this.addSubscribe(handlerType, topic);
   }
 
   addSpotHandler(handlerType: Type): this {
@@ -1253,12 +1360,12 @@ async function createProviderInstance<T>(
   if (existing !== undefined) {
     return existing;
   }
-  if (fallbackArg !== undefined) {
-    return new (type as new (arg: unknown) => T)(fallbackArg);
-  }
   const created = await resolver?.create?.(type);
   if (created !== undefined) {
     return created;
+  }
+  if (fallbackArg !== undefined) {
+    return new (type as new (arg: unknown) => T)(fallbackArg);
   }
   return fallbackArg === undefined
     ? new (type as new () => T)()

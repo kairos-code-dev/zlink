@@ -205,14 +205,14 @@ int main ()
     auto client = zlink.request_client ("profile");
     auto outbound_runtime =
       zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ());
-    auto request_call = client.request<request_t, reply_t> ({1})
+    auto request_call = client.request (request_t{1})
                           .packet_name ("profile.lookup")
                           .metadata ("trace-id", "request-trace")
                           .timeout (std::chrono::milliseconds (3000));
     if (!outbound_runtime.outbound_calls ().empty ()) {
         return 30;
     }
-    auto request_result = request_call.async ().result ();
+    auto request_result = request_call.async<reply_t> ().result ();
     if (request_result
         || request_result.error_kind () != zlink::framework::framework_error_kind_t::timeout) {
         return 2;
@@ -273,7 +273,7 @@ int main ()
             [] (zlink::framework::capability_builder_t &client) { client.use_discovery (); });
       });
     auto queue_full_result =
-      full_queue.message_bus ().request<request_t, reply_t> ("profile", {5}).async ().result ();
+      full_queue.message_bus ().request ("profile", request_t{5}).async<reply_t> ().result ();
     if (queue_full_result
         || queue_full_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_rejected) {
@@ -528,10 +528,10 @@ int main ()
     });
     auto native_bus_reply =
       native_bus_builder.request_client ("native-bus")
-        .request<request_t, reply_t> (request_t{27})
+        .request (request_t{27})
         .packet_name ("request")
         .timeout (std::chrono::milliseconds (2000))
-        .async ()
+        .async<reply_t> ()
         .result ();
     const int native_bus_server_result = native_bus_server_done.get ();
     if (native_bus_server_result != 0) {
@@ -558,10 +558,10 @@ int main ()
     hosted_service.start (provider);
     auto hosted_reply =
       hosted_builder.request_client ("hosted")
-        .request<request_t, reply_t> (request_t{28})
+        .request (request_t{28})
         .packet_name ("request")
         .timeout (std::chrono::milliseconds (2000))
-        .async ()
+        .async<reply_t> ()
         .result ();
     hosted_service.stop ();
     if (!hosted_reply || hosted_reply.value ().value != 128) {
@@ -1108,11 +1108,11 @@ int main ()
     }
     auto missing_peer_reply =
       public_route_client
-        .request<request_t, reply_t> (
+        .request (
           "public.route", zlink::routing_id_t::from (std::string ("target-node")), request_t{50})
         .packet_name ("typed.client.request")
         .timeout (std::chrono::milliseconds (10))
-        .async ().result ();
+        .async<reply_t> ().result ();
     if (missing_peer_reply || public_route.pending_request_count () != 1) {
         return 72;
     }
@@ -1151,12 +1151,12 @@ int main ()
       });
     auto public_typed_reply =
       public_route_client
-        .request<request_t, reply_t> (
+        .request (
           "public.route", zlink::routing_id_t::from (std::string ("target-node")), request_t{51})
         .packet_name ("typed.client.request")
         .metadata ("trace-id", "trace-typed")
         .timeout (std::chrono::milliseconds (50))
-        .async ().result ();
+        .async<reply_t> ().result ();
     if (!public_typed_reply || public_typed_reply.value ().value != 351
         || public_route.outbound_packets ().size () != 4
         || public_route.pending_request_count () != 1) {
@@ -1187,11 +1187,11 @@ int main ()
       });
     auto delayed_task =
       public_route_client
-        .request<request_t, reply_t> (
+        .request (
           "public.route", zlink::routing_id_t::from (std::string ("target-node")), request_t{52})
         .packet_name ("delayed.client.request")
         .timeout (std::chrono::milliseconds (50))
-        .async ();
+        .async<reply_t> ();
     zlink::framework::detail::observe_task_completion (
       delayed_task, [&delayed_completed] (const zlink::framework::result_t<reply_t> &) {
           delayed_completed = true;

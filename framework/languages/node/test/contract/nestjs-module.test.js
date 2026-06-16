@@ -426,6 +426,45 @@ test('ZLinkModule.forRoot maps grouped routeMesh send handlers from NestJS DI', 
   await app.close();
 });
 
+test('ZLinkModule.forRoot maps manual client-server send handlers from NestJS DI', async () => {
+  const endpoint = 'tcp://127.0.0.1:9409';
+  class NoticeHandler {
+    constructor() {
+      this.notices = [];
+    }
+
+    async handle(message, context) {
+      this.notices.push({ message, packetName: context.packetName });
+    }
+  }
+
+  class HandlerModule {}
+  Module({
+    imports: [nestjs.ZLinkModule.forRootFactory({
+      useFactory: () => nestjs.zlinkFramework()
+        .clientServerChannel('api', (channel) => channel
+          .server(endpoint)
+          .sendHandler('Notice', NoticeHandler))
+        .build()
+    })],
+    providers: [NoticeHandler]
+  })(HandlerModule);
+
+  const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
+  const channel = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION).channels.get('api');
+  const noticeHandler = app.get(NoticeHandler, { strict: false });
+
+  assert.equal(channel.sendHandlers.length, 1);
+  assert.equal(channel.sendHandlers[0].packetName, 'Notice');
+  await channel.sendHandlers[0].handler.handle(
+    Buffer.from(JSON.stringify({ text: 'hello' })),
+    { channelName: 'api', packetName: 'Notice' }
+  );
+  assert.deepEqual(noticeHandler.notices, [{ message: { text: 'hello' }, packetName: 'Notice' }]);
+
+  await app.close();
+});
+
 test('ZLinkModule.forRoot maps grouped fanout publish handlers from NestJS DI', async () => {
   const subscriberEndpoint = await reserveTcpEndpoint();
   const PROFILE_EVENTS = Symbol('profile-events');
@@ -718,18 +757,36 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
   class PlayerActor {}
   class EntrySpot {}
   class RoomSpot {}
+  class EntryNoticeHandler {}
   class MatchHandler {}
+  class RoomNoticeHandler {}
   class SubmitHandler {}
+  class RoomTimerHandler {}
+  nestjs.zlinkEntrySpotActorSendHandler({
+    actor: () => PlayerActor,
+    entrySpot: () => EntrySpot,
+    packetName: 'entry.notice'
+  })(EntryNoticeHandler);
   nestjs.zlinkEntrySpotActorRequestHandler({
     actor: () => PlayerActor,
     entrySpot: () => EntrySpot,
     packetName: 'match'
   })(MatchHandler);
+  nestjs.zlinkSpotActorSendHandler({
+    actor: () => PlayerActor,
+    packetName: 'room.notice',
+    spot: () => RoomSpot
+  })(RoomNoticeHandler);
   nestjs.zlinkSpotActorRequestHandler({
     actor: () => PlayerActor,
     packetName: 'submit',
     spot: () => RoomSpot
   })(SubmitHandler);
+  nestjs.zlinkSpotTimerHandler({
+    name: 'room.tick',
+    periodMs: 250,
+    spot: () => RoomSpot
+  })(RoomTimerHandler);
 
   class TestModule {}
   Module({
@@ -741,23 +798,42 @@ test('ZLinkModule.forRoot discovers SPOT actor request handler decorators from N
         }
       }
     })],
-    providers: [MatchHandler, SubmitHandler]
+    providers: [EntryNoticeHandler, MatchHandler, RoomNoticeHandler, SubmitHandler, RoomTimerHandler]
   })(TestModule);
 
   const app = await NestFactory.createApplicationContext(TestModule, { logger: false, abortOnError: false });
   const registration = app.get(nestjs.ZLINK_FRAMEWORK_REGISTRATION);
   const spotNode = registration.spotNodes.get('game');
 
+  assert.deepEqual(spotNode.entrySpotActorSendHandlers, [{
+    actorType: PlayerActor,
+    entrySpotType: EntrySpot,
+    handlerType: EntryNoticeHandler,
+    packetName: 'entry.notice'
+  }]);
   assert.deepEqual(spotNode.entrySpotActorRequestHandlers, [{
     actorType: PlayerActor,
     entrySpotType: EntrySpot,
     handlerType: MatchHandler,
     packetName: 'match'
   }]);
+  assert.deepEqual(spotNode.spotActorSendHandlers, [{
+    actorType: PlayerActor,
+    handlerType: RoomNoticeHandler,
+    packetName: 'room.notice',
+    spotType: RoomSpot
+  }]);
   assert.deepEqual(spotNode.spotActorRequestHandlers, [{
     actorType: PlayerActor,
     handlerType: SubmitHandler,
     packetName: 'submit',
+    spotType: RoomSpot
+  }]);
+  assert.deepEqual(spotNode.spotTimerHandlers, [{
+    handlerType: RoomTimerHandler,
+    name: 'room.tick',
+    options: undefined,
+    periodMs: 250,
     spotType: RoomSpot
   }]);
 
@@ -1956,7 +2032,7 @@ test('framework runtime host initializes registered Entry Spot lifecycle and han
   await runtime.stop();
 
   assert.deepEqual(registry.snapshot(), [
-    { kind: 'actorPacket', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' },
+    { kind: 'actorRequest', handlerType: ActorPacketHandler, actorType: PlayerActor, packetName: 'actor.packet' },
     { kind: 'handler', handlerType: GenericHandler },
     { kind: 'packet', handlerType: PacketHandler, packetName: 'entry.packet' },
     { kind: 'subscribe', handlerType: SubscribeHandler, topic: 'entry.topic' },

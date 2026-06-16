@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ZLinkConfigurationException } from '../configuration';
 
 export const JSON_CONTENT_TYPE = 'application/json';
+export const BINARY_CONTENT_TYPE = 'application/octet-stream';
 
 export const enum ZLinkChannelMessageKind {
   Request = 1,
@@ -43,7 +44,7 @@ export function encodeChannelEnvelopeParts(
     kind,
     channelName,
     messageName: packetName ?? resolveChannelPacketName(payload),
-    contentType: JSON_CONTENT_TYPE,
+    contentType: contentTypeOf(payload),
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
     topic: topic ?? null,
@@ -63,7 +64,7 @@ export function encodeChannelPublishEnvelopeParts(
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
     messageName: packetName ?? resolveChannelPacketName(payload),
-    contentType: JSON_CONTENT_TYPE,
+    contentType: contentTypeOf(payload),
     correlationId: randomUUID().replaceAll('-', ''),
     deadline: null,
     topic,
@@ -78,7 +79,7 @@ export function encodeChannelReplyParts(request: ZLinkChannelEnvelopeHeader, pay
     kind: ZLinkChannelMessageKind.Response,
     channelName: request.channelName,
     messageName: request.messageName,
-    contentType: JSON_CONTENT_TYPE,
+    contentType: contentTypeOf(payload),
     correlationId: request.correlationId,
     deadline: null,
     topic: null,
@@ -114,6 +115,9 @@ export function decodeChannelReply<TReply>(parts: readonly Message[]): TReply {
   if (parts.length < 2 || parts[1].data().length === 0) {
     return undefined as TReply;
   }
+  if (header.contentType === BINARY_CONTENT_TYPE) {
+    return Buffer.from(parts[1].data()) as TReply;
+  }
   return parseWireJson(parts[1].data().toString()) as TReply;
 }
 
@@ -136,6 +140,12 @@ function toMessageLike(value: unknown): MessageLike {
     return value;
   }
   return encodeJsonBytes(value);
+}
+
+function contentTypeOf(value: unknown): string {
+  return Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value)
+    ? BINARY_CONTENT_TYPE
+    : JSON_CONTENT_TYPE;
 }
 
 function isMessage(value: unknown): value is Message {
@@ -179,7 +189,7 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
   const header = value as Record<string, unknown>;
   const kind = requireChannelMessageKind(header.kind);
   const contentType = requireString(header.contentType, 'contentType');
-  if (contentType !== JSON_CONTENT_TYPE) {
+  if (contentType !== JSON_CONTENT_TYPE && contentType !== BINARY_CONTENT_TYPE) {
     throw new ZLinkConfigurationException(`Channel envelope contentType '${contentType}' is not supported.`);
   }
   return {

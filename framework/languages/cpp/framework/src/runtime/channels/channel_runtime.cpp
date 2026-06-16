@@ -542,13 +542,18 @@ std::size_t message_bus_t::pending_limit () const noexcept
     return _state->max_pending;
 }
 
+serializer_registry_t *message_bus_t::serializers () const noexcept
+{
+    return _state ? _state->serializers : nullptr;
+}
+
 message_bus_t::erased_request_result_t
 message_bus_t::submit_request (std::string channel_name,
                                std::string packet_name,
                                std::type_index request_type,
                                const void *request,
                                std::chrono::milliseconds timeout,
-                               const request_call_t<zlink::message_t>::metadata_map_t &metadata)
+                               const channel_request_call_t::metadata_map_t &metadata)
 {
     detail::channel_runtime_t runtime (_state);
     const auto *client = detail::client_capability (*_state, channel_name);

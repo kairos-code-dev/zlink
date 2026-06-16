@@ -328,7 +328,123 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         Assert.NotNull(provider.GetService<TestChannelRequestHandler>());
     }
 
+    [Fact]
+    public void AddZLinkFramework_DealerMeshEnableServer_BindsSharedDealerWithoutPeerSource()
+    {
+        var services = new ServiceCollection();
 
+        // dealer mesh 를 server 로만(bind + handler) — discovery/connect 없이도 유효해야 한다.
+        services.AddZLinkFramework(options =>
+        {
+            options.AddDealerMeshChannel("mesh", channel =>
+            {
+                channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));
+                channel.AddRequestHandler<TestChannelRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var channel = registration.Channels["mesh"];
+
+        // server·client 가 공유하는 DEALER(Client registration)에 bind 가 기록되고,
+        // ROUTER(registration.Server)는 만들어지지 않는다.
+        Assert.NotNull(channel.Client);
+        Assert.Equal("tcp://0.0.0.0:5600", channel.Client!.BindEndpoint);
+        Assert.Null(channel.Server);
+        Assert.Single(channel.RequestHandlers);
+        Assert.NotNull(provider.GetService<TestChannelRequestHandler>());
+    }
+
+    [Fact]
+    public void AddZLinkFramework_DealerMeshNodeCanEnableBothServerAndClient()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddDealerMeshChannel("mesh", channel =>
+            {
+                channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));   // 받는다(제공)
+                channel.EnableClient(client => client.UseManualConnections(
+                    peers => peers.Connect("tcp://10.0.0.2:5600")));                  // 호출한다(소비)
+                channel.AddRequestHandler<TestChannelRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var channel = registration.Channels["mesh"];
+
+        // 같은 DEALER 하나가 bind(제공)와 connect(소비)를 모두 가진다.
+        Assert.NotNull(channel.Client);
+        Assert.Equal("tcp://0.0.0.0:5600", channel.Client!.BindEndpoint);
+        Assert.Single(channel.Client.ManualConnections);
+        Assert.Null(channel.Server);
+    }
+
+
+    [Fact]
+    public void AddZLinkFramework_RouteMeshEnableServer_BindsSharedRouterWithDiscovery()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.UseDiscovery(discovery => discovery.AddRegistryEndpoint("tcp://127.0.0.1:5551"));
+            options.AddRouteMeshChannel("route", channel =>
+            {
+                channel.EnableServer(server =>
+                {
+                    server.Bind("tcp://0.0.0.0:5700");
+                    server.ConfigureRouting(route => route.RoutingId = RoutingId.From("route-node"));
+                });
+                channel.AddRequestHandler<TestRouteRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = registration.RouteChannels["route"];
+
+        Assert.Equal("tcp://0.0.0.0:5700", route.BindEndpoint);
+        Assert.Equal(RoutingId.From("route-node"), route.RoutingConfig.RoutingId);
+        Assert.Empty(route.ManualConnections);
+        Assert.Single(route.RequestHandlers);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_RouteMeshNodeCanEnableBothServerAndClient()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+        {
+            options.AddRouteMeshChannel("route", channel =>
+            {
+                channel.EnableServer(server =>
+                {
+                    server.Bind("tcp://0.0.0.0:5700");
+                    server.ConfigureRouting(route => route.RoutingId = RoutingId.From("route-node"));
+                });
+                channel.EnableClient(client =>
+                {
+                    client.ConfigureRouting(route => route.ProbeRouterOnConnect = true);
+                    client.UseManualConnections(peers => peers.Connect("tcp://10.0.0.2:5700"));
+                });
+                channel.AddRequestHandler<TestRouteRequestHandler>();
+            });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        var route = registration.RouteChannels["route"];
+
+        Assert.Equal("tcp://0.0.0.0:5700", route.BindEndpoint);
+        Assert.Equal(RoutingId.From("route-node"), route.RoutingConfig.RoutingId);
+        Assert.True(route.RoutingConfig.EnablePeerProbe);
+        Assert.Equal("tcp://10.0.0.2:5700", Assert.Single(route.ManualConnections));
+    }
     [Fact]
     public void AddZLinkFramework_AllowsSingleGenericRouteAndPublishHandlerRegistration()
     {

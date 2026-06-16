@@ -315,6 +315,15 @@ internal sealed partial class ZLinkSpotNodeRuntime : IAsyncDisposable
             _registration.Router?.SocketConfig.SendTimeout
                 ?? TimeSpan.FromMilliseconds(1000),
             ResolveAttachedChannelSubmitter);
+        foreach (var assembly in _frameworkRegistration.HandlerAssemblies)
+        {
+            foreach (var handler in ZLinkScannedSpotHandlerScanner.Scan(assembly))
+            {
+                await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)
+                    .ConfigureAwait(false);
+            }
+        }
+
         activation.Configure();
         await activation.InitializeAsync(_stopSource.Token)
             .ConfigureAwait(false);

@@ -691,6 +691,10 @@ export class ZLinkSpotActorHandlerRegistryRuntime {
     if (exact !== undefined) {
       return exact;
     }
+    const wildcard = this.packets.get(packetKey(kind, Object as unknown as Type<ZLinkActor>, packetName));
+    if (wildcard !== undefined) {
+      return wildcard;
+    }
 
     for (const descriptor of this.packets.values()) {
       if (
@@ -812,6 +816,9 @@ export class ZLinkSpotActorDispatcher {
   }
 
   private ensureActorType(descriptor: ZLinkActorPacketDescriptor, actor: ZLinkActor): void {
+    if (descriptor.actorType === (Object as unknown as Type<ZLinkActor>)) {
+      return;
+    }
     if (actor instanceof descriptor.actorType) {
       return;
     }

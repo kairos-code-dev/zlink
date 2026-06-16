@@ -94,7 +94,7 @@ send_call_t bound_session_t::send_erased (std::string packet_name, const zlink::
         return send_call_t (result_t<void>::failure (framework_error_kind_t::actor_stale_generation,
                                                      "actor generation is stale"));
     }
-    stream_header_t header (stream_message_kind_t::send, stream_codec_t::message_pack,
+    stream_header_t header (stream_message_kind_t::send, found->second.bound_session_codec,
                             stream_header_flags_t::none, std::nullopt, packet_name);
     _state->bound_session_pushes.push_back (
       detail::relayed_frame_t{found->second.ref, header, payload});
@@ -520,15 +520,20 @@ result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_
     return result_t<void>::success ();
 }
 
-void actor_gateway_runtime_t::bind_session_stream (std::string actor_id, stream_t stream)
+void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
+                                                  stream_t stream,
+                                                  stream_codec_t codec)
 {
     const std::lock_guard lock (_state->mutex);
+    auto found = _state->actors_by_id.find (actor_id);
+    if (found != _state->actors_by_id.end ()) {
+        found->second.bound_session_codec = codec;
+    }
     _state->bound_session_sinks[actor_id] =
-      [stream = std::move (stream)] (std::string packet_name,
-                                     const zlink::message_t &payload) mutable {
-          stream_header_t header (stream_message_kind_t::send, stream_codec_t::message_pack,
-                                  stream_header_flags_t::none, std::nullopt,
-                                  std::move (packet_name));
+      [stream = std::move (stream), codec] (std::string packet_name,
+                                            const zlink::message_t &payload) mutable {
+          stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
+                                  std::nullopt, std::move (packet_name));
           return stream.write_packet (header, payload).async ().result ();
       };
 }

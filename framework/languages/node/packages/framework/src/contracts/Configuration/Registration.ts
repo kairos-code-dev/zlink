@@ -20,6 +20,7 @@ import type {
   ZLinkFrameworkOptions,
   ZLinkPublishContext,
   ZLinkRequestContext,
+  ZLinkSendContext,
   ZLinkRouteChannelBuilder,
   ZLinkRouteMeshChannelBuilder,
   ZLinkRouteRequestContext,
@@ -31,7 +32,8 @@ import type {
   ZLinkSpotRouteChannelAcceptanceBuilder,
   ZLinkStreamNodeBuilder,
   ZLinkSession,
-  ZLinkSessionFactory
+  ZLinkSessionFactory,
+  ZLinkTimerOptions
 } from '../../contracts';
 
 export interface ZLinkFrameworkRegistration {
@@ -104,6 +106,7 @@ export interface ZLinkChannelOptions {
   readonly routeMesh?: ZLinkRouteMeshChannelOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkChannelRequestHandlerRegistration[];
+  readonly sendHandlers?: readonly ZLinkChannelSendHandlerRegistration[];
   readonly server?: { readonly bind?: string };
   readonly subscriber?: ZLinkClientCapabilityOptions;
 }
@@ -156,15 +159,49 @@ export interface ZLinkSpotNodeOptions {
   readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
+  readonly entrySpotTimerHandlers?: readonly ZLinkEntrySpotTimerHandlerRegistration[];
+  readonly entrySpotActorSendHandlers?: readonly ZLinkEntrySpotActorSendHandlerRegistration[];
   readonly entrySpotActorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
+  readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
+  readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly attachedChannelClients?: Readonly<Record<string, ZLinkSpotAttachedChannelClientOptions>>;
   readonly attachedSpotPublisherClients?: Readonly<Record<string, ZLinkSpotPublisherClientOptions>>;
   readonly acceptedSpotRouteChannels?: Readonly<Record<string, ZLinkSpotRouteChannelAcceptanceOptions>>;
 }
 
+export interface ZLinkEntrySpotTimerHandlerRegistration {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly handlerType: Type;
+  readonly name: string;
+  readonly periodMs: number;
+  readonly options?: ZLinkTimerOptions;
+}
+
+export interface ZLinkEntrySpotActorSendHandlerRegistration {
+  readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly actorType: Type<ZLinkActor>;
+  readonly handlerType: Type;
+  readonly packetName: string;
+}
+
 export interface ZLinkEntrySpotActorRequestHandlerRegistration {
   readonly entrySpotType: Type<ZLinkEntrySpot>;
+  readonly actorType: Type<ZLinkActor>;
+  readonly handlerType: Type;
+  readonly packetName: string;
+}
+
+export interface ZLinkSpotTimerHandlerRegistration {
+  readonly spotType: Type<ZLinkSpot>;
+  readonly handlerType: Type;
+  readonly name: string;
+  readonly periodMs: number;
+  readonly options?: ZLinkTimerOptions;
+}
+
+export interface ZLinkSpotActorSendHandlerRegistration {
+  readonly spotType: Type<ZLinkSpot>;
   readonly actorType: Type<ZLinkActor>;
   readonly handlerType: Type;
   readonly packetName: string;
@@ -226,6 +263,13 @@ export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler: {
     handle(payload: Buffer, context: ZLinkRequestContext): Promise<unknown> | unknown;
+  };
+}
+
+export interface ZLinkChannelSendHandlerRegistration {
+  readonly packetName: string;
+  readonly handler: {
+    handle(payload: Buffer, context: ZLinkSendContext): Promise<void> | void;
   };
 }
 
@@ -635,6 +679,7 @@ interface MutableChannelOptions {
   routeMesh?: MutableRouteMeshChannelOptions;
   publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
   requestHandlers?: ZLinkChannelRequestHandlerRegistration[];
+  sendHandlers?: ZLinkChannelSendHandlerRegistration[];
   server?: { bind?: string };
   subscriber?: MutableClientCapabilityOptions;
 }
@@ -917,6 +962,19 @@ function validateChannelCapabilities(
         `Channel '${channelName}' publish handlers require a subscriber capability.`
       );
     }
+    if (((channel.requestHandlers ?? []).length > 0 || (channel.sendHandlers ?? []).length > 0) && channel.server === undefined) {
+      throw new ZLinkConfigurationException(
+        `Channel '${channelName}' request/send handlers require a server capability.`
+      );
+    }
+    validateDuplicatePacketNames(
+      `channel '${channelName}' request handler`,
+      channel.requestHandlers?.map((handler) => handler.packetName)
+    );
+    validateDuplicatePacketNames(
+      `channel '${channelName}' send handler`,
+      channel.sendHandlers?.map((handler) => handler.packetName)
+    );
     validateDuplicatePacketNames(
       `channel '${channelName}' publish handler`,
       channel.publishHandlers?.map((handler) => handler.packetName)

@@ -149,6 +149,20 @@ public interface IZLinkActorHandlerRegistry
         where THandler : class
         where TActor : IZLinkActor;
 
+    void AddActorSend<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        AddActorPacket<THandler, TActor>(packetName);
+    }
+
+    void AddActorRequest<THandler, TActor>(string packetName)
+        where THandler : class
+        where TActor : IZLinkActor
+    {
+        AddActorPacket<THandler, TActor>(packetName);
+    }
+
 }
 
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry

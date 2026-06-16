@@ -3,6 +3,16 @@ namespace Zlink.Framework.Runtime.Configuration.Builders;
 internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration registration)
     : IZLinkRouteChannelBuilder, IZLinkRouteMeshChannelBuilder
 {
+    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
+    {
+        configure?.Invoke(new ZLinkRouteMeshChannelServerCapabilityBuilder(registration));
+    }
+
+    public void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null)
+    {
+        configure?.Invoke(new ZLinkRouteMeshChannelClientCapabilityBuilder(registration));
+    }
+
     public void Bind(string endpoint)
     {
         if (string.IsNullOrWhiteSpace(endpoint))
@@ -92,5 +102,66 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetSpotNodeChannelName);
         registration.SpotRouteEgress = new ZLinkSpotRouteEgressRegistration(targetSpotNodeChannelName);
+    }
+}
+
+internal sealed class ZLinkRouteMeshChannelServerCapabilityBuilder(
+    ZLinkRouteChannelRegistration registration)
+    : IChannelServerCapabilityBuilder
+{
+    public void Bind(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("Route mesh channel server bind endpoint must not be empty.");
+        }
+
+        registration.BindEndpoint = endpoint;
+    }
+
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    {
+        configure(registration.RoutingConfig);
+    }
+}
+
+internal sealed class ZLinkRouteMeshChannelClientCapabilityBuilder(
+    ZLinkRouteChannelRegistration registration)
+    : IChannelClientCapabilityBuilder
+{
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void ConfigureRouting(Action<IZLinkOutboundRouteConfig> configure)
+    {
+        configure(new ZLinkRouteMeshOutboundRouteConfigAdapter(registration.RoutingConfig));
+    }
+
+    public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
+    {
+        configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkRouteMeshOutboundRouteConfigAdapter(ZLinkRouteConfig routeConfig)
+    : IZLinkOutboundRouteConfig
+{
+    public RoutingId RoutingId
+    {
+        get => routeConfig.RoutingId;
+        set => routeConfig.RoutingId = value;
+    }
+
+    public bool ProbeRouterOnConnect
+    {
+        get => routeConfig.EnablePeerProbe;
+        set => routeConfig.EnablePeerProbe = value;
     }
 }

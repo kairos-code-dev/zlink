@@ -13,8 +13,8 @@ export interface ZLinkSpotCreateResponse {
 }
 
 export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> {
-  readonly context?: ZLinkSpotContext;
-  configure?(): void;
+  readonly context?: ZLinkSpotContext<TActor>;
+  configure?(): void | Promise<void>;
   onCreate?(request: Message, signal?: AbortSignal): Promise<ZLinkSpotCreateResponse>;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
@@ -25,8 +25,8 @@ export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> {
 }
 
 export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> {
-  readonly context?: ZLinkEntrySpotContext;
-  configure?(): void;
+  readonly context?: ZLinkEntrySpotContext<TActor>;
+  configure?(): void | Promise<void>;
   onInitialize?(signal?: AbortSignal): Promise<void>;
   onClosing?(signal?: AbortSignal): Promise<void>;
   onCreateActor?(actor: TActor, signal?: AbortSignal): Promise<void>;

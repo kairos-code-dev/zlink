@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/detail/call_facade.hpp>
+#include <zlink/framework/contracts/codecs/serializer.hpp>
 
 #include <chrono>
 #include <functional>
@@ -76,6 +77,72 @@ template <typename TReply> class request_call_t
     std::string _packet_name;
     std::chrono::milliseconds _timeout{0};
     metadata_map_t _metadata;
+    submit_fn_t _submit;
+};
+
+class channel_request_call_t
+{
+  public:
+    using metadata_map_t = std::map<std::string, std::string>;
+    using submit_fn_t = std::function<task_t<zlink::message_t> (
+      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
+
+    channel_request_call_t () = default;
+
+    channel_request_call_t (std::string packet_name,
+                            serializer_registry_t *serializers,
+                            submit_fn_t submit) :
+        _packet_name (std::move (packet_name)),
+        _serializers (serializers),
+        _submit (std::move (submit))
+    {
+    }
+
+    channel_request_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _timeout = timeout;
+        return *this;
+    }
+
+    channel_request_call_t &packet_name (std::string packet_name)
+    {
+        _packet_name = std::move (packet_name);
+        return *this;
+    }
+
+    channel_request_call_t &metadata (std::string key, std::string value)
+    {
+        _metadata[std::move (key)] = std::move (value);
+        return *this;
+    }
+
+    template <typename TReply> task_t<TReply> async ()
+    {
+        if (!_submit) {
+            co_return result_t<TReply>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "request call is not bound to a channel client");
+        }
+        auto reply = co_await _submit (_packet_name, _timeout, _metadata);
+        if (_serializers == nullptr) {
+            co_return result_t<TReply>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "channel request has no serializer registry");
+        }
+        try {
+            co_return _serializers->get<TReply> ().deserialize (reply);
+        }
+        catch (const framework_exception_t &error) {
+            co_return result_t<TReply>::failure (
+              error.kind (), error.what (), error.is_retriable ());
+        }
+    }
+
+  private:
+    std::string _packet_name;
+    std::chrono::milliseconds _timeout{0};
+    metadata_map_t _metadata;
+    serializer_registry_t *_serializers = nullptr;
     submit_fn_t _submit;
 };
 

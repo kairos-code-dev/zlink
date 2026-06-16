@@ -108,7 +108,7 @@ template <typename T> concept has_core_async_terminator = requires (T value)
     value.async ();
 };
 static_assert (!has_core_async_terminator<zlink::stream_connector::send_call_t>);
-static_assert (!has_core_async_terminator<zlink::stream_connector::request_call_t<auto_payload_t>>);
+static_assert (!has_core_async_terminator<zlink::stream_connector::request_call_t>);
 static_assert (!has_core_async_terminator<zlink::stream_connector::wait_call_t<auto_payload_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
@@ -116,10 +116,10 @@ static_assert (
                              .async ()),
                  zlink::stream_e2e_client::task_t<auto_payload_t>>);
 static_assert (
-  std::is_same_v<decltype (zlink::stream_e2e_client::codecs::request<auto_payload_t> (
+  std::is_same_v<decltype (zlink::stream_e2e_client::codecs::request (
                              std::declval<zlink::stream_e2e_client::coroutine_connector_t &> (),
                              std::declval<auto_payload_t> ())
-                             .async ()),
+                             .async<auto_payload_t> ()),
                  zlink::stream_e2e_client::task_t<auto_payload_t>>);
 
 void to_json (nlohmann::json &json, const auto_payload_t &payload)
@@ -151,10 +151,10 @@ send_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &con
 zlink::stream_e2e_client::task_t<login_reply_t>
 request_with_coroutine_submit (zlink::stream_e2e_client::coroutine_connector_t &connector)
 {
-    auto reply = co_await connector.request<login_reply_t> (login_request_t{})
+    auto reply = co_await connector.request (login_request_t{})
                    .packet_name ("coroutine.request")
                    .timeout (std::chrono::milliseconds (100))
-                   .async ();
+                   .async<login_reply_t> ();
     co_return reply;
 }
 
@@ -172,10 +172,7 @@ zlink::stream_e2e_client::task_t<int> delayed_coroutine_child ()
 zlink::stream_e2e_client::task_t<int> await_delayed_coroutine_child ()
 {
     auto value = co_await delayed_coroutine_child ();
-    if (!value) {
-        co_return value;
-    }
-    co_return value.value () + 1;
+    co_return value + 1;
 }
 
 struct server_frame_t
@@ -635,7 +632,7 @@ int main ()
         websocket_connect_server_thread.join ();
     }
 
-    connector.codecs ().add_json<login_request_t> ();
+    connector.codecs ().add_json ();
     if (!connector.codecs ().supports (zlink::stream_connector::codec_t::json)) {
         return 3;
     }
@@ -667,10 +664,10 @@ int main ()
         return 68;
     }
 
-    auto request = connector.request<login_reply_t> (login_request_t{})
+    auto request = connector.request (login_request_t{})
                      .packet_name ("login.request")
                      .timeout (std::chrono::milliseconds (5))
-                     .submit ();
+                     .submit<login_reply_t> ();
     if (!request || runtime.pending_request_count () != 0) {
         return 6;
     }
@@ -845,7 +842,7 @@ int main ()
       connector.codecs ().supports (zlink::stream_connector::codec_t::message_pack);
     bool error_seen = false;
     try {
-        connector.codecs ().add_message_pack<login_request_t> ();
+        connector.codecs ().add_message_pack ();
     }
     catch (const std::invalid_argument &) {
         error_seen = true;
@@ -867,9 +864,9 @@ int main ()
     }
     bool request_after_close_callback_seen = false;
     callback_latch_t request_after_close_latch;
-    connector.request<login_reply_t> (login_request_t{})
+    connector.request (login_request_t{})
       .packet_name ("after.close.request")
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit<login_reply_t> ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_after_close_callback_seen =
             !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           request_after_close_latch.signal ();
@@ -976,6 +973,28 @@ int main ()
     if (!auto_filtered_wait || auto_filtered_wait.value ().text != "typed-filtered") {
         return 79;
     }
+    zlink::stream_connector::detail::connector_runtime_t::from (auto_connector)
+      .receive_packet (zlink::stream_connector::packet_t{
+        auto_payload_t::packet_name,
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from_json (auto_payload_t{"member-filter-skipped"})});
+    zlink::stream_connector::detail::connector_runtime_t::from (auto_connector)
+      .receive_packet (zlink::stream_connector::packet_t{
+        auto_payload_t::packet_name,
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from_json (auto_payload_t{"member-filtered"})});
+    auto auto_member_filtered_wait =
+      auto_connector.wait_for<auto_payload_t> ()
+        .where (&auto_payload_t::text, std::string ("member-filtered"))
+        .submit ();
+    if (!auto_member_filtered_wait
+        || auto_member_filtered_wait.value ().text != "member-filtered") {
+        return 107;
+    }
     auto_connector.close ();
 
     zlink::stream_socket_t timeout_server (context);
@@ -998,10 +1017,10 @@ int main ()
     if (!timeout_connector.connect ()) {
         return 35;
     }
-    auto timeout_reply = timeout_connector.request<login_reply_t> (login_request_t{})
+    auto timeout_reply = timeout_connector.request (login_request_t{})
                            .packet_name ("timeout.request")
                            .timeout (std::chrono::milliseconds (5))
-                           .submit ();
+                           .submit<login_reply_t> ();
     timeout_server_thread.join ();
     if (timeout_reply
         || timeout_reply.error_code () != zlink::stream_connector::error_code_t::request_timeout
@@ -1038,10 +1057,10 @@ int main ()
     }
     bool request_callback_response_seen = false;
     callback_latch_t request_callback_response_latch;
-    callback_response_connector.request<login_reply_t> (login_request_t{})
+    callback_response_connector.request (login_request_t{})
       .packet_name ("callback.response.request")
       .timeout (std::chrono::milliseconds (100))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit<login_reply_t> ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_response_seen = static_cast<bool> (result);
           request_callback_response_latch.signal ();
       });
@@ -1077,10 +1096,10 @@ int main ()
     }
     bool request_callback_timeout_seen = false;
     callback_latch_t request_callback_timeout_latch;
-    callback_timeout_connector.request<login_reply_t> (login_request_t{})
+    callback_timeout_connector.request (login_request_t{})
       .packet_name ("callback.timeout.request")
       .timeout (std::chrono::milliseconds (5))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit<login_reply_t> ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           request_callback_timeout_seen =
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::request_timeout;
@@ -1123,10 +1142,10 @@ int main ()
     bool close_cleanup_seen = false;
     callback_latch_t close_cleanup_callback_latch;
     const auto close_cleanup_submit_started = std::chrono::steady_clock::now ();
-    close_cleanup_connector.request<login_reply_t> (login_request_t{})
+    close_cleanup_connector.request (login_request_t{})
       .packet_name ("close.cleanup.request")
       .timeout (std::chrono::milliseconds (1000))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit<login_reply_t> ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           close_cleanup_seen =
             !result && result.error_code () == zlink::stream_connector::error_code_t::closed;
           close_cleanup_callback_latch.signal ();
@@ -1309,10 +1328,10 @@ int main ()
         return 120;
     }
     auto oversized_receive_result =
-      oversized_receive_connector.request<login_reply_t> (login_request_t{})
+      oversized_receive_connector.request (login_request_t{})
         .packet_name ("oversized.receive.request")
         .timeout (std::chrono::milliseconds (100))
-        .submit ();
+        .submit<login_reply_t> ();
     oversized_receive_server_thread.join ();
     if (oversized_receive_result
         || oversized_receive_result.error_code ()
@@ -1346,10 +1365,10 @@ int main ()
     }
     bool async_oversized_receive_seen = false;
     callback_latch_t async_oversized_receive_latch;
-    async_oversized_receive_connector.request<login_reply_t> (login_request_t{})
+    async_oversized_receive_connector.request (login_request_t{})
       .packet_name ("async.oversized.receive.request")
       .timeout (std::chrono::milliseconds (100))
-      .submit ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
+      .submit<login_reply_t> ([&] (zlink::stream_connector::result_t<login_reply_t> result) {
           async_oversized_receive_seen =
             !result
             && result.error_code () == zlink::stream_connector::error_code_t::frame_too_large;
@@ -1742,9 +1761,9 @@ int main ()
     }
 
     auto request_after_reconnect_failure =
-      reconnect_connector.request<login_reply_t> (login_request_t{})
+      reconnect_connector.request (login_request_t{})
         .packet_name ("after.reconnect.failure")
-        .submit ();
+        .submit<login_reply_t> ();
     if (request_after_reconnect_failure
         || request_after_reconnect_failure.error_code ()
              != zlink::stream_connector::error_code_t::disconnected) {

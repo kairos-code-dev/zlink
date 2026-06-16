@@ -6,7 +6,10 @@ internal static class ZLinkSpotDescriptorFactory
 {
     private const string ActorJoinMethodName = "OnActorJoinAsync";
 
-    public static ZLinkSpotDescriptor CreatePacketDescriptor(Type handlerType, Type expectedSpotType)
+    public static ZLinkSpotDescriptor CreatePacketDescriptor(
+        Type handlerType,
+        Type expectedSpotType,
+        string? packetName = null)
     {
         foreach (var (definition, arguments) in ZLinkHandlerContractInspector.EnumerateGenericInterfaces(handlerType))
         {
@@ -19,7 +22,7 @@ internal static class ZLinkSpotDescriptorFactory
                     SpotType = arguments[0],
                     MessageType = arguments[1],
                     Invoker = CreateInvoker(handlerType),
-                    MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
+                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
                 };
             }
 
@@ -33,7 +36,7 @@ internal static class ZLinkSpotDescriptorFactory
                     MessageType = arguments[1],
                     ReplyType = arguments[2],
                     Invoker = CreateInvoker(handlerType),
-                    MessageName = ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
+                    MessageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(arguments[1]),
                 };
             }
         }

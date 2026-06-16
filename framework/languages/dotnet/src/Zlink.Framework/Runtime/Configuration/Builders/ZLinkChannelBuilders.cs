@@ -99,6 +99,15 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
 internal sealed class ZLinkDealerMeshChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkDealerMeshChannelBuilder
 {
+    public void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null)
+    {
+        // dealer mesh 의 server·client 는 같은 DEALER 소켓을 공유한다. server(제공) 설정도
+        // client capability registration(= 그 DEALER)에 기록한다. ROUTER 를 만드는
+        // registration.Server 는 쓰지 않는다.
+        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
+        configure?.Invoke(new ZLinkDealerMeshChannelServerCapabilityBuilder(registration.Client));
+    }
+
     public void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null)
     {
         registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
@@ -312,6 +321,33 @@ internal sealed class ZLinkChannelClientCapabilityBuilder(ZLinkChannelClientCapa
     public void UseManualConnections(Action<IZLinkEndpointConnections> configure)
     {
         configure(new ZLinkMutableConnections(registration.ManualConnections));
+    }
+}
+
+internal sealed class ZLinkDealerMeshChannelServerCapabilityBuilder(ZLinkChannelClientCapabilityRegistration registration)
+    : IChannelServerCapabilityBuilder
+{
+    public void Bind(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ZLinkConfigurationException("Dealer mesh channel server bind endpoint must not be empty.");
+        }
+
+        registration.BindEndpoint = endpoint;
+    }
+
+    public void ConfigureSocket(Action<IZLinkSocketConfig> configure)
+    {
+        configure(registration.SocketConfig);
+    }
+
+    public void ConfigureRouting(Action<IZLinkRouteConfig> configure)
+    {
+        // dealer mesh server 는 DEALER 소켓이라 inbound ROUTER routing 설정이 없다.
+        throw new ZLinkConfigurationException(
+            "Dealer mesh server capability does not support inbound routing configuration; "
+            + "dealer mesh uses a DEALER socket shared by server and client.");
     }
 }
 

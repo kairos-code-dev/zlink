@@ -575,7 +575,7 @@ export class ZLinkStreamBindingRuntime {
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    const route = this.routes.require(actorId);
+    const route = this.routes.requireRoute(actorId);
     const frame = this.frameMessages.createJsonFrameMessage(
       ZLinkStreamMessageKind.Send,
       resolvePacketName(message, packetName),
@@ -599,7 +599,7 @@ export class ZLinkStreamBindingRuntime {
 
   async disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    const route = this.routes.require(actorId);
+    const route = this.routes.requireRoute(actorId);
     try {
       await this.requireTransport().disconnect(actorId, {
         bindingToken: route.bindingToken,
@@ -616,7 +616,7 @@ export class ZLinkStreamBindingRuntime {
       await this.options.relay(actor, header, payload, signal);
       return;
     }
-    const route = this.routes.require(actor.actorId);
+    const route = this.routes.requireRoute(actor.actorId);
     if (!(route.context.stream instanceof ZLinkManagedStream)) {
       return;
     }
@@ -730,7 +730,7 @@ class ZLinkActorSessionBindingRegistry {
     }
   }
 
-  require(actorId: string): ZLinkActorSessionRoute {
+  requireRoute(actorId: string): ZLinkActorSessionRoute {
     const route = this.routes.get(actorId);
     if (route !== undefined) {
       return route;
@@ -743,7 +743,7 @@ class ZLinkActorSessionBindingRegistry {
   }
 
   requireCurrentToken(actorId: string, bindingToken: string): void {
-    const route = this.require(actorId);
+    const route = this.requireRoute(actorId);
     if (route.bindingToken === bindingToken) {
       return;
     }

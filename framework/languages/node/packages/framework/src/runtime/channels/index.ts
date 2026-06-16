@@ -8,11 +8,13 @@ import type {
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkRequestCall,
+  ZLinkSendContext,
   ZLinkRouteClient,
   ZLinkSendCall,
   ZLinkSpotRemoteAddress,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import { ZLinkAutoConnectType } from '../../contracts';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import type {
   DealerSocket,
@@ -26,6 +28,7 @@ import {
   type ZLinkRouteChannelOptions
 } from '../configuration';
 import type {
+  ZLinkBackendDiscovery,
   ZLinkBackendContext,
   ZLinkBackendDealerSocket,
   ZLinkBackendPublisherSocket,
@@ -182,7 +185,7 @@ export class ZLinkChannelRuntimeManager {
   start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
     const tasks: Promise<void>[] = [];
     for (const [channelName, channel] of this.registration.channels) {
-      if (channel.server?.bind === undefined || (channel.requestHandlers ?? []).length === 0) {
+      if (channel.server?.bind === undefined || ((channel.requestHandlers ?? []).length === 0 && (channel.sendHandlers ?? []).length === 0)) {
         continue;
       }
       if (taskRunner === undefined) {
@@ -191,7 +194,8 @@ export class ZLinkChannelRuntimeManager {
       const router = this.sockets.channelRouter(channelName);
       const dispatcher = new ZLinkChannelRequestDispatcher({
         channelName,
-        handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler]))
+        handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
+        sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler]))
       });
       const loop = new ZLinkChannelReceiveLoop(router, dispatcher);
       this.channelReceiveLoops.push(loop);
@@ -419,6 +423,7 @@ class ZLinkChannelSocketRegistry {
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
   private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
+  private readonly discoveries = new Set<ZLinkBackendDiscovery>();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
 
@@ -434,13 +439,15 @@ class ZLinkChannelSocketRegistry {
       ...this.channelRouters.values(),
       ...this.publishers.values(),
       ...this.subscribers.values(),
-      ...this.routeRouters.values()
+      ...this.routeRouters.values(),
+      ...this.discoveries.values()
     ];
     this.clientDealers.clear();
     this.channelRouters.clear();
     this.publishers.clear();
     this.subscribers.clear();
     this.routeRouters.clear();
+    this.discoveries.clear();
     for (const submitter of this.ownedSubmitters) {
       submitter.dispose();
     }
@@ -463,8 +470,12 @@ class ZLinkChannelSocketRegistry {
     const dealer = this.adapter.createDealerSocket(this.context);
     dealer.setChannelName(channelName);
     this.trackSubmitter(dealer);
-    for (const endpoint of client.manualConnections ?? []) {
-      dealer.connect(endpoint);
+    if ((client.manualConnections ?? []).length > 0) {
+      for (const endpoint of client.manualConnections ?? []) {
+        dealer.connect(endpoint);
+      }
+    } else if (this.hasDiscovery()) {
+      dealer.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer));
     }
     this.clientDealers.set(channelName, dealer);
     return dealer;
@@ -488,6 +499,9 @@ class ZLinkChannelSocketRegistry {
     router.setChannelName(channelName);
     this.trackSubmitter(router);
     router.bind(channel.server.bind);
+    if (this.hasDiscovery()) {
+      router.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.ClientServer));
+    }
     this.channelRouters.set(channelName, router);
     return router;
   }
@@ -510,6 +524,9 @@ class ZLinkChannelSocketRegistry {
     publisher.setChannelName(channelName);
     this.trackSubmitter(publisher);
     publisher.bind(channel.publisher.bind);
+    if (this.hasDiscovery()) {
+      publisher.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.Fanout));
+    }
     this.publishers.set(channelName, publisher);
     return publisher;
   }
@@ -528,8 +545,12 @@ class ZLinkChannelSocketRegistry {
     const subscriber = this.adapter.createSubscriberSocket(this.context);
     subscriber.setChannelName(channelName);
     subscriber.setSubscription('');
-    for (const endpoint of channel.subscriber.manualConnections ?? []) {
-      subscriber.connect(endpoint);
+    if ((channel.subscriber.manualConnections ?? []).length > 0) {
+      for (const endpoint of channel.subscriber.manualConnections ?? []) {
+        subscriber.connect(endpoint);
+      }
+    } else if (this.hasDiscovery()) {
+      subscriber.attachDiscovery(this.createDiscovery(channelName, ZLinkAutoConnectType.Fanout));
     }
     this.subscribers.set(channelName, subscriber);
     return subscriber;
@@ -565,11 +586,28 @@ class ZLinkChannelSocketRegistry {
       router.setRoutingId(routeChannel.routingId);
     }
     router.bind(routeChannel.bind);
-    for (const endpoint of routeChannel.manualConnections ?? []) {
-      router.connect(endpoint);
+    if ((routeChannel.manualConnections ?? []).length > 0) {
+      for (const endpoint of routeChannel.manualConnections ?? []) {
+        router.connect(endpoint);
+      }
+    } else if (this.hasDiscovery()) {
+      router.attachDiscovery(this.createDiscovery(routerChannelId, ZLinkAutoConnectType.RouteMesh));
     }
     this.routeRouters.set(routerChannelId, router);
     return router;
+  }
+
+  private createDiscovery(channelName: string, autoConnectType: ZLinkAutoConnectType): ZLinkBackendDiscovery {
+    const discovery = this.adapter.createDiscovery(this.context, autoConnectType, channelName);
+    for (const endpoint of this.registration.discovery?.registries ?? []) {
+      discovery.connectRegistry(endpoint);
+    }
+    this.discoveries.add(discovery);
+    return discovery;
+  }
+
+  private hasDiscovery(): boolean {
+    return (this.registration.discovery?.registries ?? []).length > 0;
   }
 
   private trackSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): void {
@@ -635,11 +673,16 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
 export interface ZLinkChannelRequestDispatcherOptions {
   readonly channelName: string;
   readonly handlers: ReadonlyMap<string, ZLinkChannelRequestHandler>;
+  readonly sendHandlers?: ReadonlyMap<string, ZLinkChannelSendHandler>;
   readonly filters?: readonly ZLinkHandlerFilter[];
 }
 
 export interface ZLinkChannelRequestHandler {
   handle(payload: Buffer, context: ZLinkHandlerContext): Promise<unknown> | unknown;
+}
+
+export interface ZLinkChannelSendHandler {
+  handle(payload: Buffer, context: ZLinkSendContext): Promise<void> | void;
 }
 
 export interface ZLinkRouteHandlerRegistration {
@@ -672,7 +715,27 @@ export class ZLinkChannelRequestDispatcher {
     const envelope = decodeChannelEnvelope(received.parts);
     const packetName = envelope.packetName;
     if (packetName === undefined) {
-      throw new ZLinkConfigurationException('Channel request is missing packetName.');
+      throw new ZLinkConfigurationException('Channel packet is missing packetName.');
+    }
+    if (envelope.header.kind === ZLinkChannelMessageKind.Command) {
+      const handler = this.options.sendHandlers?.get(packetName);
+      if (handler === undefined) {
+        return;
+      }
+      const context: ZLinkSendContext = {
+        channelName: this.options.channelName,
+        contentType: envelope.header.contentType,
+        packetName
+      };
+      await invokeZLinkHandlerFilters(
+        this.filters,
+        { context, handler },
+        () => Promise.resolve(handler.handle(envelope.payload, context))
+      );
+      return;
+    }
+    if (envelope.header.kind !== ZLinkChannelMessageKind.Request) {
+      return;
     }
     const handler = this.options.handlers.get(packetName);
     if (handler === undefined) {
@@ -682,7 +745,11 @@ export class ZLinkChannelRequestDispatcher {
       throw new ZLinkConfigurationException('Channel request cannot be replied to because requestSeq is missing.');
     }
 
-    const context: ZLinkHandlerContext = { channelName: this.options.channelName, packetName };
+    const context: ZLinkHandlerContext = {
+      channelName: this.options.channelName,
+      contentType: envelope.header.contentType,
+      packetName
+    };
     const reply = await invokeZLinkHandlerFilters(
       this.filters,
       { context, handler },

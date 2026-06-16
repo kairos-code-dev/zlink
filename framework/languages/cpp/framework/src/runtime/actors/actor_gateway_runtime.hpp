@@ -19,6 +19,7 @@ struct actor_record_t
     actor_ref_t ref;
     bool bound = false;
     bool disconnected = false;
+    stream_codec_t bound_session_codec = stream_codec_t::message_pack;
 };
 
 struct relayed_frame_t
@@ -63,7 +64,9 @@ class actor_gateway_runtime_t
     actor_context_t actor_context (const actor_ref_t &actor_ref) const;
     result_t<void> update_actor_ref (const actor_ref_t &actor_ref);
     result_t<void> destroy_actor (const actor_ref_t &actor_ref);
-    void bind_session_stream (std::string actor_id, stream_t stream);
+    void bind_session_stream (std::string actor_id,
+                              stream_t stream,
+                              stream_codec_t codec = stream_codec_t::message_pack);
     void unbind_session_stream (std::string actor_id);
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);

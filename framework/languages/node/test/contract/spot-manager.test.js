@@ -162,6 +162,25 @@ test('spot handler registry records packet and subscribe registrations from conf
   ]);
 });
 
+test('ZLinkSpotManager awaits async configure before onInitialize', async () => {
+  const events = [];
+  class StageSpot {
+    async configure() {
+      await Promise.resolve();
+      events.push('configure');
+    }
+
+    async onInitialize() {
+      events.push('initialize');
+    }
+  }
+
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
+  await manager.create(StageSpot);
+
+  assert.deepEqual(events, ['configure', 'initialize']);
+});
+
 test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () => {
   class StageSpot {}
   class OtherSpot {}

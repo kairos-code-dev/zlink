@@ -26,10 +26,21 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                     $"channel '{channel.ChannelName}' client bind endpoint is only valid for dealer mesh channels.");
             }
 
-            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
-                $"channel '{channel.ChannelName}' client",
-                discoveryConfigured,
-                channel.Client.ManualConnections);
+            // dealer mesh 는 DEALER ↔ DEALER 대칭이라 bind(= 제공/server, 다른 peer 가 이 노드로
+            // connect) 자체가 유효한 peer path 다. bind 한 dealer mesh 노드는 discovery 나 manual
+            // connection 없이 server 로만 동작할 수 있다. connect(소비/client)로만 쓰는 노드만
+            // peer source 가 필요하다.
+            var dealerMeshProvidesByBind =
+                channel.AutoConnectType == ZLinkAutoConnectType.DealerMesh
+                && !string.IsNullOrWhiteSpace(channel.Client.BindEndpoint);
+
+            if (!dealerMeshProvidesByBind)
+            {
+                ZLinkPeerAcquisitionPolicy.RequirePeerSource(
+                    $"channel '{channel.ChannelName}' client",
+                    discoveryConfigured,
+                    channel.Client.ManualConnections);
+            }
         }
 
         if (channel.SpotRouteEgress is not null)

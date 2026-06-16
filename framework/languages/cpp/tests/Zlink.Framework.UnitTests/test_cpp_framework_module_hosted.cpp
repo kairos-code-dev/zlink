@@ -555,13 +555,18 @@ int main ()
       .enable_subscriber ("tcp://127.0.0.1:9108")
       .use_handler_group ("events");
     options.add_dealer_mesh_channel ("mesh-channel")
-      .bind ("tcp://127.0.0.1:9106")
-      .connect ("tcp://127.0.0.1:9107")
+      .enable_server ("tcp://127.0.0.1:9106")
+      .enable_client ("tcp://127.0.0.1:9107")
       .use_handler_group ("api");
+    options.add_dealer_mesh_channel ("mesh-discovery-channel").enable_client ();
     options.add_client_server_channel ("play-channel").enable_client ();
     options.add_client_server_channel ("profile-channel")
       .enable_client ("tcp://127.0.0.1:9109")
       .enable_client ("tcp://127.0.0.1:9110");
+    options.add_route_mesh_channel ("route-channel")
+      .enable_server ("tcp://127.0.0.1:9112")
+      .set_routing_id (zlink::routing_id_t::from ("route-node"))
+      .enable_client ();
     options.add_stream_node ("options.stream")
       .bind ("tcp://127.0.0.1:9111")
       .register_session<options_stream_session_t> ();
@@ -1039,6 +1044,54 @@ int main ()
     }
     if (!missing_route_bind_failed) {
         return 34;
+    }
+
+    bool route_no_arg_client_without_discovery_succeeded = true;
+    try {
+        zlink::framework::service_collection_t valid_services;
+        zlink::framework::handler_registry_t valid_handlers;
+        zlink::framework::serializer_registry_t valid_serializers;
+        zlink::framework::zlink_builder_t valid_zlink;
+        zlink::framework::monitoring_builder_t valid_monitoring;
+        zlink::framework::zlink_framework_options_t valid_options (
+          valid_services, valid_handlers, valid_serializers, valid_zlink, valid_monitoring);
+        valid_options.add_route_mesh_channel ("route-no-discovery")
+          .enable_server ("tcp://127.0.0.1:9322")
+          .enable_client ();
+        valid_options.apply ();
+        const auto routes = valid_zlink.route_channels ();
+        route_no_arg_client_without_discovery_succeeded =
+          routes.size () == 1 && routes.front () == "route-no-discovery";
+    }
+    catch (const zlink::framework::framework_exception_t &) {
+        route_no_arg_client_without_discovery_succeeded = false;
+    }
+    if (!route_no_arg_client_without_discovery_succeeded) {
+        return 65;
+    }
+
+    bool dealer_no_arg_client_still_requires_discovery_failed = false;
+    try {
+        zlink::framework::service_collection_t invalid_services;
+        zlink::framework::handler_registry_t invalid_handlers;
+        zlink::framework::serializer_registry_t invalid_serializers;
+        zlink::framework::zlink_builder_t invalid_zlink;
+        zlink::framework::monitoring_builder_t invalid_monitoring;
+        zlink::framework::zlink_framework_options_t invalid_options (
+          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
+          invalid_monitoring);
+        invalid_options.add_dealer_mesh_channel ("dealer-discovery").enable_client ();
+        invalid_options.apply ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        dealer_no_arg_client_still_requires_discovery_failed =
+          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
+          && std::string (error.what ()).find (
+               "dealer_mesh_channel 'dealer-discovery' client requires registry discovery")
+               != std::string::npos;
+    }
+    if (!dealer_no_arg_client_still_requires_discovery_failed) {
+        return 66;
     }
 
     bool missing_spot_capability_failed = false;
@@ -1565,6 +1618,10 @@ int main ()
         || discovery.registry_endpoints.front () != "tcp://127.0.0.1:9102") {
         return 10;
     }
+    const auto routes = zlink.route_channels ();
+    if (routes.size () != 1 || routes.front () != "route-channel") {
+        return 64;
+    }
     const auto channels = zlink.channels ();
     const auto api_channel =
       std::find_if (channels.begin (), channels.end (),
@@ -1578,12 +1635,16 @@ int main ()
     const auto mesh_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "mesh-channel"; });
+    const auto mesh_discovery_channel = std::find_if (
+      channels.begin (), channels.end (),
+      [] (const auto &channel) { return channel.name == "mesh-discovery-channel"; });
     const auto profile_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "profile-channel"; });
-    if (channels.size () != 5 || api_channel == channels.end () || play_channel == channels.end ()
+    if (channels.size () != 6 || api_channel == channels.end () || play_channel == channels.end ()
         || event_channel == channels.end () || mesh_channel == channels.end ()
-        || profile_channel == channels.end () || !api_channel->server.enabled
+        || mesh_discovery_channel == channels.end () || profile_channel == channels.end ()
+        || !api_channel->server.enabled
         || api_channel->server.bind_endpoints.front () != "tcp://127.0.0.1:9103"
         || !api_channel->client.enabled || !api_channel->client.discovery
         || !event_channel->publisher.enabled
@@ -1592,9 +1653,11 @@ int main ()
         || event_channel->subscriber.connect_endpoints.size () != 2
         || event_channel->subscriber.connect_endpoints[0] != "tcp://127.0.0.1:9105"
         || event_channel->subscriber.connect_endpoints[1] != "tcp://127.0.0.1:9108"
-        || !mesh_channel->client.enabled
+        || mesh_channel->server.enabled || !mesh_channel->client.enabled
         || mesh_channel->client.bind_endpoints.front () != "tcp://127.0.0.1:9106"
         || mesh_channel->client.connect_endpoints.front () != "tcp://127.0.0.1:9107"
+        || mesh_discovery_channel->server.enabled || !mesh_discovery_channel->client.enabled
+        || !mesh_discovery_channel->client.discovery
         || !play_channel->client.enabled || !play_channel->client.discovery
         || !profile_channel->client.enabled || profile_channel->client.discovery
         || profile_channel->client.connect_endpoints.size () != 2

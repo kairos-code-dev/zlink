@@ -35,7 +35,8 @@ public sealed class SpotContracts
         context.Handlers.AddPacket<RoomPacketHandler>();
         context.Handlers.AddSubscribe<RoomEventHandler>("room.events");
         context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
-        context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>("actor.packet");
+        context.Handlers.AddActorSend<PlayerActorPacketHandler, PlayerActor>("actor.packet");
+        context.Handlers.AddActorRequest<PlayerActorRequestHandler, PlayerActor>("actor.request");
         await context.leaveActor(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));

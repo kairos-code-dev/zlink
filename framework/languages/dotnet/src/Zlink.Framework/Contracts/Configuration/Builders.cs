@@ -113,6 +113,13 @@ public interface IZLinkRouteChannelBuilder
 
 public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteChannelBuilder
 {
+    // route mesh 는 ROUTER ↔ ROUTER 대칭이라 server·client 가 같은 ROUTER 소켓을 공유한다.
+    // EnableServer 는 이 노드가 bind 해서 route ingress 를 받는(제공) 쪽을,
+    // EnableClient 는 다른 ROUTER 에 connect 해 outbound route 를 보내는(소비) 쪽을 설정한다.
+    // 한 노드가 둘 다 켤 수 있다.
+    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+
+    void EnableClient(Action<IChannelClientCapabilityBuilder>? configure = null);
 }
 
 public interface IZLinkStreamNodeBuilder
@@ -165,6 +172,12 @@ public interface IZLinkFanoutChannelBuilder
 
 public interface IZLinkDealerMeshChannelBuilder
 {
+    // dealer mesh 는 DEALER ↔ DEALER 대칭이라 server·client 가 같은 DEALER 소켓을 공유한다.
+    // EnableServer 는 이 노드가 bind 해서 inbound 를 handler 로 받는(제공) 쪽을,
+    // EnableClient 는 다른 peer 에 connect 해 outbound 호출하는(소비) 쪽을 설정한다.
+    // 한 노드가 둘 다 켤 수 있다.
+    void EnableServer(Action<IChannelServerCapabilityBuilder>? configure = null);
+
     void EnableClient(Action<IDealerMeshChannelClientCapabilityBuilder>? configure = null);
 
     void AddHandlerGroup(string groupName);

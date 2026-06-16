@@ -537,9 +537,38 @@ class dealer_mesh_channel_builder_t
         return *this;
     }
 
+    dealer_mesh_channel_builder_t &enable_server (std::string endpoint)
+    {
+        detail::require_non_blank (endpoint, "dealer mesh server endpoint is required");
+        _bind_endpoint = std::move (endpoint);
+        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
+        apply ();
+        return *this;
+    }
+
+    dealer_mesh_channel_builder_t &enable_client ()
+    {
+        _client_uses_discovery = true;
+        _manual_connections.clear ();
+        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
+        apply ();
+        return *this;
+    }
+
+    dealer_mesh_channel_builder_t &enable_client (std::string endpoint)
+    {
+        detail::require_non_blank (endpoint, "dealer mesh client endpoint is required");
+        _client_uses_discovery = false;
+        _manual_connections.push_back (std::move (endpoint));
+        _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
+        apply ();
+        return *this;
+    }
+
     dealer_mesh_channel_builder_t &connect (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "dealer mesh connect endpoint is required");
+        _client_uses_discovery = false;
         _manual_connections.push_back (std::move (endpoint));
         _options->dealer_mesh_channels_with_peer_path.insert (_channel_name);
         apply ();
@@ -562,15 +591,28 @@ class dealer_mesh_channel_builder_t
         const auto channel_name = _channel_name;
         const auto bind_endpoint = _bind_endpoint;
         const auto manual_connections = _manual_connections;
+        const auto client_uses_discovery = _client_uses_discovery;
+        const auto discovery_capability = "dealer_mesh_channel '" + channel_name + "' client";
+        if (client_uses_discovery) {
+            _options->discovery_backed_capabilities.insert (discovery_capability);
+        } else {
+            _options->discovery_backed_capabilities.erase (discovery_capability);
+        }
         _options->set_zlink_action (
           "dealer_mesh_channel:" + channel_name,
-          [channel_name, bind_endpoint, manual_connections] (zlink_builder_t &zlink) {
+          [channel_name, bind_endpoint, manual_connections,
+           client_uses_discovery] (zlink_builder_t &zlink) {
               zlink.channel (
-                channel_name, [bind_endpoint, manual_connections] (channel_builder_t &channel) {
+                channel_name, [bind_endpoint, manual_connections,
+                               client_uses_discovery] (channel_builder_t &channel) {
                     channel.enable_client (
-                      [bind_endpoint, manual_connections] (capability_builder_t &client) {
+                      [bind_endpoint, manual_connections,
+                       client_uses_discovery] (capability_builder_t &client) {
                           if (!bind_endpoint.empty ()) {
                               client.bind (bind_endpoint);
+                          }
+                          if (client_uses_discovery) {
+                              client.use_discovery ();
                           }
                           for (const auto &endpoint : manual_connections) {
                               client.connect (endpoint);
@@ -585,6 +627,7 @@ class dealer_mesh_channel_builder_t
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
     std::string _bind_endpoint;
     std::vector<std::string> _manual_connections;
+    bool _client_uses_discovery = false;
 };
 
 class route_mesh_channel_builder_t
@@ -612,9 +655,32 @@ class route_mesh_channel_builder_t
         return *this;
     }
 
+    route_mesh_channel_builder_t &enable_server (std::string endpoint)
+    {
+        detail::require_non_blank (endpoint, "route mesh server endpoint is required");
+        _bind_endpoint = std::move (endpoint);
+        _options->route_mesh_channels_with_bind.insert (_channel_name);
+        apply ();
+        return *this;
+    }
+
     route_mesh_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id)
     {
         _routing_id = std::move (routing_id);
+        apply ();
+        return *this;
+    }
+
+    route_mesh_channel_builder_t &enable_client ()
+    {
+        apply ();
+        return *this;
+    }
+
+    route_mesh_channel_builder_t &enable_client (std::string endpoint)
+    {
+        detail::require_non_blank (endpoint, "route mesh client endpoint is required");
+        _manual_connections.push_back (std::move (endpoint));
         apply ();
         return *this;
     }

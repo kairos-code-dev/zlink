@@ -212,32 +212,19 @@ test('context options, shutdown, and tls facades follow the aligned surface', ()
     assert.throws(() => node.setTlsServer(Buffer.from('cert'), 'key'), /cert/);
     assert.throws(() => node.setTlsClient(Buffer.from('ca'), 'host'), /ca/);
     const message = zlink.Message.from('message');
-    const objectMessage = zlink.Message.from({ ok: true });
     const messageCopy = message.copy();
-    const objectMessageCopy = objectMessage.copy();
     const destination = Buffer.alloc(7);
     assert.equal(typeof message.close, 'function');
     assert.equal(message.size(), 7);
     assert.equal(message.isEmpty(), false);
     assert.equal(message.getString(), 'message');
     assert.equal(message.toString(), 'message');
-    assert.deepEqual(JSON.parse(objectMessage.getString()), { ok: true });
-    assert.equal(objectMessage.packetName(), undefined);
-    assert.deepEqual(objectMessage.value(), { ok: true });
-    assert.deepEqual(objectMessageCopy.value(), { ok: true });
     assert.equal(message.copyTo(destination), 7);
     assert.equal(destination.toString(), 'message');
     assert.equal(messageCopy.toBytes().toString(), 'message');
-    class AuthenticateReq {
-        accessToken;
-        constructor(accessToken) {
-            this.accessToken = accessToken;
-        }
-    }
-    const typedMessage = zlink.Message.from(new AuthenticateReq('player-1'));
-    assert.equal(typedMessage.packetName(), 'AuthenticateReq');
-    assert.equal(typedMessage.copy().packetName(), 'AuthenticateReq');
-    assert.equal(typedMessage.withPacketName('AuthenticatePlayerReq').packetName(), 'AuthenticatePlayerReq');
+    assert.equal(message.value, undefined);
+    assert.equal(message.packetName, undefined);
+    assert.equal(message.withPacketName, undefined);
     const allocatedMessage = zlink.Message.allocate(3);
     allocatedMessage.data()[0] = 0x01;
     allocatedMessage.data()[1] = 0x02;

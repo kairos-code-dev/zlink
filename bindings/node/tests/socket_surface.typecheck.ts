@@ -218,7 +218,6 @@ counter.close();
 
 const diagnosticMessage = zlink.Message.from(Buffer.from('diagnostic'));
 const constructedMessage = zlink.Message.from(Buffer.from('constructed'));
-const objectMessage = zlink.Message.from({ ok: true });
 const allocatedMessage = zlink.Message.allocate(16);
 const allocatedMessageAlias = zlink.Message.allocate(16);
 diagnosticMessage.data();
@@ -229,7 +228,6 @@ diagnosticMessage.isEmpty();
 diagnosticMessage.copyTo(Buffer.alloc(16));
 diagnosticMessage.tryCopyTo(Buffer.alloc(16));
 diagnosticMessage.getString();
-objectMessage.value<{ ok: boolean }>().ok;
 diagnosticMessage.getProperty('Socket-Type');
 diagnosticMessage.refCount();
 diagnosticMessage.close();

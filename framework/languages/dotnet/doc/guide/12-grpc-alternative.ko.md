@@ -262,7 +262,7 @@ sequenceDiagram
   participant A as order-service
   participant B as payment-service
   Note over A: channel 위치는 Registry view 가 이미 해결해 둠
-  A->>B: Request(payments, Charge) — framework 가 peer 분배
+  A->>B: RequestToChannel(payments, Charge) — framework 가 peer 분배
   B-->>A: reply
 ```
 
@@ -271,7 +271,7 @@ sequenceDiagram
 | gRPC 베스트프랙티스/필요 인프라 | ZLink 에서 | 비고 |
 |----------------------------------|------------|------|
 | "stub/channel 을 재사용하라" | `IZLinkChannelClient` 가 DI singleton, socket 수명은 framework | 호출마다 만들 일 없음 |
-| RPC deadline | `Request(...).Timeout(...)` | reply 대기 시간 |
+| RPC deadline | `RequestToChannel(...).Timeout(...)` | reply 대기 시간 |
 | L7 로드밸런싱(Envoy/Istio) | channel name + `Discovery` 가 peer 분배 | sidecar 불필요 |
 | service discovery(Eureka/xDS) | `UseDiscovery(...AddRegistryEndpoint...)`  + Registry | [08-registry](./08-registry.ko.md) |
 | interceptor | `IZLinkHandlerFilter` | [4](./04-channel-messaging.ko.md) §5 |

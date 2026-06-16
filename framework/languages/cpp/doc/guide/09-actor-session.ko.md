@@ -21,7 +21,7 @@ sequenceDiagram
     rect rgb(219, 234, 254)
     Note over C,AM: 1) 접속과 바인딩
     C->>SS: stream 접속 + authenticate 패킷
-    SS->>AM: 인증 성공 → actor 바인딩 (ensure actor)
+    SS->>AM: 인증 성공 → get_or_create 또는 bind(actor_ref)
     end
 
     rect rgb(254, 243, 199)
@@ -37,8 +37,8 @@ sequenceDiagram
 
     rect rgb(187, 247, 208)
     Note over SP,C: 3) 알림 역류
-    SP->>GW: 룸 상태 변경 notify (topic)
-    GW->>SS: 구독 중인 actor의 세션으로
+    SP->>GW: bound_session.send(...)
+    GW->>SS: 바인딩된 actor의 세션으로
     SS-->>C: game_state_notify 패킷
     end
 ```
@@ -50,13 +50,18 @@ actor는 평범한 struct다. factory가 `create(actor_id)`로 만들어 준다.
 ```cpp
 struct player_actor_t
 {
-    actor_ref_snapshot_t actor;     // 프레임워크가 채우는 식별 정보
-    std::string display_name;
+    std::string actor_id;
+    mutable zlink::framework::actor_ref_t actor_ref;
+
+    void set_actor_ref (const zlink::framework::actor_ref_t &ref) const
+    {
+        actor_ref = ref;
+    }
 };
 
 struct player_actor_factory_t
 {
-    player_actor_t create (std::string actor_id) const { return {{}, std::move (actor_id)}; }
+    player_actor_t create (std::string actor_id) const { return {std::move (actor_id)}; }
 };
 ```
 
@@ -72,37 +77,31 @@ options.add_spot_mesh ("tictactoe.game.discovery")
 spot의 actor 패킷 핸들러([8장 §3](./08-spot.ko.md))가 받는 첫 인자가 바로 이
 actor 타입이다.
 
-## 3. actor 보장(ensure) 핸들러
+## 3. actor 생성/조회
 
-"이 actor_id의 actor를 준비해 달라"는 요청을 처리하는 핸들러를 둔다. 인증 후
-세션이 actor와 바인딩될 때 호출되는 고리다.
+인증 뒤에 세션과 actor를 묶을 때는 `session_actor_manager_t`를 사용한다.
+같은 stream node가 actor를 직접 만들 수 있으면 `get_or_create(actor_type, actor_id)`를
+호출한다. 다른 서버가 이미 만든 actor 참조를 받아 바인딩해야 하면 `bind(actor_ref)`를
+호출한다. C++ 공개 계약에는 별도 handler 명명 규칙이 없다.
 
 ```cpp
-class ensure_player_actor_handler_t
-{
-  public:
-    using request_type = ensure_player_actor_req_t;
-    using reply_type = ensure_player_actor_res_t;
-    static constexpr const char *topic_name = "EnsurePlayerActor";
-
-    ensure_player_actor_res_t handle (const ensure_player_actor_req_t &request)
-    {
-        return {request.actor_id,
-                "player",                                  // actor type
-                {{}, request.actor_id, ++_generation}};    // actor ref snapshot
-    }
-
-  private:
-    unsigned long long _generation = 0;
-};
+auto actor = _actors.get_or_create ("player", authenticated_actor_id);
+if (!actor) {
+    // actor 생성 실패나 gateway 구성 오류를 여기서 처리한다.
+    co_return;
+}
+_bound_actor_id = std::string (actor.value ().actor_id ());
 ```
 
-`_generation`은 재접속 시 이전 세대의 actor 참조를 무효화하는 데 쓰인다.
+`bind(actor_ref)`를 쓰는 경우의 `actor_ref_t`는 `node_rid`, `actor_type`, `actor_id`,
+`generation`을 담는다. `generation`은 재접속 뒤 이전 세대의 actor 참조가 더 이상
+유효하지 않다는 것을 gateway가 구분하는 데 쓰인다.
 
 ## 4. session ↔ actor 바인딩
 
 stream session([10장](./10-stream.ko.md)) 쪽에서 `session_actor_manager_t`로
-바인딩을 관리한다. 인증 성공 시 bind, 연결 종료 시 unbind.
+바인딩을 관리한다. 인증 성공 시 `get_or_create` 또는 `bind`, 연결 종료 시
+`unbind_session`을 호출한다.
 
 **중요**: 클라이언트가 끊겼을 때 actor 바인딩 해제와 spot 퇴장 처리는
 **프레임워크가 자동으로 하지 않는다.** `on_disconnected` 안에서 애플리케이션
@@ -125,7 +124,11 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
     {
         if (_authenticate.can_handle (header)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, header, payload);
-            _bound_actor_id = std::string (authenticated.actor_id ());
+            auto actor = _actors.get_or_create ("player", std::string (authenticated.actor_id ()));
+            if (!actor) {
+                co_return;
+            }
+            _bound_actor_id = std::string (actor.value ().actor_id ());
             co_return;
         }
 
@@ -148,6 +151,8 @@ class play_session_t final : public zlink::framework::packet_stream_session_t
 
 | API | 의미 |
 |-----|------|
+| `session_actor_manager_t::get_or_create(actor_type, actor_id)` | 같은 stream node에서 actor 생성 또는 조회 (`result_t<session_actor_t>`) |
+| `session_actor_manager_t::bind(actor_ref)` | 이미 만들어진 actor 참조를 세션 actor로 바인딩 (`request_call_t<session_actor_t>`) |
 | `session_actor_manager_t::find(actor_id)` | 바인딩된 actor 핸들 조회 (`std::optional<session_actor_t>`) |
 | `session_actor_manager_t::unbind_session(actor_id)` | 세션-액터 바인딩 해제 |
 | `session_actor_t::relay(header, payload).async()` | 클라이언트 패킷을 actor가 입장한 spot으로 relay |
@@ -169,8 +174,23 @@ options.add_stream_node ("tictactoe.stream")
 ```
 
 게이트웨이가 켜지면: 클라이언트 패킷 → session relay → gateway → spot의 actor
-패킷 핸들러 순으로 흐르고, spot이 보낸 알림은 역경로로 클라이언트에 닿는다.
+패킷 핸들러 순으로 흐르고, spot이 `bound_session_t`로 보낸 패킷은 역경로로
+클라이언트에 닿는다.
 relay 계약의 세부(메타데이터 전파 정책 등)는 spec
 [actor-gateway-session-relay](../spec/actor-gateway-session-relay.ko.md)가 다룬다.
+
+## 6. 오류 처리
+
+actor·session 경로의 실패도 채널과 같은 모델이다 — `co_await` 경로에서는
+`framework_exception_t`(`kind()`/`is_retriable()`)로 던져지고, `result_t` 경로에서는
+`error()`로 조회한다([3장 §6.2](./03-concepts.ko.md)). 존재하지 않는 actor/spot 조회,
+게이트웨이 미연결 같은 구성 오류는 시작 단계 또는 첫 호출에서 드러난다.
+
+## 7. 더 보기
+
+- 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](./13-interface-catalog.ko.md)
+- 실행 가능한 전체 예제: [14장 샘플 맵](./14-samples-map.ko.md)
+- 외부 client 연결·세션 수명 관리: [10장 Stream](./10-stream.ko.md)
+- spot 직렬 실행·room/entry 작성: [8장 SPOT](./08-spot.ko.md)
 
 [다음: Stream →](./10-stream.ko.md)

@@ -13,32 +13,31 @@ spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상
 | | `spot_t` (room spot) | `entry_spot_t` (entry spot) |
 |--|--|--|
 | 개수 | 상태 단위마다 1개 | 노드당 1개 |
-| 직렬화 | **모든 요청** — actor 패킷·timer·join/leave가 단일 큐 | **모든 callback** — actor 패킷·timer·join/leave가 Entry Spot 단일 큐 |
-| 공유 상태 접근 | 락 없이 안전 | Entry Spot 큐 안에서 락 없이 안전 |
+| 직렬화 | **spot callback** — actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | **Entry Spot callback** — actor 패킷·join/leave는 Entry Spot 단일 큐. timer는 예외([§5](#5-timer)) |
+| 공유 상태 접근 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
 | 역할 | 도메인 상태 소유·처리 | 배정·매칭·할당 |
 
 ## 1.1 room spot 직렬화 — 큐 하나, 한 번에 하나
 
-room spot(`spot_t`)으로 들어오는 모든 것 — actor 패킷, timer tick, join/leave —
-은 **spot별 순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를
+room spot(`spot_t`)으로 들어오는 actor 패킷과 join/leave callback은
+**spot별 순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를
 **코루틴으로** 실행하고, 그 핸들러가 끝나야 다음 항목을 꺼낸다.
+timer tick은 이 큐에 들어오지 않는다([§5](#5-timer)).
 
 ```mermaid
 flowchart LR
     A1["actor A<br/>submit_card"]:::actor
     A2["actor B<br/>submit_card"]:::actor
-    T1["timer<br/>draw tick"]:::infra
     J1["actor C<br/>join 요청"]:::actor
     subgraph SQ["room-3187 spot 큐 (도착 순서 보존)"]
         direction LR
-        Q1["③ join"] --- Q2["② tick"] --- Q3["① submit_card"]
+        Q1["② join"] --- Q2["① submit_card"]
     end
     EXEC["코루틴 실행<br/>(한 번에 하나)"]:::spot
     STATE["룸 상태<br/>락 없음"]:::spot
 
     A1 --> SQ
     A2 --> SQ
-    T1 --> SQ
     J1 --> SQ
     SQ -- dequeue --> EXEC --> STATE
 
@@ -63,7 +62,7 @@ sequenceDiagram
     participant CH as api 채널
     participant Q2 as room-8841 큐
 
-    Note over Q: [① submit_card(A)] [② tick] 대기 중
+    Note over Q: [① submit_card(A)] [② join] 대기 중
     Q->>W: ① dequeue → 코루틴 시작
     activate W
     W->>S: 카드 검증·상태 갱신 (락 없음)
@@ -76,11 +75,11 @@ sequenceDiagram
     activate W
     W->>S: 결과 반영, co_return
     deactivate W
-    Q->>W: ② tick dequeue → 다음 코루틴
+    Q->>W: ② join dequeue → 다음 코루틴
 ```
 
 핸들러를 비동기로 쓰면서도 동기식 코드처럼 위에서 아래로 작성할 수 있는 이유는
-[3장 §5](./03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
+[3장 §6.2](./03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
 절대 겹치지 않는다"는 직렬성 보장을 더한 것이다.
 
 짧고 빠른 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `run_worker(...)`를
@@ -117,7 +116,7 @@ options.add_spot_mesh ("bingo.room.discovery")
 | `enable_router(endpoint, rid)` | 노드 간 라우팅 수신 |
 | `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint |
 | `use_discovery(channel)` | registry 기반 노드 발견 ([11장](./11-registry.ko.md)) — `add_spot_mesh().add_node()` 패턴에서는 자동 적용됨 |
-| `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([7장 §5](./07-channel-messaging.ko.md)) |
+| `accept_routes_from_channel(channel, endpoint)` | route mesh 채널에서 라우트 수신 ([7장 §7](./07-channel-messaging.ko.md)) |
 | `attach_channel_client(name)` / `attach_publisher(name)` | spot 코드에서 쓸 채널 client/publisher 연결 |
 | `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
 | `add_spot<T>(name)` | spot 타입 등록 |
@@ -217,35 +216,24 @@ room spot(`spot_t`)과의 차이:
 |--|--|--|
 | 개수 | 노드당 1개 | 상태 단위마다 1개 |
 | 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
-| 직렬화 범위 | **전체** — 모든 Entry Spot callback이 단일 큐 | **전체** — 모든 요청(actor 무관)이 단일 큐 |
-| 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전 | 락 없이 안전 |
+| 직렬화 범위 | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
+| 공유 상태 접근 | Entry Spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
 | actor join | `onJoinActor` / `onLeaveActor` 훅만 | `on_actor_join`으로 수락/거부 + 훅 |
 
 ## 5. Timer
 
 spot 안의 주기 작업은 `spot_context_t::add_timer<THandler>`로 등록한다.
-`THandler`는 tick을 받는 별도 핸들러 클래스다.
+`THandler` 타입은 timer 진단 이벤트에 남는 handler type으로 사용된다.
 
-timer tick의 직렬화 보장은 spot 종류에 따라 다르다.
-
-- **room spot** — tick은 actor 패킷·join/leave와 같은 단일 큐로 처리된다.
-  직렬 실행이 보장되어 룸 상태에 락 없이 접근할 수 있다.
-- **entry spot** — tick은 entry spot의 전역 직렬화 경계에 묶이지 않는다.
-  tick 핸들러에서 공유 상태에 접근할 때는 자체 동기화가 필요하다.
+timer tick은 room spot과 entry spot 모두에서 spot 직렬 큐에 들어가지 않는다.
+tick 처리 경로에서 spot 공유 상태에 접근할 때는 자체 동기화가 필요하다.
 
 ```cpp
-class draw_tick_handler_t final
-{
-  public:
-    void handle (bingo_room_spot_t &spot, const zlink::framework::timer_tick_t &tick)
-    {
-        spot.draw_numbers (tick.skipped_ticks + 1);
-    }
-};
+struct draw_tick_timer_t {};
 
 void configure (zlink::framework::spot_context_t &context)
 {
-    _draw_timer = context.add_timer<draw_tick_handler_t> (
+    _draw_timer = context.add_timer<draw_tick_timer_t> (
       "draw-number", std::chrono::seconds (5),
       {.overrun_policy = zlink::framework::timer_overrun_policy_t::skip_late_ticks});
 }
@@ -268,5 +256,32 @@ void configure (zlink::framework::spot_context_t &context)
 - `attach_publisher(channel)`로 fanout publish 경로를 연결한다.
 - 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해
   spot 토픽으로 발행된다.
+
+## 7. Stage wrapper (playhouse Stage 류)
+
+`playhouse` Stage 같은 상위 실행 모델을 SPOT 위에 올릴 수 있다. SPOT이 transport
+바닥(노드 수명주기, spot_rid 생성/종료, publish/subscribe, attach client send/request,
+timer 등록, 같은 Spot callback의 직렬 실행)을 제공하고, wrapper는 그 위에 membership 정책, broadcast
+정책, 입장/권한, `stage_id → 주소` 조회를 얹는다. cpp framework 는 Stage wrapper 를
+별도 타입으로 제공하지 않으므로 응용이 SPOT 위에 직접 구성한다.
+
+## 8. 자주 막히는 곳
+
+- **`publish`가 안 된다** → 노드에 `enable_pub_sub`가 없다.
+- **routed 호출이 안 나간다** → egress(`enable_spot_route_egress`)와 ingress
+  (`accept_routes_from_channel`) 이름이 짝이 맞는지, target ROUTER에 실제로 연결돼
+  있는지 확인한다([7장 §7](./07-channel-messaging.ko.md)).
+- **spot factory 타입 중복** → 같은 노드 안에서 같은 타입을 두 번 등록하면 시작 예외.
+- **spot 상태에 lock을 걸어야 하나?** → actor 패킷·join/leave처럼 같은 spot 큐에서
+  도는 callback끼리는 직렬 실행이라 불필요(§1.1). timer tick이나 외부에서
+  `spot_rid`로 직접 접근하는 경로는 별도 동기화가 필요하다.
+- **timer는 직렬 큐에 들어가나?** → room spot과 entry spot 모두 timer tick은 spot
+  직렬화 경계 밖이라 공유 상태 접근 시 자체 동기화가 필요하다(§5).
+
+## 9. 더 보기
+
+- 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](./13-interface-catalog.ko.md)
+- 실행 가능한 전체 예제(room/stage/zone): [14장 샘플 맵](./14-samples-map.ko.md)
+- spot 안의 참가자별 상태/세션이 필요하면: [9장 Actor · Session](./09-actor-session.ko.md)
 
 [다음: Actor · Session →](./09-actor-session.ko.md)

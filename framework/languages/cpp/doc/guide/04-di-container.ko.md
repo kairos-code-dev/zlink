@@ -14,15 +14,18 @@
 | **scoped** | `add_scoped<T>()` | 실행 컨텍스트(scope)마다 1개 |
 | **transient** | `add_transient<T>()` | resolve할 때마다 새 인스턴스 |
 
-프레임워크가 scope를 여는 컨텍스트:
+`service_scope_kind_t`는 scope의 용도를 구분하는 enum이다. 현재 런타임은 HTTP
+요청을 처리할 때 `handler_invocation` scope를 열고, stream 연결을 받을 때
+`stream_session` scope를 연다. 나머지 값도 `create_scope(kind)`에 넘길 수 있는
+공개 scope 종류이며, scope의 `kind()`로 구분된다.
 
 | scope 종류 | 수명 범위 |
 |-----------|----------|
-| `handler_invocation` | HTTP 요청 하나 |
+| `handler_invocation` | HTTP 요청 하나를 처리하는 handler 호출 |
 | `stream_session` | stream 연결 하나의 수명 |
-| `spot_activation` | room spot 인스턴스의 수명 |
-| `entry_spot` | entry spot 인스턴스의 수명 |
-| `actor_creation` | actor 생성 시점 |
+| `spot_activation` | spot 활성화 용도 |
+| `entry_spot` | entry spot 용도 |
+| `actor_creation` | actor 생성 용도 |
 
 ## 2. 등록 방법
 
@@ -84,8 +87,9 @@ options.services ().add_factory<http_client_t> (
 
 ## 3. 핸들러 자동 주입
 
-채널·HTTP 핸들러는 `dependency_types`를 선언하면 `add_transient`와 생성자 주입이
-**자동으로** 등록된다. 별도로 `add_transient<T>(...)`를 쓸 필요가 없다.
+채널·HTTP 핸들러는 `dependency_types`를 선언하면 `add_transient<T>()` 또는
+`add_transient<T, Dependencies...>()`와 생성자 주입이 **자동으로** 등록된다.
+별도로 `add_transient<T>()`를 호출할 필요가 없다.
 
 ```cpp
 class create_game_http_handler_t
@@ -98,35 +102,37 @@ class create_game_http_handler_t
     // 1. 의존할 타입들을 순서대로 선언
     using dependency_types =
       zlink::framework::dependency_list_t<
-        sample_topology_t,
         zlink::framework::channel_client_t,
+        sample_topology_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     // 2. 선언 순서대로 생성자가 받는다
     explicit create_game_http_handler_t (
-        sample_topology_t &topology,
         zlink::framework::channel_client_t &client,
+        sample_topology_t &topology,
         zlink::framework::logger_t<create_game_http_handler_t> &logger)
-        : _topology (topology), _client (client), _logger (logger) {}
+        : _client (client), _topology (topology), _logger (logger) {}
 
     create_game_http_res_t handle (const create_game_http_req_t &request);
 
   private:
-    sample_topology_t &_topology;
     zlink::framework::channel_client_t &_client;
-    zlink::framework::logger_t<create_game_http_handler_t> &_logger;
+    sample_topology_t &_topology;
+    zlink::framework::logger_t<create_game_http_handler_t> _logger;
 };
 ```
 
-핸들러는 요청마다 새 인스턴스로 만들어지므로(transient), **멤버를 레퍼런스로 저장해도 안전하다** — 핸들러 수명이 의존성보다 짧기 때문이다.
+핸들러는 요청마다 새 인스턴스로 만들어지므로(transient), 주입받은 서비스 참조는
+핸들러 수명 안에서 사용한다.
 
 ## 4. 프레임워크 내장 서비스
 
-`dependency_types`에 선언만 하면 바로 주입받을 수 있는 서비스들이다.
+앱 실행 시 프레임워크가 등록하거나, `dependency_types` 처리 중 자동 등록하는 서비스들이다.
+필요한 타입을 `dependency_types`에 넣으면 생성자 주입으로 받을 수 있다.
 
 | 서비스 | 설명 |
 |--------|------|
-| `channel_client_t` | 채널 요청 송신 — `request<TReply>(channel, msg)` |
+| `channel_client_t` | 채널 요청 송신 — `request(channel, msg).async<TReply>()` |
 | `logger_t<TOwner>` | 소유 타입 이름으로 태그된 로거 — `_logger.info(...)` |
 | `session_actor_manager_t` | stream session에서 actor 생성·조회·바인딩 |
 | `logger_factory_t` | `create<TCategory>()` — 카테고리를 동적으로 정할 때 |
@@ -172,7 +178,9 @@ class season_scheduler_t : public zlink::framework::hosted_service_t
 
 ## 7. 수명 충돌 주의 — captive dependency
 
-**singleton이 scoped/transient를 주입받으면 안 된다.** singleton은 앱 전체 수명을 가지는데, 더 짧은 수명의 서비스를 참조하면 그 서비스가 이미 폐기된 뒤에도 singleton이 참조를 들고 있게 된다.
+**singleton이 scoped/transient를 주입받으면 안 된다.** singleton은 앱 전체 수명을 가지므로,
+더 짧은 수명의 서비스를 참조하면 scoped 객체가 scope 종료 뒤에도 참조될 수 있고,
+transient 객체는 요청마다 새로 만들려던 의미가 singleton에 포획되어 사라진다.
 
 ```cpp
 // 잘못된 예 — singleton이 transient를 참조
@@ -180,7 +188,7 @@ options.services ()
     .add_transient<conversation_context_t> ()
     .add_singleton<support_service_t, conversation_context_t> ();
 //   ↑ singleton이 transient를 "포획(captive)"해버린다
-//     실제로는 모든 요청이 같은 conversation_context_t를 공유하게 된다
+//     singleton은 처음 주입받은 conversation_context_t 참조를 계속 들고 있게 된다
 
 // 올바른 예
 options.services ()
@@ -188,7 +196,7 @@ options.services ()
     .add_singleton<support_service_t, conversation_context_t> ();
 ```
 
-규칙: **등록하는 서비스의 수명 ≥ 주입받는 모든 의존성의 수명**.
+규칙: **등록하는 서비스는 주입받는 의존성보다 오래 살아서는 안 된다**.
 
 ## 8. singleton 서비스의 동시 접근
 

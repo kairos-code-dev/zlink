@@ -85,9 +85,8 @@ MessagePack / Protobuf)는 프레임워크가 처리한다.
 ```cpp
 // 보내는 쪽 (채널 클라이언트)
 auto result = co_await _client
-    .request<open_conversation_res_t> ("support.core",
-                                       open_conversation_req_t{user_id})
-    .async ();
+    .request ("support.core", open_conversation_req_t{user_id})
+    .async<open_conversation_res_t> ();
 
 // 받는 쪽 (채널 서버의 핸들러)
 class open_conversation_handler_t {
@@ -235,6 +234,8 @@ options.add_spot_mesh ("bingo.room.discovery")
 | 12 | [Monitoring](./12-monitoring.ko.md) | events, metrics, health |
 | 13 | [인터페이스 카탈로그](./13-interface-catalog.ko.md) | 핸들러/옵션 표면 레퍼런스 |
 | 14 | [샘플 지도](./14-samples-map.ko.md) | TicTacToe · Bingo 샘플과 기능 매핑 |
+| 15 | [기능 맵](./15-feature-map.ko.md) | 무엇을·얼마나 쉽게·언제 — 기능 선택 가이드 |
+| 16 | [ZLink을 어디에 쓰나](./16-grpc-alternative.ko.md) | 내부 서비스 통신·실시간 상태 패턴, gRPC/mesh 비교 |
 
 ---
 

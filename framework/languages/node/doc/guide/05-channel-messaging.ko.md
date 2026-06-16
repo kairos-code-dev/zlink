@@ -39,6 +39,31 @@ await fanout
 handler 를 scan 했다고 자동으로 노출하지 않는다. 등록 정책이 선택한 handler group
 또는 직접 등록한 handler 만 dispatch 대상이 된다.
 
+자동 등록은 기본으로 권장하는 방식이다. handler class 에
+`@zlinkRequestHandler(...)`, `@zlinkSendHandler(...)`,
+`@zlinkPublishHandler(...)` 를 붙이고, module provider 에
+`zlinkDiscoverProviders(...)` 결과를 넣은 뒤 channel builder 에
+`handlerGroup(...)` 을 지정한다. Bingo.Ts 샘플은 이 방식을 사용해서 handler 파일을
+추가하는 흐름을 보여 준다.
+
+수동 등록도 가능하다. handler class 를 module `providers` 에 직접 넣고, channel
+builder 에서 사용할 packet 만 명시한다. TicTacToe.Ts 샘플은 이 방식을 사용해서
+노출되는 handler 를 구성 코드에서 바로 확인할 수 있게 한다.
+
+```ts
+zlinkFramework()
+  .clientServerChannel('play', (channel) => channel
+    .server(playEndpoint)
+    .requestHandler('CreateGame', CreateGameHandler)
+    .sendHandler('PlayerLeft', PlayerLeftHandler))
+  .fanoutChannel('events', (channel) => channel
+    .subscriber(eventsEndpoint)
+    .publishHandler('RoomChanged', RoomChangedHandler))
+  .routerMesh('route', (mesh) => mesh
+    .sendHandler('ActorLeft', ActorLeftRouteHandler)
+    .requestHandler('ActorLookup', ActorLookupRouteHandler));
+```
+
 ## 회귀 테스트
 
 channel request/reply, send, publish, handler 노출 규칙은

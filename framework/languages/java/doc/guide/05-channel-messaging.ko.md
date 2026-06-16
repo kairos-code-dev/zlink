@@ -32,6 +32,12 @@ public final class GetProfileHandler
 }
 ```
 
+> **등록은 자동이 기본, 수동도 된다.** handler에 annotation(`@ZLinkRequest` 등)을 달고
+> `addHandlersFromPackageOf(...)` package scan으로 **자동** 등록하는 것이 기본이고 편하다.
+> 어떤 handler가 붙는지 명시적으로 통제하려면 channel builder에 `addRequestHandler(...)` /
+> `addSendHandler(...)` / `addPublishHandler(...)`로 **수동** 등록한다. SPOT handler는 Spot/
+> EntrySpot의 `configure()` context에서 등록한다([06-spot](./06-spot.ko.md)).
+
 ## 3. Fanout
 
 ```java

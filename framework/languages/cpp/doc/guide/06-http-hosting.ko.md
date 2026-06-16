@@ -23,11 +23,14 @@ options.http ()
 ```
 
 핸들러는 [2장 §3](./02-getting-started.ko.md)의 공통 모델 그대로다. HTTP 경로의
-직렬화는 JSON이며 DTO의 `to_json`/`from_json` ADL 함수를 쓴다. 채널 codec
-등록(`options.codecs()`)과는 별개다.
+DTO 직렬화는 기본으로 JSON이며 DTO의 `to_json`/`from_json` ADL 함수를 쓴다.
+route 등록 시 request/reply 타입의 JSON serializer를 자동 등록하고, 같은 serializer
+registry에 이미 등록된 타입은 덮어쓰지 않는다.
 
 - 경로 파라미터는 `{name}` 문법이다. `/games/{gameId}`는 `/games/g-20260611-0042`에
-  매칭되고 값은 URL-decode되어 핸들러 컨텍스트의 route value로 들어온다.
+  매칭된다. raw HTTP 핸들러에서는 URL-decode된 값이 `http_request_t::route_values`로
+  들어오고, typed DTO 핸들러에서는 body/query 값과 함께 `request_type` 역직렬화 입력에
+  합쳐진다.
 - 같은 메서드+경로를 두 번 매핑하면 구성 시점에 거부된다.
 
 동기 핸들러와 코루틴 핸들러 모두 가능하다. HTTP 요청을 받아 채널로 위임하는
@@ -45,12 +48,12 @@ options.http ()
   .map_liveness ("/live");
 ```
 
-응답은 `{"status","readiness","liveness"}` JSON이다. 상태를 구성하는 check는
+응답은 `status`, `readiness`, `liveness`, `checks` 필드를 가진 JSON이다. 상태를 구성하는 check는
 [12장 §3](./12-monitoring.ko.md)의 `app.health()`로 등록한다.
 
 ```bash
 $ curl -s http://127.0.0.1:8080/ready
-{"status":"healthy","readiness":"healthy","liveness":"healthy"}
+{"status":"healthy","readiness":"healthy","liveness":"healthy","checks":[]}
 ```
 
 ## 4. middleware

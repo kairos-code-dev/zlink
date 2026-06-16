@@ -160,7 +160,7 @@ app.MapGet("/health", async (IZLinkRegistryQuery registry) =>
 ```
 
 제공 메서드: `StatusAsync`, `ServiceSummaryAsync(filter?)`,
-`TopologyAsync`, `TopologyAsync(filter?)`, `MemberPeersAsync(channelName)`.
+`TopologyAsync(filter?)`, `MemberPeersAsync(channelName)`.
 모두 `ValueTask` 비동기다(framework 가 host lifecycle 경계를 query 표면에서 숨기지
 않으려고).
 
@@ -205,7 +205,7 @@ builder.Services.AddZLinkFramework(options =>
 ```
 
 Registry 를 key-value 저장소로 노출하는 것은 아니다. Redis/DB 가 필요하면 custom
-resolver/store 를 등록한다([06-actor-session](./06-actor-session.ko.md) §5).
+resolver 를 등록한다([06-actor-session](./06-actor-session.ko.md) §5).
 
 ## 7. lifecycle
 

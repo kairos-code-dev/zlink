@@ -22,6 +22,13 @@ options.addSpotMesh("game.stage", mesh -> {
 });
 ```
 
+> node builder는 entry/spot factory만 등록하고 **SPOT handler는 등록하지 않는다.**
+> SPOT handler는 Spot/EntrySpot의 `configure()` context에서 등록한다 — annotation
+> (`@ZLinkSpotActorRequest`·`@ZLinkSpotTimer` 등, handler 는 `ZLinkSpotActorRequestHandler`
+> 등 interface 구현)을 단 handler를 `addHandlersFromPackageOf(...)`로
+> **자동** 등록(기본)하거나, `configure()`에서 `context().handlers().addActorRequest(...)` /
+> `addPacket(...)` / `addSubscribe(...)`와 `context().addTimer(...)`로 **수동** 등록한다.
+
 ## 3. 생성과 조회
 
 ```java

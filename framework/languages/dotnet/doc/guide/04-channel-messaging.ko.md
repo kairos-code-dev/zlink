@@ -86,15 +86,24 @@ var placed = await client
 > (여전히 gRPC 가 맞는 곳)와 도입 판단은
 > [12-grpc-alternative](./12-grpc-alternative.ko.md) 가 다룬다.
 
-## 1. 두 가지 channel 종류
+## 1. channel 종류
 
-| 등록 메서드 | transport | 역할 | 용도 |
+| 등록 메서드 | transport(소켓 구조) | 역할 | 용도 |
 |-------------|-----------|------------|------|
-| `AddClientServerChannel` | DEALER → ROUTER | `EnableServer` / `EnableClient` | request, send |
-| `AddFanoutChannel` | PUB / SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
+| `AddClientServerChannel` | ROUTER 서버 ← DEALER 클라이언트 | `EnableServer` / `EnableClient` | request, send |
+| `AddFanoutChannel` | PUB → SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
+| `AddDealerMeshChannel` | DEALER mesh | `EnableServer` / `EnableClient` | round-robin 분산 (§8) |
+| `AddRouteMeshChannel` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
 
-request 와 send 는 같은 client-server channel 을 공유한다. pub/sub 는 별도의
-fanout channel 이다.
+이 챕터 §2~§7 은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
+다룬다. 수평 확장용 **dealer mesh** 는 같은 `IZLinkChannelClient` 호출 표면을 쓰되
+채널 선언만 다르다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId` 를 함께 지정해야
+하므로 `IZLinkRouteClient` 와 route 전용 handler 를 쓴다.
+[§8](#8-dealer-mesh--외부-로드밸런서-없이-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
+두 mesh channel 은 역할을 `EnableServer`/`EnableClient` 로 나눠 선언하지만, 한 노드가
+둘 다 켜면 framework 는 해당 mesh channel 의 같은 하부 transport 설정에 두 역할을
+함께 붙인다.
+소켓 구조 그림은 [03-concepts §1](./03-concepts.ko.md#1-channel--서버-간-연결).
 
 ## 2. handler 작성
 
@@ -203,13 +212,20 @@ handler 작성 방식은 다음 기준으로 고른다.
 
 - handler 하나를 class 하나로 분리하고 타입 안전성을 우선하면 interface 기반을 쓴다.
 - 같은 주제의 handler 메서드를 한 class 에 여러 개 담고 싶으면 attribute 기반을 쓴다.
-- 샘플 프로젝트는 channel 노출 방식은 `AddHandlerGroup(...)`으로 통일하되, handler
-  작성 방식은 위 차이에 따라 선택한다.
+- 샘플은 등록 방식을 게임별로 나눠 보여 준다 — **Bingo** 는 attribute +
+  `AddHandlersFromAssemblyOf<...>` + `AddHandlerGroup(...)` **자동 등록**, **TicTacToe** 는
+  `AddRequestHandler<T>()` **수동 등록**(§3 방법 A/B).
 
 ## 3. handler 를 channel 에 노출하기
 
 framework 는 발견한 handler 를 모든 channel 에 자동으로 열지 않는다. **발견과
 노출은 별개 단계**다.
+
+> **등록은 자동이 기본, 수동도 된다.** `[ZLinkHandlerGroup]` +
+> `AddHandlersFromAssemblyOf<...>` 로 **자동**(attribute scan) 등록하는 것이 기본이고 가장
+> 편하다(방법 A). 어떤 handler 가 붙는지 구성 코드에서 명시적으로 통제하고 싶으면
+> `AddRequestHandler<T>()` 등으로 **수동** 등록한다(방법 B). 둘 다 같은 dispatcher 로
+> 들어간다.
 
 ### 방법 A — group + AddHandlerGroup (여러 handler 묶음)
 
@@ -277,7 +293,7 @@ public sealed class PriceService(IZLinkChannelClient client)
     {
         var reply = await client
             .RequestToChannel("price", new PriceRequest(symbol))
-            .Timeout(TimeSpan.FromMilliseconds(200))   // reply 대기 시간
+            .Timeout(TimeSpan.FromSeconds(2))          // reply 대기 상한
             .Async<PriceReply>(ct);
         return reply.Price;
     }
@@ -292,9 +308,14 @@ public sealed class PriceService(IZLinkChannelClient client)
 
 - reply 타입은 메시지가 아니라 **`.Async<TReply>(...)`** 에서 지정한다.
 - `Request` 에만 `Timeout(...)` 이 있다. `Send` 는 응답을 기다리지 않으므로 없다.
-- channel 이나 client 역할이 없으면 socket 을 만들지 않고
-  `ZLinkConfigurationException` 으로 실패한다(`IZLinkChannelClient` 자체는 항상 DI 에
-  등록되어 있다).
+- `Timeout(...)` 을 생략해도 **무기한 대기하지 않는다.** 전역 `options.DefaultTimeout`
+  (미설정 시 기본 **30초**)이 적용된다. 전역값은 §10 처럼 `options.DefaultTimeout` 으로
+  바꾸고, 이 호출만 다르게 두고 싶을 때 `Timeout(...)` 으로 override 한다.
+- socket 은 호출마다 만드는 게 아니라 **startup 에 선언한 역할만큼만** 미리 만들어
+  둔다. 그래서 호출한 channel 에 client 역할이 등록돼 있지 않으면, 그 channel 용
+  socket 이 애초에 없으므로 `ZLinkConfigurationException` 으로 실패한다
+  (`IZLinkChannelClient` 자체는 항상 DI 에 등록되므로 주입은 되고, 검증은 호출
+  시점에 일어난다).
 
 ### publish — `IZLinkFanoutClient`
 
@@ -311,12 +332,13 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 
 - `Publish` 는 인자가 **3개**다: `channelName`, `topic`, `message`. topic 은 그
   channel 안에서 어느 구독자 집합이 받을지를 정하는 fan-out 라우팅 값이다.
-- publish 는 한 번만 직렬화하고 구독자 수만큼 task 를 만들지 않는다(framework 내부
-  최적화).
+- publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**된다. framework 는 그
+  인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
+  직렬화하지 않는다(framework 내부 최적화).
 - `IZLinkFanoutClient` 는 fanout channel 에 publish 하는 DI client 이다.
 
 > `Async(...)`/`Async<T>(...)` 의 완료는 transport 위임까지만 보장한다.
-> remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §7).
+> remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](./03-concepts.ko.md) §6.2).
 
 ## 5. filter — 공통 처리
 
@@ -389,7 +411,107 @@ options.Codecs.AddMessagePack();
 payload 는 codec 이 직렬화할 수 있는 DTO 여야 한다. root/요소 타입이
 abstract/interface 면 명시 codec 없이는 설정 오류가 난다.
 
-## 8. 통합 예제 — 서버 + outbound + pub/sub
+## 8. dealer mesh — 외부 로드밸런서 없이 수평 확장
+
+처리량을 늘리려면 같은 channel 에 노드를 더 붙인다. nginx·HAProxy 같은 별도 LB 없이
+요청이 **round-robin 방식으로 분산**된다. client-server channel 과 똑같이 **받는 노드는
+`EnableServer`(bind + handler), 보내는 노드는 `EnableClient`(연결)** 로 역할을 나눈다.
+다른 점은 채널 선언이 `AddDealerMeshChannel` 이라는 것뿐이다.
+
+```csharp
+// 처리 노드 — server 역할(bind + handler group)
+options.AddDealerMeshChannel("image.resize", channel =>
+{
+    channel.EnableServer(server => server.Bind("tcp://0.0.0.0:5600"));
+    channel.AddHandlerGroup("resize");                 // dealer mesh 는 request/send handler
+});
+```
+
+```csharp
+// 호출 노드 — client 역할. 여러 peer 에 연결하면 요청이 라운드로빈으로 분산
+options.AddDealerMeshChannel("image.resize", channel =>
+{
+    channel.EnableClient(client => client.UseManualConnections(peers =>
+    {
+        peers.Connect("tcp://10.30.1.10:5600");
+        peers.Connect("tcp://10.30.1.10:5601");
+    }));
+});
+
+// 또는 Discovery 로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
+options.UseDiscovery(d => d.AddRegistryEndpoint("tcp://10.30.1.5:7000"));
+options.AddDealerMeshChannel("image.resize", channel => channel.EnableClient());
+```
+
+호출 표면은 client-server 와 **같다** — `IZLinkChannelClient.RequestToChannel("image.resize", …)`.
+channel 선언만 `AddDealerMeshChannel` 로 바꾸면 된다.
+
+```mermaid
+graph LR
+    C["호출 노드<br/>dealer mesh client"] -->|"요청 1"| A["처리 노드 A<br/>:5600"]
+    C -->|"요청 2"| B["처리 노드 B<br/>:5601"]
+    C -->|"요청 3 (다시 A)"| A
+    C -.->|"노드 추가 시<br/>Discovery 자동 발견"| D["처리 노드 C<br/>:5602"]
+```
+
+> **route mesh 와 차이**: dealer mesh 는 아무 노드나 받아도 되는 stateless 서비스용
+> (분산). 특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9).
+> dealer mesh handler 는 **request/send 만** — publish handler 는 등록할 수 없다.
+
+## 9. route mesh — 주소 라우팅
+
+route mesh 는 `RoutingId` 로 **특정 주소를 지정해서 라우팅**한다(dealer 의 분산과
+대비). `EnableServer` 는 이 노드가 받을 endpoint 와 이 노드의 `RoutingId` 를 설정하고,
+`EnableClient` 는 다른 route node 로 나가는 연결을 설정한다. 한 노드가 둘 다 켤 수 있다.
+SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([05-spot](./05-spot.ko.md)).
+
+```csharp
+options.AddRouteMeshChannel("tictactoe.router", routed =>
+{
+    routed.EnableServer(server =>
+    {
+        server.Bind(playRouterEndpoint);                              // 이 노드가 받을 endpoint
+        server.ConfigureRouting(r => r.RoutingId = RoutingId.From(playRouterId));  // 이 노드의 주소
+    });
+    routed.EnableClient(client =>
+        client.UseManualConnections(c => c.Connect(peerRouterEndpoint)));  // 다른 노드로 나가는 연결
+    routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
+        "room.allocate");
+});
+```
+
+route mesh 로 직접 호출할 때는 일반 `IZLinkChannelClient` 가 아니라
+`IZLinkRouteClient` 를 주입받고, 호출마다 대상 `RoutingId` 를 지정한다.
+
+```csharp
+var target = RoutingId.From("play-node-1");
+
+var room = await routeClient
+    .Request("tictactoe.router", target, new AllocateRoom("alice"))
+    .PacketName("room.allocate")
+    .Timeout(TimeSpan.FromSeconds(2))
+    .Async<RoomAllocated>(ct);
+
+public sealed class AllocateRoomRouteHandler
+    : IZLinkRouteRequestHandler<AllocateRoom, RoomAllocated>
+{
+    public ValueTask<RoomAllocated> HandleAsync(
+        AllocateRoom request,
+        ZLinkRouteRequestContext context,
+        CancellationToken cancellationToken)
+        => ValueTask.FromResult(new RoomAllocated("room-1"));
+}
+```
+
+```mermaid
+graph LR
+    C["caller"] -->|"target routing id = A"| A["node A"]
+    C -->|"target routing id = B"| B["node B"]
+```
+
+SPOT 과의 결합은 [05-spot](./05-spot.ko.md) 에서 이어진다.
+
+## 10. 통합 예제 — 서버 + outbound + pub/sub
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -462,7 +584,7 @@ public sealed class UserCacheRefreshedEventHandler
 }
 ```
 
-## 9. 자주 막히는 곳
+## 11. 자주 막히는 곳
 
 - **handler 가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
   않는다. `AddHandlerGroup(...)` 또는 typed registration 이 필요하다(§3).
@@ -472,7 +594,7 @@ public sealed class UserCacheRefreshedEventHandler
   client 에 연결 경로 없음. fail-fast 다([03-concepts](./03-concepts.ko.md) §4).
 - **`ZLink` vs `Zlink`** → 서버 framework 타입은 전부 `ZLink`(대문자 L)다.
 
-## 10. 더 보기
+## 12. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(client/handler/filter/codec): [11-interface-catalog](./11-interface-catalog.ko.md) §1 — 검증 클래스 `ChannelContracts`·`HandlerContracts`·`CodecContracts`
 - 전체 인터페이스/attribute/context: [spec/handler-interfaces](../spec/handler-interfaces.ko.md)

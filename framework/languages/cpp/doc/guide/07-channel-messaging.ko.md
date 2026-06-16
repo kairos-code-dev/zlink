@@ -9,15 +9,20 @@
 
 | 종류 | 선언 | 패턴 |
 |------|------|------|
-| client/server | `add_client_server_channel(name)` | request-reply, 단방향 send |
+| client/server | `add_client_server_channel(name)` | request-reply, 단방향 send — ROUTER 서버에 DEALER 클라이언트 (DEALER=client, ROUTER=server) |
 | fanout | `add_fanout_channel(name)` | publisher → 다수 subscriber (topic) |
-| dealer mesh | `add_dealer_mesh_channel(name)` | 동격 노드 간 분산 |
-| route mesh | `add_route_mesh_channel(name)` | SPOT 라우팅 백본 ([8장](./08-spot.ko.md)) |
+| dealer mesh | `add_dealer_mesh_channel(name)` | dealer ↔ dealer — round-robin·가중치 분산 |
+| route mesh | `add_route_mesh_channel(name)` | router ↔ router — routing id 로 주소 라우팅 (SPOT node 구성: [8장](./08-spot.ko.md)) |
 
 ## 2. 서버 쪽: 핸들러 그룹과 채널
 
-핸들러([3장 §4](./03-concepts.ko.md))를 그룹에 등록하고, 채널이 그룹을 가져다
+핸들러([3장 §6.1](./03-concepts.ko.md))를 그룹에 등록하고, 채널이 그룹을 가져다
 쓴다.
+
+> **cpp 는 수동 등록만 제공한다.** 어트리뷰트·리플렉션 기반 자동 등록(어노테이션
+> scan)은 cpp 언어 표준이 아니라 제공하지 않는다 — 핸들러는 항상 명시 registry
+> (`handlers().add<T>(...)`, SPOT 은 `configure()` context)로 등록한다. dotnet·node·java
+> 는 수동에 더해 어트리뷰트/데코레이터 자동 등록도 제공한다.
 
 ```cpp
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
@@ -37,8 +42,9 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 ```
 
 - **codec** — 채널 메시지의 직렬화 형식. `add_json()` / `add_message_pack()` /
-  `add_protobuf()` 중 선택하고, message_pack은 DTO별 typed 등록
-  (`add_message_pack<T>()`)을 함께 한다.
+  `add_protobuf()` 중 선택한다. 핸들러를 등록한 뒤 codec을 켜면 해당 핸들러의
+  request/reply/event 타입 serializer가 함께 설치된다. 직접 등록이 필요하면
+  `add_json<T>()` / `add_message_pack<T>()` / `add_protobuf<T>()`를 쓴다.
 - 같은 그룹을 여러 채널이 공유할 수 있고, 한 채널에 그룹 하나를 연결한다.
 
 위 선언이 만들어 내는 것:
@@ -92,9 +98,8 @@ class create_game_http_handler_t
     handle (const create_game_http_req_t &request)
     {
         auto room = co_await _client
-                      .request<create_game_res_t> ("tictactoe.play",
-                                                   create_game_req_t{request.game_name})
-                      .async ();
+                      .request ("tictactoe.play", create_game_req_t{request.game_name})
+                      .async<create_game_res_t> ();
         co_return create_game_http_res_t{room.room_id, room.game_name};
     }
     // ...
@@ -105,8 +110,8 @@ class create_game_http_handler_t
 
 | facade | 호출 | 의미 |
 |--------|------|------|
-| `channel_client_t` | `request<TReply>(channel, req)` | request-reply. `co_await ....async()`로 typed 응답 |
-| `publisher_t` | `publish(channel, topic, event)` | fanout 채널로 topic publish (§4) |
+| `channel_client_t` | `request(channel, req).async<TReply>()` | request-reply. `co_await`로 typed 응답 |
+| `publisher_t` | `publish(channel, topic, event)` | fanout 채널로 topic publish (§6) |
 | `message_bus_t` | `send(channel, msg)` | 응답 없는 단방향 전송 (advanced — `app.advanced().use_zlink`의 builder에서 `message_bus()`로 획득) |
 
 `channel_client_t`는 DI로 주입받고, `publisher_t`/`message_bus_t`는
@@ -116,11 +121,16 @@ call 객체에는 전송 전에 옵션을 얹을 수 있다.
 
 ```cpp
 auto reply = co_await _client
-               .request<create_game_res_t> ("tictactoe.play", create_game_req_t{name})
+               .request ("tictactoe.play", create_game_req_t{name})
                .timeout (std::chrono::seconds (2))
                .metadata ("trace-id", trace_id)
-               .async ();
+               .async<create_game_res_t> ();
 ```
+
+`.timeout(...)`을 생략해도 **무기한 대기하지 않는다.** framework 호출 객체의
+기본 timeout 값인 0ms가 native request-reply 경로로 전달되고, native 기본
+timeout(현재 **5초**)이 적용된다. 이 호출만 더 짧게/길게 두고 싶을 때 위처럼
+호출 단위로 지정한다.
 
 request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 런타임이 처리하고,
 양쪽 application 코드는 typed DTO만 본다.
@@ -133,8 +143,8 @@ sequenceDiagram
     participant PS as Play: channel server
     participant H as handler group "play"
 
-    App->>CC: co_await request<create_game_res_t>(...)
-    Note over App: suspend — 스레드 비점유 (3장 §5)
+    App->>CC: co_await request(...).async<create_game_res_t>()
+    Note over App: suspend — 스레드 비점유 (3장 §6.2)
     CC->>PS: create_game_req (message_pack 인코딩)
     PS->>H: packet_name "CreateGame" → 디코딩 후 handle()
     H-->>PS: create_game_res
@@ -143,9 +153,59 @@ sequenceDiagram
 ```
 
 실패는 `co_await`에서 `framework_exception_t`로 던져진다 —
-에러 처리는 [3장 §5](./03-concepts.ko.md)와 동일 모델이다.
+에러 처리는 [3장 §6.2](./03-concepts.ko.md)와 동일 모델이다.
 
-## 4. dealer mesh: 외부 로드밸런서 없이 수평 확장
+## 4. filter — 공통 처리
+
+HTTP middleware(`options.http().use<TMiddleware>()`)는 HTTP route 파이프라인 전용이다.
+ZLink channel handler에는 자동으로 적용되지 않는다. channel handler 앞뒤의 로깅,
+검증, 권한 확인, metric 기록처럼 여러 handler에 반복되는 처리는 handler filter로 둔다.
+
+```cpp
+class audit_filter_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::logger_t<audit_filter_t>>;
+
+    explicit audit_filter_t (zlink::framework::logger_t<audit_filter_t> &logger) :
+        _logger (logger) {}
+
+    zlink::framework::task_t<zlink::message_t>
+    invoke (const zlink::framework::handler_invocation_context_t &invocation,
+            zlink::framework::handler_next_t next)
+    {
+        _logger.info ("dispatch zlink handler",
+                      {{"packet", invocation.context.packet_name}});
+
+        auto reply = co_await next ();   // 호출하지 않으면 handler는 실행되지 않는다.
+
+        co_return reply;
+    }
+
+  private:
+    zlink::framework::logger_t<audit_filter_t> &_logger;
+};
+
+app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
+    options.use_filter<audit_filter_t> ();
+
+    options.handlers ()
+      .add<create_game_handler_t> ("play")
+      .add<ensure_player_actor_handler_t> ("play");
+});
+```
+
+filter 타입은 `invoke(const handler_invocation_context_t &, handler_next_t)`를 제공한다.
+`handler_invocation_context_t`에는 handler descriptor, channel/packet 이름 같은 dispatch
+context, 변경할 수 없는 raw message payload가 들어 있다. 처리를 계속하려면 `next()`를
+`co_await`하고, handler 호출을 막아야 하는 경우에는 `next()`를 호출하지 않고 직접
+`message_t`를 반환한다.
+
+filter도 framework가 직접 `new`로 만들지 않는다. `options.use_filter<TFilter>()`로
+등록하면 같은 DI 컨테이너에서 resolve되며, 등록한 순서대로 handler 호출 앞단을 감싼다.
+
+## 5. dealer mesh: 외부 로드밸런서 없이 수평 확장
 
 처리량을 늘리고 싶을 때 같은 채널에 서버 인스턴스를 추가하면 된다. 별도 nginx·HAProxy 없이 클라이언트 요청이 자동으로 분산된다.
 
@@ -164,15 +224,17 @@ options.add_dealer_mesh_channel ("image.resize")
 ```cpp
 // 클라이언트: 두 서버에 연결. 요청은 라운드로빈으로 분산됨
 options.add_dealer_mesh_channel ("image.resize")
-    .enable_client ()
-    .connect ("tcp://10.30.1.10:5600")
-    .connect ("tcp://10.30.1.10:5601");
+    .enable_client ("tcp://10.30.1.10:5600")
+    .enable_client ("tcp://10.30.1.10:5601");
 
 // 또는 discovery로 자동 발견 — 서버가 추가될 때 클라이언트 재시작 불필요
 options.add_dealer_mesh_channel ("image.resize")
-    .enable_client ()
-    .use_discovery ();   // registry에서 같은 채널의 서버 목록을 받아 자동 연결
+    .enable_client ();   // 인자 없는 enable_client = registry discovery로 자동 연결
 ```
+
+dealer mesh는 DEALER ↔ DEALER 대칭이라 **한 노드가 server와 client를 둘 다** 할 수
+있다 — `enable_server(endpoint)`로 받으면서(제공) `enable_client(...)`로 다른 peer에
+보낸다(소비). 둘은 같은 DEALER 소켓을 공유한다.
 
 ```mermaid
 flowchart LR
@@ -189,11 +251,14 @@ flowchart LR
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
 ```
 
-핸들러는 client/server 채널과 동일한 구조다 — `request_type`/`reply_type`/`topic_name` + `handle()`. 채널 선언만 `add_dealer_mesh_channel`로 바꾸면 된다.
+핸들러는 client/server 채널과 동일한 구조다. request handler는
+`request_type`/`reply_type`/`topic_name` + `handle()`을 두고, send handler는
+`message_type` + `handle()`을 둔다. 채널 선언만 `add_dealer_mesh_channel`로
+바꾸면 된다.
 
-> **route mesh와 차이**: dealer mesh는 어느 서버에나 요청을 보낼 수 있는 stateless 서비스에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§6](#6-route-mesh-고급))를 쓴다.
+> **route mesh와 차이**: dealer mesh는 어느 서버에나 요청을 보낼 수 있는 stateless 서비스에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§7](#7-route-mesh-고급))를 쓴다.
 
-## 5. fanout: publish/subscribe
+## 6. fanout: publish/subscribe
 
 알림처럼 한 곳에서 여러 구독자로 흘리는 메시지는 fanout 채널을 쓴다.
 
@@ -207,14 +272,16 @@ co_await publisher.publish ("bingo.notifications", "room-3187",
                             number_drawn_notify_t{state}).async ();
 
 // subscriber 쪽 — 핸들러 그룹으로 받는다
-options.handlers ().add<number_drawn_handler_t> ("notifications");
+options.handlers ().add_publish<number_drawn_handler_t> ("notifications");
 options.add_fanout_channel ("bingo.notifications")
+  .enable_subscriber ("tcp://10.30.1.20:5571")
   .use_handler_group ("notifications");
 ```
 
-`publisher_t`를 얻는 경로는 두 가지다 — spot 코드라면 노드에
-`attach_publisher(channel)`를 걸고 spot 쪽에서 주입받는 패턴([8장 §6](./08-spot.ko.md)),
-일반 코드라면 `app.advanced().use_zlink([&](auto &z){ auto pub = z.publisher(); ... })`.
+`publisher_t`는 `app.advanced().use_zlink([&](auto &z){ auto pub = z.publisher(); ... })`의
+`zlink_builder_t::publisher()`에서 얻는다. SPOT 코드에서 fanout으로 발행하려면
+노드에 `attach_publisher(channel)`를 걸고 `spot_context_t::publish(topic, event)`를
+사용한다([8장 §6](./08-spot.ko.md)).
 
 ```mermaid
 flowchart LR
@@ -230,15 +297,23 @@ flowchart LR
     classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
-## 6. route mesh (고급)
+publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**된다. 런타임은 그
+인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
+직렬화하지 않는다.
 
-SPOT 노드 간 라우팅 백본이 필요할 때만 쓴다. TicTacToe Play 서버의 실제 선언:
+## 7. route mesh (고급)
+
+route mesh 는 **router ↔ router** 연결로, `routing_id` 를 지정해 **특정 주소로
+라우팅**한다(dealer 의 round-robin 분산과 대비). dealer mesh 와 똑같이 한 노드가
+**server 와 client 를 둘 다** 한다 — `enable_server(endpoint)` 로 bind 해서 받고(제공),
+`enable_client(endpoint)` 로 다른 router 에 연결한다(소비). 둘은 같은 ROUTER 소켓을
+공유한다. SPOT 노드가 이 route mesh 로 구성되므로, SPOT 라우팅 백본이 필요할 때 쓴다.
+TicTacToe Play 서버 선언:
 
 ```cpp
 options.add_route_mesh_channel ("tictactoe.router")
-  .bind (topology.play_router_endpoint)
-  .set_routing_id (topology.play_rid)
-  .connect (topology.play_router_endpoint)
+  .enable_server (topology.play_router_endpoint)   // 이 ROUTER bind(제공)
+  .set_routing_id (topology.play_rid)              // 이 router 의 주소
   .enable_spot_route_egress ("tictactoe.game.discovery");
 ```
 

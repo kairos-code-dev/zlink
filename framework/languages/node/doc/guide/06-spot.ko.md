@@ -43,6 +43,41 @@ await spot.context.outbound
 `context.addTimer(...)` 로 timer 를 등록한다. timer callback 도 Spot 실행 문맥에서
 처리되어 Spot 상태를 보호한다.
 
+SPOT handler 등록도 자동 등록을 기본으로 권장한다. Bingo.Ts 샘플은
+`@zlinkSpotActorRequestHandler(...)` 와 `@zlinkSpotTimerHandler(...)` 를
+`zlinkDiscoverProviders(...)` 로 provider 에 넣어 자동 등록 경로를 보여 준다.
+timer decorator 는 이름과 주기가 함께 있을 때 자동 schedule 로 연결된다. 이름과
+주기를 생략한 decorator 는 provider discovery 표시로만 사용하고, schedule 은
+Spot 코드에서 `context.addTimer(...)` 로 직접 등록한다.
+
+수동 등록은 Spot 또는 Entry Spot 의 `configure()` 에서 한다. `configure()` 는
+동기 함수와 `Promise<void>` 를 모두 허용하며, runtime 은 초기화 전에 이 작업이
+끝날 때까지 기다린다. TicTacToe.Ts 샘플은 Entry Spot actor request, user Spot
+actor request, timer 를 이 방식으로 등록한다.
+
+```ts
+class PlayEntrySpot implements ZLinkEntrySpot {
+  readonly context?: ZLinkEntrySpotContext;
+
+  configure(): void {
+    this.context!.handlers.actorRequest('JoinGame', PlayActorJoinGameHandler);
+  }
+}
+
+class GameSpot implements ZLinkSpot {
+  readonly context?: ZLinkSpotContext;
+
+  async configure(): Promise<void> {
+    this.context!.handlers.actorRequest('PlaceMark', PlaceMarkHandler);
+    await this.context!.addTimer('game-tick', 1000, GameTimerHandler);
+  }
+}
+```
+
+`context.handlers.packet(...)` 과 `context.handlers.subscribe(...)` 도 등록 표면에
+있다. 현재 가이드 예시는 실제 샘플에서 사용하는 actor request 와 timer 중심으로
+보여 준다.
+
 ## 4. worker deferral
 
 짧은 local 작업을 Spot 실행 문맥 밖으로 잠시 넘겨야 하면 `context.runWorker(...)`

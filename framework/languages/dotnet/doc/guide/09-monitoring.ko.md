@@ -25,15 +25,15 @@ status/topology 변화, spot peer/subject 변화, timer handler 실패 같은 **
 | discovery | 별도 runtime event 없음 → Registry snapshot/query 로 조회([08-registry](./08-registry.ko.md)) |
 
 공통 규칙: event kind 는 `enum`, payload 는 `record struct`, 응용은
-`IZLinkRuntimeEventHandler<TEvent>` 를 구현해 수신한다.
+`IZLinkRuntimeEventHandler<TEvent>` 를 DI 에 등록해 수신한다.
 
 흐름은 단순하다 — **source 에서 변화가 나면 framework 가 typed handler 로 전달**하고,
-내 handler 는 DI 로 생성돼 호출된다(HTTP 요청 handler 와 같은 결).
+DI 에 등록된 handler 를 scope 안에서 꺼내 호출한다(HTTP 요청 handler 와 같은 결).
 
 ```mermaid
 flowchart LR
   SRC["source: socket / registry / spot"] -->|"변화 발생"| FW["framework runtime"]
-  FW -->|"typed event 로 전달"| H["IZLinkRuntimeEventHandler 구현<br/>(DI 로 생성·호출)"]
+  FW -->|"typed event 로 전달"| H["IZLinkRuntimeEventHandler 등록<br/>(DI scope 에서 호출)"]
 ```
 
 ## 2. 등록
@@ -53,20 +53,38 @@ builder.Services.AddZLinkMonitoring(monitor =>
     monitor.AddRegistryEvents("registry", TimeSpan.FromSeconds(1));
     monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
 });
+
+builder.Services.AddSingleton<
+    IZLinkRuntimeEventHandler<ZLinkSocketEvent>,
+    ProfileServerSocketMonitor>();
+builder.Services.AddSingleton<
+    IZLinkRuntimeEventHandler<ZLinkRegistryEvent>,
+    RegistryMonitor>();
+builder.Services.AddSingleton<
+    IZLinkRuntimeEventHandler<ZLinkSpotEvent>,
+    StageNodeMonitor>();
 ```
 
 - socket source 이름은 `channel + capability`(예: `profile.server`,
-  `profile.client`), registry 는 infrastructure 이름(예: `registry`), spot 은 spot
-  node 등록 이름(예: `stage-node`)이다.
+  `profile.client`) 형태다. capability 는 `server`, `client`, `publisher`,
+  `subscriber` 중 하나다. spot 은 spot node 등록 이름(예: `stage-node`)이다.
+- registry source 이름(예: `registry`)은 event 의 `SourceName` 으로 들어가는
+  식별자다. `.NET` framework 는 앱 안에 등록된 `AddZLinkRegistry(...)` 런타임
+  하나를 조회하므로, registry source 이름을 별도 infrastructure 등록 이름으로
+  검증하지 않는다.
 - registry/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
-- 존재하지 않는 source 이름을 등록하면 시작 단계 예외다.
+- socket source 가 등록된 channel capability 와 맞지 않거나, spot source 가 등록된
+  spot node 이름과 맞지 않으면 시작 단계 예외다. registry event 는 source 이름보다
+  `AddZLinkRegistry(...)` 등록 여부가 시작 단계에서 중요하다.
 - `AddSocketEvents(...)` 에 kind 를 안 넘기면 그 source 가 지원하는 모든 이벤트를
   받는다.
 
 ## 3. event handler 작성
 
-`IZLinkRuntimeEventHandler<TEvent>` 를 구현하면 framework 가 DI 로 만들어 호출한다.
+`IZLinkRuntimeEventHandler<TEvent>` 를 구현한 뒤 같은 타입으로 DI 에 등록하면
+framework 가 scope 에서 handler 를 꺼내 호출한다. `AddZLinkMonitoring(...)` 은
+source 만 등록하며, event handler 를 자동 스캔하거나 자동 등록하지 않는다.
 
 ### socket
 
@@ -92,7 +110,8 @@ public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonito
 }
 ```
 
-socket event 만 raw native 코드를 함께 노출한다(`Diagnostic.NativeValue`).
+socket event 만 native monitor event/value 를 진단 정보로 함께 노출한다
+(`Diagnostic.NativeEvent`, `Diagnostic.NativeValue`).
 
 ### registry
 
@@ -162,9 +181,14 @@ spot event 는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 ## 4. 자주 막히는 곳
 
 - **이벤트가 안 온다** → `AddZLinkMonitoring` 은 source 등록만 한다. 해당 source 가
-  `AddZLinkFramework`/`AddZLinkRegistry` 로 실제로 떠 있는지 확인한다.
+  `AddZLinkFramework`/`AddZLinkRegistry` 로 실제로 떠 있는지와
+  `IZLinkRuntimeEventHandler<TEvent>` 구현체가 DI 에 등록됐는지 확인한다.
 - **discovery 상태를 받고 싶다** → discovery 는 runtime event 가 아니다. Registry
   snapshot/query 로 조회한다([08-registry](./08-registry.ko.md) §5).
+- **health/metric endpoint 를 기대한다** → `AddZLinkMonitoring(...)` 은 socket/
+  registry/spot runtime event source 를 등록한다. 별도 health check 또는 metric
+  endpoint 를 자동으로 만들지 않는다. health 는 필요하면 `IZLinkRegistryQuery` 같은
+  조회 표면으로 직접 노출한다([08-registry](./08-registry.ko.md) §5).
 - **handler payload 의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
   [spec/aspnet-core-monitoring](../spec/aspnet-core-monitoring.ko.md) 참고.
 

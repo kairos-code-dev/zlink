@@ -94,21 +94,20 @@ SpotNode 의 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서
 
 ## 3. Entry Spot 과 user Spot 의 actor handler
 
-actor handler 와 lifecycle callback 은 actor 클래스가 아니라 **Entry Spot / user
-Spot 의 `Configure()`** 에서 등록한다. Entry Spot 과 user Spot 은 등록 표면이
-같지만 실행 정책이 다르다.
+actor packet handler 는 actor 클래스가 아니라 **Entry Spot / user Spot 의
+`Configure()`** 에서 등록한다. lifecycle callback 은 Spot 이 구현하는
+`onCreateActor`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` 메서드다.
+Entry Spot 과 user Spot 은 handler 등록 표면이 같지만 실행 정책이 다르다.
 
 ```csharp
-public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot
+public sealed class PlayerEntrySpot(IZLinkEntrySpotContext context)
+    : IZLinkEntrySpot<PlayerActor>
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
     public void Configure()
     {
-        Context.AddHandler<AuthenticateHandler>();
-        Context.AddHandler<JoinMatchHandler>();
-        Context.AddHandler<EntryJoinedHandler>();
-        Context.AddHandler<EntryLeftHandler>();
+        Context.Handlers.AddActorPacket<JoinMatchHandler, PlayerActor>();
     }
 }
 
@@ -118,7 +117,7 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 
     public void Configure()
     {
-        Context.AddHandler<PlaceMarkHandler>();
+        Context.Handlers.AddActorPacket<PlaceMarkHandler, PlayerActor>();
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -133,17 +132,23 @@ public sealed class MatchSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActo
 }
 ```
 
-handler 시그니처는 위치에 따라 다르다.
+handler 시그니처는 위치에 따라 다르다. SPOT handler 는 spot context 자체에 바로
+등록하지 않고 `Context.Handlers` 에 등록한다.
 
 ```csharp
-// Entry Spot: (entrySpot, actor, payload)
+// Entry Spot: (entrySpot, actor, context, payload)
 public sealed class JoinMatchHandler
 {
     [ZLinkSpotActorRequest]
     public async ValueTask<JoinMatchRes> HandleAsync(
-        PlayerEntrySpot entrySpot, PlayerActor actor, JoinMatchReq request, CancellationToken ct)
+        PlayerEntrySpot entrySpot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        JoinMatchReq request,
+        CancellationToken ct)
     {
         _ = entrySpot;
+        _ = context;
         // request.MatchId 는 도메인이 정한 match id다.
         // application registry가 user Spot RoutingId로 변환하거나 조회한다.
         var matchSpotRid = RoutingId.From(request.MatchId);

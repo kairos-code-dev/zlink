@@ -41,6 +41,7 @@ class create_game_http_handler_t
 ```cpp
 app.monitoring ()
   .add_socket_events ("match-api")
+  .add_discovery_events ("match-api.discovery")
   .add_registry_events ("match-api", std::chrono::seconds (5))   // 수집 주기
   .add_spot_events ("match-api", std::chrono::seconds (5))
   .add_spot_timer_events ("match-api")
@@ -48,9 +49,13 @@ app.monitoring ()
   .add_actor_events ("match-api");
 
 // typed 구독
-app.monitoring ().on<zlink::framework::timer_failure_event_t> (
-  [] (const zlink::framework::timer_failure_event_t &event) {
-      alert ("spot timer failed: " + event.timer_name + " — " + event.message);
+app.monitoring ().on<zlink::framework::spot_event_payload_t> (
+  [] (const zlink::framework::spot_event_payload_t &event) {
+      if (event.event == zlink::framework::spot_event_kind_t::timer_handler_failed
+          && event.timer_diagnostic) {
+          alert ("spot timer failed: " + event.timer_diagnostic->timer_name
+                 + " - " + event.timer_diagnostic->exception_message);
+      }
   });
 
 // 전체 trace (디버깅용)
@@ -63,11 +68,17 @@ app.monitoring ().on_trace ([] (const zlink::framework::runtime_event_base_t &ev
 |-----------|------|
 | `add_socket_events(name)` | 연결/해제/재시도 |
 | `add_discovery_events(name)` | discovery 변화 |
-| `add_registry_events(name, interval)` | registry 등록/해제/질의 (interval = 수집 주기) |
-| `add_spot_events(name, interval)` | spot 생성/입장/퇴장 |
-| `add_spot_timer_events(name)` | timer tick 지연/실패 (`timer_tick_t`, `timer_failure_event_t`) |
-| `add_stream_events(name)` | stream 연결 수명 |
-| `add_actor_events(name)` | actor 바인딩/해제 |
+| `add_registry_events(name, interval)` | registry 상태·topology·서비스 요약 변화 |
+| `add_spot_events(name, interval)` | spot 상태·peer·subject 변화 |
+| `add_spot_timer_events(name)` | timer handler 실패와 예외 후 정지 |
+| `add_stream_events(name)` | stream 연결/해제/transport 오류/handler 예외 |
+| `add_actor_events(name)` | actor 바인딩/해제/relay 실패/session 해제 |
+
+typed 구독에 쓰는 payload는 `socket_event_payload_t`,
+`discovery_event_payload_t`, `registry_event_payload_t`, `spot_event_payload_t`,
+`stream_event_payload_t`, `actor_event_payload_t`, `metric_event_payload_t`다.
+timer 실패도 monitoring에서는 `spot_event_payload_t`로 들어오며,
+`timer_tick_t`와 `timer_failure_event_t`는 timer 계약 타입이다.
 
 ```mermaid
 flowchart LR
@@ -99,7 +110,9 @@ health check를 등록하고, HTTP로 노출한다([6장 §3](./06-http-hosting.
 app.health ()
   .add_zlink_runtime_check ()                 // 기본 이름 "zlink.runtime"
   .add_channel_check ("bingo.play")
-  .add_registry_check ("bingo.registry");
+  .add_registry_check ("bingo.registry")
+  .add_stream_endpoint_check ("bingo.stream")
+  .add_hosted_service_check ("bingo.worker");
 
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
     options.http ()
@@ -118,6 +131,12 @@ $ curl -s http://127.0.0.1:8080/ready
 readiness가 unhealthy면 로드밸런서/오케스트레이터가 트래픽을 빼도록 연결하는
 것이 운영 관례다.
 
+check 상태는 `health_status_t::healthy`, `health_status_t::degraded`,
+`health_status_t::unhealthy` 중 하나다. `set_status(name, status, message)`로 등록된
+check의 현재 상태를 바꾸고, `report()`로 전체 `status`, `readiness`, `liveness`,
+개별 `checks`를 읽는다. `ready()`와 `live()`는 각각 readiness/liveness가
+`unhealthy`가 아닐 때 true를 반환한다.
+
 ## 4. 메트릭
 
 ```cpp
@@ -126,7 +145,25 @@ app.metrics ().record_runtime_metric ("games.active", 42.0,
                                       {{"region", "kr"}});  // (name, value, tags)
 ```
 
-런타임 메트릭은 이벤트 버스 위에 집계되며, 외부 수집기 연동은 `on<TEvent>`
-구독으로 내보낸다.
+`record_runtime_metric`은 `metric_event_payload_t`를 monitoring state에 발행한다.
+외부 수집기로 내보내려면 `app.monitoring().on<metric_event_payload_t>(...)` 또는
+`on_trace(...)`에서 받아 전송한다.
+
+## 5. 자주 막히는 곳
+
+- **이벤트가 안 들어온다** → 해당 source의 등록(`add_socket_events` /
+  `add_discovery_events` / `add_registry_events` / `add_spot_events` /
+  `add_spot_timer_events` / `add_stream_events` / `add_actor_events`)을 안 했다(§2).
+- **health가 항상 healthy** → check를 `add_*_check`로 등록하지 않았다(§3).
+- **메트릭이 안 보인다** → `add_runtime_metrics()` 등록과 외부 수집기 `on<TEvent>`
+  구독(`on<metric_event_payload_t>`)을 확인한다(§4).
+- **이벤트 핸들러에서 블로킹** → 이벤트 콜백에서 무거운 동기 작업을 하면 관측
+  경로가 막힌다. 집계·전송만 하고 무거운 일은 다른 경로로 넘긴다.
+
+## 6. 더 보기
+
+- 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](./13-interface-catalog.ko.md)
+- registry 이벤트·health 연동: [11장 Registry](./11-registry.ko.md)
+- 실행 가능한 전체 예제: [14장 샘플 맵](./14-samples-map.ko.md)
 
 [다음: 인터페이스 카탈로그 →](./13-interface-catalog.ko.md)

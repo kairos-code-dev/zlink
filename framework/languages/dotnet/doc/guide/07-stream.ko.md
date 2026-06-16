@@ -57,7 +57,7 @@ payload 를 그대로 읽거나 다른 framework API 에 넘기면 된다. callb
 payload 를 보관할 때만 `Copy()` 또는 `Move()` 를 사용한다.
 application 이 직접 만든 `Message` 를 raw `IZLinkStream.Write(...)` 에 넘기는
 경우에는 호출자가 그 `Message` 의 수명을 계속 책임진다. 일반적인 응답과 push 는
-`Context.Reply(...)`, `Context.Send(...)`, actor 의 `BoundSession.Send(...)` 를
+`Context.Client.Reply(...)`, `Context.Client.Send(...)`, actor 의 `BoundSession.Send(...)` 를
 쓰면 이 수명 규칙을 직접 다룰 일이 없다.
 여러 session 전용 packet 을 나누어 처리해야 하면
 `IZLinkSessionPacketDispatcher<TSessionContext>` 를 주입받아 등록된 packet 만
@@ -104,7 +104,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Send(msg).Async()` / `Reply(msg).Async()` | client 로 push / 요청에 응답 |
+| `Client.Send(msg).Async()` / `Client.Reply(msg).Async()` | client 로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor 로 relay([06-actor-session](./06-actor-session.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -182,7 +182,7 @@ while (running)
 ```
 
 - URI scheme 으로 transport 가 추론된다: `tcp://`, `tls://`, `ws://`, `wss://`.
-- `DispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 응용이
+- `ZlinkStreamDispatchMode.Manual`(기본)은 수신/재연결/콜백을 큐에 쌓아 두고, 응용이
   `Dispatch.Async()` 를 부른 스레드에서 실행한다. UI 스레드/게임 루프가 있는 client
   는 반드시 `Manual` 을 쓴다. `Immediate` 는 내부 worker 에서 바로 실행한다.
 - 네트워크 수신 루프는 느린 콜백에 막히지 않는다. 패킷을 읽어 콜백 work item 만
@@ -245,8 +245,9 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 ## 3. 오류 코드와 결과
 
-- client 의 비동기 API 는 실패 시 `ZlinkStreamException`(`ZlinkStreamError`)을
-  던지고, 콜백 API 는 `ErrorReceived` 이벤트로 알린다. 두 경로의 error code
+- client 의 `Async(...)` 종결자는 실패 시 `ZlinkStreamException`(`ZlinkStreamError`)을
+  던지고, `Submit(callback)` 요청 API 는 `ZlinkStreamResult` 실패를 callback 에 넘긴다.
+  remote error 나 사용자 callback 오류는 `ErrorReceived` 이벤트로도 알린다. error code
   의미는 같다.
 - 주요 코드: `Disconnected`, `RequestTimeout`, `ConnectTimeout`, `FrameTooLarge`,
   `FrameDecodeFailed`, `TlsValidationFailed`, `RemoteError` 등.
@@ -258,7 +259,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 ## 4. 자주 막히는 곳
 
-- **콜백이 안 불린다(client)** → `DispatchMode.Manual` 인데 `Dispatch.Async()` 를
+- **콜백이 안 불린다(client)** → `ZlinkStreamDispatchMode.Manual` 인데 `Dispatch.Async()` 를
   주기적으로 안 부르고 있다.
 - **`FrameTooLarge`** → 송신은 `MaxSendPayloadSize`(기본 64KB), 수신은
   `MaxReceivePayloadSize`(기본 64KB)를 넘었다. 송신 한도는 압축 전 원본 크기로 검사하고,

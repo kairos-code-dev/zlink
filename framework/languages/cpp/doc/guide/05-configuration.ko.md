@@ -35,8 +35,8 @@ config.load_cli (argc, argv);                          // --key=value
 | `load_cli` | `--sample.host.keepRunning=true` | 그대로: `sample.host.keepRunning` |
 | `load_cli` (값 없는 플래그) | `--verbose` | `verbose=true` |
 
-JSON 배열/숫자/불리언도 문자열 값으로 평탄화된다. 조회 측에서 필요한 타입으로
-해석한다.
+JSON 문자열/숫자/불리언/null 값은 문자열 값으로 평탄화된다. 조회 측에서 필요한
+타입으로 해석한다.
 
 ## 3. 우선순위
 
@@ -117,7 +117,7 @@ auto topology = app.config ().bind_required<topology_t> ("sample.topology");
 ```
 
 bind한 struct를 DI에 싱글톤으로 올려 두면 핸들러가 주입받을 수 있다
-([3장 §3](./03-concepts.ko.md)).
+([4장](./04-di-container.ko.md)).
 
 ```cpp
 options.services ().add_singleton<topology_t> (std::make_unique<topology_t> (topology));

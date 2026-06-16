@@ -67,7 +67,6 @@ node 역할은 서로 독립이다.
 
 | node 함수 | 의미 |
 |-----------|------|
-| `Bind(endpoint)` | 노드의 local endpoint |
 | `EnableRouter(router => router.BindRouter(endpoint))` | 다른 SpotNode/채널에서 오는 routed packet 수신 |
 | `EnablePubSub()` | 현재 SPOT channel 의 publish/subscribe (없으면 `Publish` 불가) |
 | `AttachChannelClient(name)` | 일반 channel 로 send/request 하는 client 부착 |
@@ -84,6 +83,12 @@ node 역할은 서로 독립이다.
 spot 클래스는 `IZLinkSpot` 을 구현하고, 주입받은 `Context` 에 handler·subscribe·
 timer 를 `Configure()` 에서 등록한다.
 
+> **SPOT handler 는 `Configure()` context 에서 등록한다.** channel handler 의 attribute
+> 자동 등록([04 §3](./04-channel-messaging.ko.md))과 달리, spot handler 는 spot 의
+> `Configure()` 안에서 `Context.Handlers.AddPacket<T>(...)` / `AddActorPacket<T, TActor>(...)`
+> / `AddSubscribe<T>(...)` 와 `Context.AddTimer<T>(...)` 로 등록한다(아래). spot node builder
+> 는 entry/spot factory 만 등록하고 handler 는 등록하지 않는다.
+
 ```csharp
 public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 {
@@ -95,8 +100,8 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.AddPacket<GetStageStateHandler>();              // request/send packet
-        Context.AddSubscribe<StageStateUpdatedHandler>("stage.state.updated"); // topic 구독
+        Context.Handlers.AddPacket<GetStageStateHandler>();              // request/send packet
+        Context.Handlers.AddSubscribe<StageStateUpdatedHandler>("stage.state.updated"); // topic 구독
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -331,7 +336,7 @@ timer 도 Entry Spot actor packet, lifecycle callback, request continuation 과 
 상태를 갱신한다.
 
 ```csharp
-Context.RunWorker(() => ScoreCalculator.Calculate(snapshot))
+Context.RunWorker(_ => ScoreCalculator.Calculate(snapshot))
     .Submit(result =>
     {
         CurrentScore = result;

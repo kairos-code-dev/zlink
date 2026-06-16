@@ -23,7 +23,7 @@
 | 서버 간 단방향 send | 낮음 | 응답 없는 작업 위임/통지 | [4](./04-channel-messaging.ko.md) | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
 | pub/sub 이벤트 fan-out | 낮음 | domain event 를 여러 구독자에게 전파 | [4](./04-channel-messaging.ko.md) | [channel-messaging](../spec/aspnet-core-channel-messaging.ko.md) |
 | SPOT(room/stage/zone) | 중간 | 동적 생성·소멸 논리 노드 단위 라우팅 | [5](./05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
-| channel handler 에서 target Spot 호출 | 중간 | HTTP/세션 gateway 가 current Spot 없이 특정 Spot 호출 | [5](./05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
+| 일반 handler 에서 Spot 흐름 진입 | 중간 | HTTP/세션 gateway 가 actor 생성 또는 Entry Spot join 으로 `ActorRef` 확보 | [5](./05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | Spot timer (게임 루프 등) | 중간 | 주기 tick, heartbeat, 정리 작업 | [5](./05-spot.ko.md) | [spot](../spec/aspnet-core-spot.ko.md) |
 | Stage wrapper | 중간 | `playhouse` Stage 류를 SPOT 위에 얹을 때 | [5](./05-spot.ko.md) | [stage-wrapper](../spec/stage-wrapper-on-spot.ko.md) |
 | actor / Entry Spot | 높음 | session 과 묶인 actor 로 packet 자동 dispatch | [6](./06-actor-session.ko.md) | [actor](../spec/aspnet-core-actor.ko.md) |

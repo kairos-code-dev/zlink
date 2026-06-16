@@ -228,7 +228,7 @@ options.ConfigureDispatch(dispatch => dispatch.SpotDispatchMode = ZLinkDispatchM
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, discovery, filter, dispatch, actor factory 를 모두 소유 |
-| `IZLinkFrameworkOptions.AddRegistryEndpoint` / `IZLinkSpotMeshBuilder.AddRegistryEndpoint` | discovery endpoint 를 직접 추가한다 |
+| `IZLinkDiscoveryBuilder` | `UseDiscovery(...)` 안에서 discovery endpoint 를 `AddRegistryEndpoint(endpoint)` 로 추가한다 |
 | `IZLinkMetadataPolicyBuilder` | 응용 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
 | `IZLinkRegistrySpotRemoteAddressesOptions` | Registry 기반 spot 주소 해석 옵션(`RouterChannelId`) |
 
@@ -252,16 +252,25 @@ options.AddClientServerChannel("api", channel =>
 });
 
 options.AddFanoutChannel("events", channel => { channel.EnablePublisher(); channel.EnableSubscriber(); });
-options.AddDealerMeshChannel("mesh", channel => channel.EnableClient());
-options.AddRouteMeshChannel("play-router", channel => channel.Bind("tcp://127.0.0.1:5300"));
+options.AddDealerMeshChannel("mesh", channel =>
+{
+    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:5200"));
+    channel.EnableClient(client => client.Bind("tcp://127.0.0.1:5201"));
+});
+options.AddRouteMeshChannel("play-router", channel =>
+{
+    channel.EnableServer(server => server.Bind("tcp://127.0.0.1:5300"));
+    channel.EnableClient(client =>
+        client.UseManualConnections(c => c.Connect("tcp://127.0.0.1:5301")));
+});
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkClientServerChannelBuilder` | client-server channel(`EnableServer`/`EnableClient`, request/send handler, `EnableSpotRouteEgress`) |
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
-| `IZLinkDealerMeshChannelBuilder` | dealer mesh channel(`EnableClient`) |
-| `IZLinkRouteMeshChannelBuilder` | route mesh channel(`Bind`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
+| `IZLinkDealerMeshChannelBuilder` | dealer mesh channel(`EnableServer`/`EnableClient`, send/request handler) |
+| `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, routing/socket, route send/request handler, `EnableSpotRouteEgress`) |
 | `IZLinkRouteChannelBuilder` | route channel 공통 빌더 표면 |
 | `IChannelServerCapabilityBuilder` | server 역할(`Bind`, `ConfigureSocket`, `ConfigureRouting`) |
 | `IChannelClientCapabilityBuilder` | client 역할(`ConfigureSocket`, `ConfigureRouting`, `UseManualConnections`) |
@@ -320,12 +329,12 @@ options.AddSpotMesh("play-mesh", mesh =>
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkStreamNodeBuilder` | stream node(`Bind`, `AttachActorGateway`, `RegisterSession<TSession>`) |
-| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`Bind`, router/pubsub, channel attach, route 수용, entry/spot factory) |
+| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, channel attach, route 수용, entry/spot factory) |
 | `IZLinkSpotMeshNodeBuilder` | spot mesh 안의 노드 빌더(`IZLinkSpotNodeBuilder` 와 같은 표면, mesh 컨텍스트) |
 | `IZLinkSpotMeshBuilder` | discovery 기반 spot mesh(`UseDiscovery`, `AddNode`) |
 | `IZLinkSpotRouteChannelAcceptanceBuilder` | `AcceptSpotRoutesFromChannel` 의 ingress 연결 설정(`UseManualConnections`) |
-| `ISpotRouterCapabilityBuilder` | spot router 역할(`Bind`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
-| `ISpotPubSubCapabilityBuilder` | spot pub/sub 역할(`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
+| `ISpotRouterCapabilityBuilder` | spot router 역할(`BindRouter`/`SetRoutingId`/`ConfigureSocket`/`ConfigureRouting`/`UseManualConnections`) |
+| `ISpotPubSubCapabilityBuilder` | spot pub/sub 역할(`BindPubSub`/`SetRoutingId`/`ConfigurePublisher`/`ConfigureSubscriber`/`UseManualConnections`) |
 | `ISpotPublisherClientCapabilityBuilder` | spot publisher client attach 설정 |
 | `ISpotChannelClientCapabilityBuilder` | spot 의 일반 channel client attach 설정 |
 | `IZLinkEndpointConnections` | spot route ingress 수동 연결 집합 |
@@ -378,6 +387,10 @@ var dispatch = new DispatchOptions { SpotDispatchMode = ZLinkDispatchMode.Compil
 | `IZLinkSpotSubscriberConfig` | spot subscriber 옵션(`ReceiveHighWaterMark`, `ReceiveTimeout`, `Linger`) |
 | `IZLinkEntrySpotOptions` | Entry Spot 의 routing id 지정 |
 | `IZLinkDispatchOptions` | spot/stream dispatch mode(`Compiled`/`Dynamic`) |
+| `IZLinkUnhandledDispatchOptions` | 미등록 handler 처리 정책(`Request`/`Send`/`Publish`, log level) |
+| `IZLinkDiagnosticsOptions` | message flow 진단 설정(`MessageFlow`, `SampleRate`, message size/native 진단 포함 여부) |
+| `IZLinkWorkerOptions` | worker pool 설정(`MinThreads`, `MaxThreads`, `IdleTimeout`, `MaxQueueLength`) |
+| `IZLinkWorkerCall<TResult>` | spot context 의 `RunWorker(...)` 결과 종결자(`Timeout`, `Async`, `Submit`) |
 
 검증: `ConnectionAndConfigContracts.Configuration_contracts_keep_socket_routing_spot_and_dispatch_options_typed`.
 
@@ -394,9 +407,9 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
     public void Configure()
     {
-        Context.AddPacket<RoomPacketHandler>();
-        Context.AddSubscribe<RoomEventHandler>("room.events");
-        Context.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
+        Context.Handlers.AddPacket<RoomPacketHandler>();
+        Context.Handlers.AddSubscribe<RoomEventHandler>("room.events");
+        Context.Handlers.AddActorPacket<PlayerActorPacketHandler, PlayerActor>();
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -438,10 +451,12 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnActorJoinAsync`/`onJoinActor`/`onLeaveActor`/`OnClosingAsync`) |
+| `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnClosingAsync`) |
+| `IZLinkSpot<TActor>` | actor 를 받는 user spot. `OnActorJoinAsync`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` lifecycle 을 추가한다 |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
-| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `leaveActor` + `CloseAsync` + `AddTimer` |
-| `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `AddTimer` |
+| `IZLinkEntrySpot<TActor>` | actor 를 받는 Entry Spot. `onCreateActor`/`onJoinActor`/`onLeaveActor`/`onDisconnectActor` lifecycle 을 추가한다 |
+| `IZLinkSpotContext` | user spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `leaveActor` + `CloseAsync` + `AddTimer` + `RunWorker` |
+| `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `SpotRid`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkActorHandlerRegistry` | actor handler 등록(`AddHandler`, `AddActorPacket`) |
 | `IZLinkSpotHandlerRegistry` | `IZLinkActorHandlerRegistry` + spot packet/subscribe(`AddPacket`, `AddSubscribe`) |
 | `IZLinkSpotOutbound` | spot 안 outbound(`SendToSpot`, `RequestToSpot`, `Publish(topic, msg)`, `SendToChannel`, `RequestToChannel`) |
@@ -467,7 +482,7 @@ await publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened"
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkSpotManager` | spot 인스턴스 생성/조회/종료(`CreateAsync`, `GetOrCreateAsync`, `GetAsync`, `ListAsync`, `CloseAsync`) |
+| `IZLinkSpotManager` | spot 인스턴스 생성/조회/종료(`CreateAsync`, `GetOrCreateAsync`, `FindAsync`, `ListAsync`, `CloseAsync`) |
 | `IZLinkSpotOutbound` | current Spot callback 안에서의 outbound(`SendToSpot`/`RequestToSpot`/`SendToChannel`/`RequestToChannel`/`Publish`) |
 | `IZLinkSpotPublisherClient` | local spot 없는 노드의 spot channel publish(`PublishSpot(channelName, topic, msg)`) |
 | `IZLinkSpotRemoteAddressResolver` | spot `RoutingId` → `ZLinkSpotRemoteAddress` 해석(`ResolveSpotRemoteAddressAsync`) |
@@ -499,6 +514,7 @@ public sealed class RoomRequestHandler
 | `IZLinkSpot<TActor>.onJoinActor(...)` | user spot actor join commit 이후 lifecycle |
 | `IZLinkSpot<TActor>.onLeaveActor(...)` | user spot actor leave lifecycle |
 | `IZLinkSpot<TActor>.onDisconnectActor` | user spot actor disconnect notification. membership 은 변경하지 않음 |
+| `IZLinkEntrySpot<TActor>.onCreateActor(...)` | Entry Spot actor create lifecycle |
 | `IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, TMessage>` | Entry Spot actor 단방향 handler. context 뒤에 payload |
 | `IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, TRequest, TReply>` | Entry Spot actor 요청 handler. context 뒤에 request |
 | `IZLinkEntrySpot<TActor>.onJoinActor(...)` | Entry Spot actor join lifecycle |
@@ -531,6 +547,7 @@ actor.Configure();
 | `IZLinkActor` | ID 로 식별되는 상태 보유 actor. `ActorId`, `Context` |
 | `IZLinkActorContext` | actor 의 상태/동작 표면. `SpotRid?`/`IsJoined`, `BoundSession`, `JoinSpot`/`JoinEntrySpot`, `GetSpot<T>` |
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 `Accepted`, `ActorRef`, reply `Message` |
+| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(...)` 종결자(`Timeout` → `Async`). 결과는 `ActorRef` |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorManager` | actor 생성/조회(`CreateAsync`, `FindAsync`, `GetOrCreateAsync`) |
 
@@ -671,7 +688,7 @@ var snapshot = await client.TopologyAsync();                    // IZLinkRegistr
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkRegistryOptions` | Registry 서버 설정(`PubEndpoint`, `RouterEndpoint`, `RegistryId`, heartbeat/broadcast interval, `AddPeer`) |
-| `IZLinkRegistryQuery` | in-process Registry 조회(`StatusAsync`, `ServiceSummaryAsync`, `TopologyAsync`, `TopologyAsync`, `MemberPeersAsync`) |
+| `IZLinkRegistryQuery` | in-process Registry 조회(`StatusAsync`, `ServiceSummaryAsync`, `TopologyAsync`, `MemberPeersAsync`) |
 | `IZLinkRegistryQueryClient` | 원격 Registry 조회. topology `TopologyAsync` 만 제공(C API 제약) |
 | `IZLinkRegistryQueryClientOptions` | 원격 query client 의 `Endpoint`(ROUTER) |
 
@@ -715,7 +732,7 @@ await timer.CancelAsync();   // IZLinkTimer
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkTimer` | `AddTimer<THandler>(...)` 가 돌려주는 timer 핸들. `CancelAsync()` 로 중지, `IAsyncDisposable` 로 정리 |
+| `IZLinkTimer` | `AddTimer<THandler>(...)` 가 돌려주는 timer 핸들. `IsDisposed`, `CancelAsync()`, `IAsyncDisposable` 로 정리 |
 
 검증: `TimerContracts.Timer_contract_allows_spot_code_to_cancel_a_registered_timer`.
 
@@ -723,13 +740,13 @@ await timer.CancelAsync();   // IZLinkTimer
 
 | 영역(namespace) | 검증 클래스 | 시나리오 수 |
 |-----------------|-------------|:-----------:|
-| `Channels` | `ChannelContracts` | 3 |
-| `Handlers` | `HandlerContracts` | 1 |
+| `Channels` | `ChannelContracts` | 4 |
+| `Handlers` | `HandlerContracts` | 2 |
 | `Codecs` | `CodecContracts` | 1 |
 | `Configuration` | `BuilderContracts` · `ConnectionAndConfigContracts` | 5 |
-| `Spots` | `SpotContracts` | 3 |
-| `Actors` | `ActorContracts` | 2 |
-| `Streams` | `StreamContracts` | 2 |
+| `Spots` | `SpotContracts` | 6 |
+| `Actors` | `ActorContracts` | 1 |
+| `Streams` | `StreamContracts` | 3 |
 | `Registry` | `RegistryContracts` | 1 |
 | `Eventing` | `EventingContracts` | 1 |
 | `Timers` | `TimerContracts` | 1 |
